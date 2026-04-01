@@ -1,0 +1,12 @@
+# Ngrok config – one agent, multiple tunnels (avoids "1 simultaneous agent" limit)
+# Run: ngrok start --config ngrok.yml --all
+# Or only backend: ngrok start --config ngrok.yml backend
+
+version: "2"
+tunnels:
+  backend:
+    addr: 3000
+    proto: http
+  frontend:
+    addr: 3030
+    proto: http

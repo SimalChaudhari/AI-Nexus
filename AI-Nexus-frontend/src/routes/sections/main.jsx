@@ -1,0 +1,198 @@
+import { lazy, Suspense } from 'react';
+import { Outlet } from 'react-router-dom';
+
+import { MainLayout } from 'src/layouts/main';
+import { SimpleLayout } from 'src/layouts/simple';
+
+import { SplashScreen } from 'src/components/loading-screen';
+import { CenteredCircularLoader } from 'src/components/loading/centered-circular-loader';
+
+import { PublicGuard, AuthGuard } from 'src/auth/guard';
+
+// ----------------------------------------------------------------------
+
+const HomePage = lazy(() => import('src/pages/home'));
+const CategoriesPage = lazy(() => import('src/pages/categories'));
+const AnnouncementsPage = lazy(() => import('src/pages/announcements'));
+const AnnouncementDetailPage = lazy(() => import('src/pages/announcements/detail'));
+const AiForumPage = lazy(() => import('src/pages/ai-forum'));
+const AiForumDetailPage = lazy(() => import('src/pages/ai-forum/detail'));
+const FaqsPage = lazy(() => import('src/pages/faqs'));
+const AboutPage = lazy(() => import('src/pages/about-us'));
+const ContactPage = lazy(() => import('src/pages/contact-us'));
+const PricingPage = lazy(() => import('src/pages/pricing'));
+const PaymentPage = lazy(() => import('src/pages/payment'));
+const ComingSoonPage = lazy(() => import('src/pages/coming-soon'));
+const MaintenancePage = lazy(() => import('src/pages/maintenance'));
+const LearningPage = lazy(() => import('src/pages/learning'));
+const LearningCourseDetailsPage = lazy(() => import('src/pages/learning/course-details'));
+// eslint-disable-next-line import/no-unresolved -- dynamic import; module exists at src/pages/learning/course-player.jsx
+const LearningCoursePlayerPage = lazy(() => import('src/pages/learning/course-player'));
+const LearningInstructorDetailsPage = lazy(() => import('src/pages/learning/instructor-details'));
+const WorkflowsPage = lazy(() => import('src/pages/workflows'));
+const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
+const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
+// Product
+const ProductListPage = lazy(() => import('src/pages/product/list'));
+const ProductDetailsPage = lazy(() => import('src/pages/product/details'));
+const ProductCheckoutPage = lazy(() => import('src/pages/product/checkout'));
+const ProductCheckoutSuccessPage = lazy(() => import('src/pages/product/checkout-success'));
+// Blog
+const PostListPage = lazy(() => import('src/pages/post/list'));
+const PostDetailsPage = lazy(() => import('src/pages/post/details'));
+// Error
+const Page500 = lazy(() => import('src/pages/error/500'));
+const Page403 = lazy(() => import('src/pages/error/403'));
+const Page404 = lazy(() => import('src/pages/error/404'));
+// Blank
+const BlankPage = lazy(() => import('src/pages/blank'));
+
+// ----------------------------------------------------------------------
+
+export const mainRoutes = [
+  {
+    element: (
+      <PublicGuard>
+        <Outlet />
+      </PublicGuard>
+    ),
+    children: [
+      {
+        element: (
+          <MainLayout>
+            <Suspense fallback={<CenteredCircularLoader py={6} />}>
+              <Outlet />
+            </Suspense>
+          </MainLayout>
+        ),
+        children: [
+          {
+            path: 'home',
+            element: <HomePage />,
+          },
+          {
+            path: 'categories',
+            element: <CategoriesPage />,
+          },
+          {
+            path: 'announcements',
+            children: [
+              { element: <AnnouncementsPage />, index: true },
+              { path: ':id', element: <AnnouncementDetailPage /> },
+            ],
+          },
+          {
+            path: 'ai-forum',
+            children: [
+              { element: <AiForumPage />, index: true },
+              { path: ':id', element: <AiForumDetailPage /> },
+            ],
+          },
+          {
+            path: 'about-us',
+            element: <AboutPage />,
+          },
+          {
+            path: 'contact-us',
+            element: <ContactPage />,
+          },
+          {
+            path: 'faqs',
+            element: <FaqsPage />,
+          },
+          {
+            path: 'blank',
+            element: <BlankPage />,
+          },
+          {
+            path: 'product',
+            children: [
+              { element: <ProductListPage />, index: true },
+              { path: 'list', element: <ProductListPage /> },
+              { path: ':id', element: <ProductDetailsPage /> },
+              { path: 'checkout', element: <ProductCheckoutPage /> },
+              { path: 'checkout/success', element: <ProductCheckoutSuccessPage /> },
+            ],
+          },
+          {
+            path: 'post',
+            children: [
+              { element: <PostListPage />, index: true },
+              { path: 'list', element: <PostListPage /> },
+              { path: ':title', element: <PostDetailsPage /> },
+            ],
+          },
+          {
+            path: 'learning',
+            children: [
+              { element: <LearningPage />, index: true },
+              { path: 'course/:id', element: <LearningCourseDetailsPage /> },
+              { path: 'course/:id/learn', element: <AuthGuard><LearningCoursePlayerPage /></AuthGuard> },
+            ],
+          },
+          {
+            path: 'speaker/:id',
+            element: <LearningInstructorDetailsPage />,
+          },
+          {
+            path: 'ai-resources',
+            element: <WorkflowsPage />,
+          },
+          {
+            path: 'ai-resources/:id',
+            element: <WorkflowDetailsPage />,
+          },
+          {
+            path: 'ai-resources/prompt/:provider',
+            element: <WorkflowPromptDetailsPage />,
+          },
+        ],
+      },
+      {
+        path: 'pricing',
+        element: (
+          <SimpleLayout>
+            <PricingPage />
+          </SimpleLayout>
+        ),
+      },
+      {
+        path: 'payment',
+        element: (
+          <SimpleLayout>
+            <PaymentPage />
+          </SimpleLayout>
+        ),
+      },
+      {
+        path: 'coming-soon',
+        element: (
+          <SimpleLayout content={{ compact: true }}>
+            <ComingSoonPage />
+          </SimpleLayout>
+        ),
+      },
+      {
+        path: 'maintenance',
+        element: (
+          <SimpleLayout content={{ compact: true }}>
+            <MaintenancePage />
+          </SimpleLayout>
+        ),
+      },
+    ],
+  },
+  // Error pages - accessible to everyone (no guards)
+  {
+    element: (
+      <Suspense fallback={<SplashScreen />}>
+        <Outlet />
+      </Suspense>
+    ),
+    children: [
+      { path: '500', element: <Page500 /> },
+      { path: '404', element: <Page404 /> },
+      { path: '403', element: <Page403 /> },
+    ],
+  },
+];

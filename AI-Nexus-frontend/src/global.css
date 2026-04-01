@@ -1,0 +1,110 @@
+/** **************************************
+* Fonts: app
+*************************************** */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap');
+
+/** **************************************
+* Plugins
+*************************************** */
+/* scrollbar */
+@import './components/scrollbar/styles.css';
+
+/* image */
+@import './components/image/styles.css';
+
+/* map */
+@import './components/map/styles.css';
+
+/* lightbox */
+@import './components/lightbox/styles.css';
+
+/* chart */
+@import './components/chart/styles.css';
+
+/** **************************************
+* Custom Colors
+*************************************** */
+:root {
+  --color-primary-yellow: #fcd60b;
+  --color-primary-cyan: #56c7da;
+  --color-gradient: linear-gradient(45deg, #56c7da, #fcd60b);
+  --color-gradient-135: linear-gradient(135deg, #56c7da, #fcd60b);
+}
+
+/** **************************************
+* Baseline
+*************************************** */
+html {
+  height: 100%;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+body,
+#root,
+#root__layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 100%;
+  flex-direction: column;
+  font-family: "Google Sans";
+}
+body {
+  overflow-y: scroll;
+}
+img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: none;
+}
+input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+input[type='number']::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+
+/* Start AnimatedGradientBtn button*/
+.AnimatedGradientBtn {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.AnimatedGradientBtn:before {
+  position: absolute;
+  content: "";
+  z-index: -1;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 0;
+  /* background: linear-gradient(45deg, rgb(86, 199, 218), rgb(252, 214, 11)); */
+  background: linear-gradient(45deg, #fcd60b, #56c7da);
+  /* border-radius: 999px; */
+  border-radius: 5px;
+  transition: .6s;
+}
+
+.AnimatedGradientBtn:hover {
+  /* color: #443C68; */
+  /* border: 2px solid #443C68; */
+  color: #ffffff;
+  /* border: 2px solid #fbfbfb; */
+}
+
+.AnimatedGradientBtn:hover:before {
+  width: 100%;
+  left: 0;
+}
+/* End AnimatedGradientBtn button*/

@@ -1,0 +1,136 @@
+### Payment API tests (backend)
+### Use with VS Code "REST Client" extension, or copy curl commands to terminal.
+### Base URL (default): http://localhost:3000/api
+
+@baseUrl = http://localhost:3000/api
+@email = your-email@example.com
+@password = your-password
+
+### ---------------------------------------------------------------------------
+### 1) Login – get JWT (replace @email and @password above or in request body)
+### ---------------------------------------------------------------------------
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### ---------------------------------------------------------------------------
+### 2) Create checkout (card-only) – requires JWT from step 1
+### Replace the Authorization Bearer token with the access_token from login response.
+### Replace course id/name/price with real course data from your DB if needed.
+### ---------------------------------------------------------------------------
+# @name createCheckoutCards
+POST {{baseUrl}}/payments/create-checkout-cards
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.access_token}}
+
+{
+  "items": [
+    {
+      "id": "course-id-from-database",
+      "name": "Test Course",
+      "price": 9.99,
+      "quantity": 1
+    }
+  ],
+  "successUrl": "http://localhost:3030/product/checkout/success",
+  "cancelUrl": "http://localhost:3030/product/checkout",
+  "currency": "USD"
+}
+
+### ---------------------------------------------------------------------------
+### 2b) Multiple products (cart) – same endpoint, multiple items in "items" array
+### Use real course IDs from your DB (each id = one course; used for enrollment after payment).
+### ---------------------------------------------------------------------------
+# @name createCheckoutCardsMultiple
+POST {{baseUrl}}/payments/create-checkout-cards
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.access_token}}
+
+{
+  "items": [
+    {
+      "id": "course-id-1",
+      "name": "AI Community Building Fundamentals",
+      "price": 49,
+      "quantity": 1
+    },
+    {
+      "id": "course-id-2",
+      "name": "Advanced Workflow Automation",
+      "price": 89,
+      "quantity": 1
+    }
+  ],
+  "successUrl": "https://www.google.com/",
+  "cancelUrl": "https://www.google.com/",
+  "currency": "USD"
+}
+
+### ---------------------------------------------------------------------------
+### 3) Create checkout (default payment methods) – same as above, different endpoint
+### ---------------------------------------------------------------------------
+# @name createCheckout
+POST {{baseUrl}}/payments/create-checkout
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.access_token}}
+
+{
+  "items": [
+    {
+      "id": "course-id-from-database",
+      "name": "Test Course",
+      "price": 9.99,
+      "quantity": 1
+    }
+  ],
+  "successUrl": "http://localhost:3030/product/checkout/success",
+  "cancelUrl": "http://localhost:3030/product/checkout",
+  "currency": "USD"
+}
+
+### ---------------------------------------------------------------------------
+### 4) Without auth – should return 401
+### ---------------------------------------------------------------------------
+POST {{baseUrl}}/payments/create-checkout-cards
+Content-Type: application/json
+
+{
+  "items": [{ "id": "c1", "name": "Course", "price": 10, "quantity": 1 }],
+  "successUrl": "https://example.com/success",
+  "cancelUrl": "https://example.com/cancel"
+}
+
+### ---------------------------------------------------------------------------
+### 5) Empty cart – should return 400 "Cart is empty"
+### ---------------------------------------------------------------------------
+POST {{baseUrl}}/payments/create-checkout-cards
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.access_token}}
+
+{
+  "items": [],
+  "successUrl": "https://example.com/success",
+  "cancelUrl": "https://example.com/cancel"
+}
+
+### ---------------------------------------------------------------------------
+### 6) Webhook (for reference – usually called by WooshPay, not manually)
+### Without valid Signature header you may get 401 if PAYMENT_WEBHOOK_SECRET is set.
+### ---------------------------------------------------------------------------
+POST {{baseUrl}}/payments/webhook
+Content-Type: application/json
+
+{
+  "type": "payment_intent.succeeded",
+  "data": {
+    "object": {
+      "client_reference_id": "user-id|course-id-1,course-id-2",
+      "payment_status": "paid"
+    }
+  }
+}

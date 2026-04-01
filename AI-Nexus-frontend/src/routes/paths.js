@@ -1,0 +1,326 @@
+import { paramCase } from 'src/utils/change-case';
+
+import { _id, _postTitles } from 'src/_mock/assets';
+
+// ----------------------------------------------------------------------
+
+const MOCK_ID = _id[1];
+
+const MOCK_TITLE = _postTitles[2];
+
+const ROOTS = {
+  AUTH: '/auth',
+  AUTH_DEMO: '/auth-demo',
+  DASHBOARD: '/dashboard',
+  ADMIN: '/admin',
+  USER: '/user',
+};
+
+// ----------------------------------------------------------------------
+
+export const paths = {
+  comingSoon: '/coming-soon',
+  maintenance: '/maintenance',
+  pricing: '/pricing',
+  payment: '/payment',
+  about: '/about-us',
+  contact: '/contact-us',
+  faqs: '/faqs',
+  categories: '/categories',
+  announcements: '/announcements',
+  announcement: {
+    root: '/announcements',
+    details: (id) => `/announcements/${id}`,
+  },
+  aiForum: {
+    root: '/ai-forum',
+    details: (id) => `/ai-forum/${id}`,
+  },
+  home: '/home',
+  learning: '/learning',
+  learningCourse: {
+    root: '/learning/course',
+    details: (id) => `/learning/course/${id}`,
+    learn: (id, sectionId) => sectionId ? `/learning/course/${id}/learn?section=${sectionId}` : `/learning/course/${id}/learn`,
+  },
+  speaker: {
+    root: '/speaker',
+    details: (id) => `/speaker/${id}`,
+  },
+  workflows: '/ai-resources',
+  workflowsDetails: (id) => `/ai-resources/${id}`,
+  workflowsPrompt: {
+    root: '/ai-resources/prompt',
+    details: (provider) => `/ai-resources/prompt/${provider}`,
+  },
+  page403: '/error/403',
+  page404: '/error/404',
+  page500: '/error/500',
+  changelog: 'https://www.ai-nexus.io/',
+  zoneStore: 'https://www.ai-nexus.io/',
+  minimalStore: 'https://www.ai-nexus.io/',
+  freeUI: 'https://www.ai-nexus.io/',
+  figma: 'https://www.ai-nexus.io/',
+  product: {
+    root: `/product`,
+    checkout: `/product/checkout`,
+    details: (id) => `/product/${id}`,
+    demo: { details: `/product/${MOCK_ID}` },
+  },
+  post: {
+    root: `/post`,
+    details: (title) => `/post/${paramCase(title)}`,
+    demo: { details: `/post/${paramCase(MOCK_TITLE)}` },
+  },
+  // AUTH
+  auth: {
+    amplify: {
+      signIn: `${ROOTS.AUTH}/amplify/sign-in`,
+      verify: `${ROOTS.AUTH}/amplify/verify`,
+      signUp: `${ROOTS.AUTH}/amplify/sign-up`,
+      updatePassword: `${ROOTS.AUTH}/amplify/update-password`,
+      resetPassword: `${ROOTS.AUTH}/amplify/reset-password`,
+    },
+    jwt: {
+      signIn: `${ROOTS.AUTH}/jwt/sign-in`,
+      signUp: `${ROOTS.AUTH}/jwt/sign-up`,
+      forgotPassword: `${ROOTS.AUTH}/jwt/forgot-password`,
+      resetPassword: `${ROOTS.AUTH}/jwt/reset-password`,
+    },
+    firebase: {
+      signIn: `${ROOTS.AUTH}/firebase/sign-in`,
+      verify: `${ROOTS.AUTH}/firebase/verify`,
+      signUp: `${ROOTS.AUTH}/firebase/sign-up`,
+      resetPassword: `${ROOTS.AUTH}/firebase/reset-password`,
+    },
+    auth0: {
+      signIn: `${ROOTS.AUTH}/auth0/sign-in`,
+    },
+    supabase: {
+      signIn: `${ROOTS.AUTH}/supabase/sign-in`,
+      verify: `${ROOTS.AUTH}/supabase/verify`,
+      signUp: `${ROOTS.AUTH}/supabase/sign-up`,
+      updatePassword: `${ROOTS.AUTH}/supabase/update-password`,
+      resetPassword: `${ROOTS.AUTH}/supabase/reset-password`,
+    },
+    simple: {
+      signIn: `${ROOTS.AUTH}/sign-in`,
+      signUp: `${ROOTS.AUTH}/sign-up`,
+      forgotPassword: `${ROOTS.AUTH}/forgot-password`,
+      resetPassword: `${ROOTS.AUTH}/reset-password`,
+      verify: `${ROOTS.AUTH}/verify`,
+    },
+    oauth: {
+      start: `${ROOTS.AUTH}/oauth/start`,
+      callback: `${ROOTS.AUTH}/oauth/callback`,
+    },
+  },
+  authDemo: {
+    split: {
+      signIn: `${ROOTS.AUTH_DEMO}/split/sign-in`,
+      signUp: `${ROOTS.AUTH_DEMO}/split/sign-up`,
+      resetPassword: `${ROOTS.AUTH_DEMO}/split/reset-password`,
+      updatePassword: `${ROOTS.AUTH_DEMO}/split/update-password`,
+      verify: `${ROOTS.AUTH_DEMO}/split/verify`,
+    },
+    centered: {
+      signIn: `${ROOTS.AUTH_DEMO}/centered/sign-in`,
+      signUp: `${ROOTS.AUTH_DEMO}/centered/sign-up`,
+      resetPassword: `${ROOTS.AUTH_DEMO}/centered/reset-password`,
+      updatePassword: `${ROOTS.AUTH_DEMO}/centered/update-password`,
+      verify: `${ROOTS.AUTH_DEMO}/centered/verify`,
+    },
+  },
+  // DASHBOARD (now under /admin)
+  dashboard: {
+    root: `${ROOTS.ADMIN}/dashboard`,
+    mail: `${ROOTS.DASHBOARD}/mail`,
+    chat: `${ROOTS.DASHBOARD}/chat`,
+    blank: `${ROOTS.DASHBOARD}/blank`,
+    kanban: `${ROOTS.DASHBOARD}/kanban`,
+    calendar: `${ROOTS.DASHBOARD}/calendar`,
+    fileManager: `${ROOTS.DASHBOARD}/file-manager`,
+    permission: `${ROOTS.DASHBOARD}/permission`,
+    general: {
+      app: `${ROOTS.DASHBOARD}/app`,
+      ecommerce: `${ROOTS.DASHBOARD}/ecommerce`,
+      analytics: `${ROOTS.DASHBOARD}/analytics`,
+      banking: `${ROOTS.DASHBOARD}/banking`,
+      booking: `${ROOTS.DASHBOARD}/booking`,
+      file: `${ROOTS.DASHBOARD}/file`,
+      course: `${ROOTS.DASHBOARD}/course`,
+    },
+    user: {
+      root: `${ROOTS.ADMIN}/user`,
+      new: `${ROOTS.ADMIN}/user/new`,
+      list: `${ROOTS.ADMIN}/user/list`,
+      cards: `${ROOTS.DASHBOARD}/user/cards`,
+      profile: `${ROOTS.DASHBOARD}/user/profile`, // Legacy route
+      account: `${ROOTS.DASHBOARD}/user/account`,
+      details: (id) => `${ROOTS.ADMIN}/user/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/user/${id}/edit`,
+      demo: {
+        edit: `${ROOTS.DASHBOARD}/user/${MOCK_ID}/edit`,
+      },
+    },
+    product: {
+      root: `${ROOTS.DASHBOARD}/product`,
+      new: `${ROOTS.DASHBOARD}/product/new`,
+      details: (id) => `${ROOTS.DASHBOARD}/product/${id}`,
+      edit: (id) => `${ROOTS.DASHBOARD}/product/${id}/edit`,
+      demo: {
+        details: `${ROOTS.DASHBOARD}/product/${MOCK_ID}`,
+        edit: `${ROOTS.DASHBOARD}/product/${MOCK_ID}/edit`,
+      },
+    },
+    invoice: {
+      root: `${ROOTS.DASHBOARD}/invoice`,
+      new: `${ROOTS.DASHBOARD}/invoice/new`,
+      details: (id) => `${ROOTS.DASHBOARD}/invoice/${id}`,
+      edit: (id) => `${ROOTS.DASHBOARD}/invoice/${id}/edit`,
+      demo: {
+        details: `${ROOTS.DASHBOARD}/invoice/${MOCK_ID}`,
+        edit: `${ROOTS.DASHBOARD}/invoice/${MOCK_ID}/edit`,
+      },
+    },
+    post: {
+      root: `${ROOTS.DASHBOARD}/post`,
+      new: `${ROOTS.DASHBOARD}/post/new`,
+      details: (title) => `${ROOTS.DASHBOARD}/post/${paramCase(title)}`,
+      edit: (title) => `${ROOTS.DASHBOARD}/post/${paramCase(title)}/edit`,
+      demo: {
+        details: `${ROOTS.DASHBOARD}/post/${paramCase(MOCK_TITLE)}`,
+        edit: `${ROOTS.DASHBOARD}/post/${paramCase(MOCK_TITLE)}/edit`,
+      },
+    },
+    order: {
+      root: `${ROOTS.DASHBOARD}/order`,
+      details: (id) => `${ROOTS.DASHBOARD}/order/${id}`,
+      demo: {
+        details: `${ROOTS.DASHBOARD}/order/${MOCK_ID}`,
+      },
+    },
+    job: {
+      root: `${ROOTS.DASHBOARD}/job`,
+      new: `${ROOTS.DASHBOARD}/job/new`,
+      details: (id) => `${ROOTS.DASHBOARD}/job/${id}`,
+      edit: (id) => `${ROOTS.DASHBOARD}/job/${id}/edit`,
+      demo: {
+        details: `${ROOTS.DASHBOARD}/job/${MOCK_ID}`,
+        edit: `${ROOTS.DASHBOARD}/job/${MOCK_ID}/edit`,
+      },
+    },
+    tour: {
+      root: `${ROOTS.DASHBOARD}/tour`,
+      new: `${ROOTS.DASHBOARD}/tour/new`,
+      details: (id) => `${ROOTS.DASHBOARD}/tour/${id}`,
+      edit: (id) => `${ROOTS.DASHBOARD}/tour/${id}/edit`,
+      demo: {
+        details: `${ROOTS.DASHBOARD}/tour/${MOCK_ID}`,
+        edit: `${ROOTS.DASHBOARD}/tour/${MOCK_ID}/edit`,
+      },
+    },
+  },
+  // USER (for regular users - User role)
+  user: {
+    root: ROOTS.USER,
+    profile: `${ROOTS.USER}/profile`,
+  },
+  // COMMON PROFILE (works for both User and Admin)
+  profile: {
+    root: '/profile',
+  },
+  // ADMIN
+  admin: {
+    root: ROOTS.ADMIN,
+    profile: `${ROOTS.ADMIN}/profile`, // Admin profile route
+    user: {
+      root: `${ROOTS.ADMIN}/user`,
+      new: `${ROOTS.ADMIN}/user/new`,
+      list: `${ROOTS.ADMIN}/user/list`,
+      profile: `${ROOTS.ADMIN}/user/profile`, // Legacy admin profile route
+      details: (id) => `${ROOTS.ADMIN}/user/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/user/${id}/edit`,
+    },
+    category: {
+      root: `${ROOTS.ADMIN}/category`,
+      new: `${ROOTS.ADMIN}/category/new`,
+      list: `${ROOTS.ADMIN}/category/list`,
+      details: (id) => `${ROOTS.ADMIN}/category/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/category/${id}/edit`,
+    },
+    announcement: {
+      root: `${ROOTS.ADMIN}/announcement`,
+      new: `${ROOTS.ADMIN}/announcement/new`,
+      list: `${ROOTS.ADMIN}/announcement/list`,
+      details: (id) => `${ROOTS.ADMIN}/announcement/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/announcement/${id}/edit`,
+    },
+    aiForum: {
+      root: `${ROOTS.ADMIN}/ai-forum`,
+      new: `${ROOTS.ADMIN}/ai-forum/new`,
+      list: `${ROOTS.ADMIN}/ai-forum/list`,
+      details: (id) => `${ROOTS.ADMIN}/ai-forum/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/ai-forum/${id}/edit`,
+    },
+    course: {
+      root: `${ROOTS.ADMIN}/course`,
+      new: `${ROOTS.ADMIN}/course/new`,
+      list: `${ROOTS.ADMIN}/course/list`,
+      details: (id) => `${ROOTS.ADMIN}/course/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/course/${id}/edit`,
+    },
+    speaker: {
+      root: `${ROOTS.ADMIN}/speaker`,
+      new: `${ROOTS.ADMIN}/speaker/new`,
+      list: `${ROOTS.ADMIN}/speaker/list`,
+      details: (id) => `${ROOTS.ADMIN}/speaker/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/speaker/${id}/edit`,
+    },
+    label: {
+      root: `${ROOTS.ADMIN}/label`,
+      new: `${ROOTS.ADMIN}/label/new`,
+      list: `${ROOTS.ADMIN}/label/list`,
+      details: (id) => `${ROOTS.ADMIN}/label/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/label/${id}/edit`,
+    },
+    tag: {
+      root: `${ROOTS.ADMIN}/tag`,
+      new: `${ROOTS.ADMIN}/tag/new`,
+      list: `${ROOTS.ADMIN}/tag/list`,
+      details: (id) => `${ROOTS.ADMIN}/tag/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/tag/${id}/edit`,
+    },
+    workflow: {
+      root: `${ROOTS.ADMIN}/ai-resources`,
+      new: `${ROOTS.ADMIN}/ai-resources/new`,
+      list: `${ROOTS.ADMIN}/ai-resources/list`,
+      details: (id) => `${ROOTS.ADMIN}/ai-resources/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/ai-resources/${id}/edit`,
+    },
+    promptCatalog: {
+      root: `${ROOTS.ADMIN}/ai-resources/prompts`,
+      list: `${ROOTS.ADMIN}/ai-resources/prompts/list`,
+      providers: `${ROOTS.ADMIN}/ai-resources/prompts/providers`,
+      providerNew: `${ROOTS.ADMIN}/ai-resources/prompts/providers/new`,
+      providerDetails: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/providers/${id}`,
+      providerEdit: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/providers/${id}/edit`,
+      new: `${ROOTS.ADMIN}/ai-resources/prompts/new`,
+      details: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/${id}/edit`,
+    },
+    order: {
+      root: `${ROOTS.ADMIN}/order`,
+      list: `${ROOTS.ADMIN}/order/list`,
+      details: (id) => `${ROOTS.ADMIN}/order/${id}`,
+    },
+    product: {
+      root: `${ROOTS.ADMIN}/product`,
+      new: `${ROOTS.ADMIN}/product/new`,
+      list: `${ROOTS.ADMIN}/product/list`,
+      details: (id) => `${ROOTS.ADMIN}/product/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/product/${id}/edit`,
+    },
+    settings: `${ROOTS.ADMIN}/settings`,
+  },
+};
