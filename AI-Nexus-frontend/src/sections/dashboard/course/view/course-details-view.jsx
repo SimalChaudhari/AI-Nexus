@@ -138,24 +138,15 @@ export function CourseDetailsView({ course, loading, error }) {
     .filter(Boolean)
     .map((s) => ({ id: s.id, name: s.name, profileimage: s.profileimage || '' }));
 
-  // Hero media: first section video if available, else course image (YouTube-style)
-  const heroMedia = useMemo(() => {
-    if (!course) return { type: 'image', url: '' };
-    const firstSectionWithVideo = courseModules
-      .flatMap((m) => m.sections || [])
-      .find((s) => s?.videoUrl);
-    const videoUrl = firstSectionWithVideo?.videoUrl?.trim();
-    if (videoUrl) {
-      const embedUrl = (() => {
-        if (!videoUrl.includes('youtube.com') && !videoUrl.includes('youtu.be')) return null;
-        const match = videoUrl.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/)([^&?]+)/);
-        return match ? `https://www.youtube-nocookie.com/embed/${match[1]}` : null;
-      })();
-      if (embedUrl) return { type: 'video', url: embedUrl };
-      return { type: 'video', url: videoUrl };
-    }
-    return { type: 'image', url: course.image || '' };
-  }, [course, courseModules]);
+  // Hero media: admin view should be lightweight – always use course cover image like a small card,
+  // do not auto-play or embed the first video here (videos are visible in curriculum instead).
+  const heroMedia = useMemo(
+    () => ({
+      type: 'image',
+      url: course?.image || '',
+    }),
+    [course?.image]
+  );
 
   const getSectionPreviewType = (section) => {
     if (section.videoUrl) return 'video';
@@ -496,45 +487,61 @@ export function CourseDetailsView({ course, loading, error }) {
           </Grid>
 
           {(() => {
-            const raw = course.marketData != null ? String(course.marketData) : '';
-            let text = raw.trim();
-            if (raw.startsWith('"') && raw.endsWith('"')) {
+            let market = {};
+            if (course.marketData && typeof course.marketData === 'string') {
               try {
-                text = JSON.parse(raw);
+                // marketData is stored as JSON string, possibly double-encoded
+                const firstParse = JSON.parse(course.marketData);
+                if (typeof firstParse === 'string') {
+                  market = JSON.parse(firstParse);
+                } else if (typeof firstParse === 'object' && firstParse !== null) {
+                  market = firstParse;
+                }
               } catch {
-                // use as-is
+                market = {};
               }
             }
-            const lines = text ? String(text).split(/\r?\n/).filter((line) => line.trim() !== '') : [];
-            return lines.length > 0 ? (
+            const rawLessonCount = market.lessonCount ?? market.lessons;
+            const rawCpeHours = market.cpeHours ?? market.cpe ?? market.hours;
+            const lessonCountText =
+              rawLessonCount != null && rawLessonCount !== ''
+                ? `${Number(rawLessonCount)} lesson${Number(rawLessonCount) === 1 ? '' : 's'}`
+                : null;
+            const cpeHoursText =
+              rawCpeHours != null && rawCpeHours !== ''
+                ? `${Number(rawCpeHours)} CPE Hour${Number(rawCpeHours) === 1 ? '' : 's'}`
+                : null;
+            const hasMarketFacts = Boolean(lessonCountText || cpeHoursText);
+            if (!hasMarketFacts) return null;
+
+            return (
               <Grid xs={12}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}
+                >
                   Market Data
                 </Typography>
-                <Box
-                  component="ul"
-                  sx={{
-                    m: 0,
-                    pl: 2.5,
-                    py: 1.5,
-                    px: 2,
-                    borderRadius: 1.5,
-                    bgcolor: 'background.neutral',
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                    fontSize: '0.8125rem',
-                    lineHeight: 1.8,
-                    maxHeight: 280,
-                    overflow: 'auto',
-                  }}
-                >
-                  {lines.map((line, index) => (
-                    <Box component="li" key={index} sx={{ mb: 0.5 }}>
-                      {line.trim()}
-                    </Box>
-                  ))}
-                </Box>
+                <Stack direction="row" flexWrap="wrap" gap={1}>
+                  {lessonCountText && (
+                    <Chip
+                      size="small"
+                      variant="soft"
+                      color="primary"
+                      label={lessonCountText}
+                    />
+                  )}
+                  {cpeHoursText && (
+                    <Chip
+                      size="small"
+                      variant="soft"
+                      color="secondary"
+                      label={cpeHoursText}
+                    />
+                  )}
+                </Stack>
               </Grid>
-            ) : null;
+            );
           })()}
 
           <Grid xs={12}>
@@ -564,110 +571,138 @@ export function CourseDetailsView({ course, loading, error }) {
           </Typography>
         ) : courseModules.length > 0 ? (
           <Stack spacing={1}>
-            {courseModules.map((module, moduleIndex) => {
-              const sections = module.sections || [];
-              const sectionCount = sections.length;
-              return (
-                <Accordion
-                  key={module.id}
-                  defaultExpanded={moduleIndex === 0}
-                  disableGutters
-                  sx={{
-                    boxShadow: 'none',
-                    border: `1px solid ${theme.palette.divider}`,
-                    borderRadius: 1,
-                    '&:before': { display: 'none' },
-                    '&.Mui-expanded': {
-                      margin: 0,
-                      '&:not(:last-child)': {
-                        marginBottom: 1,
-                      },
-                    },
-                  }}
-                >
-                  <AccordionSummary
-                    expandIcon={<Iconify icon="solar:alt-arrow-down-bold" width={20} />}
-                    sx={{
-                      px: 2,
-                      py: 1.5,
-                      minHeight: 48,
-                      '& .MuiAccordionSummary-content': { my: 0 },
-                      '&.Mui-expanded': { minHeight: 48 },
-                    }}
-                  >
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%', pr: 2 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        {moduleIndex + 1}. {module.title}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        {sectionCount} {sectionCount === 1 ? 'Lesson' : 'Lesson(s)'}
-                      </Typography>
-                    </Stack>
-                  </AccordionSummary>
-                  <AccordionDetails sx={{ pt: 0, pb: 1.5, px: 2 }}>
-                    <Stack spacing={1}>
-                      {sections.map((section, sectionIndex) => {
-                        const previewType = getSectionPreviewType(section);
-                        return (
-                          <Stack
-                            key={section.id}
-                            direction="row"
-                            alignItems="center"
-                            spacing={1.5}
-                            sx={{
-                              py: 1,
-                              px: 1.5,
-                              borderRadius: 1,
-                              bgcolor: alpha(theme.palette.grey[500], 0.04),
-                              cursor: 'pointer',
-                              '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.08) },
-                            }}
-                            onClick={() => openPreview(section)}
-                          >
-                            <Iconify icon="solar:play-bold" width={18} sx={{ color: 'primary.main', flexShrink: 0 }} />
-                            <Box sx={{ minWidth: 0, flex: 1 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
-                                {sectionIndex + 1}. {section.title}
-                              </Typography>
-                              {section.videoUrl && (
-                                <Typography
-                                  variant="caption"
-                                  component="a"
-                                  href={section.videoUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  sx={{
-                                    color: 'primary.main',
-                                    textDecoration: 'none',
-                                    cursor: 'pointer',
-                                    display: 'block',
-                                    mt: 0.25,
-                                    '&:hover': { textDecoration: 'underline' },
-                                  }}
-                                >
-                                  {section.videoUrl}
-                                </Typography>
-                              )}
-                              {previewType === 'images' && Array.isArray(section.images) && section.images.length > 0 && (
-                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}>
-                                  {section.images.length} image(s) — click to preview
-                                </Typography>
-                              )}
-                              {previewType === 'text' && (
-                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}>
-                                  Text lesson — click to preview
-                                </Typography>
-                              )}
-                            </Box>
-                          </Stack>
-                        );
-                      })}
-                    </Stack>
-                  </AccordionDetails>
-                </Accordion>
-              );
-            })}
+                        {courseModules.map((module, moduleIndex) => {
+                          const sections = module.sections || [];
+                          const sectionCount = sections.length;
+                          return (
+                            <Accordion
+                              key={module.id}
+                              defaultExpanded={moduleIndex === 0}
+                              disableGutters
+                              sx={{
+                                boxShadow: 'none',
+                                border: `1px solid ${theme.palette.divider}`,
+                                borderRadius: 1,
+                                '&:before': { display: 'none' },
+                                '&.Mui-expanded': {
+                                  margin: 0,
+                                  '&:not(:last-child)': {
+                                    marginBottom: 1,
+                                  },
+                                },
+                              }}
+                            >
+                              <AccordionSummary
+                                expandIcon={<Iconify icon="solar:alt-arrow-down-bold" width={20} />}
+                                sx={{
+                                  px: 2,
+                                  py: 1.5,
+                                  minHeight: 48,
+                                  '& .MuiAccordionSummary-content': { my: 0 },
+                                  '&.Mui-expanded': { minHeight: 48 },
+                                }}
+                              >
+                                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%', pr: 2 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                    {moduleIndex + 1}. {module.title}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                    {sectionCount} {sectionCount === 1 ? 'Lesson' : 'Lesson(s)'}
+                                  </Typography>
+                                </Stack>
+                              </AccordionSummary>
+                              <AccordionDetails sx={{ pt: 0, pb: 1.5, px: 2 }}>
+                                <Stack spacing={1}>
+                                  {sections.map((section, sectionIndex) => {
+                                    const hasVideo = Boolean(section.videoUrl);
+                                    const hasImages = Array.isArray(section.images) && section.images.length > 0;
+                                    const isYouTubeVideo =
+                                      hasVideo &&
+                                      (section.videoUrl.includes('youtube.com') ||
+                                        section.videoUrl.includes('youtu.be'));
+                                    const fallbackPreviewImage = course?.image || '/assets/images/cover/cover-1.jpg';
+                                    const previewImage = hasImages ? section.images[0] : fallbackPreviewImage;
+                                    const mediaLabel = hasVideo
+                                      ? section.watchtime
+                                        ? `Video lesson • ${section.watchtime}`
+                                        : 'Video lesson'
+                                      : hasImages
+                                        ? `Image lesson • ${section.images.length} image(s)`
+                                        : section.content
+                                          ? 'Text lesson'
+                                          : 'Lesson';
+                                    return (
+                                      <Stack
+                                        key={section.id}
+                                        direction="row"
+                                        alignItems="center"
+                                        spacing={1.5}
+                                        sx={{
+                                          py: 1,
+                                          px: 1.5,
+                                          borderRadius: 1,
+                                          bgcolor: alpha(theme.palette.grey[500], 0.04),
+                                          cursor: 'pointer',
+                                          textDecoration: 'none',
+                                          color: 'inherit',
+                                          transition: 'all 0.2s ease',
+                                          '&:hover': {
+                                            bgcolor: alpha(theme.palette.primary.main, 0.08),
+                                            transform: 'translateX(4px)',
+                                          },
+                                        }}
+                                        onClick={() => openPreview(section)}
+                                      >
+                                        <Box
+                                          sx={{
+                                            width: 56,
+                                            height: 36,
+                                            borderRadius: 0.75,
+                                            overflow: 'hidden',
+                                            bgcolor: 'common.black',
+                                            border: (t) => `1px solid ${t.palette.divider}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {hasVideo && !isYouTubeVideo ? (
+                                            <Box
+                                              component="video"
+                                              src={section.videoUrl}
+                                              muted
+                                              preload="metadata"
+                                              sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            />
+                                          ) : (
+                                            <Box
+                                              component="img"
+                                              src={previewImage}
+                                              alt=""
+                                              sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            />
+                                          )}
+                                        </Box>
+                                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                                          <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
+                                            {sectionIndex + 1}. {section.title}
+                                          </Typography>
+                                          <Typography
+                                            variant="caption"
+                                            sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}
+                                          >
+                                            {mediaLabel}
+                                          </Typography>
+                                        </Box>
+                                      </Stack>
+                                    );
+                                  })}
+                                </Stack>
+                              </AccordionDetails>
+                            </Accordion>
+                          );
+                        })}
           </Stack>
         ) : (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>

@@ -69,8 +69,14 @@ export function ViewHtmlContent({ html, sx, className }) {
         },
         '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1 },
         // Preserve CKEditor left/right float behavior for wrapped content.
-        '& img[style*="float: left"]': { margin: '0 12px 8px 0' },
-        '& img[style*="float: right"]': { margin: '0 0 8px 12px' },
+        '& img[style*="float: left"], & img[style*="float:left"]': {
+          margin: '0 12px 8px 0',
+        },
+        '& img[style*="float: right"], & img[style*="float:right"]': {
+          margin: '0 0 8px 12px',
+        },
+        // Prompt catalog / custom editor image class
+        '& img.nml__editor__content__image': { maxWidth: '100%', height: 'auto' },
         '& figure.image.image-style-align-left': { float: 'left', margin: '0 12px 8px 0' },
         '& figure.image.image-style-align-right': { float: 'right', margin: '0 0 8px 12px' },
         '& figure.image.image-style-block-align-center': {
@@ -78,6 +84,25 @@ export function ViewHtmlContent({ html, sx, className }) {
           marginRight: 'auto',
         },
         '& figure.image img': { display: 'block' },
+        // CKEditor tables / captions
+        '& table': {
+          width: '100%',
+          borderCollapse: 'collapse',
+          my: 1,
+          fontSize: '0.9375em',
+        },
+        '& th, & td': {
+          border: (theme) => `1px solid ${theme.palette.divider}`,
+          px: 1,
+          py: 0.75,
+          verticalAlign: 'top',
+        },
+        '& figcaption': {
+          mt: 0.5,
+          fontSize: '0.875rem',
+          color: 'text.secondary',
+          textAlign: 'center',
+        },
         ...sx,
       }}
       dangerouslySetInnerHTML={{ __html: html }}

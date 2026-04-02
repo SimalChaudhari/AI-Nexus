@@ -163,5 +163,27 @@ export class WorkflowController {
         const result = await this.workflowService.delete(id);
         return response.status(HttpStatus.OK).json(result);
     }
+
+    @Delete(':id/image')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Delete only the workflow cover image' })
+    async deleteWorkflowImage(@Param('id') id: string, @Res() response: Response) {
+        const workflow = await this.workflowService.getById(id);
+
+        // Delete image file from local storage if it exists
+        await this.localStorageService.deleteFileByUrl(workflow.image);
+
+        // Clear image field in DB
+        const dto = new UpdateWorkflowDto();
+        dto.image = '';
+        const result = await this.workflowService.update(id, dto);
+
+        return response.status(HttpStatus.OK).json({
+            message: 'Workflow image deleted successfully',
+            workflow: result.workflow,
+        });
+    }
 }
 

@@ -488,12 +488,17 @@ export const courseService = {
     return urls[0] || '';
   },
 
-  async uploadSectionVideo(file) {
+  async uploadSectionVideo(file, onProgress) {
     if (!file) return '';
     const formData = new FormData();
     formData.append('video', file);
     const response = await axios.post('/courses/modules/sections/upload-video', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!event?.total) return;
+        const percent = Math.round((event.loaded * 100) / event.total);
+        if (onProgress) onProgress(percent);
+      },
     });
     const url = response.data?.data?.url || response.data?.url || '';
     return resolveAssetUrl(url);

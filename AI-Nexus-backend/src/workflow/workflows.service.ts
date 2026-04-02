@@ -162,7 +162,8 @@ export class WorkflowService {
             workflow.description = updateWorkflowDto.description;
         }
         if (updateWorkflowDto.image !== undefined) {
-            workflow.image = updateWorkflowDto.image;
+            // Empty string means clear the image, otherwise set the new image URL
+            workflow.image = updateWorkflowDto.image === '' ? null : updateWorkflowDto.image;
         }
         if (updateWorkflowDto.flowData !== undefined) {
             workflow.flowData = this.normalizeFlowData(updateWorkflowDto.flowData);

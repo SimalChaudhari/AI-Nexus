@@ -24,7 +24,7 @@ export class WorkflowEntity {
     description?: string;
 
     @Column({ type: 'text', nullable: true })
-    image?: string; // Store file path
+    image?: string | null; // Store file path
 
     @Column({ type: 'jsonb', nullable: true })
     flowData?: {

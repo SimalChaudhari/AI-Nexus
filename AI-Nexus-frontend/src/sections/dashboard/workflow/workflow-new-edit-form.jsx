@@ -44,6 +44,7 @@ import { createWorkflow, updateWorkflow } from 'src/store/slices/workflowSlice';
 import { fetchLabels } from 'src/store/slices/labelSlice';
 import { fetchTags } from 'src/store/slices/tagSlice';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
+import { workflowService } from 'src/services/workflow.service';
 
 // ----------------------------------------------------------------------
 
@@ -185,10 +186,20 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
     setSelectedFile(file);
   }, []);
 
-  const handleDeleteImage = useCallback(() => {
+  const handleDeleteImage = useCallback(async () => {
     setPreviewImage(null);
     setSelectedFile(null);
-  }, []);
+
+    // If editing an existing workflow, delete cover image on server as well
+    if (currentWorkflow?.id) {
+      try {
+        await workflowService.deleteWorkflowImage(currentWorkflow.id);
+        toast.success('Cover image removed');
+      } catch (error) {
+        toast.error(error?.response?.data?.message || 'Failed to delete cover image');
+      }
+    }
+  }, [currentWorkflow?.id]);
 
   const handleConnect = useCallback(
     (connection) => {

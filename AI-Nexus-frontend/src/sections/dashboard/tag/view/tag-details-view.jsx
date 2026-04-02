@@ -1,17 +1,14 @@
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import Grid from '@mui/material/Unstable_Grid2';
-import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
+import { EntityDetailsLayout } from 'src/components/entity-details-layout';
+import { fDateTime } from 'src/utils/format-time';
 
 // ----------------------------------------------------------------------
 
@@ -42,75 +39,69 @@ export function TagDetailsView({ tag, loading, error }) {
     );
   }
 
+  const displayName = tag.title || '-';
+  const initials =
+    displayName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?';
+
+  const headerChips = [
+    {
+      label: 'Tag',
+      icon: 'solar:hashtag-bold',
+      color: 'secondary',
+      variant: 'soft',
+    },
+  ];
+
+  const sections = [
+    {
+      title: 'Tag information',
+      icon: 'solar:hashtag-bold',
+      rows: [{ label: 'Title', value: displayName }],
+    },
+    {
+      title: 'Meta',
+      icon: 'solar:clock-circle-bold',
+      rows: [
+        {
+          label: 'Created At',
+          value: tag.createdAt
+            ? fDateTime(tag.createdAt, 'DD MMM YYYY h:mm A')
+            : '-',
+        },
+        {
+          label: 'Updated At',
+          value: tag.updatedAt
+            ? fDateTime(tag.updatedAt, 'DD MMM YYYY h:mm A')
+            : '-',
+        },
+      ],
+    },
+  ];
+
   return (
-    <DashboardContent>
-      <CustomBreadcrumbs
-        heading="Tag Details"
-        links={[
-          { name: 'Dashboard', href: paths.dashboard.root },
-          { name: 'Tag', href: paths.admin.tag.list },
-          { name: tag?.title },
-        ]}
-        action={
-          <Button
-            component={RouterLink}
-            href={paths.admin.tag.edit(tag?.id)}
-            variant="contained"
-            startIcon={<Iconify icon="solar:pen-bold" />}
-          >
-            Edit
-          </Button>
-        }
-        sx={{ mb: { xs: 3, md: 5 } }}
-      />
-
-      <Grid container spacing={3}>
-        <Grid xs={12} md={8}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Tag Information
-            </Typography>
-
-            <Box
-              rowGap={3}
-              columnGap={2}
-              display="grid"
-              gridTemplateColumns={{
-                xs: 'repeat(1, 1fr)',
-                sm: 'repeat(2, 1fr)',
-              }}
-            >
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Title
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {tag.title || '-'}
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Created At
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {tag.createdAt ? new Date(tag.createdAt).toLocaleString() : '-'}
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Updated At
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {tag.updatedAt ? new Date(tag.updatedAt).toLocaleString() : '-'}
-                </Typography>
-              </Box>
-            </Box>
-          </Card>
-        </Grid>
-      </Grid>
-    </DashboardContent>
+    <EntityDetailsLayout
+      heading="Tag Details"
+      links={[
+        { name: 'Dashboard', href: paths.dashboard.root },
+        { name: 'Tag', href: paths.admin.tag.list },
+        { name: displayName },
+      ]}
+      editHref={paths.admin.tag.edit(tag?.id)}
+      header={{
+        backgroundImage: '/assets/profilebg.jpg',
+        avatarText: initials,
+        title: displayName,
+        subtitle: tag.createdAt
+          ? `Created ${fDateTime(tag.createdAt, 'DD MMM YYYY h:mm A')}`
+          : undefined,
+        chips: headerChips,
+      }}
+      sections={sections}
+    />
   );
 }
-

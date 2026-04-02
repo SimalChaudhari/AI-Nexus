@@ -1,21 +1,19 @@
 import { useState, useEffect } from 'react';
 
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import Grid from '@mui/material/Unstable_Grid2';
-import Avatar from '@mui/material/Avatar';
-import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import Stack from '@mui/material/Stack';
+import Card from '@mui/material/Card';
+import Typography from '@mui/material/Typography';
+import Chip from '@mui/material/Chip';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
+import { Box } from '@mui/material';
 
-import { DashboardContent } from 'src/layouts/dashboard';
-import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
+import { DashboardContent } from 'src/layouts/dashboard';
+import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 import { QuickLinksCommentList } from '../../../../components/comment-section';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { fDateTime, fDateTimePersonal } from 'src/utils/format-time';
@@ -175,110 +173,114 @@ export function AnnouncementDetailsView({ announcement, loading, error, onAnnoun
     );
   }
 
+  const headerChips = [
+    announcement.status && {
+      label: announcement.status,
+      color:
+        (announcement.status === 'published' && 'success') ||
+        (announcement.status === 'draft' && 'warning') ||
+        'default',
+    },
+  ].filter(Boolean);
+
+  const sections = [
+    {
+      title: 'Announcement Information',
+      icon: 'solar:megaphone-bold',
+      rows: [
+        { label: 'Title', value: announcement.title || '-' },
+        {
+          label: 'View Count',
+          value: announcement.viewCount ?? 0,
+        },
+        creator && {
+          label: 'Created By',
+          value: creator.name,
+        },
+      ].filter(Boolean),
+    },
+    {
+      title: 'Meta',
+      icon: 'solar:clock-circle-bold',
+      rows: [
+        announcement.status && {
+          label: 'Status',
+          value: (
+            <Chip
+              label={announcement.status}
+              color={
+                (announcement.status === 'published' && 'success') ||
+                (announcement.status === 'draft' && 'warning') ||
+                'default'
+              }
+              size="small"
+              sx={{ mt: 0.5, fontWeight: 600, textTransform: 'capitalize' }}
+            />
+          ),
+        },
+        {
+          label: 'Created At',
+          value: announcement.createdAt
+            ? fDateTime(announcement.createdAt, 'DD MMM YYYY h:mm A')
+            : '-',
+        },
+        {
+          label: 'Updated At',
+          value: announcement.updatedAt
+            ? fDateTime(announcement.updatedAt, 'DD MMM YYYY h:mm A')
+            : '-',
+        },
+      ].filter(Boolean),
+    },
+    {
+      title: 'Description',
+      icon: 'solar:document-text-bold',
+      fullWidth: true,
+      rows: [
+        {
+          label: 'Content',
+          value:
+            announcement.description || announcement.content ? (
+              <ViewHtmlContent
+                html={announcement.description || announcement.content}
+                sx={{
+                  typography: 'body1',
+                  fontSize: '1rem',
+                  lineHeight: 1.8,
+                  color: 'text.primary',
+                }}
+              />
+            ) : (
+              '-'
+            ),
+        },
+      ],
+    },
+  ];
+
   return (
     <DashboardContent>
-      <CustomBreadcrumbs
+      <EntityDetailsLayout
         heading="Announcement Details"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
           { name: 'Announcement', href: paths.admin.announcement.list },
           { name: announcement?.title },
         ]}
-        action={
-          <Button
-            component={RouterLink}
-            href={paths.admin.announcement.edit(announcement?.id)}
-            variant="contained"
-            startIcon={<Iconify icon="solar:pen-bold" />}
-          >
-            Edit
-          </Button>
-        }
-        sx={{ mb: { xs: 3, md: 5 } }}
+        editHref={paths.admin.announcement.edit(announcement?.id)}
+        header={{
+          backgroundImage: '/assets/profilebg.jpg',
+          avatarText: creator?.initials || announcement.title?.slice(0, 2)?.toUpperCase() || '?',
+          title: announcement.title || '-',
+          subtitle: announcement.createdAt
+            ? `Created ${fDateTime(announcement.createdAt, 'DD MMM YYYY h:mm A')}`
+            : undefined,
+          chips: headerChips,
+        }}
+        sections={sections}
       />
 
-      <Grid container spacing={3}>
-        <Grid xs={12} md={8}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Announcement Information
-            </Typography>
-
-            <Box
-              rowGap={3}
-              columnGap={2}
-              display="grid"
-              gridTemplateColumns={{
-                xs: 'repeat(1, 1fr)',
-                sm: 'repeat(2, 1fr)',
-              }}
-            >
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Title
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {announcement.title || '-'}
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  View Count
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {announcement.viewCount || 0}
-                </Typography>
-              </Box>
-
-              {creator && (
-                <Box sx={{ gridColumn: 'span 2' }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Created By
-                  </Typography>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem' }}>{creator.initials}</Avatar>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      {creator.name}
-                    </Typography>
-                  </Stack>
-                </Box>
-              )}
-
-              <Box sx={{ gridColumn: 'span 2' }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Description
-                </Typography>
-                {announcement.description ? (
-                  <ViewHtmlContent html={announcement.description} sx={{ color: 'text.secondary' }} />
-                ) : (
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    -
-                  </Typography>
-                )}
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Created At
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {announcement.createdAt ? fDateTime(announcement.createdAt, 'DD MMM YYYY h:mm A') : '-'}
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Updated At
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {announcement.updatedAt ? fDateTime(announcement.updatedAt, 'DD MMM YYYY h:mm A') : '-'}
-                </Typography>
-              </Box>
-            </Box>
-          </Card>
-
-          <Card sx={{ mt: 3, p: 3 }}>
+      <Card sx={{ mt: 3, p: 3 }}>
             <Typography variant="h6" sx={{ mb: 3 }}>
               Comments ({comments.length})
             </Typography>
@@ -346,8 +348,6 @@ export function AnnouncementDetailsView({ announcement, loading, error, onAnnoun
               }
             />
           </Card>
-        </Grid>
-      </Grid>
-    </DashboardContent>
+        </DashboardContent>
   );
 }

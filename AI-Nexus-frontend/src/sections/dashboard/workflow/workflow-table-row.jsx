@@ -38,16 +38,12 @@ export function WorkflowTableRow({ row, selected, onEditRow, onSelectRow, onDele
 
         <TableCell>
           <Stack spacing={2} direction="row" alignItems="center">
-            {row.image && (
-              <Avatar
-                variant="rounded"
-                alt={row.title}
-                src={row.image}
-                sx={{ width: 48, height: 48 }}
-              >
-                <Iconify icon="solar:workflow-bold" width={24} />
-              </Avatar>
-            )}
+            <Avatar
+              src={row.image || '/assets/images/cover/cover-1.jpg'}
+              alt={row.title}
+              variant="rounded"
+              sx={{ width: 48, height: 48 }}
+            />
 
             <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start' }}>
               <Link
@@ -79,19 +75,10 @@ export function WorkflowTableRow({ row, selected, onEditRow, onSelectRow, onDele
         <TableCell>
           <Stack direction="row" spacing={0.5} flexWrap="wrap">
             {row.tags?.slice(0, 2).map((tag) => (
-              <Chip
-                key={tag.id}
-                label={tag.title}
-                size="small"
-                variant="outlined"
-              />
+              <Chip key={tag.id} label={tag.title} size="small" variant="outlined" />
             ))}
             {row.tags && row.tags.length > 2 && (
-              <Chip
-                label={`+${row.tags.length - 2}`}
-                size="small"
-                variant="outlined"
-              />
+              <Chip label={`+${row.tags.length - 2}`} size="small" variant="outlined" />
             )}
           </Stack>
         </TableCell>
@@ -159,4 +146,3 @@ export function WorkflowTableRow({ row, selected, onEditRow, onSelectRow, onDele
     </>
   );
 }
-

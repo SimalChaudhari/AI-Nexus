@@ -1,25 +1,52 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
+import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
-import Grid from '@mui/material/Unstable_Grid2';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
-import { useRouter } from 'src/routes/hooks';
+import { RouterLink } from 'src/routes/components';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import { EmptyContent } from 'src/components/empty-content';
 import { Iconify } from 'src/components/iconify';
 import { LoadingScreen } from 'src/components/loading-screen';
+import { EntityDetailsLayout } from 'src/components/entity-details-layout';
+import { ViewHtmlContent } from 'src/components/html-content';
 import { promptCatalogService } from 'src/services/prompt-catalog.service';
+
+// ----------------------------------------------------------------------
+
+const richTextSx = {
+  typography: 'body1',
+  fontSize: '1rem',
+  lineHeight: 1.8,
+  color: 'text.primary',
+};
+
+function looksLikeHtml(str) {
+  if (!str || typeof str !== 'string') return false;
+  return /<[a-z][\s\S]*>/i.test(str.trim());
+}
+
+function renderRichOrPlain(str) {
+  if (!str || !String(str).trim()) return '-';
+  const trimmed = String(str).trim();
+  if (looksLikeHtml(trimmed)) {
+    return <ViewHtmlContent html={trimmed} sx={richTextSx} />;
+  }
+  return (
+    <Typography variant="body2" sx={{ color: 'text.primary', whiteSpace: 'pre-wrap', mt: 0.25 }}>
+      {trimmed}
+    </Typography>
+  );
+}
+
+// ----------------------------------------------------------------------
 
 export function PromptCatalogDetailsView() {
   const { id } = useParams();
-  const router = useRouter();
   const [row, setRow] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +72,12 @@ export function PromptCatalogDetailsView() {
           filled
           title="Prompt row not found!"
           action={
-            <Button onClick={() => router.push(paths.admin.promptCatalog.list)} sx={{ mt: 2 }}>
+            <Button
+              component={RouterLink}
+              href={paths.admin.promptCatalog.list}
+              startIcon={<Iconify width={16} icon="eva:arrow-ios-back-fill" />}
+              sx={{ mt: 3 }}
+            >
               Back to list
             </Button>
           }
@@ -55,31 +87,55 @@ export function PromptCatalogDetailsView() {
     );
   }
 
-  return (
-    <DashboardContent>
-      <CustomBreadcrumbs
-        heading="Prompt Details"
-        links={[
-          { name: 'Dashboard', href: paths.dashboard.root },
-          { name: 'AI Resource', href: paths.admin.workflow.list },
-          { name: 'Prompt Catalog', href: paths.admin.promptCatalog.list },
-          { name: row.sectionTitle || 'Details' },
-        ]}
-        action={
-          <Button variant="contained" onClick={() => router.push(paths.admin.promptCatalog.edit(row.id))}>
-            Edit
-          </Button>
-        }
-        sx={{ mb: { xs: 3, md: 5 } }}
-      />
+  const headingTitle = row.sectionTitle || 'Prompt';
+  const initials =
+    headingTitle
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?';
 
-      <Grid container spacing={3}>
-        <Grid xs={12} md={4}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Providers
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+  const headerChips = [
+    {
+      label: row.isActive ? 'Active' : 'Inactive',
+      color: row.isActive ? 'success' : 'default',
+      variant: 'soft',
+    },
+  ];
+
+  const sections = [
+    {
+      title: 'Prompt information',
+      icon: 'solar:chat-round-dots-bold',
+      fullWidth: true,
+      rows: [
+        { label: 'Category', value: row.category || row.packId || '-' },
+        { label: 'Section Title', value: row.sectionTitle || '-' },
+        { label: 'Section Order', value: row.sectionOrder ?? '-' },
+        { label: 'Item Order', value: row.itemOrder ?? '-' },
+        {
+          label: 'Status',
+          value: (
+            <Chip
+              size="small"
+              label={row.isActive ? 'Active' : 'Inactive'}
+              color={row.isActive ? 'success' : 'default'}
+              sx={{ mt: 0.5, fontWeight: 600 }}
+            />
+          ),
+        },
+      ],
+    },
+    (row.providers || []).length > 0 && {
+      title: 'Providers',
+      icon: 'solar:server-bold',
+      fullWidth: true,
+      rows: [
+        {
+          label: 'Connected',
+          value: (
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
               {(row.providers || []).map((provider) => (
                 <Chip
                   key={`${row.id}-${provider?.value || provider?.label}`}
@@ -89,62 +145,45 @@ export function PromptCatalogDetailsView() {
                   variant="outlined"
                 />
               ))}
-            </Box>
-          </Card>
-        </Grid>
+            </Stack>
+          ),
+        },
+      ],
+    },
+    {
+      title: 'Content',
+      icon: 'solar:notes-bold',
+      fullWidth: true,
+      rows: [
+        {
+          label: 'Use case',
+          value: renderRichOrPlain(row.useCase),
+        },
+        {
+          label: 'Prompt',
+          value: renderRichOrPlain(row.prompt),
+        },
+      ],
+    },
+  ].filter(Boolean);
 
-        <Grid xs={12} md={8}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Prompt Information
-            </Typography>
-
-            <Box rowGap={2} columnGap={2} display="grid" gridTemplateColumns={{ xs: '1fr', sm: '1fr 1fr' }}>
-              <Box>
-                <Typography variant="subtitle2">Category</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {row.category || row.packId || '-'}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Section Title</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {row.sectionTitle || '-'}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Section Order</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {row.sectionOrder ?? '-'}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Item Order</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {row.itemOrder ?? '-'}
-                </Typography>
-              </Box>
-              <Box sx={{ gridColumn: { xs: '1', sm: '1 / -1' } }}>
-                <Typography variant="subtitle2">Use Case</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'pre-wrap' }}>
-                  {row.useCase || '-'}
-                </Typography>
-              </Box>
-              <Box sx={{ gridColumn: { xs: '1', sm: '1 / -1' } }}>
-                <Typography variant="subtitle2">Prompt</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'pre-wrap' }}>
-                  {row.prompt || '-'}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Status</Typography>
-                <Chip size="small" label={row.isActive ? 'Active' : 'Inactive'} color={row.isActive ? 'success' : 'default'} />
-              </Box>
-            </Box>
-          </Card>
-        </Grid>
-      </Grid>
-    </DashboardContent>
+  return (
+    <EntityDetailsLayout
+      heading="Prompt details"
+      links={[
+        { name: 'Dashboard', href: paths.dashboard.root },
+        { name: 'AI Resource', href: paths.admin.workflow.list },
+        { name: 'Prompt catalog', href: paths.admin.promptCatalog.list },
+        { name: headingTitle },
+      ]}
+      editHref={paths.admin.promptCatalog.edit(row.id)}
+      header={{
+        backgroundImage: '/assets/profilebg.jpg',
+        avatarText: initials,
+        title: headingTitle,
+        chips: headerChips,
+      }}
+      sections={sections}
+    />
   );
 }
-

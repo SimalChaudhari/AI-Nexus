@@ -142,6 +142,17 @@ export const workflowService = {
     }
   },
 
+  async deleteWorkflowImage(id) {
+    try {
+      const response = await axios.delete(`/workflows/${id}/image`);
+      const workflow = response.data?.workflow || response.data?.data || response.data;
+      return transformWorkflow(workflow);
+    } catch (error) {
+      console.error('Error deleting workflow image:', error);
+      throw error;
+    }
+  },
+
   async deleteWorkflow(id) {
     try {
       const response = await axios.delete(`/workflows/delete/${id}`);

@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import Grid from '@mui/material/Unstable_Grid2';
-import Stack from '@mui/material/Stack';
+import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import Box from '@mui/material/Box';
 
 import { paths } from 'src/routes/paths';
-import { useRouter, useParams } from 'src/routes/hooks';
+import { useParams } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -16,11 +14,40 @@ import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
-import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
+import { EntityDetailsLayout } from 'src/components/entity-details-layout';
+import { ViewHtmlContent } from 'src/components/html-content';
 import { promptCatalogService } from 'src/services/prompt-catalog.service';
 
+// ----------------------------------------------------------------------
+
+const richTextSx = {
+  typography: 'body1',
+  fontSize: '1rem',
+  lineHeight: 1.8,
+  color: 'text.primary',
+};
+
+function looksLikeHtml(str) {
+  if (!str || typeof str !== 'string') return false;
+  return /<[a-z][\s\S]*>/i.test(str.trim());
+}
+
+function renderDescription(str) {
+  if (!str || !String(str).trim()) return '-';
+  const trimmed = String(str).trim();
+  if (looksLikeHtml(trimmed)) {
+    return <ViewHtmlContent html={trimmed} sx={richTextSx} />;
+  }
+  return (
+    <Typography variant="body2" sx={{ color: 'text.primary', whiteSpace: 'pre-line', mt: 0.25 }}>
+      {trimmed}
+    </Typography>
+  );
+}
+
+// ----------------------------------------------------------------------
+
 export function PromptProviderDetailsView() {
-  const router = useRouter();
   const { id } = useParams();
   const [loading, setLoading] = useState(true);
   const [provider, setProvider] = useState(null);
@@ -47,70 +74,135 @@ export function PromptProviderDetailsView() {
     return (
       <DashboardContent sx={{ pt: 5 }}>
         <EmptyContent
+          filled
           title="Provider not found!"
           action={
-            <Button component={RouterLink} href={paths.admin.promptCatalog.providers} startIcon={<Iconify width={16} icon="eva:arrow-ios-back-fill" />} sx={{ mt: 3 }}>
+            <Button
+              component={RouterLink}
+              href={paths.admin.promptCatalog.providers}
+              startIcon={<Iconify width={16} icon="eva:arrow-ios-back-fill" />}
+              sx={{ mt: 3 }}
+            >
               Back to list
             </Button>
           }
+          sx={{ py: 10, height: 'auto', flexGrow: 'unset' }}
         />
       </DashboardContent>
     );
   }
 
-  return (
-    <DashboardContent>
-      <CustomBreadcrumbs
-        heading="Provider Details"
-        links={[
-          { name: 'Dashboard', href: paths.dashboard.root },
-          { name: 'AI Resource', href: paths.admin.workflow.list },
-          { name: 'Provider', href: paths.admin.promptCatalog.providers },
-          { name: provider.title || provider.provider },
-        ]}
-        action={
-          <Button component={RouterLink} href={paths.admin.promptCatalog.providerEdit(provider.id)} variant="contained" startIcon={<Iconify icon="solar:pen-bold" />}>
-            Edit
-          </Button>
-        }
-        sx={{ mb: { xs: 3, md: 5 } }}
-      />
+  const displayTitle = provider.title || provider.provider || '-';
+  const initials =
+    displayTitle
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?';
 
-      <Grid container spacing={3}>
-        <Grid xs={12} md={8}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Provider Information
-            </Typography>
-            <Box rowGap={3} columnGap={2} display="grid" gridTemplateColumns={{ xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)' }}>
-              <Detail label="Provider" value={provider.provider} />
-              <Detail label="Title" value={provider.title} />
-              <Detail label="Color" value={provider.color} />
-              <Detail label="Icon" value={provider.icon} />
-              <Detail label="Redirect URL" value={provider.redirectUrl} />
-              <Detail label="Detail Title" value={provider.detailTitle} />
-              <Detail label="Active" value={provider.isActive ? 'Yes' : 'No'} />
+  const headerChips = [
+    {
+      label: provider.isActive ? 'Active' : 'Inactive',
+      color: provider.isActive ? 'success' : 'default',
+      variant: 'soft',
+    },
+    provider.icon && {
+      label: provider.provider || 'Provider',
+      icon: provider.icon,
+      variant: 'soft',
+      color: 'info',
+    },
+  ].filter(Boolean);
+
+  const sections = [
+    {
+      title: 'Provider information',
+      icon: 'solar:server-square-bold',
+      fullWidth: true,
+      rows: [
+        { label: 'Provider', value: provider.provider || '-' },
+        { label: 'Title', value: provider.title || '-' },
+        { label: 'Detail title', value: provider.detailTitle || '-' },
+        {
+          label: 'Color',
+          value: provider.color ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
+              <Box
+                sx={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 0.5,
+                  bgcolor: provider.color,
+                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                }}
+              />
+              <Typography variant="body2" component="span">
+                {provider.color}
+              </Typography>
             </Box>
-            <Stack spacing={2} sx={{ mt: 3 }}>
-              <Detail label="Description" value={provider.description} />
-            </Stack>
-          </Card>
-        </Grid>
-      </Grid>
-    </DashboardContent>
-  );
-}
+          ) : (
+            '-'
+          ),
+        },
+        {
+          label: 'Icon',
+          value: provider.icon ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
+              <Iconify icon={provider.icon} width={22} />
+              <Typography variant="body2" component="span" sx={{ color: 'text.secondary' }}>
+                {provider.icon}
+              </Typography>
+            </Box>
+          ) : (
+            '-'
+          ),
+        },
+        { label: 'Redirect URL', value: provider.redirectUrl || '-' },
+        {
+          label: 'Active',
+          value: (
+            <Chip
+              size="small"
+              label={provider.isActive ? 'Yes' : 'No'}
+              color={provider.isActive ? 'success' : 'default'}
+              sx={{ mt: 0.5, fontWeight: 600 }}
+            />
+          ),
+        },
+      ],
+    },
+    provider.description && {
+      title: 'Description',
+      icon: 'solar:document-text-bold',
+      fullWidth: true,
+      rows: [
+        {
+          label: 'Details',
+          value: renderDescription(provider.description),
+        },
+      ],
+    },
+  ].filter(Boolean);
 
-function Detail({ label, value, multiline = false }) {
   return (
-    <Box>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {label}
-      </Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: multiline ? 'pre-line' : 'normal' }}>
-        {value || '-'}
-      </Typography>
-    </Box>
+    <EntityDetailsLayout
+      heading="Provider details"
+      links={[
+        { name: 'Dashboard', href: paths.dashboard.root },
+        { name: 'AI Resource', href: paths.admin.workflow.list },
+        { name: 'Providers', href: paths.admin.promptCatalog.providers },
+        { name: displayTitle },
+      ]}
+      editHref={paths.admin.promptCatalog.providerEdit(provider.id)}
+      header={{
+        backgroundImage: '/assets/profilebg.jpg',
+        avatarText: initials,
+        title: displayTitle,
+        subtitle: provider.provider ? `Provider: ${provider.provider}` : undefined,
+        chips: headerChips,
+      }}
+      sections={sections}
+    />
   );
 }
-

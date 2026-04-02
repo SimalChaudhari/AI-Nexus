@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Grid from '@mui/material/Unstable_Grid2';
 import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
 import Rating from '@mui/material/Rating';
@@ -12,17 +13,18 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import { useTheme } from '@mui/material/styles';
 
-import { fDate } from 'src/utils/format-time';
+import { fDate, fDateTime } from 'src/utils/format-time';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
+import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { toast } from 'src/components/snackbar';
 import { RichTextContent } from 'src/components/html-content';
+import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 
 import { speakerService } from 'src/services/speaker.service';
@@ -135,78 +137,134 @@ export function SpeakerDetailsView({ id }) {
 
   if (!speaker) {
     return (
-      <DashboardContent>
-        <Typography color="error">Speaker not found.</Typography>
-        <Button component={RouterLink} href={paths.admin.speaker.list} sx={{ mt: 2 }}>
-          Back to list
-        </Button>
+      <DashboardContent sx={{ pt: 5 }}>
+        <EmptyContent
+          filled
+          title="Speaker not found!"
+          action={
+            <Button
+              component={RouterLink}
+              href={paths.admin.speaker.list}
+              startIcon={<Iconify width={16} icon="eva:arrow-ios-back-fill" />}
+              sx={{ mt: 3 }}
+            >
+              Back to list
+            </Button>
+          }
+          sx={{ py: 10, height: 'auto', flexGrow: 'unset' }}
+        />
       </DashboardContent>
     );
   }
 
+  const displayName = speaker.name || '-';
+  const initials =
+    displayName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?';
+
+  const avgRating =
+    speakerReviews.length > 0
+      ? speakerReviews.reduce((acc, r) => acc + Number(r.rating || 0), 0) / speakerReviews.length
+      : null;
+
+  const headerChips = [
+    avgRating != null && {
+      label: `${avgRating.toFixed(1)} ★ · ${speakerReviews.length} review${
+        speakerReviews.length !== 1 ? 's' : ''
+      }`,
+      color: 'warning',
+      variant: 'soft',
+    },
+  ].filter(Boolean);
+
+  const sections = [
+    
+    {
+      title: 'Meta',
+      icon: 'solar:clock-circle-bold',
+      fullWidth: true,
+
+      rows: [
+        {
+          label: 'Created At',
+          value: speaker.createdAt
+            ? fDateTime(speaker.createdAt, 'DD MMM YYYY h:mm A')
+            : '-',
+        },
+        {
+          label: 'Updated At',
+          value: speaker.updatedAt
+            ? fDateTime(speaker.updatedAt, 'DD MMM YYYY h:mm A')
+            : '-',
+        },
+      ],
+    },
+    {
+      title: 'Bio',
+      icon: 'solar:document-text-bold',
+      fullWidth: true,
+      rows: [
+        {
+          label: 'Preview',
+          value: speaker.about ? (
+            <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+              <RichTextContent
+                html={speaker.about}
+                clampLines={6}
+                sx={{
+                  typography: 'body1',
+                  fontSize: '1rem',
+                  lineHeight: 1.8,
+                  color: 'text.primary',
+                }}
+              />
+              <Button
+                component={RouterLink}
+                size="small"
+                variant="outlined"
+                href={paths.admin.speaker.edit(id)}
+                endIcon={<Iconify icon="solar:pen-bold" width={18} />}
+              >
+                Open full bio in editor
+              </Button>
+            </Stack>
+          ) : (
+            '-'
+          ),
+        },
+      ],
+    },
+  ];
+
   return (
     <DashboardContent>
-      <CustomBreadcrumbs
-        heading={speaker.name}
+      <EntityDetailsLayout
+        heading="Speaker Details"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
           { name: 'Speaker', href: paths.admin.speaker.list },
-          { name: speaker.name },
+          { name: displayName },
         ]}
-        action={
-          <Button
-            component={RouterLink}
-            href={paths.admin.speaker.edit(id)}
-            variant="contained"
-            startIcon={<Iconify icon="solar:pen-bold" />}
-          >
-            Edit
-          </Button>
-        }
-        sx={{ mb: { xs: 3, md: 5 } }}
+        editHref={paths.admin.speaker.edit(id)}
+        header={{
+          backgroundImage: '/assets/profilebg.jpg',
+          avatarSrc: speaker.profileimage || undefined,
+          avatarText: initials,
+          avatarAlt: displayName,
+          title: displayName,
+          subtitle: speaker.createdAt
+            ? `Joined ${fDateTime(speaker.createdAt, 'DD MMM YYYY h:mm A')}`
+            : undefined,
+          chips: headerChips,
+        }}
+        sections={sections}
       />
 
-      {/* Profile header: circular avatar + name */}
-      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 4 }}>
-        <Avatar
-          src={speaker.profileimage}
-          alt={speaker.name}
-          sx={{ width: 96, height: 96, border: (t) => `3px solid ${t.palette.background.neutral}` }}
-        />
-        <Typography
-          component={RouterLink}
-          href={paths.admin.speaker.edit(id)}
-          variant="h4"
-          sx={{
-            color: 'primary.main',
-            fontWeight: 700,
-            textDecoration: 'none',
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          {speaker.name}
-        </Typography>
-      </Stack>
-
-      {/* About */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
-          About
-        </Typography>
-        {speaker.about ? (
-          <RichTextContent
-            html={speaker.about}
-            sx={{ typography: 'body1', color: 'text.primary', lineHeight: 1.7 }}
-          />
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            No description provided.
-          </Typography>
-        )}
-      </Box>
-
-      {/* Reviews */}
-      <Card sx={{ p: 3 }}>
+      <Card sx={{ mt: 3, p: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
           Reviews {speakerReviews.length > 0 ? `(${speakerReviews.length})` : ''}
         </Typography>

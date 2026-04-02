@@ -345,6 +345,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
   const [sectionVideoFile, setSectionVideoFile] = useState(null);
   const [sectionVideoPreviewUrl, setSectionVideoPreviewUrl] = useState('');
   const [sectionSaving, setSectionSaving] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [detectedVideoDurationSeconds, setDetectedVideoDurationSeconds] = useState(null);
   const [detectingVideoDuration, setDetectingVideoDuration] = useState(false);
   const [videoDurationError, setVideoDurationError] = useState('');
@@ -827,6 +828,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
       toast.error(e?.message || 'Failed to save section');
     } finally {
       setSectionSaving(false);
+      setVideoUploadProgress(0);
     }
   };
 

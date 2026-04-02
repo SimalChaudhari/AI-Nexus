@@ -2,24 +2,24 @@ import { useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import Grid from '@mui/material/Unstable_Grid2';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
+import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 import { QuickLinksCommentList } from '../../../../components/comment-section';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { fDateTime, fDateTimePersonal } from 'src/utils/format-time';
 import { aiForumService, buildAiForumCommentTree } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
-import { RichTextContent } from 'src/components/html-content';
+import { ViewHtmlContent } from 'src/components/html-content';
 import { useAuthContext } from 'src/auth/hooks';
 import { useAiForumCommentsSocket } from '../../../../hooks/use-ai-forum-comments-socket';
 
@@ -161,81 +161,98 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
     );
   }
 
+  const title = post.title || '-';
+  const initials =
+    title
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?';
+
+  const headerChips = [
+    post.isPinned && { label: 'Pinned', color: 'warning', variant: 'soft' },
+  ].filter(Boolean);
+
+  const sections = [
+    {
+      title: 'Post information',
+      icon: 'solar:document-text-bold',
+      rows: [
+        { label: 'Title', value: post.title || '-' },
+        { label: 'View Count', value: post.viewCount ?? 0 },
+        {
+          label: 'Pinned',
+          value: post.isPinned ? (
+            <Chip label="Yes" color="warning" size="small" sx={{ mt: 0.5, fontWeight: 600 }} />
+          ) : (
+            'No'
+          ),
+        },
+      ],
+    },
+    {
+      title: 'Meta',
+      icon: 'solar:clock-circle-bold',
+      rows: [
+        {
+          label: 'Created At',
+          value: post.createdAt ? fDateTime(post.createdAt, 'DD MMM YYYY h:mm A') : '-',
+        },
+        {
+          label: 'Updated At',
+          value: post.updatedAt ? fDateTime(post.updatedAt, 'DD MMM YYYY h:mm A') : '-',
+        },
+      ],
+    },
+    {
+      title: 'Description',
+      icon: 'solar:notes-bold',
+      fullWidth: true,
+      rows: [
+        {
+          label: 'Content',
+          value: post.description ? (
+            <ViewHtmlContent
+              html={post.description}
+              sx={{
+                typography: 'body1',
+                fontSize: '1rem',
+                lineHeight: 1.8,
+                color: 'text.primary',
+              }}
+            />
+          ) : (
+            '-'
+          ),
+        },
+      ],
+    },
+  ];
+
   return (
     <DashboardContent>
-      <CustomBreadcrumbs
+      <EntityDetailsLayout
         heading="Post details"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
           { name: 'AI Forum', href: paths.admin.aiForum.list },
           { name: post?.title },
         ]}
-        action={
-          <Button
-            component={RouterLink}
-            href={paths.admin.aiForum.edit(post?.id)}
-            variant="contained"
-            startIcon={<Iconify icon="solar:pen-bold" />}
-          >
-            Edit
-          </Button>
-        }
-        sx={{ mb: { xs: 3, md: 5 } }}
+        editHref={paths.admin.aiForum.edit(post?.id)}
+        header={{
+          backgroundImage: '/assets/profilebg.jpg',
+          avatarText: initials,
+          title,
+          subtitle: post.createdAt
+            ? `Created ${fDateTime(post.createdAt, 'DD MMM YYYY h:mm A')}`
+            : undefined,
+          chips: headerChips,
+        }}
+        sections={sections}
       />
 
-      <Grid container spacing={3}>
-        <Grid xs={12} md={8}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Post information
-            </Typography>
-
-            <Box
-              rowGap={3}
-              columnGap={2}
-              display="grid"
-              gridTemplateColumns={{ xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)' }}
-            >
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>Title</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>{post.title || '-'}</Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>View Count</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>{post.viewCount || 0}</Typography>
-              </Box>
-
-              <Box sx={{ gridColumn: 'span 2' }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Description
-                </Typography>
-                {post.description ? (
-                  <RichTextContent html={post.description} sx={{ color: 'text.secondary' }} />
-                ) : (
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    -
-                  </Typography>
-                )}
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>Created At</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {post.createdAt ? fDateTime(post.createdAt, 'DD MMM YYYY h:mm A') : '-'}
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>Updated At</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {post.updatedAt ? fDateTime(post.updatedAt, 'DD MMM YYYY h:mm A') : '-'}
-                </Typography>
-              </Box>
-            </Box>
-          </Card>
-
-          <Card sx={{ mt: 3, p: 3 }}>
+      <Card sx={{ mt: 3, p: 3 }}>
             <Typography variant="h6" sx={{ mb: 3 }}>Comments ({comments.length})</Typography>
 
             {comments.length === 0 ? (
@@ -286,8 +303,6 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
               }
             />
           </Card>
-        </Grid>
-      </Grid>
     </DashboardContent>
   );
 }

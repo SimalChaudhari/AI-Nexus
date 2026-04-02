@@ -37,7 +37,7 @@ export const NewSpeakerSchema = zod.object({
   about: zod
     .string()
     .optional()
-    .refine((val) => !val || val.length <= 50000, { message: 'About section is too long' }),
+    .refine((val) => !val || val.length <= 50000, { message: 'Bio is too long' }),
 });
 
 // ----------------------------------------------------------------------
@@ -182,7 +182,7 @@ export function SpeakerNewEditForm({ currentSpeaker, onCancel }) {
 
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  About
+                  Bio
                 </Typography>
                 <Field.Editor
                   name="about"
