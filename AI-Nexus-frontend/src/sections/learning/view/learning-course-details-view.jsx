@@ -34,6 +34,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import { toast } from 'src/components/snackbar';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { useCheckoutContext } from 'src/sections/checkout/context';
+import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
 import { LearningBundleHighlight } from '../components/course-bundle-badge';
 
@@ -101,6 +102,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [bundleIncludedCourses, setBundleIncludedCourses] = useState([]);
   const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
+  const [receiptDownloading, setReceiptDownloading] = useState(false);
 
   // Fetch speakers for labels
   useEffect(() => {
@@ -299,6 +301,27 @@ export function LearningCourseDetailsView({ course, loading, error }) {
       toast.error(err?.response?.data?.message || 'Failed to update favorite');
     } finally {
       setFavoriteLoading(false);
+    }
+  };
+
+  const handleDownloadMyReceipt = async () => {
+    if (!course?.id || !authenticated) return;
+    try {
+      setReceiptDownloading(true);
+      const blob = await downloadMyCourseReceiptPdf(course.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `receipt-${String(course.title || course.id).replace(/\s+/g, '-').toLowerCase()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Receipt downloaded');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Receipt not available for this course');
+    } finally {
+      setReceiptDownloading(false);
     }
   };
 
@@ -696,6 +719,20 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   }}
                 >
                   {hasAccess ? 'Purchased' : isInCart(course.id) ? 'In cart' : 'Add to cart'}
+                </Button>
+              )}
+
+              {authenticated && paidCourse && hasAccess && (
+                <Button
+                  variant="soft"
+                  color="info"
+                  fullWidth
+                  sx={{ mt: 1.25, py: 1.1, fontWeight: 600 }}
+                  startIcon={<Iconify icon="solar:download-bold" width={18} />}
+                  disabled={receiptDownloading}
+                  onClick={handleDownloadMyReceipt}
+                >
+                  {receiptDownloading ? 'Preparing receipt...' : 'Download my receipt'}
                 </Button>
               )}
 

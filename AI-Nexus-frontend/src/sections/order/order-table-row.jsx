@@ -25,7 +25,7 @@ import { usePopover, CustomPopover } from 'src/components/custom-popover';
 
 // ----------------------------------------------------------------------
 
-export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteRow }) {
+export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteRow, onDownloadReceipt }) {
   const confirm = useBoolean();
 
   const collapse = useBoolean();
@@ -197,6 +197,70 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
             <Iconify icon="solar:eye-bold" />
             View
           </MenuItem>
+          {row.status === 'completed' && (
+            <MenuItem
+              onClick={() => {
+                onDownloadReceipt?.();
+                popover.onClose();
+              }}
+            >
+              <Iconify icon="solar:download-bold" />
+              Download Receipt
+            </MenuItem>
+          )}
+        </MenuList>
+      </CustomPopover>
+
+      <ConfirmDialog
+        open={confirm.value}
+        onClose={confirm.onFalse}
+        title="Delete"
+        content="Are you sure want to delete?"
+        action={
+          <Button variant="contained" color="error" onClick={onDeleteRow}>
+            Delete
+          </Button>
+        }
+      />
+
+      <CustomPopover
+        open={popover.open}
+        anchorEl={popover.anchorEl}
+        onClose={popover.onClose}
+        slotProps={{ arrow: { placement: 'right-top' } }}
+      >
+        <MenuList>
+          <MenuItem
+            onClick={() => {
+              confirm.onTrue();
+              popover.onClose();
+            }}
+            sx={{ color: 'error.main' }}
+          >
+            <Iconify icon="solar:trash-bin-trash-bold" />
+            Delete
+          </MenuItem>
+
+          <MenuItem
+            onClick={() => {
+              onViewRow();
+              popover.onClose();
+            }}
+          >
+            <Iconify icon="solar:eye-bold" />
+            View
+          </MenuItem>
+          {row.status === 'completed' && (
+            <MenuItem
+              onClick={() => {
+                onDownloadReceipt?.();
+                popover.onClose();
+              }}
+            >
+              <Iconify icon="solar:download-bold" />
+              Download Receipt
+            </MenuItem>
+          )}
         </MenuList>
       </CustomPopover>
 

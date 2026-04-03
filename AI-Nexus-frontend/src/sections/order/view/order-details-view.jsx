@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Unstable_Grid2';
 
 import { paths } from 'src/routes/paths';
+import { toast } from 'src/components/snackbar';
+import { downloadOrderReceiptPdf } from 'src/services/order.service';
 
-import { ORDER_STATUS_OPTIONS } from 'src/_mock';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { OrderDetailsInfo } from '../order-details-info';
@@ -16,11 +17,23 @@ import { OrderDetailsHistory } from '../order-details-history';
 // ----------------------------------------------------------------------
 
 export function OrderDetailsView({ order }) {
-  const [status, setStatus] = useState(order?.status);
-
-  const handleChangeStatus = useCallback((newValue) => {
-    setStatus(newValue);
-  }, []);
+  const handleDownloadReceipt = useCallback(async () => {
+    if (!order?.id) return;
+    try {
+      const blob = await downloadOrderReceiptPdf(order.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `receipt-${String(order.orderNumber || order.id).replace('#', '')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Receipt downloaded');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to download receipt');
+    }
+  }, [order?.id, order?.orderNumber]);
 
   return (
     <DashboardContent>
@@ -28,9 +41,8 @@ export function OrderDetailsView({ order }) {
         backLink={paths.admin.order.root}
         orderNumber={order?.orderNumber}
         createdAt={order?.createdAt}
-        status={status}
-        onChangeStatus={handleChangeStatus}
-        statusOptions={ORDER_STATUS_OPTIONS}
+        status={order?.status}
+        onDownloadReceipt={handleDownloadReceipt}
       />
 
       <Grid container spacing={3}>

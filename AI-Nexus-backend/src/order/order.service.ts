@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderEntity, OrderStatus } from './order.entity';
+import { buildOrderReceiptPdf } from './utils/receipt-pdf.util';
+import { AppSettingsEntity } from '../app-settings/app-settings.entity';
 
 export interface CreateOrderParams {
   userId: string;
@@ -21,6 +23,8 @@ export class OrderService {
   constructor(
     @InjectRepository(OrderEntity)
     private readonly orderRepository: Repository<OrderEntity>,
+    @InjectRepository(AppSettingsEntity)
+    private readonly appSettingsRepository: Repository<AppSettingsEntity>,
   ) {}
 
   async create(params: CreateOrderParams): Promise<OrderEntity> {
@@ -104,5 +108,56 @@ export class OrderService {
     if (!ids.length) return 0;
     const result = await this.orderRepository.delete(ids);
     return result.affected ?? 0;
+  }
+
+  async generateReceiptPdfBuffer(id: string): Promise<{ filename: string; buffer: Buffer; order: OrderEntity }> {
+    const order = await this.findOne(id);
+    const settingsList = await this.appSettingsRepository.find({
+      order: { createdAt: 'ASC' },
+      take: 1,
+    });
+    const appSettings = settingsList[0] ?? null;
+    const { filename, buffer } = await buildOrderReceiptPdf(order, {
+      logoUrl: appSettings?.logoUrl ?? null,
+    });
+
+    return {
+      filename,
+      buffer,
+      order,
+    };
+  }
+
+  async generateReceiptPdfBufferForUserCourse(
+    userId: string,
+    courseId: string,
+  ): Promise<{ filename: string; buffer: Buffer; order: OrderEntity }> {
+    const order = await this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.user', 'user')
+      .where('order.userId = :userId', { userId })
+      .andWhere('order.status = :status', { status: OrderStatus.Completed })
+      .andWhere(":courseId = ANY(string_to_array(order.courseIds, ','))", { courseId })
+      .orderBy('order.createdAt', 'DESC')
+      .getOne();
+
+    if (!order) {
+      throw new NotFoundException('No completed order found for this course');
+    }
+
+    const settingsList = await this.appSettingsRepository.find({
+      order: { createdAt: 'ASC' },
+      take: 1,
+    });
+    const appSettings = settingsList[0] ?? null;
+    const { filename, buffer } = await buildOrderReceiptPdf(order, {
+      logoUrl: appSettings?.logoUrl ?? null,
+    });
+
+    return {
+      filename,
+      buffer,
+      order,
+    };
   }
 }

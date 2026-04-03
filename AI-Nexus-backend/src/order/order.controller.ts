@@ -1,5 +1,5 @@
-import { Controller, Get, Delete, Param, Body, UseGuards, HttpStatus, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Delete, Param, Body, UseGuards, HttpStatus, Res, BadRequestException, Req } from '@nestjs/common';
+import { Response, Request } from 'express';
 import { OrderService } from './order.service';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
@@ -95,6 +95,39 @@ export class OrderController {
         createdAtMs: this.toEpochMs(order.createdAt),
       },
     });
+  }
+
+  @Get(':id/receipt/pdf')
+  @ApiOperation({ summary: 'Download order receipt PDF (admin)' })
+  async downloadReceiptPdf(@Param('id') id: string, @Res() res: Response) {
+    const { filename, buffer, order } = await this.orderService.generateReceiptPdfBuffer(id);
+    if (order.status !== 'completed') {
+      throw new BadRequestException('Receipt PDF is only available for successful/completed orders');
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(HttpStatus.OK).send(buffer);
+  }
+
+  @Get('my/course/:courseId/receipt/pdf')
+  @Roles(UserRole.User, UserRole.Admin)
+  @ApiOperation({ summary: 'Download receipt PDF for current user by course id' })
+  async downloadMyCourseReceiptPdf(
+    @Param('courseId') courseId: string,
+    @Req() request: Request,
+    @Res() res: Response,
+  ) {
+    const userId = request.user?.id;
+    if (!userId) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({ message: 'User not authenticated' });
+    }
+    const { filename, buffer, order } = await this.orderService.generateReceiptPdfBufferForUserCourse(userId, courseId);
+    if (order.status !== 'completed') {
+      throw new BadRequestException('Receipt PDF is only available for successful/completed orders');
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(HttpStatus.OK).send(buffer);
   }
 
   @Delete(':id')
