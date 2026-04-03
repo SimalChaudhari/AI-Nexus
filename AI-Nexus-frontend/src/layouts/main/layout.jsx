@@ -56,6 +56,7 @@ export function MainLayout({ sx, data, children }) {
               workspaces: false,
               localization: false,
               notifications: false,
+              settings: true,
             }}
             slots={{
               topArea: (

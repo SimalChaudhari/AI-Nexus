@@ -80,6 +80,8 @@ export const NewCourseSchema = zod.object({
           : Number(val),
     zod.union([zod.number().min(0), zod.string()]).optional()
   ),
+  isBundle: zod.boolean().optional(),
+  bundleCourseIds: zod.array(zod.string()).optional(),
 });
 
 // ----------------------------------------------------------------------
@@ -100,6 +102,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [creatingGroup, setCreatingGroup] = useState(false);
   /** Pending modules/sections when creating a course (before save); sent with create payload */
   const [pendingModules, setPendingModules] = useState([]);
+  const [coursesCatalog, setCoursesCatalog] = useState([]);
 
   const market = useMemo(
     () => parseMarketData(currentCourse?.marketData),
@@ -118,6 +121,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       speakerIds: Array.isArray(currentCourse?.speakerIds) ? currentCourse.speakerIds : [],
       cpeHours: market.cpeHours ?? market.cpe ?? undefined,
       lessonCount: market.lessonCount ?? market.lessons ?? undefined,
+      isBundle: currentCourse?.isBundle ?? false,
+      bundleCourseIds: Array.isArray(currentCourse?.bundleCourseIds) ? currentCourse.bundleCourseIds : [],
     }),
     [currentCourse, market]
   );
@@ -130,6 +135,21 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
           setSpeakers(speakerList || []);
           setGroups(groupList || []);
         }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    courseService
+      .getAllCourses({ page: 1, limit: 500 })
+      .then((res) => {
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : res?.data || [];
+        setCoursesCatalog(list);
       })
       .catch(() => {});
     return () => {
@@ -182,6 +202,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   };
 
   const freeOrPaid = watch('freeOrPaid');
+  const isBundle = watch('isBundle');
 
   // Clear amount when switching to free
   useEffect(() => {
@@ -189,6 +210,12 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       setValue('amount', undefined, { shouldValidate: true });
     }
   }, [freeOrPaid, setValue]);
+
+  useEffect(() => {
+    if (!isBundle) {
+      setValue('bundleCourseIds', [], { shouldValidate: true });
+    }
+  }, [isBundle, setValue]);
 
   // Reset form and preview when currentCourse changes
   useEffect(() => {
@@ -206,6 +233,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         speakerIds: Array.isArray(currentCourse.speakerIds) ? currentCourse.speakerIds : [],
         cpeHours: marketReset.cpeHours ?? marketReset.cpe ?? undefined,
         lessonCount: marketReset.lessonCount ?? marketReset.lessons ?? undefined,
+        isBundle: currentCourse.isBundle ?? false,
+        bundleCourseIds: Array.isArray(currentCourse.bundleCourseIds) ? currentCourse.bundleCourseIds : [],
       });
       setPreviewImage(img || null);
       setSelectedFile(null);
@@ -314,8 +343,10 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         languageIds: Array.isArray(data.languageIds) ? data.languageIds : undefined,
         speakerIds: Array.isArray(data.speakerIds) ? data.speakerIds : undefined,
         marketData: marketDataStr,
+        isBundle: data.isBundle ?? false,
+        bundleCourseIds: data.isBundle && Array.isArray(data.bundleCourseIds) ? data.bundleCourseIds : [],
       };
-      if (!currentCourse && Array.isArray(pendingModules) && pendingModules.length > 0) {
+      if (!currentCourse && Array.isArray(pendingModules) && pendingModules.length > 0 && !data.isBundle) {
         courseData.modules = pendingModules.map((mod) => ({
           title: mod.title || '',
           description: mod.description || undefined,
@@ -450,6 +481,94 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                   </Grid>
                 )}
 
+                <Grid xs={12}>
+                  <Box
+                    sx={{
+                      p: 2.5,
+                      borderRadius: 2,
+                      border: `1px solid ${alpha(theme.palette.secondary.main, 0.28)}`,
+                      background: `linear-gradient(
+                        120deg,
+                        ${alpha(theme.palette.secondary.main, 0.09)} 0%,
+                        ${alpha(theme.palette.primary.main, 0.05)} 55%,
+                        ${alpha(theme.palette.grey[500], 0.04)} 100%
+                      )`,
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'flex-start' }} sx={{ mb: isBundle ? 2 : 0 }}>
+                      <Box
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 1.5,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: alpha(theme.palette.secondary.main, 0.16),
+                          color: 'secondary.dark',
+                          border: `1px solid ${alpha(theme.palette.secondary.main, 0.28)}`,
+                        }}
+                      >
+                        <Iconify icon="solar:layers-bold" width={26} />
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
+                          Course bundle
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.55, mb: 1 }}>
+                          Turn this product into a bundle: learners who purchase or enroll here get access to every
+                          selected course below—no second checkout for those programs.
+                        </Typography>
+                        <Stack component="ul" spacing={0.5} sx={{ m: 0, pl: 2.25, color: 'text.secondary', typography: 'caption' }}>
+                          <li>Modules for this row are hidden; content lives on the included courses.</li>
+                          <li>Inner courses can stay “paid” in the catalog; bundle ownership unlocks them.</li>
+                        </Stack>
+                      </Box>
+                    </Stack>
+                    <Divider sx={{ borderStyle: 'dashed', my: 2 }} />
+                    <Grid container spacing={2} alignItems="flex-start">
+                      <Grid xs={12} sm={6} md={4}>
+                        <Field.Switch name="isBundle" label="Enable bundle" />
+                      </Grid>
+                      {isBundle && (
+                        <Grid xs={12}>
+                          <Box
+                            sx={{
+                              p: 2,
+                              borderRadius: 1.5,
+                              bgcolor: 'background.paper',
+                              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                              boxShadow: theme.customShadows?.z4 ?? theme.shadows[4],
+                            }}
+                          >
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                              Programs in this bundle
+                            </Typography>
+                            <Field.Autocomplete
+                              name="bundleCourseIds"
+                              label="Select courses"
+                              multiple
+                              disableCloseOnSelect
+                              options={coursesCatalog
+                                .filter((c) => c.id && c.id !== currentCourse?.id)
+                                .map((c) => c.id)}
+                              getOptionLabel={(option) =>
+                                coursesCatalog.find((c) => c.id === option)?.title || option
+                              }
+                              isOptionEqualToValue={(option, value) => option === value}
+                              filterSelectedOptions
+                              placeholder="Search and add courses…"
+                            />
+                            <Alert severity="info" variant="outlined" sx={{ mt: 2, py: 0.75 }} icon={<Iconify icon="solar:info-circle-bold" width={20} />}>
+                              Order follows your selection. Save the course to apply changes on the learning site.
+                            </Alert>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Box>
+                </Grid>
 
                 <Grid xs={12}>
                   <Alert severity="info" sx={{ mb: 2 }} icon={<Iconify icon="solar:info-circle-bold" width={22} />}>
@@ -485,11 +604,13 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
               </Grid>
             </Card>
 
-            <CourseModulesCard
-              courseId={currentCourse?.id ?? null}
-              pendingModules={pendingModules}
-              onPendingModulesChange={setPendingModules}
-            />
+            {!isBundle && (
+              <CourseModulesCard
+                courseId={currentCourse?.id ?? null}
+                pendingModules={pendingModules}
+                onPendingModulesChange={setPendingModules}
+              />
+            )}
 
             {/* Learning & instructors */}
             <Card sx={cardSx}>

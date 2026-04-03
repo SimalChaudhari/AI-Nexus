@@ -9,7 +9,7 @@ import { ContactForm } from '../contact-form';
 
 // ----------------------------------------------------------------------
 
-export function ContactView() {
+export function ContactSection() {
   return (
     <>
       <ContactHero />
@@ -27,4 +27,8 @@ export function ContactView() {
       </Container>
     </>
   );
+}
+
+export function ContactView() {
+  return <ContactSection />;
 }

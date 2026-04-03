@@ -24,6 +24,8 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { fServerDate } from 'src/utils/format-time';
 
+import { AdminBundleTableCell } from './admin-bundle-ui';
+
 // ----------------------------------------------------------------------
 
 export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
@@ -49,14 +51,26 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
             />
 
             <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start' }}>
-              <Link
-                component={RouterLink}
-                href={paths.admin.course.details(row.id)}
-                color="inherit"
-                sx={{ cursor: 'pointer' }}
-              >
-                {row.title}
-              </Link>
+              <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.75 }}>
+                <Link
+                  component={RouterLink}
+                  href={paths.admin.course.details(row.id)}
+                  color="inherit"
+                  sx={{ cursor: 'pointer' }}
+                >
+                  {row.title}
+                </Link>
+                {row.isBundle && (
+                  <Chip
+                    size="small"
+                    icon={<Iconify icon="solar:layers-bold" width={14} />}
+                    label="Bundle"
+                    color="secondary"
+                    variant="soft"
+                    sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem', fontWeight: 800 } }}
+                  />
+                )}
+              </Stack>
               <Box
                 component="span"
                 sx={{
@@ -88,6 +102,10 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
             color={row.freeOrPaid ? 'success' : 'default'}
             size="small"
           />
+        </TableCell>
+
+        <TableCell sx={{ verticalAlign: 'middle' }}>
+          <AdminBundleTableCell row={row} />
         </TableCell>
 
         <TableCell>

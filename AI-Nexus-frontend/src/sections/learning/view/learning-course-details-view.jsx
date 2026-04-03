@@ -35,6 +35,8 @@ import { toast } from 'src/components/snackbar';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 
+import { LearningBundleHighlight } from '../components/course-bundle-badge';
+
 // ----------------------------------------------------------------------
 
 const formatPrice = (freeOrPaid, amount) => {
@@ -91,11 +93,14 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [courseModules, setCourseModules] = useState([]);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [accessViaBundle, setAccessViaBundle] = useState(false);
   const [enrolledLoading, setEnrolledLoading] = useState(false);
   const [courseReviewStats, setCourseReviewStats] = useState({ averageRating: 0, reviewCount: 0 });
   const [courseReviews, setCourseReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [bundleIncludedCourses, setBundleIncludedCourses] = useState([]);
+  const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
 
   // Fetch speakers for labels
   useEffect(() => {
@@ -134,27 +139,35 @@ export function LearningCourseDetailsView({ course, loading, error }) {
     return () => { cancelled = true; };
   }, [course?.id, authenticated]);
 
-  // Check if user is enrolled (purchased) in this course
+  // Check if user is enrolled (direct purchase, free enroll, or via an owned bundle)
   useEffect(() => {
     if (!course?.id || !authenticated) {
       setIsEnrolled(false);
+      setAccessViaBundle(false);
       return undefined;
     }
     let cancelled = false;
     setEnrolledLoading(true);
+    setAccessViaBundle(Boolean(course.accessViaBundle));
     courseService
       .getCourseEnrolled(course.id)
-      .then((enrolled) => {
-        if (!cancelled) setIsEnrolled(!!enrolled);
+      .then((result) => {
+        if (!cancelled) {
+          setIsEnrolled(Boolean(result?.enrolled));
+          setAccessViaBundle(Boolean(result?.accessViaBundle));
+        }
       })
       .catch(() => {
-        if (!cancelled) setIsEnrolled(false);
+        if (!cancelled) {
+          setIsEnrolled(false);
+          setAccessViaBundle(false);
+        }
       })
       .finally(() => {
         if (!cancelled) setEnrolledLoading(false);
       });
     return () => { cancelled = true; };
-  }, [course?.id, authenticated]);
+  }, [course?.id, course?.accessViaBundle, authenticated]);
 
   // Fetch course review stats from reviews table (isCourse: true, courseId = course.id)
   useEffect(() => {
@@ -234,6 +247,34 @@ export function LearningCourseDetailsView({ course, loading, error }) {
       });
     return () => { cancelled = true; };
   }, [course?.id]);
+
+  // Resolve titles & covers for bundled course IDs (order preserved)
+  useEffect(() => {
+    const ids =
+      course?.isBundle && Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [];
+    if (ids.length === 0) {
+      setBundleIncludedCourses([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setBundleIncludedLoading(true);
+    Promise.all(ids.map((id) => courseService.getCourseById(id).catch(() => null)))
+      .then((results) => {
+        if (cancelled) return;
+        const byId = Object.fromEntries(results.filter(Boolean).map((c) => [c.id, c]));
+        setBundleIncludedCourses(ids.map((id) => byId[id]).filter(Boolean));
+      })
+      .finally(() => {
+        if (!cancelled) setBundleIncludedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [course?.id, course?.isBundle, course?.bundleCourseIds]);
+
+  const scrollToBundlePrograms = () => {
+    document.getElementById('bundle-included')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleToggleFavorite = async () => {
     if (!authenticated) {
@@ -325,7 +366,11 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const sectionCount = courseModules.reduce((acc, module) => acc + (module.sections?.length || 0), 0);
   const resolvedLessonCount = sectionCount || lessonCount;
   const moduleCount = courseModules.length || market.moduleCount || '—';
+  const bundleCount = Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0;
+  const isBundleCourse = Boolean(course.isBundle);
   const hasAccess = !paidCourse || isEnrolled;
+  /** Included course: user paid for / unlocked a bundle — no second payment for this program. */
+  const unlockedByBundleOnly = hasAccess && paidCourse && accessViaBundle && !isBundleCourse;
   const hasCourseContent = sectionCount > 0;
   const canStartCourse = hasAccess && hasCourseContent;
   const updatedLabel = course.updatedAt
@@ -333,20 +378,43 @@ export function LearningCourseDetailsView({ course, loading, error }) {
     : course.createdAt
       ? fDate(course.createdAt)
       : 'Recently updated';
-  const sidebarIncludes = [
-    resolvedLessonCount === '—'
-      ? 'Structured lessons and guided learning materials'
-      : `${resolvedLessonCount} lesson${Number(resolvedLessonCount) === 1 ? '' : 's'} available`,
-    cpeHours !== '—' ? cpeHours : 'Self-paced learning access',
-    hasAccess ? 'Full course access unlocked' : 'Instant access after purchase',
-    'Progress tracking inside the learning player',
-  ];
-  const sidebarFacts = [
-    { label: 'Lessons', value: String(resolvedLessonCount), icon: 'solar:document-text-bold' },
-    { label: 'Modules', value: String(moduleCount), icon: 'solar:widget-5-bold' },
-    { label: 'Level', value: course.level || 'All levels', icon: 'solar:bookmark-bold' },
-    { label: 'Updated', value: updatedLabel, icon: 'solar:calendar-bold' },
-  ];
+  const sidebarIncludes = isBundleCourse
+    ? [
+        bundleCount > 0
+          ? `${bundleCount} full program${bundleCount === 1 ? '' : 's'} included in this bundle`
+          : 'Multiple programs packaged together in one enrollment',
+        'Each program opens in the learning player with its own lessons and progress',
+        cpeHours !== '—' ? cpeHours : 'Self-paced learning for every included program',
+        hasAccess ? 'Full bundle access unlocked' : 'Instant access to all listed programs after purchase',
+      ]
+    : [
+        resolvedLessonCount === '—'
+          ? 'Structured lessons and guided learning materials'
+          : `${resolvedLessonCount} lesson${Number(resolvedLessonCount) === 1 ? '' : 's'} available`,
+        cpeHours !== '—' ? cpeHours : 'Self-paced learning access',
+        hasAccess ? 'Full course access unlocked' : 'Instant access after purchase',
+        'Progress tracking inside the learning player',
+      ];
+  const sidebarFacts = isBundleCourse
+    ? [
+        {
+          label: 'Programs included',
+          value: bundleCount > 0 ? String(bundleCount) : '—',
+          icon: 'solar:layers-bold',
+        },
+        { label: 'Lessons (on this page)', value: String(resolvedLessonCount), icon: 'solar:document-text-bold' },
+        { label: 'Modules', value: String(moduleCount), icon: 'solar:widget-5-bold' },
+        { label: 'Updated', value: updatedLabel, icon: 'solar:calendar-bold' },
+      ]
+    : [
+        { label: 'Lessons', value: String(resolvedLessonCount), icon: 'solar:document-text-bold' },
+        { label: 'Modules', value: String(moduleCount), icon: 'solar:widget-5-bold' },
+        { label: 'Level', value: course.level || 'All levels', icon: 'solar:bookmark-bold' },
+        { label: 'Updated', value: updatedLabel, icon: 'solar:calendar-bold' },
+      ];
+
+  const showBrowseBundlePrograms =
+    hasAccess && !hasCourseContent && isBundleCourse && bundleCount > 0;
 
   return (
     <DashboardContent>
@@ -461,22 +529,53 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               Course preview
             </Typography>
             <Box sx={{ px: 2, py: 2.25 }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1.5 }}>
-                <Chip
-                  size="small"
-                  label={
-                    hasAccess
-                      ? 'Purchased'
-                      : isInCart(course.id)
-                        ? 'In Cart'
-                        : paidCourse
-                          ? 'Paid Course'
-                          : 'Free Course'
-                  }
-                  color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
-                  variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
-                  sx={{ fontWeight: 700 }}
-                />
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+                flexWrap="wrap"
+                sx={{ mb: 1.5, gap: 0.75 }}
+              >
+                <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" sx={{ gap: 0.75 }}>
+                  {isBundleCourse && (
+                    <Chip
+                      size="small"
+                      icon={<Iconify icon="solar:layers-bold" width={16} />}
+                      label="Bundle"
+                      color="secondary"
+                      variant="soft"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  )}
+                  {unlockedByBundleOnly && (
+                    <Chip
+                      size="small"
+                      icon={<Iconify icon="solar:shield-check-bold" width={16} />}
+                      label="Via your bundle"
+                      color="info"
+                      variant="soft"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  )}
+                  <Chip
+                    size="small"
+                    label={
+                      hasAccess
+                        ? unlockedByBundleOnly
+                          ? 'Full access'
+                          : 'Purchased'
+                        : isInCart(course.id)
+                          ? 'In Cart'
+                          : paidCourse
+                            ? 'Paid Course'
+                            : 'Free Course'
+                    }
+                    color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
+                    variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
+                    sx={{ fontWeight: 700 }}
+                  />
+                </Stack>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                   <Iconify icon="solar:star-bold" width={18} sx={{ color: 'warning.main' }} />
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
@@ -485,11 +584,36 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 </Stack>
               </Stack>
 
-              <Typography variant="h4" sx={{ fontWeight: 800, color: 'secondary.main', mb: 0.5 }}>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 800,
+                  color: 'secondary.main',
+                  mb: 0.5,
+                  ...(unlockedByBundleOnly && {
+                    textDecoration: 'line-through',
+                    opacity: 0.55,
+                    fontSize: '1.35rem',
+                  }),
+                }}
+              >
                 {price}
               </Typography>
+              {unlockedByBundleOnly && (
+                <Typography variant="h6" sx={{ fontWeight: 800, color: 'success.main', mb: 0.5 }}>
+                  No extra charge for you
+                </Typography>
+              )}
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.25 }}>
-                {paidCourse ? 'One-time payment with full access' : 'Free access for this course'}
+                {isBundleCourse
+                  ? paidCourse
+                    ? 'One payment unlocks every program in this bundle'
+                    : 'Complimentary access to all included programs'
+                  : unlockedByBundleOnly
+                    ? 'You already unlocked this program through a bundle (paid or free). No separate purchase is required.'
+                    : paidCourse
+                      ? 'One-time payment with full access'
+                      : 'Free access for this course'}
               </Typography>
               <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 2 }}>
                 {reviewCount > 0 ? `${reviewCount} review${reviewCount > 1 ? 's' : ''}` : 'Be the first learner to review this course'}
@@ -501,8 +625,13 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 variant="outlined"
                 color="info"
                 fullWidth
-                disabled={enrolledLoading || (hasAccess && !hasCourseContent)}
-                startIcon={<Iconify icon="solar:play-bold" width={20} />}
+                disabled={enrolledLoading || (hasAccess && !hasCourseContent && !showBrowseBundlePrograms)}
+                startIcon={
+                  <Iconify
+                    icon={showBrowseBundlePrograms ? 'solar:layers-bold' : 'solar:play-bold'}
+                    width={20}
+                  />
+                }
                 sx={{
                   py: 1.25,
                   fontWeight: 600,
@@ -510,21 +639,26 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   '&:hover': { borderWidth: 2 },
                 }}
                 onClick={
-                  !hasAccess && !enrolledLoading
-                    ? () => {
-                        if (!isInCart(course.id)) {
-                          addCourseToCart({
-                            id: course.id,
-                            title: course.title,
-                            image: course.image,
-                            amount: course.amount,
-                            freeOrPaid: paidCourse,
-                          });
-                          toast.success('Added to cart');
-                        }
-                        navigate(paths.product.checkout);
+                  showBrowseBundlePrograms
+                    ? (e) => {
+                        e.preventDefault();
+                        scrollToBundlePrograms();
                       }
-                    : undefined
+                    : !hasAccess && !enrolledLoading
+                      ? () => {
+                          if (!isInCart(course.id)) {
+                            addCourseToCart({
+                              id: course.id,
+                              title: course.title,
+                              image: course.image,
+                              amount: course.amount,
+                              freeOrPaid: paidCourse,
+                            });
+                            toast.success('Added to cart');
+                          }
+                          navigate(paths.product.checkout);
+                        }
+                      : undefined
                 }
               >
                 {enrolledLoading
@@ -532,7 +666,9 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   : hasAccess
                     ? hasCourseContent
                       ? 'Start now'
-                      : 'No content added'
+                      : showBrowseBundlePrograms
+                        ? 'Browse included programs'
+                        : 'No content added'
                     : 'Purchase to watch'}
               </Button>
               {paidCourse && (
@@ -619,7 +755,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
 
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.25 }}>
-                  This course includes
+                  {isBundleCourse ? 'This bundle includes' : 'This course includes'}
                 </Typography>
                 <Stack spacing={1}>
                   {sidebarIncludes.map((item) => (
@@ -662,6 +798,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
             </Stack>
           </Stack>
 
+          {isBundleCourse && (
+            <LearningBundleHighlight count={bundleCount} sx={{ mb: 3 }} />
+          )}
+
           <Card
             sx={{
               p: { xs: 2, md: 3 },
@@ -670,9 +810,119 @@ export function LearningCourseDetailsView({ course, loading, error }) {
             }}
           >
             <Stack spacing={4}>
+              {isBundleCourse && (
+                <Box id="bundle-included" sx={{ scrollMarginTop: 96 }}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }} flexWrap="wrap" gap={1}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      Included programs
+                    </Typography>
+                    {bundleCount > 0 && (
+                      <Chip
+                        size="small"
+                        label={`${bundleCount} program${bundleCount === 1 ? '' : 's'}`}
+                        color="secondary"
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    )}
+                  </Stack>
+                  <Divider sx={{ mb: 2 }} />
+                  {bundleIncludedLoading && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
+                  {!bundleIncludedLoading && bundleIncludedCourses.length === 0 && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {bundleCount > 0
+                        ? 'Program details are loading or temporarily unavailable.'
+                        : 'Programs in this bundle will appear here once configured.'}
+                    </Typography>
+                  )}
+                  <Stack spacing={1.5}>
+                    {bundleIncludedCourses.map((inc, index) => (
+                      <Card
+                        key={inc.id}
+                        component={RouterLink}
+                        to={paths.learningCourse.details(inc.id)}
+                        sx={{
+                          p: 1.75,
+                          display: 'flex',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 2,
+                          textDecoration: 'none',
+                          color: 'inherit',
+                          borderRadius: 2,
+                          border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                          boxShadow: 'none',
+                          transition: 'box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease',
+                          '&:hover': {
+                            boxShadow: theme.customShadows.z12,
+                            borderColor: alpha(theme.palette.secondary.main, 0.35),
+                            transform: 'translateY(-1px)',
+                          },
+                        }}
+                      >
+                        <Typography
+                          variant="subtitle2"
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                            color: 'secondary.dark',
+                          }}
+                        >
+                          {index + 1}
+                        </Typography>
+                        <Box
+                          sx={{
+                            width: 96,
+                            height: 56,
+                            flexShrink: 0,
+                            borderRadius: 1.25,
+                            overflow: 'hidden',
+                            bgcolor: 'grey.100',
+                            border: (t) => `1px solid ${t.palette.divider}`,
+                          }}
+                        >
+                          <Image
+                            alt=""
+                            src={inc.image || DEFAULT_COURSE_IMAGE}
+                            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+                            {inc.title}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.35 }}>
+                            {inc.level || 'All levels'}
+                            {hasAccess && isBundleCourse
+                              ? ' · Included with this bundle'
+                              : inc.freeOrPaid
+                                ? ' · Paid'
+                                : ' · Free'}
+                          </Typography>
+                        </Box>
+                        <Iconify
+                          icon="solar:arrow-right-up-bold"
+                          width={22}
+                          sx={{ color: 'text.secondary', flexShrink: 0 }}
+                        />
+                      </Card>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+
+              {isBundleCourse && <Divider sx={{ borderStyle: 'dashed' }} />}
+
               <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                Curriculum
+                {isBundleCourse ? 'Curriculum on this page' : 'Curriculum'}
               </Typography>
               <Divider sx={{ mb: 2 }} />
               {modulesLoading ? (
@@ -824,7 +1074,11 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 </Stack>
               ) : (
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {lessonCount !== '—' ? `This course includes ${lessonCount} lesson(s).` : 'View full curriculum after you start the course.'}
+                  {isBundleCourse
+                    ? "Lessons for each program are inside that program's page. Use the included programs list above to open a course and start learning."
+                    : lessonCount !== '—'
+                      ? `This course includes ${lessonCount} lesson(s).`
+                      : 'View full curriculum after you start the course.'}
                 </Typography>
               )}
               </Box>

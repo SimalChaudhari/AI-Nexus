@@ -17,10 +17,16 @@ export class AppSettingsInitService implements OnModuleInit {
           CREATE TABLE IF NOT EXISTS "app_settings" (
             "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
             "logoUrl" varchar,
+            "homeHeroImageUrl" varchar,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_app_settings" PRIMARY KEY ("id")
           )
+        `);
+      } else {
+        await queryRunner.query(`
+          ALTER TABLE "app_settings"
+          ADD COLUMN IF NOT EXISTS "homeHeroImageUrl" varchar
         `);
       }
 

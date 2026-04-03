@@ -3,12 +3,15 @@ import { forwardRef } from 'react';
 
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { styled } from '@mui/material/styles';
 import ButtonBase from '@mui/material/ButtonBase';
 import CardActionArea from '@mui/material/CardActionArea';
 
 import { RouterLink } from 'src/routes/components';
 import { usePathname } from 'src/routes/hooks';
+
+import { useScrollOffSetTop } from 'src/hooks/use-scroll-offset-top';
 
 import { CONFIG } from 'src/config-global';
 
@@ -20,9 +23,17 @@ import { useNavItem } from 'src/components/nav-section/hooks';
 export const NavItem = forwardRef(
   ({ title, path, open, active, hasChild, externalLink, subItem, ...other }, ref) => {
     const pathname = usePathname();
+    const { offsetTop: headerScrolled } = useScrollOffSetTop();
+    const isHomeNarrowSolidHeader = useMediaQuery('(max-width:1080px)');
     const navItem = useNavItem({ path, hasChild, externalLink });
     const isCustomerFacingRoute =
       !pathname?.startsWith('/admin') && !pathname?.startsWith('/dashboard');
+    const isHomeRoute = pathname === '/home' || pathname === '/';
+    const lightNav =
+      isCustomerFacingRoute &&
+      isHomeRoute &&
+      !headerScrolled &&
+      !isHomeNarrowSolidHeader;
 
     return (
       <StyledNavItem
@@ -33,6 +44,7 @@ export const NavItem = forwardRef(
         active={active}
         subItem={subItem}
         customerHeader={isCustomerFacingRoute}
+        lightNav={lightNav}
         {...navItem.baseProps}
         {...other}
       >
@@ -49,7 +61,8 @@ export const NavItem = forwardRef(
                   duration: theme.transitions.duration.shorter,
                 }),
               transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-              color: open || active ? 'primary.main' : 'inherit',
+              color:
+                open || active ? (lightNav ? 'primary.light' : 'primary.main') : 'inherit',
             }}
           />
         )}
@@ -62,8 +75,12 @@ export const NavItem = forwardRef(
 
 const StyledNavItem = styled(ButtonBase, {
   shouldForwardProp: (prop) =>
-    prop !== 'active' && prop !== 'open' && prop !== 'subItem' && prop !== 'customerHeader',
-})(({ active, open, subItem, customerHeader, theme }) => {
+    prop !== 'active' &&
+    prop !== 'open' &&
+    prop !== 'subItem' &&
+    prop !== 'customerHeader' &&
+    prop !== 'lightNav',
+})(({ active, open, subItem, customerHeader, lightNav, theme }) => {
   const rootItem = !subItem;
 
   const baseStyles = {
@@ -84,21 +101,37 @@ const StyledNavItem = styled(ButtonBase, {
       ...baseStyles.item,
       height: '100%',
       position: 'relative',
-      color: customerHeader ? theme.vars.palette.common.black : theme.vars.palette.text.primary,
+      color: customerHeader
+        ? lightNav
+          ? theme.vars.palette.common.white
+          : theme.vars.palette.common.black
+        : theme.vars.palette.text.primary,
       fontSize: customerHeader ? theme.typography.pxToRem(14) : undefined,
       letterSpacing: customerHeader ? '0.08em' : undefined,
       textTransform: customerHeader ? 'uppercase' : undefined,
       lineHeight: 1,
       '&:hover': {
         opacity: 1,
-        color: customerHeader ? theme.vars.palette.primary.main : undefined,
+        color: customerHeader
+          ? lightNav
+            ? theme.vars.palette.primary.light
+            : theme.vars.palette.primary.main
+          : undefined,
       },
       ...(active && {
-        color: customerHeader ? theme.vars.palette.primary.main : theme.vars.palette.primary.main,
+        color: customerHeader
+          ? lightNav
+            ? theme.vars.palette.primary.light
+            : theme.vars.palette.primary.main
+          : theme.vars.palette.primary.main,
       }),
       ...(open && {
         opacity: 1,
-        color: customerHeader ? theme.vars.palette.primary.main : undefined,
+        color: customerHeader
+          ? lightNav
+            ? theme.vars.palette.primary.light
+            : theme.vars.palette.primary.main
+          : undefined,
       }),
     }),
 

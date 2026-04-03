@@ -61,6 +61,8 @@ export function CourseDetailsView({ course, loading, error }) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [reviewToDelete, setReviewToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [bundleLinkedCourses, setBundleLinkedCourses] = useState([]);
+  const [bundleLinkedLoading, setBundleLinkedLoading] = useState(false);
 
   const ratingDistribution = useMemo(() => {
     const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
@@ -101,6 +103,35 @@ export function CourseDetailsView({ course, loading, error }) {
       });
     return () => { cancelled = true; };
   }, [course?.id]);
+
+  const bundleIds = useMemo(
+    () =>
+      course?.isBundle && Array.isArray(course.bundleCourseIds)
+        ? course.bundleCourseIds.filter(Boolean)
+        : [],
+    [course?.isBundle, course?.bundleCourseIds]
+  );
+
+  useEffect(() => {
+    if (bundleIds.length === 0) {
+      setBundleLinkedCourses([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setBundleLinkedLoading(true);
+    Promise.all(bundleIds.map((id) => courseService.getCourseById(id).catch(() => null)))
+      .then((results) => {
+        if (cancelled) return;
+        const byId = Object.fromEntries(results.filter(Boolean).map((c) => [c.id, c]));
+        setBundleLinkedCourses(bundleIds.map((id) => byId[id]).filter(Boolean));
+      })
+      .finally(() => {
+        if (!cancelled) setBundleLinkedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bundleIds.join('|')]);
 
   // Fetch course reviews
   useEffect(() => {
@@ -392,6 +423,15 @@ export function CourseDetailsView({ course, loading, error }) {
             color={course.freeOrPaid ? 'success' : 'default'}
             size="small"
           />
+          {course.isBundle && (
+            <Chip
+              icon={<Iconify icon="solar:layers-bold" width={18} />}
+              label="Bundle product"
+              color="secondary"
+              variant="soft"
+              sx={{ fontWeight: 700 }}
+            />
+          )}
         </Stack>
 
         <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
@@ -424,6 +464,30 @@ export function CourseDetailsView({ course, loading, error }) {
               color={course.freeOrPaid ? 'success' : 'default'}
               size="small"
             />
+          </Grid>
+          <Grid xs={12} sm={6} md={4}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+              Bundle
+            </Typography>
+            {course.isBundle ? (
+              <Stack spacing={0.5}>
+                <Chip
+                  size="small"
+                  color="secondary"
+                  variant="soft"
+                  icon={<Iconify icon="solar:layers-bold" width={16} />}
+                  label={`${bundleIds.length} linked program${bundleIds.length === 1 ? '' : 's'}`}
+                  sx={{ width: 'fit-content', fontWeight: 700 }}
+                />
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Learners get access to each program below when they own this bundle.
+                </Typography>
+              </Stack>
+            ) : (
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Standard single course
+              </Typography>
+            )}
           </Grid>
           {course.freeOrPaid && (Number(course.amount) || 0) > 0 && (
             <Grid xs={12} sm={6} md={4}>
@@ -543,6 +607,83 @@ export function CourseDetailsView({ course, loading, error }) {
               </Grid>
             );
           })()}
+
+          {course.isBundle && (
+            <Grid xs={12}>
+              <Box
+                sx={{
+                  p: 2.5,
+                  borderRadius: 2,
+                  border: `1px solid ${alpha(theme.palette.secondary.main, 0.28)}`,
+                  bgcolor: alpha(theme.palette.secondary.main, 0.06),
+                }}
+              >
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                  <Iconify icon="solar:layers-bold" width={22} sx={{ color: 'secondary.main' }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                    Programs included in this bundle
+                  </Typography>
+                </Stack>
+                {bundleLinkedLoading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
+                {!bundleLinkedLoading && bundleLinkedCourses.length === 0 && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {bundleIds.length > 0
+                      ? 'Could not load some linked courses. Check IDs in edit view.'
+                      : 'No courses linked yet. Edit this bundle to add programs.'}
+                  </Typography>
+                )}
+                <Stack spacing={1}>
+                  {bundleLinkedCourses.map((c, index) => (
+                    <Button
+                      key={c.id}
+                      component={RouterLink}
+                      href={paths.admin.course.edit(c.id)}
+                      variant="soft"
+                      color="inherit"
+                      sx={{
+                        justifyContent: 'flex-start',
+                        py: 1.25,
+                        px: 1.5,
+                        borderRadius: 1.5,
+                        border: `1px solid ${theme.palette.divider}`,
+                        textAlign: 'left',
+                        textTransform: 'none',
+                        fontWeight: 600,
+                      }}
+                      endIcon={<Iconify icon="solar:pen-bold" width={18} />}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 800,
+                            color: 'secondary.main',
+                            minWidth: 24,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {index + 1}
+                        </Typography>
+                        <Avatar
+                          src={c.image || undefined}
+                          variant="rounded"
+                          sx={{ width: 40, height: 40 }}
+                        />
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="body2" noWrap>
+                            {c.title}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {c.freeOrPaid ? 'Paid' : 'Free'} · {c.level || '—'}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Button>
+                  ))}
+                </Stack>
+              </Box>
+            </Grid>
+          )}
 
           <Grid xs={12}>
             <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>

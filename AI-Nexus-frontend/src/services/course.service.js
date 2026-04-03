@@ -26,8 +26,12 @@ const transformCourse = (course) => {
     languageIds: Array.isArray(course.languageIds) ? course.languageIds : [],
     speakerIds: Array.isArray(course.speakerIds) ? course.speakerIds : [],
     marketData: course.marketData || '',
+    isBundle: course.isBundle ?? false,
+    bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
     isFavorite: course.isFavorite ?? false,
     isEnrolled: course.isEnrolled ?? false,
+    /** True when access comes only from owning a bundle (not a direct enrollment row). */
+    accessViaBundle: course.accessViaBundle ?? false,
     createdAt: course.createdAt || new Date(),
     updatedAt: course.updatedAt || new Date(),
     sectionProgressBySectionId:
@@ -161,6 +165,13 @@ export const courseService = {
       if (courseData.marketData && typeof courseData.marketData === 'string') {
         formData.append('marketData', courseData.marketData);
       }
+      formData.append('isBundle', String(courseData.isBundle === true));
+      formData.append(
+        'bundleCourseIds',
+        JSON.stringify(
+          courseData.isBundle && Array.isArray(courseData.bundleCourseIds) ? courseData.bundleCourseIds : []
+        )
+      );
       if (Array.isArray(courseData.modules) && courseData.modules.length > 0) {
         formData.append('modules', JSON.stringify(courseData.modules));
       }
@@ -256,6 +267,13 @@ export const courseService = {
       if (courseData.marketData !== undefined) {
         formData.append('marketData', typeof courseData.marketData === 'string' ? courseData.marketData : '');
       }
+      formData.append('isBundle', String(courseData.isBundle === true));
+      formData.append(
+        'bundleCourseIds',
+        JSON.stringify(
+          courseData.isBundle && Array.isArray(courseData.bundleCourseIds) ? courseData.bundleCourseIds : []
+        )
+      );
 
       // Only send image when actually uploading/replacing a file.
       // Image deletion is handled via DELETE /courses/:id/image, not through this endpoint.
@@ -659,11 +677,17 @@ export const courseService = {
   async getCourseEnrolled(courseId) {
     try {
       const response = await axios.get(`/courses/${courseId}/enrolled`);
-      return response.data?.data?.enrolled ?? false;
+      const d = response.data?.data ?? response.data ?? {};
+      return {
+        enrolled: Boolean(d.enrolled),
+        accessViaBundle: Boolean(d.accessViaBundle),
+      };
     } catch (error) {
-      if (error?.response?.status === 401) return false;
+      if (error?.response?.status === 401) {
+        return { enrolled: false, accessViaBundle: false };
+      }
       console.error('Error fetching course enrolled status:', error);
-      return false;
+      return { enrolled: false, accessViaBundle: false };
     }
   },
 

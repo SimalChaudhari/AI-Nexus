@@ -29,6 +29,11 @@ export function AdminSettingsView() {
   const [logoLoading, setLogoLoading] = useState(true);
   const [logoSubmitting, setLogoSubmitting] = useState(false);
 
+  const [heroFile, setHeroFile] = useState(null);
+  const [heroUrl, setHeroUrl] = useState('');
+  const [heroLoading, setHeroLoading] = useState(true);
+  const [heroSubmitting, setHeroSubmitting] = useState(false);
+
   const handleToggle = (field) => {
     settings.onUpdateField(field, !settings[field]);
   };
@@ -36,12 +41,15 @@ export function AdminSettingsView() {
   const loadSettings = useCallback(async () => {
     try {
       setLogoLoading(true);
+      setHeroLoading(true);
       const appSettings = await appSettingsService.getPublic();
       setLogoUrl(appSettings.logoUrl || '');
+      setHeroUrl(appSettings.homeHeroImageUrl || '');
     } catch (error) {
-      toast.error(error?.message || 'Failed to load site logo');
+      toast.error(error?.message || 'Failed to load site settings');
     } finally {
       setLogoLoading(false);
+      setHeroLoading(false);
     }
   }, []);
 
@@ -76,6 +84,67 @@ export function AdminSettingsView() {
       toast.error(error?.message || 'Failed to upload site logo');
     } finally {
       setLogoSubmitting(false);
+    }
+  };
+
+  const handleDropHero = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) {
+      setHeroFile(file);
+    }
+  }, []);
+
+  const handleClearHeroSelection = () => {
+    setHeroFile(null);
+  };
+
+  const handleUploadHero = async () => {
+    if (!heroFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+
+    try {
+      setHeroSubmitting(true);
+      const updatedSettings = await appSettingsService.uploadHomeHero(heroFile);
+      setHeroUrl(updatedSettings.homeHeroImageUrl || '');
+      setHeroFile(null);
+      toast.success('Home hero background updated');
+      if (typeof window !== 'undefined') {
+        const next = updatedSettings.homeHeroImageUrl?.trim();
+        if (next) {
+          window.localStorage.setItem('public-home-hero-bg-url', next);
+        } else {
+          window.localStorage.removeItem('public-home-hero-bg-url');
+        }
+      }
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload hero image');
+    } finally {
+      setHeroSubmitting(false);
+    }
+  };
+
+  const handleRemoveHero = async () => {
+    if (heroFile) {
+      setHeroFile(null);
+      return;
+    }
+
+    if (!heroUrl) return;
+
+    try {
+      setHeroSubmitting(true);
+      const updatedSettings = await appSettingsService.removeHomeHero();
+      setHeroUrl(updatedSettings.homeHeroImageUrl || '');
+      toast.success('Home hero background removed (default image will show)');
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('public-home-hero-bg-url');
+      }
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove hero image');
+    } finally {
+      setHeroSubmitting(false);
     }
   };
 
@@ -228,6 +297,60 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const renderHomeHeroSettings = (
+    <Card sx={{ p: 3 }}>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Home hero background
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Image behind the &quot;AI Nexus&quot; / &quot;Where AI Minds Connect&quot; section on the public home
+            page. Wide landscape images (e.g. 1920×1080) work best. If none is set, the built-in default is used.
+          </Typography>
+        </Box>
+
+        <Upload
+          value={heroFile || heroUrl || null}
+          onDrop={handleDropHero}
+          onDelete={heroFile || heroUrl ? handleRemoveHero : undefined}
+          sx={{
+            '& > .MuiBox-root:first-of-type': {
+              minHeight: 180,
+              p: 2.5,
+            },
+          }}
+          accept={{
+            'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
+          }}
+          maxSize={5 * 1024 * 1024}
+          disabled={heroLoading || heroSubmitting}
+          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Max size: 5 MB."
+        />
+
+        <Stack direction="row" spacing={1.5}>
+          <LoadingButton
+            variant="contained"
+            loading={heroSubmitting}
+            onClick={handleUploadHero}
+            disabled={!heroFile}
+          >
+            Save hero image
+          </LoadingButton>
+
+          <Button
+            color="inherit"
+            variant="outlined"
+            onClick={heroFile ? handleClearHeroSelection : handleRemoveHero}
+            disabled={heroSubmitting || (!heroFile && !heroUrl)}
+          >
+            {heroFile ? 'Clear selected' : 'Remove current (use default)'}
+          </Button>
+        </Stack>
+      </Stack>
+    </Card>
+  );
+
   return (
     <DashboardContent>
       <CustomBreadcrumbs
@@ -241,6 +364,7 @@ export function AdminSettingsView() {
 
       <Stack spacing={3}>
         {renderLogoSettings}
+        {renderHomeHeroSettings}
         {renderHeaderVisibility}
       </Stack>
     </DashboardContent>

@@ -14,6 +14,10 @@ export class AppSettingsEntity {
   @Column({ type: 'varchar', nullable: true })
   logoUrl?: string | null;
 
+  /** Public home page hero section background (uploaded asset path or null = use built-in default). */
+  @Column({ type: 'varchar', nullable: true })
+  homeHeroImageUrl?: string | null;
+
   @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;
 

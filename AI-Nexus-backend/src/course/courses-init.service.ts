@@ -27,6 +27,8 @@ export class CoursesInitService implements OnModuleInit {
             "languageIds" jsonb,
             "speakerIds" jsonb,
             "marketData" jsonb,
+            "isBundle" boolean NOT NULL DEFAULT false,
+            "bundleCourseIds" jsonb,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_courses" PRIMARY KEY ("id")
@@ -92,6 +94,28 @@ export class CoursesInitService implements OnModuleInit {
           console.log('📋 Adding marketData column to courses table...');
           await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "marketData" jsonb`);
           console.log('✅ marketData column added successfully');
+        }
+
+        const hasIsBundleColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'isBundle'
+        `);
+        if (!hasIsBundleColumn?.length) {
+          console.log('📋 Adding isBundle column to courses table...');
+          await queryRunner.query(
+            `ALTER TABLE "courses" ADD COLUMN "isBundle" boolean NOT NULL DEFAULT false`,
+          );
+          console.log('✅ isBundle column added successfully');
+        }
+
+        const hasBundleCourseIdsColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'bundleCourseIds'
+        `);
+        if (!hasBundleCourseIdsColumn?.length) {
+          console.log('📋 Adding bundleCourseIds column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "bundleCourseIds" jsonb`);
+          console.log('✅ bundleCourseIds column added successfully');
         }
       }
 

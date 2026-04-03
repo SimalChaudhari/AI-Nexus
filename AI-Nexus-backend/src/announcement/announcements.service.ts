@@ -59,6 +59,9 @@ export class AnnouncementService {
                 });
                 return new Set(pinnedAnnouncements.map((pinnedAnnouncement) => pinnedAnnouncement.announcementId));
             },
+            orderByColumn: 'title',
+            orderByDirection: 'ASC',
+            orderByCaseInsensitive: true,
         });
     }
 

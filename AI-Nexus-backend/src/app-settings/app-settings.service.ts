@@ -23,7 +23,7 @@ export class AppSettingsService {
       return settings[0];
     }
 
-    const created = this.appSettingsRepository.create({ logoUrl: null });
+    const created = this.appSettingsRepository.create({ logoUrl: null, homeHeroImageUrl: null });
     return this.appSettingsRepository.save(created);
   }
 
@@ -59,11 +59,44 @@ export class AppSettingsService {
     };
   }
 
-  async getPublicSettings(): Promise<{ logoUrl: string | null }> {
+  async uploadHomeHeroImage(file: Express.Multer.File): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('home-hero');
+
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-hero', {
+      fileName: 'home-hero-bg',
+    });
+
+    settings.homeHeroImageUrl = relativeUrl;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Home hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeHeroImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('home-hero');
+
+    settings.homeHeroImageUrl = null;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Home hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async getPublicSettings(): Promise<{ logoUrl: string | null; homeHeroImageUrl: string | null }> {
     const settings = await this.getSettings();
 
     return {
       logoUrl: settings.logoUrl ?? null,
+      homeHeroImageUrl: settings.homeHeroImageUrl ?? null,
     };
   }
 }

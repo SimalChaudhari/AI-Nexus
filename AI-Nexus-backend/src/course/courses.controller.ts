@@ -484,8 +484,11 @@ export class CourseController {
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
-        const enrolled = await this.courseEnrollmentService.isEnrolled(userId, courseId);
-        return response.status(HttpStatus.OK).json({ data: { enrolled } });
+        const { enrolled, accessViaBundle } = await this.courseEnrollmentService.getEnrollmentBreakdown(
+            userId,
+            courseId,
+        );
+        return response.status(HttpStatus.OK).json({ data: { enrolled, accessViaBundle } });
     }
 
     @Post('enroll/bulk')
@@ -542,8 +545,12 @@ export class CourseController {
         // If user is authenticated, include favorite status
         if (userId) {
             const isFavorite = await this.courseFavoriteService.isFavorite(userId, id);
+            const { enrolled, accessViaBundle } = await this.courseEnrollmentService.getEnrollmentBreakdown(
+                userId,
+                id,
+            );
             return response.status(HttpStatus.OK).json({
-                data: { ...course, isFavorite },
+                data: { ...course, isFavorite, isEnrolled: enrolled, accessViaBundle },
             });
         }
         

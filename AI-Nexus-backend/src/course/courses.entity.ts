@@ -50,6 +50,14 @@ export class CourseEntity {
     })
     marketData?: string;
 
+    /** When true, this course is a bundle listing other courses (see bundleCourseIds). */
+    @Column({ type: 'boolean', default: false })
+    isBundle!: boolean;
+
+    /** Course IDs included in this bundle (only meaningful when isBundle is true). */
+    @Column({ type: 'jsonb', nullable: true })
+    bundleCourseIds?: string[] | null;
+
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;
 

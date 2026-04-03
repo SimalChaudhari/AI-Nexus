@@ -77,6 +77,14 @@ function toLanguageIdsArray(value: unknown): string[] | undefined {
   return undefined;
 }
 
+function toBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  return undefined;
+}
+
 // For creating course - title required, other fields optional
 // Note: image is handled separately via file upload, not in DTO
 export class CreateCourseDto {
@@ -142,6 +150,17 @@ export class CreateCourseDto {
     @ValidateNested({ each: true })
     @Type(() => CreateCourseModuleItemDto)
     modules?: CreateCourseModuleItemDto[];
+
+    @IsOptional()
+    @Transform(({ value }) => toBoolean(value))
+    @IsBoolean()
+    isBundle?: boolean;
+
+    @IsOptional()
+    @Transform(({ value }) => toLanguageIdsArray(value))
+    @IsArray()
+    @IsUUID('4', { each: true })
+    bundleCourseIds?: string[];
 }
 
 // For updating course - all fields optional
@@ -187,6 +206,17 @@ export class UpdateCourseDto {
     @IsArray()
     @IsUUID('4', { each: true })
     speakerIds?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toBoolean(value))
+    @IsBoolean()
+    isBundle?: boolean;
+
+    @IsOptional()
+    @Transform(({ value }) => toLanguageIdsArray(value))
+    @IsArray()
+    @IsUUID('4', { each: true })
+    bundleCourseIds?: string[];
 }
 
 export class SeedDummyCoursesDto {

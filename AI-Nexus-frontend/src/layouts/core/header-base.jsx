@@ -1,7 +1,7 @@
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
-import Button from '@mui/material/Button';
 import Badge from '@mui/material/Badge';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { styled, useTheme, alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
@@ -21,6 +21,7 @@ import { ContactsPopover } from '../components/contacts-popover';
 import { WorkspacesPopover } from '../components/workspaces-popover';
 import { NotificationsDrawer } from '../components/notifications-drawer';
 import { useAuthContext } from 'src/auth/hooks';
+import { useScrollOffSetTop } from 'src/hooks/use-scroll-offset-top';
 import { Iconify } from 'src/components/iconify';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 
@@ -83,12 +84,19 @@ export function HeaderBase({
   const checkout = useCheckoutContext();
   const cartCount = checkout.totalItems;
 
+  const { offsetTop: headerScrolled } = useScrollOffSetTop();
+  /** Matches home header CSS: below this width the bar is solid white, not over the hero */
+  const isHomeNarrowSolidHeader = useMediaQuery('(max-width:1080px)');
+
   const isAdminRoute = pathname?.startsWith('/admin');
   const isDashboardRoute = pathname?.startsWith('/dashboard');
-  const isUserRoute = pathname?.startsWith('/user') || pathname?.startsWith('/profile');
   const isHomeRoute = pathname === '/home' || pathname === '/';
   const isCustomerFacingRoute = !isAdminRoute && !isDashboardRoute;
-  const showUtilityActions = !isCustomerFacingRoute || isUserRoute || isHomeRoute;
+  /** Home + wide desktop: transparent header over hero — white menu until scroll */
+  const homeNavLightOnHero =
+    isHomeRoute && isCustomerFacingRoute && !headerScrolled && !isHomeNarrowSolidHeader;
+  // Show settings gear and other enabled slot utilities on all routes (e.g. /learning, catalog pages).
+  const showUtilityActions = true;
   const showAuthAction = true;
 
   const mergedSlotProps = {
@@ -129,7 +137,14 @@ export function HeaderBase({
           backgroundImage: 'none',
           boxShadow: 'none',
           borderBottom: isHomeRoute ? 'none' : '1px solid rgba(28,66,112,0.30)',
-          color: isHomeRoute ? 'text.primary' : 'common.white',
+          color:
+            isCustomerFacingRoute && isHomeRoute
+              ? homeNavLightOnHero
+                ? 'common.white'
+                : 'text.primary'
+              : isCustomerFacingRoute
+                ? 'common.white'
+                : undefined,
           ...(isHomeRoute && {
             position: 'fixed',
             top: 0,
@@ -217,7 +232,8 @@ export function HeaderBase({
                 sx={
                   isCustomerFacingRoute
                     ? {
-                        width: { xs: 74, sm: 96, md: 140, lg: 150 },
+                        /* One size on all breakpoints so branding doesn’t scale when the bar reflows */
+                        width: 140,
                         height: 'auto',
                         minHeight: 'unset',
                         display: 'block',
@@ -249,29 +265,6 @@ export function HeaderBase({
             }}
           >
             {slots?.rightAreaStart}
-
-            {isCustomerFacingRoute && (
-              <Button
-                component={RouterLink}
-                href={paths.contact}
-                variant="contained"
-                color="secondary"
-                disableElevation
-                sx={{
-                  display: { xs: 'none', md: 'inline-flex' },
-                  minWidth: 0,
-                  px: 2.5,
-                  py: 1,
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Contact
-              </Button>
-            )}
 
             {showUtilityActions && (
               <Box
@@ -360,7 +353,11 @@ export function HeaderBase({
                 sx={{
                   mr: 0,
                   ml: 0.5,
-                  color: isCustomerFacingRoute ? 'common.black' : 'inherit',
+                  color: isCustomerFacingRoute
+                    ? homeNavLightOnHero
+                      ? 'common.white'
+                      : 'common.black'
+                    : 'inherit',
                   [theme.breakpoints.up(layoutQuery)]: { display: 'none' },
                 }}
               />

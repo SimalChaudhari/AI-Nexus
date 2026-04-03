@@ -83,7 +83,7 @@ function applyFilter({ inputData, comparator, filters }) {
 export function AnnouncementListView() {
   const dispatch = useDispatch();
   const { announcements: tableData, loading } = useSelector((state) => state.announcements);
-  const table = useTable();
+  const table = useTable({ defaultOrderBy: 'title', defaultOrder: 'asc' });
   const router = useRouter();
   const confirm = useBoolean();
 

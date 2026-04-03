@@ -1,8 +1,8 @@
 //courses.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CourseEntity, CourseLevel } from './courses.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { CreateCourseDto, UpdateCourseDto } from './courses.dto';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
@@ -16,6 +16,16 @@ import {
   PaginatedResponse,
   normalizePaginatedQuery,
 } from '../common/pagination/paginated-list.util';
+import { CourseEnrollmentService } from './course-enrollment.service';
+
+/** Multipart / plain body may send booleans as strings. */
+function coerceBoolean(value: unknown, defaultValue = false): boolean {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    if (typeof value === 'boolean') return value;
+    if (value === 'true' || value === '1') return true;
+    if (value === 'false' || value === '0') return false;
+    return defaultValue;
+}
 
 /** Normalize string array fields from DTO (multipart may send JSON string). */
 function normalizeStringArray(value: unknown): string[] {
@@ -104,6 +114,7 @@ export class CourseService {
         private courseEnrollmentRepository: Repository<CourseEnrollmentEntity>,
         @InjectRepository(CourseGroupEntity)
         private courseGroupRepository: Repository<CourseGroupEntity>,
+        private readonly courseEnrollmentService: CourseEnrollmentService,
     ) { }
 
     async getAll(options: GetCoursesOptions & { usePagination: true }): Promise<PaginatedResponse<any>>;
@@ -166,10 +177,27 @@ export class CourseService {
             baseQuery.andWhere('courseFavorite.id IS NULL');
         }
 
-        if (enrolledFilter === true) {
-            baseQuery.andWhere('courseEnrollment.id IS NOT NULL');
+        const bundleChildIdsSql = `SELECT (jsonb_array_elements_text(bc."bundleCourseIds"))::uuid
+            FROM courses bc
+            INNER JOIN course_enrollments be ON be."courseId" = bc.id AND be."userId" = :userId
+            WHERE bc."isBundle" = true AND bc."bundleCourseIds" IS NOT NULL`;
+
+        if (enrolledFilter === true && userId) {
+            baseQuery.andWhere(
+                new Brackets((qb) => {
+                    qb.where('courseEnrollment.id IS NOT NULL').orWhere(
+                        `course.id IN (${bundleChildIdsSql})`,
+                    );
+                }),
+            );
         } else if (enrolledFilter === false && userId) {
-            baseQuery.andWhere('courseEnrollment.id IS NULL');
+            baseQuery.andWhere(
+                new Brackets((qb) => {
+                    qb.where('courseEnrollment.id IS NULL').andWhere(
+                        `course.id NOT IN (${bundleChildIdsSql})`,
+                    );
+                }),
+            );
         }
 
         const totalItems = usePagination ? await baseQuery.clone().getCount() : 0;
@@ -183,29 +211,33 @@ export class CourseService {
 
         const courseIds = courses.map((course) => course.id);
         let favoriteIds = new Set<string>();
-        let enrolledIds = new Set<string>();
+        let effectiveEnrolledIds = new Set<string>();
 
+        let directEnrolledOnPage = new Set<string>();
         if (userId && courseIds.length > 0) {
-            const [favoriteRows, enrolledRows] = await Promise.all([
-                this.courseFavoriteRepository.find({
-                    where: { userId, courseId: In(courseIds) },
-                    select: ['courseId'],
-                }),
-                this.courseEnrollmentRepository.find({
-                    where: { userId, courseId: In(courseIds) },
-                    select: ['courseId'],
-                }),
-            ]);
-
+            const favoriteRows = await this.courseFavoriteRepository.find({
+                where: { userId, courseId: In(courseIds) },
+                select: ['courseId'],
+            });
             favoriteIds = new Set(favoriteRows.map((favorite) => favorite.courseId));
-            enrolledIds = new Set(enrolledRows.map((enrollment) => enrollment.courseId));
+            effectiveEnrolledIds = await this.courseEnrollmentService.getEffectiveEnrolledCourseIdSet(userId);
+            const directRows = await this.courseEnrollmentRepository.find({
+                where: { userId, courseId: In(courseIds) },
+                select: ['courseId'],
+            });
+            directEnrolledOnPage = new Set(directRows.map((r) => r.courseId));
         }
 
-        const data = courses.map((course) => ({
-            ...course,
-            isFavorite: userId ? favoriteIds.has(course.id) : false,
-            isEnrolled: userId ? enrolledIds.has(course.id) : false,
-        }));
+        const data = courses.map((course) => {
+            const effective = userId ? effectiveEnrolledIds.has(course.id) : false;
+            const directOnPage = userId ? directEnrolledOnPage.has(course.id) : false;
+            return {
+                ...course,
+                isFavorite: userId ? favoriteIds.has(course.id) : false,
+                isEnrolled: effective,
+                accessViaBundle: userId ? effective && !directOnPage : false,
+            };
+        });
 
         if (!usePagination) {
             return data;
@@ -358,6 +390,24 @@ export class CourseService {
         return { existing, missing };
     }
 
+    /** Deduplicate, drop self-reference, ensure all IDs exist. */
+    private async normalizeAndValidateBundleIds(
+        ids: string[],
+        excludeCourseId?: string,
+    ): Promise<string[]> {
+        const unique = [...new Set(ids.map((x) => String(x).trim()).filter(Boolean))].filter(
+            (id) => !excludeCourseId || id !== excludeCourseId,
+        );
+        if (unique.length === 0) {
+            return [];
+        }
+        const { missing } = await this.findExistingIds(unique);
+        if (missing.length > 0) {
+            throw new BadRequestException(`Invalid bundle course id(s): ${missing.join(', ')}`);
+        }
+        return unique;
+    }
+
     async create(createCourseDto: CreateCourseDto): Promise<{ message: string; course: CourseEntity }> {
         const courseData: Partial<CourseEntity> = {
             title: createCourseDto.title,
@@ -382,6 +432,15 @@ export class CourseService {
         }
         if (createCourseDto.marketData !== undefined) {
             courseData.marketData = createCourseDto.marketData;
+        }
+
+        const isBundle = coerceBoolean(createCourseDto.isBundle, false);
+        courseData.isBundle = isBundle;
+        if (isBundle) {
+            const raw = normalizeStringArray(createCourseDto.bundleCourseIds);
+            courseData.bundleCourseIds = await this.normalizeAndValidateBundleIds(raw);
+        } else {
+            courseData.bundleCourseIds = null;
         }
 
         const course = this.courseRepository.create(courseData);
@@ -446,6 +505,23 @@ export class CourseService {
         }
         if (updateCourseDto.marketData !== undefined) {
             course.marketData = updateCourseDto.marketData;
+        }
+
+        const isBundleTouched = updateCourseDto.isBundle !== undefined;
+        const bundleIdsTouched = updateCourseDto.bundleCourseIds !== undefined;
+        if (isBundleTouched || bundleIdsTouched) {
+            const nextIsBundle = isBundleTouched
+                ? coerceBoolean(updateCourseDto.isBundle, false)
+                : course.isBundle;
+            course.isBundle = nextIsBundle;
+            if (!nextIsBundle) {
+                course.bundleCourseIds = null;
+            } else {
+                const raw = bundleIdsTouched
+                    ? normalizeStringArray(updateCourseDto.bundleCourseIds)
+                    : [...(course.bundleCourseIds || [])];
+                course.bundleCourseIds = await this.normalizeAndValidateBundleIds(raw, id);
+            }
         }
 
         await this.courseRepository.save(course);

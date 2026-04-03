@@ -42,6 +42,10 @@ type GetPaginatedPinnedListOptions<TEntity extends ObjectLiteral, TItem extends 
   enrichEntities: (entities: TEntity[], userId?: string) => Promise<TItem[]>;
   loadPinnedIds: (entityIds: string[], userId: string) => Promise<Set<string>>;
   orderByColumn?: string;
+  /** @default 'DESC' */
+  orderByDirection?: 'ASC' | 'DESC';
+  /** Use LOWER(column) for case-insensitive alphabetical sort (string columns only). */
+  orderByCaseInsensitive?: boolean;
 };
 
 export function parsePositiveInteger(value: string | undefined, defaultValue: number): number {
@@ -130,6 +134,8 @@ export async function getPaginatedPinnedList<
     enrichEntities,
     loadPinnedIds,
     orderByColumn = 'createdAt',
+    orderByDirection = 'DESC',
+    orderByCaseInsensitive = false,
   } = options;
 
   const normalizedQuery = normalizePaginatedQuery(queryOptions);
@@ -167,10 +173,14 @@ export async function getPaginatedPinnedList<
   }
 
   const totalItems = await baseQuery.clone().getCount();
+  const orderExpr = orderByCaseInsensitive
+    ? `LOWER(${entityAlias}.${orderByColumn})`
+    : `${entityAlias}.${orderByColumn}`;
+
   const entityIdRows = await baseQuery
     .clone()
     .select(`${entityAlias}.id`, 'id')
-    .orderBy(`${entityAlias}.${orderByColumn}`, 'DESC')
+    .orderBy(orderExpr, orderByDirection)
     .skip((page - 1) * limit)
     .take(limit)
     .getRawMany<{ id: string }>();

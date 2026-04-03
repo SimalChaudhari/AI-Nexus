@@ -67,7 +67,7 @@ const sortAnnouncements = (announcementList) =>
   [...announcementList].sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1;
     if (!a.isPinned && b.isPinned) return 1;
-    return new Date(b.createdAt) - new Date(a.createdAt);
+    return (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
   });
 
 export function AnnouncementsView() {

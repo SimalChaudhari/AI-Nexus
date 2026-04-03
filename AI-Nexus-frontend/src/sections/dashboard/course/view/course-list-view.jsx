@@ -48,6 +48,7 @@ const TABLE_HEAD = [
   { id: 'title', label: 'Course' },
   { id: 'level', label: 'Level', width: 140 },
   { id: 'type', label: 'Type', width: 120 },
+  { id: 'isBundle', label: 'Bundle', width: 168 },
   { id: 'action', label: 'Action', width: 88 },
 ];
 const TYPE_OPTIONS = [
@@ -252,7 +253,7 @@ export function CourseListView() {
             }
           />
           <Scrollbar>
-            <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 960 }}>
+            <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 1120 }}>
               <TableHeadCustom
                 order={table.order}
                 orderBy={table.orderBy}

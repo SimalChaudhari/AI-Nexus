@@ -101,4 +101,53 @@ export class AppSettingsController {
 
     return response.status(HttpStatus.OK).json(result);
   }
+
+  @Post('home-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload home page hero background image' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeHero(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeHeroImage(file);
+
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove home page hero background image (revert to default)' })
+  async removeHomeHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removeHomeHeroImage();
+
+    return response.status(HttpStatus.OK).json(result);
+  }
 }

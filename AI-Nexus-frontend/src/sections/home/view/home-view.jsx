@@ -3,6 +3,8 @@ import Stack from '@mui/material/Stack';
 import { BackToTop } from 'src/components/animate/back-to-top';
 import { ScrollProgress, useScrollProgress } from 'src/components/animate/scroll-progress';
 
+import { ContactSection } from 'src/sections/contact/view/contact-view';
+
 import { HomeHeroSection } from '../home-hero-section';
 import { HomeCardsSection } from '../home-cards-section';
 import { HomeCounterSection } from '../home-counter-section';
@@ -34,6 +36,8 @@ export function HomeView() {
         <HomeCommunitiesSection />
 
         <HomeJoinSection />
+
+        <ContactSection />
       </Stack>
     </>
   );

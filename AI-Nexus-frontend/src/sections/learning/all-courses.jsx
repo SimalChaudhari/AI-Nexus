@@ -25,6 +25,7 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { Divider } from '@mui/material';
 import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
+import { LearningBundlePill, LearningBundleRibbon } from './components/course-bundle-badge';
 
 // ----------------------------------------------------------------------
 
@@ -49,6 +50,10 @@ const transformCourse = (course) => ({
   amount: course.amount,
   level: course.level || 'Beginner',
   isFavorite: course.isFavorite ?? false,
+  isBundle: course.isBundle ?? false,
+  bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
+  isEnrolled: course.isEnrolled ?? false,
+  accessViaBundle: course.accessViaBundle ?? false,
 });
 
 const LEVEL_SECTIONS = ['Beginner', 'Intermediate', 'Advance'];
@@ -820,6 +825,11 @@ export function AllCourses() {
                                   <Iconify icon="solar:play-bold" width={24} sx={{ color: 'primary.main', ml: 0.25 }} />
                                 </Box>
                               </Box>
+                              {course.isBundle && (
+                                <LearningBundleRibbon
+                                  count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
+                                />
+                              )}
                               <IconButton
                                 size="small"
                                 onClick={(e) => handleFavorite(e, course.id)}
@@ -874,6 +884,12 @@ export function AllCourses() {
                               >
                                 {course.title}
                               </Typography>
+                              {course.isBundle && (
+                                <LearningBundlePill
+                                  count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
+                                  sx={{ mb: 0.75 }}
+                                />
+                              )}
                               <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
                                 <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                                   <Typography
@@ -908,7 +924,7 @@ export function AllCourses() {
                                           fontSize: { xs: '0.78rem', md: '0.82rem' },
                                         }}
                                       >
-                                        Purchased
+                                        {course.accessViaBundle ? 'Included in bundle' : 'Purchased'}
                                       </Typography>
                                     </Stack>
                                   )}
@@ -1076,6 +1092,11 @@ export function AllCourses() {
                           e.target.src = DEFAULT_COURSE_IMAGE;
                         }}
                       />
+                      {course.isBundle && (
+                        <LearningBundleRibbon
+                          count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
+                        />
+                      )}
                       <IconButton
                         size="small"
                         onClick={(e) => handleFavorite(e, course.id)}
@@ -1125,6 +1146,12 @@ export function AllCourses() {
                       >
                         {course.title}
                       </Typography>
+                      {course.isBundle && (
+                        <LearningBundlePill
+                          count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
+                          sx={{ mb: 1 }}
+                        />
+                      )}
                       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
                         <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                           <Typography
@@ -1159,7 +1186,7 @@ export function AllCourses() {
                                   fontSize: { xs: '0.78rem', md: '0.85rem' },
                                 }}
                               >
-                                Purchased
+                                {course.accessViaBundle ? 'Included in bundle' : 'Purchased'}
                               </Typography>
                             </Stack>
                           )}
