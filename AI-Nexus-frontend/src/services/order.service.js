@@ -25,3 +25,17 @@ export async function deleteOrdersByIds(ids) {
   const response = await axios.delete('/orders', { data: { ids } });
   return response.data;
 }
+
+export async function downloadOrderReceiptPdf(id) {
+  const response = await axios.get(`/orders/${id}/receipt/pdf`, {
+    responseType: 'blob',
+  });
+  return response.data;
+}
+
+export async function downloadMyCourseReceiptPdf(courseId) {
+  const response = await axios.get(`/orders/my/course/${courseId}/receipt/pdf`, {
+    responseType: 'blob',
+  });
+  return response.data;
+}

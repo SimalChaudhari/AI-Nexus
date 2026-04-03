@@ -1,7 +1,5 @@
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
-import MenuList from '@mui/material/MenuList';
-import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 
@@ -11,7 +9,6 @@ import { fServerDateTime, fLocalTimeZoneShort } from 'src/utils/format-time';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
-import { usePopover, CustomPopover } from 'src/components/custom-popover';
 
 // ----------------------------------------------------------------------
 
@@ -20,10 +17,8 @@ export function OrderDetailsToolbar({
   backLink,
   createdAt,
   orderNumber,
-  statusOptions,
-  onChangeStatus,
+  onDownloadReceipt,
 }) {
-  const popover = usePopover();
   const tz = fLocalTimeZoneShort();
 
   return (
@@ -66,48 +61,14 @@ export function OrderDetailsToolbar({
           <Button
             color="inherit"
             variant="outlined"
-            endIcon={<Iconify icon="eva:arrow-ios-downward-fill" />}
-            onClick={popover.onOpen}
-            sx={{ textTransform: 'capitalize' }}
+            startIcon={<Iconify icon="solar:download-bold" />}
+            onClick={onDownloadReceipt}
+            disabled={status !== 'completed'}
           >
-            {status}
-          </Button>
-
-          <Button
-            color="inherit"
-            variant="outlined"
-            startIcon={<Iconify icon="solar:printer-minimalistic-bold" />}
-          >
-            Print
-          </Button>
-
-          <Button color="inherit" variant="contained" startIcon={<Iconify icon="solar:pen-bold" />}>
-            Edit
+            Download Receipt
           </Button>
         </Stack>
       </Stack>
-
-      <CustomPopover
-        open={popover.open}
-        anchorEl={popover.anchorEl}
-        onClose={popover.onClose}
-        slotProps={{ arrow: { placement: 'top-right' } }}
-      >
-        <MenuList>
-          {statusOptions.map((option) => (
-            <MenuItem
-              key={option.value}
-              selected={option.value === status}
-              onClick={() => {
-                popover.onClose();
-                onChangeStatus(option.value);
-              }}
-            >
-              {option.label}
-            </MenuItem>
-          ))}
-        </MenuList>
-      </CustomPopover>
     </>
   );
 }

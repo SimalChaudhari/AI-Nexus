@@ -8,6 +8,7 @@ import { getOrderById } from 'src/services/order.service';
 import { OrderDetailsView } from 'src/sections/order/view';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
+import { LoadingScreen } from 'src/components/loading-screen';
 import { paths } from 'src/routes/paths';
 import { toast } from 'src/components/snackbar';
 
@@ -117,7 +118,7 @@ export default function Page() {
             ]}
             sx={{ mb: { xs: 3, md: 5 } }}
           />
-          <div style={{ padding: 32, textAlign: 'center' }}>Loading order…</div>
+          <LoadingScreen />
         </DashboardContent>
       </>
     );

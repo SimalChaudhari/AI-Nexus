@@ -32,7 +32,12 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 
-import { getOrders, deleteOrderById, deleteOrdersByIds } from 'src/services/order.service';
+import {
+  getOrders,
+  deleteOrderById,
+  deleteOrdersByIds,
+  downloadOrderReceiptPdf,
+} from 'src/services/order.service';
 import {
   useTable,
   emptyRows,
@@ -205,6 +210,24 @@ export function OrderListView() {
     [router]
   );
 
+  const handleDownloadReceipt = useCallback(async (row) => {
+    try {
+      const blob = await downloadOrderReceiptPdf(row.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `receipt-${String(row.orderNumber || row.id).replace('#', '')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Receipt downloaded');
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to download receipt');
+    }
+  }, []);
+
   const handleFilterStatus = useCallback(
     (event, newValue) => {
       table.onResetPage();
@@ -361,6 +384,7 @@ export function OrderListView() {
                         onSelectRow={() => table.onSelectRow(row.id)}
                         onDeleteRow={() => handleDeleteRow(row.id)}
                         onViewRow={() => handleViewRow(row.id)}
+                        onDownloadReceipt={() => handleDownloadReceipt(row)}
                       />
                     ))}
 
