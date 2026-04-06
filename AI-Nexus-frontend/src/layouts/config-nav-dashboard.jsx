@@ -172,14 +172,6 @@ export const navData = [
               { title: 'Create', path: paths.admin.workflow.new },
             ],
           },
-          {
-            title: 'AI Tools',
-            path: paths.admin.promptCatalog.root,
-            children: [
-              { title: 'Prompt Catalog', path: paths.admin.promptCatalog.list },
-              { title: 'Provider', path: paths.admin.promptCatalog.providers },
-            ],
-          },
         ],
       },
       {

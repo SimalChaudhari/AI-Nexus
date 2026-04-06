@@ -1,6 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -76,16 +76,30 @@ function getTryItUrl(provider, prompt, redirectUrl) {
       return raw;
     }
   }
+
+  const providerKey = String(provider || '').toLowerCase();
+  if (providerKey === 'chatgpt') {
+    return `https://chatgpt.com/?prompt=${encoded}`;
+  }
+  if (providerKey === 'claude') {
+    return `https://claude.ai/new?q=${encoded}`;
+  }
+  if (providerKey === 'gemini') {
+    return `https://gemini.google.com/app?q=${encoded}`;
+  }
   return null;
 }
 
 export default function PromptDetailsPage() {
   const theme = useTheme();
   const { provider = 'chatgpt' } = useParams();
+  const [searchParams] = useSearchParams();
+  const selectedCategoryFromQuery = searchParams.get('category') || '';
   const longPressTimerRef = useRef(null);
   const [copyToastOpen, setCopyToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('Text copied');
   const [config, setConfig] = useState(null);
+  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState('');
   const [loading, setLoading] = useState(true);
 
   const resolveProviderColor = (colorValue) => {
@@ -133,6 +147,22 @@ export default function PromptDetailsPage() {
       mounted = false;
     };
   }, [provider]);
+
+  useEffect(() => {
+    const sections = config?.sections || [];
+    if (!sections.length) {
+      setSelectedCategoryTitle('');
+      return;
+    }
+
+    if (selectedCategoryFromQuery) {
+      const matched = sections.find((section) => section.title === selectedCategoryFromQuery);
+      setSelectedCategoryTitle(matched?.title || sections[0].title);
+      return;
+    }
+
+    setSelectedCategoryTitle(sections[0].title);
+  }, [config, selectedCategoryFromQuery]);
 
   const showToast = (message) => {
     setToastMessage(message);
@@ -186,7 +216,7 @@ export default function PromptDetailsPage() {
 
     try {
       await navigator.clipboard.writeText(plainText);
-      showToast('Prompt copied — provider redirect URL is not configured');
+      showToast('Prompt copied — direct URL auto-fill not available for this prompt length');
     } catch {
       // no-op
     }
@@ -226,6 +256,10 @@ export default function PromptDetailsPage() {
       </>
     );
   }
+
+  const sections = config?.sections || [];
+  const selectedSection =
+    sections.find((section) => section.title === selectedCategoryTitle) || sections[0] || null;
 
   return (
     <>
@@ -305,8 +339,8 @@ export default function PromptDetailsPage() {
           </Card>
 
           <Grid container spacing={3}>
-            {(config?.sections || []).map((section) => (
-              <Grid xs={12} key={section.title}>
+            {selectedSection ? (
+              <Grid xs={12} key={selectedSection.title}>
                 <Card
                   variant="outlined"
                   sx={{
@@ -316,16 +350,16 @@ export default function PromptDetailsPage() {
                   }}
                 >
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: 'text.primary' }}>
-                    {section.title}
+                    {selectedSection.title}
                   </Typography>
 
                   <Stack spacing={1.5}>
-                    {(section.items || []).map((item, promptIndex) => {
+                    {(selectedSection.items || []).map((item, promptIndex) => {
                       const promptText = item.prompt;
                       const useCaseLabel = item.useCase || `Use case ${promptIndex + 1}`;
                       return (
                         <Box
-                          key={`${section.title}-${promptIndex}`}
+                          key={`${selectedSection.title}-${promptIndex}`}
                           onMouseDown={() => startLongPressCopy(promptText)}
                           onMouseUp={clearLongPressCopy}
                           onMouseLeave={clearLongPressCopy}
@@ -425,7 +459,7 @@ export default function PromptDetailsPage() {
                   </Stack>
                 </Card>
               </Grid>
-            ))}
+            ) : null}
           </Grid>
         </Stack>
       </DashboardContent>

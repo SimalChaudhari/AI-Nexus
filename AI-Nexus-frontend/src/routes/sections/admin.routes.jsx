@@ -89,14 +89,6 @@ const WorkflowListPage = lazy(() => import('src/pages/dashboard/workflow/list'))
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowEditPage = lazy(() => import('src/pages/dashboard/workflow/edit'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/dashboard/workflow/details'));
-const PromptCatalogListPage = lazy(() => import('src/pages/dashboard/prompt-catalog/list'));
-const PromptCatalogCreatePage = lazy(() => import('src/pages/dashboard/prompt-catalog/new'));
-const PromptCatalogEditPage = lazy(() => import('src/pages/dashboard/prompt-catalog/edit'));
-const PromptCatalogDetailsPage = lazy(() => import('src/pages/dashboard/prompt-catalog/details'));
-const PromptProviderListPage = lazy(() => import('src/pages/dashboard/prompt-catalog/providers'));
-const PromptProviderCreatePage = lazy(() => import('src/pages/dashboard/prompt-catalog/provider-new'));
-const PromptProviderEditPage = lazy(() => import('src/pages/dashboard/prompt-catalog/provider-edit'));
-const PromptProviderDetailsPage = lazy(() => import('src/pages/dashboard/prompt-catalog/provider-details'));
 
 // Speaker Management (Admin only)
 const SpeakerListPage = lazy(() => import('../../pages/dashboard/speaker/list'));
@@ -269,14 +261,6 @@ export const adminRoutes = [
           { element: <WorkflowListPage />, index: true },
           { path: 'list', element: <WorkflowListPage /> },
           { path: 'new', element: <WorkflowCreatePage /> },
-          { path: 'prompts/list', element: <PromptCatalogListPage /> },
-          { path: 'prompts/providers', element: <PromptProviderListPage /> },
-          { path: 'prompts/providers/new', element: <PromptProviderCreatePage /> },
-          { path: 'prompts/providers/:id', element: <PromptProviderDetailsPage /> },
-          { path: 'prompts/providers/:id/edit', element: <PromptProviderEditPage /> },
-          { path: 'prompts/new', element: <PromptCatalogCreatePage /> },
-          { path: 'prompts/:id', element: <PromptCatalogDetailsPage /> },
-          { path: 'prompts/:id/edit', element: <PromptCatalogEditPage /> },
           { path: ':id', element: <WorkflowDetailsPage /> },
           { path: ':id/edit', element: <WorkflowEditPage /> },
         ],

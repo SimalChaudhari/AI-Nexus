@@ -299,17 +299,6 @@ export const paths = {
       details: (id) => `${ROOTS.ADMIN}/ai-resources/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/ai-resources/${id}/edit`,
     },
-    promptCatalog: {
-      root: `${ROOTS.ADMIN}/ai-resources/prompts`,
-      list: `${ROOTS.ADMIN}/ai-resources/prompts/list`,
-      providers: `${ROOTS.ADMIN}/ai-resources/prompts/providers`,
-      providerNew: `${ROOTS.ADMIN}/ai-resources/prompts/providers/new`,
-      providerDetails: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/providers/${id}`,
-      providerEdit: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/providers/${id}/edit`,
-      new: `${ROOTS.ADMIN}/ai-resources/prompts/new`,
-      details: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/${id}`,
-      edit: (id) => `${ROOTS.ADMIN}/ai-resources/prompts/${id}/edit`,
-    },
     order: {
       root: `${ROOTS.ADMIN}/order`,
       list: `${ROOTS.ADMIN}/order/list`,
