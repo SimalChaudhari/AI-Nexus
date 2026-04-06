@@ -34,6 +34,62 @@ function isUuid(value: string): boolean {
   );
 }
 
+function parseCoverageRangePairs(raw: unknown): [number, number][] {
+  if (!raw || !Array.isArray(raw)) return [];
+  const out: [number, number][] = [];
+  for (const item of raw) {
+    if (!Array.isArray(item) || item.length < 2) continue;
+    const a = Number(item[0]);
+    const b = Number(item[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    out.push([a, b]);
+  }
+  return out;
+}
+
+function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
+  if (!ranges.length) return [];
+  const sorted = ranges
+    .map(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number])
+    .filter(([s, e]) => e > s && Number.isFinite(s) && Number.isFinite(e))
+    .sort((x, y) => x[0] - y[0]);
+  const out: [number, number][] = [];
+  for (const [s, e] of sorted) {
+    const last = out[out.length - 1];
+    if (!last || s > last[1]) out.push([s, e]);
+    else last[1] = Math.max(last[1], e);
+  }
+  return out;
+}
+
+function clipCoverageRangesToDuration(ranges: [number, number][], duration: number): [number, number][] {
+  if (duration <= 0) return mergeCoverageRanges(ranges);
+  const clipped: [number, number][] = [];
+  for (const [s0, e0] of ranges) {
+    const lo = Math.min(s0, e0);
+    const hi = Math.max(s0, e0);
+    const s = Math.max(0, lo);
+    const e = Math.min(duration, hi);
+    if (e > s) clipped.push([s, e]);
+  }
+  return mergeCoverageRanges(clipped);
+}
+
+function coverageMeasureSeconds(ranges: [number, number][], duration: number): number {
+  const merged = duration > 0 ? clipCoverageRangesToDuration(ranges, duration) : mergeCoverageRanges(ranges);
+  let total = 0;
+  for (const [s, e] of merged) total += e - s;
+  return Math.floor(Math.max(0, total));
+}
+
+/**
+ * Module / section rules (product):
+ * - Sequential unlock: section N+1 stays locked until section N is completed.
+ * - Sticky completion: once isCompleted is true for a section, it never becomes false (re-access always allowed).
+ * - Content lock: a section that is already completed is never treated as locked for the learner.
+ * - Completion threshold: admin "watch time" (section.watchtime) capped by real video length — full video not required.
+ */
+
 @Injectable()
 export class CourseSectionWatchProgressService {
   constructor(
@@ -138,9 +194,16 @@ export class CourseSectionWatchProgressService {
       resolvedWatchtimeSeconds,
       existing?.durationSeconds ?? 0,
     );
+    const storedRanges = clipCoverageRangesToDuration(
+      parseCoverageRangePairs(existing?.watchedCoverageRanges),
+      duration,
+    );
+    const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
+    const watchedFromCoverage =
+      storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
     const computed = this.buildComputed(
       existing?.lastPositionSeconds ?? 0,
-      existing?.watchedSeconds ?? 0,
+      watchedFromCoverage,
       duration,
     );
     const isCompleted = Boolean(existing?.isCompleted || computed.isCompleted);
@@ -153,17 +216,26 @@ export class CourseSectionWatchProgressService {
     const remaining = useStored ? existing!.remainingSeconds : computed.remaining;
     const percent = useStored ? Number(existing!.completionPercent) : computed.percent;
 
+    let watchedCoverageRangesOut: [number, number][] = storedRanges;
+    if (storedRanges.length === 0 && legacyWatchedCap > 0 && duration > 0) {
+      watchedCoverageRangesOut = [[0, legacyWatchedCap]];
+    }
+
+    // Completed sections stay accessible forever; sequential gate does not re-lock them.
+    const isLockedOut = Boolean(isLocked && !isCompleted);
+
     return {
       courseId,
       sectionId,
       lastPositionSeconds: lastPos,
       watchedSeconds: watched,
+      watchedCoverageRanges: watchedCoverageRangesOut,
       durationSeconds: dur,
       remainingSeconds: remaining,
       completionPercent: percent,
       isCompleted,
       isWatched,
-      isLocked,
+      isLocked: isLockedOut,
       lastPositionTime: this.formatSecondsToHhMmSs(lastPos),
       watchedTime: this.formatSecondsToHhMmSs(watched),
       durationTime: this.formatSecondsToHhMmSs(dur),
@@ -237,6 +309,7 @@ export class CourseSectionWatchProgressService {
         durationTime: this.formatSecondsToHhMmSs(0),
         remainingTime: this.formatSecondsToHhMmSs(0),
         lastAccessedAt: null,
+        watchedCoverageRanges: [],
       };
     }
     const existing = await this.sectionProgressRepository.findOne({
@@ -263,15 +336,39 @@ export class CourseSectionWatchProgressService {
     const incomingDuration = typeof dto.durationSeconds === 'number' ? dto.durationSeconds : 0;
     const observedDuration = Math.max(existing?.durationSeconds ?? 0, incomingDuration);
     const duration = this.resolveEffectiveDuration(resolvedDuration, observedDuration);
-    const baseWatched = existing?.watchedSeconds ?? 0;
-    const absoluteWatched = typeof dto.watchedSeconds === 'number' ? dto.watchedSeconds : baseWatched;
-    const watchedWithDelta = absoluteWatched + (typeof dto.watchedDeltaSeconds === 'number' ? dto.watchedDeltaSeconds : 0);
     const lastPos = typeof dto.lastPositionSeconds === 'number' ? dto.lastPositionSeconds : existing?.lastPositionSeconds ?? 0;
+
+    const dtoHasRanges = Array.isArray(dto.watchedCoverageRanges);
+    const storedRangesRaw = clipCoverageRangesToDuration(
+      parseCoverageRangePairs(existing?.watchedCoverageRanges),
+      duration,
+    );
+
+    let mergedRanges = storedRangesRaw;
+    let watchedWithDelta: number;
+    let nextCoverageColumn: [number, number][] | null = existing?.watchedCoverageRanges
+      ? clipCoverageRangesToDuration(parseCoverageRangePairs(existing.watchedCoverageRanges), duration)
+      : null;
+
+    if (dtoHasRanges) {
+      if (mergedRanges.length === 0 && (existing?.watchedSeconds ?? 0) > 0 && duration > 0) {
+        mergedRanges = [[0, Math.min(existing!.watchedSeconds, duration)]];
+      }
+      const incoming = clipCoverageRangesToDuration(parseCoverageRangePairs(dto.watchedCoverageRanges), duration);
+      mergedRanges = clipCoverageRangesToDuration(mergeCoverageRanges([...mergedRanges, ...incoming]), duration);
+      watchedWithDelta = coverageMeasureSeconds(mergedRanges, duration);
+      nextCoverageColumn = mergedRanges.length ? mergedRanges : null;
+    } else {
+      const baseWatched = existing?.watchedSeconds ?? 0;
+      const absoluteWatched = typeof dto.watchedSeconds === 'number' ? dto.watchedSeconds : baseWatched;
+      watchedWithDelta = absoluteWatched + (typeof dto.watchedDeltaSeconds === 'number' ? dto.watchedDeltaSeconds : 0);
+    }
+
     const computed = this.buildComputed(lastPos, watchedWithDelta, duration);
     const now = new Date();
-    const reachedEndByPosition = duration > 0 && computed.lastPosition >= duration - 1;
     const explicitCompletion = dto.markCompleted === true;
-    const isCompleted = explicitCompletion || computed.isCompleted || reachedEndByPosition;
+    const stickyCompleted = Boolean(existing?.isCompleted);
+    const isCompleted = stickyCompleted || explicitCompletion || computed.isCompleted;
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
     const finalDuration = isCompleted
       ? Math.max(computed.duration, computed.lastPosition, computed.watched, 1)
@@ -293,6 +390,7 @@ export class CourseSectionWatchProgressService {
         sectionId,
         lastPositionSeconds: computed.lastPosition,
         watchedSeconds: finalWatched,
+        watchedCoverageRanges: dtoHasRanges ? nextCoverageColumn : (existing?.watchedCoverageRanges ?? null),
         durationSeconds: finalDuration,
         remainingSeconds: finalRemaining,
         completionPercent: finalPercent,

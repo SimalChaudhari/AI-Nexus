@@ -13,6 +13,7 @@ export function LessonVideoPlayer({
   onPause,
   onEnded,
   onTimeUpdate,
+  onSeeked,
   floatingOverlay,
 }) {
   return (
@@ -33,7 +34,7 @@ export function LessonVideoPlayer({
         <Box
           component="video"
           ref={videoRef}
-          poster={videoPoster}
+          // poster={videoPoster}
           controls
           playsInline
           onLoadedMetadata={onLoadedMetadata}
@@ -41,6 +42,7 @@ export function LessonVideoPlayer({
           onPause={onPause}
           onEnded={onEnded}
           onTimeUpdate={onTimeUpdate}
+          onSeeked={onSeeked}
           sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
         >
           <source src={videoSrc} type="video/mp4" />

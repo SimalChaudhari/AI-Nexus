@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, Min, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateCourseSectionWatchProgressDto {
@@ -28,5 +28,10 @@ export class UpdateCourseSectionWatchProgressDto {
   @IsOptional()
   @IsBoolean()
   markCompleted?: boolean;
+
+  /** Optional merged or partial [[startSec,endSec], ...] timeline coverage (unique seconds). */
+  @IsOptional()
+  @IsArray()
+  watchedCoverageRanges?: number[][];
 }
 

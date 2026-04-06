@@ -44,6 +44,16 @@ import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-prog
 import { CourseFavoriteService } from './course-favorite.service';
 import { CourseSectionFavoriteService } from './course-section-favorite.service';
 import { CourseEnrollmentService } from './course-enrollment.service';
+import { CourseQuestionBankService } from './course-question-bank.service';
+import {
+  CreateCourseQuestionBankDto,
+  UpdateCourseQuestionBankDto,
+} from './course-question-bank.dto';
+import { CheckCourseQuestionBankDto } from './course-question-bank-check.dto';
+import {
+  CompleteCourseQuestionAttemptDto,
+  StartCourseQuestionAttemptDto,
+} from './course-question-bank-attempt.dto';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/paginated-list.util';
@@ -85,6 +95,7 @@ export class CourseController {
         private readonly courseFavoriteService: CourseFavoriteService,
         private readonly courseSectionFavoriteService: CourseSectionFavoriteService,
         private readonly courseEnrollmentService: CourseEnrollmentService,
+        private readonly courseQuestionBankService: CourseQuestionBankService,
     ) {}
 
     @Get()
@@ -363,6 +374,196 @@ export class CourseController {
         });
     }
 
+    @Get(':courseId/question-bank')
+    @UseGuards(OptionalJwtAuthGuard)
+    @ApiOperation({
+      summary: 'List question bank for a course (answers visible only to Admin)',
+    })
+    async getCourseQuestionBank(
+        @Param('courseId') courseId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const role = (request as any).user?.role;
+        const includeAnswers = role === UserRole.Admin;
+        const data = await this.courseQuestionBankService.findByCourseId(
+            courseId,
+            includeAnswers,
+        );
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
+    @Post(':courseId/question-bank')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Add a question to the course question bank' })
+    @ApiBody({ type: CreateCourseQuestionBankDto })
+    async createCourseQuestion(
+        @Param('courseId') courseId: string,
+        @Body() dto: CreateCourseQuestionBankDto,
+        @Res() response: Response,
+    ) {
+        const row = await this.courseQuestionBankService.create(courseId, dto);
+        return response.status(HttpStatus.CREATED).json({
+            message: 'Question created successfully',
+            data: row,
+        });
+    }
+
+    @Post(':courseId/question-bank/:questionId/check')
+    @UseGuards(OptionalJwtAuthGuard)
+    @ApiOperation({ summary: 'Check learner answer (does not expose correct answer in list)' })
+    @ApiBody({ type: CheckCourseQuestionBankDto })
+    async checkCourseQuestionAnswer(
+        @Param('courseId') courseId: string,
+        @Param('questionId') questionId: string,
+        @Body() dto: CheckCourseQuestionBankDto,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseQuestionBankService.checkAnswer(courseId, questionId, {
+            selectedIndex: dto.selectedIndex,
+            answer: dto.answer,
+        });
+        return response.status(HttpStatus.OK).json({ data: result });
+    }
+
+    @Get('question-bank/attempts')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin report for learner question-bank attempts' })
+    async getCourseQuestionAttemptReport(
+        @Query('courseId') courseId: string,
+        @Query('page') page: string,
+        @Query('limit') limit: string,
+        @Query('userId') userId: string,
+        @Res() response: Response,
+    ) {
+        const data = await this.courseQuestionBankService.listAttemptsForAdmin({
+            courseId: courseId || undefined,
+            page: parseOptionalPositiveInteger(page),
+            limit: parseOptionalPositiveInteger(limit),
+            userId: userId || undefined,
+        });
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
+    @Post(':courseId/question-bank/attempts')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Start a module question-bank attempt for learner tracking' })
+    @ApiBody({ type: StartCourseQuestionAttemptDto })
+    async startCourseQuestionAttempt(
+        @Param('courseId') courseId: string,
+        @Body() dto: StartCourseQuestionAttemptDto,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const data = await this.courseQuestionBankService.startAttempt(
+            userId,
+            courseId,
+            dto?.moduleId,
+        );
+        return response.status(HttpStatus.CREATED).json({
+            message: 'Attempt started',
+            data,
+        });
+    }
+
+    @Put(':courseId/question-bank/attempts/:attemptId/complete')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Complete question-bank attempt and persist score/details' })
+    @ApiBody({ type: CompleteCourseQuestionAttemptDto })
+    async completeCourseQuestionAttempt(
+        @Param('courseId') courseId: string,
+        @Param('attemptId') attemptId: string,
+        @Body() dto: CompleteCourseQuestionAttemptDto,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const data = await this.courseQuestionBankService.completeAttempt(
+            userId,
+            courseId,
+            attemptId,
+            Array.isArray(dto?.answers) ? dto.answers : [],
+        );
+        return response.status(HttpStatus.OK).json({
+            message: 'Attempt completed',
+            data,
+        });
+    }
+
+    @Delete('question-bank/attempts/:attemptId')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Delete one quiz attempt by attemptId (Admin)' })
+    async deleteCourseQuestionAttemptById(
+        @Param('attemptId') attemptId: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseQuestionBankService.deleteAttemptById(attemptId);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Delete('question-bank/attempts')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Delete all quiz attempts (optionally filtered by courseId/userId) (Admin)' })
+    async deleteCourseQuestionAttemptsBulk(
+        @Query('courseId') courseId: string,
+        @Query('userId') userId: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseQuestionBankService.deleteAttemptsBulk({
+            courseId: courseId || undefined,
+            userId: userId || undefined,
+        });
+        return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Put('question-bank/:questionId')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Update a question in the course question bank' })
+    @ApiBody({ type: UpdateCourseQuestionBankDto })
+    async updateCourseQuestion(
+        @Param('questionId') questionId: string,
+        @Body() dto: UpdateCourseQuestionBankDto,
+        @Res() response: Response,
+    ) {
+        const row = await this.courseQuestionBankService.update(questionId, dto);
+        return response.status(HttpStatus.OK).json({
+            message: 'Question updated successfully',
+            data: row,
+        });
+    }
+
+    @Delete('question-bank/:questionId')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Delete a question from the course question bank' })
+    async deleteCourseQuestion(
+        @Param('questionId') questionId: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseQuestionBankService.delete(questionId);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
     @Get(':courseId/modules/:moduleId/sections')
     @ApiOperation({ summary: 'Get sections for a module' })
     async getModuleSections(
@@ -393,21 +594,8 @@ export class CourseController {
         @Res() response: Response,
     ) {
         const userId = (request as any).user?.id;
-        const userRole = (request as any).user?.role;
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
-        }
-        const shouldEnforceSequentialLock = userRole === UserRole.User;
-        if (shouldEnforceSequentialLock) {
-            const unlock = await this.courseWatchProgressService.getUnlockInfo(userId, courseId);
-            if (unlock.isLocked) {
-                throw new ForbiddenException({
-                    message: 'Complete the previous course first to access section progress.',
-                    code: 'COURSE_LOCKED',
-                    previousCourseId: unlock.previousCourseId,
-                    previousCourseProgress: unlock.previousProgress,
-                });
-            }
         }
         const progress = await this.courseSectionWatchProgressService.getSectionProgress(userId, courseId, sectionId);
         return response.status(HttpStatus.OK).json({ data: progress });
@@ -426,21 +614,8 @@ export class CourseController {
         @Res() response: Response,
     ) {
         const userId = (request as any).user?.id;
-        const userRole = (request as any).user?.role;
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
-        }
-        const shouldEnforceSequentialLock = userRole === UserRole.User;
-        if (shouldEnforceSequentialLock) {
-            const unlock = await this.courseWatchProgressService.getUnlockInfo(userId, courseId);
-            if (unlock.isLocked) {
-                throw new ForbiddenException({
-                    message: 'Complete the previous course first to update section progress.',
-                    code: 'COURSE_LOCKED',
-                    previousCourseId: unlock.previousCourseId,
-                    previousCourseProgress: unlock.previousProgress,
-                });
-            }
         }
         const progress = await this.courseSectionWatchProgressService.upsertSectionProgress(
             userId,

@@ -31,6 +31,7 @@ import { fDate } from 'src/utils/format-time';
 import { RichTextContent } from 'src/components/html-content';
 import { fetchSpeakers } from 'src/store/slices/speakerSlice';
 import { courseService } from 'src/services/course.service';
+import { CourseQuestionBankPanel } from '../course-question-bank-panel';
 import { getCourseReviews, deleteReview } from 'src/services/review.service';
 
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -404,6 +405,7 @@ export function CourseDetailsView({ course, loading, error }) {
         >
           <Tab value="overview" label="Overview" icon={<Iconify icon="solar:info-circle-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
           <Tab value="curriculum" label="Curriculum" icon={<Iconify icon="solar:widget-5-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+          <Tab value="question-bank" label="Question bank" icon={<Iconify icon="solar:clipboard-list-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
           <Tab value="reviews" label="Reviews" icon={<Iconify icon="solar:chat-round-dots-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
         </Tabs>
 
@@ -851,6 +853,10 @@ export function CourseDetailsView({ course, loading, error }) {
           </Typography>
         )}
       </Card>
+      )}
+
+      {activeTab === 'question-bank' && course?.id && (
+        <CourseQuestionBankPanel courseId={course.id} />
       )}
 
       {activeTab === 'reviews' && (

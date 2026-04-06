@@ -13,18 +13,23 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 
 // ----------------------------------------------------------------------
 
-export function LearningTopBar({ activeTab, setActiveTab, showCart = false }) {
+export function LearningTopBar({
+  activeTab,
+  setActiveTab,
+  showCart = false,
+  /** When false (e.g. course player), bar is static inside a fixed-height shell so the layout column controls scroll. */
+  sticky = true,
+}) {
   const theme = useTheme();
   const checkout = useCheckoutContext();
   const cartCount = checkout.totalItems;
 
   return (
-    
     <Box
       sx={{
-        top: 0,
         zIndex: 40,
-        position: 'sticky',
+        position: sticky ? 'sticky' : 'relative',
+        ...(sticky ? { top: 0 } : { flexShrink: 0 }),
         backdropFilter: 'blur(8px)',
         borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
         bgcolor: 'primary.main',

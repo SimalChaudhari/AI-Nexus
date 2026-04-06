@@ -33,6 +33,7 @@ import { courseService } from 'src/services/course.service';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 import { CourseModulesCard } from './course-modules-card';
+import { CourseQuestionBankPanel } from './course-question-bank-panel';
 import { COURSE_LANGUAGE_OPTIONS } from './data/language-options';
 
 // ----------------------------------------------------------------------
@@ -672,6 +673,10 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                 </Grid>
               </Grid>
             </Card>
+
+            {isEdit && currentCourse?.id && (
+              <CourseQuestionBankPanel courseId={currentCourse.id} />
+            )}
 
             <Card
               sx={{

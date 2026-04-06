@@ -267,6 +267,7 @@ export const paths = {
       root: `${ROOTS.ADMIN}/course`,
       new: `${ROOTS.ADMIN}/course/new`,
       list: `${ROOTS.ADMIN}/course/list`,
+      attempts: `${ROOTS.ADMIN}/course/attempts`,
       details: (id) => `${ROOTS.ADMIN}/course/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/course/${id}/edit`,
     },

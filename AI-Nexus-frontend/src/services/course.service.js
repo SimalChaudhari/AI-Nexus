@@ -722,4 +722,115 @@ export const courseService = {
       throw error;
     }
   },
+
+  /** Question bank (Admin list includes answers; learner list does not). */
+  async getCourseQuestionBank(courseId) {
+    try {
+      const response = await axios.get(`/courses/${courseId}/question-bank`);
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    } catch (error) {
+      console.error('Error fetching course question bank:', error);
+      throw error;
+    }
+  },
+
+  async createCourseQuestion(courseId, body) {
+    try {
+      const response = await axios.post(`/courses/${courseId}/question-bank`, body);
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error creating course question:', error);
+      throw error;
+    }
+  },
+
+  async updateCourseQuestion(questionId, body) {
+    try {
+      const response = await axios.put(`/courses/question-bank/${questionId}`, body);
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error updating course question:', error);
+      throw error;
+    }
+  },
+
+  async deleteCourseQuestion(questionId) {
+    try {
+      const response = await axios.delete(`/courses/question-bank/${questionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting course question:', error);
+      throw error;
+    }
+  },
+
+  async checkCourseQuestionAnswer(courseId, questionId, payload) {
+    try {
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/${questionId}/check`,
+        payload
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error checking question answer:', error);
+      throw error;
+    }
+  },
+
+  async getCourseQuestionAttempts(courseId, params = {}) {
+    try {
+      const query = {
+        ...params,
+        courseId: courseId || params.courseId || undefined,
+      };
+      const response = await axios.get('/courses/question-bank/attempts', { params: query });
+      return response.data?.data || { items: [], users: [], total: 0, page: 1, limit: 10 };
+    } catch (error) {
+      console.error('Error fetching course question attempts:', error);
+      throw error;
+    }
+  },
+
+  async startCourseQuestionAttempt(courseId, payload = {}) {
+    try {
+      const response = await axios.post(`/courses/${courseId}/question-bank/attempts`, payload);
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error starting question attempt:', error);
+      throw error;
+    }
+  },
+
+  async completeCourseQuestionAttempt(courseId, attemptId, payload = {}) {
+    try {
+      const response = await axios.put(
+        `/courses/${courseId}/question-bank/attempts/${attemptId}/complete`,
+        payload
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error completing question attempt:', error);
+      throw error;
+    }
+  },
+
+  async deleteCourseQuestionAttempt(attemptId) {
+    try {
+      const response = await axios.delete(`/courses/question-bank/attempts/${attemptId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting question attempt:', error);
+      throw error;
+    }
+  },
+
+  async deleteCourseQuestionAttempts(params = {}) {
+    try {
+      const response = await axios.delete('/courses/question-bank/attempts', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting question attempts:', error);
+      throw error;
+    }
+  },
 };

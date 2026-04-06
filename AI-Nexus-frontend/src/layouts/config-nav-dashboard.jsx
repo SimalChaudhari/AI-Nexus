@@ -121,6 +121,7 @@ export const navData = [
         children: [
           { title: 'List', path: paths.admin.course.list },
           { title: 'Create', path: paths.admin.course.new },
+          { title: 'Quiz Attempts', path: paths.admin.course.attempts },
         ],
       },
       {

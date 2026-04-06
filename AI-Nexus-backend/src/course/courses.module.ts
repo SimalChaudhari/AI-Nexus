@@ -28,18 +28,23 @@ import { CourseSectionWatchProgressInitService } from './course-section-watch-pr
 import { JwtModule } from '@nestjs/jwt';
 import { LocalStorageService } from '../service/local-storage.service';
 import { CourseGroupEntity } from './course-group.entity';
+import { CourseQuestionBankEntity } from './course-question-bank.entity';
+import { CourseQuestionBankService } from './course-question-bank.service';
+import { CourseQuestionBankInitService } from './course-question-bank-init.service';
+import { CourseQuestionBankAttemptEntity } from './course-question-bank-attempt.entity';
+import { CourseQuestionBankAttemptInitService } from './course-question-bank-attempt-init.service';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity]),
+        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, LocalStorageService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, LocalStorageService],
     controllers: [CourseController],
-    exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService],
+    exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService],
 })
 export class CourseModule {}
 

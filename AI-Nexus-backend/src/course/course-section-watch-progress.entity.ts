@@ -45,6 +45,10 @@ export class CourseSectionWatchProgressEntity {
   @Column({ type: 'int', default: 0 })
   watchedSeconds!: number;
 
+  /** Merged [start,end] second ranges on the video timeline (unique coverage; rewatches overlap). */
+  @Column({ type: 'json', nullable: true })
+  watchedCoverageRanges?: [number, number][] | null;
+
   @Column({ type: 'int', default: 0 })
   durationSeconds!: number;
 

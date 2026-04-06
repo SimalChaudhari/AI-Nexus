@@ -20,6 +20,7 @@ export class CourseSectionWatchProgressInitService implements OnModuleInit {
             "sectionId" uuid NOT NULL,
             "lastPositionSeconds" integer NOT NULL DEFAULT 0,
             "watchedSeconds" integer NOT NULL DEFAULT 0,
+            "watchedCoverageRanges" json,
             "durationSeconds" integer NOT NULL DEFAULT 0,
             "remainingSeconds" integer NOT NULL DEFAULT 0,
             "completionPercent" numeric(5,2) NOT NULL DEFAULT 0,
@@ -34,6 +35,20 @@ export class CourseSectionWatchProgressInitService implements OnModuleInit {
             CONSTRAINT "FK_course_section_watch_progress_section" FOREIGN KEY ("sectionId") REFERENCES "course_module_sections"("id") ON DELETE CASCADE
           )
         `);
+      } else {
+        const col = await queryRunner.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'course_section_watch_progress'
+            AND column_name = 'watchedCoverageRanges'
+          LIMIT 1
+        `);
+        if (!Array.isArray(col) || col.length === 0) {
+          await queryRunner.query(`
+            ALTER TABLE "course_section_watch_progress"
+            ADD COLUMN "watchedCoverageRanges" json
+          `);
+        }
       }
 
       await queryRunner.release();
