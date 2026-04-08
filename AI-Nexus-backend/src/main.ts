@@ -91,7 +91,9 @@ async function bootstrap() {
       new ValidationPipe({
         whitelist: true,
         transform: true,
-        forbidNonWhitelisted: true,
+        // Keep whitelist sanitization but avoid rejecting multipart nested payloads
+        // such as modules[] sent as JSON in FormData.
+        forbidNonWhitelisted: false,
       }),
     );
     

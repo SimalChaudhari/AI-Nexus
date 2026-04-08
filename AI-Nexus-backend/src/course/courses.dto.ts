@@ -101,6 +101,7 @@ export class CreateCourseDto {
     image?: string; // File path (converted from file in controller)
 
     @IsOptional()
+    @Transform(({ value }) => toBoolean(value))
     @IsBoolean()
     freeOrPaid?: boolean;
 
@@ -178,6 +179,7 @@ export class UpdateCourseDto {
     image?: string | undefined; // null = delete image
 
     @IsOptional()
+    @Transform(({ value }) => toBoolean(value))
     @IsBoolean()
     freeOrPaid?: boolean;
 

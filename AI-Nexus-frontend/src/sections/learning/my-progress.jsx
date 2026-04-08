@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -24,6 +24,7 @@ import { courseService } from 'src/services/course.service';
 // ----------------------------------------------------------------------
 
 const COURSES_PER_PAGE = 8;
+let hasAttemptedMyProgressCoursesFetch = false;
 
 function formatLastAccessed(dateStr) {
   if (!dateStr) return '—';
@@ -57,13 +58,21 @@ export function MyProgress({ onNavigateToCertificates }) {
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
   const [page, setPage] = useState(1);
   const [progressLoading, setProgressLoading] = useState(true);
+  const hasAttemptedCoursesFetchRef = useRef(false);
 
   useEffect(() => {
     // Avoid unnecessary auto-loading when user is not signed in
     // and prevent repeated fetches once courses are already in store.
-    if (!authenticated) return;
+    if (!authenticated) {
+      hasAttemptedCoursesFetchRef.current = false;
+      hasAttemptedMyProgressCoursesFetch = false;
+      return;
+    }
     if (coursesLoading) return;
     if (Array.isArray(courses) && courses.length > 0) return;
+    if (hasAttemptedCoursesFetchRef.current || hasAttemptedMyProgressCoursesFetch) return;
+    hasAttemptedCoursesFetchRef.current = true;
+    hasAttemptedMyProgressCoursesFetch = true;
     dispatch(fetchCourses());
   }, [dispatch, authenticated, coursesLoading, courses]);
 

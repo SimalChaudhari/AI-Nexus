@@ -387,6 +387,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const { averageRating, reviewCount } = courseReviewStats;
   const learningOutcomes = topics.length > 0 ? topics : ['Establish a foundational understanding of the course subject and why it matters.', 'Apply key concepts in practical scenarios.'];
   const sectionCount = courseModules.reduce((acc, module) => acc + (module.sections?.length || 0), 0);
+  const hasAnyVideoLesson = courseModules.some((module) =>
+    Array.isArray(module?.sections) && module.sections.some((section) => Boolean(section?.videoUrl))
+  );
+  const hasCourseCoverImage = Boolean(course?.image);
   const resolvedLessonCount = sectionCount || lessonCount;
   const moduleCount = courseModules.length || market.moduleCount || '—';
   const bundleCount = Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0;
@@ -462,9 +466,32 @@ export function LearningCourseDetailsView({ course, loading, error }) {
             <Box sx={{ position: 'relative', aspectRatio: '16/9' }}>
               <Image
                 alt={`${course.title} trailer`}
-                src={course.image || ''}
+                src={course.image || DEFAULT_COURSE_IMAGE}
                 sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
+              {!hasCourseCoverImage && hasAnyVideoLesson && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 10,
+                    left: 10,
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: alpha(theme.palette.common.black, 0.55),
+                    color: 'common.white',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    zIndex: 2,
+                  }}
+                >
+                  <Iconify icon="solar:play-circle-bold" width={14} />
+                  <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                    Video
+                  </Typography>
+                </Box>
+              )}
               <Box
                 sx={{
                   position: 'absolute',
