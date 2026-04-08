@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ValidationPipe } from '@nestjs/common';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -86,6 +87,13 @@ async function bootstrap() {
     );
 
     app.useWebSocketAdapter(new IoAdapter(app));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
     
     // Set global prefix for all routes (except root)
     app.setGlobalPrefix('api');

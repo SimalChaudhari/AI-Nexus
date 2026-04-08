@@ -59,8 +59,13 @@ export function MyProgress({ onNavigateToCertificates }) {
   const [progressLoading, setProgressLoading] = useState(true);
 
   useEffect(() => {
+    // Avoid unnecessary auto-loading when user is not signed in
+    // and prevent repeated fetches once courses are already in store.
+    if (!authenticated) return;
+    if (coursesLoading) return;
+    if (Array.isArray(courses) && courses.length > 0) return;
     dispatch(fetchCourses());
-  }, [dispatch]);
+  }, [dispatch, authenticated, coursesLoading, courses]);
 
   useEffect(() => {
     if (!authenticated || !courses?.length) {
@@ -74,13 +79,15 @@ export function MyProgress({ onNavigateToCertificates }) {
     const loadProgress = async () => {
       try {
         setProgressLoading(true);
-        const enrolledIds = await courseService.getEnrolledCourseIds();
-        const normalizedEnrolledIds = (Array.isArray(enrolledIds) ? enrolledIds : [])
-          .map((item) => item?.id || item?._id || item?.courseId || item)
+        // Use already-fetched course flags to avoid extra enrolled-list API call
+        // that can intermittently 401 during first-time SSO handoff.
+        const enrolledCourses = (courses || []).filter(
+          (c) => Boolean(c?.isEnrolled) || Boolean(c?.accessViaBundle)
+        );
+        const normalizedEnrolledIds = enrolledCourses
+          .map((course) => course?.id)
           .filter(Boolean)
           .map((id) => String(id));
-        const enrolledSet = new Set(normalizedEnrolledIds);
-        const enrolledCourses = (courses || []).filter((c) => enrolledSet.has(String(c.id)));
 
         const entries = await Promise.all(
           enrolledCourses.map(async (course) => {

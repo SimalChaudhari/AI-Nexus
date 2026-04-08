@@ -112,6 +112,13 @@ axiosInstance.interceptors.response.use(
     if (error.response?.status === 401) {
       const isAuthRequest = /\/auth\/|\/sign-in|\/login/.test(error.config?.url || '');
       if (!isAuthRequest && typeof window !== 'undefined') {
+        const hasSessionToken = Boolean(sessionStorage.getItem(STORAGE_KEY));
+        // If token exists but API still returns 401, avoid global hard redirect loops.
+        // Let the calling screen handle this case gracefully.
+        if (hasSessionToken) {
+          return Promise.reject(error);
+        }
+
         const currentPath = window.location.pathname || '';
         // Prevent refresh/redirect loops while already on auth pages.
         if (isAuthRoute(currentPath)) {

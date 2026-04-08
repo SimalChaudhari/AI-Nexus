@@ -409,8 +409,13 @@ export class CourseService {
     }
 
     async create(createCourseDto: CreateCourseDto): Promise<{ message: string; course: CourseEntity }> {
+        const normalizedTitle = String(createCourseDto.title || '').trim();
+        if (!normalizedTitle) {
+            throw new BadRequestException('Course title is required');
+        }
+
         const courseData: Partial<CourseEntity> = {
-            title: createCourseDto.title,
+            title: normalizedTitle,
             freeOrPaid: createCourseDto.freeOrPaid ?? false,
             level: normalizeCourseLevel(createCourseDto.level),
             amount: createCourseDto.freeOrPaid && createCourseDto.amount ? createCourseDto.amount : 0,
