@@ -16,7 +16,7 @@ const metadata = { title: `Edit AI resource | Dashboard - ${CONFIG.site.name}` }
 export default function Page() {
   const params = useParams();
   const { workflows, loading } = useSelector((state) => state.workflows);
-  const currentWorkflow = workflows.find((workflow) => workflow.id === params.id);
+  const currentWorkflow = workflows.find((workflow) => String(workflow.id) === String(params.id));
 
   useEffect(() => {
     if (!currentWorkflow && params.id) {

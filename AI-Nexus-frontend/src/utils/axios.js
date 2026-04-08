@@ -9,6 +9,7 @@ import { apiLoading } from 'src/utils/api-loading';
 
 const AUTH_PATH_PATTERN = /\/api\/auth\//;
 const inFlightGet = new Map();
+let lastUnauthorizedRedirectAt = 0;
 
 function getDedupKey(url, params) {
   const paramStr = params && typeof params === 'object' && Object.keys(params).length
@@ -20,6 +21,11 @@ function getDedupKey(url, params) {
 function isAuthUrl(url) {
   if (typeof url !== 'string') return true;
   return AUTH_PATH_PATTERN.test(url);
+}
+
+function isAuthRoute(pathname) {
+  if (typeof pathname !== 'string') return false;
+  return pathname.startsWith('/auth');
 }
 
 // ----------------------------------------------------------------------
@@ -106,7 +112,19 @@ axiosInstance.interceptors.response.use(
     if (error.response?.status === 401) {
       const isAuthRequest = /\/auth\/|\/sign-in|\/login/.test(error.config?.url || '');
       if (!isAuthRequest && typeof window !== 'undefined') {
-        const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+        const currentPath = window.location.pathname || '';
+        // Prevent refresh/redirect loops while already on auth pages.
+        if (isAuthRoute(currentPath)) {
+          return Promise.reject(error);
+        }
+        // Throttle repeated redirects triggered by multiple failing requests.
+        const now = Date.now();
+        if (now - lastUnauthorizedRedirectAt < 1500) {
+          return Promise.reject(error);
+        }
+        lastUnauthorizedRedirectAt = now;
+
+        const returnTo = encodeURIComponent(currentPath + window.location.search);
         const base = (CONFIG.site.basePath || '').replace(/\/$/, '');
         window.location.replace(`${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`);
         return Promise.reject(error);

@@ -93,9 +93,12 @@ const workflowSlice = createSlice({
       })
       .addCase(updateWorkflow.fulfilled, (state, action) => {
         state.updating = false;
-        const index = state.workflows.findIndex((workflow) => workflow.id === action.payload.id);
+        const id = String(action.payload.id);
+        const index = state.workflows.findIndex((workflow) => String(workflow.id) === id);
         if (index !== -1) {
           state.workflows[index] = action.payload;
+        } else {
+          state.workflows.unshift(action.payload);
         }
       })
       .addCase(updateWorkflow.rejected, (state, action) => {

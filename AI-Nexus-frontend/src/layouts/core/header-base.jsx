@@ -16,7 +16,7 @@ import { HeaderSearchBar } from '../components/header-search-bar';
 import { MenuButton } from '../components/menu-button';
 import { SignInButton } from '../components/sign-in-button';
 import { AccountDrawer } from '../components/account-drawer';
-import { SettingsButton } from '../components/settings-button';
+// import { SettingsButton } from '../components/settings-button';
 import { ContactsPopover } from '../components/contacts-popover';
 import { WorkspacesPopover } from '../components/workspaces-popover';
 import { NotificationsDrawer } from '../components/notifications-drawer';
@@ -295,7 +295,8 @@ export function HeaderBase({
 
                 {contacts && <ContactsPopover data-slot="contacts" data={data?.contacts} />}
 
-                {settings && (
+                {/* Temporarily hidden settings gear on user-side header */}
+                {/* {settings && (
                   <SettingsButton
                     data-slot="settings"
                     sx={{
@@ -309,7 +310,7 @@ export function HeaderBase({
                       },
                     }}
                   />
-                )}
+                )} */}
               </Box>
             )}
 

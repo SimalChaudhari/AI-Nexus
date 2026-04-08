@@ -140,7 +140,7 @@ export function WorkflowListView() {
               variant="contained"
               startIcon={<Iconify icon="mingcute:add-line" />}
             >
-              New AI resource
+              Create Workflow
             </Button>
           }
           sx={{ mb: { xs: 3, md: 5 } }}

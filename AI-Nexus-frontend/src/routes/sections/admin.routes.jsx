@@ -4,6 +4,8 @@ import { Outlet } from 'react-router-dom';
 import { CONFIG } from 'src/config-global';
 import { DashboardLayout } from 'src/layouts/dashboard';
 
+import { useClearAiResourceCreateDraftOnLeave } from 'src/hooks/use-clear-ai-resource-create-draft-on-leave';
+
 import { LoadingScreen } from 'src/components/loading-screen';
 
 import { AuthGuard, RoleBasedGuard } from 'src/auth/guard';
@@ -87,6 +89,7 @@ const TagDetailsPage = lazy(() => import('src/pages/dashboard/tag/details'));
 // Workflow Management (Admin only)
 const WorkflowListPage = lazy(() => import('src/pages/dashboard/workflow/list'));
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
+const WorkflowBuilderPage = lazy(() => import('src/pages/dashboard/workflow/builder'));
 const WorkflowEditPage = lazy(() => import('src/pages/dashboard/workflow/edit'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/dashboard/workflow/details'));
 
@@ -138,6 +141,8 @@ const SettingsPage = lazy(() => import('src/pages/dashboard/settings'));
 function AdminLayoutContent() {
   const { user } = useAuthContext();
   const currentRole = user?.role || 'User';
+
+  useClearAiResourceCreateDraftOnLeave();
 
   return (
     <DashboardLayout>
@@ -261,6 +266,7 @@ export const adminRoutes = [
           { element: <WorkflowListPage />, index: true },
           { path: 'list', element: <WorkflowListPage /> },
           { path: 'new', element: <WorkflowCreatePage /> },
+          { path: 'builder', element: <WorkflowBuilderPage /> },
           { path: ':id', element: <WorkflowDetailsPage /> },
           { path: ':id/edit', element: <WorkflowEditPage /> },
         ],

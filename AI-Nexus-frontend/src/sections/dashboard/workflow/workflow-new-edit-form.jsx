@@ -8,9 +8,11 @@ import ReactFlow, {
   Background,
   BackgroundVariant,
   Controls,
+  Handle,
   MarkerType,
   MiniMap,
   Panel,
+  Position,
   useEdgesState,
   useNodesState,
 } from 'reactflow';
@@ -29,6 +31,7 @@ import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
 import Divider from '@mui/material/Divider';
 import Alert from '@mui/material/Alert';
+import Chip from '@mui/material/Chip';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
@@ -64,14 +67,219 @@ export const NewWorkflowSchema = zod.object({
 });
 
 // ----------------------------------------------------------------------
+const CREATE_FORM_DRAFT_KEY = 'aiNexus.workflow.createFormDraft';
+
+const readCreateFormDraft = () => {
+  try {
+    const raw = sessionStorage.getItem(CREATE_FORM_DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    return {
+      title: typeof d.title === 'string' ? d.title : '',
+      description: typeof d.description === 'string' ? d.description : '',
+      labelId: d.labelId ?? null,
+      tagIds: Array.isArray(d.tagIds) ? d.tagIds : [],
+      tags: Array.isArray(d.tags) ? d.tags : [],
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writeCreateFormDraft = (values) => {
+  try {
+    sessionStorage.setItem(
+      CREATE_FORM_DRAFT_KEY,
+      JSON.stringify({
+        title: values?.title ?? '',
+        description: values?.description ?? '',
+        labelId: values?.labelId ?? null,
+        tagIds: Array.isArray(values?.tagIds) ? values.tagIds : [],
+        tags: Array.isArray(values?.tags) ? values.tags : [],
+      })
+    );
+  } catch {
+    // ignore quota / private mode
+  }
+};
+
+const editFormDraftStorageKey = (id) => `aiNexus.workflow.editFormDraft.${id}`;
+
+const readEditFormDraft = (id) => {
+  if (!id) return null;
+  try {
+    const raw = sessionStorage.getItem(editFormDraftStorageKey(id));
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    return {
+      title: typeof d.title === 'string' ? d.title : '',
+      description: typeof d.description === 'string' ? d.description : '',
+      labelId: d.labelId ?? null,
+      tagIds: Array.isArray(d.tagIds) ? d.tagIds : [],
+      tags: Array.isArray(d.tags) ? d.tags : [],
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writeEditFormDraft = (id, values) => {
+  if (!id) return;
+  try {
+    sessionStorage.setItem(
+      editFormDraftStorageKey(id),
+      JSON.stringify({
+        title: values?.title ?? '',
+        description: values?.description ?? '',
+        labelId: values?.labelId ?? null,
+        tagIds: Array.isArray(values?.tagIds) ? values.tagIds : [],
+        tags: Array.isArray(values?.tags) ? values.tags : [],
+      })
+    );
+  } catch {
+    // ignore
+  }
+};
+
+const clearEditFormDraft = (id) => {
+  if (!id) return;
+  try {
+    sessionStorage.removeItem(editFormDraftStorageKey(id));
+  } catch {
+    // ignore
+  }
+};
+
 const FLOW_DEFAULT_NODES = [];
 const FLOW_DEFAULT_EDGES = [];
 const DAGRE_NODE_WIDTH = 180;
 const DAGRE_NODE_HEIGHT = 60;
+const nodeStyleMap = {
+  trigger: { borderColor: '#1976d2', chipColor: 'primary', icon: 'solar:play-circle-bold' },
+  send_email: { borderColor: '#2e7d32', chipColor: 'success', icon: 'solar:letter-bold' },
+  condition: { borderColor: '#ed6c02', chipColor: 'warning', icon: 'solar:checklist-minimalistic-bold' },
+  delay: { borderColor: '#7b1fa2', chipColor: 'secondary', icon: 'solar:clock-circle-bold' },
+  http_request: { borderColor: '#00838f', chipColor: 'info', icon: 'solar:global-bold' },
+  default: { borderColor: '#546e7a', chipColor: 'default', icon: 'solar:widget-4-bold' },
+};
+
+const resolveNodeKind = (node) => {
+  const kind = String(node?.data?.nodeKind || '').toLowerCase();
+  if (kind) return kind;
+  const triggerType = String(node?.data?.triggerType || '').toLowerCase();
+  if (triggerType) return 'trigger';
+  const actionType = String(node?.data?.actionType || '').toLowerCase();
+  if (actionType) return actionType;
+  const label = String(node?.data?.label || '').toLowerCase();
+  if (label.includes('condition')) return 'condition';
+  if (label.includes('email')) return 'send_email';
+  if (label.includes('delay')) return 'delay';
+  if (label.includes('http')) return 'http_request';
+  if (label.includes('trigger')) return 'trigger';
+  return 'default';
+};
+
+function WorkflowPreviewNodeCard({ data, selected }) {
+  const kind = String(data?.nodeKind || 'default');
+  const conf = nodeStyleMap[kind] || nodeStyleMap.default;
+  const isConditionNode = kind === 'condition';
+
+  return (
+    <Box
+      sx={{
+        minWidth: isConditionNode ? 130 : 210,
+        width: isConditionNode ? 130 : 'auto',
+        maxWidth: isConditionNode ? 130 : 250,
+        minHeight: isConditionNode ? 130 : 90,
+        border: `2px solid ${conf.borderColor}`,
+        borderRadius: isConditionNode ? '50%' : 1.5,
+        bgcolor: 'background.paper',
+        p: isConditionNode ? 1 : 1.2,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        textAlign: 'center',
+        boxShadow: selected ? '0 0 0 4px rgba(25,118,210,0.12)' : '0 4px 12px rgba(0,0,0,0.08)',
+      }}
+    >
+      <Handle type="target" position={Position.Left} />
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.8 }}>
+        <Iconify icon={conf.icon} width={15} />
+        <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+          {data?.label || 'Node'}
+        </Typography>
+      </Stack>
+      <Stack direction="row" spacing={0.4} flexWrap="wrap" justifyContent="center">
+        <Chip size="small" label={kind} color={conf.chipColor} variant="soft" sx={{ height: 18 }} />
+      </Stack>
+      {data?.triggerType && (
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.4, color: 'text.secondary' }}>
+          Trigger: {data.triggerType}
+        </Typography>
+      )}
+      {data?.actionType && (
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.2, color: 'text.secondary' }}>
+          Action: {data.actionType}
+        </Typography>
+      )}
+      <Handle type="source" position={Position.Right} />
+    </Box>
+  );
+}
+
+const WORKFLOW_BUILDER_BUTTON_SX = {
+  fontWeight: 600,
+  px: 2.5,
+  py: 1,
+  minHeight: 40,
+  whiteSpace: 'nowrap',
+};
+
+function WorkflowBuilderEntryButton({ mode, onCreateClick, onEditClick }) {
+  const startIcon = <Iconify icon="solar:widget-4-bold" width={20} />;
+
+  if (mode === 'edit') {
+    return (
+      <Button
+        type="button"
+        variant="contained"
+        color="primary"
+        size="medium"
+        startIcon={startIcon}
+        sx={WORKFLOW_BUILDER_BUTTON_SX}
+        onClick={onEditClick}
+      >
+        Edit / Connect Workflow
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="contained"
+      color="primary"
+      size="medium"
+      startIcon={startIcon}
+      sx={WORKFLOW_BUILDER_BUTTON_SX}
+      onClick={onCreateClick}
+    >
+      Create / Connect Workflow
+    </Button>
+  );
+}
 
 // ----------------------------------------------------------------------
 
-export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
+export function WorkflowNewEditForm({
+  currentWorkflow,
+  onCancel,
+  showFlowBuilder = true,
+  externalFlowData = null,
+}) {
   const theme = useTheme();
   const dispatch = useDispatch();
   const router = useRouter();
@@ -118,6 +326,14 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
     [currentWorkflow]
   );
 
+  const fullBuilderHref = useMemo(
+    () =>
+      currentWorkflow?.id
+        ? `${paths.admin.workflow.builder}?from=edit&id=${encodeURIComponent(currentWorkflow.id)}`
+        : paths.admin.workflow.builder,
+    [currentWorkflow?.id]
+  );
+
   const methods = useForm({
     mode: 'onTouched',
     reValidateMode: 'onBlur',
@@ -126,30 +342,115 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
     defaultValues,
   });
 
-  const { reset, setValue, watch, handleSubmit } = methods;
+  const { reset, setValue, watch, handleSubmit, getValues } = methods;
 
   useEffect(() => {
-    reset(defaultValues);
-    if (currentWorkflow?.id) {
-      setPreviewImage(currentWorkflow.image || null);
-    } else {
-      setPreviewImage(null);
+    if (isEdit) {
+      const draft = currentWorkflow?.id ? readEditFormDraft(currentWorkflow.id) : null;
+      const mergedValues = draft
+        ? {
+            ...defaultValues,
+            title: draft.title ?? defaultValues.title,
+            description: draft.description ?? defaultValues.description,
+            labelId: 'labelId' in draft ? draft.labelId : defaultValues.labelId,
+            tagIds: Array.isArray(draft.tagIds) ? draft.tagIds : defaultValues.tagIds,
+            tags: Array.isArray(draft.tags) ? draft.tags : defaultValues.tags,
+          }
+        : defaultValues;
+      reset(mergedValues);
+      if (currentWorkflow?.id) {
+        setPreviewImage(currentWorkflow.image || null);
+      } else {
+        setPreviewImage(null);
+      }
+      const savedFlowNodes = currentWorkflow?.flowData?.nodes;
+      const savedFlowEdges = currentWorkflow?.flowData?.edges;
+      if (Array.isArray(savedFlowNodes) && Array.isArray(savedFlowEdges) && savedFlowNodes.length > 0) {
+        setFlowNodes(savedFlowNodes);
+        setFlowEdges(savedFlowEdges);
+      } else {
+        setFlowNodes(FLOW_DEFAULT_NODES);
+        setFlowEdges(FLOW_DEFAULT_EDGES);
+      }
+      setSelectedNodeId('');
+      setSelectedEdgeId('');
+      setSelectedFile(null);
+      return;
     }
-    const savedFlowNodes = currentWorkflow?.flowData?.nodes;
-    const savedFlowEdges = currentWorkflow?.flowData?.edges;
-    if (Array.isArray(savedFlowNodes) && Array.isArray(savedFlowEdges) && savedFlowNodes.length > 0) {
-      setFlowNodes(savedFlowNodes);
-      setFlowEdges(savedFlowEdges);
-    } else {
-      setFlowNodes(FLOW_DEFAULT_NODES);
-      setFlowEdges(FLOW_DEFAULT_EDGES);
-    }
+
+    // Create: restore title / description / label / tags from session (survives builder round-trip)
+    const draft = readCreateFormDraft();
+    reset({
+      ...defaultValues,
+      ...(draft || {}),
+    });
+    setPreviewImage(null);
+    setFlowNodes(FLOW_DEFAULT_NODES);
+    setFlowEdges(FLOW_DEFAULT_EDGES);
     setSelectedNodeId('');
     setSelectedEdgeId('');
     setSelectedFile(null);
-  }, [currentWorkflow, defaultValues, reset, setFlowEdges, setFlowNodes]);
+  }, [currentWorkflow, defaultValues, isEdit, reset, setFlowEdges, setFlowNodes]);
+
+  const handleOpenFullBuilder = useCallback(() => {
+    writeCreateFormDraft(getValues());
+    router.push(`${paths.admin.workflow.builder}?from=create`);
+  }, [getValues, router]);
+
+  const handleOpenEditFullBuilder = useCallback(() => {
+    if (currentWorkflow?.id) {
+      writeEditFormDraft(currentWorkflow.id, getValues());
+    }
+    router.push(fullBuilderHref);
+  }, [currentWorkflow?.id, fullBuilderHref, getValues, router]);
+
+  useEffect(() => {
+    if (
+      externalFlowData &&
+      Array.isArray(externalFlowData.nodes) &&
+      Array.isArray(externalFlowData.edges)
+    ) {
+      setFlowNodes(externalFlowData.nodes);
+      setFlowEdges(externalFlowData.edges);
+    }
+  }, [externalFlowData, setFlowEdges, setFlowNodes]);
 
   const isSubmitting = isEdit ? updating : creating;
+  const styledFlowNodes = useMemo(() => {
+    const nodeTypeByKind = {
+      trigger: 'triggerNode',
+      send_email: 'emailNode',
+      condition: 'conditionNode',
+      delay: 'delayNode',
+      http_request: 'httpNode',
+      default: 'genericNode',
+    };
+
+    return flowNodes.map((node, idx) => {
+      const nodeKind = resolveNodeKind(node);
+      return {
+        ...node,
+        id: String(node.id ?? idx + 1),
+        type: nodeTypeByKind[nodeKind] || 'genericNode',
+        data: {
+          ...(node.data || {}),
+          nodeKind,
+        },
+      };
+    });
+  }, [flowNodes]);
+
+  const flowNodeTypes = useMemo(
+    () => ({
+      triggerNode: WorkflowPreviewNodeCard,
+      emailNode: WorkflowPreviewNodeCard,
+      conditionNode: WorkflowPreviewNodeCard,
+      delayNode: WorkflowPreviewNodeCard,
+      httpNode: WorkflowPreviewNodeCard,
+      genericNode: WorkflowPreviewNodeCard,
+    }),
+    []
+  );
 
   const cardSx = {
     borderRadius: 2,
@@ -467,6 +768,7 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
             imageFile,
           })
         ).unwrap();
+        clearEditFormDraft(currentWorkflow.id);
         toast.success('AI resource updated successfully!');
       } else {
         await dispatch(
@@ -475,6 +777,11 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
             imageFile,
           })
         ).unwrap();
+        try {
+          sessionStorage.removeItem(CREATE_FORM_DRAFT_KEY);
+        } catch {
+          // ignore
+        }
         toast.success('AI resource created successfully!');
       }
       router.push(paths.admin.workflow.list);
@@ -519,24 +826,33 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
               subheader="Title, rich description, cover image, label, and tags."
               sx={{ px: 3, pt: 3, pb: 0, alignItems: 'flex-start' }}
               action={
-                <Box
-                  sx={{
-                    flexShrink: 0,
-                    width: 48,
-                    height: 48,
-                    borderRadius: 1.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: alpha(theme.palette.primary.main, 0.08),
-                    color: 'primary.main',
-                  }}
-                >
-                  <SvgColor
-                    src={`${CONFIG.site.basePath}/assets/icons/navbar/ic-workflow.svg`}
-                    sx={{ width: 28, height: 28, color: 'primary.main' }}
-                  />
-                </Box>
+                <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
+                  {showFlowBuilder && (
+                    <WorkflowBuilderEntryButton
+                      mode={isEdit ? 'edit' : 'create'}
+                      onCreateClick={handleOpenFullBuilder}
+                      onEditClick={handleOpenEditFullBuilder}
+                    />
+                  )}
+                  <Box
+                    sx={{
+                      flexShrink: 0,
+                      width: 48,
+                      height: 48,
+                      borderRadius: 1.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.08),
+                      color: 'primary.main',
+                    }}
+                  >
+                    <SvgColor
+                      src={`${CONFIG.site.basePath}/assets/icons/navbar/ic-workflow.svg`}
+                      sx={{ width: 28, height: 28, color: 'primary.main' }}
+                    />
+                  </Box>
+                </Stack>
               }
             />
             <Divider sx={{ mx: 3, my: 2 }} />
@@ -560,232 +876,47 @@ export function WorkflowNewEditForm({ currentWorkflow, onCancel }) {
                 />
               </Box>
 
-              <Box>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1.5}
-                  justifyContent="space-between"
-                  alignItems={{ xs: 'stretch', sm: 'center' }}
-                  sx={{ mb: 1.5 }}
-                >
-                  <Typography variant="subtitle2">Workflow Builder (React Flow)</Typography>
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                    <Tooltip title="Add Node">
-                      <IconButton size="small" color="primary" onClick={handleAddFlowStep}>
-                        <Iconify icon="solar:add-circle-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Add Group">
-                      <IconButton size="small" color="primary" onClick={handleAddGroup}>
-                        <Iconify icon="solar:widget-3-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Add Node in Group">
-                      <IconButton size="small" color="primary" onClick={handleAddNodeInGroup}>
-                        <Iconify icon="solar:siderbar-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Duplicate Selected Node">
-                      <span>
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={handleDuplicateSelectedNode}
-                          disabled={!selectedNodeId}
-                        >
-                          <Iconify icon="solar:copy-bold" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Remove Selected Node">
-                      <span>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={handleRemoveSelectedNode}
-                          disabled={!selectedNodeId}
-                        >
-                          <Iconify icon="solar:trash-bin-trash-bold" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Add Relation">
-                      <IconButton size="small" color="primary" onClick={handleAddRelation}>
-                        <Iconify icon="solar:link-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Remove Selected Relation">
-                      <span>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={handleRemoveSelectedRelation}
-                          disabled={!selectedEdgeId}
-                        >
-                          <Iconify icon="solar:link-broken-bold" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Zoom In">
-                      <IconButton size="small" onClick={handleZoomIn}>
-                        <Iconify icon="solar:magnifer-zoom-in-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Zoom Out">
-                      <IconButton size="small" onClick={handleZoomOut}>
-                        <Iconify icon="solar:magnifer-zoom-out-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Fit View">
-                      <IconButton size="small" onClick={handleFitView}>
-                        <Iconify icon="solar:minimize-square-3-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Auto Layout Top-Bottom">
-                      <IconButton size="small" onClick={() => handleAutoLayout('TB')}>
-                        <Iconify icon="solar:sort-by-time-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Auto Layout Left-Right">
-                      <IconButton size="small" onClick={() => handleAutoLayout('LR')}>
-                        <Iconify icon="solar:hierarchy-square-2-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title={nodesDraggable ? 'Lock Node Dragging' : 'Unlock Node Dragging'}>
-                      <IconButton size="small" onClick={() => setNodesDraggable((prev) => !prev)}>
-                        <Iconify
-                          icon={nodesDraggable ? 'solar:lock-keyhole-bold' : 'solar:lock-keyhole-unlocked-bold'}
-                        />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Copy Flow JSON">
-                      <IconButton size="small" onClick={handleCopyFlowJson}>
-                        <Iconify icon="solar:code-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Reset Flow">
-                      <IconButton size="small" color="inherit" onClick={handleResetFlow}>
-                        <Iconify icon="solar:refresh-bold" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Generate Steps in Description">
-                      <IconButton size="small" color="success" onClick={handleApplyFlowToDescription}>
-                        <Iconify icon="solar:document-add-bold" />
-                      </IconButton>
-                    </Tooltip>
+              {showFlowBuilder && (
+                <Box>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    justifyContent="flex-start"
+                    alignItems={{ xs: 'stretch', sm: 'center' }}
+                    sx={{ mb: 1.5 }}
+                  >
+                    <Typography variant="subtitle2">Workflow Builder (React Flow)</Typography>
                   </Stack>
-                </Stack>
-                <Box
-                  sx={{
-                    height: 320,
-                    borderRadius: 1.5,
-                    border: `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <ReactFlow
-                    nodes={flowNodes}
+                  <Box
+                    sx={{
+                      height: 320,
+                      borderRadius: 1.5,
+                      border: `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <ReactFlow
+                    nodes={styledFlowNodes}
                     edges={flowEdges}
-                    onNodesChange={onFlowNodesChange}
-                    onEdgesChange={onFlowEdgesChange}
-                    onConnect={handleConnect}
+                    nodeTypes={flowNodeTypes}
                     onInit={setReactFlowInstance}
-                    onNodeClick={(event, node) => {
-                      setSelectedNodeId(node.id);
-                    }}
-                    onEdgeClick={(event, edge) => {
-                      setSelectedEdgeId(edge.id);
-                    }}
-                    nodesDraggable={nodesDraggable}
-                    nodesConnectable={nodesConnectable}
-                    panOnScroll={panOnScroll}
-                    selectionOnDrag={selectionOnDrag}
-                    snapToGrid={snapToGrid}
-                    snapGrid={[16, 16]}
-                    deleteKeyCode={['Backspace', 'Delete']}
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    elementsSelectable={false}
+                    panOnScroll={false}
+                    panOnDrag={false}
+                    zoomOnScroll={false}
+                    zoomOnPinch={false}
+                    zoomOnDoubleClick={false}
                     fitView
                   >
-                    <Panel position="top-right">
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          variant={newNodeType === 'default' ? 'contained' : 'outlined'}
-                          onClick={() => setNewNodeType('default')}
-                        >
-                          N
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={newNodeType === 'input' ? 'contained' : 'outlined'}
-                          onClick={() => setNewNodeType('input')}
-                        >
-                          In
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={newNodeType === 'output' ? 'contained' : 'outlined'}
-                          onClick={() => setNewNodeType('output')}
-                        >
-                          Out
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={newEdgeType === 'smoothstep' ? 'contained' : 'outlined'}
-                          onClick={() => setNewEdgeType((prev) => (prev === 'smoothstep' ? 'default' : 'smoothstep'))}
-                        >
-                          E
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() =>
-                            setBgVariant((prev) =>
-                              prev === BackgroundVariant.Dots
-                                ? BackgroundVariant.Lines
-                                : prev === BackgroundVariant.Lines
-                                  ? BackgroundVariant.Cross
-                                  : BackgroundVariant.Dots
-                            )
-                          }
-                        >
-                          Bg
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={nodesConnectable ? 'contained' : 'outlined'}
-                          onClick={() => setNodesConnectable((prev) => !prev)}
-                        >
-                          C
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={panOnScroll ? 'contained' : 'outlined'}
-                          onClick={() => setPanOnScroll((prev) => !prev)}
-                        >
-                          P
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={selectionOnDrag ? 'contained' : 'outlined'}
-                          onClick={() => setSelectionOnDrag((prev) => !prev)}
-                        >
-                          S
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={snapToGrid ? 'contained' : 'outlined'}
-                          onClick={() => setSnapToGrid((prev) => !prev)}
-                        >
-                          G
-                        </Button>
-                      </Stack>
-                    </Panel>
                     <MiniMap />
                     <Controls />
                     <Background gap={14} variant={bgVariant} />
-                  </ReactFlow>
+                    </ReactFlow>
+                  </Box>
                 </Box>
-              </Box>
+              )}
 
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 2 }}>

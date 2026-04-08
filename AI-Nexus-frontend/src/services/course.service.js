@@ -10,6 +10,7 @@ const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || '')
   );
+const normalizeId = (entity) => entity?.id || entity?._id || '';
 
 // Transform backend course data to frontend format
 const transformCourse = (course) => {
@@ -104,14 +105,14 @@ export const courseService = {
           : undefined;
 
       const modules = rawModules.map((m) => ({
-        id: m.id,
-        courseId: m.courseId,
+        id: normalizeId(m),
+        courseId: m.courseId || m.course_id || '',
         sortOrder: m.sortOrder != null ? Number(m.sortOrder) : 0,
         title: m.title || '',
         description: m.description || '',
         sections: (m.sections || []).map((s) => ({
-          id: s.id,
-          moduleId: s.moduleId,
+          id: normalizeId(s),
+          moduleId: s.moduleId || s.module_id || '',
           sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
           title: s.title || '',
           videoUrl: s.videoUrl || '',
@@ -321,8 +322,8 @@ export const courseService = {
       const response = await axios.get(`/courses/${courseId}/modules`);
       const list = response.data?.data || response.data || [];
       return list.map((m) => ({
-        id: m.id,
-        courseId: m.courseId,
+        id: normalizeId(m),
+        courseId: m.courseId || m.course_id || '',
         sortOrder: m.sortOrder != null ? Number(m.sortOrder) : 0,
         title: m.title || '',
         description: m.description || '',
@@ -391,14 +392,14 @@ export const courseService = {
       const response = await axios.get(`/courses/${courseId}/modules/with-sections`);
       const list = response.data?.data || response.data || [];
       return list.map((m) => ({
-        id: m.id,
-        courseId: m.courseId,
+        id: normalizeId(m),
+        courseId: m.courseId || m.course_id || '',
         sortOrder: m.sortOrder != null ? Number(m.sortOrder) : 0,
         title: m.title || '',
         description: m.description || '',
         sections: (m.sections || []).map((s) => ({
-          id: s.id,
-          moduleId: s.moduleId,
+          id: normalizeId(s),
+          moduleId: s.moduleId || s.module_id || '',
           sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
           title: s.title || '',
           videoUrl: s.videoUrl || '',
@@ -468,8 +469,8 @@ export const courseService = {
       const response = await axios.get(`/courses/${courseId}/modules/${moduleId}/sections`);
       const list = response.data?.data || response.data || [];
       return list.map((s) => ({
-        id: s.id,
-        moduleId: s.moduleId,
+        id: normalizeId(s),
+        moduleId: s.moduleId || s.module_id || '',
         sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
         title: s.title || '',
         videoUrl: s.videoUrl || '',

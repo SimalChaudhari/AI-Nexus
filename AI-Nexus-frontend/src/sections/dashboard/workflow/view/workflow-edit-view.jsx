@@ -21,8 +21,7 @@ export function WorkflowEditView({ workflow: currentWorkflow }) {
         sx={{ mb: { xs: 3, md: 5 } }}
       />
 
-      <WorkflowNewEditForm currentWorkflow={currentWorkflow} />
+      <WorkflowNewEditForm currentWorkflow={currentWorkflow} showFlowBuilder />
     </DashboardContent>
   );
 }
-
