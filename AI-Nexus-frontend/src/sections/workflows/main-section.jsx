@@ -5,6 +5,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -17,7 +18,12 @@ export function WorkflowMainSection() {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
-  const resolveTab = (tab) => (tab === 'resources' || tab === 'workflows' ? 'resources' : 'templates');
+  const resolveTab = (tab) =>
+    tab === 'resources' || tab === 'workflows' || tab === 'tools'
+      ? tab === 'tools'
+        ? 'tools'
+        : 'resources'
+      : 'templates';
   const initialTab = resolveTab(tabFromQuery);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -34,6 +40,26 @@ export function WorkflowMainSection() {
     nextParams.set('tab', nextTab);
     setSearchParams(nextParams);
   };
+
+  const toolsComingSoon = (
+    <Box
+      sx={{
+        py: { xs: 8, md: 12 },
+        px: 2,
+        textAlign: 'center',
+        borderRadius: 2,
+        border: `1px dashed ${alpha(theme.palette.grey[500], 0.3)}`,
+        bgcolor: alpha(theme.palette.grey[500], 0.04),
+      }}
+    >
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+        Tools
+      </Typography>
+      <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+        Coming soon...
+      </Typography>
+    </Box>
+  );
 
   return (
     <>
@@ -125,7 +151,41 @@ export function WorkflowMainSection() {
                   }),
             }}
           >
-            News
+            Prompts
+          </Button>
+          <Button
+            onClick={() => handleTabChange('tools')}
+            variant={activeTab === 'tools' ? 'contained' : 'outlined'}
+            sx={{
+              flex: { xs: 1, sm: 'none' },
+              px: { xs: 4, sm: 6 },
+              py: 1.5,
+              borderRadius: { xs: 2, sm: '50px' },
+              fontWeight: 500,
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              textTransform: 'none',
+              ...(activeTab === 'tools'
+                ? {
+                    bgcolor: 'primary.main',
+                    color: 'common.white',
+                    boxShadow: theme.customShadows.z8,
+                    '&:hover': {
+                      bgcolor: 'primary.dark',
+                      cursor: 'not-allowed',
+                    },
+                  }
+                : {
+                    color: 'text.secondary',
+                    border: `2px solid ${theme.palette.grey[300]}`,
+                    '&:hover': {
+                      bgcolor: 'grey.50',
+                      color: 'text.primary',
+                      borderColor: theme.palette.grey[400],
+                    },
+                  }),
+            }}
+          >
+            Tools
           </Button>
         </Box>
       </Box>
@@ -133,6 +193,7 @@ export function WorkflowMainSection() {
       <Box>
         {activeTab === 'templates' && <Templates />}
         {activeTab === 'resources' && <MyWorkflows />}
+        {activeTab === 'tools' && toolsComingSoon}
       </Box>
     </>
   );

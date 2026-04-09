@@ -14,7 +14,7 @@ import { Iconify } from 'src/components/iconify';
 import { UserProfilePopover } from 'src/components/user-profile-popover';
 import { formatViewCount } from 'src/utils/format-view-count';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
-import { ViewHtmlContent, RichTextContent } from 'src/components/html-content';
+import { RichTextContent } from 'src/components/html-content';
 import { useAuthContext } from 'src/auth/hooks';
 import { announcementService } from 'src/services/announcement.service';
 import { toast } from 'src/components/snackbar';
@@ -24,7 +24,6 @@ import { toast } from 'src/components/snackbar';
 export function AnnouncementItem({ announcement, onPinToggle }) {
   const theme = useTheme();
   const { authenticated } = useAuthContext();
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isPinned, setIsPinned] = useState(announcement.isPinned || false);
   const [isPinning, setIsPinning] = useState(false);
 
@@ -34,8 +33,7 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
   }, [announcement.isPinned]);
 
   const plainContentLength = useMemo(() => {
-    const raw =
-      announcement.content || announcement.description || announcement.excerpt || '';
+    const raw = announcement.content || announcement.description || announcement.excerpt || '';
     return htmlToPlainText(raw).length;
   }, [announcement.content, announcement.description, announcement.excerpt]);
 
@@ -90,12 +88,13 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
       href={`/announcements/${announcement.id}`}
       sx={{
         display: 'flex',
+        flexDirection: { xs: 'column', sm: 'row' },
         alignItems: 'stretch',
-        gap: 2,
+        gap: { xs: 1, sm: 2 },
         width: 1,
-        minHeight: { xs: 120, md: 136 },
-        py: 2,
-        px: { xs: 2, md: 3 },
+        minHeight: { xs: 92, md: 136 },
+        py: { xs: 1.25, sm: 2 },
+        px: { xs: 1.5, sm: 2, md: 3 },
         textDecoration: 'none',
         borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
         transition: 'background-color 0.2s',
@@ -106,20 +105,29 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
     >
       {/* Topic Column */}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mb: 0.5 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="flex-start"
+          sx={{ mb: { xs: 0.25, sm: 0.5 }, minWidth: 0 }}
+        >
           {getTypeIcon()}
           <Box
             component={RouterLink}
             href={`/announcements/${announcement.id}`}
-            sx={{ textDecoration: 'none', flex: 1 }}
+            sx={{ textDecoration: 'none', flex: 1, minWidth: 0 }}
           >
             <Typography
               variant="subtitle2"
+              noWrap
               sx={{
                 fontWeight: 600,
                 color: 'text.primary',
                 fontSize: { xs: '0.875rem', md: '0.9375rem' },
                 lineHeight: 1.4,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
                 '&:hover': {
                   color: 'primary.main',
                 },
@@ -135,6 +143,8 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
                 onClick={handlePinToggle}
                 disabled={isPinning}
                 sx={{
+                  p: { xs: 0.5, sm: 0.75 },
+                  flexShrink: 0,
                   color: isPinned ? 'error.main' : 'text.secondary',
                   '&:hover': {
                     color: isPinned ? 'error.dark' : 'primary.main',
@@ -151,78 +161,57 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
           )}
         </Stack>
 
+        <Typography
+          variant="caption"
+          sx={{
+            display: { xs: 'block', sm: 'none' },
+            color: 'text.secondary',
+            fontSize: '0.75rem',
+            mb: 0.5,
+          }}
+        >
+          {announcement.lastActivity}
+        </Typography>
+
         {(announcement.excerpt || announcement.content) && (
-          <Box sx={{ mb: 1 }}>
-            {!isExpanded ? (
-              <Box>
-                <RichTextContent
-                  html={announcement.content || announcement.description || ''}
-                  clampLines={2}
+          <Box sx={{ mb: 1, display: 'block' }}>
+            <Box>
+              <RichTextContent
+                html={announcement.content || announcement.description || ''}
+                clampLines={1}
+                sx={{
+                  typography: 'body2',
+                  fontSize: '0.875rem',
+                  color: 'text.secondary',
+                  lineHeight: 1.5,
+                  // List preview should be text-only; show media on detail page.
+                  '& img, & figure, & video, & iframe': { display: 'none !important' },
+                  // Keep ordered-list markers visible in clamped list cards.
+                  '& ol, & ul': {
+                    listStylePosition: 'inside',
+                    pl: 0,
+                  },
+                  '& li > p': { display: 'inline', m: 0 },
+                }}
+              />
+              {plainContentLength > 90 ? (
+                <Box
+                  component={RouterLink}
+                  href={`/announcements/${announcement.id}`}
+                  onClick={(e) => e.stopPropagation()}
                   sx={{
-                    typography: 'body2',
-                    fontSize: '0.875rem',
-                    color: 'text.secondary',
-                    lineHeight: 1.5,
-                    // List preview should be text-only; show media on detail page.
-                    '& img, & figure, & video, & iframe': { display: 'none !important' },
-                    // Keep ordered-list markers visible in clamped list cards.
-                    '& ol, & ul': {
-                      listStylePosition: 'inside',
-                      pl: 0,
-                    },
-                    '& li > p': { display: 'inline', m: 0 },
+                    display: 'inline-block',
+                    mt: 0.25,
+                    color: 'primary.main',
+                    fontWeight: 500,
+                    textDecoration: 'none',
+                    '&:hover': { textDecoration: 'underline' },
                   }}
-                />
-                {plainContentLength > 150 ? (
-                  <Box
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    component={RouterLink}
-                    href={`/announcements/${announcement.id}`}
-                    sx={{
-                      color: 'primary.main',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      textDecoration: 'none',
-                      '&:hover': { textDecoration: 'underline' },
-                    }}
-                  >
-                    read more
-                  </Box>
-                ) : null}
-              </Box>
-            ) : (
-              <Box
-                onClick={(e) => e.stopPropagation()}
-                sx={{ color: 'text.secondary', fontSize: '0.875rem', lineHeight: 1.5 }}
-              >
-                <ViewHtmlContent
-                  html={announcement.content || announcement.description || ''}
-                  sx={{ typography: 'body2', fontSize: '0.875rem', color: 'text.secondary' }}
-                />
-                {plainContentLength > 150 ? (
-                  <Box
-                    component="span"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsExpanded(false);
-                    }}
-                    sx={{
-                      color: 'primary.main',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      display: 'inline-block',
-                      mt: 0.5,
-                      '&:hover': { textDecoration: 'underline' },
-                    }}
-                  >
-                    show less
-                  </Box>
-                ) : null}
-              </Box>
-            )}
+                >
+                  read more
+                </Box>
+              ) : null}
+            </Box>
           </Box>
         )}
 
@@ -314,6 +303,7 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
         sx={{
           minWidth: { xs: 50, md: 70 },
           textAlign: 'center',
+          display: { xs: 'none', sm: 'block' },
         }}
       >
         <Typography

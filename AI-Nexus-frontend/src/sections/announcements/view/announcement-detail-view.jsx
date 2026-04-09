@@ -516,66 +516,6 @@ export function AnnouncementDetailView() {
               Comments ({comments.length})
             </Typography>
 
-            {/* Comment Form - users can post multiple comments */}
-            {user ? (
-              <Box sx={{ mb: 4 }}>
-                <Stack spacing={2}>
-                  <TextField
-                    multiline
-                    rows={4}
-                    placeholder="Write a comment..."
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    fullWidth
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: 'background.paper',
-                      },
-                    }}
-                  />
-                  <Stack direction="row" spacing={2} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      onClick={() => setCommentText('')}
-                      disabled={submittingComment}
-                    >
-                      Clear
-                    </Button>
-                      <Button
-                        variant="contained"
-                        onClick={handleSubmitComment}
-                        disabled={submittingComment || !commentText.trim()}
-                        startIcon={submittingComment ? <CircularProgress size={16} /> : null}
-                      >
-                        {submittingComment ? 'Posting...' : 'Post Comment'}
-                      </Button>
-                    </Stack>
-                  </Stack>
-                </Box>
-            ) : (
-              <Box
-                sx={{
-                  p: 3,
-                  mb: 4,
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.primary.main, 0.08),
-                  textAlign: 'center',
-                }}
-              >
-                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
-                  Please sign in to comment
-                </Typography>
-                <Button
-                  component={RouterLink}
-                  href={paths.auth.simple.signIn}
-                  variant="contained"
-                  startIcon={<Iconify icon="solar:login-2-bold" />}
-                >
-                  Sign In
-                </Button>
-              </Box>
-            )}
-
             <Divider sx={{ mb: 3 }} />
 
             {/* Comments List - same layout as post detail (QuickLinksCommentList) */}
@@ -623,6 +563,67 @@ export function AnnouncementDetailView() {
                 onDeleteComment={handleDeleteCommentClick}
                 deletingComment={deletingComment}
               />
+            )}
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Comment Form - users can post multiple comments (kept below list like AI Forum) */}
+            {user ? (
+              <Box>
+                <Stack spacing={2}>
+                  <TextField
+                    multiline
+                    rows={4}
+                    placeholder="Write a comment..."
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    fullWidth
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        bgcolor: 'background.paper',
+                      },
+                    }}
+                  />
+                  <Stack direction="row" spacing={2} justifyContent="flex-end">
+                    <Button
+                      variant="outlined"
+                      onClick={() => setCommentText('')}
+                      disabled={submittingComment}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={handleSubmitComment}
+                      disabled={submittingComment || !commentText.trim()}
+                      startIcon={submittingComment ? <CircularProgress size={16} /> : null}
+                    >
+                      {submittingComment ? 'Posting...' : 'Post Comment'}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  p: 3,
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  textAlign: 'center',
+                }}
+              >
+                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
+                  Please sign in to comment
+                </Typography>
+                <Button
+                  component={RouterLink}
+                  href={paths.auth.simple.signIn}
+                  variant="contained"
+                  startIcon={<Iconify icon="solar:login-2-bold" />}
+                >
+                  Sign In
+                </Button>
+              </Box>
             )}
 
             <ConfirmDialog

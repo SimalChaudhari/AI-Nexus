@@ -7,8 +7,6 @@ import Grid from '@mui/material/Unstable_Grid2';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
-import Tabs from '@mui/material/Tabs';
-import Tab from '@mui/material/Tab';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -126,7 +124,15 @@ export function MyWorkflows() {
 
   return (
     <Box>
-      <Card sx={{ p: { xs: 3, md: 4 } }}>
+      <Card
+        sx={{
+          p: { xs: 1.25, sm: 2, md: 4 },
+          boxShadow: { xs: 'none', sm: undefined },
+          borderRadius: { xs: 0, sm: 2 },
+          border: { xs: 'none', sm: undefined },
+          bgcolor: { xs: 'transparent', sm: 'background.paper' },
+        }}
+      >
         <Stack
           direction={{ xs: 'column', md: 'row' }}
           justifyContent="space-between"
@@ -138,45 +144,64 @@ export function MyWorkflows() {
             <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
               Prompts
             </Typography>
-            <Tabs
-              value={activeProvider}
-              onChange={(_, value) => setActiveProvider(value)}
-              variant="scrollable"
-              allowScrollButtonsMobile
-              sx={{ mb: 2 }}
+            <Box
+              sx={{
+                mb: 2,
+                width: '100%',
+                display: { xs: 'grid', sm: 'flex' },
+                gridTemplateColumns: { xs: 'repeat(3, minmax(0, 1fr))', sm: 'unset' },
+                gap: 0.75,
+                alignItems: 'center',
+              }}
             >
-              {promptLevels.map((level) => (
-                (() => {
-                  const tabTheme = getProviderPromptTheme(level.id, {
-                    color: resolveProviderColor(level.color),
-                    bgColor: resolveProviderColor(level.bgColor),
-                  });
-                  return (
-                    <Tab
-                      key={level.id}
-                      value={level.id}
-                      label={level.title}
-                      icon={
-                        <Box sx={{ display: 'inline-flex', alignItems: 'center', mr: 1.2 }}>
-                          <ProviderPromptIcon providerId={level.id} iconifyIcon={level.icon} width={18} />
-                        </Box>
-                      }
-                      iconPosition="start"
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 700,
+              {promptLevels.map((level) => {
+                const tabTheme = getProviderPromptTheme(level.id, {
+                  color: resolveProviderColor(level.color),
+                  bgColor: resolveProviderColor(level.bgColor),
+                });
+                const isActive = activeProvider === level.id;
+                return (
+                  <Button
+                    key={level.id}
+                    onClick={() => setActiveProvider(level.id)}
+                    startIcon={
+                      <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <ProviderPromptIcon providerId={level.id} iconifyIcon={level.icon} width={18} />
+                      </Box>
+                    }
+                    variant={isActive ? 'contained' : 'outlined'}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      minHeight: 40,
+                      px: { xs: 0.5, sm: 1.75 },
+                      width: { xs: '100%', sm: 'auto' },
+                      minWidth: 0,
+                      fontSize: { xs: '0.72rem', sm: '0.875rem' },
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap',
+                      borderRadius: 999,
+                      border: `1px solid ${tabTheme.accentSoft}`,
+                      bgcolor: isActive ? tabTheme.accentSofter : 'background.paper',
+                      color: isActive ? tabTheme.accentStrong : 'text.secondary',
+                      transition: 'all 0.2s ease',
+                      '& .MuiButton-startIcon': {
+                        display: { xs: 'none', sm: 'inline-flex' },
+                        ml: 0,
                         mr: 0.75,
-                        minHeight: 42,
-                        color: 'text.secondary',
-                        '&.Mui-selected': {
-                          color: tabTheme.accentStrong,
-                        },
-                      }}
-                    />
-                  );
-                })()
-              ))}
-            </Tabs>
+                      },
+                      '&:hover': {
+                        bgcolor: tabTheme.accentSofter,
+                        borderColor: tabTheme.accent,
+                      },
+                      boxShadow: isActive ? `0 0 0 1px ${tabTheme.accentSoft}` : 'none',
+                    }}
+                  >
+                    {level.title}
+                  </Button>
+                );
+              })}
+            </Box>
             <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '1rem', md: '1.0625rem' }, lineHeight: 1.6 }}>
               Access curated AI prompt libraries for finance workflows, updated regularly for practical day-to-day use.
             </Typography>
@@ -190,17 +215,20 @@ export function MyWorkflows() {
           spacing={1.5}
           sx={{ mb: 2.5 }}
         >
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.25 }}>
             <ProviderPromptIcon
               providerId={selectedProvider?.id || 'chatgpt'}
               iconifyIcon={selectedProvider?.icon}
-              width={22}
+              width={20}
               sx={{ color: selectedProviderTheme.accent }}
             />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1.25rem' } }}>
               {`${selectedProvider?.title || 'ChatGPT'} Categories (${totalCategoriesForProvider})`}
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'text.secondary', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+            >
               {`Prompts: ${totalPromptsForProvider}`}
             </Typography>
           </Stack>
@@ -253,15 +281,16 @@ export function MyWorkflows() {
                 <Card
                   variant="outlined"
                   sx={{
-                    p: 2,
-                    borderRadius: 2,
+                    p: { xs: 1.25, sm: 2 },
+                    borderRadius: { xs: 1.5, sm: 2 },
                     borderWidth: 1.5,
                     borderColor: selectedProviderTheme.accent,
                     bgcolor: selectedProviderTheme.accentMuted,
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
-                    boxShadow: (muiTheme) => `0 10px 26px -16px ${selectedProviderTheme.accent || muiTheme.palette.primary.main}`,
+                    boxShadow: (muiTheme) =>
+                      `0 10px 26px -16px ${selectedProviderTheme.accent || muiTheme.palette.primary.main}`,
                   }}
                 >
             
@@ -269,12 +298,14 @@ export function MyWorkflows() {
                     variant="subtitle1"
                     sx={{
                       fontWeight: 700,
-                      textAlign: 'center',
-                      mb: 1.5,
-                      minHeight: 46,
+                      textAlign: { xs: 'left', sm: 'center' },
+                      mb: 1.25,
+                      minHeight: { xs: 'auto', sm: 46 },
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      justifyContent: { xs: 'flex-start', sm: 'center' },
+                      wordBreak: 'break-word',
+                      fontSize: { xs: '0.95rem', sm: '1rem' },
                     }}
                   >
                     {`${section.title} (${totalPromptsInCategory})`}
@@ -285,6 +316,7 @@ export function MyWorkflows() {
                       borderRadius: 1,
                       background: selectedProviderTheme.topBar,
                       mb: 1.25,
+                      display: 'block',
                     }}
                   />
                   <Stack spacing={0.25} sx={{ flexGrow: 1 }}>
@@ -300,7 +332,12 @@ export function MyWorkflows() {
                           color: selectedProviderTheme.chatTextMuted || 'text.secondary',
                         }}
                       >
-                        <Box component="span" sx={{ mr: 1 }}>{"\u2192"} {item.useCase || `Prompt ${index + 1}`}</Box>
+                        <Box
+                          component="span"
+                          sx={{ mr: 1, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}
+                        >
+                          {"\u2192"} {item.useCase || `Prompt ${index + 1}`}
+                        </Box>
                       </Box>
                     ))}
                     {hasMoreItems ? (
