@@ -22,6 +22,7 @@ export class CourseModuleSectionInitService implements OnModuleInit {
             "description" text,
             "content" text,
             "watchtime" varchar(50),
+            "durationTime" varchar(50),
             "images" jsonb,
             "attachments" jsonb,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -57,6 +58,13 @@ export class CourseModuleSectionInitService implements OnModuleInit {
         } catch (filesErr) {
           if (filesErr instanceof Error && !filesErr.message?.includes('already exists')) {
             throw filesErr;
+          }
+        }
+        try {
+          await queryRunner.query(`ALTER TABLE "course_module_sections" ADD COLUMN "durationTime" varchar(50)`);
+        } catch (durErr) {
+          if (durErr instanceof Error && !durErr.message?.includes('already exists')) {
+            throw durErr;
           }
         }
       }

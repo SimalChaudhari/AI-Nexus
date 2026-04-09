@@ -7,6 +7,7 @@ import AvatarGroup from '@mui/material/AvatarGroup';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import Checkbox from '@mui/material/Checkbox';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { RouterLink } from 'src/routes/components';
@@ -22,7 +23,15 @@ import { ViewHtmlContent, RichTextContent } from 'src/components/html-content';
 
 // ----------------------------------------------------------------------
 
-export function AiForumItem({ post, onPinToggle, onEdit }) {
+export function AiForumItem({
+  post,
+  onPinToggle,
+  onEdit,
+  onDelete,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}) {
   const theme = useTheme();
   const { user, authenticated } = useAuthContext();
   const isAuthor = user && post.userId && post.userId === user.id;
@@ -67,11 +76,13 @@ export function AiForumItem({ post, onPinToggle, onEdit }) {
       sx={{
         display: 'flex',
         alignItems: 'stretch',
-        gap: 2,
-        width: 1,
+        gap: { xs: 1, md: 2 },
+        width: 'auto',
+        flex: 1,
+        minWidth: 0,
         minHeight: { xs: 120, md: 136 },
         py: 2,
-        px: { xs: 2, md: 3 },
+        px: { xs: 1.25, md: 3 },
         textDecoration: 'none',
         borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
         transition: 'background-color 0.2s',
@@ -82,7 +93,88 @@ export function AiForumItem({ post, onPinToggle, onEdit }) {
     >
       {/* AiForumPost Column */}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        {(selectable || (isAuthor && (onEdit || onDelete))) && (
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ display: { xs: 'flex', sm: 'none' }, mb: 0.5 }}
+          >
+            {selectable ? (
+              <Checkbox
+                size="small"
+                checked={selected}
+                onChange={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleSelect?.();
+                }}
+                inputProps={{ 'aria-label': `select-post-${post.id}` }}
+                sx={{ p: 0.25, ml: -0.25 }}
+              />
+            ) : (
+              <Box />
+            )}
+            <Stack direction="row" spacing={0.25}>
+              {isAuthor && onEdit && (
+                <Tooltip title="Edit post">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onEdit(post);
+                    }}
+                    sx={{
+                      color: 'text.secondary',
+                      '&:hover': {
+                        color: 'primary.main',
+                        bgcolor: alpha(theme.palette.primary.main, 0.08),
+                      },
+                    }}
+                  >
+                    <Iconify icon="solar:pen-bold" width={18} />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {isAuthor && onDelete && (
+                <Tooltip title="Delete post">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDelete(post);
+                    }}
+                    sx={{
+                      color: 'error.main',
+                      '&:hover': {
+                        color: 'error.dark',
+                        bgcolor: alpha(theme.palette.error.main, 0.08),
+                      },
+                    }}
+                  >
+                    <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Stack>
+          </Stack>
+        )}
         <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mb: 0.5 }}>
+          {selectable && (
+            <Checkbox
+              size="small"
+              checked={selected}
+              onChange={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleSelect?.();
+              }}
+              inputProps={{ 'aria-label': `select-post-${post.id}` }}
+              sx={{ p: 0.25, mt: -0.25, display: { xs: 'none', sm: 'flex' } }}
+            />
+          )}
           {isPinned && <Iconify icon="solar:pin-bold" width={16} sx={{ color: 'error.main' }} />}
           <Box
             component={RouterLink}
@@ -114,6 +206,7 @@ export function AiForumItem({ post, onPinToggle, onEdit }) {
                   onEdit(post);
                 }}
                 sx={{
+                  display: { xs: 'none', sm: 'inline-flex' },
                   color: 'text.secondary',
                   '&:hover': {
                     color: 'primary.main',
@@ -122,6 +215,28 @@ export function AiForumItem({ post, onPinToggle, onEdit }) {
                 }}
               >
                 <Iconify icon="solar:pen-bold" width={18} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {isAuthor && onDelete && (
+            <Tooltip title="Delete post">
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDelete(post);
+                }}
+                sx={{
+                  display: { xs: 'none', sm: 'inline-flex' },
+                  color: 'error.main',
+                  '&:hover': {
+                    color: 'error.dark',
+                    bgcolor: alpha(theme.palette.error.main, 0.08),
+                  },
+                }}
+              >
+                <Iconify icon="solar:trash-bin-trash-bold" width={18} />
               </IconButton>
             </Tooltip>
           )}
@@ -295,6 +410,7 @@ export function AiForumItem({ post, onPinToggle, onEdit }) {
         sx={{
           minWidth: { xs: 50, md: 70 },
           textAlign: 'center',
+          display: { xs: 'none', sm: 'block' },
         }}
       >
         <Typography

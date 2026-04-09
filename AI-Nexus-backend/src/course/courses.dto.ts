@@ -29,6 +29,11 @@ export class CreateCourseSectionItemDto {
   watchtime?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  durationTime?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   images?: string[];

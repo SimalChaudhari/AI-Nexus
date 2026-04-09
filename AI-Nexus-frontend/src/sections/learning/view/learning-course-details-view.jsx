@@ -29,7 +29,6 @@ import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { courseService } from 'src/services/course.service';
 import { getCourseReviews } from 'src/services/review.service';
-import { speakerService } from 'src/services/speaker.service';
 import { useAuthContext } from 'src/auth/hooks';
 import { toast } from 'src/components/snackbar';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
@@ -90,7 +89,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [relatedCourses, setRelatedCourses] = useState([]);
-  const [speakers, setSpeakers] = useState([]);
   const [courseModules, setCourseModules] = useState([]);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -104,20 +102,11 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
   const [receiptDownloading, setReceiptDownloading] = useState(false);
 
-  // Fetch speakers for labels
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([speakerService.getAll()])
-      .then(([speakerList]) => {
-        if (!cancelled) {
-          setSpeakers(speakerList || []);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const speakerMap = useMemo(() => Object.fromEntries((speakers || []).map((s) => [s.id, s])), [speakers]);
+  // Speaker rows come from course API (`speakers`), same order as speakerIds — no GET /speakers
+  const speakerMap = useMemo(
+    () => Object.fromEntries((Array.isArray(course?.speakers) ? course.speakers : []).map((s) => [s.id, s])),
+    [course?.speakers]
+  );
 
   // Check if course is favorited
   useEffect(() => {
@@ -1052,9 +1041,12 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                                 const fallbackPreviewImage = course?.image || '/assets/images/cover/cover-1.jpg';
                                 const previewImage = hasImages ? section.images[0] : fallbackPreviewImage;
                                 const mediaLabel = hasVideo
-                                  ? section.watchtime
-                                    ? `Video lesson • ${section.watchtime}`
-                                    : 'Video lesson'
+                                  ? [
+                                      'Video lesson',
+                                      section.durationTime && `duration ${section.durationTime}`,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' • ')
                                   : hasImages
                                     ? `Image lesson • ${section.images.length} image(s)`
                                     : section.content

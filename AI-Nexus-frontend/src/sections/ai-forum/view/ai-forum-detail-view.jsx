@@ -383,8 +383,20 @@ export function AiForumDetailView() {
             >
               <Box sx={{ flex: 1 }} />
 
-              <Stack direction="row" spacing={3}>
-                <Stack direction="row" spacing={0.5} alignItems="center">
+              <Stack
+                direction="row"
+                spacing={{ xs: 1.25, sm: 2.5 }}
+                useFlexGap
+                flexWrap="wrap"
+                justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}
+                sx={{ width: { xs: '100%', sm: 'auto' } }}
+              >
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  alignItems="center"
+                  sx={{ minWidth: 0, flexShrink: 0 }}
+                >
                   <Iconify icon="solar:chat-round-dots-bold" width={18} color="text.secondary" />
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {comments.length}
@@ -393,7 +405,12 @@ export function AiForumDetailView() {
                     comments
                   </Typography>
                 </Stack>
-                <Stack direction="row" spacing={0.5} alignItems="center">
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  alignItems="center"
+                  sx={{ minWidth: 0, flexShrink: 0 }}
+                >
                   <Iconify icon="solar:eye-bold" width={18} color="text.secondary" />
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {formatViewCount(post.viewCount || 0)}
@@ -402,9 +419,17 @@ export function AiForumDetailView() {
                     views
                   </Typography>
                 </Stack>
-                <Stack direction="row" spacing={0.5} alignItems="center">
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  alignItems="center"
+                  sx={{ minWidth: 0, flex: { xs: '1 1 100%', sm: '0 1 auto' } }}
+                >
                   <Iconify icon="solar:clock-circle-bold" width={18} color="text.secondary" />
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: 'text.secondary', wordBreak: 'break-word' }}
+                  >
                     {formatRelativeTime(post.createdAt)}
                   </Typography>
                 </Stack>
@@ -451,63 +476,6 @@ export function AiForumDetailView() {
               Comments ({comments.length})
             </Typography>
 
-            {user ? (
-              <Box sx={{ mb: 4 }}>
-                <Stack spacing={2}>
-                  <TextField
-                    multiline
-                    rows={4}
-                    placeholder="Write a comment..."
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    fullWidth
-                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
-                  />
-                  <Stack direction="row" spacing={2} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      onClick={() => setCommentText('')}
-                      disabled={submittingComment}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="contained"
-                      onClick={handleSubmitComment}
-                      disabled={submittingComment || !commentText.trim()}
-                      startIcon={submittingComment ? <CircularProgress size={16} /> : null}
-                    >
-                      {submittingComment ? 'Posting...' : 'Post Comment'}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  p: 3,
-                  mb: 4,
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.primary.main, 0.08),
-                  textAlign: 'center',
-                }}
-              >
-                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
-                  Please sign in to comment
-                </Typography>
-                <Button
-                  component={RouterLink}
-                  href={paths.auth.simple.signIn}
-                  variant="contained"
-                  startIcon={<Iconify icon="solar:login-2-bold" />}
-                >
-                  Sign In
-                </Button>
-              </Box>
-            )}
-
-            <Divider sx={{ mb: 3 }} />
-
             {loadingComments ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress size={40} />
@@ -552,6 +520,62 @@ export function AiForumDetailView() {
                 onDeleteComment={handleDeleteCommentClick}
                 deletingComment={deletingComment}
               />
+            )}
+
+            <Divider sx={{ my: 3 }} />
+
+            {user ? (
+              <Box>
+                <Stack spacing={2}>
+                  <TextField
+                    multiline
+                    rows={4}
+                    placeholder="Write a comment..."
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    fullWidth
+                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+                  />
+                  <Stack direction="row" spacing={2} justifyContent="flex-end">
+                    <Button
+                      variant="outlined"
+                      onClick={() => setCommentText('')}
+                      disabled={submittingComment}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={handleSubmitComment}
+                      disabled={submittingComment || !commentText.trim()}
+                      startIcon={submittingComment ? <CircularProgress size={16} /> : null}
+                    >
+                      {submittingComment ? 'Posting...' : 'Post Comment'}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  p: 3,
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  textAlign: 'center',
+                }}
+              >
+                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
+                  Please sign in to comment
+                </Typography>
+                <Button
+                  component={RouterLink}
+                  href={paths.auth.simple.signIn}
+                  variant="contained"
+                  startIcon={<Iconify icon="solar:login-2-bold" />}
+                >
+                  Sign In
+                </Button>
+              </Box>
             )}
 
             <ConfirmDialog

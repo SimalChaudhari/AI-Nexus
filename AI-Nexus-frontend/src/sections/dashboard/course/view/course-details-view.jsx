@@ -766,9 +766,12 @@ export function CourseDetailsView({ course, loading, error }) {
                                     const fallbackPreviewImage = course?.image || '/assets/images/cover/cover-1.jpg';
                                     const previewImage = hasImages ? section.images[0] : fallbackPreviewImage;
                                     const mediaLabel = hasVideo
-                                      ? section.watchtime
-                                        ? `Video lesson • ${section.watchtime}`
-                                        : 'Video lesson'
+                                      ? [
+                                          'Video lesson',
+                                          section.durationTime && `duration ${section.durationTime}`,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' • ')
                                       : hasImages
                                         ? `Image lesson • ${section.images.length} image(s)`
                                         : section.content

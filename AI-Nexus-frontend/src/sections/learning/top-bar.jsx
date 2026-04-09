@@ -198,7 +198,7 @@ export function LearningTopBar({
                 component={RouterLink}
                 to={paths.product.checkout}
                 sx={{
-                  display: 'flex',
+                  display: { xs: 'none', md: 'flex' },
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: 'text.primary',

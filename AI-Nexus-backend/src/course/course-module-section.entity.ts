@@ -32,6 +32,10 @@ export class CourseModuleSectionEntity {
   @Column({ type: 'varchar', length: 50, nullable: true })
   watchtime?: string | null;
 
+  /** Full video length from metadata (HH:MM:SS); separate from admin watchtime / completion threshold */
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  durationTime?: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   images?: string[];
 

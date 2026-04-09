@@ -216,6 +216,50 @@ export class AiForumService {
         return { message: 'AiForumPost deleted successfully' };
     }
 
+    async deleteOwnPost(id: string, userId: string): Promise<{ message: string }> {
+        const post = await this.aiForumRepository.findOne({ where: { id } });
+        if (!post) {
+            throw new NotFoundException('AiForumPost not found');
+        }
+        if (!userId || post.userId !== userId) {
+            throw new ForbiddenException('You can only delete your own posts');
+        }
+
+        await this.aiForumRepository.remove(post);
+        this.aiForumCommentsGateway.emitToAiForumPostsList('post:deleted', { postId: id });
+        return { message: 'AiForumPost deleted successfully' };
+    }
+
+    async bulkDeleteOwnPosts(
+        userId: string,
+        ids: string[],
+    ): Promise<{ message: string; deletedCount: number; deletedIds: string[] }> {
+        const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+        if (uniqueIds.length === 0) {
+            return { message: 'No posts selected', deletedCount: 0, deletedIds: [] };
+        }
+
+        const ownPosts = await this.aiForumRepository.find({
+            where: { id: In(uniqueIds), userId },
+            select: ['id'],
+        });
+        const ownIds = ownPosts.map((p) => p.id);
+        if (ownIds.length === 0) {
+            return { message: 'No own posts found for deletion', deletedCount: 0, deletedIds: [] };
+        }
+
+        await this.aiForumRepository.delete({ id: In(ownIds), userId });
+        ownIds.forEach((postId) => {
+            this.aiForumCommentsGateway.emitToAiForumPostsList('post:deleted', { postId });
+        });
+
+        return {
+            message: 'Selected posts deleted successfully',
+            deletedCount: ownIds.length,
+            deletedIds: ownIds,
+        };
+    }
+
     async addComment(
         postId: string,
         userId: string,

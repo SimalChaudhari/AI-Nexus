@@ -121,31 +121,47 @@ export class CourseSectionWatchProgressService {
     return { duration, watched, lastPosition, remaining, percent, isCompleted };
   }
 
-  private resolveEffectiveDuration(
-    resolvedSectionDuration: number,
-    observedVideoDuration: number,
+  private resolveDisplayDurationSeconds(
+    resolvedDurationTimeSeconds: number,
+    observedVideoDurationSeconds: number,
+    storedVideoDurationSeconds: number,
   ): number {
-    const sectionDuration = Math.max(0, Math.floor(Number(resolvedSectionDuration) || 0));
-    const videoDuration = Math.max(0, Math.floor(Number(observedVideoDuration) || 0));
-    if (sectionDuration > 0 && videoDuration > 0) {
-      // Never require more than actual playable video length.
-      return Math.min(sectionDuration, videoDuration);
-    }
-    return Math.max(sectionDuration, videoDuration);
+    const fromSection = Math.max(0, Math.floor(Number(resolvedDurationTimeSeconds) || 0));
+    const fromObserved = Math.max(0, Math.floor(Number(observedVideoDurationSeconds) || 0));
+    const fromStored = Math.max(0, Math.floor(Number(storedVideoDurationSeconds) || 0));
+    // UI/display timeline should be full video length (never watchtime threshold).
+    return Math.max(fromSection, fromObserved, fromStored);
   }
 
-  private async resolveSectionDurationSeconds(courseId: string, sectionId: string): Promise<number> {
+  private resolveCompletionRequiredSeconds(
+    watchtimeSeconds: number,
+    fullVideoDurationSeconds: number,
+  ): number {
+    const wt = Math.max(0, Math.floor(Number(watchtimeSeconds) || 0));
+    const full = Math.max(0, Math.floor(Number(fullVideoDurationSeconds) || 0));
+    if (wt > 0 && full > 0) return Math.min(wt, full);
+    if (wt > 0) return wt;
+    return full;
+  }
+
+  private async resolveSectionTiming(
+    courseId: string,
+    sectionId: string,
+  ): Promise<{ watchtimeSeconds: number; durationTimeSeconds: number }> {
     const section = await this.sectionRepository.findOne({
       where: { id: sectionId },
-      select: ['id', 'moduleId', 'watchtime'],
+      select: ['id', 'moduleId', 'watchtime', 'durationTime'],
     });
-    if (!section) return 0;
+    if (!section) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
     const module = await this.moduleRepository.findOne({
       where: { id: section.moduleId },
       select: ['id', 'courseId'],
     });
-    if (!module || module.courseId !== courseId) return 0;
-    return parseWatchtimeToSeconds(section.watchtime);
+    if (!module || module.courseId !== courseId) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+    return {
+      watchtimeSeconds: parseWatchtimeToSeconds(section.watchtime),
+      durationTimeSeconds: parseWatchtimeToSeconds(section.durationTime),
+    };
   }
 
   private async getOrderedCourseSections(courseId: string): Promise<string[]> {
@@ -188,12 +204,15 @@ export class CourseSectionWatchProgressService {
     sectionId: string,
     existing: CourseSectionWatchProgressEntity | undefined,
     resolvedWatchtimeSeconds: number,
+    resolvedDurationTimeSeconds: number,
     isLocked: boolean,
   ) {
-    const duration = this.resolveEffectiveDuration(
-      resolvedWatchtimeSeconds,
+    const duration = this.resolveDisplayDurationSeconds(
+      resolvedDurationTimeSeconds,
       existing?.durationSeconds ?? 0,
+      existing?.videoDurationSeconds ?? 0,
     );
+    const required = this.resolveCompletionRequiredSeconds(resolvedWatchtimeSeconds, duration);
     const storedRanges = clipCoverageRangesToDuration(
       parseCoverageRangePairs(existing?.watchedCoverageRanges),
       duration,
@@ -201,20 +220,20 @@ export class CourseSectionWatchProgressService {
     const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
     const watchedFromCoverage =
       storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
+    const watchedForDisplay = Math.max(watchedFromCoverage, existing?.lastPositionSeconds ?? 0);
     const computed = this.buildComputed(
       existing?.lastPositionSeconds ?? 0,
-      watchedFromCoverage,
+      watchedForDisplay,
       duration,
     );
-    const isCompleted = Boolean(existing?.isCompleted || computed.isCompleted);
+    const isCompleted = Boolean(existing?.isCompleted || (required > 0 && computed.watched >= required));
     const isWatched = isCompleted;
 
-    const useStored = Boolean(existing?.isCompleted && existing);
-    const lastPos = useStored ? existing!.lastPositionSeconds : computed.lastPosition;
-    const watched = useStored ? existing!.watchedSeconds : computed.watched;
-    const dur = useStored ? existing!.durationSeconds : computed.duration;
-    const remaining = useStored ? existing!.remainingSeconds : computed.remaining;
-    const percent = useStored ? Number(existing!.completionPercent) : computed.percent;
+    const lastPos = computed.lastPosition;
+    const watched = computed.watched;
+    const dur = computed.duration;
+    const remaining = computed.remaining;
+    const percent = computed.percent;
 
     let watchedCoverageRangesOut: [number, number][] = storedRanges;
     if (storedRanges.length === 0 && legacyWatchedCap > 0 && duration > 0) {
@@ -255,7 +274,7 @@ export class CourseSectionWatchProgressService {
 
     const sections = await this.sectionRepository.find({
       where: { id: In(orderedIds) },
-      select: ['id', 'moduleId', 'watchtime'],
+      select: ['id', 'moduleId', 'watchtime', 'durationTime'],
     });
     const moduleIds = [...new Set(sections.map((s) => s.moduleId))];
     const modules =
@@ -267,10 +286,13 @@ export class CourseSectionWatchProgressService {
         : [];
     const moduleCourse = new Map(modules.map((m) => [m.id, m.courseId]));
 
-    const resolvedDurationBySection = new Map<string, number>();
+    const resolvedTimingBySection = new Map<string, { watchtimeSeconds: number; durationTimeSeconds: number }>();
     sections.forEach((s) => {
       if (moduleCourse.get(s.moduleId) === courseId) {
-        resolvedDurationBySection.set(s.id, parseWatchtimeToSeconds(s.watchtime));
+        resolvedTimingBySection.set(s.id, {
+          watchtimeSeconds: parseWatchtimeToSeconds(s.watchtime),
+          durationTimeSeconds: parseWatchtimeToSeconds(s.durationTime),
+        });
       }
     });
 
@@ -285,8 +307,18 @@ export class CourseSectionWatchProgressService {
       const prevRow = prevId ? progressBySection.get(prevId) : undefined;
       const isLocked = idx > 0 && !prevRow?.isCompleted;
       const existing = progressBySection.get(sectionId);
-      const resolved = resolvedDurationBySection.get(sectionId) ?? 0;
-      result[sectionId] = this.formatSectionProgressResponse(courseId, sectionId, existing, resolved, isLocked);
+      const resolved = resolvedTimingBySection.get(sectionId) ?? {
+        watchtimeSeconds: 0,
+        durationTimeSeconds: 0,
+      };
+      result[sectionId] = this.formatSectionProgressResponse(
+        courseId,
+        sectionId,
+        existing,
+        resolved.watchtimeSeconds,
+        resolved.durationTimeSeconds,
+        isLocked,
+      );
     });
     return result;
   }
@@ -315,9 +347,16 @@ export class CourseSectionWatchProgressService {
     const existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
-    const resolvedDuration = await this.resolveSectionDurationSeconds(courseId, sectionId);
+    const resolvedTiming = await this.resolveSectionTiming(courseId, sectionId);
     const isLocked = await this.resolveSectionLockedState(userId, courseId, sectionId);
-    return this.formatSectionProgressResponse(courseId, sectionId, existing ?? undefined, resolvedDuration, isLocked);
+    return this.formatSectionProgressResponse(
+      courseId,
+      sectionId,
+      existing ?? undefined,
+      resolvedTiming.watchtimeSeconds,
+      resolvedTiming.durationTimeSeconds,
+      isLocked,
+    );
   }
 
   async upsertSectionProgress(
@@ -332,10 +371,22 @@ export class CourseSectionWatchProgressService {
     const existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
-    const resolvedDuration = await this.resolveSectionDurationSeconds(courseId, sectionId);
+    const resolvedTiming = await this.resolveSectionTiming(courseId, sectionId);
     const incomingDuration = typeof dto.durationSeconds === 'number' ? dto.durationSeconds : 0;
-    const observedDuration = Math.max(existing?.durationSeconds ?? 0, incomingDuration);
-    const duration = this.resolveEffectiveDuration(resolvedDuration, observedDuration);
+    const observedDuration = Math.max(
+      existing?.durationSeconds ?? 0,
+      existing?.videoDurationSeconds ?? 0,
+      incomingDuration,
+    );
+    const duration = this.resolveDisplayDurationSeconds(
+      resolvedTiming.durationTimeSeconds,
+      observedDuration,
+      existing?.videoDurationSeconds ?? 0,
+    );
+    const requiredForCompletion = this.resolveCompletionRequiredSeconds(
+      resolvedTiming.watchtimeSeconds,
+      duration,
+    );
     const lastPos = typeof dto.lastPositionSeconds === 'number' ? dto.lastPositionSeconds : existing?.lastPositionSeconds ?? 0;
 
     const dtoHasRanges = Array.isArray(dto.watchedCoverageRanges);
@@ -356,7 +407,9 @@ export class CourseSectionWatchProgressService {
       }
       const incoming = clipCoverageRangesToDuration(parseCoverageRangePairs(dto.watchedCoverageRanges), duration);
       mergedRanges = clipCoverageRangesToDuration(mergeCoverageRanges([...mergedRanges, ...incoming]), duration);
-      watchedWithDelta = coverageMeasureSeconds(mergedRanges, duration);
+      const covered = coverageMeasureSeconds(mergedRanges, duration);
+      // Product behavior: progress should not fall behind explicit lastPosition (e.g. seek/save near end).
+      watchedWithDelta = Math.max(covered, lastPos);
       nextCoverageColumn = mergedRanges.length ? mergedRanges : null;
     } else {
       const baseWatched = existing?.watchedSeconds ?? 0;
@@ -368,15 +421,12 @@ export class CourseSectionWatchProgressService {
     const now = new Date();
     const explicitCompletion = dto.markCompleted === true;
     const stickyCompleted = Boolean(existing?.isCompleted);
-    const isCompleted = stickyCompleted || explicitCompletion || computed.isCompleted;
+    const reachedRequired = requiredForCompletion > 0 && computed.watched >= requiredForCompletion;
+    const isCompleted = stickyCompleted || explicitCompletion || reachedRequired;
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
-    const finalDuration = isCompleted
-      ? Math.max(computed.duration, computed.lastPosition, computed.watched, 1)
-      : computed.duration;
-    const finalWatched = isCompleted
-      ? Math.max(computed.watched, finalDuration)
-      : computed.watched;
-    const finalRemaining = isCompleted ? 0 : Math.max(0, finalDuration - finalWatched);
+    const finalDuration = Math.max(computed.duration, 0);
+    const finalWatched = Math.max(0, computed.watched);
+    const finalRemaining = Math.max(0, finalDuration - finalWatched);
     const finalPercent = finalDuration > 0
       ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
       : 0;
@@ -392,6 +442,12 @@ export class CourseSectionWatchProgressService {
         watchedSeconds: finalWatched,
         watchedCoverageRanges: dtoHasRanges ? nextCoverageColumn : (existing?.watchedCoverageRanges ?? null),
         durationSeconds: finalDuration,
+        videoDurationSeconds: Math.max(
+          existing?.videoDurationSeconds ?? 0,
+          incomingDuration,
+          resolvedTiming.durationTimeSeconds,
+          finalDuration,
+        ),
         remainingSeconds: finalRemaining,
         completionPercent: finalPercent,
         isCompleted,

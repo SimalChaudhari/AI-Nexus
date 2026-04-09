@@ -33,9 +33,11 @@ import { CourseQuestionBankService } from './course-question-bank.service';
 import { CourseQuestionBankInitService } from './course-question-bank-init.service';
 import { CourseQuestionBankAttemptEntity } from './course-question-bank-attempt.entity';
 import { CourseQuestionBankAttemptInitService } from './course-question-bank-attempt-init.service';
+import { SpeakerModule } from '../speaker/speaker.module';
 
 @Module({
     imports: [
+        SpeakerModule,
         TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,

@@ -120,6 +120,7 @@ export class CourseModuleSectionService {
       description: dto.description,
       content: dto.content,
       watchtime: normalizeWatchtime(dto.watchtime),
+      durationTime: normalizeWatchtime(dto.durationTime),
       images: dto.images,
       attachments: dto.attachments,
       sortOrder,
@@ -144,6 +145,9 @@ export class CourseModuleSectionService {
     // When watchtime is missing, null, or empty string, store null so progress uses video length
     if (dto.watchtime !== undefined) {
       section.watchtime = normalizeWatchtime(dto.watchtime);
+    }
+    if (dto.durationTime !== undefined) {
+      section.durationTime = normalizeWatchtime(dto.durationTime);
     }
     if (dto.images !== undefined) section.images = dto.images;
     if (dto.attachments !== undefined) section.attachments = dto.attachments;

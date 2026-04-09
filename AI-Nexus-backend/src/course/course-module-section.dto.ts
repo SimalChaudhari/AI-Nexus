@@ -34,6 +34,11 @@ export class CreateCourseModuleSectionDto {
   watchtime?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  durationTime?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   @MaxLength(2000, { each: true })
@@ -75,6 +80,11 @@ export class UpdateCourseModuleSectionDto {
   @IsString()
   @MaxLength(50)
   watchtime?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  durationTime?: string;
 
   @IsOptional()
   @IsArray()

@@ -18,6 +18,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { InfinitePagination } from 'src/components/infinite-pagination';
+import { ConfirmDialog } from 'src/components/custom-dialog';
 import { AiForumItem } from '../ai-forum-item';
 import { aiForumService } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
@@ -87,6 +88,11 @@ export function AiForumView() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [selectedOwnPostIds, setSelectedOwnPostIds] = useState([]);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [deletingOnePostId, setDeletingOnePostId] = useState(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [pendingDeletePost, setPendingDeletePost] = useState(null);
   const latestRequestRef = useRef(0);
 
   useEffect(() => {
@@ -363,6 +369,73 @@ export function AiForumView() {
 
   const showInitialLoader = loading && posts.length === 0;
   const showRefreshingState = loading && posts.length > 0;
+  const ownVisiblePostIds = displayedAiForumPosts
+    .filter((post) => user && post.userId === user.id)
+    .map((post) => post.id);
+  const selectedCount = selectedOwnPostIds.length;
+
+  const toggleOwnPostSelection = useCallback((postId) => {
+    setSelectedOwnPostIds((prev) =>
+      prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
+    );
+  }, []);
+
+  const handleSelectAllOwnVisible = useCallback(() => {
+    setSelectedOwnPostIds((prev) => {
+      const allSelected =
+        ownVisiblePostIds.length > 0 &&
+        ownVisiblePostIds.every((id) => prev.includes(id));
+      if (allSelected) {
+        return prev.filter((id) => !ownVisiblePostIds.includes(id));
+      }
+      const merged = new Set([...prev, ...ownVisiblePostIds]);
+      return [...merged];
+    });
+  }, [ownVisiblePostIds]);
+
+  const handleBulkDeleteOwnPosts = useCallback(async () => {
+    if (selectedOwnPostIds.length === 0) return;
+    try {
+      setDeletingSelected(true);
+      const res = await aiForumService.bulkDeleteOwnPosts(selectedOwnPostIds);
+      const deletedIds = Array.isArray(res?.deletedIds) ? res.deletedIds : [];
+      if (deletedIds.length > 0) {
+        setAiForumPosts((prev) => prev.filter((post) => !deletedIds.includes(post.id)));
+        setSelectedOwnPostIds((prev) => prev.filter((id) => !deletedIds.includes(id)));
+        setPagination((prev) => ({
+          ...prev,
+          totalItems: Math.max(prev.totalItems - deletedIds.length, 0),
+        }));
+      }
+      toast.success(
+        res?.message || `Deleted ${deletedIds.length} post${deletedIds.length !== 1 ? 's' : ''}`
+      );
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to delete selected posts');
+    } finally {
+      setDeletingSelected(false);
+    }
+  }, [selectedOwnPostIds]);
+
+  const handleDeleteOwnPost = useCallback(async () => {
+    if (!pendingDeletePost?.id) return;
+    try {
+      setDeletingOnePostId(pendingDeletePost.id);
+      await aiForumService.deleteOwnPost(pendingDeletePost.id);
+      setAiForumPosts((prev) => prev.filter((item) => item.id !== pendingDeletePost.id));
+      setSelectedOwnPostIds((prev) => prev.filter((id) => id !== pendingDeletePost.id));
+      setPagination((prev) => ({
+        ...prev,
+        totalItems: Math.max(prev.totalItems - 1, 0),
+      }));
+      toast.success('Post deleted successfully');
+      setPendingDeletePost(null);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to delete post');
+    } finally {
+      setDeletingOnePostId(null);
+    }
+  }, [pendingDeletePost]);
 
   if (showInitialLoader) {
     return (
@@ -402,14 +475,15 @@ export function AiForumView() {
               </Typography>
             </Stack>
             {user && (
-              <Button
-                variant="contained"
-                startIcon={<Iconify icon="solar:add-circle-bold" width={22} />}
-                onClick={handleCreateOpen}
-                sx={{ flexShrink: 0 }}
-              >
-                Create post
-              </Button>
+              <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<Iconify icon="solar:add-circle-bold" width={22} />}
+                  onClick={handleCreateOpen}
+                >
+                  Create post
+                </Button>
+              </Stack>
             )}
           </Stack>
           <Typography
@@ -633,10 +707,71 @@ export function AiForumView() {
               ))}
             </Stack>
           </Stack>
+          {user && ownVisiblePostIds.length > 0 && (
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.25 }}>
+              <Button size="small" onClick={handleSelectAllOwnVisible}>
+                {ownVisiblePostIds.every((id) => selectedOwnPostIds.includes(id))
+                  ? 'Unselect all'
+                  : 'Select all'}
+              </Button>
+            </Stack>
+          )}
         </Card>
 
+        {selectedCount > 0 && (
+          <Card
+            sx={{
+              position: 'fixed',
+              left: { xs: 8, sm: 16 },
+              right: { xs: 8, sm: 16 },
+              bottom: { xs: 10, sm: 16 },
+              zIndex: 1200,
+              p: { xs: 1.25, sm: 1.5 },
+              border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
+              bgcolor: alpha(theme.palette.error.main, 0.1),
+              backdropFilter: 'blur(8px)',
+              boxShadow: theme.customShadows.z8,
+              overflowX: 'hidden',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              justifyContent="space-between"
+              sx={{ minWidth: 0 }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {selectedCount} selected
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => setSelectedOwnPostIds([])}
+                  disabled={deletingSelected}
+                  sx={{ flex: { xs: 1, sm: 'none' } }}
+                >
+                  Clear
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="error"
+                  startIcon={<Iconify icon="solar:trash-bin-trash-bold" width={18} />}
+                  onClick={() => setBulkDeleteConfirmOpen(true)}
+                  disabled={deletingSelected || deletingOnePostId !== null}
+                  sx={{ flex: { xs: 1, sm: 'none' } }}
+                >
+                  {deletingSelected ? 'Deleting...' : 'Delete'}
+                </Button>
+              </Stack>
+            </Stack>
+          </Card>
+        )}
+
         {/* Posts list */}
-        <Card>
+        <Card sx={{ overflowX: 'hidden' }}>
           {/* Header Row */}
           <Box
             sx={{
@@ -700,12 +835,19 @@ export function AiForumView() {
           ) : (
             <>
               {displayedAiForumPosts.map((post) => (
-                <AiForumItem
-                key={post.id}
-                post={post}
-                onPinToggle={handlePinToggle}
-                onEdit={handleEditClick}
-              />
+                <Box key={post.id} sx={{ display: 'flex', alignItems: 'stretch', minWidth: 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <AiForumItem
+                      post={post}
+                      onPinToggle={handlePinToggle}
+                      onEdit={handleEditClick}
+                      onDelete={deletingOnePostId === post.id ? null : setPendingDeletePost}
+                      selectable={Boolean(user && post.userId === user.id)}
+                      selected={selectedOwnPostIds.includes(post.id)}
+                      onToggleSelect={() => toggleOwnPostSelection(post.id)}
+                    />
+                  </Box>
+                </Box>
               ))}
             </>
           )}
@@ -719,6 +861,48 @@ export function AiForumView() {
           totalCount={pagination.totalItems}
           itemLabel="posts"
           disabled={loading}
+        />
+        {selectedCount > 0 && <Box sx={{ height: { xs: 78, sm: 86 } }} />}
+
+        <ConfirmDialog
+          open={bulkDeleteConfirmOpen}
+          onClose={() => {
+            if (!deletingSelected) setBulkDeleteConfirmOpen(false);
+          }}
+          title="Delete selected posts"
+          content={`Delete ${selectedCount} selected post${selectedCount !== 1 ? 's' : ''}? This cannot be undone.`}
+          action={
+            <Button
+              variant="contained"
+              color="error"
+              onClick={async () => {
+                await handleBulkDeleteOwnPosts();
+                setBulkDeleteConfirmOpen(false);
+              }}
+              disabled={deletingSelected || selectedCount === 0}
+            >
+              Delete
+            </Button>
+          }
+        />
+
+        <ConfirmDialog
+          open={Boolean(pendingDeletePost)}
+          onClose={() => {
+            if (!deletingOnePostId) setPendingDeletePost(null);
+          }}
+          title="Delete post"
+          content="Are you sure you want to delete this post? This cannot be undone."
+          action={
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleDeleteOwnPost}
+              disabled={Boolean(deletingOnePostId)}
+            >
+              Delete
+            </Button>
+          }
         />
       </Box>
     </DashboardContent>

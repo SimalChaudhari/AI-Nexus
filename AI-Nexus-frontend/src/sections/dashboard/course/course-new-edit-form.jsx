@@ -1,5 +1,5 @@
 import { z as zod } from 'zod';
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
@@ -98,12 +98,18 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [imageDeleted, setImageDeleted] = useState(false);
   const [speakers, setSpeakers] = useState([]);
+  const [speakersLoading, setSpeakersLoading] = useState(false);
+  const speakersFetchDoneRef = useRef(false);
   const [groups, setGroups] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const groupsFetchDoneRef = useRef(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [creatingGroup, setCreatingGroup] = useState(false);
   /** Pending modules/sections when creating a course (before save); sent with create payload */
   const [pendingModules, setPendingModules] = useState([]);
   const [coursesCatalog, setCoursesCatalog] = useState([]);
+  const [coursesCatalogLoading, setCoursesCatalogLoading] = useState(false);
+  const coursesCatalogFetchRef = useRef(false);
 
   const market = useMemo(
     () => parseMarketData(currentCourse?.marketData),
@@ -128,34 +134,71 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
     [currentCourse, market]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([speakerService.getAll(), courseService.getCourseGroups()])
-      .then(([speakerList, groupList]) => {
-        if (!cancelled) {
-          setSpeakers(speakerList || []);
-          setGroups(groupList || []);
-        }
+  const ensureSpeakersLoaded = useCallback(() => {
+    if (speakersFetchDoneRef.current) return;
+    speakersFetchDoneRef.current = true;
+    setSpeakersLoading(true);
+    speakerService
+      .getAll()
+      .then((list) => {
+        setSpeakers(list || []);
       })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => {
+        speakersFetchDoneRef.current = false;
+      })
+      .finally(() => {
+        setSpeakersLoading(false);
+      });
   }, []);
 
+  const ensureGroupsLoaded = useCallback(() => {
+    if (groupsFetchDoneRef.current) return;
+    groupsFetchDoneRef.current = true;
+    setGroupsLoading(true);
+    courseService
+      .getCourseGroups()
+      .then((groupList) => {
+        setGroups(groupList || []);
+      })
+      .catch(() => {
+        groupsFetchDoneRef.current = false;
+      })
+      .finally(() => {
+        setGroupsLoading(false);
+      });
+  }, []);
+
+  // Edit mode: load speakers if already assigned so chip labels show names without opening the dropdown
   useEffect(() => {
-    let cancelled = false;
+    const ids = currentCourse?.speakerIds;
+    if (Array.isArray(ids) && ids.length > 0) {
+      ensureSpeakersLoaded();
+    }
+  }, [currentCourse?.id, currentCourse?.speakerIds, ensureSpeakersLoaded]);
+
+  // Edit mode: load groups so saved level matches options without opening the dropdown
+  useEffect(() => {
+    if (currentCourse?.id && String(currentCourse?.level || '').trim()) {
+      ensureGroupsLoaded();
+    }
+  }, [currentCourse?.id, currentCourse?.level, ensureGroupsLoaded]);
+
+  const ensureCoursesCatalogLoaded = useCallback(() => {
+    if (coursesCatalogFetchRef.current) return;
+    coursesCatalogFetchRef.current = true;
+    setCoursesCatalogLoading(true);
     courseService
       .getAllCourses({ page: 1, limit: 500 })
       .then((res) => {
-        if (cancelled) return;
         const list = Array.isArray(res) ? res : res?.data || [];
         setCoursesCatalog(list);
       })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => {
+        coursesCatalogFetchRef.current = false;
+      })
+      .finally(() => {
+        setCoursesCatalogLoading(false);
+      });
   }, []);
 
   // Initialize preview image from currentCourse
@@ -217,6 +260,12 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       setValue('bundleCourseIds', [], { shouldValidate: true });
     }
   }, [isBundle, setValue]);
+
+  useEffect(() => {
+    if (isBundle) {
+      ensureCoursesCatalogLoaded();
+    }
+  }, [isBundle, ensureCoursesCatalogLoaded]);
 
   // Reset form and preview when currentCourse changes
   useEffect(() => {
@@ -358,6 +407,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
             description: sec.description || undefined,
             content: sec.content || undefined,
             watchtime: sec.watchtime || undefined,
+            durationTime: sec.durationTime || undefined,
             images: Array.isArray(sec.images) ? sec.images : undefined,
             sortOrder: sec.sortOrder,
           })),
@@ -434,10 +484,12 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                   <Field.Autocomplete
                     name="level"
                     label="Group / Level"
+                    loading={groupsLoading}
                     options={(groups || []).map((group) => group.name)}
                     getOptionLabel={(option) => option || ''}
                     isOptionEqualToValue={(option, value) => option === value}
                     placeholder="Search group..."
+                    onOpen={() => ensureGroupsLoaded()}
                   />
                 </Grid>
 
@@ -551,6 +603,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                               label="Select courses"
                               multiple
                               disableCloseOnSelect
+                              loading={coursesCatalogLoading}
                               options={coursesCatalog
                                 .filter((c) => c.id && c.id !== currentCourse?.id)
                                 .map((c) => c.id)}
@@ -560,6 +613,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                               isOptionEqualToValue={(option, value) => option === value}
                               filterSelectedOptions
                               placeholder="Search and add courses…"
+                              onOpen={() => ensureCoursesCatalogLoaded()}
                             />
                             <Alert severity="info" variant="outlined" sx={{ mt: 2, py: 0.75 }} icon={<Iconify icon="solar:info-circle-bold" width={20} />}>
                               Order follows your selection. Save the course to apply changes on the learning site.
@@ -628,6 +682,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     label="Speakers"
                     multiple
                     disableCloseOnSelect
+                    loading={speakersLoading}
                     options={(speakers || []).map((s) => s.id)}
                     getOptionLabel={(option) =>
                       speakers.find((s) => s.id === option)?.name || option
@@ -635,6 +690,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     isOptionEqualToValue={(option, value) => option === value}
                     filterSelectedOptions
                     placeholder="Search speakers..."
+                    onOpen={() => ensureSpeakersLoaded()}
                   />
                 </Grid>
 

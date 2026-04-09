@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SpeakerEntity } from './speaker.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CreateSpeakerDto, UpdateSpeakerDto } from './speaker.dto';
 
 @Injectable()
@@ -14,6 +14,15 @@ export class SpeakerService {
   async getAll(): Promise<SpeakerEntity[]> {
     return this.speakerRepository.find({
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  /** For embedding on course payloads; preserves no duplicates, caller orders by course.speakerIds. */
+  async findByIds(ids: string[]): Promise<SpeakerEntity[]> {
+    const unique = [...new Set(ids.map((x) => String(x || '').trim()).filter(Boolean))];
+    if (unique.length === 0) return [];
+    return this.speakerRepository.find({
+      where: { id: In(unique) },
     });
   }
 

@@ -1,7 +1,7 @@
 import { useMemo, Suspense, useEffect, useCallback, createContext, useState, useRef } from 'react';
 
 import { paths } from 'src/routes/paths';
-import { useRouter, useSearchParams } from 'src/routes/hooks';
+import { useRouter, useSearchParams, usePathname } from 'src/routes/hooks';
 
 import { PRODUCT_CHECKOUT_STEPS } from 'src/_mock/_product';
 
@@ -89,6 +89,14 @@ const initialState = {
   totalItems: 0,
 };
 
+/** Same idea as header `isCustomerFacingRoute`: cart badge/API only matter outside admin + legacy dashboard. */
+function shouldSyncRemoteCart(pathname) {
+  if (!pathname || typeof pathname !== 'string') return true;
+  if (pathname.startsWith('/admin')) return false;
+  if (pathname.startsWith('/dashboard')) return false;
+  return true;
+}
+
 // ----------------------------------------------------------------------
 
 export function CheckoutProvider({ children }) {
@@ -103,12 +111,17 @@ export function CheckoutProvider({ children }) {
 
 function Container({ children }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { authenticated } = useAuthContext();
   const activeStep = Number(searchParams.get('step'));
 
   const [state, setState] = useState(initialState);
   const prevAuthenticatedRef = useRef(authenticated);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+  /** Previous pathname (for cart sync). Used to avoid GET /cart on every in-app navigation between learning/catalog pages. */
+  const prevPathForCartRef = useRef(null);
 
   const setField = useCallback((name, value) => {
     setState((prev) => ({ ...prev, [name]: value }));
@@ -158,6 +171,7 @@ function Container({ children }) {
 
   const loadCartFromApi = useCallback(() => {
     if (!authenticated) return;
+    if (!shouldSyncRemoteCart(pathnameRef.current)) return;
     getCart()
       .then((data) => {
         const items = Array.isArray(data?.items) ? data.items : [];
@@ -176,9 +190,28 @@ function Container({ children }) {
       .catch(() => {});
   }, [authenticated]);
 
-  // Load cart when authenticated (initial load)
+  // Load cart from API only when entering the customer-facing shell (first load, from admin, after login),
+  // not on every route change (e.g. course list → course detail). Mutations use POST/DELETE responses to update state.
   useEffect(() => {
-    if (!authenticated) return () => {};
+    if (!authenticated) {
+      prevPathForCartRef.current = null;
+      return () => {};
+    }
+
+    const prevPath = prevPathForCartRef.current;
+    const nowSync = shouldSyncRemoteCart(pathname);
+    const prevSync = prevPath != null && shouldSyncRemoteCart(prevPath);
+
+    prevPathForCartRef.current = pathname;
+
+    if (!nowSync) {
+      return () => {};
+    }
+
+    if (prevSync) {
+      return () => {};
+    }
+
     let cancelled = false;
     getCart()
       .then((data) => {
@@ -197,13 +230,16 @@ function Container({ children }) {
         });
       })
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, [authenticated]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, pathname]);
 
   // Re-fetch cart when user returns to the page (e.g. browser back from WooshPay) so cart shows without refresh
   useEffect(() => {
     const onPageShow = (event) => {
       if (!authenticated) return;
+      if (!shouldSyncRemoteCart(pathnameRef.current)) return;
       if (event.persisted) loadCartFromApi();
     };
     window.addEventListener('pageshow', onPageShow);

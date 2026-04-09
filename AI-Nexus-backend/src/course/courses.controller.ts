@@ -58,6 +58,21 @@ import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/paginated-list.util';
 import { randomUUID } from 'crypto';
+import { SpeakerService } from '../speaker/speaker.service';
+import { SpeakerEntity } from '../speaker/speaker.entity';
+
+async function orderedSpeakersForCourse(
+    speakerService: SpeakerService,
+    speakerIds: unknown,
+): Promise<SpeakerEntity[]> {
+    const ids = Array.isArray(speakerIds)
+        ? speakerIds.filter((x): x is string => typeof x === 'string' && String(x).trim().length > 0)
+        : [];
+    if (ids.length === 0) return [];
+    const rows = await speakerService.findByIds(ids);
+    const map = new Map(rows.map((s) => [s.id, s]));
+    return ids.map((id) => map.get(id)).filter((s): s is SpeakerEntity => Boolean(s));
+}
 
 // Helper to normalize absolute URLs to "/uploads/..." paths for LocalStorageService
 function toUploadsPath(url?: string | null): string | null {
@@ -96,6 +111,7 @@ export class CourseController {
         private readonly courseSectionFavoriteService: CourseSectionFavoriteService,
         private readonly courseEnrollmentService: CourseEnrollmentService,
         private readonly courseQuestionBankService: CourseQuestionBankService,
+        private readonly speakerService: SpeakerService,
     ) {}
 
     @Get()
@@ -328,8 +344,9 @@ export class CourseController {
         const userId = (request as any).user?.id;
         const userRole = (request as any).user?.role;
 
-        // Base course info (includes sectionProgressBySectionId map for trackable content)
-        const course = await this.courseService.getById(courseId);
+        const courseRow = await this.courseService.getById(courseId);
+        const speakers = await orderedSpeakersForCourse(this.speakerService, courseRow.speakerIds);
+        const course = { ...courseRow, speakers };
 
         // Enrollment status (only meaningful for authenticated users)
         let enrolled = false;
@@ -368,7 +385,6 @@ export class CourseController {
                 course,
                 enrolled,
                 modules: modulesWithSections,
-                sectionProgressBySectionId,
             },
             meta: unlockInfo,
         });
@@ -714,7 +730,9 @@ export class CourseController {
     @UseGuards(OptionalJwtAuthGuard)
     @ApiOperation({ summary: 'Get course details by id' })
     async getCourseById(@Param('id') id: string, @Req() request: Request, @Res() response: Response) {
-        const course = await this.courseService.getById(id);
+        const courseRow = await this.courseService.getById(id);
+        const speakers = await orderedSpeakersForCourse(this.speakerService, courseRow.speakerIds);
+        const course = { ...courseRow, speakers };
         const userId = (request as any).user?.id;
         
         // If user is authenticated, include favorite status
@@ -986,7 +1004,7 @@ export class CourseController {
 
         // If modules (and optional sections) were sent, create them after the course.
         // FormData sends modules as a JSON string; read from body in case DTO doesn't have it.
-        let modulesPayload: Array<{ title: string; description?: string; sortOrder?: number; sections?: Array<{ title: string; videoUrl?: string; description?: string; content?: string; watchtime?: string; images?: string[]; attachments?: string[]; sortOrder?: number }> }> = [];
+        let modulesPayload: Array<{ title: string; description?: string; sortOrder?: number; sections?: Array<{ title: string; videoUrl?: string; description?: string; content?: string; watchtime?: string; durationTime?: string; images?: string[]; attachments?: string[]; sortOrder?: number }> }> = [];
         const raw = createCourseDto.modules ?? (req.body && (req.body as any).modules);
         if (typeof raw === 'string' && raw.trim()) {
             try {
@@ -1016,6 +1034,7 @@ export class CourseController {
                                     description: sec?.description,
                                     content: sec?.content,
                                     watchtime: sec?.watchtime,
+                                    durationTime: sec?.durationTime,
                                     images: sec?.images,
                                     attachments: sec?.attachments,
                                     sortOrder: sec?.sortOrder,

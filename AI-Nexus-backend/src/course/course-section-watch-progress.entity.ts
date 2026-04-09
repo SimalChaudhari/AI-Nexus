@@ -53,6 +53,9 @@ export class CourseSectionWatchProgressEntity {
   durationSeconds!: number;
 
   @Column({ type: 'int', default: 0 })
+  videoDurationSeconds!: number;
+
+  @Column({ type: 'int', default: 0 })
   remainingSeconds!: number;
 
   @Column({ type: 'numeric', precision: 5, scale: 2, default: 0 })

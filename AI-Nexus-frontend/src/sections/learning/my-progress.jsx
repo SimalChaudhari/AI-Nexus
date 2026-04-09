@@ -103,10 +103,7 @@ export function MyProgress({ onNavigateToCertificates }) {
             try {
               const ctx = await courseService.getCoursePlayerContext(course.id);
               const modules = Array.isArray(ctx?.modules) ? ctx.modules : [];
-              const progressMap =
-                ctx?.sectionProgressBySectionId && typeof ctx.sectionProgressBySectionId === 'object'
-                  ? ctx.sectionProgressBySectionId
-                  : {};
+              const progressMap = courseService.sectionProgressMapFromModules(modules);
               const progressRows = Object.values(progressMap).filter(Boolean);
               const viewedSectionIds = progressRows
                 .filter((row) => row?.isViewed === true)

@@ -546,7 +546,13 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     else if (Array.isArray(section.images) && section.images.length > 0) setSectionMediaType('images');
     else if (Array.isArray(section.attachments) && section.attachments.length > 0) setSectionMediaType('files');
     else setSectionMediaType('content');
-    setCustomWatchtimeEnabled(false);
+    // If a watchtime is already stored, keep "Customize" on so auto-duration detection does not
+    // overwrite the loaded minutes/seconds (useEffect sync only runs when Customize is off).
+    if (section.videoUrl && String(section.watchtime || '').trim()) {
+      setCustomWatchtimeEnabled(true);
+    } else {
+      setCustomWatchtimeEnabled(false);
+    }
     setSectionDialogOpen(true);
   };
 
@@ -762,6 +768,19 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
           );
         }
         payload.watchtime = wt || null;
+        let durationTimeValue = null;
+        if (detectedVideoDurationSeconds != null) {
+          const dn = normalizeWatchtime(formatDurationLabel(detectedVideoDurationSeconds));
+          durationTimeValue = dn || null;
+        } else if (
+          editingSection &&
+          !(sectionVideoFile instanceof File) &&
+          (sectionVideoUrl || '').trim() === (editingSection.videoUrl || '').trim() &&
+          editingSection.durationTime
+        ) {
+          durationTimeValue = editingSection.durationTime;
+        }
+        payload.durationTime = durationTimeValue;
       }
       if (sectionMediaType === 'images') {
         const existingUrls = sectionImages.filter((item) => typeof item === 'string');
@@ -1053,9 +1072,12 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                                 primary={`${secIndex + 1}. ${sec.title}`}
                                 secondary={
                                   sec.videoUrl
-                                    ? sec.watchtime
-                                      ? `Video section • ${sec.watchtime}`
-                                      : 'Video section'
+                                    ? [
+                                        'Video section',
+                                        sec.durationTime && `duration ${sec.durationTime}`,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(' • ')
                                     : Array.isArray(sec.images) && sec.images.length > 0
                                       ? `Image section • ${sec.images.length} image(s)`
                                       : Array.isArray(sec.attachments) && sec.attachments.length > 0
@@ -1418,6 +1440,11 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                       ? 'Custom watchtime. Next lesson stays locked until this watchtime is completed.'
                       : 'Auto mode uses detected video duration. Turn on Customize to override manually.'}
                   </Typography>
+                  {editingSection?.durationTime && detectedVideoDurationSeconds == null && !detectingVideoDuration && (
+                    <Typography variant="caption" sx={{ mt: 0.75, display: 'block', color: 'text.secondary' }}>
+                      Saved video duration: {editingSection.durationTime}
+                    </Typography>
+                  )}
                 </Box>
               </>
             )}

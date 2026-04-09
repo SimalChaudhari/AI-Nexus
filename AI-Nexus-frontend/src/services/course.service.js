@@ -13,6 +13,16 @@ const isUuid = (value) =>
 const normalizeId = (entity) => entity?.id || entity?._id || '';
 
 // Transform backend course data to frontend format
+const transformSpeakers = (speakers) => {
+  if (!Array.isArray(speakers)) return [];
+  return speakers.map((s) => ({
+    id: s.id,
+    name: s.name || '',
+    profileimage: resolveAssetUrl(s.profileimage || ''),
+    about: s.about || '',
+  }));
+};
+
 const transformCourse = (course) => {
   const raw = course._id || course.id;
   const amount = course.amount != null ? Number(course.amount) : 0;
@@ -26,6 +36,8 @@ const transformCourse = (course) => {
     level: course.level || 'Beginner',
     languageIds: Array.isArray(course.languageIds) ? course.languageIds : [],
     speakerIds: Array.isArray(course.speakerIds) ? course.speakerIds : [],
+    /** Populated on GET /courses/:id and player-context — avoids separate GET /speakers */
+    speakers: transformSpeakers(course.speakers),
     marketData: course.marketData || '',
     isBundle: course.isBundle ?? false,
     bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
@@ -35,10 +47,6 @@ const transformCourse = (course) => {
     accessViaBundle: course.accessViaBundle ?? false,
     createdAt: course.createdAt || new Date(),
     updatedAt: course.updatedAt || new Date(),
-    sectionProgressBySectionId:
-      course.sectionProgressBySectionId && typeof course.sectionProgressBySectionId === 'object'
-        ? course.sectionProgressBySectionId
-        : undefined,
   };
 };
 
@@ -91,6 +99,22 @@ export const courseService = {
     }
   },
 
+  /**
+   * Build sectionId -> progress map from player-context modules (same data as nested sectionProgress).
+   */
+  sectionProgressMapFromModules(modules) {
+    const map = {};
+    (Array.isArray(modules) ? modules : []).forEach((mod) => {
+      (mod.sections || []).forEach((sec) => {
+        const sp = sec.sectionProgress;
+        if (sec.id && sp && typeof sp === 'object') {
+          map[sec.id] = sp;
+        }
+      });
+    });
+    return map;
+  },
+
   // Player context: full payload for learning player (course, enrollment, modules with sections & progress)
   async getCoursePlayerContext(courseId) {
     try {
@@ -99,10 +123,6 @@ export const courseService = {
       const baseCourse = payload.course ? transformCourse(payload.course) : null;
       const enrolled = Boolean(payload.enrolled);
       const rawModules = Array.isArray(payload.modules) ? payload.modules : [];
-      const sectionProgressBySectionId =
-        payload.sectionProgressBySectionId && typeof payload.sectionProgressBySectionId === 'object'
-          ? payload.sectionProgressBySectionId
-          : undefined;
 
       const modules = rawModules.map((m) => ({
         id: normalizeId(m),
@@ -119,6 +139,7 @@ export const courseService = {
           description: s.description || '',
           content: s.content || '',
           watchtime: s.watchtime || '',
+          durationTime: s.durationTime || '',
           images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
           attachments: Array.isArray(s.attachments)
             ? s.attachments.map((url) => resolveAssetUrl(url))
@@ -132,7 +153,6 @@ export const courseService = {
         course: baseCourse,
         enrolled,
         modules,
-        sectionProgressBySectionId,
       };
     } catch (error) {
       console.error('Error fetching course player context:', error);
@@ -204,7 +224,7 @@ export const courseService = {
   /**
    * Create modules and sections for a course via API (used when single-request payload may not have been applied).
    * @param {string} courseId
-   * @param {Array<{ title: string, description?: string, sortOrder?: number, sections?: Array<{ title: string, videoUrl?: string, description?: string, content?: string, watchtime?: string, images?: string[], attachments?: string[], sortOrder?: number }> }>} modules
+   * @param {Array<{ title: string, description?: string, sortOrder?: number, sections?: Array<{ title: string, videoUrl?: string, description?: string, content?: string, watchtime?: string, durationTime?: string, images?: string[], attachments?: string[], sortOrder?: number }> }>} modules
    */
   async createModulesAndSectionsForCourse(courseId, modules) {
     if (!courseId || !Array.isArray(modules) || modules.length === 0) return;
@@ -227,6 +247,7 @@ export const courseService = {
                     description: sec.description,
                     content: sec.content,
                     watchtime: sec.watchtime,
+                    durationTime: sec.durationTime,
                     images: sec.images,
                     attachments: sec.attachments,
                     sortOrder: sec.sortOrder,
@@ -406,6 +427,7 @@ export const courseService = {
           description: s.description || '',
           content: s.content || '',
           watchtime: s.watchtime || '',
+          durationTime: s.durationTime || '',
           images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
           attachments: Array.isArray(s.attachments)
             ? s.attachments.map((url) => resolveAssetUrl(url))
@@ -477,6 +499,7 @@ export const courseService = {
         description: s.description || '',
         content: s.content || '',
         watchtime: s.watchtime || '',
+        durationTime: s.durationTime || '',
         images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
         attachments: Array.isArray(s.attachments)
           ? s.attachments.map((url) => resolveAssetUrl(url))
@@ -544,6 +567,7 @@ export const courseService = {
         description: data.description || undefined,
         content: data.content || undefined,
         watchtime: data.watchtime !== undefined ? data.watchtime : undefined,
+        durationTime: data.durationTime !== undefined ? data.durationTime : undefined,
         images: Array.isArray(data.images) && data.images.length > 0 ? data.images : undefined,
         attachments:
           Array.isArray(data.attachments) && data.attachments.length > 0
@@ -561,6 +585,7 @@ export const courseService = {
         description: s.description || '',
         content: s.content || '',
         watchtime: s.watchtime || '',
+        durationTime: s.durationTime || '',
         images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
         attachments: Array.isArray(s.attachments)
           ? s.attachments.map((url) => resolveAssetUrl(url))
@@ -580,6 +605,7 @@ export const courseService = {
         description: data.description !== undefined ? data.description : undefined,
         content: data.content !== undefined ? data.content : undefined,
         watchtime: data.watchtime !== undefined ? data.watchtime : null,
+        durationTime: data.durationTime !== undefined ? data.durationTime : null,
         images: data.images !== undefined ? data.images : undefined,
         attachments: data.attachments !== undefined ? data.attachments : undefined,
         sortOrder: data.sortOrder,
@@ -594,6 +620,7 @@ export const courseService = {
         description: s.description || '',
         content: s.content || '',
         watchtime: s.watchtime || '',
+        durationTime: s.durationTime || '',
         images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
         attachments: Array.isArray(s.attachments)
           ? s.attachments.map((url) => resolveAssetUrl(url))

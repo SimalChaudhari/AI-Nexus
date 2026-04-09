@@ -125,6 +125,26 @@ export const aiForumService = {
     }
   },
 
+  async deleteOwnPost(id) {
+    try {
+      const response = await axios.delete(`/posts/mine/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting own post:', error);
+      throw error;
+    }
+  },
+
+  async bulkDeleteOwnPosts(ids) {
+    try {
+      const response = await axios.post('/posts/mine/bulk-delete', { ids });
+      return response.data;
+    } catch (error) {
+      console.error('Error bulk deleting own posts:', error);
+      throw error;
+    }
+  },
+
   async addComment(postId, commentData) {
     try {
       const response = await axios.post(`/posts/${postId}/comments`, commentData);

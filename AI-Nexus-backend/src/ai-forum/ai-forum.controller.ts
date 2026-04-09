@@ -15,7 +15,13 @@ import {
 import { UserRole } from '../user/users.entity';
 import { Response, Request } from 'express';
 import { AiForumService } from './ai-forum.service';
-import { CreateAiForumPostDto, UpdateAiForumPostDto, CreateAiForumCommentDto, UpdateAiForumCommentDto } from './ai-forum.dto';
+import {
+    CreateAiForumPostDto,
+    UpdateAiForumPostDto,
+    CreateAiForumCommentDto,
+    UpdateAiForumCommentDto,
+    BulkDeleteOwnAiForumPostsDto,
+} from './ai-forum.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
@@ -119,6 +125,41 @@ export class AiForumController {
     @ApiOperation({ summary: 'Delete a post' })
     async deleteAiForumPost(@Param('id') id: string, @Res() response: Response) {
         const result = await this.postService.delete(id);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Delete('mine/:id')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Delete own post' })
+    async deleteOwnAiForumPost(
+        @Param('id') id: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = request.user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'User not authenticated' });
+        }
+        const result = await this.postService.deleteOwnPost(id, userId);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Post('mine/bulk-delete')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Bulk delete own posts' })
+    @ApiBody({ type: BulkDeleteOwnAiForumPostsDto })
+    async bulkDeleteOwnAiForumPosts(
+        @Body() dto: BulkDeleteOwnAiForumPostsDto,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = request.user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'User not authenticated' });
+        }
+        const result = await this.postService.bulkDeleteOwnPosts(userId, dto.ids || []);
         return response.status(HttpStatus.OK).json(result);
     }
 

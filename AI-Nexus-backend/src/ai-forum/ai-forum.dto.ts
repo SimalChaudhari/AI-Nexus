@@ -1,4 +1,4 @@
-import { IsOptional, IsNotEmpty, IsString } from 'class-validator';
+import { IsOptional, IsNotEmpty, IsString, IsArray, ArrayNotEmpty, IsUUID } from 'class-validator';
 
 export class CreateAiForumPostDto {
     @IsString()
@@ -36,5 +36,12 @@ export class UpdateAiForumCommentDto {
     @IsString()
     @IsNotEmpty()
     content!: string;
+}
+
+export class BulkDeleteOwnAiForumPostsDto {
+    @IsArray()
+    @ArrayNotEmpty()
+    @IsUUID('4', { each: true })
+    ids!: string[];
 }
 
