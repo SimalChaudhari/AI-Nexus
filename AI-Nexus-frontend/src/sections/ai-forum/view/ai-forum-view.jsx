@@ -799,12 +799,6 @@ export function AiForumView() {
             >
               Views
             </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{ minWidth: 70, textAlign: 'center', color: 'text.secondary' }}
-            >
-              Activity
-            </Typography>
           </Box>
 
           {showRefreshingState && (

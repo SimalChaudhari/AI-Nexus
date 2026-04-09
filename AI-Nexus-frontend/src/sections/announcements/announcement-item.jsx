@@ -161,18 +161,6 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
           )}
         </Stack>
 
-        <Typography
-          variant="caption"
-          sx={{
-            display: { xs: 'block', sm: 'none' },
-            color: 'text.secondary',
-            fontSize: '0.75rem',
-            mb: 0.5,
-          }}
-        >
-          {announcement.lastActivity}
-        </Typography>
-
         {(announcement.excerpt || announcement.content) && (
           <Box sx={{ mb: 1, display: 'block' }}>
             <Box>
@@ -214,6 +202,20 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
             </Box>
           </Box>
         )}
+
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            color: 'text.secondary',
+            fontSize: '0.75rem',
+            textAlign: 'right',
+            mt: 0.25,
+            mb: 0.5,
+          }}
+        >
+          {announcement.lastActivity}
+        </Typography>
 
         {creatorName ? (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
@@ -270,9 +272,6 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
         >
           {announcement.replies}
         </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-          Replies
-        </Typography>
       </Box>
 
       {/* Views Column */}
@@ -293,30 +292,8 @@ export function AnnouncementItem({ announcement, onPinToggle }) {
         >
           {formatViewCount(announcement.views)}
         </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-          Views
-        </Typography>
       </Box>
 
-      {/* Activity Column */}
-      <Box
-        sx={{
-          minWidth: { xs: 50, md: 70 },
-          textAlign: 'center',
-          display: { xs: 'none', sm: 'block' },
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            color: 'text.secondary',
-            fontSize: { xs: '0.75rem', md: '0.875rem' },
-            fontWeight: 500,
-          }}
-        >
-          {announcement.lastActivity}
-        </Typography>
-      </Box>
     </Box>
   );
 }

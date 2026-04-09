@@ -407,19 +407,13 @@ export function AnnouncementsView() {
               variant="subtitle2"
               sx={{ minWidth: 70, textAlign: 'center', color: 'text.secondary' }}
             >
-              Comments
+              Replies
             </Typography>
             <Typography
               variant="subtitle2"
               sx={{ minWidth: 80, textAlign: 'center', color: 'text.secondary' }}
             >
               Views
-            </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{ minWidth: 70, textAlign: 'center', color: 'text.secondary' }}
-            >
-              Activity
             </Typography>
           </Box>
 

@@ -333,6 +333,19 @@ export function AiForumItem({
           </Box>
         )}
 
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            color: 'text.secondary',
+            fontSize: '0.75rem',
+            textAlign: 'right',
+            mt: 0.25,
+          }}
+        >
+          {post.lastActivity}
+        </Typography>
+
         {/* Participants - only show if we have them */}
         {post.participants && post.participants.length > 0 && (
           <AvatarGroup
@@ -377,9 +390,6 @@ export function AiForumItem({
         >
           {post.replies}
         </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-          Replies
-        </Typography>
       </Box>
 
       {/* Views Column */}
@@ -400,30 +410,8 @@ export function AiForumItem({
         >
           {formatViewCount(post.views)}
         </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-          Views
-        </Typography>
       </Box>
 
-      {/* Activity Column */}
-      <Box
-        sx={{
-          minWidth: { xs: 50, md: 70 },
-          textAlign: 'center',
-          display: { xs: 'none', sm: 'block' },
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            color: 'text.secondary',
-            fontSize: { xs: '0.75rem', md: '0.875rem' },
-            fontWeight: 500,
-          }}
-        >
-          {post.lastActivity}
-        </Typography>
-      </Box>
     </Box>
   );
 }
