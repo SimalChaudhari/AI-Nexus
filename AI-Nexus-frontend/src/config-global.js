@@ -71,4 +71,9 @@ export const CONFIG = {
   payment: {
     publicKey: import.meta.env.VITE_PAYMENT_PUBLIC_KEY ?? '',
   },
+  flowise: {
+    apiHost: (import.meta.env.VITE_FLOWISE_API_HOST || '').trim(),
+    chatflowId: (import.meta.env.VITE_FLOWISE_CHATFLOW_ID || '').trim(),
+    publicBaseUrl: (import.meta.env.VITE_FLOWISE_URL || '').trim(),
+  },
 };

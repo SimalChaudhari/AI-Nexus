@@ -30,7 +30,7 @@ const LearningCourseDetailsPage = lazy(() => import('src/pages/learning/course-d
 const LearningCoursePlayerPage = lazy(() => import('src/pages/learning/course-player'));
 const LearningInstructorDetailsPage = lazy(() => import('src/pages/learning/instructor-details'));
 const WorkflowsPage = lazy(() => import('src/pages/workflows'));
-const WorkflowBuilderPublicPage = lazy(() => import('src/pages/workflows/builder'));
+const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
 const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
 // Product
@@ -140,8 +140,8 @@ export const mainRoutes = [
             element: <WorkflowsPage />,
           },
           {
-            path: 'ai-resources/builder',
-            element: <WorkflowBuilderPublicPage />,
+            path: 'ai-resources/agent-flow',
+            element: <WorkflowCreatePage />,
           },
           {
             path: 'ai-resources/:id',

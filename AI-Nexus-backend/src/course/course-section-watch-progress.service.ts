@@ -144,6 +144,23 @@ export class CourseSectionWatchProgressService {
     return full;
   }
 
+  /**
+   * When admin leaves watchtime empty, required equals the stored/catalog duration, but HTML5 / YouTube
+   * often tops out ~1s short (e.g. 0:59 played vs 01:00 in CMS). Allow 1s slack only in that "full video" mode;
+   * explicit admin watch caps stay exact.
+   */
+  private watchProgressMeetsCompletionRequirement(
+    watched: number,
+    required: number,
+    adminWatchtimeCapSeconds: number,
+  ): boolean {
+    if (!(required > 0)) return false;
+    if (watched >= required) return true;
+    if (adminWatchtimeCapSeconds > 0) return false;
+    if (required < 5) return false;
+    return watched >= required - 1;
+  }
+
   private async resolveSectionTiming(
     courseId: string,
     sectionId: string,
@@ -194,18 +211,25 @@ export class CourseSectionWatchProgressService {
     const previousSectionId = orderedSectionIds[currentIndex - 1];
     const previousProgress = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId: previousSectionId },
-      select: ['isCompleted'],
     });
-    return !previousProgress?.isCompleted;
+    const resolvedTiming = await this.resolveSectionTiming(courseId, previousSectionId);
+    const prevDone = this.deriveSectionProgressComputation(
+      previousProgress ?? undefined,
+      resolvedTiming.watchtimeSeconds,
+      resolvedTiming.durationTimeSeconds,
+    ).isCompleted;
+    return !prevDone;
   }
 
-  private formatSectionProgressResponse(
-    courseId: string,
-    sectionId: string,
+  /**
+   * Single source of truth for "section done" + display watch math.
+   * Must match sequential unlock: use this (not only DB isCompleted) so a refresh after watching
+   * still unlocks the next lesson when watch coverage meets the required threshold.
+   */
+  private deriveSectionProgressComputation(
     existing: CourseSectionWatchProgressEntity | undefined,
     resolvedWatchtimeSeconds: number,
     resolvedDurationTimeSeconds: number,
-    isLocked: boolean,
   ) {
     const duration = this.resolveDisplayDurationSeconds(
       resolvedDurationTimeSeconds,
@@ -226,8 +250,38 @@ export class CourseSectionWatchProgressService {
       watchedForDisplay,
       duration,
     );
-    const isCompleted = Boolean(existing?.isCompleted || (required > 0 && computed.watched >= required));
+    const isCompleted = Boolean(
+      existing?.isCompleted ||
+        this.watchProgressMeetsCompletionRequirement(
+          computed.watched,
+          required,
+          resolvedWatchtimeSeconds,
+        ),
+    );
     const isWatched = isCompleted;
+    return {
+      duration,
+      required,
+      storedRanges,
+      legacyWatchedCap,
+      watchedFromCoverage,
+      watchedForDisplay,
+      computed,
+      isCompleted,
+      isWatched,
+    };
+  }
+
+  private formatSectionProgressResponse(
+    courseId: string,
+    sectionId: string,
+    existing: CourseSectionWatchProgressEntity | undefined,
+    resolvedWatchtimeSeconds: number,
+    resolvedDurationTimeSeconds: number,
+    isLocked: boolean,
+  ) {
+    const { duration, storedRanges, legacyWatchedCap, computed, isCompleted, isWatched } =
+      this.deriveSectionProgressComputation(existing, resolvedWatchtimeSeconds, resolvedDurationTimeSeconds);
 
     const lastPos = computed.lastPosition;
     const watched = computed.watched;
@@ -304,8 +358,19 @@ export class CourseSectionWatchProgressService {
     const result: Record<string, ReturnType<CourseSectionWatchProgressService['formatSectionProgressResponse']>> = {};
     orderedIds.forEach((sectionId, idx) => {
       const prevId = idx > 0 ? orderedIds[idx - 1] : null;
-      const prevRow = prevId ? progressBySection.get(prevId) : undefined;
-      const isLocked = idx > 0 && !prevRow?.isCompleted;
+      const prevExisting = prevId ? progressBySection.get(prevId) : undefined;
+      const prevResolved = prevId
+        ? resolvedTimingBySection.get(prevId) ?? { watchtimeSeconds: 0, durationTimeSeconds: 0 }
+        : { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+      const previousSectionComplete =
+        idx === 0 ||
+        (prevId != null &&
+          this.deriveSectionProgressComputation(
+            prevExisting,
+            prevResolved.watchtimeSeconds,
+            prevResolved.durationTimeSeconds,
+          ).isCompleted);
+      const isLocked = idx > 0 && !previousSectionComplete;
       const existing = progressBySection.get(sectionId);
       const resolved = resolvedTimingBySection.get(sectionId) ?? {
         watchtimeSeconds: 0,
@@ -421,7 +486,11 @@ export class CourseSectionWatchProgressService {
     const now = new Date();
     const explicitCompletion = dto.markCompleted === true;
     const stickyCompleted = Boolean(existing?.isCompleted);
-    const reachedRequired = requiredForCompletion > 0 && computed.watched >= requiredForCompletion;
+    const reachedRequired = this.watchProgressMeetsCompletionRequirement(
+      computed.watched,
+      requiredForCompletion,
+      resolvedTiming.watchtimeSeconds,
+    );
     const isCompleted = stickyCompleted || explicitCompletion || reachedRequired;
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
     const finalDuration = Math.max(computed.duration, 0);

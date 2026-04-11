@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -24,7 +24,45 @@ import { courseService } from 'src/services/course.service';
 // ----------------------------------------------------------------------
 
 const COURSES_PER_PAGE = 8;
-let hasAttemptedMyProgressCoursesFetch = false;
+
+const DEFAULT_COURSE_IMAGE =
+  import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
+
+/** Sum watchedSeconds from player-context modules (nested sectionProgress). */
+function sumWatchedSecondsFromModules(modulesByCourse) {
+  let total = 0;
+  Object.values(modulesByCourse || {}).forEach((modules) => {
+    (modules || []).forEach((mod) => {
+      (mod.sections || []).forEach((sec) => {
+        const sp = sec?.sectionProgress;
+        if (sp && typeof sp.watchedSeconds === 'number' && Number.isFinite(sp.watchedSeconds)) {
+          total += Math.max(0, sp.watchedSeconds);
+        }
+      });
+    });
+  });
+  return total;
+}
+
+function formatWatchTime(totalSeconds) {
+  const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  if (s === 0) return '0 h';
+  const h = s / 3600;
+  if (h < 1) return `${Math.max(1, Math.round(s / 60))} min`;
+  return `${Math.round(h * 10) / 10} h`;
+}
+
+/** Paid enrolment, bundle access, or free/open catalogue course (no purchase row required). */
+function courseEligibleForMyProgress(course) {
+  if (!course) return false;
+  if (course.isEnrolled || course.accessViaBundle) return true;
+  const paid =
+    course.freeOrPaid === true ||
+    course.freeOrPaid === 1 ||
+    course.freeOrPaid === 'true' ||
+    course.freeOrPaid === '1';
+  return !paid;
+}
 
 function formatLastAccessed(dateStr) {
   if (!dateStr) return '—';
@@ -40,13 +78,18 @@ function formatLastAccessed(dateStr) {
   return 'Just now';
 }
 
-const MOCK_FALLBACK = {
-  progress: 0,
-  lessons: '0/0',
-  timeRemaining: '—',
-  lastAccessed: '—',
-  nextLesson: 'Start learning',
-};
+/** Align with backend player-context + learning-course-player-view (no legacy isViewed / currentProgress). */
+function isSectionDone(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (row.isWatched === true || row.isCompleted === true || row.isViewed === true) return true;
+  const pct = Number(row.completionPercent ?? row.currentProgress);
+  if (Number.isFinite(pct) && pct >= 99) return true;
+  const dur = Math.max(0, Number(row.durationSeconds || 0));
+  const watched = Math.max(0, Number(row.watchedSeconds || 0));
+  const lastPos = Math.max(0, Number(row.lastPositionSeconds || 0));
+  if (dur > 0 && Math.max(watched, lastPos) >= dur - 1) return true;
+  return false;
+}
 
 export function MyProgress({ onNavigateToCertificates }) {
   const theme = useTheme();
@@ -58,57 +101,63 @@ export function MyProgress({ onNavigateToCertificates }) {
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
   const [page, setPage] = useState(1);
   const [progressLoading, setProgressLoading] = useState(true);
-  const hasAttemptedCoursesFetchRef = useRef(false);
+
+  const coursesEnrollmentKey = useMemo(
+    () =>
+      (courses || [])
+        .map(
+          (c) =>
+            `${String(c.id)}:${c.isEnrolled ? 1 : 0}:${c.accessViaBundle ? 1 : 0}:${c.freeOrPaid ? 1 : 0}`
+        )
+        .sort()
+        .join('|'),
+    [courses]
+  );
 
   useEffect(() => {
-    // Avoid unnecessary auto-loading when user is not signed in
-    // and prevent repeated fetches once courses are already in store.
+    if (!authenticated) return;
+    // Wider catalog than default grouped pagination so enrolled / free courses are not missing.
+    dispatch(fetchCourses({ limit: 120, page: 1 }));
+  }, [dispatch, authenticated]);
+
+  useEffect(() => {
     if (!authenticated) {
-      hasAttemptedCoursesFetchRef.current = false;
-      hasAttemptedMyProgressCoursesFetch = false;
-      return;
-    }
-    if (coursesLoading) return;
-    if (Array.isArray(courses) && courses.length > 0) return;
-    if (hasAttemptedCoursesFetchRef.current || hasAttemptedMyProgressCoursesFetch) return;
-    hasAttemptedCoursesFetchRef.current = true;
-    hasAttemptedMyProgressCoursesFetch = true;
-    dispatch(fetchCourses());
-  }, [dispatch, authenticated, coursesLoading, courses]);
-
-  useEffect(() => {
-    if (!authenticated || !courses?.length) {
       setProgressByCourse({});
       setModulesByCourse({});
       setEnrolledCourseIds([]);
       setProgressLoading(false);
       return () => {};
     }
+    if (!courses?.length) {
+      setProgressByCourse({});
+      setModulesByCourse({});
+      setEnrolledCourseIds([]);
+      // Catalog still loading — avoid flashing "No progress" before grouped list arrives
+      setProgressLoading(Boolean(coursesLoading));
+      return () => {};
+    }
     let cancelled = false;
     const loadProgress = async () => {
       try {
         setProgressLoading(true);
-        // Use already-fetched course flags to avoid extra enrolled-list API call
-        // that can intermittently 401 during first-time SSO handoff.
-        const enrolledCourses = (courses || []).filter(
-          (c) => Boolean(c?.isEnrolled) || Boolean(c?.accessViaBundle)
-        );
-        const normalizedEnrolledIds = enrolledCourses
+        const trackableCourses = (courses || []).filter(courseEligibleForMyProgress);
+        const normalizedEnrolledIds = trackableCourses
           .map((course) => course?.id)
           .filter(Boolean)
           .map((id) => String(id));
 
         const entries = await Promise.all(
-          enrolledCourses.map(async (course) => {
+          trackableCourses.map(async (course) => {
             try {
               const ctx = await courseService.getCoursePlayerContext(course.id);
               const modules = Array.isArray(ctx?.modules) ? ctx.modules : [];
               const progressMap = courseService.sectionProgressMapFromModules(modules);
               const progressRows = Object.values(progressMap).filter(Boolean);
               const viewedSectionIds = progressRows
-                .filter((row) => row?.isViewed === true)
+                .filter((row) => isSectionDone(row))
                 .map((row) => row.sectionId)
-                .filter(Boolean);
+                .filter(Boolean)
+                .map((id) => String(id));
               const latestByTime = progressRows
                 .filter((row) => row?.lastAccessedAt)
                 .sort(
@@ -116,24 +165,28 @@ export function MyProgress({ onNavigateToCertificates }) {
                     new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime()
                 )[0];
               const latestByProgress = progressRows
-                .filter((row) => row?.currentProgress != null)
-                .sort((a, b) => Number(b.currentProgress || 0) - Number(a.currentProgress || 0))[0];
+                .filter((row) => row?.completionPercent != null || row?.currentProgress != null)
+                .sort(
+                  (a, b) =>
+                    Number(b.completionPercent ?? b.currentProgress ?? 0) -
+                    Number(a.completionPercent ?? a.currentProgress ?? 0)
+                )[0];
               const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
               const lastAccessedAt = latestByTime?.lastAccessedAt || null;
 
               return [
-                course.id,
+                String(course.id),
                 {
                   modules,
                   progress: {
                     viewedSectionIds,
-                    currentSectionId,
+                    currentSectionId: currentSectionId != null ? String(currentSectionId) : null,
                     lastAccessedAt,
                   },
                 },
               ];
             } catch {
-              return [course.id, { modules: [], progress: null }];
+              return [String(course.id), { modules: [], progress: null }];
             }
           })
         );
@@ -143,8 +196,9 @@ export function MyProgress({ onNavigateToCertificates }) {
         const nextModulesByCourse = {};
         const nextProgressByCourse = {};
         entries.forEach(([courseId, data]) => {
-          nextModulesByCourse[courseId] = data.modules;
-          nextProgressByCourse[courseId] = data.progress;
+          const id = String(courseId);
+          nextModulesByCourse[id] = data.modules;
+          nextProgressByCourse[id] = data.progress;
         });
         setEnrolledCourseIds(normalizedEnrolledIds);
         setModulesByCourse(nextModulesByCourse);
@@ -159,7 +213,7 @@ export function MyProgress({ onNavigateToCertificates }) {
     return () => {
       cancelled = true;
     };
-  }, [authenticated, courses?.length]);
+  }, [authenticated, courses?.length, coursesEnrollmentKey]);
 
   // Use only API courses for progress — no mock list so progress stays dynamic
   // Only show courses where user has progress (authenticated and progress exists)
@@ -170,31 +224,39 @@ export function MyProgress({ onNavigateToCertificates }) {
       : [];
     const visibleCourses = list
       .map((c) => {
-        const progress = progressByCourse[c.id];
-        const modules = modulesByCourse[c.id] || [];
+        const cid = String(c.id);
+        const progress = progressByCourse[cid];
+        const modules = modulesByCourse[cid] || [];
         const flatSections = modules.flatMap((m) => (m.sections || []).map((s) => ({ id: s.id, title: s.title || 'Lesson' })));
+        const sectionIdSet = new Set(flatSections.map((s) => String(s.id)));
         const totalLessons = flatSections.length;
         const viewedIds = Array.isArray(progress?.viewedSectionIds) ? progress.viewedSectionIds : [];
         const currentId = progress?.currentSectionId;
-        // Include both viewedSectionIds and currentSectionId (for rows where viewedSectionIds may be empty)
+        // Count completed/watched lessons; optionally include current section so in-progress lessons show partial credit
         const allViewed = new Set([
-          ...viewedIds.filter((id) => flatSections.some((s) => s.id === id)),
-          ...(currentId && flatSections.some((s) => s.id === currentId) ? [currentId] : []),
+          ...viewedIds.filter((id) => id != null && sectionIdSet.has(String(id))),
+          ...(currentId != null && sectionIdSet.has(String(currentId)) ? [String(currentId)] : []),
         ]);
         const viewedCount = allViewed.size;
         const progressPercent = totalLessons ? Math.min(100, Math.round((viewedCount / totalLessons) * 100)) : 0;
         const currentSectionId = progress?.currentSectionId;
         const currentIndex = flatSections.findIndex((s) => s.id === currentSectionId);
         const nextSection = currentIndex >= 0 && currentIndex < flatSections.length - 1 ? flatSections[currentIndex + 1] : null;
+        const firstSection = flatSections[0];
+        let nextLessonLabel = '—';
+        if (nextSection?.title) nextLessonLabel = nextSection.title;
+        else if (progressPercent >= 100) nextLessonLabel = 'Course completed';
+        else if (firstSection?.title) nextLessonLabel = `Start: ${firstSection.title}`;
+
         return {
           id: c.id,
           title: c.title || 'Untitled Course',
-          image: c.image || 'https://readdy.ai/api/search-image?query=Professional%20course&width=400&height=250',
+          image: c.image || DEFAULT_COURSE_IMAGE,
           progress: progressPercent,
-          lessons: totalLessons ? `${viewedCount}/${totalLessons}` : '0/—',
+          lessons: totalLessons ? `${viewedCount}/${totalLessons}` : '0/0',
           timeRemaining: progressPercent >= 100 ? 'Completed' : '—',
-          lastAccessed: progress?.lastAccessedAt ? formatLastAccessed(progress.lastAccessedAt) : MOCK_FALLBACK.lastAccessed,
-          nextLesson: nextSection ? nextSection.title : (progressPercent >= 100 ? 'Course Completed' : MOCK_FALLBACK.nextLesson),
+          lastAccessed: progress?.lastAccessedAt ? formatLastAccessed(progress.lastAccessedAt) : '—',
+          nextLesson: nextLessonLabel,
         };
       })
       .filter(Boolean);
@@ -210,6 +272,11 @@ export function MyProgress({ onNavigateToCertificates }) {
   const completedCount = myCourses.filter((c) => c.progress === 100).length;
   const certificatesCount = completedCount > 0 ? completedCount : 0;
   const completedCourses = myCourses.filter((c) => c.progress === 100);
+
+  const totalWatchSeconds = useMemo(
+    () => sumWatchedSecondsFromModules(modulesByCourse),
+    [modulesByCourse]
+  );
 
   if (coursesLoading) {
     return <LoadingScreen />;
@@ -247,7 +314,7 @@ export function MyProgress({ onNavigateToCertificates }) {
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
             {!authenticated
               ? 'Sign in to see your learning progress and continue where you left off.'
-              : 'Start learning a course to see your progress here. Visit All Courses to get started.'}
+              : 'Free courses and purchased courses appear here after you open them once. Use All Courses to browse, then return to My Progress.'}
           </Typography>
           {!authenticated && (
             <Button
@@ -265,7 +332,7 @@ export function MyProgress({ onNavigateToCertificates }) {
   }
 
   return (
-    
+    <DashboardContent>
       <Grid container spacing={{ xs: 2, md: 4 }}>
         {/* LEFT SIDE – 8 columns on md+ */}
         <Grid xs={12} md={8}>
@@ -529,11 +596,11 @@ export function MyProgress({ onNavigateToCertificates }) {
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Iconify icon="solar:clock-circle-bold" width={16} sx={{ color: 'info.main' }} />
                     <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Total Hours
+                      Total watch time
                     </Typography>
                   </Stack>
                   <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                    47.5h
+                    {formatWatchTime(totalWatchSeconds)}
                   </Typography>
                 </Stack>
                 <Stack
@@ -576,193 +643,11 @@ export function MyProgress({ onNavigateToCertificates }) {
                     {certificatesCount}
                   </Typography>
                 </Stack>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{
-                    p: { xs: 1.25, md: 1.5 },
-                    borderRadius: 1,
-                    background: `linear-gradient(90deg, ${alpha(theme.palette.warning.main, 0.08)} 0%, ${alpha(theme.palette.error.main, 0.08)} 100%)`,
-                  }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Iconify icon="solar:target-bold" width={16} sx={{ color: 'warning.main' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Current Streak
-                    </Typography>
-                  </Stack>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'warning.main' }}>
-                    15 days
-                  </Typography>
-                </Stack>
               </Stack>
-            </Card>
-
-            <Card
-              sx={{
-                p: { xs: 2, md: 3 },
-                position: 'relative',
-                overflow: 'hidden',
-                borderRadius: 2,
-                background: 'linear-gradient(135deg, #3b82f6 0%, #9333ea 50%, #ec4899 100%)',
-                color: 'common.white',
-                transition: 'transform 0.3s',
-                '&:hover': { transform: 'scale(1.05)' },
-              }}
-            >
-              <Box
-                sx={{
-                  position: 'absolute',
-                  inset: 0,
-                  bgcolor: alpha(theme.palette.common.white, 0.1),
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                }}
-              />
-              <Box sx={{ position: 'relative', zIndex: 10 }}>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <Box
-                    sx={{
-                      width: { xs: 32, md: 40 },
-                      height: { xs: 32, md: 40 },
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 1,
-                      bgcolor: alpha(theme.palette.common.white, 0.2),
-                      animation: 'bounce 1s infinite',
-                    }}
-                  >
-                    <Iconify icon="solar:medal-ribbons-star-bold" width={24} />
-                  </Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Achievement Unlocked!
-                  </Typography>
-                </Stack>
-                <Typography variant="body2" sx={{ color: 'grey.200', mb: { xs: 1.5, md: 2 } }}>
-                  You&apos;ve completed 5 AI courses this month
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Box
-                    sx={{
-                      width: { xs: 28, md: 32 },
-                      height: { xs: 28, md: 32 },
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '50%',
-                      bgcolor: 'warning.main',
-                      animation: 'spin 3s linear infinite',
-                      '@keyframes spin': {
-                        '0%': { transform: 'rotate(0deg)' },
-                        '100%': { transform: 'rotate(360deg)' },
-                      },
-                    }}
-                  >
-                    <Iconify icon="solar:star-bold" width={14} sx={{ color: 'common.white' }} />
-                  </Box>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                    +50 XP Bonus!
-                  </Typography>
-                </Stack>
-              </Box>
-            </Card>
-
-            <Card
-              sx={{
-                p: { xs: 2, md: 3 },
-                bgcolor: alpha(theme.palette.background.paper, 0.9),
-                backdropFilter: 'blur(8px)',
-                boxShadow: theme.customShadows.z16,
-                border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-                transition: 'transform 0.3s',
-                '&:hover': { transform: 'scale(1.05)' },
-              }}
-            >
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: { xs: 1.5, md: 2 } }}>
-                <Box
-                  sx={{
-                    width: { xs: 28, md: 32 },
-                    height: { xs: 28, md: 32 },
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 1,
-                    background: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
-                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                  }}
-                >
-                  <Iconify icon="solar:target-bold" width={16} sx={{ color: 'common.white' }} />
-                </Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  Next Milestone
-                </Typography>
-              </Stack>
-              <Box sx={{ mb: 1.5 }}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  justifyContent="space-between"
-                  alignItems={{ xs: 'flex-start', sm: 'center' }}
-                  spacing={{ xs: 0.5, sm: 0 }}
-                  sx={{ mb: 1 }}
-                >
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <Iconify icon="solar:medal-ribbons-star-bold" width={14} sx={{ color: 'info.main' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      AI Expert Badge
-                    </Typography>
-                  </Stack>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                    8/10 courses
-                  </Typography>
-                </Stack>
-                <Box
-                  sx={{
-                    width: '100%',
-                    height: { xs: 10, md: 12 },
-                    borderRadius: 1.5,
-                    bgcolor: alpha(theme.palette.grey[500], 0.16),
-                    overflow: 'hidden',
-                    position: 'relative',
-                  }}
-                >
-                  <LinearProgress
-                    variant="determinate"
-                    value={80}
-                    sx={{
-                      height: '100%',
-                      bgcolor: 'transparent',
-                      '& .MuiLinearProgress-bar': {
-                        background: 'linear-gradient(90deg, #3b82f6 0%, #9333ea 100%)',
-                        position: 'relative',
-                        '&::after': {
-                          content: '""',
-                          position: 'absolute',
-                          inset: 0,
-                          bgcolor: alpha(theme.palette.common.white, 0.3),
-                          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        },
-                      },
-                    }}
-                  />
-                </Box>
-              </Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary', mb: { xs: 1.5, md: 0 }, display: 'block' }}>
-                Complete 2 more courses to earn your AI Expert badge
-              </Typography>
-              <GradientButton
-                fullWidth
-                size="small"
-                icon="solar:arrow-up-bold"
-                iconPosition="left"
-                sx={{ mt: 1.5 }}
-              >
-                Level Up Now!
-              </GradientButton>
             </Card>
           </Stack>
         </Grid>
       </Grid>
-   
+    </DashboardContent>
   );
 }

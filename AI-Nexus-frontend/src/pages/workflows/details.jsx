@@ -1,8 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import ReactFlow, { Background, Controls, Handle, MiniMap, Position } from 'reactflow';
-import 'reactflow/dist/style.css';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -25,79 +23,6 @@ import { workflowService } from 'src/services/workflow.service';
 
 const metadata = { title: `AI Resource Details | ${CONFIG.site.name}` };
 
-const nodeStyleMap = {
-  trigger: { borderColor: '#1976d2', chipColor: 'primary', icon: 'solar:play-circle-bold' },
-  send_email: { borderColor: '#2e7d32', chipColor: 'success', icon: 'solar:letter-bold' },
-  condition: { borderColor: '#ed6c02', chipColor: 'warning', icon: 'solar:checklist-minimalistic-bold' },
-  delay: { borderColor: '#7b1fa2', chipColor: 'secondary', icon: 'solar:clock-circle-bold' },
-  http_request: { borderColor: '#00838f', chipColor: 'info', icon: 'solar:global-bold' },
-  default: { borderColor: '#546e7a', chipColor: 'default', icon: 'solar:widget-4-bold' },
-};
-
-const resolveNodeKind = (node) => {
-  const kind = String(node?.data?.nodeKind || '').toLowerCase();
-  if (kind) return kind;
-  const triggerType = String(node?.data?.triggerType || '').toLowerCase();
-  if (triggerType) return 'trigger';
-  const actionType = String(node?.data?.actionType || '').toLowerCase();
-  if (actionType) return actionType;
-  const label = String(node?.data?.label || '').toLowerCase();
-  if (label.includes('condition')) return 'condition';
-  if (label.includes('email')) return 'send_email';
-  if (label.includes('delay')) return 'delay';
-  if (label.includes('http')) return 'http_request';
-  if (label.includes('trigger')) return 'trigger';
-  return 'default';
-};
-
-function PublicWorkflowNodeCard({ data, selected }) {
-  const kind = String(data?.nodeKind || 'default');
-  const conf = nodeStyleMap[kind] || nodeStyleMap.default;
-  const isConditionNode = kind === 'condition';
-
-  return (
-    <Box
-      sx={{
-        minWidth: isConditionNode ? 130 : 210,
-        width: isConditionNode ? 130 : 'auto',
-        maxWidth: isConditionNode ? 130 : 250,
-        minHeight: isConditionNode ? 130 : 90,
-        border: `2px solid ${conf.borderColor}`,
-        borderRadius: isConditionNode ? '50%' : 1.5,
-        bgcolor: 'background.paper',
-        p: isConditionNode ? 1 : 1.2,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        textAlign: 'center',
-        boxShadow: selected ? '0 0 0 4px rgba(25,118,210,0.12)' : '0 4px 12px rgba(0,0,0,0.08)',
-      }}
-    >
-      <Handle type="target" position={Position.Left} />
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.8 }}>
-        <Iconify icon={conf.icon} width={15} />
-        <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-          {data?.label || 'Node'}
-        </Typography>
-      </Stack>
-      <Stack direction="row" spacing={0.4} flexWrap="wrap" justifyContent="center">
-        <Chip size="small" label={kind} color={conf.chipColor} variant="soft" sx={{ height: 18 }} />
-      </Stack>
-      {data?.triggerType && (
-        <Typography variant="caption" sx={{ display: 'block', mt: 0.4, color: 'text.secondary' }}>
-          Trigger: {data.triggerType}
-        </Typography>
-      )}
-      {data?.actionType && (
-        <Typography variant="caption" sx={{ display: 'block', mt: 0.2, color: 'text.secondary' }}>
-          Action: {data.actionType}
-        </Typography>
-      )}
-      <Handle type="source" position={Position.Right} />
-    </Box>
-  );
-}
 
 const normalizeHtml = (value) => {
   if (!value) return '';
@@ -162,26 +87,6 @@ export default function WorkflowDetailsPublicPage() {
 
   const flowNodes = workflow?.flowData?.nodes || [];
   const flowEdges = workflow?.flowData?.edges || [];
-  const styledFlowNodes = flowNodes.map((node, idx) => {
-    const nodeKind = resolveNodeKind(node);
-    const nodeTypeByKind = {
-      trigger: 'triggerNode',
-      send_email: 'emailNode',
-      condition: 'conditionNode',
-      delay: 'delayNode',
-      http_request: 'httpNode',
-      default: 'genericNode',
-    };
-    return {
-      ...node,
-      id: String(node.id ?? idx + 1),
-      type: nodeTypeByKind[nodeKind] || 'genericNode',
-      data: {
-        ...(node.data || {}),
-        nodeKind,
-      },
-    };
-  });
   const flowJson = JSON.stringify({ nodes: flowNodes, edges: flowEdges }, null, 2);
   const createdDate = workflow?.createdAt ? new Date(workflow.createdAt).toLocaleDateString() : '-';
   const categories = workflow?.tags?.map((tag) => tag?.title).filter(Boolean) || [];
@@ -273,26 +178,23 @@ export default function WorkflowDetailsPublicPage() {
                     </Button>
                   </Stack>
                   {flowNodes.length ? (
-                    <Box sx={{ height: { xs: 280, md: 390 }, borderRadius: 2, overflow: 'hidden', bgcolor: '#f2f2f2' }}>
-                      <ReactFlow
-                        nodes={styledFlowNodes}
-                        edges={flowEdges}
-                        fitView
-                        nodeTypes={{
-                          triggerNode: PublicWorkflowNodeCard,
-                          emailNode: PublicWorkflowNodeCard,
-                          conditionNode: PublicWorkflowNodeCard,
-                          delayNode: PublicWorkflowNodeCard,
-                          httpNode: PublicWorkflowNodeCard,
-                          genericNode: PublicWorkflowNodeCard,
-                        }}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                      >
-                        <MiniMap />
-                        <Controls />
-                        <Background gap={14} />
-                      </ReactFlow>
+                    <Box sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                        Workflow steps ({flowNodes.length})
+                      </Typography>
+                      <Stack spacing={1}>
+                        {flowNodes.map((node, index) => (
+                          <Stack key={node?.id || index} direction="row" spacing={1} alignItems="center">
+                            <Chip size="small" label={`Step ${index + 1}`} color="primary" variant="soft" />
+                            <Typography variant="body2">{node?.data?.label || 'Untitled step'}</Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                      {!!flowEdges.length && (
+                        <Typography variant="caption" sx={{ mt: 1.5, display: 'block', color: 'text.secondary' }}>
+                          Connections: {flowEdges.length}
+                        </Typography>
+                      )}
                     </Box>
                   ) : (
                     <Box sx={{ p: 3 }}>

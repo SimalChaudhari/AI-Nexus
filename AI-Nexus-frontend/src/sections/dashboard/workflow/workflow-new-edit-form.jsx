@@ -152,12 +152,22 @@ const clearEditFormDraft = (id) => {
   }
 };
 
-const FLOW_DEFAULT_NODES = [];
+const FLOW_DEFAULT_NODES = [
+  {
+    id: '1',
+    position: { x: 280, y: 150 },
+    data: {
+      label: 'Start',
+      nodeKind: 'trigger',
+      triggerType: 'start',
+    },
+  },
+];
 const FLOW_DEFAULT_EDGES = [];
 const DAGRE_NODE_WIDTH = 180;
 const DAGRE_NODE_HEIGHT = 60;
 const nodeStyleMap = {
-  trigger: { borderColor: '#1976d2', chipColor: 'primary', icon: 'solar:play-circle-bold' },
+  trigger: { borderColor: '#22c55e', chipColor: 'success', icon: 'solar:play-circle-bold' },
   send_email: { borderColor: '#2e7d32', chipColor: 'success', icon: 'solar:letter-bold' },
   condition: { borderColor: '#ed6c02', chipColor: 'warning', icon: 'solar:checklist-minimalistic-bold' },
   delay: { borderColor: '#7b1fa2', chipColor: 'secondary', icon: 'solar:clock-circle-bold' },
@@ -195,20 +205,20 @@ function WorkflowPreviewNodeCard({ data, selected }) {
         minHeight: isConditionNode ? 130 : 90,
         border: `2px solid ${conf.borderColor}`,
         borderRadius: isConditionNode ? '50%' : 1.5,
-        bgcolor: 'background.paper',
+        bgcolor: kind === 'trigger' ? '#0f2418' : 'background.paper',
         p: isConditionNode ? 1 : 1.2,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
         textAlign: 'center',
-        boxShadow: selected ? '0 0 0 4px rgba(25,118,210,0.12)' : '0 4px 12px rgba(0,0,0,0.08)',
+        boxShadow: selected ? '0 0 0 4px rgba(34,197,94,0.22)' : '0 6px 18px rgba(0,0,0,0.2)',
       }}
     >
       <Handle type="target" position={Position.Left} />
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.8 }}>
         <Iconify icon={conf.icon} width={15} />
-        <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1.2, color: kind === 'trigger' ? '#dcfce7' : 'inherit' }}>
           {data?.label || 'Node'}
         </Typography>
       </Stack>
@@ -896,23 +906,64 @@ export function WorkflowNewEditForm({
                     }}
                   >
                     <ReactFlow
-                    nodes={styledFlowNodes}
-                    edges={flowEdges}
-                    nodeTypes={flowNodeTypes}
-                    onInit={setReactFlowInstance}
-                    nodesDraggable={false}
-                    nodesConnectable={false}
-                    elementsSelectable={false}
-                    panOnScroll={false}
-                    panOnDrag={false}
-                    zoomOnScroll={false}
-                    zoomOnPinch={false}
-                    zoomOnDoubleClick={false}
-                    fitView
-                  >
-                    <MiniMap />
-                    <Controls />
-                    <Background gap={14} variant={bgVariant} />
+                      nodes={styledFlowNodes}
+                      edges={flowEdges}
+                      nodeTypes={flowNodeTypes}
+                      onInit={setReactFlowInstance}
+                      onNodesChange={onFlowNodesChange}
+                      onEdgesChange={onFlowEdgesChange}
+                      onConnect={handleConnect}
+                      onNodeClick={(event, node) => {
+                        setSelectedNodeId(node.id);
+                        setSelectedEdgeId('');
+                      }}
+                      onEdgeClick={(event, edge) => {
+                        setSelectedEdgeId(edge.id);
+                        setSelectedNodeId('');
+                      }}
+                      onPaneClick={() => {
+                        setSelectedNodeId('');
+                        setSelectedEdgeId('');
+                      }}
+                      nodesDraggable={nodesDraggable}
+                      nodesConnectable={nodesConnectable}
+                      elementsSelectable={selectionOnDrag}
+                      panOnScroll={panOnScroll}
+                      panOnDrag
+                      zoomOnScroll
+                      zoomOnPinch
+                      zoomOnDoubleClick={false}
+                      snapToGrid={snapToGrid}
+                      fitView
+                      defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                      style={{ background: '#0b1020' }}
+                    >
+                      <Panel position="top-left">
+                        <Stack direction="row" spacing={1}>
+                          <Tooltip title="Add node">
+                            <IconButton
+                              size="small"
+                              onClick={handleAddFlowStep}
+                              sx={{ bgcolor: '#1d4ed8', color: '#fff', '&:hover': { bgcolor: '#1e40af' } }}
+                            >
+                              <Iconify icon="mingcute:add-line" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Remove selected node">
+                            <IconButton
+                              size="small"
+                              onClick={handleRemoveSelectedNode}
+                              sx={{ bgcolor: '#ef4444', color: '#fff', '&:hover': { bgcolor: '#dc2626' } }}
+                            >
+                              <Iconify icon="mingcute:close-line" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </Panel>
+
+                      <MiniMap />
+                      <Controls />
+                      <Background gap={18} size={1.2} color="#23324c" variant={bgVariant} />
                     </ReactFlow>
                   </Box>
                 </Box>

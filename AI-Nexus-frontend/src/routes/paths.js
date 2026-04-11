@@ -48,7 +48,7 @@ export const paths = {
     details: (id) => `/speaker/${id}`,
   },
   workflows: '/ai-resources',
-  workflowsBuilder: '/ai-resources/builder',
+  agentFlowCreate: '/ai-resources/agent-flow',
   workflowsDetails: (id) => `/ai-resources/${id}`,
   workflowsPrompt: {
     root: '/ai-resources/prompt',
@@ -296,7 +296,6 @@ export const paths = {
     workflow: {
       root: `${ROOTS.ADMIN}/ai-resources`,
       new: `${ROOTS.ADMIN}/ai-resources/new`,
-      builder: `${ROOTS.ADMIN}/ai-resources/builder`,
       list: `${ROOTS.ADMIN}/ai-resources/list`,
       details: (id) => `${ROOTS.ADMIN}/ai-resources/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/ai-resources/${id}/edit`,
