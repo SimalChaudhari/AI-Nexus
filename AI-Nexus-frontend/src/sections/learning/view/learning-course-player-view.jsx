@@ -16,6 +16,7 @@ import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Drawer from '@mui/material/Drawer';
 import CircularProgress from '@mui/material/CircularProgress';
+import Chip from '@mui/material/Chip';
 import LoadingButton from '@mui/lab/LoadingButton';
 import { alpha, useTheme } from '@mui/material/styles';
 
@@ -192,6 +193,28 @@ function mergeProgressForSidebar(lesson, liveById) {
   const sp = lesson.sectionProgress || {};
   if (!live) return { ...sp };
   return { ...sp, ...live };
+}
+
+/**
+ * Lesson counts as done for sidebar/module % and unlocks when PUT progress shows full watch
+ * even if `isWatched`/`isCompleted` flags lag one frame behind `completionPercent` (common after last save).
+ */
+function isLessonDoneForUi(lesson, liveById, viewedIds) {
+  if (!lesson?.id) return false;
+  if (Array.isArray(viewedIds) && viewedIds.includes(lesson.id)) return true;
+  const merged = mergeProgressForSidebar(lesson, liveById);
+  if (merged.isWatched === true || merged.isCompleted === true) return true;
+  const pct = Number(merged.completionPercent ?? 0);
+  if (Number.isFinite(pct) && pct >= 99) return true;
+  const dur = Math.max(0, Number(merged.durationSeconds || lesson.sectionProgress?.durationSeconds || 0));
+  const watched = Math.max(0, Number(merged.watchedSeconds || lesson.sectionProgress?.watchedSeconds || 0));
+  const lastPos = Math.max(
+    0,
+    Number(merged.lastPositionSeconds || lesson.sectionProgress?.lastPositionSeconds || 0)
+  );
+  const progressed = Math.max(watched, lastPos);
+  if (dur > 0 && progressed >= dur - 1) return true;
+  return false;
 }
 
 function lessonWatchtimeSeconds(lesson) {
@@ -551,9 +574,26 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   activeLessonIdRef.current = activeLessonId;
   courseIdRef.current = course?.id || null;
 
+  /** Keeps sidebar locks + module % in sync when the player marks a lesson done before SWR refetch. */
+  const appendViewedSectionId = useCallback((sectionId) => {
+    if (!sectionId || sectionId === FEEDBACK_LESSON_ID || !isUuid(sectionId)) return;
+    setViewedSectionIds((prev) => {
+      if (prev.includes(sectionId)) return prev;
+      const next = [...prev, sectionId];
+      viewedSectionIdsRef.current = next;
+      return next;
+    });
+  }, []);
+
   const sendProgressUpdate = useCallback((courseId, sectionId, payload, useKeepalive = false, force = false) => {
     if (!courseId || !sectionId || !payload) return Promise.resolve(null);
-    if (!force) {
+    // markCompleted / minimal payloads are not video timeline updates — do not apply video "full watched" short-circuit.
+    const isMarkCompletedOnly =
+      Boolean(payload.markCompleted) &&
+      !Array.isArray(payload.watchedCoverageRanges) &&
+      !(Number(payload.watchedSeconds) > 0) &&
+      !(Number(payload.lastPositionSeconds) > 0);
+    if (!force && !isMarkCompletedOnly) {
       const live = liveSectionProgressMap?.[sectionId] || {};
       const knownDuration = Math.max(0, Number(live.durationSeconds || 0));
       const knownProgress = Math.max(
@@ -645,45 +685,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           ...prev,
           [sectionId]: mergeServerProgressIntoMap(prev[sectionId], data),
         }));
+        if (data.isCompleted === true || data.isWatched === true) {
+          appendViewedSectionId(sectionId);
+        }
       })
       .catch(() => {
         fullDurationSyncRef.current.sent = false;
       });
-  }, [sendProgressUpdate]);
-
-  function markLessonCompletedOnly(lessonId) {
-    if (
-      !authenticated ||
-      !course?.id ||
-      !lessonId ||
-      lessonId === FEEDBACK_LESSON_ID ||
-      !isUuid(lessonId)
-    ) {
-      return;
-    }
-    if (viewedSectionIdsRef.current.includes(lessonId)) return;
-
-    sendProgressUpdate(course.id, lessonId, {
-      watchedDeltaSeconds: 1,
-      durationSeconds: 1,
-      markCompleted: true,
-    });
-
-    setViewedSectionIds((prev) => {
-      if (prev.includes(lessonId)) return prev;
-      const nextViewed = [...prev, lessonId];
-      viewedSectionIdsRef.current = nextViewed;
-      return nextViewed;
-    });
-  }
-
-  const completeSection = useCallback(
-    (lessonId) => {
-      if (!lessonId || lessonId === FEEDBACK_LESSON_ID) return;
-      markLessonCompletedOnly(lessonId);
-    },
-    [markLessonCompletedOnly],
-  );
+  }, [sendProgressUpdate, appendViewedSectionId]);
 
   const startAutoNextCountdown = useCallback((nextLessonMeta) => {
     if (!nextLessonMeta?.id) return;
@@ -857,6 +866,50 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [modules]
   );
 
+  const markLessonCompletedOnly = useCallback(
+    (lessonId) => {
+      if (
+        !authenticated ||
+        !course?.id ||
+        !lessonId ||
+        lessonId === FEEDBACK_LESSON_ID ||
+        !isUuid(lessonId)
+      ) {
+        return;
+      }
+      const lessonRow = flatLessons.find((l) => l.id === lessonId);
+      if (lessonRow && isLessonDoneForUi(lessonRow, liveSectionProgressMap, viewedSectionIds)) {
+        appendViewedSectionId(lessonId);
+        return;
+      }
+
+      sendProgressUpdate(course.id, lessonId, {
+        watchedDeltaSeconds: 1,
+        durationSeconds: 1,
+        markCompleted: true,
+      });
+
+      appendViewedSectionId(lessonId);
+    },
+    [
+      appendViewedSectionId,
+      authenticated,
+      course?.id,
+      flatLessons,
+      liveSectionProgressMap,
+      sendProgressUpdate,
+      viewedSectionIds,
+    ]
+  );
+
+  const completeSection = useCallback(
+    (lessonId) => {
+      if (!lessonId || lessonId === FEEDBACK_LESSON_ID) return;
+      markLessonCompletedOnly(lessonId);
+    },
+    [markLessonCompletedOnly]
+  );
+
   useEffect(() => {
     if (!activeLessonId || activeLessonId === FEEDBACK_LESSON_ID) return undefined;
     if (getModuleIdFromPracticeLessonId(activeLessonId)) return undefined;
@@ -930,8 +983,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     () => flatLessons.findIndex((l) => l.id === activeLessonId),
     [flatLessons, activeLessonId]
   );
-  const activePrevLessonId =
-    activeLessonIndex > 0 ? flatLessons[activeLessonIndex - 1]?.id : null;
   let activeLessonContentLocked =
     authenticated &&
     activeLessonId &&
@@ -945,11 +996,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   ) {
     activeLessonContentLocked = false;
   }
-  // If previous lesson is already viewed/completed locally, do not treat this one as locked in UI.
+  const activeLessonRowForGate =
+    activeLessonId && flatLessons.length > 0 ? flatLessons.find((l) => l.id === activeLessonId) : null;
   if (
     activeLessonContentLocked &&
-    activePrevLessonId &&
-    viewedSectionIds.includes(activePrevLessonId)
+    activeLessonRowForGate &&
+    isLessonDoneForUi(activeLessonRowForGate, liveSectionProgressMap, viewedSectionIds)
+  ) {
+    activeLessonContentLocked = false;
+  }
+  // If previous lesson is already viewed/completed locally, do not treat this one as locked in UI.
+  const activePrevRow = activeLessonIndex > 0 ? flatLessons[activeLessonIndex - 1] : null;
+  if (
+    activeLessonContentLocked &&
+    activePrevRow &&
+    isLessonDoneForUi(activePrevRow, liveSectionProgressMap, viewedSectionIds)
   ) {
     activeLessonContentLocked = false;
   }
@@ -959,7 +1020,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   // Sync current section watched state from backend.
   useEffect(() => {
     if (!activeLessonId || activeLessonId === FEEDBACK_LESSON_ID) return;
-    if (!sectionProgressData?.isWatched) return;
+    if (!sectionProgressData?.isWatched && !sectionProgressData?.isCompleted) return;
     setViewedSectionIds((prev) => {
       if (prev.includes(activeLessonId)) return prev;
       const next = [...prev, activeLessonId];
@@ -972,7 +1033,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   useEffect(() => {
     if (!authenticated || apiSectionIdsForProgress.length === 0) return undefined;
     const watchedIds = flatLessons
-      .filter((lesson) => isUuid(lesson.id) && lesson.sectionProgress?.isWatched === true)
+      .filter(
+        (lesson) =>
+          isUuid(lesson.id) &&
+          (lesson.sectionProgress?.isWatched === true || lesson.sectionProgress?.isCompleted === true)
+      )
       .map((lesson) => lesson.id);
     if (watchedIds.length === 0) return undefined;
     const validIds = new Set(apiSectionIdsForProgress);
@@ -1357,19 +1422,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         if (data?.isCompleted || data?.isWatched) {
           nativeVideoProgressRef.current.markedComplete = true;
           youtubeProgressRef.current.markedComplete = true;
-          setViewedSectionIds((prev) => {
-            if (prev.includes(sectionId)) return prev;
-            const next = [...prev, sectionId];
-            viewedSectionIdsRef.current = next;
-            return next;
-          });
+        }
+        // Client already met watch rules; unlock next lesson even if the API body omits isWatched/isCompleted.
+        if (data && typeof data === 'object') {
+          appendViewedSectionId(sectionId);
         }
       });
     };
     return () => {
       videoWatchedEnoughRef.current = null;
     };
-  }, [course?.id, activeLessonId, sendProgressUpdate]);
+  }, [course?.id, activeLessonId, sendProgressUpdate, appendViewedSectionId]);
 
   // YouTube: load IFrame API; track progress when watchtime set, or mark complete when video ends (all sections)
   useEffect(() => {
@@ -1559,8 +1622,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         : 0;
                     // Always sync once on YT ended so backend gets final state even if coverage math lags.
                     syncProgressOnFullDuration(activeLessonIdRef.current, t, durationForSync);
-                    // If already marked complete by watchtime, still allow full-duration sync above and stop here.
-                    if (prog.markedComplete) return;
+                    // If already marked complete mid-playback, we still must record the lesson locally so the next row unlocks.
+                    if (prog.markedComplete) {
+                      appendViewedSectionId(activeLessonIdRef.current);
+                      return;
+                    }
                     const shouldComplete = requiredSec > 0 ? cov >= requiredSec - 1 : true;
                     if (shouldComplete) {
                       prog.markedComplete = true;
@@ -1615,7 +1681,18 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       const wrapper = youtubeContainerRef.current;
       if (wrapper) while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
     };
-  }, [embedVideoId, watchtimeSeconds, course?.id, activeLessonId, activeLessonGateBlocked, modules, sendProgressUpdate, setSearchParams, startAutoNextCountdown]);
+  }, [
+    embedVideoId,
+    watchtimeSeconds,
+    course?.id,
+    activeLessonId,
+    activeLessonGateBlocked,
+    modules,
+    sendProgressUpdate,
+    setSearchParams,
+    startAutoNextCountdown,
+    appendViewedSectionId,
+  ]);
 
   const navigationSteps = useMemo(() => {
     const steps = [];
@@ -1672,13 +1749,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     // Next lesson button should respect locking: only navigate when next is unlocked.
     const idx = flatLessons.findIndex((l) => l.id === nextLesson.id);
     if (idx > 0) {
-      const prevId = flatLessons[idx - 1]?.id;
-      const prevCompleted =
-        prevId &&
-        (viewedSectionIds.includes(prevId) ||
-          flatLessons[idx - 1]?.sectionProgress?.isWatched === true ||
-          flatLessons[idx - 1]?.sectionProgress?.isCompleted === true);
-      if (!prevCompleted) return;
+      const prevRow = flatLessons[idx - 1];
+      if (!prevRow || !isLessonDoneForUi(prevRow, liveSectionProgressMap, viewedSectionIds)) return;
     }
     try {
       setNextLoading(true);
@@ -1763,25 +1835,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       const targetLessons = targetModule?.lessons || [];
       const allDone =
         targetLessons.length > 0 &&
-        targetLessons.every(
-          (l) =>
-            viewedSectionIds.includes(l.id) ||
-            l.sectionProgress?.isWatched === true ||
-            l.sectionProgress?.isCompleted === true
-        );
+        targetLessons.every((l) => isLessonDoneForUi(l, liveSectionProgressMap, viewedSectionIds));
       if (!allDone) {
         canGoNextLesson = false;
       }
     }
     const idx = flatLessons.findIndex((l) => l.id === nextLesson.id);
     if (idx > 0) {
-      const prevId = flatLessons[idx - 1]?.id;
-      const prevCompleted =
-        prevId &&
-        (viewedSectionIds.includes(prevId) ||
-          flatLessons[idx - 1]?.sectionProgress?.isWatched === true ||
-          flatLessons[idx - 1]?.sectionProgress?.isCompleted === true);
-      if (!prevCompleted) {
+      const prevRow = flatLessons[idx - 1];
+      if (!prevRow || !isLessonDoneForUi(prevRow, liveSectionProgressMap, viewedSectionIds)) {
         canGoNextLesson = false;
       }
     }
@@ -1804,14 +1866,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
   const completedCount = useMemo(() => {
     if (totalLessons === 0) return 0;
-    const completed = flatLessons.filter(
-      (lesson) =>
-        lesson.sectionProgress?.isWatched ||
-        lesson.sectionProgress?.isCompleted ||
-        viewedSectionIds.includes(lesson.id)
+    const completed = flatLessons.filter((lesson) =>
+      isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds)
     );
     return Math.min(completed.length, totalLessons);
-  }, [flatLessons, totalLessons, viewedSectionIds]);
+  }, [flatLessons, totalLessons, viewedSectionIds, liveSectionProgressMap]);
   const progressPercent = totalLessons
     ? Math.min(100, Math.round((completedCount / totalLessons) * 100))
     : 0;
@@ -1822,17 +1881,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     modules.forEach((module) => {
       const lessons = module.lessons || [];
       const total = lessons.length;
-      const completed = lessons.filter(
-        (lesson) =>
-          lesson.sectionProgress?.isWatched ||
-          lesson.sectionProgress?.isCompleted ||
-          viewedSectionIds.includes(lesson.id)
+      const completed = lessons.filter((lesson) =>
+        isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds)
       ).length;
       const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
       result[module.id] = { total, completed, percent };
     });
     return result;
-  }, [modules, viewedSectionIds]);
+  }, [modules, viewedSectionIds, liveSectionProgressMap]);
 
   const activeModuleIndex = useMemo(
     () => modules.findIndex((m) => (m.lessons || []).some((l) => l.id === activeLessonId)),
@@ -1997,91 +2053,171 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       )
     : null;
 
+  const sidebarAccent = theme.palette.primary.main;
+  const sidebarMutedBorder = alpha(theme.palette.grey[500], 0.2);
+
   const courseSidebar = (
     <Box
       sx={{
         width: 1,
-        height: 1,
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       <Box
         sx={{
-          bgcolor: 'background.paper',
-          borderRight: `1px solid ${theme.palette.divider}`,
+          flex: '1 1 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          bgcolor: alpha(theme.palette.grey[500], 0.06),
+          backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.04)} 0%, transparent 48%)`,
         }}
       >
-        {/* Progress always visible (open/close both) */}
+        {/* Progress — structured summary panel */}
         {totalLessons > 0 && (
-          <Box sx={{ px: 2, py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              spacing={1}
-              sx={{ mb: 1 }}
-            >
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                Your progress
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {completedCount} of {totalLessons}
-              </Typography>
-            </Stack>
-            <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 1 }}>
-              {currentLessonNumber > 0
-                ? `Current lesson ${currentLessonNumber} of ${totalLessons}`
-                : `Current lesson 0 of ${totalLessons}`}
-            </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={Math.min(100, progressPercent)}
+          <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
+            <Box
               sx={{
-                height: 6,
-                borderRadius: 1,
-                bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': {
-                  borderRadius: 1,
-                  bgcolor: 'secondary.main',
-                },
+                p: 2,
+                borderRadius: 1.5,
+                bgcolor: 'background.paper',
+                border: `1px solid ${sidebarMutedBorder}`,
+                boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.06)}`,
               }}
-            />
+            >
+              <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5} sx={{ mb: 1.5 }}>
+                <Box>
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      color: 'text.secondary',
+                      fontWeight: 700,
+                      letterSpacing: 0.08,
+                      fontSize: theme.typography.pxToRem(10),
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Course progress
+                  </Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary', lineHeight: 1.2, mt: 0.25 }}>
+                    {Math.min(100, Math.round(progressPercent))}%
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    px: 1.25,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: alpha(sidebarAccent, 0.08),
+                    border: `1px solid ${alpha(sidebarAccent, 0.2)}`,
+                  }}
+                >
+                  <Typography variant="caption" sx={{ color: 'primary.dark', fontWeight: 700, display: 'block' }}>
+                    {completedCount}/{totalLessons}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: theme.typography.pxToRem(10) }}>
+                    lessons done
+                  </Typography>
+                </Box>
+              </Stack>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.25, fontWeight: 500 }}>
+                {currentLessonNumber > 0
+                  ? `Current: lesson ${currentLessonNumber} of ${totalLessons}`
+                  : `Select a lesson to begin (${totalLessons} total)`}
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(100, progressPercent)}
+                sx={{
+                  height: 8,
+                  borderRadius: 10,
+                  bgcolor: alpha(theme.palette.grey[500], 0.16),
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 10,
+                    bgcolor: sidebarAccent,
+                  },
+                }}
+              />
+            </Box>
           </Box>
         )}
 
         <Box
           onClick={() => setCourseContentExpanded((prev) => !prev)}
           sx={{
+            mx: 2,
+            mb: courseContentExpanded ? 1 : 0,
             px: 2,
-            py: 2.5,
-            borderBottom: `1px solid ${theme.palette.divider}`,
+            py: 1.75,
+            borderRadius: 1.5,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.08) },
+            gap: 1.5,
+            bgcolor: 'background.paper',
+            border: `1px solid ${sidebarMutedBorder}`,
+            boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
+            transition: theme.transitions.create(['background-color', 'box-shadow'], {
+              duration: theme.transitions.duration.shorter,
+            }),
+            '&:hover': {
+              bgcolor: alpha(theme.palette.primary.main, 0.04),
+              boxShadow: `0 2px 8px ${alpha(theme.palette.common.black, 0.06)}`,
+            },
           }}
         >
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
-              Course content
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}
+          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: 1.25,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                bgcolor: alpha(sidebarAccent, 0.1),
+                color: 'primary.dark',
+                border: `1px solid ${alpha(sidebarAccent, 0.22)}`,
+              }}
             >
-              {totalLessons} lesson{totalLessons !== 1 ? 's' : ''}
-            </Typography>
+              <Iconify icon="solar:book-bookmark-bold" width={22} />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: -0.01 }}>
+                Course outline
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mt: 0.25 }}>
+                {totalLessons} lesson{totalLessons !== 1 ? 's' : ''} · modules & assessments
+              </Typography>
+            </Box>
+          </Stack>
+          <Box
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              bgcolor: alpha(theme.palette.grey[500], 0.1),
+              border: `1px solid ${sidebarMutedBorder}`,
+            }}
+          >
+            <Iconify
+              icon={courseContentExpanded ? 'eva:chevron-up-fill' : 'eva:chevron-down-fill'}
+              width={20}
+              sx={{ color: 'text.secondary' }}
+            />
           </Box>
-          <Iconify
-            icon={courseContentExpanded ? 'eva:chevron-up-fill' : 'eva:chevron-down-fill'}
-            width={20}
-            sx={{ color: 'text.secondary' }}
-          />
         </Box>
 
         {courseContentExpanded && (
         <>
-          {modules.map((section) => {
+          {modules.map((section, sectionIndex) => {
             const modulePracticeRowId = `${MODULE_PRACTICE_PREFIX}${section.id}`;
             const sectionHasActiveLesson =
               (section.lessons || []).some((l) => l.id === activeLessonId) ||
@@ -2097,30 +2233,68 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 expanded={expandedSection === section.id}
                 onChange={() => setExpandedSection(expandedSection === section.id ? '' : section.id)}
                 disableGutters
+                elevation={0}
                 sx={{
-                  boxShadow: 'none',
+                  mx: 2,
+                  mb: 1.25,
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  bgcolor: 'background.paper',
+                  border: `1px solid ${sidebarMutedBorder}`,
+                  boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.05)}`,
                   '&:before': { display: 'none' },
-                  borderBottom: `1px solid ${theme.palette.divider}`,
+                  ...(sectionHasActiveLesson && {
+                    borderColor: alpha(sidebarAccent, 0.35),
+                    boxShadow: `0 0 0 1px ${alpha(sidebarAccent, 0.12)}, 0 4px 12px ${alpha(theme.palette.common.black, 0.06)}`,
+                  }),
                 }}
               >
                 <AccordionSummary
-                  expandIcon={<Iconify icon="eva:chevron-down-fill" width={20} />}
+                  expandIcon={
+                    <Iconify icon="eva:chevron-down-fill" width={20} sx={{ color: 'text.secondary' }} />
+                  }
                   sx={{
-                    minHeight: 48,
-                    '& .MuiAccordionSummary-content': { my: 1.5 },
+                    minHeight: 56,
+                    px: 0.5,
+                    borderLeft: `4px solid ${
+                      sectionHasActiveLesson ? sidebarAccent : alpha(theme.palette.grey[500], 0.25)
+                    }`,
+                    '& .MuiAccordionSummary-content': { my: 1.25, alignItems: 'center' },
+                    '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) },
                     ...(sectionHasActiveLesson && {
-                      bgcolor: alpha(theme.palette.secondary.main, 0.12),
-                      color: 'secondary.main',
-                      '& .MuiAccordionSummary-expandIconWrapper': { color: 'secondary.main' },
+                      bgcolor: alpha(sidebarAccent, 0.06),
+                      '& .MuiAccordionSummary-expandIconWrapper': { color: 'primary.main' },
                     }),
                   }}
                 >
-                  <Box sx={{ width: 1, pr: 1 }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
+                  <Box sx={{ width: 1, pr: 0.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 0.5 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 800,
+                          color: sectionHasActiveLesson ? 'primary.dark' : 'text.disabled',
+                          letterSpacing: 0.04,
+                          minWidth: 28,
+                        }}
+                      >
+                        {String(sectionIndex + 1).padStart(2, '0')}
+                      </Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }} noWrap>
                         {section.title}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: 'text.secondary',
+                          flexShrink: 0,
+                          fontWeight: 700,
+                          px: 1,
+                          py: 0.25,
+                          borderRadius: 10,
+                          bgcolor: alpha(theme.palette.grey[500], 0.12),
+                        }}
+                      >
                         {sectionStats.completed}/{sectionStats.total}
                       </Typography>
                     </Stack>
@@ -2129,40 +2303,44 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         variant="determinate"
                         value={sectionStats.percent}
                         sx={{
-                          mt: 0.75,
-                          height: 4,
-                          borderRadius: 999,
-                          bgcolor: alpha(theme.palette.grey[500], 0.24),
+                          mt: 0.5,
+                          height: 5,
+                          borderRadius: 10,
+                          bgcolor: alpha(theme.palette.grey[500], 0.14),
                           '& .MuiLinearProgress-bar': {
-                            borderRadius: 999,
-                            bgcolor: sectionHasActiveLesson ? 'secondary.main' : 'primary.main',
+                            borderRadius: 10,
+                            bgcolor: sectionHasActiveLesson ? sidebarAccent : alpha(sidebarAccent, 0.75),
                           },
                         }}
                       />
                     )}
                   </Box>
                 </AccordionSummary>
-                <AccordionDetails sx={{ pt: 1.5, pb: 1 }}>
-                  <Stack spacing={1.25}>
+                <AccordionDetails
+                  sx={{
+                    pt: 0,
+                    pb: 1.5,
+                    px: 1.5,
+                    bgcolor: alpha(theme.palette.grey[500], 0.04),
+                    borderTop: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+                  }}
+                >
+                  <Stack spacing={1}>
                     {(section.lessons || []).map((lesson) => {
                       const isActive = activeLessonId === lesson.id;
-                      const isViewed =
-                        lesson.sectionProgress?.isWatched === true ||
-                        lesson.sectionProgress?.isCompleted === true ||
-                        viewedSectionIds.includes(lesson.id);
+                      const isViewed = isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds);
                       // Lock state: backend flag + local viewed list so next lesson unlocks immediately.
                       let isLocked = lesson.sectionProgress?.isLocked === true;
                       // If this is the first lesson, never lock.
                       const lessonFlatIndex = flatLessons.findIndex((l) => l.id === lesson.id);
-                      const prevFlatId =
-                        lessonFlatIndex > 0 ? flatLessons[lessonFlatIndex - 1]?.id : null;
+                      const prevLessonRow =
+                        lessonFlatIndex > 0 ? flatLessons[lessonFlatIndex - 1] : null;
+                      const prevLessonDone =
+                        Boolean(prevLessonRow) &&
+                        isLessonDoneForUi(prevLessonRow, liveSectionProgressMap, viewedSectionIds);
                       if (lessonFlatIndex === 0) {
                         isLocked = false;
-                      } else if (
-                        isLocked &&
-                        prevFlatId &&
-                        viewedSectionIds.includes(prevFlatId)
-                      ) {
+                      } else if (isLocked && prevLessonDone) {
                         isLocked = false;
                       }
 
@@ -2192,27 +2370,40 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                           }}
                           sx={{
                             width: 1,
-                            py: 1.25,
+                            py: 1.35,
                             px: 1.5,
-                            borderRadius: 1,
+                            borderRadius: 1.5,
                             cursor: isLocked ? 'not-allowed' : 'pointer',
                             opacity: isLocked ? 0.55 : 1,
                             bgcolor: isActive
-                              ? alpha(theme.palette.secondary.main, 0.12)
+                              ? alpha(sidebarAccent, 0.1)
                               : isViewed
-                                ? alpha(theme.palette.secondary.main, 0.06)
-                                : 'transparent',
-                            color: isActive
-                              ? 'secondary.main'
-                              : isViewed
-                                ? 'secondary.darker'
-                                : 'text.primary',
+                                ? 'background.paper'
+                                : alpha(theme.palette.common.white, 0.65),
+                            border: `1px solid ${
+                              isActive
+                                ? alpha(sidebarAccent, 0.45)
+                                : isViewed
+                                  ? alpha(theme.palette.success.main, 0.35)
+                                  : sidebarMutedBorder
+                            }`,
+                            boxShadow: isActive
+                              ? `0 2px 8px ${alpha(sidebarAccent, 0.12)}`
+                              : `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
+                            color: isActive ? 'primary.dark' : isViewed ? 'text.primary' : 'text.primary',
+                            transition: theme.transitions.create(
+                              ['background-color', 'border-color', 'box-shadow'],
+                              { duration: theme.transitions.duration.shorter }
+                            ),
                             '&:hover': {
                               bgcolor: isActive
-                                ? alpha(theme.palette.secondary.main, 0.16)
+                                ? alpha(sidebarAccent, 0.14)
                                 : isViewed
-                                  ? alpha(theme.palette.secondary.main, 0.1)
-                                  : alpha(theme.palette.grey[500], 0.08),
+                                  ? alpha(theme.palette.success.main, 0.04)
+                                  : alpha(theme.palette.grey[500], 0.06),
+                              borderColor: isLocked
+                                ? sidebarMutedBorder
+                                : alpha(sidebarAccent, 0.28),
                             },
                           }}
                         >
@@ -2225,12 +2416,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                 overflow: 'hidden',
                                 border: `1px solid ${
                                   isActive
-                                    ? theme.palette.secondary.main
+                                    ? sidebarAccent
                                     : isViewed
-                                      ? alpha(theme.palette.secondary.main, 0.6)
-                                      : theme.palette.divider
+                                      ? alpha(theme.palette.success.main, 0.55)
+                                      : sidebarMutedBorder
                                 }`,
-                                bgcolor: 'common.black',
+                                bgcolor: 'grey.900',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -2262,10 +2453,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               )}
                             </Box>
                             <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                              <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, pr: 0.5 }} noWrap>
                                 {lesson.title}
                               </Typography>
-                              <Typography variant="caption" sx={{ color: 'text.secondary' }} noWrap>
+                              <Typography
+                                variant="caption"
+                                sx={{ color: 'text.secondary', fontWeight: 500 }}
+                                noWrap
+                              >
                                 {(() => {
                                   if (lessonHasVideo) {
                                     return (
@@ -2279,10 +2474,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                     );
                                   }
                                   return lessonHasImages
-                                      ? `Images • ${lesson.images.length}`
+                                      ? `Images · ${lesson.images.length}`
                                       : Array.isArray(lesson.attachments) && lesson.attachments.length > 0
-                                        ? `Files • ${lesson.attachments.length}`
-                                      : lesson.content
+                                        ? `Files · ${lesson.attachments.length}`
+                                        : lesson.content
                                         ? 'Text lesson'
                                         : 'Lesson';
                                 })()}
@@ -2300,24 +2495,44 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                       flex: 1,
                                       height: 5,
                                       borderRadius: 999,
-                                      bgcolor: alpha(theme.palette.grey[500], 0.22),
+                                      bgcolor: alpha(theme.palette.grey[500], 0.16),
                                       '& .MuiLinearProgress-bar': {
                                         borderRadius: 999,
                                         bgcolor:
-                                          isActive || isViewed
-                                            ? 'secondary.main'
-                                            : alpha(theme.palette.primary.main, 0.85),
+                                          isActive || isViewed ? sidebarAccent : alpha(sidebarAccent, 0.55),
                                       },
                                     }}
                                   />
                                 </Stack>
                               )}
                             </Stack>
+                            {isViewed && (
+                              <Chip
+                                size="small"
+                                label="Completed"
+                                color="success"
+                                variant="outlined"
+                                icon={<Iconify icon="solar:check-circle-bold" width={14} />}
+                                sx={{
+                                  height: 22,
+                                  flexShrink: 0,
+                                  alignSelf: 'center',
+                                  borderWidth: 1.5,
+                                  '& .MuiChip-label': {
+                                    px: 0.5,
+                                    fontSize: theme.typography.pxToRem(10),
+                                    fontWeight: 800,
+                                    letterSpacing: 0.02,
+                                  },
+                                  '& .MuiChip-icon': { ml: '6px', color: 'success.main' },
+                                }}
+                              />
+                            )}
                             {isLocked && (
                               <Iconify
                                 icon="solar:lock-keyhole-bold"
                                 width={14}
-                                sx={{ color: 'text.disabled', flexShrink: 0 }}
+                                sx={{ color: 'text.disabled', flexShrink: 0, alignSelf: 'center' }}
                               />
                             )}
                           </Stack>
@@ -2360,28 +2575,36 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             }}
                             sx={{
                               width: 1,
-                              py: 1.25,
+                              py: 1.35,
                               px: 1.5,
-                              borderRadius: 1,
+                              borderRadius: 1.5,
                               cursor: moduleDone ? 'pointer' : 'not-allowed',
                               opacity: moduleDone ? 1 : 0.55,
                               bgcolor:
                                 moduleDone && activeLessonId === modulePracticeRowId
-                                  ? alpha(theme.palette.secondary.main, 0.12)
+                                  ? alpha(sidebarAccent, 0.1)
                                   : practiceUnlockedStyle
-                                    ? alpha(theme.palette.secondary.main, 0.08)
-                                    : 'transparent',
+                                    ? alpha(theme.palette.info.main, 0.06)
+                                    : alpha(theme.palette.grey[500], 0.04),
+                              border: `1px solid ${
+                                moduleDone && activeLessonId === modulePracticeRowId
+                                  ? alpha(sidebarAccent, 0.4)
+                                  : practiceUnlockedStyle
+                                    ? alpha(theme.palette.info.main, 0.25)
+                                    : sidebarMutedBorder
+                              }`,
+                              boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
                               color:
                                 moduleDone && activeLessonId === modulePracticeRowId
-                                  ? 'secondary.main'
+                                  ? 'primary.dark'
                                   : practiceUnlockedStyle
-                                    ? 'secondary.darker'
+                                    ? 'info.dark'
                                     : 'text.primary',
                               '&:hover': {
                                 bgcolor: moduleDone
                                   ? activeLessonId === modulePracticeRowId
-                                    ? alpha(theme.palette.secondary.main, 0.16)
-                                    : alpha(theme.palette.secondary.main, 0.12)
+                                    ? alpha(sidebarAccent, 0.14)
+                                    : alpha(theme.palette.info.main, 0.1)
                                   : alpha(theme.palette.grey[500], 0.06),
                               },
                             }}
@@ -2400,12 +2623,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   overflow: 'hidden',
                                   border: `1px solid ${
                                     moduleDone && activeLessonId === modulePracticeRowId
-                                      ? theme.palette.secondary.main
+                                      ? sidebarAccent
                                       : practiceUnlockedStyle
-                                      ? alpha(theme.palette.secondary.main, 0.6)
-                                      : theme.palette.divider
+                                        ? alpha(theme.palette.info.main, 0.5)
+                                        : sidebarMutedBorder
                                   }`,
-                                  bgcolor: 'common.black',
+                                  bgcolor: alpha(theme.palette.info.dark, 0.85),
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -2419,15 +2642,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                 />
                               </Box>
                               <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
                                   {section.title}
                                 </Typography>
                                 <Typography
                                   variant="caption"
-                                  sx={{ color: 'secondary.dark', fontWeight: 600 }}
+                                  sx={{ color: 'info.dark', fontWeight: 700 }}
                                   noWrap
                                 >
-                                  Non-graded Assessment
+                                  Non-graded · practice
                                 </Typography>
                               </Stack>
                               {!moduleDone && (
@@ -2444,9 +2667,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     })()}
                   </Stack>
                   {(!section.lessons || section.lessons.length === 0) && (
-                    <Typography variant="caption" sx={{ color: 'text.secondary', px: 1.5 }}>
-                      No lessons in this section.
-                    </Typography>
+                    <Box
+                      sx={{
+                        mx: 0.5,
+                        my: 0.5,
+                        py: 1.5,
+                        px: 2,
+                        borderRadius: 1.5,
+                        bgcolor: alpha(theme.palette.grey[500], 0.08),
+                        border: `1px dashed ${sidebarMutedBorder}`,
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                        No lessons published in this module yet.
+                      </Typography>
+                    </Box>
                   )}
                 </AccordionDetails>
               </Accordion>
@@ -2456,49 +2691,92 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         </>
       )}
 
-      {/* Feedback section */}
+      {/* Feedback — same visual language as modules */}
       <Accordion
         expanded={expandedSection === FEEDBACK_SECTION_ID}
         onChange={() => {
           setExpandedSection(expandedSection === FEEDBACK_SECTION_ID ? '' : FEEDBACK_SECTION_ID);
         }}
         disableGutters
+        elevation={0}
         sx={{
-          boxShadow: 'none',
+          mx: 2,
+          mb: 2,
+          mt: 0.5,
+          borderRadius: 2,
+          overflow: 'hidden',
+          bgcolor: 'background.paper',
+          border: `1px solid ${sidebarMutedBorder}`,
+          boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.05)}`,
           '&:before': { display: 'none' },
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          ...(progressPercent < 100 && { opacity: 0.85 }),
+          ...(progressPercent < 100 && { opacity: 0.92 }),
         }}
       >
         <AccordionSummary
-          expandIcon={<Iconify icon="eva:chevron-down-fill" width={20} />}
+          expandIcon={<Iconify icon="eva:chevron-down-fill" width={20} sx={{ color: 'text.secondary' }} />}
           sx={{
-            minHeight: 48,
-            '& .MuiAccordionSummary-content': { my: 1.5 },
+            minHeight: 52,
+            px: 0.5,
+            borderLeft: `4px solid ${alpha(theme.palette.warning.main, progressPercent >= 100 ? 0.9 : 0.35)}`,
+            '& .MuiAccordionSummary-content': { my: 1.25 },
+            '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) },
           }}
         >
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            Feedback
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1.25}>
+            <Box
+              sx={{
+                width: 36,
+                height: 36,
+                borderRadius: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: alpha(theme.palette.warning.main, 0.12),
+                color: 'warning.dark',
+                border: `1px solid ${alpha(theme.palette.warning.main, 0.25)}`,
+              }}
+            >
+              <Iconify icon="solar:chat-round-dots-bold" width={20} />
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, letterSpacing: -0.01 }}>
+                Course feedback
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                {progressPercent >= 100 ? 'Available now' : 'Unlocks when all lessons are complete'}
+              </Typography>
+            </Box>
+          </Stack>
         </AccordionSummary>
-        <AccordionDetails sx={{ pt: 1.5, pb: 2, px: 2 }}>
+        <AccordionDetails
+          sx={{
+            pt: 0,
+            pb: 2,
+            px: 2,
+            bgcolor: alpha(theme.palette.grey[500], 0.04),
+            borderTop: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+          }}
+        >
           {progressPercent < 100 ? (
             <Box
               sx={{
-                py: 2,
-                px: 1.5,
-                borderRadius: 1,
-                bgcolor: alpha(theme.palette.grey[500], 0.08),
-                border: `1px dashed ${theme.palette.divider}`,
+                py: 2.5,
+                px: 2,
+                borderRadius: 1.5,
+                bgcolor: 'background.paper',
+                border: `1px dashed ${sidebarMutedBorder}`,
                 textAlign: 'center',
               }}
             >
-              <Iconify icon="solar:lock-keyhole-bold" width={32} sx={{ color: 'text.disabled', mb: 1 }} />
-              <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                Complete all lessons to unlock feedback
+              <Iconify icon="solar:lock-keyhole-bold" width={36} sx={{ color: 'text.disabled', mb: 1.25 }} />
+              <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 700 }}>
+                Feedback is locked
               </Typography>
-              <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mt: 0.5 }}>
-                {completedCount} of {totalLessons} completed
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.75, fontWeight: 500 }}>
+                Finish every lesson in the outline to submit official course feedback.
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'primary.dark', display: 'block', mt: 1.25, fontWeight: 800 }}>
+                Progress: {completedCount} / {totalLessons}
               </Typography>
             </Box>
           ) : (
@@ -2510,24 +2788,23 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 sx={{
                   py: 1.25,
                   px: 1.5,
-                  borderRadius: 1,
+                  borderRadius: 1.5,
                   bgcolor:
                     expandedSection === FEEDBACK_SECTION_ID
-                      ? alpha(theme.palette.secondary.main, 0.08)
-                      : 'transparent',
+                      ? alpha(sidebarAccent, 0.08)
+                      : 'background.paper',
+                  border: `1px solid ${sidebarMutedBorder}`,
                 }}
               >
                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
                   <Box
                     sx={{
-                      width: 20,
-                      height: 20,
+                      width: 22,
+                      height: 22,
                       borderRadius: '50%',
-                      border: `2px solid ${theme.palette.secondary.main}`,
+                      border: `2px solid ${sidebarAccent}`,
                       bgcolor:
-                        expandedSection === FEEDBACK_SECTION_ID
-                          ? theme.palette.secondary.main
-                          : 'transparent',
+                        expandedSection === FEEDBACK_SECTION_ID ? sidebarAccent : 'transparent',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2538,7 +2815,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'common.white' }} />
                     )}
                   </Box>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
                     Give feedback
                   </Typography>
                 </Stack>
@@ -2548,13 +2825,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 sx={{
                   mt: 2,
                   bgcolor: 'background.paper',
-                  boxShadow: theme.customShadows.z4,
+                  boxShadow: `0 2px 8px ${alpha(theme.palette.common.black, 0.06)}`,
                   p: 2,
-                  border: `1px solid ${theme.palette.divider}`,
+                  border: `1px solid ${sidebarMutedBorder}`,
+                  borderRadius: 1.5,
                 }}
               >
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                  Course feedback
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: 'text.primary' }}>
+                  Evaluation form
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
                   Please rate the course and share your feedback. Your input helps us improve.
@@ -2704,17 +2982,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     <DashboardContent
       disablePadding
       sx={{
-        flex: 1,
+        flex: '1 1 0%',
         minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         bgcolor: 'grey.50',
+        maxHeight: {
+          xs: 'none',
+          md: 'calc(100dvh - var(--layout-header-desktop-height) - var(--layout-dashboard-content-pt) - var(--layout-dashboard-content-pb))',
+        },
       }}
     >
     <Box
       sx={{
-        flex: 1,
+        flex: '1 1 0%',
         minHeight: 0,
         bgcolor: 'grey.50',
         display: 'flex',
@@ -2725,28 +3007,39 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         sx={{
-          flex: 1,
+          flex: '1 1 0%',
           minHeight: 0,
           overflow: 'hidden',
           alignItems: { xs: 'stretch', md: 'stretch' },
         }}
       >
-        {/* Left: own scroll; height matches row (desktop). */}
+        {/* Left: scrollable course outline (many modules / sections). */}
         <Box
           sx={{
             display: { xs: 'none', md: 'flex' },
             flexDirection: 'column',
-            width: { md: 360, lg: 400 },
+            width: { md: 384, lg: 420 },
+            flex: { md: '0 0 auto' },
             flexShrink: 0,
             minHeight: 0,
-            alignSelf: 'stretch',
+            maxHeight: { md: '100%' },
+            alignSelf: { md: 'stretch' },
             overflowY: 'auto',
             overflowX: 'hidden',
             bgcolor: 'transparent',
             borderRight: `1px solid ${theme.palette.divider}`,
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            '&::-webkit-scrollbar': { display: 'none' },
+            scrollbarGutter: 'stable',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
+            WebkitOverflowScrolling: 'touch',
+            '&::-webkit-scrollbar': { width: 8 },
+            '&::-webkit-scrollbar-thumb': {
+              borderRadius: 8,
+              backgroundColor: alpha(theme.palette.grey[500], 0.45),
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: alpha(theme.palette.grey[500], 0.08),
+            },
             overscrollBehavior: 'contain',
           }}
         >
@@ -2761,17 +3054,45 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           ModalProps={{ keepMounted: true }}
           PaperProps={{
             sx: {
-              width: 320,
-              bgcolor: 'background.paper',
+              width: { xs: 'min(100vw - 16px, 400px)', sm: 400 },
+              maxHeight: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              bgcolor: alpha(theme.palette.grey[500], 0.06),
+              backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.04)} 0%, transparent 48%)`,
+              borderRight: `1px solid ${sidebarMutedBorder}`,
             },
           }}
         >
-          {courseSidebar}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarGutter: 'stable',
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
+              '&::-webkit-scrollbar': { width: 8 },
+              '&::-webkit-scrollbar-thumb': {
+                borderRadius: 8,
+                backgroundColor: alpha(theme.palette.grey[500], 0.45),
+              },
+              '&::-webkit-scrollbar-track': {
+                backgroundColor: alpha(theme.palette.grey[500], 0.08),
+              },
+              overscrollBehavior: 'contain',
+            }}
+          >
+            {courseSidebar}
+          </Box>
         </Drawer>
 
         <Box
           sx={{
-            flex: 1,
+            flex: '1 1 0%',
             minWidth: 0,
             minHeight: 0,
             order: { xs: 1, md: 2 },
@@ -2779,10 +3100,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             overflowX: 'hidden',
             WebkitOverflowScrolling: 'touch',
             p: { xs: 2, md: 3 },
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            '&::-webkit-scrollbar': { display: 'none' },
-            // Isolated scroll from the left column
+            scrollbarGutter: 'stable',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
+            '&::-webkit-scrollbar': { width: 8 },
+            '&::-webkit-scrollbar-thumb': {
+              borderRadius: 8,
+              backgroundColor: alpha(theme.palette.grey[500], 0.45),
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: alpha(theme.palette.grey[500], 0.08),
+            },
             overscrollBehavior: 'contain',
           }}
         >
@@ -3063,8 +3391,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 if (durRounded > 0 && (cov >= durRounded - 1 || t >= durRounded - 0.5)) {
                   syncProgressOnFullDuration(activeLessonIdRef.current, t, d);
                 }
-                // If already marked complete by watchtime, still allow full-duration sync above and stop here.
-                if (prog.markedComplete) return;
+                // If already marked complete mid-playback, still allow full-duration sync above; then sync local unlock state.
+                if (prog.markedComplete) {
+                  appendViewedSectionId(activeLessonIdRef.current);
+                  return;
+                }
                 const shouldComplete = required > 0 ? cov >= required - 1 : true;
                 if (shouldComplete) {
                   prog.markedComplete = true;
