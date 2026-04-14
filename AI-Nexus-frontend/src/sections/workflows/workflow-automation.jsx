@@ -1,9 +1,15 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+
+import { CONFIG } from 'src/config-global';
 
 // ----------------------------------------------------------------------
 
 export function WorkflowAutomation() {
+  const flowiseUrl = CONFIG.flowise.publicBaseUrl || 'http://localhost:3000';
+
   return (
     <Box
       sx={{
@@ -36,6 +42,19 @@ export function WorkflowAutomation() {
       >
         Discover and manage AI resources for your community — templates, guides, and automations in one place.
       </Typography>
+      <Stack direction="row" justifyContent="center">
+        <Button
+          component="a"
+          href={flowiseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant="contained"
+          size="large"
+          sx={{ textTransform: 'none', fontWeight: 700 }}
+        >
+          Create Workflow
+        </Button>
+      </Stack>
     </Box>
   );
 }

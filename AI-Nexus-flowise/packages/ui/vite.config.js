@@ -7,8 +7,12 @@ export default defineConfig(async ({ mode }) => {
     let proxy = undefined
     if (mode === 'development') {
         const serverEnv = dotenv.config({ processEnv: {}, path: '../server/.env' }).parsed
-        const serverHost = serverEnv?.['HOST'] ?? 'localhost'
-        const serverPort = parseInt(serverEnv?.['PORT'] ?? 3000)
+        // Use 127.0.0.1 instead of localhost: on Windows, localhost → IPv6/IPv4 parallel connect
+        // often yields AggregateError (EADDRINUSE / connection quirks) with Vite's HTTP proxy.
+        const rawHost = serverEnv?.['HOST']?.trim()
+        const serverHost =
+            !rawHost || rawHost === 'localhost' || rawHost === '::1' || rawHost === '::' ? '127.0.0.1' : rawHost
+        const serverPort = parseInt(serverEnv?.['PORT'] ?? 3001, 10)
         if (!Number.isNaN(serverPort) && serverPort > 0 && serverPort < 65535) {
             proxy = {
                 '^/api(/|$).*': {
