@@ -22,12 +22,12 @@ export const navData = [
       {
         items: [
           {
-            title: 'Forum',
-            path: paths.aiForum.root,
-          },
-          {
             title: 'Announcements',
             path: paths.announcements,
+          },
+          {
+            title: 'Forum',
+            path: paths.aiForum.root,
           },
         ],
       },

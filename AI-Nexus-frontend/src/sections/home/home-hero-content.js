@@ -9,7 +9,7 @@ export const HOME_HERO_DATA = {
   description:
     'Master AI in one weekend and become the go-to expert for AI solutions.',
   cta: {
-    label: 'Begin with Free Mastermind',
+    label: 'Begin with Free AI Fluency Program',
     href: paths.learning,
   },
   event: {

@@ -31,9 +31,9 @@ export function HomeView() {
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
         <HomeCardsSection />
 
-        <HomeCounterSection />
+        {/* <HomeCounterSection /> */}
 
-        <HomeCommunitiesSection />
+        {/* <HomeCommunitiesSection /> */}
 
         <HomeJoinSection />
 

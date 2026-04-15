@@ -28,7 +28,7 @@ const CARDS = [
     icon: 'mingcute:git-branch-line',
     title: 'AI Resources',
     description:
-      'Build and share intelligent AI resources. Automate tasks with AI agents and connect with powerful APIs and integrations.',
+      'Build and share intelligent AI resources. Automate tasks with AI agents and find useful prompts and tools.',
   },
 ];
 
