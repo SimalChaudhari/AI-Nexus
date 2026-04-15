@@ -13,14 +13,23 @@ const getSettings = async () => {
                 if (!appServer.identityManager.isLicenseValid()) {
                     return {}
                 } else {
-                    return { PLATFORM_TYPE: Platform.ENTERPRISE }
+                    return {
+                        PLATFORM_TYPE: Platform.ENTERPRISE,
+                        TOKEN_ONLY_AUTH: process.env.FLOWISE_TOKEN_ONLY_AUTH === 'true'
+                    }
                 }
             }
             case Platform.CLOUD: {
-                return { PLATFORM_TYPE: Platform.CLOUD }
+                return {
+                    PLATFORM_TYPE: Platform.CLOUD,
+                    TOKEN_ONLY_AUTH: process.env.FLOWISE_TOKEN_ONLY_AUTH === 'true'
+                }
             }
             default: {
-                return { PLATFORM_TYPE: Platform.OPEN_SOURCE }
+                return {
+                    PLATFORM_TYPE: Platform.OPEN_SOURCE,
+                    TOKEN_ONLY_AUTH: process.env.FLOWISE_TOKEN_ONLY_AUTH === 'true'
+                }
             }
         }
     } catch (error) {

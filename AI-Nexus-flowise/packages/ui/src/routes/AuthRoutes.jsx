@@ -1,18 +1,22 @@
-import { lazy } from 'react'
+import { lazy, useEffect } from 'react'
+import { Navigate } from 'react-router-dom'
 
 import Loadable from '@/ui-component/loading/Loadable'
 import AuthLayout from '@/layout/AuthLayout'
 
-const ResolveLoginPage = Loadable(lazy(() => import('@/views/auth/login')))
-const SignInPage = Loadable(lazy(() => import('@/views/auth/signIn')))
-const RegisterPage = Loadable(lazy(() => import('@/views/auth/register')))
-const VerifyEmailPage = Loadable(lazy(() => import('@/views/auth/verify-email')))
-const ForgotPasswordPage = Loadable(lazy(() => import('@/views/auth/forgotPassword')))
-const ResetPasswordPage = Loadable(lazy(() => import('@/views/auth/resetPassword')))
 const UnauthorizedPage = Loadable(lazy(() => import('@/views/auth/unauthorized')))
 const RateLimitedPage = Loadable(lazy(() => import('@/views/auth/rateLimited')))
 const OrganizationSetupPage = Loadable(lazy(() => import('@/views/organization/index')))
 const LicenseExpiredPage = Loadable(lazy(() => import('@/views/auth/expired')))
+
+const ainexusAppUrl = (import.meta.env.VITE_AINEXUS_APP_URL || 'http://localhost:3000').trim().replace(/\/$/, '')
+
+const RedirectToAiNexusBridge = () => {
+    useEffect(() => {
+        window.location.replace(`${ainexusAppUrl}/flowise-bridge`)
+    }, [])
+    return null
+}
 
 const AuthRoutes = {
     path: '/',
@@ -20,27 +24,31 @@ const AuthRoutes = {
     children: [
         {
             path: '/login',
-            element: <ResolveLoginPage />
+            element: <Navigate to='/signin' replace />
+        },
+        {
+            path: '/external-auth-wait',
+            element: <Navigate to='/signin' replace />
         },
         {
             path: '/signin',
-            element: <SignInPage />
+            element: <RedirectToAiNexusBridge />
         },
         {
             path: '/register',
-            element: <RegisterPage />
+            element: <RedirectToAiNexusBridge />
         },
         {
             path: '/verify',
-            element: <VerifyEmailPage />
+            element: <RedirectToAiNexusBridge />
         },
         {
             path: '/forgot-password',
-            element: <ForgotPasswordPage />
+            element: <RedirectToAiNexusBridge />
         },
         {
             path: '/reset-password',
-            element: <ResetPasswordPage />
+            element: <RedirectToAiNexusBridge />
         },
         {
             path: '/unauthorized',

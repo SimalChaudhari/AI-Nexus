@@ -65,7 +65,7 @@ const RegisterCloudUserSchema = z
 const RegisterPage = () => {
     const theme = useTheme()
     useNotifier()
-    const { isEnterpriseLicensed, isCloud, isOpenSource } = useConfig()
+    const { isEnterpriseLicensed, isCloud, isOpenSource, tokenOnlyAuth } = useConfig()
 
     const usernameInput = {
         label: 'Username',
@@ -102,6 +102,13 @@ const RegisterPage = () => {
     }
 
     const [params] = useSearchParams()
+    const navigate = useNavigate()
+
+    useEffect(() => {
+        if (tokenOnlyAuth) {
+            navigate('/external-auth-wait', { replace: true })
+        }
+    }, [tokenOnlyAuth, navigate])
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -119,7 +126,6 @@ const RegisterPage = () => {
     const registerApi = useApi(accountApi.registerAccount)
     const ssoLoginApi = useApi(ssoApi.ssoLogin)
     const getDefaultProvidersApi = useApi(loginMethodApi.getDefaultLoginMethods)
-    const navigate = useNavigate()
 
     const register = async (event) => {
         event.preventDefault()

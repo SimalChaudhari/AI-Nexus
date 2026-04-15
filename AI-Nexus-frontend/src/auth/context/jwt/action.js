@@ -1,5 +1,6 @@
 import { deleteCookie } from 'src/utils/cookie';
 import axios from 'src/utils/axios';
+import { CONFIG } from 'src/config-global';
 
 import { setSession } from './utils';
 
@@ -172,6 +173,35 @@ export const exchangeOAuthCode = async ({ code, state }) => {
  * Sign out (SSO-aware: calls backend logout to revoke IdP token if SSO user)
  *************************************** */
 export const signOut = async () => {
+  const triggerFlowiseLogout = async () => {
+    const flowiseBase = (CONFIG.flowise.publicBaseUrl || '').trim().replace(/\/$/, '');
+    if (!flowiseBase) return;
+
+    // Use hidden iframe + POST form to avoid CORS issues while still sending HttpOnly cookies.
+    await new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      const targetName = `flowise-logout-${Date.now()}`;
+      iframe.name = targetName;
+      iframe.style.display = 'none';
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `${flowiseBase}/api/v1/account/logout`;
+      form.target = targetName;
+      form.style.display = 'none';
+
+      document.body.appendChild(iframe);
+      document.body.appendChild(form);
+      form.submit();
+
+      window.setTimeout(() => {
+        form.remove();
+        iframe.remove();
+        resolve();
+      }, 800);
+    });
+  };
+
   try {
     const accessToken = sessionStorage.getItem('jwt_access_token');
     if (accessToken) {
@@ -183,7 +213,10 @@ export const signOut = async () => {
         console.warn('Backend logout failed (non-fatal):', err);
       }
     }
+    await triggerFlowiseLogout();
     await setSession(null);
+    localStorage.removeItem('jwt_access_token');
+    localStorage.removeItem('access-token');
     sessionStorage.removeItem('user');
     deleteCookie('access-token');
   } catch (error) {

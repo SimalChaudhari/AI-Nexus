@@ -198,7 +198,7 @@ export class AuthService {
     }
   }
 
-  // Forgot password - send reset link to email
+  // Forgot password - send reset link to email 0
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string }> {
     try {
       if (!forgotPasswordDto.email) {

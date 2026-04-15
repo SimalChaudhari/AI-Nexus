@@ -4,10 +4,25 @@ import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
 import { Organization } from '../database/entities/organization.entity'
 import { User } from '../database/entities/user.entity'
 import { AccountDTO, AccountService } from '../services/account.service'
+import { isFlowiseTokenOnlyAuthEnabled } from '../utils/tokenOnlyAuth.util'
+
+const tokenOnlyAuthResponse = () => ({
+    message: 'This Flowise instance uses token-based login only. Open from AI Nexus/main app.',
+    code: 'TOKEN_ONLY_AUTH' as const
+})
 
 export class AccountController {
+    private clearAuthCookies(res: Response) {
+        res.clearCookie('connect.sid')
+        res.clearCookie('token')
+        res.clearCookie('refreshToken')
+    }
+
     public async register(req: Request, res: Response, next: NextFunction) {
         try {
+            if (isFlowiseTokenOnlyAuthEnabled()) {
+                return res.status(StatusCodes.GONE).json(tokenOnlyAuthResponse())
+            }
             const accountService = new AccountService()
             const sanitizedBody = sanitizeRegistrationDTO(req.body)
             const data = await accountService.register(sanitizedBody)
@@ -29,6 +44,9 @@ export class AccountController {
 
     public async login(req: Request, res: Response, next: NextFunction) {
         try {
+            if (isFlowiseTokenOnlyAuthEnabled()) {
+                return res.status(StatusCodes.GONE).json(tokenOnlyAuthResponse())
+            }
             const accountService = new AccountService()
             const data = await accountService.login(req.body)
             return res.status(StatusCodes.CREATED).json(data)
@@ -59,6 +77,9 @@ export class AccountController {
 
     public async forgotPassword(req: Request, res: Response, next: NextFunction) {
         try {
+            if (isFlowiseTokenOnlyAuthEnabled()) {
+                return res.status(StatusCodes.GONE).json(tokenOnlyAuthResponse())
+            }
             const accountService = new AccountService()
             const data = await accountService.forgotPassword(req.body)
             return res.status(StatusCodes.CREATED).json(data)
@@ -69,6 +90,9 @@ export class AccountController {
 
     public async resetPassword(req: Request, res: Response, next: NextFunction) {
         try {
+            if (isFlowiseTokenOnlyAuthEnabled()) {
+                return res.status(StatusCodes.GONE).json(tokenOnlyAuthResponse())
+            }
             const accountService = new AccountService()
             const data = await accountService.resetPassword(req.body)
             return res.status(StatusCodes.OK).json(data)
@@ -91,26 +115,29 @@ export class AccountController {
             if (req.user) {
                 const accountService = new AccountService()
                 await accountService.logout(req.user)
-                if (req.isAuthenticated()) {
-                    req.logout((err) => {
-                        if (err) {
-                            return res.status(500).json({ message: 'Logout failed' })
-                        }
-                        req.session.destroy((err) => {
-                            if (err) {
-                                return res.status(500).json({ message: 'Failed to destroy session' })
-                            }
-                        })
-                    })
-                } else {
-                    // For JWT-based users (owner, org_admin)
-                    res.clearCookie('connect.sid') // Clear the session cookie
-                    res.clearCookie('token') // Clear the JWT cookie
-                    res.clearCookie('refreshToken') // Clear the JWT cookie
-                    return res.redirect('/login') // Redirect to the login page
-                }
             }
-            return res.status(200).json({ message: 'logged_out', redirectTo: `/login` })
+
+            if (req.isAuthenticated()) {
+                await new Promise<void>((resolve, reject) => {
+                    req.logout((err) => {
+                        if (err) return reject(err)
+                        return resolve()
+                    })
+                })
+            }
+
+            if (req.session) {
+                await new Promise<void>((resolve, reject) => {
+                    req.session.destroy((err) => {
+                        if (err) return reject(err)
+                        return resolve()
+                    })
+                })
+            }
+
+            this.clearAuthCookies(res)
+            const redirectPath = '/signin'
+            return res.status(200).json({ message: 'logged_out', redirectTo: redirectPath })
         } catch (error) {
             next(error)
         }
@@ -129,6 +156,9 @@ export class AccountController {
     }
 
     public async checkBasicAuth(req: Request, res: Response) {
+        if (isFlowiseTokenOnlyAuthEnabled()) {
+            return res.status(StatusCodes.GONE).json(tokenOnlyAuthResponse())
+        }
         const { username, password } = req.body
         if (username === process.env.FLOWISE_USERNAME && password === process.env.FLOWISE_PASSWORD) {
             return res.json({ message: 'Authentication successful' })

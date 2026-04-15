@@ -25,6 +25,7 @@ export const WHITELIST_URLS = [
     '/api/v1/attachments',
     '/api/v1/auth/resolve',
     '/api/v1/auth/login',
+    '/api/v1/auth/external-login',
     '/api/v1/auth/refreshToken',
     '/api/v1/settings',
     '/api/v1/account/logout',

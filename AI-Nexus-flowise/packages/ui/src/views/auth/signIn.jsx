@@ -41,7 +41,7 @@ const SignInPage = () => {
     const theme = useTheme()
     useSelector((state) => state.customization)
     useNotifier()
-    const { isEnterpriseLicensed, isCloud, isOpenSource } = useConfig()
+    const { isEnterpriseLicensed, isCloud, isOpenSource, tokenOnlyAuth } = useConfig()
 
     const usernameInput = {
         label: 'Username',
@@ -71,6 +71,12 @@ const SignInPage = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const resendVerificationApi = useApi(accountApi.resendVerificationEmail)
+
+    useEffect(() => {
+        if (tokenOnlyAuth) {
+            navigate('/external-auth-wait', { replace: true })
+        }
+    }, [tokenOnlyAuth, navigate])
 
     const doLogin = (event) => {
         event.preventDefault()

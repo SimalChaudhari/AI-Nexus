@@ -29,7 +29,7 @@ import {
 import { decryptToken, encryptToken, generateSafeCopy } from '../../utils/tempTokenUtils'
 import { getAuthStrategy } from './AuthStrategy'
 import { initializeDBClientAndStore, initializeRedisClientAndStore } from './SessionPersistance'
-import { v4 as uuidv4 } from 'uuid'
+import { isFlowiseTokenOnlyAuthEnabled } from '../../utils/tokenOnlyAuth.util'
 
 const localStrategy = require('passport-local').Strategy
 
@@ -203,7 +203,8 @@ export const initializeJwtCookieMiddleware = async (app: express.Application, id
         const expressApp = getRunningExpressApp()
         const platform = expressApp.identityManager.getPlatformType()
         if (platform === Platform.CLOUD) {
-            return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/signin' })
+            const cloudPath = '/signin'
+            return res.status(HttpStatusCode.Ok).json({ redirectUrl: cloudPath })
         }
         const orgService = new OrganizationService()
         const queryRunner = expressApp.AppDataSource.createQueryRunner()
@@ -216,19 +217,23 @@ export const initializeJwtCookieMiddleware = async (app: express.Application, id
                     if (!identityManager.isLicenseValid()) {
                         return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/license-expired' })
                     }
+                    if (isFlowiseTokenOnlyAuthEnabled()) {
+                        return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/signin' })
+                    }
                     return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/organization-setup' })
                 default:
                     return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/organization-setup' })
             }
         }
+        const passwordLoginPath = '/signin'
         switch (platform) {
             case Platform.ENTERPRISE:
                 if (!identityManager.isLicenseValid()) {
                     return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/license-expired' })
                 }
-                return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/signin' })
+                return res.status(HttpStatusCode.Ok).json({ redirectUrl: passwordLoginPath })
             default:
-                return res.status(HttpStatusCode.Ok).json({ redirectUrl: '/signin' })
+                return res.status(HttpStatusCode.Ok).json({ redirectUrl: passwordLoginPath })
         }
     })
 
@@ -270,6 +275,12 @@ export const initializeJwtCookieMiddleware = async (app: express.Application, id
     })
 
     app.post('/api/v1/auth/login', (req, res, next?) => {
+        if (isFlowiseTokenOnlyAuthEnabled()) {
+            return res.status(StatusCodes.GONE).json({
+                message: 'Password login API is disabled. Use token-based external-login only.',
+                code: 'TOKEN_ONLY_AUTH'
+            })
+        }
         passport.authenticate('login', async (err: any, user: LoggedInUser) => {
             try {
                 if (err || !user) {
@@ -298,7 +309,7 @@ export const initializeJwtCookieMiddleware = async (app: express.Application, id
     })
 }
 
-export const setTokenOrCookies = (
+export const setTokenOrCookies = async (
     res: Response,
     user: any,
     regenerateRefreshToken: boolean,
@@ -317,13 +328,7 @@ export const setTokenOrCookies = (
     returnUser.isSSO = !isSSO ? false : isSSO
 
     if (redirect) {
-        // 1. Generate a random token
-        const ssoToken = uuidv4()
-
-        // 2. Store returnUser in your session store, keyed by ssoToken, with a short expiry
-        storeSSOUserPayload(ssoToken, returnUser)
-        // 3. Redirect with token only
-        const dashboardUrl = `/sso-success?token=${ssoToken}`
+        const dashboardUrl = `/`
 
         // Return the token as a cookie in our response.
         let resWithCookies = res
@@ -462,7 +467,3 @@ export const verifyTokenForBullMQDashboard = (req: Request, res: Response, next:
     })(req, res, next)
 }
 
-const storeSSOUserPayload = (ssoToken: string, returnUser: any) => {
-    const app = getRunningExpressApp()
-    app.cachePool.addSSOTokenCache(ssoToken, returnUser)
-}

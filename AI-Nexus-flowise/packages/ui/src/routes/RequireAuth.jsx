@@ -44,7 +44,7 @@ export const RequireAuth = ({ permission, display, children }) => {
     // Step 1: Authentication Check
     // Redirect to login if user is not authenticated
     if (!currentUser) {
-        return <Navigate to='/login' replace state={{ path: location.pathname }} />
+        return <Navigate to='/signin' replace state={{ path: location.pathname }} />
     }
 
     // Step 2: Deployment Type Specific Logic

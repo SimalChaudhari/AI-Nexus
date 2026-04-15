@@ -43,8 +43,14 @@ export const ConfigProvider = ({ children }) => {
             })
     }, [])
 
+    const tokenOnlyAuth = Boolean(config.TOKEN_ONLY_AUTH)
+
     return (
-        <ConfigContext.Provider value={{ config, loading, isEnterpriseLicensed, isCloud, isOpenSource }}>{children}</ConfigContext.Provider>
+        <ConfigContext.Provider
+            value={{ config, loading, isEnterpriseLicensed, isCloud, isOpenSource, tokenOnlyAuth }}
+        >
+            {children}
+        </ConfigContext.Provider>
     )
 }
 

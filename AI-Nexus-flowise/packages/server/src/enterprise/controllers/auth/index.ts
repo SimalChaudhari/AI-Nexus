@@ -1,8 +1,24 @@
 import { NextFunction, Request, Response } from 'express'
 import { StatusCodes } from 'http-status-codes'
 import { Platform } from '../../../Interface'
+import { InternalFlowiseError } from '../../../errors/internalFlowiseError'
 import { getRunningExpressApp } from '../../../utils/getRunningExpressApp'
+import { setTokenOrCookies } from '../../middleware/passport'
 import { LoggedInUser } from '../../Interface.Enterprise'
+import { resolveLoggedInUserFromAiNexusToken } from '../../services/ai-nexus-auth.service'
+
+const establishSession = async (req: Request, user: LoggedInUser): Promise<void> => {
+    await new Promise<void>((resolve, reject) => {
+        if (!req.session || !req.login) return resolve()
+        req.session.regenerate((regenerateErr) => {
+            if (regenerateErr) return reject(regenerateErr)
+            req.login(user, { session: true }, (loginErr) => {
+                if (loginErr) return reject(loginErr)
+                resolve()
+            })
+        })
+    })
+}
 
 const getAllPermissions = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -101,15 +117,82 @@ const ssoSuccess = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const appServer = getRunningExpressApp()
         const ssoToken = req.query.token as string
+        if (!ssoToken) {
+            console.warn('[ssoSuccess] Missing token query param', { path: req.path, hasTokenCookie: Boolean(req.cookies?.token) })
+            return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Missing SSO token' })
+        }
         const user = await appServer.cachePool.getSSOTokenCache(ssoToken)
-        if (!user) return res.status(401).json({ message: 'Invalid or expired SSO token' })
+        if (!user) {
+            // One-time SSO token can expire or be consumed after first read.
+            // If JWT cookie session already exists, return it instead of forcing relogin.
+            const sessionUser = req.user as LoggedInUser | undefined
+            if (sessionUser) {
+                console.info('[ssoSuccess] Cache miss but session user exists; returning session user', {
+                    userId: sessionUser.id,
+                    activeWorkspaceId: sessionUser.activeWorkspaceId
+                })
+                return res.status(StatusCodes.OK).json(sessionUser)
+            }
+            console.warn('[ssoSuccess] Cache miss and no session user', {
+                tokenPrefix: ssoToken.slice(0, 8),
+                hasTokenCookie: Boolean(req.cookies?.token),
+                hasRefreshCookie: Boolean(req.cookies?.refreshToken),
+                hasReqUser: Boolean(req.user)
+            })
+            return res.status(401).json({ message: 'Invalid or expired SSO token' })
+        }
+        console.info('[ssoSuccess] Cache hit; returning SSO user payload', {
+            tokenPrefix: ssoToken.slice(0, 8),
+            userId: user?.id
+        })
         await appServer.cachePool.deleteSSOTokenCache(ssoToken)
         return res.json(user)
+    } catch (error) {
+        console.error('[ssoSuccess] Unexpected error', error)
+        next(error)
+    }
+}
+
+/**
+ * AI Nexus token-based login: GET /api/v1/auth/external-login?token=JWT
+ * Verifies JWT, provisions Flowise user/workspace, sets session cookies, redirects to SSO success.
+ */
+const externalLogin = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const externalToken = req.query.token as string
+        if (!externalToken) return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Missing token' })
+        const loggedInUser = await resolveLoggedInUserFromAiNexusToken(externalToken)
+        await establishSession(req, loggedInUser)
+        return setTokenOrCookies(res, loggedInUser, true, req, true, true)
+    } catch (error: unknown) {
+        const message =
+            error instanceof InternalFlowiseError ? error.message : (error as Error)?.message || 'External login failed'
+        return res.status(StatusCodes.UNAUTHORIZED).json({ message: `External login failed: ${message}` })
+    }
+}
+
+/**
+ * Session bootstrap: GET /api/v1/auth/session-user (cookie session) or ?token=JWT from AI Nexus
+ */
+const sessionUser = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const user = req.user as LoggedInUser | undefined
+        if (user) return res.status(StatusCodes.OK).json(user)
+
+        const externalToken = (req.query.token as string) || ''
+        if (!externalToken) return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'No active session' })
+
+        const loggedInUser = await resolveLoggedInUserFromAiNexusToken(externalToken)
+        await establishSession(req, loggedInUser)
+        return setTokenOrCookies(res, loggedInUser, true, req, false, true)
     } catch (error) {
         next(error)
     }
 }
+
 export default {
     getAllPermissions,
-    ssoSuccess
+    ssoSuccess,
+    externalLogin,
+    sessionUser
 }

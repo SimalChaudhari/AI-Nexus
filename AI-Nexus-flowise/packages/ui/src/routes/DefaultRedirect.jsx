@@ -1,6 +1,11 @@
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfig } from '@/store/context/ConfigContext'
 import { useSelector } from 'react-redux'
+import { Navigate } from 'react-router-dom'
+import authApi from '@/api/auth'
+import { store } from '@/store'
+import { loginSuccess } from '@/store/reducers/authSlice'
 
 // Import all view components
 import Account from '@/views/account'
@@ -8,7 +13,6 @@ import Executions from '@/views/agentexecutions'
 import Agentflows from '@/views/agentflows'
 import APIKey from '@/views/apikey'
 import Assistants from '@/views/assistants'
-import Login from '@/views/auth/login'
 import LoginActivityPage from '@/views/auth/loginActivity'
 import SSOConfig from '@/views/auth/ssoConfig'
 import Unauthorized from '@/views/auth/unauthorized'
@@ -32,9 +36,11 @@ import Workspaces from '@/views/workspace'
  */
 export const DefaultRedirect = () => {
     const { hasPermission, hasDisplay } = useAuth()
-    const { isOpenSource } = useConfig()
+    const { isOpenSource, loading } = useConfig()
     const isGlobal = useSelector((state) => state.auth.isGlobal)
     const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
+    const [bootstrapChecked, setBootstrapChecked] = useState(false)
+    const [bootstrapLoading, setBootstrapLoading] = useState(false)
 
     // Define the order of routes to check (based on the menu order in dashboard.js)
     const routesToCheck = [
@@ -63,9 +69,42 @@ export const DefaultRedirect = () => {
         { component: Account, display: 'feat:account' }
     ]
 
-    // If user is not authenticated, show login page
+    useEffect(() => {
+        let cancelled = false
+        const bootstrapSession = async () => {
+            if (isAuthenticated || bootstrapChecked) return
+            setBootstrapLoading(true)
+            try {
+                const res = await authApi.sessionUser()
+                if (!cancelled && res?.status === 200 && res?.data) {
+                    store.dispatch(loginSuccess(res.data))
+                }
+            } catch {
+                // no cookie session available, fall back to sign-in bridge
+            } finally {
+                if (!cancelled) {
+                    setBootstrapLoading(false)
+                    setBootstrapChecked(true)
+                }
+            }
+        }
+        bootstrapSession()
+        return () => {
+            cancelled = true
+        }
+    }, [isAuthenticated, bootstrapChecked])
+
+    if (loading) {
+        return null
+    }
+
+    if (!isAuthenticated && bootstrapLoading) {
+        return null
+    }
+
+    // If user is not authenticated after cookie bootstrap, jump to sign-in bridge route
     if (!isAuthenticated) {
-        return <Login />
+        return <Navigate to='/signin' replace />
     }
 
     // For open source, show chatflows (no permission checks)
