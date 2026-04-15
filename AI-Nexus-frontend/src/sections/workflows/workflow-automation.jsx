@@ -1,9 +1,30 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+
+import { CONFIG } from 'src/config-global';
+import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
+import { getCookie } from 'src/utils/cookie';
 
 // ----------------------------------------------------------------------
 
 export function WorkflowAutomation() {
+  const flowiseUrl = CONFIG.flowise.publicBaseUrl || 'http://localhost:3000';
+  const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
+
+  const handleFlowiseOpen = (event) => {
+    event.preventDefault();
+    const accessToken = sessionStorage.getItem(STORAGE_KEY) || getCookie('access-token');
+    if (!accessToken) {
+      // No AI Nexus session token: open Flowise normally (token-only page will guide user)
+      window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const redirectUrl = `${flowiseEntryUrl}?token=${encodeURIComponent(accessToken)}`;
+    window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <Box
       sx={{
@@ -36,6 +57,20 @@ export function WorkflowAutomation() {
       >
         Discover and manage AI resources for your community — templates, guides, and automations in one place.
       </Typography>
+      <Stack direction="row" justifyContent="center">
+        <Button
+          component="a"
+          href={flowiseUrl}
+          onClick={handleFlowiseOpen}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant="contained"
+          size="large"
+          sx={{ textTransform: 'none', fontWeight: 700 }}
+        >
+          Create Workflow
+        </Button>
+      </Stack>
     </Box>
   );
 }

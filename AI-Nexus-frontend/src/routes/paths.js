@@ -47,6 +47,7 @@ export const paths = {
     root: '/speaker',
     details: (id) => `/speaker/${id}`,
   },
+  flowiseBridge: '/flowise-bridge',
   workflows: '/ai-resources',
   agentFlowCreate: '/ai-resources/agent-flow',
   workflowsDetails: (id) => `/ai-resources/${id}`,

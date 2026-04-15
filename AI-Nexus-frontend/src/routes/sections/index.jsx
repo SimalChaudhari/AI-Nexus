@@ -1,9 +1,7 @@
-// import { lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { Navigate, useRoutes } from 'react-router-dom';
 
-// import { MainLayout } from 'src/layouts/main';
-
-// import { SplashScreen } from 'src/components/loading-screen';
+import { SplashScreen } from 'src/components/loading-screen';
 
 import { authRoutes } from './auth';
 import { authDemoRoutes } from './auth-demo';
@@ -16,13 +14,21 @@ import { mainRoutes } from './main';
 
 // ----------------------------------------------------------------------
 
-// const HomePage = lazy(() => import('src/pages/home'));
+const FlowiseBridgePage = lazy(() => import('src/pages/flowise-bridge'));
 
 export function Router() {
   return useRoutes([
     {
       path: '/',
       element: <Navigate to="/home" replace />,
+    },
+    {
+      path: '/flowise-bridge',
+      element: (
+        <Suspense fallback={<SplashScreen />}>
+          <FlowiseBridgePage />
+        </Suspense>
+      ),
     },
 
     // Auth

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -11,12 +11,12 @@ import Button from '@mui/material/Button';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
-
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { GradientButton } from 'src/components/custom-button';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { fetchWorkflows } from 'src/store/slices/workflowSlice';
+import { flowiseTemplateService } from 'src/services/flowise-template.service';
 
 // ----------------------------------------------------------------------
 
@@ -43,10 +43,35 @@ export function Templates() {
   const dispatch = useDispatch();
   const router = useRouter();
   const { workflows, loading } = useSelector((state) => state.workflows);
+  const [flowiseTemplates, setFlowiseTemplates] = useState([]);
 
   useEffect(() => {
     dispatch(fetchWorkflows());
   }, [dispatch]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const items = await flowiseTemplateService.getFlowiseTemplates();
+        if (mounted) {
+          // Show Flowise-origin templates: community + my templates + workspace flows.
+          // Keep agent-style categories so UI stays aligned with original Flowise agent section.
+          setFlowiseTemplates(
+            items.filter((item) => ['AGENTFLOW', 'MULTIAGENT', 'AGENTFLOWV2'].includes(String(item?.flowiseType || '').toUpperCase()))
+          );
+        }
+      } catch (error) {
+        if (mounted) {
+          setFlowiseTemplates([]);
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleOpenTemplate = useCallback(
     (template) => {
@@ -61,7 +86,7 @@ export function Templates() {
     return <LoadingScreen />;
   }
 
-  const templates = workflows || [];
+  const templates = [...(flowiseTemplates || []), ...(workflows || [])];
 
   return (
     <Box>
@@ -280,7 +305,7 @@ export function Templates() {
                   )}
                   <Box sx={{ position: 'absolute', top: 16, right: 16 }}>
                     <Chip
-                      label={template.label?.title || template.label?.name || 'Uncategorized'}
+                      label={template.source === 'flowise' ? template.label?.title || 'Flowise Template' : template.label?.title || template.label?.name || 'Uncategorized'}
                       size="small"
                       sx={{
                         bgcolor: 'rgba(0, 0, 0, 0.6)',
@@ -325,6 +350,11 @@ export function Templates() {
                   >
                     {toPlainDescription(template.description) || 'No description available'}
                   </Typography>
+                  {template.createdBy && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1 }}>
+                      Created by: {template.createdBy}
+                    </Typography>
+                  )}
                   {template.tags && template.tags.length > 0 && (
                     <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>
                       {template.tags.slice(0, 3).map((tag, index) => (
@@ -357,7 +387,7 @@ export function Templates() {
                   </Stack>
                   <Stack direction="row" spacing={1}>
                     <GradientButton size="small" onClick={() => handleOpenTemplate(template)} sx={{ flex: 1 }}>
-                      View Template
+                      {template.source === 'flowise' && template.isPreviewOnly ? 'Preview Template' : template.source === 'flowise' ? 'Open in Flowise' : 'View Template'}
                     </GradientButton>
                   </Stack>
                 </Box>
