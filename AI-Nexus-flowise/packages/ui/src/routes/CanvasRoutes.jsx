@@ -10,6 +10,8 @@ const Canvas = Loadable(lazy(() => import('@/views/canvas')))
 const MarketplaceCanvas = Loadable(lazy(() => import('@/views/marketplaces/MarketplaceCanvas')))
 const CanvasV2 = Loadable(lazy(() => import('@/views/agentflowsv2/Canvas')))
 const MarketplaceCanvasV2 = Loadable(lazy(() => import('@/views/agentflowsv2/MarketplaceCanvas')))
+const EmbedAgentflowPreview = Loadable(lazy(() => import('@/views/agentflowsv2/EmbedAgentflowPreview')))
+const EmbedMarketplacePreview = Loadable(lazy(() => import('@/views/marketplaces/EmbedMarketplacePreview')))
 
 // ==============================|| CANVAS ROUTING ||============================== //
 
@@ -64,6 +66,22 @@ const CanvasRoutes = {
                     <CanvasV2 />
                 </RequireAuth>
             )
+        },
+        {
+            path: '/embed/agentflow/:id',
+            element: (
+                <RequireAuth permission={'agentflows:view'}>
+                    <EmbedAgentflowPreview />
+                </RequireAuth>
+            )
+        },
+        {
+            path: '/embed/agentflow-preview',
+            element: <EmbedAgentflowPreview />
+        },
+        {
+            path: '/embed/marketplace-preview',
+            element: <EmbedMarketplacePreview />
         },
         {
             path: '/marketplace/:id',

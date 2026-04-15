@@ -62,6 +62,20 @@ import { FLOWISE_CREDENTIAL_ID, AGENTFLOW_ICONS } from '@/store/constant'
 const nodeTypes = { agentFlow: CanvasNode, stickyNote: StickyNote, iteration: IterationNode }
 const edgeTypes = { agentFlow: AgentFlowEdge }
 
+const readTemplateFlowDataFromHash = () => {
+    try {
+        const hash = window.location.hash || ''
+        if (!hash.includes('templateFlowData=')) return ''
+        const raw = hash.replace(/^#/, '')
+        const params = new URLSearchParams(raw)
+        const encoded = params.get('templateFlowData')
+        if (!encoded) return ''
+        return decodeURIComponent(atob(decodeURIComponent(encoded)))
+    } catch {
+        return ''
+    }
+}
+
 // ==============================|| CANVAS ||============================== //
 
 const AgentflowCanvas = () => {
@@ -70,7 +84,7 @@ const AgentflowCanvas = () => {
     const customization = useSelector((state) => state.customization)
 
     const { state } = useLocation()
-    const templateFlowData = state ? state.templateFlowData : ''
+    const templateFlowData = state?.templateFlowData || readTemplateFlowDataFromHash()
 
     const URLpath = document.location.pathname.toString().split('/')
     const chatflowId =

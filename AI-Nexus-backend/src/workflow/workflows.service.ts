@@ -8,6 +8,7 @@ import { TagEntity } from '../tag/tags.entity';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import axios from 'axios';
 
 @Injectable()
 export class WorkflowService {
@@ -265,6 +266,61 @@ export class WorkflowService {
 
         await this.workflowRepository.remove(workflow);
         return { message: 'Workflow deleted successfully' };
+    }
+
+    async getFlowiseTemplates(accessToken: string): Promise<any[]> {
+        if (!accessToken) return [];
+
+        const flowiseBase = (process.env.FLOWISE_URL || process.env.VITE_FLOWISE_URL || 'http://localhost:3001').replace(/\/$/, '');
+        const loginResponse = await axios.get(`${flowiseBase}/api/v1/auth/external-login`, {
+            params: { token: accessToken },
+            maxRedirects: 0,
+            validateStatus: (status) => status >= 200 && status < 400,
+        });
+
+        const setCookieHeader = loginResponse.headers['set-cookie'] as string[] | undefined;
+        const cookieHeader = Array.isArray(setCookieHeader)
+            ? setCookieHeader.map((cookie: string) => cookie.split(';')[0]).join('; ')
+            : '';
+
+        if (!cookieHeader) return [];
+
+        const requestConfig = {
+            headers: {
+                Cookie: cookieHeader,
+                'x-request-from': 'internal',
+            },
+            params: { page: 1, limit: 200 },
+            validateStatus: (status: number) => status >= 200 && status < 500,
+        };
+
+        const [agentflowsRes, chatflowsRes, communityTemplatesRes, myTemplatesRes] = await Promise.all([
+            axios.get(`${flowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'AGENTFLOW' } }),
+            axios.get(`${flowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'CHATFLOW' } }),
+            axios.get(`${flowiseBase}/api/v1/marketplaces/templates`, requestConfig),
+            axios.get(`${flowiseBase}/api/v1/marketplaces/custom`, requestConfig),
+        ]);
+
+        const readRows = (payload: any) => {
+            if (!payload) return [];
+            if (Array.isArray(payload?.data)) return payload.data;
+            if (Array.isArray(payload)) return payload;
+            return [];
+        };
+
+        const taggedRows = [
+            ...readRows(agentflowsRes.data).map((row: any) => ({ ...row, templateSource: 'workspace_flow' })),
+            ...readRows(chatflowsRes.data).map((row: any) => ({ ...row, templateSource: 'workspace_flow' })),
+            ...readRows(communityTemplatesRes.data).map((row: any) => ({ ...row, templateSource: 'community_template' })),
+            ...readRows(myTemplatesRes.data).map((row: any) => ({ ...row, templateSource: 'my_template' })),
+        ];
+
+        const byId = new Map<string, any>();
+        taggedRows.forEach((row) => {
+            const stableId = row?.id || `${row?.templateSource}:${row?.type || 'template'}:${row?.templateName || row?.name || ''}`;
+            if (stableId) byId.set(String(stableId), { ...row, id: stableId });
+        });
+        return [...byId.values()];
     }
 }
 

@@ -8,6 +8,7 @@ import {
     Put,
     Body,
     Res,
+    Req,
     UseGuards,
     UseInterceptors,
     UploadedFile,
@@ -27,6 +28,7 @@ import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
 import { LocalStorageService } from '../service/local-storage.service';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Request } from 'express';
 
 const parseEnvPositiveNumber = (value: string | undefined, fallback: number): number => {
     const parsed = Number(value);
@@ -51,6 +53,20 @@ export class WorkflowController {
         return response.status(HttpStatus.OK).json({
             length: workflows.length,
             data: workflows,
+        });
+    }
+
+    @Get('flowise-templates')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'List Flowise templates for logged-in user' })
+    async getFlowiseTemplates(@Req() request: Request, @Res() response: Response) {
+        const authHeader = (request.headers.authorization || '').toString();
+        const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+        const templates = await this.workflowService.getFlowiseTemplates(accessToken);
+        return response.status(HttpStatus.OK).json({
+            length: templates.length,
+            data: templates,
         });
     }
 

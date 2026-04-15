@@ -14,6 +14,29 @@ import { QueryRunner } from 'typeorm'
 import { GeneralErrorMessage } from '../../utils/constants'
 import { sanitizeFlowDataForPublicEndpoint } from '../../utils/sanitizeFlowData'
 
+const withCreatorMetadata = (analytic: unknown, user?: Request['user']) => {
+    let parsedAnalytic: Record<string, any> = {}
+    if (typeof analytic === 'string' && analytic.trim()) {
+        try {
+            parsedAnalytic = JSON.parse(analytic)
+        } catch {
+            parsedAnalytic = {}
+        }
+    } else if (analytic && typeof analytic === 'object') {
+        parsedAnalytic = analytic as Record<string, any>
+    }
+
+    if (!parsedAnalytic.aiNexusCreator && user?.id) {
+        parsedAnalytic.aiNexusCreator = {
+            id: user.id,
+            name: user.name || '',
+            email: user.email || ''
+        }
+    }
+
+    return JSON.stringify(parsedAnalytic)
+}
+
 const checkIfChatflowIsValidForStreaming = async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (typeof req.params === 'undefined' || !req.params.id) {
@@ -146,6 +169,7 @@ const saveChatflow = async (req: Request, res: Response, next: NextFunction) => 
         }
         const subscriptionId = req.user?.activeOrganizationSubscriptionId || ''
         const body = req.body
+        body.analytic = withCreatorMetadata(body.analytic, req.user)
 
         const existingChatflowCount = await chatflowsService.getAllChatflowsCountByOrganization(body.type, orgId)
         const newChatflowCount = 1
