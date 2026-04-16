@@ -11,10 +11,13 @@ import Button from '@mui/material/Button';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
+import { CONFIG } from 'src/config-global';
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { GradientButton } from 'src/components/custom-button';
 import { LoadingScreen } from 'src/components/loading-screen';
+import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
+import { getCookie } from 'src/utils/cookie';
 import { fetchWorkflows } from 'src/store/slices/workflowSlice';
 import { flowiseTemplateService } from 'src/services/flowise-template.service';
 
@@ -44,6 +47,8 @@ export function Templates() {
   const router = useRouter();
   const { workflows, loading } = useSelector((state) => state.workflows);
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
+  const flowiseUrl = CONFIG.flowise.publicBaseUrl || 'http://localhost:3000';
+  const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
 
   useEffect(() => {
     dispatch(fetchWorkflows());
@@ -80,6 +85,21 @@ export function Templates() {
       }
     },
     [router]
+  );
+
+  const handleCreateWorkflow = useCallback(
+    (event) => {
+      event.preventDefault();
+      const accessToken = sessionStorage.getItem(STORAGE_KEY) || getCookie('access-token');
+      if (!accessToken) {
+        window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      const redirectUrl = `${flowiseEntryUrl}?token=${encodeURIComponent(accessToken)}`;
+      window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+    },
+    [flowiseEntryUrl, flowiseUrl]
   );
 
   if (loading) {
@@ -248,15 +268,46 @@ export function Templates() {
 
       {/* AI resource templates grid */}
       <Box sx={{ mb: { xs: 6, md: 8 } }}>
-        <Typography
-          variant="h5"
-          sx={{
-            fontWeight: 'bold',
-            mb: { xs: 3, md: 4 },
-          }}
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ mb: { xs: 3, md: 4 }, gap: 2, flexWrap: 'wrap' }}
         >
-          AI resource templates
-        </Typography>
+          <Typography
+            variant="h5"
+            sx={{
+              fontWeight: 'bold',
+              flex: '1 1 auto',
+              minWidth: 0,
+            }}
+          >
+            AI resource templates
+          </Typography>
+          <Button
+            variant="contained"
+            component="a"
+            href={flowiseUrl}
+            startIcon={<Iconify icon="solar:add-circle-bold-duotone" />}
+            onClick={handleCreateWorkflow}
+            size="large"
+            sx={{
+              whiteSpace: 'nowrap',
+              width: 'auto',
+              minWidth: { sm: 180 },
+              flex: '0 0 auto',
+              ml: 'auto',
+              borderRadius: 2,
+              px: { xs: 2, sm: 2.5 },
+              py: 1.1,
+              textTransform: 'none',
+              fontWeight: 700,
+              boxShadow: (theme) => theme.customShadows?.z8 || theme.shadows[8],
+            }}
+          >
+            Create Workflow
+          </Button>
+        </Stack>
         <Grid container spacing={{ xs: 3, md: 4 }}>
           {templates.map((template) => (
             <Grid key={template.id} xs={12} sm={6} lg={4}>
@@ -274,22 +325,41 @@ export function Templates() {
                   },
                 }}
               >
-                <Box sx={{ position: 'relative', width: '100%', height: 200 }}>
+                <Box
+                  sx={{
+                    position: 'relative',
+                    width: '100%',
+                    aspectRatio: { xs: '16 / 10', sm: '16 / 9' },
+                    minHeight: { xs: 180, sm: 200 },
+                    maxHeight: { xs: 230, md: 260 },
+                  }}
+                >
                   {template.image ? (
                     <Image
                       alt={template.title}
                       src={template.image}
                       sx={{
+                        position: 'absolute',
+                        inset: 0,
                         width: '100%',
                         height: '100%',
-                        objectFit: 'cover',
+                        display: 'block',
+                        bgcolor: /\.svg(\?|#|$)/i.test(template.image) ? 'grey.100' : 'transparent',
+                        '& img': {
+                          width: '100%',
+                          height: '100%',
+                          objectFit: /\.svg(\?|#|$)/i.test(template.image) ? 'contain' : 'cover',
+                          objectPosition: 'center',
+                          display: 'block',
+                          padding: /\.svg(\?|#|$)/i.test(template.image) ? 2 : 0,
+                        },
                       }}
                     />
                   ) : (
                     <Box
                       sx={{
-                        width: '100%',
-                        height: '100%',
+                        position: 'absolute',
+                        inset: 0,
                         bgcolor: 'grey.200',
                         display: 'flex',
                         alignItems: 'center',
@@ -298,18 +368,30 @@ export function Templates() {
                     >
                       <Iconify
                         icon="solar:workflow-bold-duotone"
-                        width={64}
+                        width={{ xs: 52, md: 64 }}
                         sx={{ color: 'grey.400' }}
                       />
                     </Box>
                   )}
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: template.image
+                        ? 'linear-gradient(to top, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.03) 45%, rgba(0,0,0,0) 70%)'
+                        : 'linear-gradient(to top, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.04) 45%, rgba(0,0,0,0) 70%)',
+                      pointerEvents: 'none',
+                    }}
+                  />
                   <Box sx={{ position: 'absolute', top: 16, right: 16 }}>
                     <Chip
                       label={template.source === 'flowise' ? template.label?.title || 'Flowise Template' : template.label?.title || template.label?.name || 'Uncategorized'}
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(0, 0, 0, 0.6)',
+                        bgcolor: 'rgba(0, 0, 0, 0.62)',
                         color: 'common.white',
+                        backdropFilter: 'blur(2px)',
+                        border: '1px solid rgba(255,255,255,0.2)',
                       }}
                     />
                   </Box>

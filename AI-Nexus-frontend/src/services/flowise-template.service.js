@@ -52,6 +52,58 @@ const normalizeTemplateId = (flow) => {
   return `flowise-${flow.id}`;
 };
 
+const parseMaybeJsonObject = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const firstNonEmptyString = (...values) =>
+  values.find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() || '';
+
+const resolveTemplateImage = (flow) => {
+  const analytic = parseAnalytic(flow?.analytic);
+  const flowData = parseMaybeJsonObject(flow?.flowData);
+  const templateDetails = parseMaybeJsonObject(flow?.templateDetails);
+  const metadata = parseMaybeJsonObject(flow?.metadata);
+
+  return firstNonEmptyString(
+    flow?.image,
+    flow?.iconSrc,
+    flow?.iconURL,
+    flow?.iconUrl,
+    flow?.thumbnail,
+    flow?.thumbnailUrl,
+    flow?.templateImage,
+    flow?.templateIcon,
+    templateDetails?.image,
+    templateDetails?.iconSrc,
+    templateDetails?.thumbnail,
+    metadata?.image,
+    metadata?.iconSrc,
+    analytic?.image,
+    analytic?.iconSrc,
+    flowData?.image,
+    flowData?.iconSrc
+  );
+};
+
+const getFallbackTemplateImage = (flowType, templateSource) => {
+  const flowiseDarkLogo = 'https://raw.githubusercontent.com/FlowiseAI/Flowise/main/images/flowise_dark.svg';
+  const flowiseWhiteLogo = 'https://raw.githubusercontent.com/FlowiseAI/Flowise/main/images/flowise_white.svg';
+
+  if (templateSource === 'community_template') return flowiseDarkLogo;
+  if (flowType === 'AGENTFLOW') return flowiseDarkLogo;
+  if (flowType === 'CHATFLOW') return flowiseWhiteLogo;
+  return flowiseDarkLogo;
+};
+
 const mapFlowiseFlowToTemplate = (flow) => {
   const analytic = parseAnalytic(flow.analytic);
   const creator = analytic?.aiNexusCreator || {};
@@ -67,6 +119,7 @@ const mapFlowiseFlowToTemplate = (flow) => {
         : 'Flowise Template';
   const rawType = String(flow.type || '').toUpperCase();
   const flowType = rawType === 'AGENTFLOWV2' || rawType === 'AGENTFLOW' ? 'AGENTFLOW' : rawType || 'CHATFLOW';
+  const resolvedImage = resolveTemplateImage(flow) || getFallbackTemplateImage(flowType, normalizedSource);
 
   return {
     id: normalizeTemplateId(flow),
@@ -76,7 +129,7 @@ const mapFlowiseFlowToTemplate = (flow) => {
     flowiseTemplateSource: normalizedSource,
     title: flow.templateName || flow.name || 'Untitled flow',
     description: flow.description || (flow.type ? `${flow.type} template from Flowise` : 'Template from Flowise'),
-    image: '',
+    image: resolvedImage,
     label: { title: sourceLabel },
     tags: [{ title: flowType }],
     flowData: parsedFlowData,

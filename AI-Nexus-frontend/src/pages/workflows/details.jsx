@@ -11,6 +11,7 @@ import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Unstable_Grid2';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { CONFIG } from 'src/config-global';
 import { paths } from 'src/routes/paths';
@@ -51,6 +52,7 @@ export default function WorkflowDetailsPublicPage() {
   const { id = '' } = useParams();
   const [workflow, setWorkflow] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const previewFrameRef = useRef(null);
   const isFlowiseTemplate = id.startsWith('flowise-');
 
@@ -92,6 +94,10 @@ export default function WorkflowDetailsPublicPage() {
       // no-op
     }
   }, [workflow]);
+
+  useEffect(() => {
+    setPreviewLoading(Boolean(isFlowiseTemplate));
+  }, [id, isFlowiseTemplate]);
 
   if (loading) return <LoadingScreen />;
 
@@ -302,26 +308,48 @@ export default function WorkflowDetailsPublicPage() {
                         }}
                       >
                         {isFlowiseTemplate && flowisePreviewUrl ? (
-                          <iframe
-                            ref={previewFrameRef}
-                            title="Flowise template preview"
-                            src={flowisePreviewUrl}
-                            style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
-                            onLoad={() => {
-                              if (!workflow?.isPreviewOnly || !workflow?.flowData) return;
-                              try {
-                                previewFrameRef.current?.contentWindow?.postMessage(
-                                  {
-                                    type: 'AINEXUS_FLOW_PREVIEW',
-                                    flowData: workflow.flowData,
-                                  },
-                                  '*'
-                                );
-                              } catch {
-                                // no-op
-                              }
-                            }}
-                          />
+                          <>
+                            {previewLoading && (
+                              <Stack
+                                spacing={1.5}
+                                alignItems="center"
+                                justifyContent="center"
+                                sx={{
+                                  position: 'absolute',
+                                  inset: 0,
+                                  zIndex: 2,
+                                  bgcolor: 'rgba(8, 11, 22, 0.35)',
+                                  backdropFilter: 'blur(1px)',
+                                }}
+                              >
+                                <CircularProgress size={36} thickness={4} sx={{ color: 'common.white' }} />
+                                <Typography variant="caption" sx={{ color: 'common.white' }}>
+                                  Loading preview...
+                                </Typography>
+                              </Stack>
+                            )}
+                            <iframe
+                              ref={previewFrameRef}
+                              title="Flowise template preview"
+                              src={flowisePreviewUrl}
+                              style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+                              onLoad={() => {
+                                setPreviewLoading(false);
+                                if (!workflow?.isPreviewOnly || !workflow?.flowData) return;
+                                try {
+                                  previewFrameRef.current?.contentWindow?.postMessage(
+                                    {
+                                      type: 'AINEXUS_FLOW_PREVIEW',
+                                      flowData: workflow.flowData,
+                                    },
+                                    '*'
+                                  );
+                                } catch {
+                                  // no-op
+                                }
+                              }}
+                            />
+                          </>
                         ) : (
                           <ReactFlow
                             nodes={previewNodes}
