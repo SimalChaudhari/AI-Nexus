@@ -1,9 +1,20 @@
 // BEWARE: This file is an intereem solution until we have a proper config strategy
 
 import path from 'path'
+import fs from 'fs'
 import dotenv from 'dotenv'
 
-dotenv.config({ path: path.join(__dirname, '..', '..', '.env'), override: true })
+const envDir = path.join(__dirname, '..', '..')
+const defaultEnvPath = path.join(envDir, '.env')
+const nodeEnv = process.env.NODE_ENV?.trim()
+const nodeEnvFile = nodeEnv ? `.env.${nodeEnv}` : ''
+const nodeEnvPath = nodeEnvFile ? path.join(envDir, nodeEnvFile) : ''
+
+// Load base env first, then overlay environment-specific values when present.
+dotenv.config({ path: defaultEnvPath, override: false })
+if (nodeEnvPath && fs.existsSync(nodeEnvPath)) {
+    dotenv.config({ path: nodeEnvPath, override: true })
+}
 
 // default config
 const loggingConfig = {

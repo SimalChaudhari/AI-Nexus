@@ -35,6 +35,7 @@
 .env.test.local
 .env.production.local
 .env
+!.env.example
 
 ## turbo
 .turbo
@@ -118,3 +119,7 @@ apps/*/
 # Claude - session/user specific files
 .claude/plans/
 .claude/settings.local.json
+
+# Ensure Vite configs are never ignored
+!**/vite.config.js
+!**/vite.config.ts

@@ -2,3 +2,11 @@ config.bat
 node_modules
 temp_auto_push.bat
 temp_interactive_push.bat
+AI-Nexus-flowise/packages/server/.env
+AI-Nexus-flowise/packages/server/.env.production
+AI-Nexus-flowise/packages/ui/.env
+AI-Nexus-flowise/packages/ui/.env.production
+
+# Always track Vite config files
+!**/vite.config.js
+!**/vite.config.ts

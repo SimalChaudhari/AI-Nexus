@@ -166,6 +166,27 @@ Flowise has 3 different modules in a single mono repository.
 
     Any code changes will reload the app automatically on [http://localhost:8080](http://localhost:8080)
 
+## Production Mode
+
+-   Create `packages/server/.env.production` for production server values (API URL, DB, secrets)
+-   Create `packages/ui/.env.production` for production UI values
+-   Start in production mode:
+
+    ```bash
+    pnpm start:prod
+    ```
+
+-   Or build + start in one command:
+
+    ```bash
+    pnpm prod
+    ```
+
+When using `pnpm start:prod` or `pnpm prod`, `NODE_ENV=production` is set by script and server env loading applies:
+
+1. `packages/server/.env`
+2. `packages/server/.env.production` (overrides base values)
+
 ## 🌱 Env Variables
 
 Flowise supports different environment variables to configure your instance. You can specify the following variables in the `.env` file inside `packages/server` folder. Read [more](https://github.com/FlowiseAI/Flowise/blob/main/CONTRIBUTING.md#-env-variables)
