@@ -4,6 +4,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { redirectFlowiseAuthFromBridge, redirectTopOrSameTab } from 'src/utils/flowise-embed-nav';
 import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
 import { paths } from 'src/routes/paths';
 import { getCookie } from 'src/utils/cookie';
@@ -22,13 +23,15 @@ export default function FlowiseBridgePage() {
     const accessToken = fromSession || fromLocal || fromCookie;
 
     if (!flowiseBase) {
-      window.location.replace('/home');
+      redirectTopOrSameTab('/home');
       return;
     }
 
     if (!accessToken) {
       // No AI Nexus token yet: go to sign-in then come back.
-      window.location.replace(`${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.flowiseBridge)}`);
+      redirectTopOrSameTab(
+        `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.flowiseBridge)}`
+      );
       return;
     }
 
@@ -38,7 +41,7 @@ export default function FlowiseBridgePage() {
     }
 
     const target = `${flowiseBase}/api/v1/auth/external-login?token=${encodeURIComponent(accessToken)}`;
-    window.location.replace(target);
+    redirectFlowiseAuthFromBridge(target);
   }, []);
 
   return (

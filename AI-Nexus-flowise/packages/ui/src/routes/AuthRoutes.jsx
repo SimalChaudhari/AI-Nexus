@@ -4,6 +4,8 @@ import { Navigate } from 'react-router-dom'
 import Loadable from '@/ui-component/loading/Loadable'
 import AuthLayout from '@/layout/AuthLayout'
 
+import { navigateAiNexusFromFlowise } from '@/utils/ainexusParentNavigate'
+
 const UnauthorizedPage = Loadable(lazy(() => import('@/views/auth/unauthorized')))
 const RateLimitedPage = Loadable(lazy(() => import('@/views/auth/rateLimited')))
 const OrganizationSetupPage = Loadable(lazy(() => import('@/views/organization/index')))
@@ -13,7 +15,7 @@ const ainexusAppUrl = (import.meta.env.VITE_AINEXUS_APP_URL || 'http://localhost
 
 const RedirectToAiNexusBridge = () => {
     useEffect(() => {
-        window.location.replace(`${ainexusAppUrl}/flowise-bridge`)
+        navigateAiNexusFromFlowise(`${ainexusAppUrl}/flowise-bridge`)
     }, [])
     return null
 }

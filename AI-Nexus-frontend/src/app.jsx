@@ -5,6 +5,7 @@ import 'src/global.css';
 import { Router } from 'src/routes/sections';
 
 import { useScrollToTop } from 'src/hooks/use-scroll-to-top';
+import { useFlowiseParentMessageListener } from 'src/hooks/use-flowise-parent-message-listener';
 
 import { CONFIG } from 'src/config-global';
 import { LocalizationProvider } from 'src/locales';
@@ -35,6 +36,7 @@ const AuthProvider =
 
 export default function App() {
   useScrollToTop();
+  useFlowiseParentMessageListener();
 
   return (
     <I18nProvider>

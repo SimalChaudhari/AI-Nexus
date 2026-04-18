@@ -2,6 +2,8 @@ import { Stack, Typography } from '@mui/material'
 import MainCard from '@/ui-component/cards/MainCard'
 import { useEffect, useRef } from 'react'
 
+import { navigateAiNexusFromFlowise } from '@/utils/ainexusParentNavigate'
+
 const mainAppUrl = (import.meta.env.VITE_AINEXUS_APP_URL || 'http://localhost:3000').trim().replace(/\/$/, '')
 
 const ExternalAuthWait = () => {
@@ -10,7 +12,7 @@ const ExternalAuthWait = () => {
     useEffect(() => {
         if (!mainAppUrl || redirected.current) return
         redirected.current = true
-        window.location.replace(`${mainAppUrl}/flowise-bridge`)
+        navigateAiNexusFromFlowise(`${mainAppUrl}/flowise-bridge`)
     }, [])
 
     return (
