@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
-import { CONFIG } from 'src/config-global';
+import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
 import { paths } from 'src/routes/paths';
 import { getCookie } from 'src/utils/cookie';
@@ -14,7 +14,7 @@ import { CenteredCircularLoader } from 'src/components/loading/centered-circular
 
 export default function FlowiseBridgePage() {
   useEffect(() => {
-    const flowiseBase = (CONFIG.flowise.publicBaseUrl || '').replace(/\/$/, '');
+    const flowiseBase = resolveFlowisePublicBaseUrl();
     const fromSession = sessionStorage.getItem(STORAGE_KEY);
     const fromLocal = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('jwt_access_token');
     const fromCookie =

@@ -3,8 +3,10 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import express, { Request, Response } from 'express'
 import 'global-agent/bootstrap'
+import fs from 'fs'
 import http from 'http'
-import path from 'path'
+import https from 'https'
+import path, { join } from 'path'
 import { DataSource } from 'typeorm'
 import { AbortControllerPool } from './AbortControllerPool'
 import { CachePool } from './CachePool'
@@ -34,6 +36,91 @@ import { SSEStreamer } from './utils/SSEStreamer'
 import { Telemetry } from './utils/telemetry'
 import { validateAPIKey } from './utils/validateKey'
 import { getAllowedIframeOrigins, getCorsOptions, sanitizeMiddleware } from './utils/XSS'
+
+function isTrue(value?: string): boolean {
+    if (!value) return false
+    const normalized = value.trim().toLowerCase()
+    return normalized === '1' || normalized === 'true' || normalized === 'yes'
+}
+
+/** Same PEM resolution as AI-Nexus backend (production TLS on Node). */
+function resolveSslPaths(): { keyPath: string; certPath: string } | null {
+    const sslDir = join(process.cwd(), 'ssl')
+    let keyPath = process.env.SSL_KEY_PATH?.trim()
+    let certPath = process.env.SSL_CERT_PATH?.trim()
+
+    if (!keyPath) {
+        const iscaKey = join(sslDir, 'ainexus.isca.org.sg-key.pem')
+        keyPath = fs.existsSync(iscaKey) ? iscaKey : join(sslDir, 'key.pem')
+    }
+    if (!certPath) {
+        const iscaCert = join(sslDir, 'ainexus.isca.org.sg-chain.pem')
+        certPath = fs.existsSync(iscaCert) ? iscaCert : join(sslDir, 'cert.pem')
+    }
+
+    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+        return null
+    }
+    return { keyPath, certPath }
+}
+
+function getNodeHttpsOptions(): https.ServerOptions | null {
+    const nodeEnv = process.env.NODE_ENV
+    const isDevelopment = nodeEnv === 'development'
+    const sslPaths = resolveSslPaths()
+    const sslEnabled = isTrue(process.env.SSL_ENABLED)
+    const sslDisabled = isTrue(process.env.SSL_DISABLED)
+    const useHttps =
+        !isDevelopment &&
+        !sslDisabled &&
+        (sslEnabled || (nodeEnv !== undefined && nodeEnv !== 'development')) &&
+        sslPaths !== null
+
+    if (!useHttps || !sslPaths) return null
+    return {
+        key: fs.readFileSync(sslPaths.keyPath),
+        cert: fs.readFileSync(sslPaths.certPath)
+    }
+}
+
+function validateStartupConfig(port: number, scheme: 'http' | 'https') {
+    const nodeEnv = process.env.NODE_ENV?.trim() || 'undefined'
+    const appUrl = process.env.APP_URL?.trim()
+    const apiUrl = process.env.AI_NEXUS_API_URL?.trim()
+
+    logger.info(`🧭 [server]: Startup config NODE_ENV=${nodeEnv} PORT=${port} SCHEME=${scheme}`)
+
+    if (nodeEnv !== 'production') {
+        logger.warn(
+            '⚠️ [server]: NODE_ENV is not production. .env.production will not be applied unless NODE_ENV=production is set.'
+        )
+    }
+
+    if (!appUrl) {
+        logger.warn('⚠️ [server]: APP_URL is not set. Set APP_URL to your public URL to avoid auth/cookie redirect issues.')
+    } else {
+        try {
+            const parsed = new URL(appUrl)
+            const appUrlPort = parsed.port ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80
+            if (appUrlPort !== port) {
+                logger.warn(
+                    `⚠️ [server]: APP_URL port (${appUrlPort}) does not match PORT (${port}). This is OK behind a reverse proxy, otherwise it will break login redirects.`
+                )
+            }
+            if (scheme === 'http' && parsed.protocol === 'https:' && !isTrue(process.env.SSL_DISABLED)) {
+                logger.warn(
+                    '⚠️ [server]: APP_URL is https but server is running on HTTP. Ensure TLS is terminated by a reverse proxy or mount SSL certs for in-process HTTPS.'
+                )
+            }
+        } catch {
+            logger.warn(`⚠️ [server]: APP_URL is not a valid URL: ${appUrl}`)
+        }
+    }
+
+    if (apiUrl && !apiUrl.endsWith('/api')) {
+        logger.warn(`⚠️ [server]: AI_NEXUS_API_URL should normally end with /api. Current value: ${apiUrl}`)
+    }
+}
 
 declare global {
     namespace Express {
@@ -375,13 +462,17 @@ export async function start(): Promise<void> {
 
     const host = process.env.HOST
     const port = parseInt(process.env.PORT || '', 10) || 3000
-    const server = http.createServer(serverApp.app)
+    const httpsOptions = getNodeHttpsOptions()
+    const server = httpsOptions ? https.createServer(httpsOptions, serverApp.app) : http.createServer(serverApp.app)
 
     await serverApp.initDatabase()
     await serverApp.config()
 
+    const scheme = httpsOptions ? 'https' : 'http'
+    validateStartupConfig(port, scheme)
     server.listen(port, host, () => {
-        logger.info(`⚡️ [server]: Flowise Server is listening at ${host ? 'http://' + host : ''}:${port}`)
+        const hostLabel = host ? `${scheme}://${host}` : `${scheme}://`
+        logger.info(`⚡️ [server]: Flowise Server is listening at ${hostLabel}:${port}`)
     })
 }
 

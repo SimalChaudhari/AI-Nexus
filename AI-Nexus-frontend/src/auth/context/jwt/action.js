@@ -1,6 +1,7 @@
 import { deleteCookie } from 'src/utils/cookie';
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
+import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 
 import { setSession } from './utils';
 
@@ -174,7 +175,7 @@ export const exchangeOAuthCode = async ({ code, state }) => {
  *************************************** */
 export const signOut = async () => {
   const triggerFlowiseLogout = async () => {
-    const flowiseBase = (CONFIG.flowise.publicBaseUrl || '').trim().replace(/\/$/, '');
+    const flowiseBase = resolveFlowisePublicBaseUrl();
     if (!flowiseBase) return;
 
     // Use hidden iframe + POST form to avoid CORS issues while still sending HttpOnly cookies.

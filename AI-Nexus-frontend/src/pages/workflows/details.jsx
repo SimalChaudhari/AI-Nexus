@@ -14,6 +14,7 @@ import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { CONFIG } from 'src/config-global';
+import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -133,7 +134,7 @@ export default function WorkflowDetailsPublicPage() {
     : '';
   const createdByName = String(workflow?.createdBy || '').trim();
   const shouldShowCreatedBy = Boolean(createdByName) && createdByName.toLowerCase() !== 'unknown user';
-  const flowiseBase = (CONFIG.flowise.publicBaseUrl || '').trim().replace(/\/$/, '');
+  const flowiseBase = resolveFlowisePublicBaseUrl();
   const openFlowiseTemplate = () => {
     if (!flowiseBase) return;
     const flowType = String(workflow?.flowiseType || '').toUpperCase();
@@ -176,19 +177,14 @@ export default function WorkflowDetailsPublicPage() {
     animated: Boolean(edge?.animated),
     style: edge?.style || undefined,
   }));
-  const flowisePreviewPath =
-    String(workflow?.flowiseType || '').toUpperCase() === 'CHATFLOW'
-      ? `/canvas/${workflow?.flowiseId || ''}`
-      : `/embed/agentflow/${workflow?.flowiseId || ''}`;
   const previewOnlyPath = '/embed/marketplace-preview';
   const previewHashPayload = workflow?.isPreviewOnly && workflow?.flowData ? encodeFlowDataForHash(workflow.flowData) : '';
-  const flowisePreviewUrl = flowiseBase
-    ? (!workflow?.isPreviewOnly && workflow?.flowiseId
-        ? `${flowiseBase}${flowisePreviewPath}`
-        : workflow?.isPreviewOnly
-          ? `${flowiseBase}${previewOnlyPath}${previewHashPayload ? `#flowData=${encodeURIComponent(previewHashPayload)}` : ''}`
-          : '')
-    : '';
+  // Only no-auth embed routes may run inside an iframe. /embed/agentflow/:id uses RequireAuth and
+  // triggers token-bridge redirects that fail across origins (and show chrome-error when TLS/port mismatches).
+  const flowiseIframePreviewUrl =
+    flowiseBase && workflow?.isPreviewOnly && previewHashPayload
+      ? `${flowiseBase}${previewOnlyPath}#flowData=${encodeURIComponent(previewHashPayload)}`
+      : '';
 
   return (
     <>
@@ -307,7 +303,7 @@ export default function WorkflowDetailsPublicPage() {
                           position: 'relative',
                         }}
                       >
-                        {isFlowiseTemplate && flowisePreviewUrl ? (
+                        {isFlowiseTemplate && flowiseIframePreviewUrl ? (
                           <>
                             {previewLoading && (
                               <Stack
@@ -331,7 +327,7 @@ export default function WorkflowDetailsPublicPage() {
                             <iframe
                               ref={previewFrameRef}
                               title="Flowise template preview"
-                              src={flowisePreviewUrl}
+                              src={flowiseIframePreviewUrl}
                               style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
                               onLoad={() => {
                                 setPreviewLoading(false);

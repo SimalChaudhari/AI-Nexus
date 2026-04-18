@@ -11,7 +11,7 @@ import Button from '@mui/material/Button';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
-import { CONFIG } from 'src/config-global';
+import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { GradientButton } from 'src/components/custom-button';
@@ -47,7 +47,7 @@ export function Templates() {
   const router = useRouter();
   const { workflows, loading } = useSelector((state) => state.workflows);
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
-  const flowiseUrl = CONFIG.flowise.publicBaseUrl || 'http://localhost:3000';
+  const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
   const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
 
   useEffect(() => {

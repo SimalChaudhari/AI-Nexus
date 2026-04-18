@@ -74,6 +74,8 @@ export const CONFIG = {
   flowise: {
     apiHost: (import.meta.env.VITE_FLOWISE_API_HOST || '').trim(),
     chatflowId: (import.meta.env.VITE_FLOWISE_CHATFLOW_ID || '').trim(),
+    /** Prefer resolveFlowisePublicBaseUrl() in the browser for proxy-relative installs. */
     publicBaseUrl: (import.meta.env.VITE_FLOWISE_URL || '').trim(),
+    relativePublicPath: (import.meta.env.VITE_FLOWISE_RELATIVE_PATH || '').trim(),
   },
 };
