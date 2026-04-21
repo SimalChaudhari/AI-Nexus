@@ -30,6 +30,7 @@ import accountApi from '@/api/account.api'
 // Hooks
 import useApi from '@/hooks/useApi'
 import useNotifier from '@/utils/useNotifier'
+import { resolveLogoutRedirectUrl } from '@/utils/resolveLogoutRedirectUrl'
 
 // ==============================|| MAIN NAVBAR / HEADER ||============================== //
 
@@ -188,7 +189,7 @@ const Header = ({ handleLeftDrawerToggle }) => {
         try {
             if (logoutApi.data && logoutApi.data.message === 'logged_out') {
                 store.dispatch(logoutSuccess())
-                window.location.href = logoutApi.data.redirectTo
+                window.location.href = resolveLogoutRedirectUrl(logoutApi.data.redirectTo)
             }
         } catch (e) {
             console.error(e)

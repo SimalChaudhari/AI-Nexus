@@ -1,4 +1,4 @@
-import logo from '@/assets/images/flowise_white.svg'
+import logo from '@/assets/images/ainexus.png'
 import logoDark from '@/assets/images/flowise_dark.svg'
 import appSettingsApi from '@/api/appsettings'
 import { useEffect, useState } from 'react'

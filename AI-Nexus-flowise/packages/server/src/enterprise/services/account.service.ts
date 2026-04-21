@@ -614,14 +614,19 @@ export class AccountService {
     }
 
     public async logout(user: LoggedInUser) {
-        const platform = this.identityManager.getPlatformType()
-        if (platform === Platform.ENTERPRISE) {
-            await auditService.recordLoginActivity(
-                user.email,
-                LoginActivityCode.LOGOUT_SUCCESS,
-                'Logout Success',
-                user.ssoToken ? 'SSO' : 'Email/Password'
-            )
+        try {
+            const platform = this.identityManager.getPlatformType()
+            if (platform === Platform.ENTERPRISE) {
+                await auditService.recordLoginActivity(
+                    user.email ?? '',
+                    LoginActivityCode.LOGOUT_SUCCESS,
+                    'Logout Success',
+                    user.ssoToken ? 'SSO' : 'Email/Password'
+                )
+            }
+        } catch (error) {
+            // Audit / DB issues must not block logout (otherwise UI gets 500 and cookies may not clear).
+            logger.warn(`AccountService.logout: login activity not recorded: ${error instanceof Error ? error.message : String(error)}`)
         }
     }
 }

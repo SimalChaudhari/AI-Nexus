@@ -24,6 +24,9 @@ export const headerHeight = 80
 export const maxScroll = 100000
 export const baseURL = import.meta.env.VITE_API_BASE_URL || window.location.origin
 export const uiBaseURL = import.meta.env.VITE_UI_BASE_URL || window.location.origin
+export const ainexusFrontendURL = (import.meta.env.VITE_AINEXUS_FRONTEND_URL || '').trim()
+export const ainexusPostFlowiseLogoutPath = (import.meta.env.VITE_AINEXUS_POST_LOGOUT_PATH || '/auth/sign-in').trim()
+
 const resolveAinexusBaseURL = () => {
     const configured = (import.meta.env.VITE_AINEXUS_BASE_URL || '').trim()
     const currentOrigin = window.location.origin

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 // utils
 import useNotifier from '@/utils/useNotifier'
+import { resolveLogoutRedirectUrl } from '@/utils/resolveLogoutRedirectUrl'
 import { validatePassword } from '@/utils/validation'
 
 // material-ui
@@ -147,7 +148,7 @@ const AccountSettings = () => {
         try {
             if (logoutApi.data && logoutApi.data.message === 'logged_out') {
                 store.dispatch(logoutSuccess())
-                window.location.href = logoutApi.data.redirectTo
+                window.location.href = resolveLogoutRedirectUrl(logoutApi.data.redirectTo)
             }
         } catch (e) {
             console.error(e)

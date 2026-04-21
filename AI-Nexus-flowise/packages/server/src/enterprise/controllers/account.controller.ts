@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express'
 import { StatusCodes } from 'http-status-codes'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
+import logger from '../../utils/logger'
 import { Organization } from '../database/entities/organization.entity'
 import { User } from '../database/entities/user.entity'
 import { AccountDTO, AccountService } from '../services/account.service'
@@ -11,12 +12,14 @@ const tokenOnlyAuthResponse = () => ({
     code: 'TOKEN_ONLY_AUTH' as const
 })
 
+/** Must not be a class method: Express calls route handlers unbound, so `this` would be undefined. */
+const clearAuthCookies = (res: Response) => {
+    res.clearCookie('connect.sid')
+    res.clearCookie('token')
+    res.clearCookie('refreshToken')
+}
+
 export class AccountController {
-    private clearAuthCookies(res: Response) {
-        res.clearCookie('connect.sid')
-        res.clearCookie('token')
-        res.clearCookie('refreshToken')
-    }
 
     public async register(req: Request, res: Response, next: NextFunction) {
         try {
@@ -117,25 +120,39 @@ export class AccountController {
                 await accountService.logout(req.user)
             }
 
-            if (req.isAuthenticated()) {
-                await new Promise<void>((resolve, reject) => {
-                    req.logout((err) => {
-                        if (err) return reject(err)
-                        return resolve()
+            // Passport 0.7+ runs session.save + regenerate inside req.logout; store/DB errors must not return 500
+            // or the client never receives cleared auth cookies.
+            if (typeof req.isAuthenticated === 'function' && req.isAuthenticated()) {
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        req.logout((err) => {
+                            if (err) return reject(err)
+                            return resolve()
+                        })
                     })
-                })
+                } catch (err) {
+                    logger.warn(
+                        `account.logout: req.logout failed (continuing): ${err instanceof Error ? err.message : String(err)}`
+                    )
+                }
             }
 
             if (req.session) {
-                await new Promise<void>((resolve, reject) => {
-                    req.session.destroy((err) => {
-                        if (err) return reject(err)
-                        return resolve()
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        req.session.destroy((err) => {
+                            if (err) return reject(err)
+                            return resolve()
+                        })
                     })
-                })
+                } catch (err) {
+                    logger.warn(
+                        `account.logout: session.destroy failed (continuing): ${err instanceof Error ? err.message : String(err)}`
+                    )
+                }
             }
 
-            this.clearAuthCookies(res)
+            clearAuthCookies(res)
             const redirectPath = '/signin'
             return res.status(200).json({ message: 'logged_out', redirectTo: redirectPath })
         } catch (error) {

@@ -13,7 +13,7 @@ const updateCurrentUser = (user) => {
 
 const removeCurrentUser = () => {
     _removeFromStorage()
-    clearAllCookies()
+    clearFlowiseAuthCookiesBestEffort()
 }
 
 const _removeFromStorage = () => {
@@ -25,9 +25,11 @@ const _removeFromStorage = () => {
     localStorage.removeItem('isSSO')
 }
 
-const clearAllCookies = () => {
-    document.cookie.split(';').forEach((cookie) => {
-        const name = cookie.split('=')[0].trim()
+/** HttpOnly auth cookies are cleared by the server on logout; this only expires non-HttpOnly duplicates if any. */
+const FLOWISE_AUTH_COOKIE_NAMES = ['token', 'refreshToken', 'connect.sid']
+
+const clearFlowiseAuthCookiesBestEffort = () => {
+    FLOWISE_AUTH_COOKIE_NAMES.forEach((name) => {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`
     })
 }

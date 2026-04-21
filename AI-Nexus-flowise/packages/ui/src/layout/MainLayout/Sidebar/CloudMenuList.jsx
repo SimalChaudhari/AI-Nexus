@@ -9,6 +9,7 @@ import { useTheme } from '@mui/material/styles'
 
 // project imports
 import useNotifier from '@/utils/useNotifier'
+import { resolveLogoutRedirectUrl } from '@/utils/resolveLogoutRedirectUrl'
 import { useConfig } from '@/store/context/ConfigContext'
 
 // API
@@ -53,7 +54,7 @@ const CloudMenuList = () => {
         try {
             if (logoutApi.data && logoutApi.data.message === 'logged_out') {
                 store.dispatch(logoutSuccess())
-                window.location.href = logoutApi.data.redirectTo
+                window.location.href = resolveLogoutRedirectUrl(logoutApi.data.redirectTo)
             }
         } catch (e) {
             console.error(e)
