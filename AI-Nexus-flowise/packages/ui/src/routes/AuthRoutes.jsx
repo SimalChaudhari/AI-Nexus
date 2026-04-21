@@ -11,7 +11,12 @@ const RateLimitedPage = Loadable(lazy(() => import('@/views/auth/rateLimited')))
 const OrganizationSetupPage = Loadable(lazy(() => import('@/views/organization/index')))
 const LicenseExpiredPage = Loadable(lazy(() => import('@/views/auth/expired')))
 
-const ainexusAppUrl = (import.meta.env.VITE_AINEXUS_APP_URL || 'http://localhost:3000').trim().replace(/\/$/, '')
+const ainexusAppUrl = (
+    import.meta.env.VITE_AINEXUS_APP_URL ||
+    window.location.origin
+)
+    .trim()
+    .replace(/\/$/, '')
 
 const RedirectToAiNexusBridge = () => {
     useEffect(() => {

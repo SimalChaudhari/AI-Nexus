@@ -7,7 +7,7 @@ import packageJson from '../package.json';
 export const CONFIG = {
   site: {
     name: 'AI Nexus',
-    serverUrl: (import.meta.env.VITE_SERVER_URL || '').trim() || 'http://localhost:3000/api',
+    serverUrl: (import.meta.env.VITE_SERVER_URL || '').trim() || 'http://localhost:5000/api',
     assetURL: import.meta.env.VITE_ASSET_URL ?? '',
     basePath: import.meta.env.VITE_BASE_PATH ?? '',
     version: packageJson.version,

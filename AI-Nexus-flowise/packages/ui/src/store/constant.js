@@ -24,7 +24,27 @@ export const headerHeight = 80
 export const maxScroll = 100000
 export const baseURL = import.meta.env.VITE_API_BASE_URL || window.location.origin
 export const uiBaseURL = import.meta.env.VITE_UI_BASE_URL || window.location.origin
-export const ainexusBaseURL = import.meta.env.VITE_AINEXUS_BASE_URL || 'https://ainexus.isca.org.sg:5000'
+const resolveAinexusBaseURL = () => {
+    const configured = (import.meta.env.VITE_AINEXUS_BASE_URL || '').trim()
+    const currentOrigin = window.location.origin
+    const currentHost = window.location.hostname
+
+    if (!configured) return currentOrigin
+
+    try {
+        const configuredUrl = new URL(configured)
+        const isConfiguredLocalhost = configuredUrl.hostname === 'localhost' || configuredUrl.hostname === '127.0.0.1'
+        const isCurrentLocalhost = currentHost === 'localhost' || currentHost === '127.0.0.1'
+
+        // Prevent production pages from redirecting assets/API calls to localhost.
+        if (isConfiguredLocalhost && !isCurrentLocalhost) return currentOrigin
+
+        return configured.replace(/\/$/, '')
+    } catch {
+        return currentOrigin
+    }
+}
+export const ainexusBaseURL = resolveAinexusBaseURL()
 export const FLOWISE_CREDENTIAL_ID = 'FLOWISE_CREDENTIAL_ID'
 export const REDACTED_CREDENTIAL_VALUE = '_FLOWISE_BLANK_07167752-1a71-43b1-bf8f-4f32252165db'
 export const ErrorMessage = {

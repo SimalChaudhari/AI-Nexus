@@ -9,6 +9,7 @@ import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import axios from 'axios';
+import * as https from 'https';
 
 @Injectable()
 export class WorkflowService {
@@ -271,12 +272,67 @@ export class WorkflowService {
     async getFlowiseTemplates(accessToken: string): Promise<any[]> {
         if (!accessToken) return [];
 
-        const flowiseBase = (process.env.FLOWISE_URL || process.env.VITE_FLOWISE_URL || 'http://localhost:3001').replace(/\/$/, '');
-        const loginResponse = await axios.get(`${flowiseBase}/api/v1/auth/external-login`, {
-            params: { token: accessToken },
+        const backendHost = (process.env.APP_HOST || 'localhost').trim();
+        const flowisePort = (process.env.FLOWISE_PORT || '3002').trim();
+        const envBases = [
+            process.env.FLOWISE_INTERNAL_URL,
+            process.env.FLOWISE_URL,
+            process.env.VITE_FLOWISE_URL,
+        ]
+            .map((value) => (value || '').trim().replace(/\/$/, ''))
+            .filter(Boolean);
+        const fallbackBases = [
+            `https://${backendHost}:${flowisePort}`,
+            `http://${backendHost}:3000`,
+            'https://localhost:3002',
+            'http://localhost:3002',
+            'http://localhost:3000',
+            'http://localhost:3001',
+        ];
+        const flowiseBases = [...new Set([...envBases, ...fallbackBases])];
+
+        const flowiseTimeoutMs = Number(process.env.FLOWISE_REQUEST_TIMEOUT_MS || 8000);
+        const safeTimeoutMs = Number.isFinite(flowiseTimeoutMs) && flowiseTimeoutMs > 0 ? flowiseTimeoutMs : 8000;
+        const tlsRejectUnauthorized = !['0', 'false', 'no'].includes(
+            String(process.env.FLOWISE_TLS_REJECT_UNAUTHORIZED || 'true').trim().toLowerCase(),
+        );
+
+        const client = axios.create({
+            timeout: safeTimeoutMs,
             maxRedirects: 0,
-            validateStatus: (status) => status >= 200 && status < 400,
+            validateStatus: (status) => status >= 200 && status < 500,
+            httpsAgent: new https.Agent({ rejectUnauthorized: tlsRejectUnauthorized }),
         });
+
+        let loginResponse: { headers: Record<string, any> } | null = null;
+        let activeFlowiseBase = '';
+        const connectionErrors: string[] = [];
+        for (const base of flowiseBases) {
+            try {
+                const candidateLoginResponse = await client.get(`${base}/api/v1/auth/external-login`, {
+                    params: { token: accessToken },
+                    validateStatus: (status) => status >= 200 && status < 400,
+                });
+                const setCookieHeader = candidateLoginResponse.headers?.['set-cookie'] as string[] | undefined;
+                if (Array.isArray(setCookieHeader) && setCookieHeader.length > 0) {
+                    loginResponse = candidateLoginResponse;
+                    activeFlowiseBase = base;
+                    break;
+                }
+            } catch {
+                connectionErrors.push(base);
+                // Try next candidate URL.
+            }
+        }
+
+        if (!loginResponse || !activeFlowiseBase) {
+            if (connectionErrors.length) {
+                console.warn(
+                    `[WorkflowService] Flowise template bridge failed for all candidates: ${connectionErrors.join(', ')}`,
+                );
+            }
+            return [];
+        }
 
         const setCookieHeader = loginResponse.headers['set-cookie'] as string[] | undefined;
         const cookieHeader = Array.isArray(setCookieHeader)
@@ -295,10 +351,10 @@ export class WorkflowService {
         };
 
         const [agentflowsRes, chatflowsRes, communityTemplatesRes, myTemplatesRes] = await Promise.all([
-            axios.get(`${flowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'AGENTFLOW' } }),
-            axios.get(`${flowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'CHATFLOW' } }),
-            axios.get(`${flowiseBase}/api/v1/marketplaces/templates`, requestConfig),
-            axios.get(`${flowiseBase}/api/v1/marketplaces/custom`, requestConfig),
+            client.get(`${activeFlowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'AGENTFLOW' } }),
+            client.get(`${activeFlowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'CHATFLOW' } }),
+            client.get(`${activeFlowiseBase}/api/v1/marketplaces/templates`, requestConfig),
+            client.get(`${activeFlowiseBase}/api/v1/marketplaces/custom`, requestConfig),
         ]);
 
         const readRows = (payload: any) => {

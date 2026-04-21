@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -56,6 +56,8 @@ function isTrue(value?: string): boolean {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+const bootstrapLogger = new Logger('Bootstrap');
+
 async function bootstrap() {
   try {
     const nodeEnv = process.env.NODE_ENV;
@@ -100,8 +102,12 @@ async function bootstrap() {
     // Set global prefix for all routes (except root)
     app.setGlobalPrefix('api');
     
-    // Enable CORS
+    // Enable CORS — include Flowise browser origin (often different port than main SPA)
     const configuredOrigins = (process.env.FRONTEND_URLS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    const extraCorsOrigins = (process.env.CORS_EXTRA_ORIGINS || '')
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean);
@@ -110,20 +116,48 @@ async function bootstrap() {
     const baseAllowedOrigins = configuredOrigins.length
       ? configuredOrigins
       : [fallbackOrigin || prodDefaultOrigin].filter(Boolean);
+
+    const originsFromFlowiseEnv: string[] = [];
+    for (const key of ['FLOWISE_URL', 'VITE_FLOWISE_URL', 'FLOWISE_INTERNAL_URL'] as const) {
+      const raw = process.env[key]?.trim();
+      if (!raw) continue;
+      try {
+        originsFromFlowiseEnv.push(new URL(raw).origin);
+      } catch {
+        // ignore invalid URL
+      }
+    }
+
     const devLocalOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
+      'http://localhost:3002',
       'http://localhost:3030',
       'http://localhost:8080',
       'http://localhost:5173',
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:3002',
       'http://127.0.0.1:3030',
       'http://127.0.0.1:8080',
       'http://127.0.0.1:5173',
     ];
-    const allowedOrigins = isDevelopment
-      ? Array.from(new Set([...baseAllowedOrigins, ...devLocalOrigins]))
-      : baseAllowedOrigins;
+    const configuredFlowisePort = (process.env.FLOWISE_PORT || '3002').trim();
+    const productionFlowiseOrigins = nodeEnv === 'production'
+      ? [
+          `https://${host}:${configuredFlowisePort}`,
+          `http://${host}:${configuredFlowisePort}`,
+        ]
+      : [];
+    const allowedOrigins = Array.from(
+      new Set([
+        ...baseAllowedOrigins,
+        ...extraCorsOrigins,
+        ...originsFromFlowiseEnv,
+        ...productionFlowiseOrigins,
+        ...(isDevelopment ? devLocalOrigins : []),
+      ]),
+    );
     const allowAnyOrigin = allowedOrigins.length === 0;
 
     app.enableCors({
@@ -132,9 +166,11 @@ async function bootstrap() {
           callback(null, true);
           return;
         }
-        callback(new Error(`CORS blocked for origin: ${origin}`), false);
+        bootstrapLogger.warn(`CORS denied for origin: ${origin} (allowed count=${allowedOrigins.length})`);
+        callback(null, false);
       },
-      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cookie'],
       credentials: !allowAnyOrigin,
     });
 

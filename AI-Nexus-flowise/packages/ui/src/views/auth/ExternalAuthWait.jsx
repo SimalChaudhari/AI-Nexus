@@ -4,7 +4,12 @@ import { useEffect, useRef } from 'react'
 
 import { navigateAiNexusFromFlowise } from '@/utils/ainexusParentNavigate'
 
-const mainAppUrl = (import.meta.env.VITE_AINEXUS_APP_URL || 'http://localhost:3000').trim().replace(/\/$/, '')
+const mainAppUrl = (
+    import.meta.env.VITE_AINEXUS_APP_URL ||
+    window.location.origin
+)
+    .trim()
+    .replace(/\/$/, '')
 
 const ExternalAuthWait = () => {
     const redirected = useRef(false)

@@ -4,7 +4,7 @@ import { checkPermission, checkAnyPermission } from '../../enterprise/rbac/Permi
 const router = express.Router()
 
 // READ
-router.get('/templates', checkPermission('templates:marketplace'), marketplacesController.getAllTemplates)
+router.get('/templates', marketplacesController.getAllTemplates)
 
 router.post('/custom', checkAnyPermission('templates:flowexport,templates:toolexport'), marketplacesController.saveCustomTemplate)
 
