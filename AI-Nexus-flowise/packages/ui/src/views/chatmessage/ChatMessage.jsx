@@ -1010,6 +1010,11 @@ const ChatMessage = ({ open, chatflowid, isAgentCanvas, isDialog, previews, setP
     const handleSubmit = async (e, selectedInput, action, humanInput) => {
         if (e) e.preventDefault()
 
+        if (!chatflowid) {
+            handleError('Please save the chatflow first before sending a message.')
+            return
+        }
+
         if (!selectedInput && userInput.trim() === '') {
             const containsFile = previews.filter((item) => !item.mime.startsWith('image') && item.type !== 'audio').length > 0
             if (!previews.length || (previews.length && containsFile)) {

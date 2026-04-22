@@ -54,6 +54,21 @@ const ChatPopUp = ({ chatflowid, isAgentCanvas, onOpenChange }) => {
     }
 
     const handleToggle = () => {
+        if (!chatflowid) {
+            enqueueSnackbar({
+                message: 'Please save the chatflow first before opening chat.',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'warning',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+            return
+        }
         const newOpenState = !open
         setOpen(newOpenState)
         if (onOpenChange) onOpenChange(newOpenState)

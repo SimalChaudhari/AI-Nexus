@@ -30,6 +30,7 @@ const LearningCourseDetailsPage = lazy(() => import('src/pages/learning/course-d
 const LearningCoursePlayerPage = lazy(() => import('src/pages/learning/course-player'));
 const LearningInstructorDetailsPage = lazy(() => import('src/pages/learning/instructor-details'));
 const WorkflowsPage = lazy(() => import('src/pages/workflows'));
+const AiAuditFuturesPage = lazy(() => import('src/pages/ai-audit-futures'));
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
 const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
@@ -138,6 +139,10 @@ export const mainRoutes = [
           {
             path: 'ai-resources',
             element: <WorkflowsPage />,
+          },
+          {
+            path: 'ai-audit-futures',
+            element: <AiAuditFuturesPage />,
           },
           {
             path: 'ai-resources/agent-flow',

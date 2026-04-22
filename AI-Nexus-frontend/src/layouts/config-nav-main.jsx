@@ -14,6 +14,10 @@ export const navData = [
     deepMatch: true,
   },
   {
+    title: 'AI Audit Futures',
+    path: paths.aiAuditFutures,
+  },
+  {
     title: 'AI Forum',
     path: paths.aiForum.root,
     // Keep nav active on detail routes (e.g. /ai-forum/:id)

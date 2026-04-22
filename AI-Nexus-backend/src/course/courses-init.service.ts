@@ -137,12 +137,22 @@ export class CoursesInitService implements OnModuleInit {
 
         await queryRunner.query(`
           INSERT INTO "course_groups" ("name", "isActive")
-          VALUES ('Beginner', true), ('Intermediate', true), ('Advance', true)
+          VALUES ('AI Foundation', true), ('AI in Accounting Workflows', true), ('AI Builder Track', true)
           ON CONFLICT ("name") DO NOTHING
         `);
         console.log('✅ course_groups table created successfully');
       } else {
         console.log('✅ course_groups table already exists');
+        await queryRunner.query(`
+          UPDATE "course_groups"
+          SET "name" = CASE
+            WHEN lower("name") IN ('beginner', 'basic') THEN 'AI Foundation'
+            WHEN lower("name") = 'intermediate' THEN 'AI in Accounting Workflows'
+            WHEN lower("name") IN ('advance', 'advanced') THEN 'AI Builder Track'
+            ELSE "name"
+          END
+          WHERE lower("name") IN ('beginner', 'basic', 'intermediate', 'advance', 'advanced')
+        `);
       }
 
       // Check and create course_favorites table

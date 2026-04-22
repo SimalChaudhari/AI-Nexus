@@ -49,6 +49,7 @@ export const paths = {
   },
   flowiseBridge: '/flowise-bridge',
   workflows: '/ai-resources',
+  aiAuditFutures: '/ai-audit-futures',
   agentFlowCreate: '/ai-resources/agent-flow',
   workflowsDetails: (id) => `/ai-resources/${id}`,
   workflowsPrompt: {

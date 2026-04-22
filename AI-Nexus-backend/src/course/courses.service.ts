@@ -98,9 +98,9 @@ function normalizeGroupKey(group?: string): GroupKey | undefined {
 }
 
 function toGroupName(group: GroupKey): string {
-  if (group === 'basic') return 'Beginner';
-  if (group === 'intermediate') return 'Intermediate';
-  return 'Advance';
+  if (group === 'basic') return 'AI Foundation';
+  if (group === 'intermediate') return 'AI in Accounting Workflows';
+  return 'AI Builder Track';
 }
 
 @Injectable()

@@ -56,20 +56,20 @@ const transformCourse = (course) => ({
   accessViaBundle: course.accessViaBundle ?? false,
 });
 
-const LEVEL_SECTIONS = ['Beginner', 'Intermediate', 'Advance'];
+const LEVEL_SECTIONS = ['AI Foundation', 'AI in Accounting Workflows', 'AI Builder Track'];
 
 const getLevelSection = (level) => {
   const normalizedLevel = String(level || '').toLowerCase();
 
   if (normalizedLevel.includes('intermediate')) {
-    return 'Intermediate';
+    return 'AI in Accounting Workflows';
   }
 
   if (normalizedLevel.includes('advance') || normalizedLevel.includes('advanced')) {
-    return 'Advance';
+    return 'AI Builder Track';
   }
 
-  return 'Beginner';
+  return 'AI Foundation';
 };
 
 export function AllCourses() {
