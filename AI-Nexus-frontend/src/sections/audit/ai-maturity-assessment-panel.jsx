@@ -1,9 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Avatar,
   Box,
   Button,
@@ -15,6 +12,8 @@ import {
   Paper,
   Slider,
   Stack,
+  Tab,
+  Tabs,
   Typography,
   useMediaQuery,
   useTheme,
@@ -30,8 +29,6 @@ import {
   computeMaturitySummary,
   countQuestionnaireDimensions,
 } from 'src/assets/data/ai-maturity-questionnaire';
-
-const sliderMarks = [{ value: 1 }, { value: 3 }, { value: 5 }];
 
 function maturityChipColor(level) {
   switch (level) {
@@ -61,7 +58,10 @@ function pillarProgressColor(average, theme) {
 export default function AiMaturityAssessmentPanel() {
   const theme = useTheme();
   const isSmUp = useMediaQuery(theme.breakpoints.up('sm'));
+  const [segment, setSegment] = useState('assessment');
   const [scores, setScores] = useState(buildInitialScoreMap);
+  const [currentPillarIndex, setCurrentPillarIndex] = useState(0);
+  const segmentTabsRef = useRef(null);
 
   const summary = useMemo(() => computeMaturitySummary(scores), [scores]);
 
@@ -84,6 +84,21 @@ export default function AiMaturityAssessmentPanel() {
       }))
     )
     .sort((a, b) => b.average - a.average);
+  const currentPillar = AI_MATURITY_QUESTIONNAIRE[currentPillarIndex];
+  const currentPillarSummary = summary.pillarSummaries.find((p) => p.id === currentPillar.id);
+  const currentPillarItemCount = currentPillar.dimensions.reduce((n, d) => n + d.questions.length, 0);
+  const currentPillarChipLabel =
+    currentPillarSummary?.levelInfo && currentPillarSummary?.average != null
+      ? isSmUp
+        ? `${currentPillarSummary.levelInfo.label} · ${currentPillarSummary.average}`
+        : `L${currentPillarSummary.levelInfo.level} · ${currentPillarSummary.average}`
+      : currentPillarSummary?.average ?? '—';
+  const scrollToQuestionnaireTop = () => {
+    segmentTabsRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  };
 
   return (
     <Stack spacing={{ xs: 2.5, md: 3 }}>
@@ -218,7 +233,64 @@ export default function AiMaturityAssessmentPanel() {
         </Grid>
       </Card>
 
+      <Paper
+        ref={segmentTabsRef}
+        elevation={0}
+        sx={{
+          p: 0.75,
+          borderRadius: 100,
+          border: `1px solid ${alpha(theme.palette.divider, 0.14)}`,
+          bgcolor: alpha(theme.palette.grey[500], 0.06),
+          maxWidth: { sm: 420 },
+        }}
+      >
+        <Tabs
+          value={segment}
+          onChange={(_, value) => setSegment(value)}
+          variant="fullWidth"
+          TabIndicatorProps={{ sx: { display: 'none' } }}
+          sx={{
+            minHeight: 46,
+            '& .MuiTabs-flexContainer': { gap: 0.75 },
+            '& .MuiTab-root': {
+              minHeight: 46,
+              py: 1,
+              px: 1.5,
+              fontWeight: 700,
+              textTransform: 'none',
+              fontSize: '0.9375rem',
+              borderRadius: 100,
+              color: 'text.secondary',
+              transition: theme.transitions.create(['background-color', 'color', 'box-shadow'], {
+                duration: theme.transitions.duration.shorter,
+              }),
+            },
+            '& .Mui-selected': {
+              color: `${theme.palette.primary.contrastText} !important`,
+              bgcolor: 'primary.main',
+              boxShadow: `0 4px 14px ${alpha(theme.palette.primary.main, 0.35)}`,
+            },
+          }}
+        >
+          <Tab
+            value="assessment"
+            label="Assessment"
+            icon={<Iconify icon="solar:clipboard-check-bold-duotone" width={18} />}
+            iconPosition="start"
+            sx={{ gap: 0.75 }}
+          />
+          <Tab
+            value="insights"
+            label="Insights"
+            icon={<Iconify icon="solar:chart-2-bold-duotone" width={18} />}
+            iconPosition="start"
+            sx={{ gap: 0.75 }}
+          />
+        </Tabs>
+      </Paper>
+
       {/* Score dashboard */}
+      {segment === 'insights' && (
       <Grid container spacing={{ xs: 2, md: 2.5 }}>
         <Grid item xs={12} md={5}>
           <Card
@@ -383,298 +455,269 @@ export default function AiMaturityAssessmentPanel() {
           </Card>
         </Grid>
       </Grid>
+      )}
 
       {/* Questionnaire */}
+      {segment === 'assessment' && (
       <Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.25 }}>
           Questionnaire
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 720 }}>
-          Expand each pillar to rate every item. Your averages update live in the summary above.
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block', maxWidth: 720 }}>
+          Complete one pillar at a time. Use Next/Previous to move through pages.
         </Typography>
 
-        <Stack spacing={1.5}>
-          {AI_MATURITY_QUESTIONNAIRE.map((pillar, pillarIndex) => {
-            const pillarRow = summary.pillarSummaries.find((p) => p.id === pillar.id);
-            const pillarAvg = pillarRow?.average;
-            const pillarLevel = pillarRow?.levelInfo;
-            const itemCount = pillar.dimensions.reduce((n, d) => n + d.questions.length, 0);
-            const chipTitle = pillarLevel ? pillarLevel.label : '';
-            const chipLabel =
-              pillarLevel && pillarAvg != null
-                ? isSmUp
-                  ? `${pillarLevel.label} · ${pillarAvg}`
-                  : `L${pillarLevel.level} · ${pillarAvg}`
-                : pillarAvg ?? '—';
-
-            return (
-              <Accordion
-                key={pillar.id}
-                defaultExpanded={pillar.id === 'ethical'}
-                disableGutters
-                elevation={0}
-                sx={{
-                  borderRadius: 2,
-                  border: `1px solid ${alpha(theme.palette.divider, 0.95)}`,
-                  overflow: 'hidden',
-                  bgcolor: 'background.paper',
-                  boxShadow: `0 2px 12px ${alpha(theme.palette.common.black, 0.04)}`,
-                  transition: theme.transitions.create(['box-shadow', 'border-color'], {
-                    duration: theme.transitions.duration.shorter,
-                  }),
-                  '&:before': { display: 'none' },
-                  '&.Mui-expanded': {
-                    boxShadow: `0 8px 28px ${alpha(theme.palette.primary.main, 0.1)}`,
-                    borderColor: alpha(theme.palette.primary.main, 0.25),
-                  },
-                }}
-              >
-                <AccordionSummary
-                  expandIcon={
-                    <Iconify icon="eva:chevron-down-fill" width={22} sx={{ color: 'text.secondary' }} />
-                  }
+        <Card
+          sx={{
+            borderRadius: 2,
+            border: `1px solid ${alpha(theme.palette.divider, 0.95)}`,
+            overflow: 'hidden',
+            bgcolor: 'background.paper',
+            boxShadow: `0 2px 12px ${alpha(theme.palette.common.black, 0.04)}`,
+          }}
+        >
+          <Box sx={{ px: { xs: 1.75, sm: 2.25 }, py: { xs: 1.5, sm: 1.75 }, borderBottom: `1px solid ${alpha(theme.palette.divider, 0.9)}` }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap spacing={1.25}>
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+                <Box
                   sx={{
-                    px: { xs: 2, sm: 2.5 },
-                    py: { xs: 1.75, sm: 2 },
-                    alignItems: 'flex-start',
-                    position: 'relative',
-                    minHeight: { xs: 72, sm: 64 },
-                    pr: { xs: 5, sm: 2.5 },
-                    '& .MuiAccordionSummary-content': {
-                      my: { xs: 0.5, sm: 1 },
-                      alignItems: 'flex-start',
-                      overflow: 'visible',
-                      marginRight: 0,
-                    },
-                    '& .MuiAccordionSummary-expandIconWrapper': {
-                      position: 'absolute',
-                      right: theme.spacing(1),
-                      top: theme.spacing(1.75),
-                      margin: 0,
-                    },
-                    '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.03) },
+                    width: 34,
+                    height: 34,
+                    borderRadius: 1.25,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    color: 'primary.main',
+                    fontWeight: 800,
+                    fontSize: '0.8rem',
+                    flexShrink: 0,
                   }}
                 >
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={{ xs: 1.5, sm: 2 }}
-                    alignItems={{ xs: 'stretch', sm: 'flex-start' }}
-                    justifyContent="space-between"
-                    sx={{ width: 1, minWidth: 0 }}
+                  {currentPillarIndex + 1}
+                </Box>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+                    {currentPillar.title}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Pillar {currentPillarIndex + 1} of {AI_MATURITY_QUESTIONNAIRE.length} · {currentPillar.dimensions.length} dimensions ·{' '}
+                    {currentPillarItemCount} items
+                  </Typography>
+                </Box>
+              </Stack>
+              <Chip
+                size="small"
+                label={currentPillarChipLabel}
+                color={currentPillarSummary?.levelInfo ? maturityChipColor(currentPillarSummary.levelInfo.name) : 'default'}
+                sx={{ fontWeight: 700 }}
+              />
+            </Stack>
+
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ minWidth: 62 }}>
+                Progress
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={((currentPillarIndex + 1) / AI_MATURITY_QUESTIONNAIRE.length) * 100}
+                sx={{ flex: 1, height: 7, borderRadius: 999 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ minWidth: 42, textAlign: 'right' }}>
+                {currentPillarIndex + 1}/{AI_MATURITY_QUESTIONNAIRE.length}
+              </Typography>
+            </Stack>
+          </Box>
+
+          <Box sx={{ px: { xs: 1.75, sm: 2.25 }, pb: 2.25, pt: 1.75, bgcolor: alpha(theme.palette.grey[500], 0.04) }}>
+            <Stack spacing={2} divider={<Divider flexItem sx={{ borderStyle: 'dashed' }} />}>
+              {currentPillar.dimensions.map((dimension) => (
+                <Box key={dimension.id}>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 0.8, display: 'block', mb: 1.25 }}
                   >
-                    <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ flex: 1, minWidth: 0 }}>
-                      <Box
+                    {dimension.title}
+                  </Typography>
+                  <Stack spacing={0.85}>
+                    {dimension.questions.map((question, qIndex) => (
+                      <Paper
+                        key={question.id}
+                        variant="outlined"
                         sx={{
-                          width: 40,
-                          height: 40,
+                          p: { xs: 1, sm: 1.1 },
                           borderRadius: 1.25,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          bgcolor: alpha(theme.palette.primary.main, 0.1),
-                          color: 'primary.main',
-                          fontWeight: 800,
-                          fontSize: '0.875rem',
-                          flexShrink: 0,
+                          borderColor: alpha(theme.palette.divider, 0.8),
+                          bgcolor: alpha(theme.palette.background.paper, 0.96),
+                          boxShadow: `0 1px 0 ${alpha(theme.palette.common.black, 0.03)}`,
                         }}
                       >
-                        {pillarIndex + 1}
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 0, pr: { xs: 0, sm: 1 } }}>
-                        <Typography
-                          variant="subtitle1"
-                          sx={{
-                            fontWeight: 700,
-                            lineHeight: 1.35,
-                            textAlign: 'left',
-                            wordBreak: 'break-word',
-                          }}
-                        >
-                          {pillar.title}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          component="div"
-                          sx={{
-                            mt: 0.5,
-                            lineHeight: 1.5,
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            columnGap: 0.5,
-                            rowGap: 0.25,
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                            {pillar.dimensions.length}
+                        <Stack direction="row" alignItems="flex-start" spacing={1.1}>
+                          <Box
+                            sx={{
+                              mt: 0.1,
+                              width: 24,
+                              height: 24,
+                              borderRadius: '50%',
+                              bgcolor: alpha(theme.palette.primary.main, 0.1),
+                              color: 'primary.main',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                              fontVariantNumeric: 'tabular-nums',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {String(qIndex + 1).padStart(2, '0')}
                           </Box>
-                          <Box component="span">dimensions</Box>
-                          <Box component="span" sx={{ color: 'text.disabled' }}>
-                            ·
-                          </Box>
-                          <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                            {itemCount}
-                          </Box>
-                          <Box component="span">items</Box>
-                        </Typography>
-                      </Box>
-                    </Stack>
-
-                    <Box
-                      sx={{
-                        alignSelf: { xs: 'flex-start', sm: 'center' },
-                        flexShrink: 0,
-                        pl: { xs: 6.5, sm: 0 },
-                        pr: { xs: 0.5, sm: 0 },
-                        maxWidth: { xs: 'calc(100% - 44px)', sm: 320 },
-                      }}
-                    >
-                      <Chip
-                        size="small"
-                        label={chipLabel}
-                        title={chipTitle}
-                        color={pillarLevel ? maturityChipColor(pillarLevel.name) : 'default'}
-                        sx={{
-                          fontWeight: 700,
-                          height: 'auto',
-                          py: 0.75,
-                          maxWidth: '100%',
-                          '& .MuiChip-label': {
-                            whiteSpace: 'normal',
-                            textAlign: 'left',
-                            lineHeight: 1.25,
-                            display: 'block',
-                            px: 0.5,
-                          },
-                        }}
-                      />
-                    </Box>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails sx={{ px: { xs: 2, sm: 2.5 }, pb: 3, pt: 0, bgcolor: alpha(theme.palette.grey[500], 0.04) }}>
-                  <Stack spacing={3} divider={<Divider flexItem sx={{ borderStyle: 'dashed' }} />}>
-                    {pillar.dimensions.map((dimension) => (
-                      <Box key={dimension.id}>
-                        <Typography
-                          variant="overline"
-                          sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 0.8, display: 'block', mb: 2 }}
-                        >
-                          {dimension.title}
-                        </Typography>
-                        <Stack spacing={2}>
-                          {dimension.questions.map((question, qIndex) => (
-                            <Paper
-                              key={question.id}
-                              variant="outlined"
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.4, mb: 0.3, pr: 1.25 }}>
+                                {question.text}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                color="info"
+                                variant="soft"
+                                label={`${(scores[question.id] ?? 3).toFixed(1)}/5`}
+                                sx={{
+                                  fontWeight: 800,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  height: 20,
+                                  mt: 0.15,
+                                  flexShrink: 0,
+                                }}
+                              />
+                            </Stack>
+                            <Slider
+                              value={scores[question.id] ?? 3}
+                              onChange={(_, value) => handleScoreChange(question.id, value)}
+                              min={1}
+                              max={5}
+                              step={0.5}
+                              valueLabelDisplay="auto"
+                              color="info"
+                              aria-label={question.text}
                               sx={{
-                                p: { xs: 2, sm: 2.5 },
-                                borderRadius: 2,
-                                borderColor: alpha(theme.palette.divider, 0.8),
-                                bgcolor: alpha(theme.palette.background.paper, 0.96),
-                                boxShadow: `0 1px 0 ${alpha(theme.palette.common.black, 0.03)}`,
+                                py: 0,
+                                '& .MuiSlider-thumb': {
+                                  width: 12,
+                                  height: 12,
+                                  border: `2px solid ${theme.palette.background.paper}`,
+                                  boxShadow: `0 2px 8px ${alpha(theme.palette.info.main, 0.28)}`,
+                                },
+                                '& .MuiSlider-track': {
+                                  border: 'none',
+                                  height: 3,
+                                  borderRadius: 999,
+                                },
+                                '& .MuiSlider-rail': {
+                                  height: 3,
+                                  borderRadius: 999,
+                                  opacity: 1,
+                                  bgcolor: alpha(theme.palette.grey[500], 0.28),
+                                },
+                                '& .MuiSlider-mark': {
+                                  width: 5,
+                                  height: 5,
+                                  borderRadius: '50%',
+                                  bgcolor: alpha(theme.palette.grey[700], 0.3),
+                                  transform: 'translate(-50%, -50%)',
+                                },
+                                '& .MuiSlider-markActive': {
+                                  bgcolor: theme.palette.info.main,
+                                },
+                                '& .MuiSlider-valueLabel': {
+                                  bgcolor: theme.palette.info.main,
+                                  fontWeight: 700,
+                                },
                               }}
-                            >
-                              <Stack direction="row" alignItems="flex-start" spacing={1.5}>
-                                <Box
-                                  sx={{
-                                    mt: 0.15,
-                                    width: 28,
-                                    height: 28,
-                                    borderRadius: '50%',
-                                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                    color: 'primary.main',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 800,
-                                    fontVariantNumeric: 'tabular-nums',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {String(qIndex + 1).padStart(2, '0')}
-                                </Box>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.6, mb: 1.75 }}>
-                                    {question.text}
-                                  </Typography>
-                                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Not at all
-                                    </Typography>
-                                    <Chip
-                                      size="small"
-                                      color="info"
-                                      variant="soft"
-                                      label={`${(scores[question.id] ?? 3).toFixed(1)}/5`}
-                                      sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', height: 22 }}
-                                    />
-                                    <Typography variant="caption" color="text.secondary">
-                                      Fully in place
-                                    </Typography>
-                                  </Stack>
-                                  <Slider
-                                    value={scores[question.id] ?? 3}
-                                    onChange={(_, value) => handleScoreChange(question.id, value)}
-                                    min={1}
-                                    max={5}
-                                    step={0.5}
-                                    marks={sliderMarks}
-                                    valueLabelDisplay="auto"
-                                    color="info"
-                                    aria-label={question.text}
-                                    sx={{
-                                      py: 0.4,
-                                      '& .MuiSlider-thumb': {
-                                        width: 16,
-                                        height: 16,
-                                        border: `2px solid ${theme.palette.background.paper}`,
-                                        boxShadow: `0 2px 8px ${alpha(theme.palette.info.main, 0.28)}`,
-                                      },
-                                      '& .MuiSlider-track': {
-                                        border: 'none',
-                                        height: 5,
-                                        borderRadius: 999,
-                                      },
-                                      '& .MuiSlider-rail': {
-                                        height: 5,
-                                        borderRadius: 999,
-                                        opacity: 1,
-                                        bgcolor: alpha(theme.palette.grey[500], 0.28),
-                                      },
-                                      '& .MuiSlider-mark': {
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: '50%',
-                                        bgcolor: alpha(theme.palette.grey[700], 0.3),
-                                        transform: 'translate(-50%, -50%)',
-                                      },
-                                      '& .MuiSlider-markActive': {
-                                        bgcolor: theme.palette.info.main,
-                                      },
-                                      '& .MuiSlider-valueLabel': {
-                                        bgcolor: theme.palette.info.main,
-                                        fontWeight: 700,
-                                      },
-                                    }}
-                                  />
-                                </Box>
-                              </Stack>
-                            </Paper>
-                          ))}
+                            />
+                          </Box>
                         </Stack>
-                      </Box>
+                      </Paper>
                     ))}
                   </Stack>
-                </AccordionDetails>
-              </Accordion>
-            );
-          })}
-        </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            spacing={{ xs: 1.1, sm: 1.5 }}
+            sx={{
+              px: { xs: 1.75, sm: 2.25 },
+              py: { xs: 1.15, sm: 1 },
+              borderTop: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+              bgcolor: 'background.paper',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={{ xs: 0.9, sm: 1 }}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              sx={{ width: { xs: 1, sm: 'auto' } }}
+            >
+              <Button
+                variant="outlined"
+                size="small"
+                fullWidth={!isSmUp}
+                onClick={() => {
+                  setCurrentPillarIndex((idx) => Math.max(idx - 1, 0));
+                  scrollToQuestionnaireTop();
+                }}
+                disabled={currentPillarIndex === 0}
+                startIcon={<Iconify icon="eva:arrow-back-fill" width={16} />}
+                sx={{ minWidth: { sm: 112 } }}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                fullWidth={!isSmUp}
+                onClick={() => {
+                  setCurrentPillarIndex((idx) => Math.min(idx + 1, AI_MATURITY_QUESTIONNAIRE.length - 1));
+                  scrollToQuestionnaireTop();
+                }}
+                disabled={currentPillarIndex === AI_MATURITY_QUESTIONNAIRE.length - 1}
+                endIcon={<Iconify icon="eva:arrow-forward-fill" width={16} />}
+                sx={{ minWidth: { sm: 100 } }}
+              >
+                Next
+              </Button>
+            </Stack>
+
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              justifyContent={{ xs: 'space-between', sm: 'flex-end' }}
+              sx={{ width: { xs: 1, sm: 'auto' } }}
+            >
+              <Chip
+                size="small"
+                variant="soft"
+                color="default"
+                label={`Step ${currentPillarIndex + 1}/${AI_MATURITY_QUESTIONNAIRE.length}`}
+                sx={{ fontWeight: 700 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+                Progress auto-calculates live
+              </Typography>
+            </Stack>
+          </Stack>
+        </Card>
       </Box>
+      )}
 
       {/* Dimension breakdown */}
+      {segment === 'insights' && (
       <Card
         sx={{
           p: { xs: 2.5, md: 3 },
@@ -731,75 +774,83 @@ export default function AiMaturityAssessmentPanel() {
             </Grid>
           </Box>
 
-          <Stack divider={<Divider flexItem />}>
-            {dimensionRows.map((row, index) => (
-              <Box key={row.id} sx={{ px: { xs: 1.5, sm: 2 }, py: 1.5 }}>
-                <Grid container alignItems="center" spacing={1}>
-                  <Grid item xs={12} md={6}>
-                    <Stack direction="row" spacing={1.25} alignItems="center">
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          minWidth: 26,
-                          fontWeight: 800,
-                          color: 'text.disabled',
-                          fontVariantNumeric: 'tabular-nums',
-                        }}
-                      >
-                        #{index + 1}
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.4 }}>
-                        {row.title}
-                      </Typography>
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                      {row.pillarTitle}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={7} sm={3} md={2}>
-                    <Chip
-                      size="small"
-                      color={maturityChipColor(row.levelInfo?.name)}
-                      label={row.levelInfo?.label}
-                      sx={{
-                        height: 'auto',
-                        '& .MuiChip-label': { py: 0.4, lineHeight: 1.2, whiteSpace: 'normal' },
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={5} sm={3} md={2}>
-                    <Stack spacing={0.5}>
-                      <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="caption" color="text.secondary">
-                          {row.average.toFixed(1)}/5
+          <Box
+            sx={{
+              maxHeight: { xs: 360, md: 460 },
+              overflowY: 'auto',
+            }}
+          >
+            <Stack divider={<Divider flexItem />}>
+              {dimensionRows.map((row, index) => (
+                <Box key={row.id} sx={{ px: { xs: 1.5, sm: 2 }, py: 1.15 }}>
+                  <Grid container alignItems="center" spacing={1}>
+                    <Grid item xs={12} md={6}>
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            minWidth: 26,
+                            fontWeight: 800,
+                            color: 'text.disabled',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          #{index + 1}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {Math.round((row.average / 5) * 100)}%
+                        <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.4 }}>
+                          {row.title}
                         </Typography>
                       </Stack>
-                      <LinearProgress
-                        variant="determinate"
-                        value={(row.average / 5) * 100}
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                        {row.pillarTitle}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={7} sm={3} md={2}>
+                      <Chip
+                        size="small"
+                        color={maturityChipColor(row.levelInfo?.name)}
+                        label={row.levelInfo?.label}
                         sx={{
-                          height: 6,
-                          borderRadius: 4,
-                          bgcolor: alpha(theme.palette.grey[500], 0.16),
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 4,
-                            bgcolor: pillarProgressColor(row.average, theme),
-                          },
+                          height: 'auto',
+                          '& .MuiChip-label': { py: 0.4, lineHeight: 1.2, whiteSpace: 'normal' },
                         }}
                       />
-                    </Stack>
+                    </Grid>
+                    <Grid item xs={5} sm={3} md={2}>
+                      <Stack spacing={0.5}>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="caption" color="text.secondary">
+                            {row.average.toFixed(1)}/5
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {Math.round((row.average / 5) * 100)}%
+                          </Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={(row.average / 5) * 100}
+                          sx={{
+                            height: 6,
+                            borderRadius: 4,
+                            bgcolor: alpha(theme.palette.grey[500], 0.16),
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 4,
+                              bgcolor: pillarProgressColor(row.average, theme),
+                            },
+                          }}
+                        />
+                      </Stack>
+                    </Grid>
                   </Grid>
-                </Grid>
-              </Box>
-            ))}
-          </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
         </Box>
       </Card>
+      )}
     </Stack>
   );
 }
