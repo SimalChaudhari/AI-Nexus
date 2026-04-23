@@ -14,7 +14,7 @@ export const navData = [
     deepMatch: true,
   },
   {
-    title: 'AI Audit Futures',
+    title: 'AI Audit & maturity',
     path: paths.aiAuditFutures,
   },
   {
