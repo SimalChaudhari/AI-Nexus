@@ -26,7 +26,6 @@ import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -39,6 +38,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { fetchUsers, deleteUser } from 'src/store/slices/userSlice';
@@ -63,7 +63,7 @@ const TABLE_HEAD = [
 
 export function UserListView() {
   const dispatch = useDispatch();
-  const { users: tableData, loading } = useSelector((state) => state.users);
+  const { users: tableData, loading, hasFetched } = useSelector((state) => state.users);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -73,8 +73,10 @@ export function UserListView() {
 
   // Fetch users from Redux store
   useEffect(() => {
-    dispatch(fetchUsers());
-  }, [dispatch]);
+    if (!hasFetched && !loading) {
+      dispatch(fetchUsers());
+    }
+  }, [dispatch, hasFetched, loading]);
 
   // Extract unique roles from users dynamically
   useEffect(() => {
@@ -94,6 +96,7 @@ export function UserListView() {
 
   const canReset =
     !!filters.state.name || filters.state.role.length > 0 || filters.state.status !== 'all';
+  const showTableLoader = loading && !hasFetched;
 
   const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
 
@@ -138,10 +141,6 @@ export function UserListView() {
     },
     [filters, table]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <>
@@ -283,6 +282,9 @@ export function UserListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {showTableLoader && (
+              <TableLoadingOverlay minHeight={220} />
+            )}
           </Box>
 
           <TablePaginationCustom

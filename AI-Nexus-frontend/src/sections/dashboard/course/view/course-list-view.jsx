@@ -20,7 +20,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { EmptyContent } from 'src/components/empty-content';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -33,6 +32,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { htmlToPlainText } from 'src/utils/html-plain-text';
@@ -94,13 +94,24 @@ function applyFilter({ inputData, comparator, filters }) {
 
 export function CourseListView() {
   const dispatch = useDispatch();
-  const { courses: tableData, loading, deleting, pagination } = useSelector((state) => state.courses);
+  const { courses: tableData, loading, deleting, pagination, hasFetched } = useSelector((state) => state.courses);
   const table = useTable({ defaultRowsPerPage: 10 });
   const router = useRouter();
 
   const filters = useSetState({ name: '', level: '', type: '' });
 
   useEffect(() => {
+    const isDefaultQuery =
+      table.page === 0 &&
+      table.rowsPerPage === 10 &&
+      !filters.state.level &&
+      !filters.state.name &&
+      !filters.state.type;
+
+    if (hasFetched && isDefaultQuery) {
+      return;
+    }
+
     const normalizedLevel = filters.state.level ? filters.state.level.toLowerCase() : '';
     const group =
       normalizedLevel === 'beginner'
@@ -122,7 +133,7 @@ export function CourseListView() {
             : undefined,
     };
     dispatch(fetchCourses(query));
-  }, [dispatch, table.page, table.rowsPerPage, filters.state.level, filters.state.name, filters.state.type]);
+  }, [dispatch, hasFetched, table.page, table.rowsPerPage, filters.state.level, filters.state.name, filters.state.type]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
@@ -190,10 +201,6 @@ export function CourseListView() {
     },
     [router]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <DashboardContent>
@@ -284,6 +291,7 @@ export function CourseListView() {
               </TableBody>
             </Table>
           </Scrollbar>
+          {loading && <TableLoadingOverlay minHeight={220} />}
         </Box>
 
         <TablePaginationCustom

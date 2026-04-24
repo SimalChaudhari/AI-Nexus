@@ -38,8 +38,8 @@ export const NewUserSchema = zod.object({
     .string()
     .min(1, { message: 'Status is required!' })
     .refine(
-      (val) => ['Active', 'Inactive', 'Pending', 'Banned'].includes(val),
-      { message: 'Status must be Active, Inactive, Pending, or Banned!' }
+      (val) => ['Active', 'Banned'].includes(val),
+      { message: 'Status must be Active or Banned!' }
     ),
 
   /** Optional: if empty, backend emails a generated temporary password */
@@ -96,8 +96,8 @@ export const UpdateUserSchema = zod.object({
   status: zod
     .string()
     .refine(
-      (val) => !val || ['Active', 'Inactive', 'Pending', 'Banned'].includes(val),
-      { message: 'Status must be Active, Inactive, Pending, or Banned!' }
+      (val) => !val || ['Active', 'Banned'].includes(val),
+      { message: 'Status must be Active or Banned!' }
     )
     .optional(),
 });

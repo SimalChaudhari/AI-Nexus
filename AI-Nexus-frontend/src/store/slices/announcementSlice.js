@@ -53,6 +53,7 @@ const announcementSlice = createSlice({
     announcements: [],
     loading: false,
     error: null,
+    hasFetched: false,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -64,6 +65,7 @@ const announcementSlice = createSlice({
       .addCase(fetchAnnouncements.fulfilled, (state, action) => {
         state.loading = false;
         state.announcements = action.payload;
+        state.hasFetched = true;
       })
       .addCase(fetchAnnouncements.rejected, (state, action) => {
         state.loading = false;

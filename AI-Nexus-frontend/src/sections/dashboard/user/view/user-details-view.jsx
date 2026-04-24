@@ -43,7 +43,6 @@ export function UserDetailsView({ user, loading, error }) {
   const statusColor =
     (user.status === 'Active' && 'success') ||
     (user.status === 'Banned' && 'error') ||
-    (user.status === 'Inactive' && 'info') ||
     'warning';
 
   const initials =

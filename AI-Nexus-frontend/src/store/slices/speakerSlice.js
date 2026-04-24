@@ -61,6 +61,7 @@ const speakerSlice = createSlice({
     speakers: [],
     loading: false,
     error: null,
+    hasFetched: false,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -72,6 +73,7 @@ const speakerSlice = createSlice({
       .addCase(fetchSpeakers.fulfilled, (state, action) => {
         state.loading = false;
         state.speakers = action.payload || [];
+        state.hasFetched = true;
       })
       .addCase(fetchSpeakers.rejected, (state, action) => {
         state.loading = false;

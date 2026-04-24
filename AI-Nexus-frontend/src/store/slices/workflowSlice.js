@@ -52,6 +52,7 @@ const workflowSlice = createSlice({
   initialState: {
     workflows: [],
     loading: false,
+    hasFetched: false,
     creating: false,
     updating: false,
     deleting: false,
@@ -68,6 +69,7 @@ const workflowSlice = createSlice({
       .addCase(fetchWorkflows.fulfilled, (state, action) => {
         state.loading = false;
         state.workflows = action.payload;
+        state.hasFetched = true;
       })
       .addCase(fetchWorkflows.rejected, (state, action) => {
         state.loading = false;

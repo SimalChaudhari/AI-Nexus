@@ -121,6 +121,7 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

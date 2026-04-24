@@ -23,8 +23,6 @@ import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
-import { UserQuickEditForm } from './user-quick-edit-form';
-
 // ----------------------------------------------------------------------
 
 export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
@@ -32,8 +30,6 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
   const confirm = useBoolean();
 
   const popover = usePopover();
-
-  const quickEdit = useBoolean();
 
   const createdDate = row.createdAt ? new Date(row.createdAt) : null;
   const createdDateText = createdDate
@@ -124,9 +120,7 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
             variant="soft"
             color={
               (row.status === 'Active' && 'success') ||
-              (row.status === 'Pending' && 'warning') ||
               (row.status === 'Banned' && 'error') ||
-              (row.status === 'Inactive' && 'info') ||
               'default'
             }
           >
@@ -136,15 +130,6 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
 
         <TableCell>
           <Stack direction="row" alignItems="center">
-            <Tooltip title="Quick Edit" placement="top" arrow>
-              <IconButton
-                color={quickEdit.value ? 'inherit' : 'default'}
-                onClick={quickEdit.onTrue}
-              >
-                <Iconify icon="solar:pen-bold" />
-              </IconButton>
-            </Tooltip>
-
             <IconButton color={popover.open ? 'inherit' : 'default'} onClick={popover.onOpen}>
               <Iconify icon="eva:more-vertical-fill" />
             </IconButton>
@@ -152,12 +137,11 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
         </TableCell>
       </TableRow>
 
-      <UserQuickEditForm currentUser={row} open={quickEdit.value} onClose={quickEdit.onFalse} />
-
       <CustomPopover
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

@@ -67,6 +67,7 @@ export function AnnouncementTableRow({ row, selected, onEditRow, onSelectRow, on
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

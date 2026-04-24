@@ -1,8 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import ReactFlow, { Background, Controls, MiniMap } from 'reactflow';
-import 'reactflow/dist/style.css';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -158,25 +156,6 @@ export default function WorkflowDetailsPublicPage() {
     const editorPath = flowType === 'CHATFLOW' ? `/canvas/${workflow.flowiseId}` : `/v2/agentcanvas/${workflow.flowiseId}`;
     window.open(`${flowiseBase}${editorPath}`, '_blank', 'noopener,noreferrer');
   };
-  const previewNodes = flowNodes.map((node, index) => ({
-    id: String(node?.id || `node-${index}`),
-    position: {
-      x: Number(node?.position?.x || 0),
-      y: Number(node?.position?.y || 0),
-    },
-    data: {
-      label: node?.data?.label || node?.label || `Step ${index + 1}`,
-    },
-    type: 'default',
-  }));
-  const previewEdges = flowEdges.map((edge, index) => ({
-    id: String(edge?.id || `edge-${index}`),
-    source: String(edge?.source || ''),
-    target: String(edge?.target || ''),
-    label: edge?.label || '',
-    animated: Boolean(edge?.animated),
-    style: edge?.style || undefined,
-  }));
   const previewOnlyPath = '/embed/marketplace-preview';
   const previewHashPayload = workflow?.isPreviewOnly && workflow?.flowData ? encodeFlowDataForHash(workflow.flowData) : '';
   // Only no-auth embed routes may run inside an iframe. /embed/agentflow/:id uses RequireAuth and
@@ -347,22 +326,23 @@ export default function WorkflowDetailsPublicPage() {
                             />
                           </>
                         ) : (
-                          <ReactFlow
-                            nodes={previewNodes}
-                            edges={previewEdges}
-                            fitView
-                            minZoom={0.2}
-                            maxZoom={1.5}
-                            nodesDraggable={false}
-                            nodesConnectable={false}
-                            elementsSelectable={false}
-                            zoomOnDoubleClick={false}
-                            attributionPosition="bottom-left"
-                          >
-                            <MiniMap zoomable pannable />
-                            <Controls showInteractive={false} />
-                            <Background />
-                          </ReactFlow>
+                          <Stack spacing={1.5} sx={{ p: 2.5, height: '100%', overflowY: 'auto' }}>
+                            {flowNodes.map((node, index) => (
+                              <Box
+                                key={String(node?.id || `node-${index}`)}
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: 1.5,
+                                  bgcolor: 'rgba(255,255,255,0.9)',
+                                  border: '1px solid rgba(15, 23, 42, 0.12)',
+                                }}
+                              >
+                                <Typography variant="subtitle2" sx={{ color: 'text.primary' }}>
+                                  {index + 1}. {node?.data?.label || node?.label || 'Step'}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Stack>
                         )}
                       </Box>
                       <Typography variant="caption" sx={{ mt: 1.5, display: 'block', color: 'rgba(255,255,255,0.72)' }}>

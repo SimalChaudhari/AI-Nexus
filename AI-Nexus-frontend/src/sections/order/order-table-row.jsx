@@ -174,6 +174,7 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>
@@ -227,6 +228,7 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

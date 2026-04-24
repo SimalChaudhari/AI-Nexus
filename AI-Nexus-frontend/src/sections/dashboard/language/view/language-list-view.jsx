@@ -25,7 +25,6 @@ import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -38,6 +37,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { fetchLanguages, deleteLanguage } from 'src/store/slices/languageSlice';
@@ -137,8 +137,6 @@ export function LanguageListView() {
   }, [dataFiltered.length, dataInPage.length, dispatch, table]);
 
   const handleEditRow = useCallback((id) => router.push(paths.admin.language.edit(id)), [router]);
-
-  if (loading) return <LoadingScreen />;
 
   return (
     <>
@@ -265,6 +263,7 @@ export function LanguageListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom

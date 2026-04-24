@@ -53,6 +53,7 @@ const tagSlice = createSlice({
     tags: [],
     loading: false,
     error: null,
+    hasFetched: false,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -64,6 +65,7 @@ const tagSlice = createSlice({
       .addCase(fetchTags.fulfilled, (state, action) => {
         state.loading = false;
         state.tags = action.payload;
+        state.hasFetched = true;
       })
       .addCase(fetchTags.rejected, (state, action) => {
         state.loading = false;

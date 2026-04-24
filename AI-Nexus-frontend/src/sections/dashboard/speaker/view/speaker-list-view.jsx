@@ -16,7 +16,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -29,6 +28,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { htmlToPlainText } from 'src/utils/html-plain-text';
@@ -68,7 +68,7 @@ function applyFilter({ inputData, comparator, filters }) {
 
 export function SpeakerListView() {
   const dispatch = useDispatch();
-  const { speakers: tableData, loading } = useSelector((state) => state.speakers);
+  const { speakers: tableData, loading, hasFetched } = useSelector((state) => state.speakers);
   const [reviewStats, setReviewStats] = useState({});
   const table = useTable();
   const router = useRouter();
@@ -76,8 +76,10 @@ export function SpeakerListView() {
   const filters = useSetState({ name: '' });
 
   useEffect(() => {
-    dispatch(fetchSpeakers());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchSpeakers());
+    }
+  }, [dispatch, hasFetched]);
 
   useEffect(() => {
     if (!tableData || tableData.length === 0) {
@@ -146,8 +148,6 @@ export function SpeakerListView() {
     },
     [router]
   );
-
-  if (loading) return <LoadingScreen />;
 
   return (
     <>
@@ -235,6 +235,7 @@ export function SpeakerListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
           <TablePaginationCustom
             page={table.page}

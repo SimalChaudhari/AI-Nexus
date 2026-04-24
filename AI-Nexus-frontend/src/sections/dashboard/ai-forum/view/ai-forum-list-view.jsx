@@ -22,7 +22,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -35,6 +34,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { htmlToPlainText } from 'src/utils/html-plain-text';
@@ -78,7 +78,7 @@ function applyFilter({ inputData, comparator, filters }) {
 
 export function AiForumListView() {
   const dispatch = useDispatch();
-  const { posts: tableData, loading } = useSelector((state) => state.aiForum);
+  const { posts: tableData, loading, hasFetched } = useSelector((state) => state.aiForum);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -86,8 +86,10 @@ export function AiForumListView() {
   const filters = useSetState({ name: '' });
 
   useEffect(() => {
-    dispatch(fetchAiForumPosts());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchAiForumPosts());
+    }
+  }, [dispatch, hasFetched]);
 
   useAiForumListSocket(
     {
@@ -151,10 +153,6 @@ export function AiForumListView() {
     },
     [router]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <>
@@ -248,6 +246,7 @@ export function AiForumListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom

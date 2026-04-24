@@ -55,6 +55,7 @@ const aiForumSlice = createSlice({
     posts: [],
     loading: false,
     error: null,
+    hasFetched: false,
   },
   reducers: {
     aiForumPostCreatedFromSocket: (state, action) => {
@@ -83,6 +84,7 @@ const aiForumSlice = createSlice({
       .addCase(fetchAiForumPosts.fulfilled, (state, action) => {
         state.loading = false;
         state.posts = action.payload;
+        state.hasFetched = true;
       })
       .addCase(fetchAiForumPosts.rejected, (state, action) => {
         state.loading = false;

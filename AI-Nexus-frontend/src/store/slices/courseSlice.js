@@ -67,6 +67,7 @@ const courseSlice = createSlice({
     courses: [],
     pagination: null,
     loading: false,
+    hasFetched: false,
     creating: false,
     updating: false,
     deleting: false,
@@ -84,6 +85,7 @@ const courseSlice = createSlice({
         state.loading = false;
         state.courses = action.payload?.data || [];
         state.pagination = action.payload?.pagination || null;
+        state.hasFetched = true;
       })
       .addCase(fetchCourses.rejected, (state, action) => {
         state.loading = false;

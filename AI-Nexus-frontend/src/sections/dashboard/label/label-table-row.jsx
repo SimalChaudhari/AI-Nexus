@@ -62,6 +62,7 @@ export function LabelTableRow({ row, selected, onEditRow, onSelectRow, onDeleteR
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

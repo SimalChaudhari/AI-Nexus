@@ -21,7 +21,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -34,6 +33,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { fetchLabels, deleteLabel } from 'src/store/slices/labelSlice';
@@ -52,7 +52,7 @@ const TABLE_HEAD = [
 
 export function LabelListView() {
   const dispatch = useDispatch();
-  const { labels: tableData, loading } = useSelector((state) => state.labels);
+  const { labels: tableData, loading, hasFetched } = useSelector((state) => state.labels);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -61,8 +61,10 @@ export function LabelListView() {
 
   // Fetch labels from Redux store
   useEffect(() => {
-    dispatch(fetchLabels());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchLabels());
+    }
+  }, [dispatch, hasFetched]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
@@ -109,10 +111,6 @@ export function LabelListView() {
     },
     [router]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <>
@@ -212,6 +210,7 @@ export function LabelListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom

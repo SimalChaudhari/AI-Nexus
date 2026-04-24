@@ -30,8 +30,6 @@ import { NewUserSchema, ProfileSchema } from 'src/validations/user.validation';
 
 const STATUS_OPTIONS = [
   { value: 'Active', label: 'Active', description: 'User can sign in' },
-  { value: 'Inactive', label: 'Inactive', description: 'Account disabled' },
-  { value: 'Pending', label: 'Pending', description: 'Awaiting verification' },
   { value: 'Banned', label: 'Banned', description: 'Blocked from access' },
 ];
 

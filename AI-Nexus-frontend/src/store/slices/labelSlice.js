@@ -53,6 +53,7 @@ const labelSlice = createSlice({
     labels: [],
     loading: false,
     error: null,
+    hasFetched: false,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -64,6 +65,7 @@ const labelSlice = createSlice({
       .addCase(fetchLabels.fulfilled, (state, action) => {
         state.loading = false;
         state.labels = action.payload;
+        state.hasFetched = true;
       })
       .addCase(fetchLabels.rejected, (state, action) => {
         state.loading = false;

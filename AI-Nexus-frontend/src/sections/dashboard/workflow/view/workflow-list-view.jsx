@@ -21,7 +21,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -34,6 +33,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { htmlToPlainText } from 'src/utils/html-plain-text';
@@ -57,9 +57,9 @@ const TABLE_HEAD = [
 
 export function WorkflowListView() {
   const dispatch = useDispatch();
-  const { workflows: tableData, loading } = useSelector((state) => state.workflows);
-  const { labels } = useSelector((state) => state.labels);
-  const { tags } = useSelector((state) => state.tags);
+  const { workflows: tableData, loading, hasFetched } = useSelector((state) => state.workflows);
+  const { labels, hasFetched: labelsFetched } = useSelector((state) => state.labels);
+  const { tags, hasFetched: tagsFetched } = useSelector((state) => state.tags);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -68,10 +68,16 @@ export function WorkflowListView() {
 
   // Fetch workflows, labels, and tags from Redux store
   useEffect(() => {
-    dispatch(fetchWorkflows());
-    dispatch(fetchLabels());
-    dispatch(fetchTags());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchWorkflows());
+    }
+    if (!labelsFetched) {
+      dispatch(fetchLabels());
+    }
+    if (!tagsFetched) {
+      dispatch(fetchTags());
+    }
+  }, [dispatch, hasFetched, labelsFetched, tagsFetched]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
@@ -118,10 +124,6 @@ export function WorkflowListView() {
     },
     [router]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <>
@@ -223,6 +225,7 @@ export function WorkflowListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom

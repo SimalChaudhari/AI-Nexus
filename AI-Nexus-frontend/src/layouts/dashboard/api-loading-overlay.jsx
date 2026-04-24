@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
-import CircularProgress from 'src/components/loading/circular-progress';
-import { useTheme } from '@mui/material/styles';
+import { LoadingScreen } from 'src/components/loading-screen';
 
 import { apiLoading } from 'src/utils/api-loading';
 
@@ -12,7 +11,6 @@ import { apiLoading } from 'src/utils/api-loading';
  * Used inside dashboard layout so it only shows on admin routes.
  */
 export function ApiLoadingOverlay() {
-  const theme = useTheme();
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => apiLoading.subscribe(setPendingCount), []);
@@ -32,7 +30,7 @@ export function ApiLoadingOverlay() {
         opacity: 0.9,
       }}
     >
-      <CircularProgress size={48} sx={{ color: theme.palette.primary.main }} />
+      <LoadingScreen sx={{ minHeight: 220, px: 0 }} />
     </Box>
   );
 }

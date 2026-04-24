@@ -21,7 +21,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -34,6 +33,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { fetchCategories, deleteCategory } from 'src/store/slices/categorySlice';
@@ -53,7 +53,7 @@ const TABLE_HEAD = [
 
 export function CategoryListView() {
   const dispatch = useDispatch();
-  const { categories: tableData, loading } = useSelector((state) => state.categories);
+  const { categories: tableData, loading, hasFetched } = useSelector((state) => state.categories);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -62,8 +62,10 @@ export function CategoryListView() {
 
   // Fetch categories from Redux store
   useEffect(() => {
-    dispatch(fetchCategories());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchCategories());
+    }
+  }, [dispatch, hasFetched]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
@@ -110,10 +112,6 @@ export function CategoryListView() {
     },
     [router]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <>
@@ -213,6 +211,7 @@ export function CategoryListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom

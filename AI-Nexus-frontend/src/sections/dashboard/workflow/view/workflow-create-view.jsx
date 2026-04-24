@@ -19,7 +19,7 @@ export function WorkflowCreateView() {
         sx={{ mb: { xs: 3, md: 5 } }}
       />
 
-      <WorkflowNewEditForm showFlowBuilder />
+      <WorkflowNewEditForm />
     </DashboardContent>
   );
 }

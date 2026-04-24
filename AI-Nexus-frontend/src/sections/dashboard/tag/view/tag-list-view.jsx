@@ -21,7 +21,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
@@ -34,6 +33,7 @@ import {
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
+  TableLoadingOverlay,
 } from 'src/components/table';
 
 import { fetchTags, deleteTag } from 'src/store/slices/tagSlice';
@@ -52,7 +52,7 @@ const TABLE_HEAD = [
 
 export function TagListView() {
   const dispatch = useDispatch();
-  const { tags: tableData, loading } = useSelector((state) => state.tags);
+  const { tags: tableData, loading, hasFetched } = useSelector((state) => state.tags);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -61,8 +61,10 @@ export function TagListView() {
 
   // Fetch tags from Redux store
   useEffect(() => {
-    dispatch(fetchTags());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchTags());
+    }
+  }, [dispatch, hasFetched]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
@@ -109,10 +111,6 @@ export function TagListView() {
     },
     [router]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <>
@@ -212,6 +210,7 @@ export function TagListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
+            {loading && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom

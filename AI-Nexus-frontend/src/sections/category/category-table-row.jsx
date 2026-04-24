@@ -79,6 +79,7 @@ export function CategoryTableRow({ row, selected, onEditRow, onSelectRow, onDele
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

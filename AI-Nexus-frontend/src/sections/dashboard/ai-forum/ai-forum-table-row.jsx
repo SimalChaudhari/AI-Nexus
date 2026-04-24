@@ -67,6 +67,7 @@ export function AiForumTableRow({ row, selected, onEditRow, onSelectRow, onDelet
         open={popover.open}
         anchorEl={popover.anchorEl}
         onClose={popover.onClose}
+        disableScrollLock
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>

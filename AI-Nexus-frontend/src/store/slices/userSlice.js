@@ -53,6 +53,8 @@ export const updateUserStatus = createAsyncThunk(
 const initialState = {
   users: [],
   loading: false,
+  isInitialLoading: false,
+  hasFetched: false,
   creating: false,
   updating: false,
   deleting: false,
@@ -73,14 +75,19 @@ const userSlice = createSlice({
     builder
       .addCase(fetchUsers.pending, (state) => {
         state.loading = true;
+        state.isInitialLoading = !state.hasFetched;
         state.error = null;
       })
       .addCase(fetchUsers.fulfilled, (state, action) => {
         state.loading = false;
+        state.isInitialLoading = false;
+        state.hasFetched = true;
         state.users = action.payload;
       })
       .addCase(fetchUsers.rejected, (state, action) => {
         state.loading = false;
+        state.isInitialLoading = false;
+        state.hasFetched = true;
         state.error = action.payload;
       })
       // Create user

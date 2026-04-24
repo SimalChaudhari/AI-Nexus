@@ -139,7 +139,7 @@ export class AuthService {
         throw new UnauthorizedException('This account uses SSO. Please sign in with SSO.');
       }
 
-      // Check if user is banned
+      // Banned accounts are blocked.
       if (user.status === UserStatus.Banned) {
         throw new UnauthorizedException('Your account has been banned. Please contact support.');
       }
@@ -220,7 +220,7 @@ export class AuthService {
         return { message: 'If the email exists, a password reset link has been sent.' };
       }
 
-      // Check if user is banned
+      // Banned accounts are blocked.
       if (user.status === UserStatus.Banned) {
         throw new UnauthorizedException('Your account has been banned. Please contact support.');
       }
@@ -272,7 +272,7 @@ export class AuthService {
         throw new BadRequestException('Invalid or expired reset token');
       }
 
-      // Check if user is banned
+      // Banned accounts are blocked.
       if (user.status === UserStatus.Banned) {
         throw new UnauthorizedException('Your account has been banned. Please contact support.');
       }
@@ -381,7 +381,7 @@ export class AuthService {
         return { message: 'Email is already verified. You can log in now.' };
       }
 
-      // Check if user is banned
+      // Banned accounts are blocked.
       if (user.status === UserStatus.Banned) {
         throw new UnauthorizedException('Your account has been banned. Please contact support.');
       }

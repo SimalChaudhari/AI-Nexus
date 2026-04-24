@@ -53,7 +53,7 @@ const TABLE_HEAD = [
 
 export function CategoryListView() {
   const dispatch = useDispatch();
-  const { categories: tableData, loading } = useSelector((state) => state.categories);
+  const { categories: tableData, loading, hasFetched } = useSelector((state) => state.categories);
   const table = useTable();
   const router = useRouter();
   const confirm = useBoolean();
@@ -62,8 +62,10 @@ export function CategoryListView() {
 
   // Fetch categories from Redux store
   useEffect(() => {
-    dispatch(fetchCategories());
-  }, [dispatch]);
+    if (!hasFetched) {
+      dispatch(fetchCategories());
+    }
+  }, [dispatch, hasFetched]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,

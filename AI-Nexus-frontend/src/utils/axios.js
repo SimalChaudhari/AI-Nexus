@@ -60,7 +60,8 @@ axiosInstance.get = function deduplicatedGet(url, config = {}) {
   return promise;
 };
 
-// Request interceptor to add JWT token and track loading (for admin overlay — only mutations, not GET)
+// Request interceptor to add JWT token and track loading.
+// GET requests are ignored by default, but can opt-in via `trackApiLoading: true`.
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = sessionStorage.getItem(STORAGE_KEY);
@@ -69,7 +70,8 @@ axiosInstance.interceptors.request.use(
     }
     const method = (config.method || 'get').toLowerCase();
     const isMutation = method !== 'get';
-    if (isMutation && config.skipApiLoading !== true) {
+    const shouldTrackLoading = (isMutation || config.trackApiLoading === true) && config.skipApiLoading !== true;
+    if (shouldTrackLoading) {
       apiLoading.increment();
     }
     return config;
@@ -84,14 +86,20 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => {
     const method = (response.config?.method || 'get').toLowerCase();
-    if (method !== 'get' && response.config?.skipApiLoading !== true) {
+    const shouldTrackLoading =
+      (method !== 'get' || response.config?.trackApiLoading === true) &&
+      response.config?.skipApiLoading !== true;
+    if (shouldTrackLoading) {
       apiLoading.decrement();
     }
     return response;
   },
   (error) => {
     const method = (error.config?.method || 'get').toLowerCase();
-    if (method !== 'get' && error.config?.skipApiLoading !== true) {
+    const shouldTrackLoading =
+      (method !== 'get' || error.config?.trackApiLoading === true) &&
+      error.config?.skipApiLoading !== true;
+    if (shouldTrackLoading) {
       apiLoading.decrement();
     }
     // Handle connection refused errors
