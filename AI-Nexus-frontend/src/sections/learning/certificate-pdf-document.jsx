@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
 
 export function CertificatePdfDocument({ courseTitle, completedAt, cpeHours, logoSource }) {
   const cpeText = typeof cpeHours === 'number' ? `${cpeHours} CPE Hour${cpeHours !== 1 ? 's' : ''}` : cpeHours;
-  const logo = logoSource || '/logo/logo-full.png';
+  const logo = logoSource || '/favicon.png';
   return (
     <Document>
       <Page size="A4" style={styles.page}>

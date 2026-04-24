@@ -77,7 +77,16 @@ export function AdminSettingsView() {
     try {
       setLogoSubmitting(true);
       const updatedSettings = await appSettingsService.uploadLogo(logoFile);
-      setLogoUrl(updatedSettings.logoUrl || '');
+      const nextLogoUrl = updatedSettings.logoUrl || '';
+      setLogoUrl(nextLogoUrl);
+      if (typeof window !== 'undefined') {
+        if (nextLogoUrl) {
+          window.localStorage.setItem('site-logo-url', nextLogoUrl);
+        } else {
+          window.localStorage.removeItem('site-logo-url');
+        }
+        window.dispatchEvent(new CustomEvent('site-logo-updated', { detail: { logoUrl: nextLogoUrl } }));
+      }
       setLogoFile(null);
       toast.success('Site logo updated successfully');
     } catch (error) {
@@ -159,7 +168,16 @@ export function AdminSettingsView() {
     try {
       setLogoSubmitting(true);
       const updatedSettings = await appSettingsService.removeLogo();
-      setLogoUrl(updatedSettings.logoUrl || '');
+      const nextLogoUrl = updatedSettings.logoUrl || '';
+      setLogoUrl(nextLogoUrl);
+      if (typeof window !== 'undefined') {
+        if (nextLogoUrl) {
+          window.localStorage.setItem('site-logo-url', nextLogoUrl);
+        } else {
+          window.localStorage.removeItem('site-logo-url');
+        }
+        window.dispatchEvent(new CustomEvent('site-logo-updated', { detail: { logoUrl: nextLogoUrl } }));
+      }
       toast.success('Site logo removed successfully');
     } catch (error) {
       toast.error(error?.message || 'Failed to remove site logo');

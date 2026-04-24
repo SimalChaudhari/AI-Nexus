@@ -218,7 +218,12 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
         title="Delete"
         content="Are you sure want to delete?"
         action={
-          <Button variant="contained" color="error" onClick={onDeleteRow}>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
+            onClick={onDeleteRow}
+          >
             Delete
           </Button>
         }
@@ -272,7 +277,12 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
         title="Delete"
         content="Are you sure want to delete?"
         action={
-          <Button variant="contained" color="error" onClick={onDeleteRow}>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
+            onClick={onDeleteRow}
+          >
             Delete
           </Button>
         }

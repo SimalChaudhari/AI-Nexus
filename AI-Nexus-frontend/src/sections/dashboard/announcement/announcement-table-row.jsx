@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import MenuList from '@mui/material/MenuList';
 import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
@@ -114,15 +115,17 @@ export function AnnouncementTableRow({ row, selected, onEditRow, onSelectRow, on
           </>
         }
         action={
-          <IconButton
+          <Button
+            variant="contained"
             color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
             onClick={() => {
               onDeleteRow();
               confirm.onFalse();
             }}
           >
-            <Iconify icon="solar:trash-bin-trash-bold" />
-          </IconButton>
+            Delete
+          </Button>
         }
       />
     </>

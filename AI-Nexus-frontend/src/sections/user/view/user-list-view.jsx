@@ -312,6 +312,7 @@ export function UserListView() {
           <Button
             variant="contained"
             color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
             onClick={() => {
               handleDeleteRows();
               confirm.onFalse();

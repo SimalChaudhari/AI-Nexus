@@ -182,6 +182,7 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
             onClick={onDeleteRow}
             loading={deleting}
             disabled={deleting}
+            startIcon={!deleting ? <Iconify icon="solar:trash-bin-trash-bold" /> : null}
           >
             Delete
           </LoadingButton>

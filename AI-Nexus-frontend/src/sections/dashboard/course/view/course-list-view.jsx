@@ -14,6 +14,7 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useSetState } from 'src/hooks/use-set-state';
+import { useBoolean } from 'src/hooks/use-boolean';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -21,6 +22,7 @@ import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 import { EmptyContent } from 'src/components/empty-content';
+import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
   useTable,
@@ -97,6 +99,7 @@ export function CourseListView() {
   const { courses: tableData, loading, deleting, pagination, hasFetched } = useSelector((state) => state.courses);
   const table = useTable({ defaultRowsPerPage: 10 });
   const router = useRouter();
+  const confirm = useBoolean();
 
   const filters = useSetState({ name: '', level: '', type: '' });
 
@@ -253,7 +256,7 @@ export function CourseListView() {
             }
             action={
               <Tooltip title="Delete">
-                <IconButton color="primary" onClick={handleDeleteRows}>
+                <IconButton color="primary" onClick={confirm.onTrue}>
                   <Iconify icon="solar:trash-bin-trash-bold" />
                 </IconButton>
               </Tooltip>
@@ -305,6 +308,29 @@ export function CourseListView() {
           rowsPerPageOptions={[10, 20, 30]}
         />
       </Card>
+      <ConfirmDialog
+        open={confirm.value}
+        onClose={confirm.onFalse}
+        title="Delete"
+        content={
+          <>
+            Are you sure want to delete <strong> {table.selected.length} </strong> items?
+          </>
+        }
+        action={
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
+            onClick={() => {
+              handleDeleteRows();
+              confirm.onFalse();
+            }}
+          >
+            Delete
+          </Button>
+        }
+      />
     </DashboardContent>
   );
 }

@@ -21,32 +21,32 @@ export const Logo = forwardRef(
 
     // Check if we're on a public route (not admin/dashboard)
     const isPublicRoute = !pathname?.startsWith('/admin') && !pathname?.startsWith('/dashboard');
-    const [publicLogoUrl, setPublicLogoUrl] = useState(() => {
+    const [siteLogoUrl, setSiteLogoUrl] = useState(() => {
       if (typeof window === 'undefined') {
-        return '/logo/logo.png';
+        return '';
       }
 
-      return window.localStorage.getItem('public-site-logo-url') || '/logo/logo.png';
+      return window.localStorage.getItem('site-logo-url') || '';
     });
 
     useEffect(() => {
       let active = true;
 
-      if (!isPublicRoute) {
-        return undefined;
-      }
-
       appSettingsService
         .getPublic()
         .then((settings) => {
-          const nextLogoUrl = settings.logoUrl || '/logo/logo.png';
+          const nextLogoUrl = settings.logoUrl || '';
 
           if (!active) return;
 
-          setPublicLogoUrl(nextLogoUrl);
+          setSiteLogoUrl(nextLogoUrl);
 
           if (typeof window !== 'undefined') {
-            window.localStorage.setItem('public-site-logo-url', nextLogoUrl);
+            if (nextLogoUrl) {
+              window.localStorage.setItem('site-logo-url', nextLogoUrl);
+            } else {
+              window.localStorage.removeItem('site-logo-url');
+            }
           }
         })
         .catch(() => undefined);
@@ -56,14 +56,37 @@ export const Logo = forwardRef(
       };
     }, [isPublicRoute]);
 
+    useEffect(() => {
+      if (typeof window === 'undefined') return undefined;
+
+      const handleSiteLogoUpdated = (event) => {
+        const nextLogoUrl = event?.detail?.logoUrl || '';
+        setSiteLogoUrl(nextLogoUrl);
+      };
+
+      window.addEventListener('site-logo-updated', handleSiteLogoUpdated);
+
+      return () => {
+        window.removeEventListener('site-logo-updated', handleSiteLogoUpdated);
+      };
+    }, []);
+
     /*
      * OR using local (public folder)
      * const logo = ( <Box alt="logo" component="img" src={`${CONFIG.site.basePath}/logo/logo-single.svg`} width={width} height={height} /> );
      */
     const logo = isPublicRoute ? (
-      <img alt="logo" src={publicLogoUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      <img
+        alt="logo"
+        src={siteLogoUrl || '/favicon.png'}
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+      />
     ) : (
-      <img alt="logo" src={isDark ? '/logo/logo-full-dark.svg' : '/logo/logo-full.svg'} />
+      <img
+        alt="logo"
+        src={siteLogoUrl || (isDark ? '/favicon.png' : '/favicon.png')}
+        style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' }}
+      />
     );
 
     return (
@@ -86,8 +109,8 @@ export const Logo = forwardRef(
           ref={ref}
           component={RouterLink}
           href={href}
-          width={isPublicRoute ? 'auto' : width}
-          height={isPublicRoute ? 'auto' : height}
+          width={isPublicRoute ? 'auto' : 130}
+          height={isPublicRoute ? 'auto' : 72}
           className={logoClasses.root.concat(className ? ` ${className}` : '')}
           aria-label="logo"
           sx={{

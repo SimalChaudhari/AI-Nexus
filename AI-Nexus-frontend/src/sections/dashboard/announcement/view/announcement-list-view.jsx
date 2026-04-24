@@ -265,9 +265,17 @@ export function AnnouncementListView() {
           </>
         }
         action={
-          <IconButton color="error" onClick={handleDeleteRows}>
-            <Iconify icon="solar:trash-bin-trash-bold" />
-          </IconButton>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
+            onClick={() => {
+              handleDeleteRows();
+              confirm.onFalse();
+            }}
+          >
+            Delete
+          </Button>
         }
       />
     </>

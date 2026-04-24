@@ -138,7 +138,12 @@ export function SpeakerTableRow({ row, reviewStat, selected, onEditRow, onSelect
         title="Delete"
         content="Are you sure you want to delete this speaker?"
         action={
-          <Button variant="contained" color="error" onClick={onDeleteRow}>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<Iconify icon="solar:trash-bin-trash-bold" />}
+            onClick={onDeleteRow}
+          >
             Delete
           </Button>
         }
