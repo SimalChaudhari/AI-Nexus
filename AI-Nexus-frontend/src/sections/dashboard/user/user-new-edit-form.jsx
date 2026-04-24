@@ -1,6 +1,6 @@
 import { useMemo, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -9,7 +9,6 @@ import CardHeader from '@mui/material/CardHeader';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Grid from '@mui/material/Unstable_Grid2';
-import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
 import MenuItem from '@mui/material/MenuItem';
 import Divider from '@mui/material/Divider';
@@ -240,66 +239,121 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   if (isCreate) {
     return (
       <Form methods={methods} onSubmit={onSubmit}>
-        <Stack spacing={3}>
-          <Alert severity="info" icon={<Iconify icon="solar:letter-bold" width={24} />}>
-            If you leave <strong>Password</strong> empty, the system generates a secure temporary password and sends it to
-            the user&apos;s email. You can optionally set a password here — it will be emailed to them as well.
-          </Alert>
-
-          <Card sx={{ ...cardSx, p: 3 }}>
-            <CardHeader
-              title="Create user"
-              subheader="Add a learner account. They will use username or email to sign in."
-              sx={{ p: 0, mb: 2 }}
-             
-            />
-            <Divider sx={{ mb: 3 }} />
-
-            <Box
-              rowGap={3}
-              columnGap={2}
-              display="grid"
-              gridTemplateColumns={{
-                xs: 'repeat(1, 1fr)',
-                sm: 'repeat(2, 1fr)',
-              }}
-            >
-              <Field.Text name="firstname" label="First name" />
-              <Field.Text name="lastname" label="Last name" />
-              <Field.Text name="username" label="Username" />
-              <Field.Text name="email" label="Email address" type="email" />
-              <Field.Select name="status" label="Account status" InputLabelProps={{ shrink: true }}>
-                {STATUS_OPTIONS.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </Field.Select>
-              <Field.Text
-                name="password"
-                label="Password (optional)"
-                type="password"
-                autoComplete="new-password"
-                placeholder="Leave blank to email temporary password"
+        <Grid container spacing={3}>
+          <Grid xs={12} md={8}>
+            <Card sx={cardSx}>
+              <CardHeader
+                title="Create user"
+                subheader="Add a learner account. They will use username or email to sign in."
+                sx={{ px: 3, pt: 3, pb: 0, alignItems: 'flex-start' }}
+                action={
+                  <Box
+                    sx={{
+                      flexShrink: 0,
+                      width: 48,
+                      height: 48,
+                      borderRadius: 1.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.08),
+                      color: 'primary.main',
+                    }}
+                  >
+                    <Iconify icon="solar:user-plus-bold" width={28} />
+                  </Box>
+                }
               />
-            </Box>
-
-            <Stack direction="row" justifyContent="flex-end" spacing={2} sx={{ mt: 3 }}>
-              <Button variant="outlined" startIcon={<Iconify icon="eva:arrow-back-fill" />} onClick={handleCancel}>
-                Cancel
-              </Button>
-              <LoadingButton
-                type="submit"
-                variant="contained"
-                size="large"
-                loading={isSubmitting}
-                startIcon={<Iconify icon="solar:user-plus-bold" />}
+              <Divider sx={{ mx: 3, my: 2 }} />
+              <Stack spacing={3} sx={{ px: 3, pb: 3 }}>
+                <Alert severity="info" icon={<Iconify icon="solar:letter-bold" width={24} />}>
+                  If you leave <strong>Password</strong> empty, the system generates a secure temporary password and sends it to
+                  the user&apos;s email. You can optionally set a password here — it will be emailed to them as well.
+                </Alert>
+                <Box
+                  rowGap={3}
+                  columnGap={2}
+                  display="grid"
+                  gridTemplateColumns={{
+                    xs: 'repeat(1, 1fr)',
+                    md: 'repeat(3, 1fr)',
+                  }}
+                >
+                  <Field.Text name="username" label="Username" />
+                  <Field.Text name="firstname" label="First name" />
+                  <Field.Text name="lastname" label="Last name" />
+                </Box>
+                <Box
+                  rowGap={3}
+                  columnGap={2}
+                  display="grid"
+                  gridTemplateColumns={{
+                    xs: 'repeat(1, 1fr)',
+                  }}
+                >
+                  <Field.Text name="email" label="Email address" type="email" />
+                  <Field.Text
+                    name="password"
+                    label="Password (optional)"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Leave blank to email temporary password"
+                  />
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+          <Grid xs={12} md={4}>
+            <Stack spacing={3}>
+              <Card sx={{ ...cardSx, p: 3 }}>
+                <CardHeader
+                  title="Account status"
+                  subheader="Choose user access level before creating the account."
+                  sx={{ p: 0, mb: 2 }}
+                />
+                <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </Field.Select>
+              </Card>
+              <Card
+                sx={{
+                  ...cardSx,
+                  position: { md: 'sticky' },
+                  top: { md: 24 },
+                  p: 3,
+                }}
               >
-                Create user
-              </LoadingButton>
+                <CardHeader title="Publish" subheader="Save when you’re ready." sx={{ p: 0, mb: 2 }} />
+                <Stack spacing={1.5}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    size="large"
+                    color="inherit"
+                    startIcon={<Iconify icon="eva:arrow-back-fill" />}
+                    onClick={handleCancel}
+                  >
+                    Cancel
+                  </Button>
+                  <LoadingButton
+                    fullWidth
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    loading={isSubmitting}
+                    startIcon={<Iconify icon="solar:user-plus-bold" />}
+                  >
+                    Create user
+                  </LoadingButton>
+                </Stack>
+              </Card>
             </Stack>
-          </Card>
-        </Stack>
+          </Grid>
+        </Grid>
       </Form>
     );
   }
@@ -310,108 +364,98 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   return (
     <Form methods={methods} onSubmit={onSubmit}>
       <Grid container spacing={3}>
-        <Grid xs={12} md={4}>
-          <Card sx={{ ...cardSx, p: 3, height: 1 }}>
-            <CardHeader
-              title="Account status"
-              subheader="Control whether this user can access the platform."
-              sx={{ p: 0, mb: 2 }}
-            />
-            <Divider sx={{ mb: 2 }} />
-            <Controller
-              name="status"
-              control={methods.control}
-              render={({ field }) => (
-                <Stack spacing={1.5}>
-                  {STATUS_OPTIONS.map((opt) => {
-                    const selected = field.value === opt.value;
-                    return (
-                      <Box
-                        key={opt.value}
-                        onClick={() => field.onChange(opt.value)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            field.onChange(opt.value);
-                          }
-                        }}
-                        sx={{
-                          p: 2,
-                          borderRadius: 1.5,
-                          cursor: 'pointer',
-                          border: `2px solid ${
-                            selected ? theme.palette.primary.main : alpha(theme.palette.grey[500], 0.2)
-                          }`,
-                          bgcolor: selected ? alpha(theme.palette.primary.main, 0.06) : 'transparent',
-                          transition: theme.transitions.create(['border-color', 'background-color']),
-                          '&:hover': {
-                            borderColor: alpha(theme.palette.primary.main, 0.5),
-                          },
-                        }}
-                      >
-                        <Stack direction="row" alignItems="center" spacing={1.5}>
-                          <Iconify
-                            icon={
-                              selected ? 'solar:check-circle-bold' : 'solar:record-circle-line-duotone'
-                            }
-                            width={22}
-                            color={selected ? theme.palette.primary.main : theme.palette.text.disabled}
-                          />
-                          <Box>
-                            <Typography variant="subtitle2">{opt.label}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {opt.description}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </Box>
-                    );
-                  })}
-                </Stack>
-              )}
-            />
-          </Card>
-        </Grid>
-
         <Grid xs={12} md={8}>
-          <Card sx={{ ...cardSx, p: 3 }}>
+          <Card sx={cardSx}>
             <CardHeader
               title="User details"
               subheader="Update identity and contact information."
-              sx={{ p: 0, mb: 2 }}
+              sx={{ px: 3, pt: 3, pb: 0, alignItems: 'flex-start' }}
+              action={
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    width: 48,
+                    height: 48,
+                    borderRadius: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    color: 'primary.main',
+                  }}
+                >
+                  <Iconify icon="solar:user-id-bold" width={28} />
+                </Box>
+              }
             />
-            <Divider sx={{ mb: 3 }} />
-            <Box
-              rowGap={3}
-              columnGap={2}
-              display="grid"
-              gridTemplateColumns={{
-                xs: 'repeat(1, 1fr)',
-                sm: 'repeat(2, 1fr)',
-              }}
-            >
-              <Field.Text name="username" label="Username" />
-              <Field.Text name="email" label="Email address" type="email" />
-              <Field.Text name="firstname" label="First name" />
-              <Field.Text name="lastname" label="Last name" />
-            </Box>
-
-            <Stack direction="row" justifyContent="flex-end" spacing={2} sx={{ mt: 3 }}>
-              <Button variant="outlined" startIcon={<Iconify icon="eva:arrow-back-fill" />} onClick={handleCancel}>
-                Cancel
-              </Button>
-              <LoadingButton
-                type="submit"
-                variant="contained"
-                loading={isSubmitting}
-                startIcon={<Iconify icon="eva:checkmark-fill" />}
+            <Divider sx={{ mx: 3, my: 2 }} />
+            <Stack spacing={3} sx={{ px: 3, pb: 3 }}>
+              <Box
+                rowGap={3}
+                columnGap={2}
+                display="grid"
+                gridTemplateColumns={{
+                  xs: 'repeat(1, 1fr)',
+                  md: 'repeat(3, 1fr)',
+                }}
               >
-                Save changes
-              </LoadingButton>
+                <Field.Text name="username" label="Username" />
+                <Field.Text name="firstname" label="First name" />
+                <Field.Text name="lastname" label="Last name" />
+              </Box>
+              <Field.Text name="email" label="Email address" type="email" />
             </Stack>
           </Card>
+        </Grid>
+        <Grid xs={12} md={4}>
+          <Stack spacing={3}>
+            <Card sx={{ ...cardSx, p: 3 }}>
+              <CardHeader
+                title="Account status"
+                subheader="Control whether this user can access the platform."
+                sx={{ p: 0, mb: 2 }}
+              />
+              <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
+                {STATUS_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Field.Select>
+            </Card>
+            <Card
+              sx={{
+                ...cardSx,
+                position: { md: 'sticky' },
+                top: { md: 24 },
+                p: 3,
+              }}
+            >
+              <CardHeader title="Publish" subheader="Save when you’re ready." sx={{ p: 0, mb: 2 }} />
+              <Stack spacing={1.5}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="large"
+                  color="inherit"
+                  startIcon={<Iconify icon="eva:arrow-back-fill" />}
+                  onClick={handleCancel}
+                >
+                  Cancel
+                </Button>
+                <LoadingButton
+                  fullWidth
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  loading={isSubmitting}
+                  startIcon={<Iconify icon="eva:checkmark-fill" />}
+                >
+                  Save changes
+                </LoadingButton>
+              </Stack>
+            </Card>
+          </Stack>
         </Grid>
       </Grid>
     </Form>

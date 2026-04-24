@@ -47,7 +47,7 @@ export const userService = {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
       // Handle network errors
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -64,7 +64,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -86,7 +86,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -103,7 +103,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -121,7 +121,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -140,7 +140,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -158,7 +158,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -175,7 +175,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -200,7 +200,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
@@ -224,7 +224,7 @@ export const userService = {
       if (error?.message?.includes('ERR_CONNECTION_REFUSED') || error?.code === 'ECONNREFUSED') {
         throw new Error('Unable to connect to server. Please make sure the backend server is running.');
       }
-      if (error?.message?.includes('Network Error') || !error?.response) {
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
