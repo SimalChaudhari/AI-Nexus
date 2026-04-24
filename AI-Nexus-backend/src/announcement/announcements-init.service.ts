@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { shouldSkipRuntimeSchemaInit } from '../common/schema-init-guard';
 import { AnnouncementEntity } from './announcements.entity';
 import { CommentEntity } from './comments.entity';
 
@@ -8,6 +9,9 @@ export class AnnouncementsInitService implements OnModuleInit {
   constructor(private dataSource: DataSource) {}
 
   async onModuleInit() {
+    if (shouldSkipRuntimeSchemaInit()) {
+      return;
+    }
     try {
       console.log('🔍 Checking announcements and comments tables...');
       

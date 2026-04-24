@@ -21,6 +21,17 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AppSettingsModule } from './app-settings/app-settings.module';
 import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
 
+const resolveTypeOrmPoolMax = (): number => {
+  const raw = process.env.TYPEORM_POOL_MAX;
+  if (raw !== undefined && raw !== '') {
+    const n = parseInt(raw, 10);
+    if (!Number.isNaN(n) && n >= 1) return Math.min(n, 20);
+  }
+  // Default pool for long-lived Node (own server / Docker). Many *InitService hooks run onModuleInit
+  // in parallel; a single connection would serialize them and slow boot.
+  return 10;
+};
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }), // Load environment variables
@@ -32,13 +43,14 @@ import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
           console.error('⚠️ DATABASE_URL environment variable is not set!');
           throw new Error('DATABASE_URL is required but not set in environment variables');
         }
-        console.log('🔍 DATABASE_URL found:', dbUrl.substring(0, 50) + '...');
+        if (process.env.DEBUG_DB === '1') {
+          console.log('🔍 DATABASE_URL prefix:', dbUrl.substring(0, 50) + '...');
+        }
         // Remove sslmode parameter - we'll handle SSL via TypeORM config
         // Keep pgbouncer=true parameter for Transaction Pooler
         let cleanUrl = dbUrl.replace(/[?&]sslmode=[^&]*/g, '');
         // Clean up trailing ? or & if they exist
         cleanUrl = cleanUrl.replace(/[?&]$/, '');
-        console.log('🔗 Using connection URL:', cleanUrl.substring(0, 60) + '...');
         return cleanUrl;
       })(),
       autoLoadEntities: true, // Automatically loads all entities (including announcements and comments)
@@ -60,11 +72,10 @@ import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
           rejectUnauthorized: false,
         };
       })(),
-      // IMPORTANT: max: 1 for PgBouncer Transaction Pooler
-      // Vercel serverless = 1 connection per lambda function
-      // This prevents "MaxClientsInSessionMode" error
+      // Pg pool: override with TYPEORM_POOL_MAX (1–20). Parallel onModuleInit + requests queue less than max:1.
       extra: {
-        max: 1, // Critical: Only 1 connection to prevent pool exhaustion
+        max: resolveTypeOrmPoolMax(),
+        connectionTimeoutMillis: 12_000,
         ssl: (() => {
           const dbUrl = process.env.DATABASE_URL || '';
           if (!dbUrl || dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1')) {
@@ -76,9 +87,8 @@ import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
           };
         })(),
       },
-      // Add retry logic and better error handling
       retryAttempts: 3,
-      retryDelay: 3000,
+      retryDelay: 1000,
     }),
     AuthModule,
     UserModule,

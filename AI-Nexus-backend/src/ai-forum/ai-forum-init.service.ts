@@ -1,11 +1,15 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { shouldSkipRuntimeSchemaInit } from '../common/schema-init-guard';
 
 @Injectable()
 export class AiForumInitService implements OnModuleInit {
     constructor(private dataSource: DataSource) {}
 
     async onModuleInit() {
+        if (shouldSkipRuntimeSchemaInit()) {
+            return;
+        }
         try {
             console.log('🔍 Checking posts, post_comments, post_comment_likes tables...');
 

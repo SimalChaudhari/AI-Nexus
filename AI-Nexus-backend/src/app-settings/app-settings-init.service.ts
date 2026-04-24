@@ -1,11 +1,15 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { shouldSkipRuntimeSchemaInit } from '../common/schema-init-guard';
 
 @Injectable()
 export class AppSettingsInitService implements OnModuleInit {
   constructor(private dataSource: DataSource) {}
 
   async onModuleInit() {
+    if (shouldSkipRuntimeSchemaInit()) {
+      return;
+    }
     try {
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();

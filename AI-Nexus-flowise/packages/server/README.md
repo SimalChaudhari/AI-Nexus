@@ -1,101 +1,44 @@
-<!-- markdownlint-disable MD030 -->
+# AI-Nexus Flowise Server
 
-# Flowise
+TypeScript/Node backend for Flowise in the AI-Nexus monorepo. It exposes the API, runs chatflows, and in production serves the built UI from the workspace package **`flowise-ui`** (`packages/ui`).
 
-English | [中文](./README-ZH.md)
+## What this package is
 
-<h3>Build AI Agents, Visually</h3>
+- Main entry after build: `dist/`
+- CLI: `bin/run` (used by root `pnpm start` / `pnpm start:prod`)
+- Environment: `.env` and `.env.production` in **this folder** (`packages/server/`)
 
-![Flowise](https://github.com/FlowiseAI/Flowise/blob/main/images/flowise_agentflow.gif?raw=true)
+## Scripts
 
-## ⚡Quick Start
+From `packages/server`:
 
-1. Install Flowise
-    ```bash
-    npm install -g flowise
-    ```
-2. Start Flowise
-
-    ```bash
-    npx flowise start
-    ```
-
-3. Open [http://localhost:3000](http://localhost:3000)
-
-## 🌱 Env Variables
-
-Flowise support different environment variables to configure your instance. You can specify the following variables in the `.env` file inside `packages/server` folder. Read [more](https://github.com/FlowiseAI/Flowise/blob/main/CONTRIBUTING.md#-env-variables)
-
-You can also specify the env variables when using `npx`. For example:
-
-```
-npx flowise start --PORT=3000 --DEBUG=true
+```bash
+pnpm build       # tsc + gulp
+pnpm dev         # nodemon (local API development)
+pnpm start       # run server (after build; paths differ on Windows vs Unix)
+pnpm start:prod  # NODE_ENV=production + start
 ```
 
-## 📖 Tests
+From monorepo root (`AI-Nexus-flowise`):
 
-We use [Cypress](https://github.com/cypress-io) for our e2e testing. If you want to run the test suite in dev mode please follow this guide:
-
-```sh
-cd Flowise/packages/server
-pnpm install
-./node_modules/.bin/cypress install
-pnpm build
-#Only for writing new tests on local dev -> pnpm run cypress:open
-pnpm run e2e
+```bash
+pnpm --filter "./packages/server" build
+pnpm --filter "./packages/server" dev
 ```
 
-## 📖 Documentation
+Full-stack dev and production flows are documented in the root [README](../../README.md) (`pnpm dev`, `pnpm prod`, `pnpm start:prod`).
 
-[Flowise Docs](https://docs.flowiseai.com/)
+## Environment
 
-## 🌐 Self Host
+- **`.env`** — local development (database path, `PORT`, API keys, feature flags, etc.)
+- **`.env.production`** — values used when running in production mode
 
--   [AWS](https://docs.flowiseai.com/deployment/aws)
--   [Azure](https://docs.flowiseai.com/deployment/azure)
--   [Digital Ocean](https://docs.flowiseai.com/deployment/digital-ocean)
--   [GCP](https://docs.flowiseai.com/deployment/gcp)
--   <details>
-      <summary>Others</summary>
+Upstream Flowise documents many variables in their [contributing / env docs](https://github.com/FlowiseAI/Flowise/blob/main/CONTRIBUTING.md). Prefer keeping secrets out of git and loading them from these files or your host’s secret store.
 
-    -   [Railway](https://docs.flowiseai.com/deployment/railway)
+## UI in production
 
-        [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/pn4G8S?referralCode=WVNPD9)
+The server resolves static UI assets from the **`flowise-ui`** workspace dependency (built output under `packages/ui/build` after `pnpm build` in that package). If the UI looks stale or branding (title/favicon) does not match, rebuild `flowise-ui` and restart the server; see **`packages/ui/README.md`** and the root README.
 
-    -   [Render](https://docs.flowiseai.com/deployment/render)
+## License
 
-        [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://docs.flowiseai.com/deployment/render)
-
-    -   [HuggingFace Spaces](https://docs.flowiseai.com/deployment/hugging-face)
-
-        <a href="https://huggingface.co/spaces/FlowiseAI/Flowise"><img src="https://huggingface.co/datasets/huggingface/badges/raw/main/open-in-hf-spaces-sm.svg" alt="HuggingFace Spaces"></a>
-
-    -   [Elestio](https://elest.io/open-source/flowiseai)
-
-        [![Deploy on Elestio](https://elest.io/images/logos/deploy-to-elestio-btn.png)](https://elest.io/open-source/flowiseai)
-
-    -   [Sealos](https://cloud.sealos.io/?openapp=system-template%3FtemplateName%3Dflowise)
-
-        [![](https://raw.githubusercontent.com/labring-actions/templates/main/Deploy-on-Sealos.svg)](https://cloud.sealos.io/?openapp=system-template%3FtemplateName%3Dflowise)
-
-    -   [RepoCloud](https://repocloud.io/details/?app_id=29)
-
-        [![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploy.png)](https://repocloud.io/details/?app_id=29)
-
-      </details>
-
-## ☁️ Flowise Cloud
-
-[Get Started with Flowise Cloud](https://flowiseai.com/)
-
-## 🙋 Support
-
-Feel free to ask any questions, raise problems, and request new features in [discussion](https://github.com/FlowiseAI/Flowise/discussions)
-
-## 🙌 Contributing
-
-See [contributing guide](https://github.com/FlowiseAI/Flowise/blob/master/CONTRIBUTING.md). Reach out to us at [Discord](https://discord.gg/jbaHfsRVBW) if you have any questions or issues.
-
-## 📄 License
-
-Source code in this repository is made available under the [Apache License Version 2.0](https://github.com/FlowiseAI/Flowise/blob/master/LICENSE.md).
+Upstream Flowise is Apache 2.0. This README is project documentation only.
