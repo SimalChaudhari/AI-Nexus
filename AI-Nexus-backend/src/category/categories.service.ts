@@ -2,19 +2,57 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CategoryEntity, CategoryStatus } from './categories.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { CreateCategoryDto, UpdateCategoryDto } from './categories.dto';
+import { PaginatedQueryOptions, PaginatedResultWithMeta, PaginationService } from '../common/pagination/pagination.service';
+
+export type CategoryListQueryOptions = PaginatedQueryOptions & {
+    usePagination?: boolean;
+};
+
+export type CategoryPaginatedListResult = PaginatedResultWithMeta<CategoryEntity>;
 
 @Injectable()
 export class CategoryService {
     constructor(
         @InjectRepository(CategoryEntity)
         private categoryRepository: Repository<CategoryEntity>,
+        private readonly paginationService: PaginationService,
     ) { }
 
-    async getAll(): Promise<CategoryEntity[]> {
-        return await this.categoryRepository.find({
-            order: { createdAt: 'DESC' }
+    async getAll(queryOptions?: CategoryListQueryOptions): Promise<CategoryEntity[] | CategoryPaginatedListResult> {
+        const usePagination = Boolean(queryOptions?.usePagination);
+        const normalized = this.paginationService.normalizePaginatedQuery(
+            {
+                page: queryOptions?.page,
+                limit: queryOptions?.limit,
+                search: queryOptions?.search,
+            },
+            10,
+            100
+        );
+
+        const query = this.categoryRepository.createQueryBuilder('category');
+
+        if (normalized.hasSearch) {
+            query.andWhere(
+                new Brackets((qb) => {
+                    qb.where('category.title ILIKE :search', { search: `%${normalized.search}%` });
+                })
+            );
+        }
+
+        query.orderBy('category.createdAt', 'DESC');
+
+        if (!usePagination) {
+            return query.getMany();
+        }
+
+        return this.paginationService.paginateQueryBuilder({
+            queryBuilder: query,
+            page: normalized.page,
+            limit: normalized.limit,
+            search: normalized.hasSearch ? normalized.search : null,
         });
     }
 

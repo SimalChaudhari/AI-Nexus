@@ -3,9 +3,9 @@ import { labelService } from 'src/services/label.service';
 import { toast } from 'src/components/snackbar';
 
 // Async thunks for API calls
-export const fetchLabels = createAsyncThunk('labels/fetchLabels', async (_, { rejectWithValue }) => {
+export const fetchLabels = createAsyncThunk('labels/fetchLabels', async (params = {}, { rejectWithValue }) => {
   try {
-    const response = await labelService.getAllLabels();
+    const response = await labelService.getAllLabels(params);
     return response;
   } catch (error) {
     const errorMessage = error?.message || 'Failed to fetch labels';
@@ -51,6 +51,7 @@ const labelSlice = createSlice({
   name: 'labels',
   initialState: {
     labels: [],
+    pagination: null,
     loading: false,
     error: null,
     hasFetched: false,
@@ -64,7 +65,8 @@ const labelSlice = createSlice({
       })
       .addCase(fetchLabels.fulfilled, (state, action) => {
         state.loading = false;
-        state.labels = action.payload;
+        state.labels = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
         state.hasFetched = true;
       })
       .addCase(fetchLabels.rejected, (state, action) => {

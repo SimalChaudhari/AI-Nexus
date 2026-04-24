@@ -7,6 +7,7 @@ import {
   Delete,
   Put,
   Body,
+  Query,
   Res,
   UseGuards,
   UseInterceptors,
@@ -27,6 +28,8 @@ import { SessionGuard } from '../jwt/session.guard';
 import { UserRole } from '../user/users.entity';
 import { LocalStorageService } from '../service/local-storage.service';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PaginationService } from '../common/pagination/pagination.service';
+import { SpeakerPaginatedListResult } from './speaker.service';
 
 const parseEnvPositiveNumber = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -35,6 +38,8 @@ const parseEnvPositiveNumber = (value: string | undefined, fallback: number): nu
 
 const PROFILE_IMAGE_LIMIT = parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const PROFILE_IMAGE_TYPE = /(jpg|jpeg|png|gif|webp)$/;
+const DEFAULT_SPEAKERS_PAGE = 1;
+const DEFAULT_SPEAKERS_LIMIT = 10;
 
 @ApiTags('Speakers')
 @Controller('speakers')
@@ -42,13 +47,35 @@ export class SpeakerController {
   constructor(
     private readonly speakerService: SpeakerService,
     private readonly localStorageService: LocalStorageService,
+    private readonly paginationService: PaginationService,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all speakers' })
-  async getAllSpeakers(@Res() response: Response) {
-    const speakers = await this.speakerService.getAll();
-    return response.status(HttpStatus.OK).json({
+  async getAllSpeakers(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Res() response?: Response
+  ) {
+    const hasFilters = Boolean(page || limit || search);
+    if (hasFilters) {
+      const result = await this.speakerService.getAll({
+        usePagination: true,
+        page: this.paginationService.parsePositiveInteger(page, DEFAULT_SPEAKERS_PAGE),
+        limit: this.paginationService.parsePositiveInteger(limit, DEFAULT_SPEAKERS_LIMIT),
+        search: search?.trim() || undefined,
+      });
+      const paginated = result as SpeakerPaginatedListResult;
+      return response!.status(HttpStatus.OK).json({
+        length: paginated.data.length,
+        data: paginated.data,
+        pagination: paginated.pagination,
+      });
+    }
+
+    const speakers = (await this.speakerService.getAll()) as SpeakerPaginatedListResult['data'];
+    return response!.status(HttpStatus.OK).json({
       length: speakers.length,
       data: speakers,
     });

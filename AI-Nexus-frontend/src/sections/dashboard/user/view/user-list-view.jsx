@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -16,11 +16,12 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 
 import { varAlpha } from 'src/theme/styles';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { USER_STATUS_OPTIONS } from 'src/_mock';
 
 import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';
@@ -29,9 +30,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
@@ -45,64 +44,80 @@ import { fetchUsers, deleteUser } from 'src/store/slices/userSlice';
 import { UserTableRow } from '../user-table-row';
 import { UserTableToolbar } from '../user-table-toolbar';
 import { UserTableFiltersResult } from '../user-table-filters-result';
-
-// ----------------------------------------------------------------------
-
-const STATUS_OPTIONS = [{ value: 'all', label: 'All' }, ...USER_STATUS_OPTIONS];
-
-const TABLE_HEAD = [
-  { id: 'name', label: 'Name' },
-  { id: 'username', label: 'Username', width: 180 },
-  // { id: 'company', label: 'Company', width: 220 },
-  { id: 'authProvider', label: 'Auth provider', width: 140 },
-  { id: 'createdAt', label: 'Created', width: 120 },
-  { id: 'isVerified', label: 'Verified', width: 120 },
-  { id: 'status', label: 'Status', width: 100 },
-  { id: 'action', label: 'Action', width: 88 },
-];
+import {
+  USER_LIST_DEFAULTS,
+  USER_LIST_FILTER_DEFAULTS,
+  USER_LIST_QUERY_MAP,
+  USER_LIST_STATUS_OPTIONS,
+  USER_LIST_TABLE_HEAD,
+} from '../constants';
 
 // ----------------------------------------------------------------------
 
 export function UserListView() {
   const dispatch = useDispatch();
-  const { users: tableData, loading, hasFetched } = useSelector((state) => state.users);
-  const table = useTable();
+  const { users: tableData, loading, hasFetched, pagination } = useSelector((state) => state.users);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: USER_LIST_DEFAULTS.page,
+    defaultRowsPerPage: USER_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: USER_LIST_FILTER_DEFAULTS,
+    queryMap: USER_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
 
-  const filters = useSetState({ name: '', status: 'all' });
+  const usersQuery = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      search: query.name,
+      status: query.status,
+    }),
+    [query.limit, query.name, query.page, query.status]
+  );
+  const debouncedSearch = useDebounce(usersQuery.search, 500);
+  const usersQueryForFetch = useMemo(
+    () => ({
+      page: usersQuery.page,
+      limit: usersQuery.limit,
+      status: usersQuery.status,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, usersQuery.limit, usersQuery.page, usersQuery.status]
+  );
 
-  // Fetch users from Redux store
+  // Fetch users from backend with pagination/filter/search
   useEffect(() => {
-    if (!hasFetched && !loading) {
-      dispatch(fetchUsers());
-    }
-  }, [dispatch, hasFetched, loading]);
+    dispatch(fetchUsers(usersQueryForFetch));
+  }, [dispatch, usersQueryForFetch]);
 
-  const dataFiltered = applyFilter({
+  const dataSorted = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
 
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
-
   const canReset = !!filters.state.name || filters.state.status !== 'all';
-  const showTableLoader = loading && !hasFetched;
+  const showTableLoader = loading;
 
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataSorted.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchUsers,
+    query: usersQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
         await dispatch(deleteUser(id)).unwrap();
         toast.success('Delete success!');
-        table.onUpdatePageDeleteRow(dataInPage.length);
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete user');
       }
     },
-    [dataInPage.length, dispatch, table]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
@@ -110,14 +125,12 @@ export function UserListView() {
       const deletePromises = table.selected.map((id) => dispatch(deleteUser(id)).unwrap());
       await Promise.all(deletePromises);
       toast.success('Delete success!');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
     } catch (error) {
       toast.error(error || 'Failed to delete users');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table]);
+  }, [dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -167,7 +180,7 @@ export function UserListView() {
                 `inset 0 -2px 0 0 ${varAlpha(theme.vars.palette.grey['500Channel'], 0.08)}`,
             }}
           >
-            {STATUS_OPTIONS.map((tab) => (
+            {USER_LIST_STATUS_OPTIONS.map((tab) => (
               <Tab
                 key={tab.value}
                 iconPosition="end"
@@ -202,7 +215,7 @@ export function UserListView() {
           {canReset && (
             <UserTableFiltersResult
               filters={filters}
-              totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataSorted.length}
               onResetPage={table.onResetPage}
               sx={{ p: 2.5, pt: 0 }}
             />
@@ -212,11 +225,11 @@ export function UserListView() {
             <TableSelectedAction
               dense={table.dense}
               numSelected={table.selected.length}
-              rowCount={dataFiltered.length}
+              rowCount={dataSorted.length}
               onSelectAllRows={(checked) =>
                 table.onSelectAllRows(
                   checked,
-                  dataFiltered.map((row) => row.id)
+                  dataSorted.map((row) => row.id)
                 )
               }
               action={
@@ -233,25 +246,20 @@ export function UserListView() {
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
-                  headLabel={TABLE_HEAD}
-                  rowCount={dataFiltered.length}
+                  headLabel={USER_LIST_TABLE_HEAD}
+                  rowCount={dataSorted.length}
                   numSelected={table.selected.length}
                   onSort={table.onSort}
                   onSelectAllRows={(checked) =>
                     table.onSelectAllRows(
                       checked,
-                      dataFiltered.map((row) => row.id)
+                      dataSorted.map((row) => row.id)
                     )
                   }
                 />
 
                 <TableBody>
-                  {dataFiltered
-                    .slice(
-                      table.page * table.rowsPerPage,
-                      table.page * table.rowsPerPage + table.rowsPerPage
-                    )
-                    .map((row) => (
+                  {dataSorted.map((row) => (
                       <UserTableRow
                         key={row.id}
                         row={row}
@@ -264,7 +272,7 @@ export function UserListView() {
 
                   <TableEmptyRows
                     height={table.dense ? 56 : 56 + 20}
-                    emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                    emptyRows={emptyRows(0, table.rowsPerPage, dataSorted.length)}
                   />
 
                   <TableNoData notFound={notFound} />
@@ -279,11 +287,12 @@ export function UserListView() {
           <TablePaginationCustom
             page={table.page}
             dense={table.dense}
-            count={dataFiltered.length}
+            count={pagination?.totalItems || dataSorted.length}
             rowsPerPage={table.rowsPerPage}
             onPageChange={table.onChangePage}
             onChangeDense={table.onChangeDense}
             onRowsPerPageChange={table.onChangeRowsPerPage}
+            rowsPerPageOptions={[5, 10, 20, 30]}
           />
         </Card>
       </DashboardContent>
@@ -315,9 +324,7 @@ export function UserListView() {
   );
 }
 
-function applyFilter({ inputData, comparator, filters }) {
-  const { name, status } = filters;
-
+function applyFilter({ inputData, comparator }) {
   const stabilizedThis = inputData.map((el, index) => [el, index]);
 
   stabilizedThis.sort((a, b) => {
@@ -326,17 +333,5 @@ function applyFilter({ inputData, comparator, filters }) {
     return a[1] - b[1];
   });
 
-  inputData = stabilizedThis.map((el) => el[0]);
-
-  if (name) {
-    inputData = inputData.filter(
-      (user) => user.name.toLowerCase().indexOf(name.toLowerCase()) !== -1
-    );
-  }
-
-  if (status !== 'all') {
-    inputData = inputData.filter((user) => user.status === status);
-  }
-
-  return inputData;
+  return stabilizedThis.map((el) => el[0]);
 }

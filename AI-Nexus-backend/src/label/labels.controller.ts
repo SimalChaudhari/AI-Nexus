@@ -7,6 +7,7 @@ import {
     Delete,
     Put,
     Body,
+    Query,
     Res,
     UseGuards,
 } from '@nestjs/common';
@@ -19,21 +20,50 @@ import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PaginationService } from '../common/pagination/pagination.service';
+import { LabelPaginatedListResult } from './labels.service';
+
+const DEFAULT_LABELS_PAGE = 1;
+const DEFAULT_LABELS_LIMIT = 10;
 
 @ApiTags('Labels')
 @Controller('labels')
 export class LabelController {
     private readonly baseUrl: string;
 
-    constructor(private readonly labelService: LabelService) {
+    constructor(
+        private readonly labelService: LabelService,
+        private readonly paginationService: PaginationService
+    ) {
         this.baseUrl = process.env.BACKEND_URL || 'http://localhost:3000';
     }
 
     @Get()
     @ApiOperation({ summary: 'List all labels' })
-    async getAllLabels(@Res() response: Response) {
-        const labels = await this.labelService.getAll();
-        return response.status(HttpStatus.OK).json({
+    async getAllLabels(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Res() response?: Response
+    ) {
+        const hasFilters = Boolean(page || limit || search);
+        if (hasFilters) {
+            const result = await this.labelService.getAll({
+                usePagination: true,
+                page: this.paginationService.parsePositiveInteger(page, DEFAULT_LABELS_PAGE),
+                limit: this.paginationService.parsePositiveInteger(limit, DEFAULT_LABELS_LIMIT),
+                search: search?.trim() || undefined,
+            });
+            const paginated = result as LabelPaginatedListResult;
+            return response!.status(HttpStatus.OK).json({
+                length: paginated.data.length,
+                data: paginated.data,
+                pagination: paginated.pagination,
+            });
+        }
+
+        const labels = (await this.labelService.getAll()) as LabelPaginatedListResult['data'];
+        return response!.status(HttpStatus.OK).json({
             length: labels.length,
             data: labels,
         });

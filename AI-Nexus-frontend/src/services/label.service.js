@@ -1,4 +1,5 @@
 import axios from 'src/utils/axios';
+import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
 
 // Transform backend label data to frontend format
 const transformLabel = (label) => ({
@@ -10,11 +11,11 @@ const transformLabel = (label) => ({
 });
 
 export const labelService = {
-  async getAllLabels() {
+  async getAllLabels(params = {}) {
     try {
-      const response = await axios.get('/labels');
-      const labels = response.data?.data || response.data || [];
-      return labels.map(transformLabel);
+      const queryParams = buildPaginationParams(params);
+      const response = await axios.get('/labels', { params: queryParams });
+      return mapPaginatedResponse(response.data, transformLabel, params);
     } catch (error) {
       console.error('Error fetching labels:', error);
       throw error;

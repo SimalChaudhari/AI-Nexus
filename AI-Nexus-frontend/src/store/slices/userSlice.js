@@ -2,10 +2,13 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { userService } from 'src/services/user.service';
 
 // Async thunks for API calls
-export const fetchUsers = createAsyncThunk('users/fetchUsers', async (_, { rejectWithValue }) => {
+export const fetchUsers = createAsyncThunk('users/fetchUsers', async (params = {}, { rejectWithValue }) => {
   try {
-    const users = await userService.getAllUsers();
-    return users;
+    const result = await userService.getAllUsers(params);
+    if (Array.isArray(result)) {
+      return { data: result, pagination: null };
+    }
+    return result;
   } catch (error) {
     return rejectWithValue(error?.response?.data?.message || error?.message || 'Failed to fetch users');
   }
@@ -52,6 +55,7 @@ export const updateUserStatus = createAsyncThunk(
 
 const initialState = {
   users: [],
+  pagination: null,
   loading: false,
   isInitialLoading: false,
   hasFetched: false,
@@ -82,7 +86,8 @@ const userSlice = createSlice({
         state.loading = false;
         state.isInitialLoading = false;
         state.hasFetched = true;
-        state.users = action.payload;
+        state.users = action.payload?.data || [];
+        state.pagination = action.payload?.pagination || null;
       })
       .addCase(fetchUsers.rejected, (state, action) => {
         state.loading = false;

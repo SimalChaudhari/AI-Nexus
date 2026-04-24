@@ -1,4 +1,5 @@
 import axios from 'src/utils/axios';
+import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
 
 // Transform backend tag data to frontend format
 const transformTag = (tag) => ({
@@ -9,11 +10,11 @@ const transformTag = (tag) => ({
 });
 
 export const tagService = {
-  async getAllTags() {
+  async getAllTags(params = {}) {
     try {
-      const response = await axios.get('/tags');
-      const tags = response.data?.data || response.data || [];
-      return tags.map(transformTag);
+      const queryParams = buildPaginationParams(params);
+      const response = await axios.get('/tags', { params: queryParams });
+      return mapPaginatedResponse(response.data, transformTag, params);
     } catch (error) {
       console.error('Error fetching tags:', error);
       throw error;

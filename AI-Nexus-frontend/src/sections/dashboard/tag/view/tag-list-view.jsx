@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -14,7 +14,9 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -24,9 +26,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
@@ -40,55 +40,74 @@ import { fetchTags, deleteTag } from 'src/store/slices/tagSlice';
 import { TagTableRow } from '../tag-table-row';
 import { TagTableToolbar } from '../tag-table-toolbar';
 import { TagTableFiltersResult } from '../tag-table-filters-result';
-
-// ----------------------------------------------------------------------
-
-const TABLE_HEAD = [
-  { id: 'title', label: 'Title' },
-  { id: 'action', label: 'Action', width: 88 },
-];
+import {
+  TAG_LIST_DEFAULTS,
+  TAG_LIST_FILTER_DEFAULTS,
+  TAG_LIST_QUERY_MAP,
+  TAG_LIST_TABLE_HEAD,
+} from '../constants';
 
 // ----------------------------------------------------------------------
 
 export function TagListView() {
   const dispatch = useDispatch();
-  const { tags: tableData, loading, hasFetched } = useSelector((state) => state.tags);
-  const table = useTable();
+  const { tags: tableData, loading, pagination } = useSelector((state) => state.tags);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: TAG_LIST_DEFAULTS.page,
+    defaultRowsPerPage: TAG_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: TAG_LIST_FILTER_DEFAULTS,
+    queryMap: TAG_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
+  const tagsQuery = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      search: query.name,
+    }),
+    [query.limit, query.name, query.page]
+  );
+  const debouncedSearch = useDebounce(tagsQuery.search, 500);
+  const tagsQueryForFetch = useMemo(
+    () => ({
+      page: tagsQuery.page,
+      limit: tagsQuery.limit,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, tagsQuery.limit, tagsQuery.page]
+  );
 
-  const filters = useSetState({ name: '' });
-
-  // Fetch tags from Redux store
   useEffect(() => {
-    if (!hasFetched) {
-      dispatch(fetchTags());
-    }
-  }, [dispatch, hasFetched]);
+    dispatch(fetchTags(tagsQueryForFetch));
+  }, [dispatch, tagsQueryForFetch]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
-
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
 
   const canReset = !!filters.state.name;
 
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataFiltered.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchTags,
+    query: tagsQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
         await dispatch(deleteTag(id)).unwrap();
         toast.success('Delete success!');
-        table.onUpdatePageDeleteRow(dataInPage.length);
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete tag');
       }
     },
-    [dataInPage.length, dispatch, table]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
@@ -96,14 +115,12 @@ export function TagListView() {
       const deletePromises = table.selected.map((id) => dispatch(deleteTag(id)).unwrap());
       await Promise.all(deletePromises);
       toast.success('Delete success!');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
     } catch (error) {
       toast.error(error || 'Failed to delete tags');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table]);
+  }, [dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -141,7 +158,7 @@ export function TagListView() {
           {canReset && (
             <TagTableFiltersResult
               filters={filters}
-              totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataFiltered.length}
               onResetPage={table.onResetPage}
               sx={{ p: 2.5, pt: 0 }}
             />
@@ -172,7 +189,7 @@ export function TagListView() {
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
-                  headLabel={TABLE_HEAD}
+                  headLabel={TAG_LIST_TABLE_HEAD}
                   rowCount={dataFiltered.length}
                   numSelected={table.selected.length}
                   onSort={table.onSort}
@@ -185,12 +202,7 @@ export function TagListView() {
                 />
 
                 <TableBody>
-                  {dataFiltered
-                    .slice(
-                      table.page * table.rowsPerPage,
-                      table.page * table.rowsPerPage + table.rowsPerPage
-                    )
-                    .map((row) => (
+                  {dataFiltered.map((row) => (
                       <TagTableRow
                         key={row.id}
                         row={row}
@@ -203,7 +215,7 @@ export function TagListView() {
 
                   <TableEmptyRows
                     height={table.dense ? 56 : 56 + 20}
-                    emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                    emptyRows={emptyRows(0, table.rowsPerPage, dataFiltered.length)}
                   />
 
                   <TableNoData notFound={notFound} />
@@ -216,7 +228,7 @@ export function TagListView() {
           <TablePaginationCustom
             page={table.page}
             dense={table.dense}
-            count={dataFiltered.length}
+            count={pagination?.totalItems || dataFiltered.length}
             rowsPerPage={table.rowsPerPage}
             onPageChange={table.onChangePage}
             onChangeDense={table.onChangeDense}
@@ -254,9 +266,7 @@ export function TagListView() {
 
 // ----------------------------------------------------------------------
 
-function applyFilter({ inputData, comparator, filters }) {
-  const { name } = filters;
-
+function applyFilter({ inputData, comparator }) {
   const stabilizedThis = inputData.map((el, index) => [el, index]);
 
   stabilizedThis.sort((a, b) => {
@@ -265,15 +275,6 @@ function applyFilter({ inputData, comparator, filters }) {
     return a[1] - b[1];
   });
 
-  inputData = stabilizedThis.map((el) => el[0]);
-
-  if (name) {
-    inputData = inputData.filter(
-      (tag) =>
-        (tag.title || '').toLowerCase().indexOf(name.toLowerCase()) !== -1
-    );
-  }
-
-  return inputData;
+  return stabilizedThis.map((el) => el[0]);
 }
 

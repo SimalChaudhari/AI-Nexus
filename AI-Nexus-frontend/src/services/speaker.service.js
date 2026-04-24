@@ -1,20 +1,22 @@
 import axios from 'src/utils/axios';
 import { resolveAssetUrl } from 'src/utils/asset-url';
+import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
 
 const transformSpeaker = (speaker) => ({
   id: speaker.id,
   name: speaker.name || '',
   profileimage: resolveAssetUrl(speaker.profileimage || ''),
   about: speaker.about || '',
+  createdBy: speaker.createdBy || speaker.createdByName || speaker.created_by || null,
   createdAt: speaker.createdAt,
   updatedAt: speaker.updatedAt,
 });
 
 export const speakerService = {
-  async getAll() {
-    const response = await axios.get('/speakers');
-    const list = response.data?.data || response.data || [];
-    return (Array.isArray(list) ? list : []).map(transformSpeaker);
+  async getAll(params = {}) {
+    const queryParams = buildPaginationParams(params);
+    const response = await axios.get('/speakers', { params: queryParams });
+    return mapPaginatedResponse(response.data, transformSpeaker, params);
   },
 
   async getById(id) {

@@ -1,0 +1,17 @@
+import { ADMIN_TABLE_DEFAULTS } from 'src/sections/dashboard/constants/admin-table-defaults';
+
+export const SPEAKER_LIST_DEFAULTS = ADMIN_TABLE_DEFAULTS;
+
+export const SPEAKER_LIST_FILTER_DEFAULTS = {
+  name: '',
+};
+
+export const SPEAKER_LIST_QUERY_MAP = {
+  name: (value) => value?.trim() || undefined,
+};
+
+export const SPEAKER_LIST_TABLE_HEAD = [
+  { id: 'name', label: 'Name' },
+  { id: 'createdAt', label: 'Created at', width: 220 },
+  { id: 'action', label: 'Action', width: 88 },
+];

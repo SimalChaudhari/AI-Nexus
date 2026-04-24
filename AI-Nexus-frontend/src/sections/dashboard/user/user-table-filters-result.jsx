@@ -19,7 +19,7 @@ export function UserTableFiltersResult({ filters, onResetPage, totalResults, sx 
 
   const handleReset = useCallback(() => {
     onResetPage();
-    filters.onResetState();
+    filters.setState({ name: '', status: 'all' });
   }, [filters, onResetPage]);
 
   return (

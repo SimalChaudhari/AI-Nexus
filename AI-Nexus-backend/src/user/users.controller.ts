@@ -9,18 +9,23 @@ import {
     Put,
     Body,
     Res,
+    Query,
     UseGuards,
     Req,
 } from '@nestjs/common';
-import { UserRole } from './users.entity';
+import { UserRole, UserStatus } from './users.entity';
 import { Response, Request } from 'express';
-import { UserService } from './users.service';
+import { UserPaginatedListResult, UserService } from './users.service';
 import { UpdateUserDto, UserDto } from './users.dto';
 import { JwtAuthGuard } from './../jwt/jwt-auth.guard';
 import { RolesGuard } from './../jwt/roles.guard';
 import { Roles } from './../jwt/roles.decorator';
 import { SessionGuard } from './../jwt/session.guard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PaginationService } from '../common/pagination/pagination.service';
+
+const DEFAULT_USERS_PAGE = 1;
+const DEFAULT_USERS_LIMIT = 10;
 
 @ApiTags('Users')
 @ApiBearerAuth('bearer')
@@ -29,13 +34,41 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 export class UserController {
     constructor(
         private readonly userService: UserService,
+        private readonly paginationService: PaginationService,
     ) { }
     @Get()
     @Roles(UserRole.Admin)
     @ApiOperation({ summary: 'List all users' })
-    async getAllUsers(@Res() response: Response) {
-        const users = await this.userService.getAll();
-        return response.status(HttpStatus.OK).json({
+    async getAllUsers(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Query('status') status?: string,
+        @Res() response?: Response,
+    ) {
+        const normalizedStatus = this.paginationService.parseEnumQuery(status, UserStatus);
+
+        const hasFilters = Boolean(page || limit || search || normalizedStatus);
+        if (hasFilters) {
+            const result = await this.userService.getAll({
+                usePagination: true,
+                page: this.paginationService.parsePositiveInteger(page, DEFAULT_USERS_PAGE),
+                limit: this.paginationService.parsePositiveInteger(limit, DEFAULT_USERS_LIMIT),
+                search: search?.trim() || undefined,
+                status: normalizedStatus,
+            });
+
+            const paginated = result as UserPaginatedListResult;
+
+            return response!.status(HttpStatus.OK).json({
+                length: paginated.data.length,
+                data: paginated.data,
+                pagination: paginated.pagination,
+            });
+        }
+
+        const users = (await this.userService.getAll()) as Awaited<ReturnType<UserService['findAllUsers']>>;
+        return response!.status(HttpStatus.OK).json({
             length: users.length,
             data: users,
         });

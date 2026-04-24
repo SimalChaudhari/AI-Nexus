@@ -3,7 +3,6 @@ import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
-import Rating from '@mui/material/Rating';
 import Typography from '@mui/material/Typography';
 import MenuList from '@mui/material/MenuList';
 import MenuItem from '@mui/material/MenuItem';
@@ -21,13 +20,29 @@ import { usePopover, CustomPopover } from 'src/components/custom-popover';
 import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
+import { RichTextContent } from 'src/components/html-content';
 
 // ----------------------------------------------------------------------
 
-export function SpeakerTableRow({ row, reviewStat, selected, onEditRow, onSelectRow, onDeleteRow }) {
+export function SpeakerTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
   const router = useRouter();
   const confirm = useBoolean();
   const popover = usePopover();
+  const createdDate = row.createdAt ? new Date(row.createdAt) : null;
+  const createdDateText = createdDate
+    ? `${new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(createdDate)}, ${new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(createdDate)}`
+    : '—';
+  const createdTimeText = createdDate
+    ? new Intl.DateTimeFormat('en-GB', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(createdDate)
+    : '';
 
   return (
     <>
@@ -53,35 +68,33 @@ export function SpeakerTableRow({ row, reviewStat, selected, onEditRow, onSelect
               >
                 {row.name}
               </Link>
-              <Box component="span" sx={{ color: 'text.disabled', fontSize: '0.875rem' }}>
-                {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : ''}
-              </Box>
+              {row.about ? (
+                <RichTextContent
+                  html={row.about}
+                  clampLines={2}
+                  sx={{
+                    color: 'text.disabled',
+                    fontSize: '0.875rem',
+                    lineHeight: 1.5,
+                    '& p': { m: 0 },
+                  }}
+                />
+              ) : (
+                <Box component="span" sx={{ color: 'text.disabled', fontSize: '0.875rem' }}>
+                  —
+                </Box>
+              )}
             </Stack>
           </Stack>
         </TableCell>
 
-        <TableCell>
-          <Box
-            sx={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 1,
-              px: 1.25,
-              py: 0.75,
-              borderRadius: 1,
-              bgcolor: (theme) => theme.palette.background.neutral,
-            }}
-          >
-            <Rating
-              value={reviewStat?.average ? Number(reviewStat.average) : 0}
-              precision={0.1}
-              readOnly
-              size="small"
-            />
-            <Typography variant="caption" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
-              {reviewStat ? `${Number(reviewStat.average).toFixed(1)} (${reviewStat.count})` : 'No reviews'}
+        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+          <Typography variant="body2">{createdDateText}</Typography>
+          {createdTimeText ? (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {createdTimeText}
             </Typography>
-          </Box>
+          ) : null}
         </TableCell>
 
         <TableCell>

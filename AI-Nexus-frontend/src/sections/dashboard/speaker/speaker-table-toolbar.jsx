@@ -29,7 +29,7 @@ export function SpeakerTableToolbar({ filters, onResetPage }) {
           fullWidth
           value={filters.state.name}
           onChange={handleFilterName}
-          placeholder="Search speaker..."
+          placeholder="Search by speaker name or about..."
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">

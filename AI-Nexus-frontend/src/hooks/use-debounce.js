@@ -6,17 +6,18 @@ export function useDebounce(value, delay = 500) {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
   const debounceHandler = useCallback(() => {
-    const handler = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       setDebouncedValue(value);
     }, delay);
 
     return () => {
-      clearTimeout(handler);
+      clearTimeout(timeoutId);
     };
   }, [value, delay]);
 
   useEffect(() => {
-    debounceHandler();
+    const cleanup = debounceHandler();
+    return cleanup;
   }, [debounceHandler]);
 
   const memoizedValue = useMemo(() => debouncedValue, [debouncedValue]);

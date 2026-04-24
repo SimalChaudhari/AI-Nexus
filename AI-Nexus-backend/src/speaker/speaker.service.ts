@@ -1,19 +1,60 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SpeakerEntity } from './speaker.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { CreateSpeakerDto, UpdateSpeakerDto } from './speaker.dto';
+import { PaginatedQueryOptions, PaginatedResultWithMeta, PaginationService } from '../common/pagination/pagination.service';
+
+export type SpeakerListQueryOptions = PaginatedQueryOptions & {
+  usePagination?: boolean;
+};
+
+export type SpeakerPaginatedListResult = PaginatedResultWithMeta<SpeakerEntity>;
 
 @Injectable()
 export class SpeakerService {
   constructor(
     @InjectRepository(SpeakerEntity)
     private speakerRepository: Repository<SpeakerEntity>,
+    private readonly paginationService: PaginationService,
   ) {}
 
-  async getAll(): Promise<SpeakerEntity[]> {
-    return this.speakerRepository.find({
-      order: { createdAt: 'DESC' },
+  async getAll(queryOptions?: SpeakerListQueryOptions): Promise<SpeakerEntity[] | SpeakerPaginatedListResult> {
+    const usePagination = Boolean(queryOptions?.usePagination);
+    const normalized = this.paginationService.normalizePaginatedQuery(
+      {
+        page: queryOptions?.page,
+        limit: queryOptions?.limit,
+        search: queryOptions?.search,
+      },
+      10,
+      100
+    );
+
+    const query = this.speakerRepository.createQueryBuilder('speaker');
+
+    if (normalized.hasSearch) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where('speaker.name ILIKE :search', { search: `%${normalized.search}%` }).orWhere(
+            'speaker.about ILIKE :search',
+            { search: `%${normalized.search}%` }
+          );
+        })
+      );
+    }
+
+    query.orderBy('speaker.createdAt', 'DESC');
+
+    if (!usePagination) {
+      return query.getMany();
+    }
+
+    return this.paginationService.paginateQueryBuilder({
+      queryBuilder: query,
+      page: normalized.page,
+      limit: normalized.limit,
+      search: normalized.hasSearch ? normalized.search : null,
     });
   }
 

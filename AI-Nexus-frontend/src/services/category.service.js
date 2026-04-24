@@ -1,4 +1,5 @@
 import axios from 'src/utils/axios';
+import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
 
 // Transform backend category data to frontend format
 const transformCategory = (category) => ({
@@ -11,11 +12,11 @@ const transformCategory = (category) => ({
 });
 
 export const categoryService = {
-  async getAllCategories() {
+  async getAllCategories(params = {}) {
     try {
-      const response = await axios.get('/categories');
-      const categories = response.data?.data || response.data || [];
-      return categories.map(transformCategory);
+      const queryParams = buildPaginationParams(params);
+      const response = await axios.get('/categories', { params: queryParams });
+      return mapPaginatedResponse(response.data, transformCategory, params);
     } catch (error) {
       console.error('Error fetching categories:', error);
       throw error;

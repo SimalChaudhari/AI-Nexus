@@ -23,7 +23,7 @@ import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { toast } from 'src/components/snackbar';
-import { RichTextContent } from 'src/components/html-content';
+import { ViewHtmlContent } from 'src/components/html-content';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 
@@ -211,27 +211,15 @@ export function SpeakerDetailsView({ id }) {
         {
           label: 'Preview',
           value: speaker.about ? (
-            <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-              <RichTextContent
-                html={speaker.about}
-                clampLines={6}
-                sx={{
-                  typography: 'body1',
-                  fontSize: '1rem',
-                  lineHeight: 1.8,
-                  color: 'text.primary',
-                }}
-              />
-              <Button
-                component={RouterLink}
-                size="small"
-                variant="outlined"
-                href={paths.admin.speaker.edit(id)}
-                endIcon={<Iconify icon="solar:pen-bold" width={18} />}
-              >
-                Open full bio in editor
-              </Button>
-            </Stack>
+            <ViewHtmlContent
+              html={speaker.about}
+              sx={{
+                typography: 'body1',
+                color: 'text.primary',
+                '& p': { mb: 1.25, '&:last-child': { mb: 0 } },
+                '& li': { lineHeight: 1.7 },
+              }}
+            />
           ) : (
             '-'
           ),

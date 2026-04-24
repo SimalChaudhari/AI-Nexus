@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -14,7 +14,9 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -24,9 +26,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
@@ -40,56 +40,74 @@ import { fetchCategories, deleteCategory } from 'src/store/slices/categorySlice'
 import { CategoryTableRow } from '../category-table-row';
 import { CategoryTableToolbar } from '../category-table-toolbar';
 import { CategoryTableFiltersResult } from '../category-table-filters-result';
-
-// ----------------------------------------------------------------------
-
-const TABLE_HEAD = [
-  { id: 'title', label: 'Title' },
-  { id: 'status', label: 'Status', width: 120 },
-  { id: 'action', label: 'Action', width: 88 },
-];
+import {
+  CATEGORY_LIST_DEFAULTS,
+  CATEGORY_LIST_FILTER_DEFAULTS,
+  CATEGORY_LIST_QUERY_MAP,
+  CATEGORY_LIST_TABLE_HEAD,
+} from '../constants';
 
 // ----------------------------------------------------------------------
 
 export function CategoryListView() {
   const dispatch = useDispatch();
-  const { categories: tableData, loading, hasFetched } = useSelector((state) => state.categories);
-  const table = useTable();
+  const { categories: tableData, loading, pagination } = useSelector((state) => state.categories);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: CATEGORY_LIST_DEFAULTS.page,
+    defaultRowsPerPage: CATEGORY_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: CATEGORY_LIST_FILTER_DEFAULTS,
+    queryMap: CATEGORY_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
+  const categoriesQuery = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      search: query.name,
+    }),
+    [query.limit, query.name, query.page]
+  );
+  const debouncedSearch = useDebounce(categoriesQuery.search, 500);
+  const categoriesQueryForFetch = useMemo(
+    () => ({
+      page: categoriesQuery.page,
+      limit: categoriesQuery.limit,
+      search: debouncedSearch,
+    }),
+    [categoriesQuery.limit, categoriesQuery.page, debouncedSearch]
+  );
 
-  const filters = useSetState({ name: '' });
-
-  // Fetch categories from Redux store
   useEffect(() => {
-    if (!hasFetched) {
-      dispatch(fetchCategories());
-    }
-  }, [dispatch, hasFetched]);
+    dispatch(fetchCategories(categoriesQueryForFetch));
+  }, [dispatch, categoriesQueryForFetch]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
-
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
 
   const canReset = !!filters.state.name;
 
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataFiltered.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchCategories,
+    query: categoriesQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
         await dispatch(deleteCategory(id)).unwrap();
         toast.success('Delete success!');
-        table.onUpdatePageDeleteRow(dataInPage.length);
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete category');
       }
     },
-    [dataInPage.length, dispatch, table]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
@@ -97,14 +115,12 @@ export function CategoryListView() {
       const deletePromises = table.selected.map((id) => dispatch(deleteCategory(id)).unwrap());
       await Promise.all(deletePromises);
       toast.success('Delete success!');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
     } catch (error) {
       toast.error(error || 'Failed to delete categories');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table]);
+  }, [dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -142,7 +158,7 @@ export function CategoryListView() {
           {canReset && (
             <CategoryTableFiltersResult
               filters={filters}
-              totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataFiltered.length}
               onResetPage={table.onResetPage}
               sx={{ p: 2.5, pt: 0 }}
             />
@@ -173,7 +189,7 @@ export function CategoryListView() {
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
-                  headLabel={TABLE_HEAD}
+                  headLabel={CATEGORY_LIST_TABLE_HEAD}
                   rowCount={dataFiltered.length}
                   numSelected={table.selected.length}
                   onSort={table.onSort}
@@ -186,12 +202,7 @@ export function CategoryListView() {
                 />
 
                 <TableBody>
-                  {dataFiltered
-                    .slice(
-                      table.page * table.rowsPerPage,
-                      table.page * table.rowsPerPage + table.rowsPerPage
-                    )
-                    .map((row) => (
+                  {dataFiltered.map((row) => (
                       <CategoryTableRow
                         key={row.id}
                         row={row}
@@ -204,7 +215,7 @@ export function CategoryListView() {
 
                   <TableEmptyRows
                     height={table.dense ? 56 : 56 + 20}
-                    emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                    emptyRows={emptyRows(0, table.rowsPerPage, dataFiltered.length)}
                   />
 
                   <TableNoData notFound={notFound} />
@@ -217,7 +228,7 @@ export function CategoryListView() {
           <TablePaginationCustom
             page={table.page}
             dense={table.dense}
-            count={dataFiltered.length}
+            count={pagination?.totalItems || dataFiltered.length}
             rowsPerPage={table.rowsPerPage}
             onPageChange={table.onChangePage}
             onChangeDense={table.onChangeDense}
@@ -255,9 +266,7 @@ export function CategoryListView() {
 
 // ----------------------------------------------------------------------
 
-function applyFilter({ inputData, comparator, filters }) {
-  const { name } = filters;
-
+function applyFilter({ inputData, comparator }) {
   const stabilizedThis = inputData.map((el, index) => [el, index]);
 
   stabilizedThis.sort((a, b) => {
@@ -266,15 +275,6 @@ function applyFilter({ inputData, comparator, filters }) {
     return a[1] - b[1];
   });
 
-  inputData = stabilizedThis.map((el) => el[0]);
-
-  if (name) {
-    inputData = inputData.filter(
-      (category) =>
-        category.title.toLowerCase().indexOf(name.toLowerCase()) !== -1
-    );
-  }
-
-  return inputData;
+  return stabilizedThis.map((el) => el[0]);
 }
 

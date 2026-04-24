@@ -7,6 +7,7 @@ import { AdminController } from './admin.controller';
 import { UserEntity } from './users.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { EmailService } from '../service/email.service';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 @Module({
     imports: [
@@ -16,7 +17,7 @@ import { EmailService } from '../service/email.service';
             signOptions: {},
         }),
     ],
-    providers: [UserService, EmailService],
+    providers: [UserService, EmailService, PaginationService],
     controllers: [UserController, AdminController],
     exports: [UserService],
 })

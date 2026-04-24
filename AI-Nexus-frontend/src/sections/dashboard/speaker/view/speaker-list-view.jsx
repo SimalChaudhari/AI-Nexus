@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -11,7 +11,9 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
@@ -19,9 +21,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
@@ -31,116 +31,97 @@ import {
   TableLoadingOverlay,
 } from 'src/components/table';
 
-import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { fetchSpeakers, deleteSpeaker } from 'src/store/slices/speakerSlice';
-import { getSpeakerReviews } from 'src/services/review.service';
 import { SpeakerTableRow } from '../speaker-table-row';
 import { SpeakerTableToolbar } from '../speaker-table-toolbar';
 import { SpeakerTableFiltersResult } from '../speaker-table-filters-result';
+import {
+  SPEAKER_LIST_DEFAULTS,
+  SPEAKER_LIST_FILTER_DEFAULTS,
+  SPEAKER_LIST_QUERY_MAP,
+  SPEAKER_LIST_TABLE_HEAD,
+} from '../constants';
 
-const TABLE_HEAD = [
-  { id: 'name', label: 'Name' },
-  { id: 'review', label: 'Review', width: 140 },
-  { id: 'action', label: 'Action', width: 88 },
-];
-
-function applyFilter({ inputData, comparator, filters }) {
-  const { name } = filters;
+function applyFilter({ inputData, comparator }) {
   const stabilizedThis = inputData.map((el, index) => [el, index]);
   stabilizedThis.sort((a, b) => {
     const order = comparator(a[0], b[0]);
     if (order !== 0) return order;
     return a[1] - b[1];
   });
-  let result = stabilizedThis.map((el) => el[0]);
-  if (name) {
-    const q = name.toLowerCase();
-    result = result.filter((row) => {
-      const aboutPlain = htmlToPlainText(row.about || '');
-      return (
-        (row.name && row.name.toLowerCase().indexOf(q) !== -1) ||
-        aboutPlain.toLowerCase().indexOf(q) !== -1
-      );
-    });
-  }
-  return result;
+  return stabilizedThis.map((el) => el[0]);
 }
 
 export function SpeakerListView() {
   const dispatch = useDispatch();
-  const { speakers: tableData, loading, hasFetched } = useSelector((state) => state.speakers);
-  const [reviewStats, setReviewStats] = useState({});
-  const table = useTable();
+  const { speakers: tableData, loading, pagination } = useSelector((state) => state.speakers);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: SPEAKER_LIST_DEFAULTS.page,
+    defaultRowsPerPage: SPEAKER_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: SPEAKER_LIST_FILTER_DEFAULTS,
+    queryMap: SPEAKER_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
-  const filters = useSetState({ name: '' });
+
+  const speakersQuery = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      search: query.name,
+    }),
+    [query.limit, query.name, query.page]
+  );
+  const debouncedSearch = useDebounce(speakersQuery.search, 500);
+  const speakersQueryForFetch = useMemo(
+    () => ({
+      page: speakersQuery.page,
+      limit: speakersQuery.limit,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, speakersQuery.limit, speakersQuery.page]
+  );
 
   useEffect(() => {
-    if (!hasFetched) {
-      dispatch(fetchSpeakers());
-    }
-  }, [dispatch, hasFetched]);
-
-  useEffect(() => {
-    if (!tableData || tableData.length === 0) {
-      setReviewStats({});
-      return undefined;
-    }
-    let cancelled = false;
-    Promise.all(
-      tableData.map(async (speaker) => {
-        const reviews = await getSpeakerReviews(speaker.id).catch(() => []);
-        const count = Array.isArray(reviews) ? reviews.length : 0;
-        const sum = (reviews || []).reduce((acc, r) => acc + Number(r.rating || 0), 0);
-        const average = count > 0 ? Math.min(5, Math.max(0, sum / count)) : 0;
-        return { id: speaker.id, count, average };
-      })
-    ).then((results) => {
-      if (cancelled) return;
-      const next = {};
-      results.forEach((r) => {
-        next[r.id] = { count: r.count, average: r.average };
-      });
-      setReviewStats(next);
-    });
-    return () => { cancelled = true; };
-  }, [tableData]);
+    dispatch(fetchSpeakers(speakersQueryForFetch));
+  }, [dispatch, speakersQueryForFetch]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
-
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
   const canReset = !!filters.state.name;
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataFiltered.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchSpeakers,
+    query: speakersQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
         await dispatch(deleteSpeaker(id)).unwrap();
         toast.success('Deleted successfully');
-        table.onUpdatePageDeleteRow(dataInPage.length);
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete');
       }
     },
-    [dataInPage.length, dispatch, table]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
     try {
       await Promise.all(table.selected.map((id) => dispatch(deleteSpeaker(id)).unwrap()));
       toast.success('Deleted successfully');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
     } catch (error) {
       toast.error(error || 'Failed to delete');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table]);
+  }, [dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -176,7 +157,7 @@ export function SpeakerListView() {
           {canReset && (
             <SpeakerTableFiltersResult
               filters={filters}
-              totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataFiltered.length}
               onResetPage={table.onResetPage}
               sx={{ p: 2.5, pt: 0 }}
             />
@@ -202,7 +183,7 @@ export function SpeakerListView() {
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
-                  headLabel={TABLE_HEAD}
+                  headLabel={SPEAKER_LIST_TABLE_HEAD}
                   rowCount={dataFiltered.length}
                   numSelected={table.selected.length}
                   onSort={table.onSort}
@@ -211,16 +192,10 @@ export function SpeakerListView() {
                   }
                 />
                 <TableBody>
-                  {dataFiltered
-                    .slice(
-                      table.page * table.rowsPerPage,
-                      table.page * table.rowsPerPage + table.rowsPerPage
-                    )
-                    .map((row) => (
+                  {dataFiltered.map((row) => (
                       <SpeakerTableRow
                         key={row.id}
                         row={row}
-                        reviewStat={reviewStats[row.id]}
                         selected={table.selected.includes(row.id)}
                         onSelectRow={() => table.onSelectRow(row.id)}
                         onDeleteRow={() => handleDeleteRow(row.id)}
@@ -229,7 +204,7 @@ export function SpeakerListView() {
                     ))}
                   <TableEmptyRows
                     height={table.dense ? 56 : 56 + 20}
-                    emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                    emptyRows={emptyRows(0, table.rowsPerPage, dataFiltered.length)}
                   />
                   <TableNoData notFound={notFound} />
                 </TableBody>
@@ -240,7 +215,7 @@ export function SpeakerListView() {
           <TablePaginationCustom
             page={table.page}
             dense={table.dense}
-            count={dataFiltered.length}
+            count={pagination?.totalItems || dataFiltered.length}
             rowsPerPage={table.rowsPerPage}
             onPageChange={table.onChangePage}
             onChangeDense={table.onChangeDense}

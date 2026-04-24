@@ -4,9 +4,9 @@ import { toast } from 'src/components/snackbar';
 
 export const fetchSpeakers = createAsyncThunk(
   'speakers/fetchSpeakers',
-  async (_, { rejectWithValue }) => {
+  async (params = {}, { rejectWithValue }) => {
     try {
-      return await speakerService.getAll();
+      return await speakerService.getAll(params);
     } catch (error) {
       const msg = error?.message || 'Failed to fetch speakers';
       toast.error(msg);
@@ -59,6 +59,7 @@ const speakerSlice = createSlice({
   name: 'speakers',
   initialState: {
     speakers: [],
+    pagination: null,
     loading: false,
     error: null,
     hasFetched: false,
@@ -72,7 +73,8 @@ const speakerSlice = createSlice({
       })
       .addCase(fetchSpeakers.fulfilled, (state, action) => {
         state.loading = false;
-        state.speakers = action.payload || [];
+        state.speakers = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
         state.hasFetched = true;
       })
       .addCase(fetchSpeakers.rejected, (state, action) => {

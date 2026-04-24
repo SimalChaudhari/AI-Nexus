@@ -8,6 +8,7 @@ import {
     Delete,
     Put,
     Body,
+    Query,
     Res,
     UseGuards,
 } from '@nestjs/common';
@@ -20,17 +21,46 @@ import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PaginationService } from '../common/pagination/pagination.service';
+import { CategoryPaginatedListResult } from './categories.service';
+
+const DEFAULT_CATEGORIES_PAGE = 1;
+const DEFAULT_CATEGORIES_LIMIT = 10;
 
 @ApiTags('Categories')
 @Controller('categories')
 export class CategoryController {
-    constructor(private readonly categoryService: CategoryService) { }
+    constructor(
+        private readonly categoryService: CategoryService,
+        private readonly paginationService: PaginationService,
+    ) { }
 
     @Get()
     @ApiOperation({ summary: 'List all categories' })
-    async getAllCategories(@Res() response: Response) {
-        const categories = await this.categoryService.getAll();
-        return response.status(HttpStatus.OK).json({
+    async getAllCategories(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Res() response?: Response,
+    ) {
+        const hasFilters = Boolean(page || limit || search);
+        if (hasFilters) {
+            const result = await this.categoryService.getAll({
+                usePagination: true,
+                page: this.paginationService.parsePositiveInteger(page, DEFAULT_CATEGORIES_PAGE),
+                limit: this.paginationService.parsePositiveInteger(limit, DEFAULT_CATEGORIES_LIMIT),
+                search: search?.trim() || undefined,
+            });
+            const paginated = result as CategoryPaginatedListResult;
+            return response!.status(HttpStatus.OK).json({
+                length: paginated.data.length,
+                data: paginated.data,
+                pagination: paginated.pagination,
+            });
+        }
+
+        const categories = (await this.categoryService.getAll()) as CategoryPaginatedListResult['data'];
+        return response!.status(HttpStatus.OK).json({
             length: categories.length,
             data: categories,
         });

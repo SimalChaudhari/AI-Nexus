@@ -2,20 +2,30 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { UserEntity, UserRole, UserStatus, AuthProvider } from './users.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Brackets } from 'typeorm';
 import { UpdateUserDto, UserDto } from './users.dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { EmailService } from '../service/email.service';
+import {
+    PaginatedQueryOptions,
+    PaginatedResultWithMeta,
+    PaginationService,
+} from '../common/pagination/pagination.service';
 
 function generateTemporaryPassword(length = 14): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
     let out = '';
-    for (let i = 0; i < length; i += 1) {
-        out += chars[crypto.randomInt(0, chars.length)];
-    }
+    for (let i = 0; i < length; i += 1) out += chars[crypto.randomInt(0, chars.length)];
     return out;
 }
+
+export type UserListQueryOptions = PaginatedQueryOptions & {
+    status?: UserStatus;
+    usePagination?: boolean;
+};
+
+export type UserPaginatedListResult = PaginatedResultWithMeta<UserEntity, { status: UserStatus | null }>;
 
 @Injectable()
 export class UserService {
@@ -23,12 +33,61 @@ export class UserService {
         @InjectRepository(UserEntity)
         private userRepository: Repository<UserEntity>,
         private readonly emailService: EmailService,
+        private readonly paginationService: PaginationService,
     ) { }
 
-    async getAll(): Promise<UserEntity[]> {
-        return await this.userRepository.find({
-            where: { role: Not(UserRole.Admin) }
+    async getAll(queryOptions?: UserListQueryOptions): Promise<UserEntity[] | UserPaginatedListResult> {
+        const usePagination = Boolean(queryOptions?.usePagination);
+        const normalized = this.paginationService.normalizePaginatedQuery(
+            {
+                page: queryOptions?.page,
+                limit: queryOptions?.limit,
+                search: queryOptions?.search,
+            },
+            10,
+            100,
+        );
+        const status = queryOptions?.status;
+
+        const query = this.userRepository
+            .createQueryBuilder('user')
+            .where('user.role != :adminRole', { adminRole: UserRole.Admin });
+
+        if (status) {
+            query.andWhere('user.status = :status', { status });
+        }
+
+        if (normalized.hasSearch) {
+            query.andWhere(
+                new Brackets((qb) => {
+                    qb.where('user.firstname ILIKE :search', { search: `%${normalized.search}%` })
+                        .orWhere('user.lastname ILIKE :search', { search: `%${normalized.search}%` })
+                        .orWhere('user.username ILIKE :search', { search: `%${normalized.search}%` })
+                        .orWhere('user.email ILIKE :search', { search: `%${normalized.search}%` });
+                }),
+            );
+        }
+
+        query.orderBy('user.createdAt', 'DESC');
+
+        if (!usePagination) {
+            return query.getMany();
+        }
+
+        const paginated = await this.paginationService.paginateQueryBuilder({
+            queryBuilder: query,
+            page: normalized.page,
+            limit: normalized.limit,
+            search: normalized.hasSearch ? normalized.search : null,
         });
+
+        return {
+            data: paginated.data,
+            pagination: {
+                ...paginated.pagination,
+                status: status ?? null,
+            },
+        };
     }
 
     async findAllUsers(): Promise<UserEntity[]> {

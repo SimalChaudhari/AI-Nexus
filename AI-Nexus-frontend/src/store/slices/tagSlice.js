@@ -3,9 +3,9 @@ import { tagService } from 'src/services/tag.service';
 import { toast } from 'src/components/snackbar';
 
 // Async thunks for API calls
-export const fetchTags = createAsyncThunk('tags/fetchTags', async (_, { rejectWithValue }) => {
+export const fetchTags = createAsyncThunk('tags/fetchTags', async (params = {}, { rejectWithValue }) => {
   try {
-    const response = await tagService.getAllTags();
+    const response = await tagService.getAllTags(params);
     return response;
   } catch (error) {
     const errorMessage = error?.message || 'Failed to fetch tags';
@@ -51,6 +51,7 @@ const tagSlice = createSlice({
   name: 'tags',
   initialState: {
     tags: [],
+    pagination: null,
     loading: false,
     error: null,
     hasFetched: false,
@@ -64,7 +65,8 @@ const tagSlice = createSlice({
       })
       .addCase(fetchTags.fulfilled, (state, action) => {
         state.loading = false;
-        state.tags = action.payload;
+        state.tags = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
         state.hasFetched = true;
       })
       .addCase(fetchTags.rejected, (state, action) => {

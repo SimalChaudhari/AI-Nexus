@@ -18,6 +18,20 @@ export function TablePaginationCustom({
         rowsPerPageOptions={rowsPerPageOptions}
         component="div"
         {...other}
+        SelectProps={{
+          MenuProps: {
+            disableScrollLock: true,
+            keepMounted: true,
+          },
+        }}
+        slotProps={{
+          select: {
+            MenuProps: {
+              disableScrollLock: true,
+              keepMounted: true,
+            },
+          },
+        }}
         sx={{ borderTopColor: 'transparent' }}
       />
 

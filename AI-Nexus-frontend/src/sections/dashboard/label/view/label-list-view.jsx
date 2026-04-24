@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -14,7 +14,9 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -24,9 +26,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
@@ -40,55 +40,74 @@ import { fetchLabels, deleteLabel } from 'src/store/slices/labelSlice';
 import { LabelTableRow } from '../label-table-row';
 import { LabelTableToolbar } from '../label-table-toolbar';
 import { LabelTableFiltersResult } from '../label-table-filters-result';
-
-// ----------------------------------------------------------------------
-
-const TABLE_HEAD = [
-  { id: 'name', label: 'Name' },
-  { id: 'action', label: 'Action', width: 88 },
-];
+import {
+  LABEL_LIST_DEFAULTS,
+  LABEL_LIST_FILTER_DEFAULTS,
+  LABEL_LIST_QUERY_MAP,
+  LABEL_LIST_TABLE_HEAD,
+} from '../constants';
 
 // ----------------------------------------------------------------------
 
 export function LabelListView() {
   const dispatch = useDispatch();
-  const { labels: tableData, loading, hasFetched } = useSelector((state) => state.labels);
-  const table = useTable();
+  const { labels: tableData, loading, pagination } = useSelector((state) => state.labels);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: LABEL_LIST_DEFAULTS.page,
+    defaultRowsPerPage: LABEL_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: LABEL_LIST_FILTER_DEFAULTS,
+    queryMap: LABEL_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
+  const labelsQuery = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      search: query.name,
+    }),
+    [query.limit, query.name, query.page]
+  );
+  const debouncedSearch = useDebounce(labelsQuery.search, 500);
+  const labelsQueryForFetch = useMemo(
+    () => ({
+      page: labelsQuery.page,
+      limit: labelsQuery.limit,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, labelsQuery.limit, labelsQuery.page]
+  );
 
-  const filters = useSetState({ name: '' });
-
-  // Fetch labels from Redux store
   useEffect(() => {
-    if (!hasFetched) {
-      dispatch(fetchLabels());
-    }
-  }, [dispatch, hasFetched]);
+    dispatch(fetchLabels(labelsQueryForFetch));
+  }, [dispatch, labelsQueryForFetch]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
-
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
 
   const canReset = !!filters.state.name;
 
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataFiltered.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchLabels,
+    query: labelsQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
         await dispatch(deleteLabel(id)).unwrap();
         toast.success('Delete success!');
-        table.onUpdatePageDeleteRow(dataInPage.length);
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete label');
       }
     },
-    [dataInPage.length, dispatch, table]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
@@ -96,14 +115,12 @@ export function LabelListView() {
       const deletePromises = table.selected.map((id) => dispatch(deleteLabel(id)).unwrap());
       await Promise.all(deletePromises);
       toast.success('Delete success!');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
     } catch (error) {
       toast.error(error || 'Failed to delete labels');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table]);
+  }, [dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -141,7 +158,7 @@ export function LabelListView() {
           {canReset && (
             <LabelTableFiltersResult
               filters={filters}
-              totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataFiltered.length}
               onResetPage={table.onResetPage}
               sx={{ p: 2.5, pt: 0 }}
             />
@@ -172,7 +189,7 @@ export function LabelListView() {
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
-                  headLabel={TABLE_HEAD}
+                  headLabel={LABEL_LIST_TABLE_HEAD}
                   rowCount={dataFiltered.length}
                   numSelected={table.selected.length}
                   onSort={table.onSort}
@@ -185,12 +202,7 @@ export function LabelListView() {
                 />
 
                 <TableBody>
-                  {dataFiltered
-                    .slice(
-                      table.page * table.rowsPerPage,
-                      table.page * table.rowsPerPage + table.rowsPerPage
-                    )
-                    .map((row) => (
+                  {dataFiltered.map((row) => (
                       <LabelTableRow
                         key={row.id}
                         row={row}
@@ -203,7 +215,7 @@ export function LabelListView() {
 
                   <TableEmptyRows
                     height={table.dense ? 56 : 56 + 20}
-                    emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                    emptyRows={emptyRows(0, table.rowsPerPage, dataFiltered.length)}
                   />
 
                   <TableNoData notFound={notFound} />
@@ -216,7 +228,7 @@ export function LabelListView() {
           <TablePaginationCustom
             page={table.page}
             dense={table.dense}
-            count={dataFiltered.length}
+            count={pagination?.totalItems || dataFiltered.length}
             rowsPerPage={table.rowsPerPage}
             onPageChange={table.onChangePage}
             onChangeDense={table.onChangeDense}
@@ -254,9 +266,7 @@ export function LabelListView() {
 
 // ----------------------------------------------------------------------
 
-function applyFilter({ inputData, comparator, filters }) {
-  const { name } = filters;
-
+function applyFilter({ inputData, comparator }) {
   const stabilizedThis = inputData.map((el, index) => [el, index]);
 
   stabilizedThis.sort((a, b) => {
@@ -265,15 +275,6 @@ function applyFilter({ inputData, comparator, filters }) {
     return a[1] - b[1];
   });
 
-  inputData = stabilizedThis.map((el) => el[0]);
-
-  if (name) {
-    inputData = inputData.filter(
-      (label) =>
-        (label.name || label.title || '').toLowerCase().indexOf(name.toLowerCase()) !== -1
-    );
-  }
-
-  return inputData;
+  return stabilizedThis.map((el) => el[0]);
 }
 

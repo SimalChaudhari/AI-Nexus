@@ -6,6 +6,7 @@ import { TagsInitService } from './tags-init.service';
 import { TagEntity } from './tags.entity';
 import { UserEntity } from '../user/users.entity';
 import { JwtModule } from '@nestjs/jwt';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 @Module({
     imports: [
@@ -15,7 +16,7 @@ import { JwtModule } from '@nestjs/jwt';
             signOptions: {},
         }),
     ],
-    providers: [TagService, TagsInitService],
+    providers: [TagService, TagsInitService, PaginationService],
     controllers: [TagController],
     exports: [TagService],
 })

@@ -1,4 +1,5 @@
 import axios from 'src/utils/axios';
+import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
 
 // Transform backend user data to frontend format
 const transformUser = (user) => {
@@ -35,11 +36,11 @@ const transformUser = (user) => {
 };
 
 export const userService = {
-  async getAllUsers() {
+  async getAllUsers(params = {}) {
     try {
-      const response = await axios.get('/users');
-      const users = response.data?.data || response.data || [];
-      return users.map(transformUser);
+      const queryParams = buildPaginationParams(params);
+      const response = await axios.get('/users', { params: queryParams });
+      return mapPaginatedResponse(response.data, transformUser, params);
     } catch (error) {
       console.error('Error fetching users:', error);
       // Handle connection errors more gracefully

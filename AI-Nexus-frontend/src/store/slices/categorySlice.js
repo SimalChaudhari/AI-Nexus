@@ -3,9 +3,9 @@ import { categoryService } from 'src/services/category.service';
 import { toast } from 'src/components/snackbar';
 
 // Async thunks for API calls
-export const fetchCategories = createAsyncThunk('categories/fetchCategories', async (_, { rejectWithValue }) => {
+export const fetchCategories = createAsyncThunk('categories/fetchCategories', async (params = {}, { rejectWithValue }) => {
   try {
-    const response = await categoryService.getAllCategories();
+    const response = await categoryService.getAllCategories(params);
     return response;
   } catch (error) {
     const errorMessage = error?.message || 'Failed to fetch categories';
@@ -51,6 +51,7 @@ const categorySlice = createSlice({
   name: 'categories',
   initialState: {
     categories: [],
+    pagination: null,
     loading: false,
     error: null,
     hasFetched: false,
@@ -64,7 +65,8 @@ const categorySlice = createSlice({
       })
       .addCase(fetchCategories.fulfilled, (state, action) => {
         state.loading = false;
-        state.categories = action.payload;
+        state.categories = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
         state.hasFetched = true;
       })
       .addCase(fetchCategories.rejected, (state, action) => {

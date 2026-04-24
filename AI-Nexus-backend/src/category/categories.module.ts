@@ -7,6 +7,7 @@ import { CategoriesInitService } from './categories-init.service';
 import { CategoryEntity } from './categories.entity';
 import { UserEntity } from '../user/users.entity';
 import { JwtModule } from '@nestjs/jwt';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 @Module({
     imports: [
@@ -16,7 +17,7 @@ import { JwtModule } from '@nestjs/jwt';
             signOptions: {},
         }),
     ],
-    providers: [CategoryService, CategoriesInitService],
+    providers: [CategoryService, CategoriesInitService, PaginationService],
     controllers: [CategoryController],
     exports: [CategoryService],
 })
