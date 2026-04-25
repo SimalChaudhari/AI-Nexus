@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -13,8 +13,10 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
-import { useSetState } from 'src/hooks/use-set-state';
 import { useBoolean } from 'src/hooks/use-boolean';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -25,8 +27,6 @@ import { EmptyContent } from 'src/components/empty-content';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
-  rowInPage,
   emptyRows,
   TableNoData,
   getComparator,
@@ -37,30 +37,21 @@ import {
   TableLoadingOverlay,
 } from 'src/components/table';
 
-import { htmlToPlainText } from 'src/utils/html-plain-text';
-import { fetchCourses, deleteCourse } from 'src/store/slices/courseSlice';
+import { fetchCoursesList, deleteCourse } from 'src/store/slices/courseSlice';
 import { CourseTableRow } from '../course-table-row';
 import { CourseTableToolbar } from '../course-table-toolbar';
 import { CourseTableFiltersResult } from '../course-table-filters-result';
+import {
+  COURSE_LEVEL_OPTIONS,
+  COURSE_LIST_DEFAULTS,
+  COURSE_LIST_FILTER_DEFAULTS,
+  COURSE_LIST_QUERY_MAP,
+  COURSE_LIST_TABLE_HEAD,
+} from '../constants';
 
 // ----------------------------------------------------------------------
 
-const LEVEL_OPTIONS = ['Beginner', 'Intermediate', 'Advanced'];
-const TABLE_HEAD = [
-  { id: 'title', label: 'Course' },
-  { id: 'level', label: 'Level', width: 140 },
-  { id: 'type', label: 'Type', width: 120 },
-  { id: 'isBundle', label: 'Bundle', width: 168 },
-  { id: 'action', label: 'Action', width: 88 },
-];
-const TYPE_OPTIONS = [
-  { value: '', label: 'All' },
-  { value: 'free', label: 'Free' },
-  { value: 'paid', label: 'Paid' },
-];
-
-function applyFilter({ inputData, comparator, filters }) {
-  const { name, level, type } = filters;
+function applyFilter({ inputData, comparator }) {
 
   const stabilizedThis = inputData.map((el, index) => [el, index]);
 
@@ -70,133 +61,125 @@ function applyFilter({ inputData, comparator, filters }) {
     return a[1] - b[1];
   });
 
-  let filtered = stabilizedThis.map((el) => el[0]);
-
-  if (name) {
-    const q = name.toLowerCase();
-    filtered = filtered.filter((course) => {
-      const descPlain = htmlToPlainText(course.description || '');
-      return course.title.toLowerCase().indexOf(q) !== -1 || descPlain.toLowerCase().indexOf(q) !== -1;
-    });
-  }
-
-  if (level) {
-    filtered = filtered.filter((course) => course.level === level);
-  }
-
-  if (type) {
-    if (type === 'free') filtered = filtered.filter((course) => !course.freeOrPaid);
-    if (type === 'paid') filtered = filtered.filter((course) => !!course.freeOrPaid);
-  }
-
-  return filtered;
+  return stabilizedThis.map((el) => el[0]);
 }
 
 // ----------------------------------------------------------------------
 
 export function CourseListView() {
   const dispatch = useDispatch();
-  const { courses: tableData, loading, deleting, pagination, hasFetched } = useSelector((state) => state.courses);
-  const table = useTable({ defaultRowsPerPage: 10 });
+  const { courses: tableData, loading, pagination } = useSelector((state) => state.courses);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: COURSE_LIST_DEFAULTS.page,
+    defaultRowsPerPage: COURSE_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: COURSE_LIST_FILTER_DEFAULTS,
+    queryMap: COURSE_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
+  const group = useMemo(() => {
+    const normalizedLevel = query.level ? query.level.toLowerCase().trim() : '';
+    const isFoundationLike =
+      normalizedLevel.includes('foundation') ||
+      normalizedLevel.includes('beginner') ||
+      normalizedLevel === 'basic';
+    const isWorkflowLike = normalizedLevel.includes('workflow') || normalizedLevel.includes('intermediate');
+    const isBuilderLike =
+      normalizedLevel.includes('builder') ||
+      normalizedLevel.includes('advanced') ||
+      normalizedLevel === 'advance';
 
-  const filters = useSetState({ name: '', level: '', type: '' });
+    return isFoundationLike
+      ? 'basic'
+      : isBuilderLike
+        ? 'advance'
+        : isWorkflowLike
+          ? 'intermediate'
+          : normalizedLevel || undefined;
+  }, [query.level]);
+  const freeOrPaid = useMemo(
+    () =>
+      query.type === 'free'
+        ? false
+        : query.type === 'paid'
+          ? true
+          : undefined,
+    [query.type]
+  );
+  const debouncedSearch = useDebounce(query.name, 1000);
+  const coursesQueryForFetch = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      group,
+      freeOrPaid,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, freeOrPaid, group, query.limit, query.page]
+  );
 
   useEffect(() => {
-    const isDefaultQuery =
-      table.page === 0 &&
-      table.rowsPerPage === 10 &&
-      !filters.state.level &&
-      !filters.state.name &&
-      !filters.state.type;
-
-    if (hasFetched && isDefaultQuery) {
-      return;
-    }
-
-    const normalizedLevel = filters.state.level ? filters.state.level.toLowerCase() : '';
-    const group =
-      normalizedLevel === 'beginner'
-        ? 'basic'
-        : normalizedLevel === 'advanced'
-          ? 'advance'
-          : normalizedLevel || undefined;
-
-    const query = {
-      page: table.page + 1,
-      limit: table.rowsPerPage,
-      group,
-      search: filters.state.name || undefined,
-      freeOrPaid:
-        filters.state.type === 'free'
-          ? false
-          : filters.state.type === 'paid'
-            ? true
-            : undefined,
-    };
-    dispatch(fetchCourses(query));
-  }, [dispatch, hasFetched, table.page, table.rowsPerPage, filters.state.level, filters.state.name, filters.state.type]);
+    dispatch(fetchCoursesList(coursesQueryForFetch));
+  }, [dispatch, coursesQueryForFetch]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
+  const levelOptions = useMemo(() => {
+    const options = [...COURSE_LEVEL_OPTIONS];
+    if (filters.state.level && !options.includes(filters.state.level)) {
+      options.push(filters.state.level);
+    }
 
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
+    return options;
+  }, [filters.state.level]);
+  const typeOptions = useMemo(() => {
+    const hasFree = (tableData || []).some((course) => !course?.freeOrPaid);
+    const hasPaid = (tableData || []).some((course) => Boolean(course?.freeOrPaid));
+
+    const next = [{ value: '', label: 'All' }];
+    if (hasFree || filters.state.type === 'free') next.push({ value: 'free', label: 'Free' });
+    if (hasPaid || filters.state.type === 'paid') next.push({ value: 'paid', label: 'Paid' });
+    return next;
+  }, [filters.state.type, tableData]);
 
   const canReset =
     !!filters.state.name ||
     !!filters.state.level ||
     !!filters.state.type;
 
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataFiltered.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchCoursesList,
+    query: coursesQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
-        const normalizedLevel = filters.state.level ? filters.state.level.toLowerCase() : '';
-        const group =
-          normalizedLevel === 'beginner'
-            ? 'basic'
-            : normalizedLevel === 'advanced'
-              ? 'advance'
-              : normalizedLevel || undefined;
-
         await dispatch(deleteCourse(id)).unwrap();
         toast.success('Delete success!');
-        dispatch(fetchCourses({
-          page: table.page + 1,
-          limit: table.rowsPerPage,
-          group,
-          search: filters.state.name || undefined,
-          freeOrPaid:
-            filters.state.type === 'free'
-              ? false
-              : filters.state.type === 'paid'
-                ? true
-                : undefined,
-        }));
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete course');
       }
     },
-    [dispatch, table.page, table.rowsPerPage, filters.state.level, filters.state.name, filters.state.type]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
     try {
       await Promise.all(table.selected.map((id) => dispatch(deleteCourse(id)).unwrap()));
       toast.success('Deleted successfully');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
     } catch (error) {
       toast.error(error || 'Failed to delete');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table]);
+  }, [dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -232,15 +215,15 @@ export function CourseListView() {
           filters={filters}
           onResetPage={table.onResetPage}
           options={{
-            levels: LEVEL_OPTIONS,
-            types: TYPE_OPTIONS,
+            levels: levelOptions,
+            types: typeOptions,
           }}
         />
 
         {canReset && (
           <CourseTableFiltersResult
             filters={filters}
-            totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataFiltered.length}
             onResetPage={table.onResetPage}
             sx={{ p: 2.5, pt: 0 }}
           />
@@ -267,7 +250,7 @@ export function CourseListView() {
               <TableHeadCustom
                 order={table.order}
                 orderBy={table.orderBy}
-                headLabel={TABLE_HEAD}
+                headLabel={COURSE_LIST_TABLE_HEAD}
                 rowCount={dataFiltered.length}
                 numSelected={table.selected.length}
                 onSort={table.onSort}
@@ -276,7 +259,7 @@ export function CourseListView() {
                 }
               />
               <TableBody>
-                {dataInPage.map((row) => (
+                {dataFiltered.map((row) => (
                   <CourseTableRow
                     key={row.id}
                     row={row}
@@ -288,7 +271,7 @@ export function CourseListView() {
                 ))}
                 <TableEmptyRows
                   height={table.dense ? 56 : 76}
-                  emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                  emptyRows={emptyRows(0, table.rowsPerPage, dataFiltered.length)}
                 />
                 <TableNoData notFound={notFound} />
               </TableBody>

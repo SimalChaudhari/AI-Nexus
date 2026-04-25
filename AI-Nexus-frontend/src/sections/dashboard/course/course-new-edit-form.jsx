@@ -11,7 +11,6 @@ import Button from '@mui/material/Button';
 import Grid from '@mui/material/Unstable_Grid2';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
-import { TextField } from '@mui/material';
 import Divider from '@mui/material/Divider';
 import CardHeader from '@mui/material/CardHeader';
 import Alert from '@mui/material/Alert';
@@ -35,6 +34,7 @@ import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { CourseModulesCard } from './course-modules-card';
 import { CourseQuestionBankPanel } from './course-question-bank-panel';
 import { COURSE_LANGUAGE_OPTIONS } from './data/language-options';
+import { COURSE_LEVEL_OPTIONS } from './constants';
 
 // ----------------------------------------------------------------------
 
@@ -46,6 +46,15 @@ const parseMarketData = (marketData) => {
   } catch {
     return {};
   }
+};
+
+const normalizeCourseLevelForForm = (level) => {
+  const normalized = String(level || '').trim().toLowerCase();
+  if (normalized.includes('workflow') || normalized.includes('intermediate')) return 'Intermediate';
+  if (normalized.includes('builder') || normalized.includes('advanced') || normalized === 'advance') {
+    return 'Advanced';
+  }
+  return 'Beginner';
 };
 
 export const NewCourseSchema = zod.object({
@@ -100,11 +109,6 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [speakers, setSpeakers] = useState([]);
   const [speakersLoading, setSpeakersLoading] = useState(false);
   const speakersFetchDoneRef = useRef(false);
-  const [groups, setGroups] = useState([]);
-  const [groupsLoading, setGroupsLoading] = useState(false);
-  const groupsFetchDoneRef = useRef(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [creatingGroup, setCreatingGroup] = useState(false);
   /** Pending modules/sections when creating a course (before save); sent with create payload */
   const [pendingModules, setPendingModules] = useState([]);
   const [coursesCatalog, setCoursesCatalog] = useState([]);
@@ -123,7 +127,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       image: currentCourse?.image || '',
       freeOrPaid: currentCourse?.freeOrPaid ?? false,
       amount: currentCourse?.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
-      level: currentCourse?.level || 'Beginner',
+      level: normalizeCourseLevelForForm(currentCourse?.level),
       languageIds: Array.isArray(currentCourse?.languageIds) ? currentCourse.languageIds : [],
       speakerIds: Array.isArray(currentCourse?.speakerIds) ? currentCourse.speakerIds : [],
       cpeHours: market.cpeHours ?? market.cpe ?? undefined,
@@ -151,23 +155,6 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       });
   }, []);
 
-  const ensureGroupsLoaded = useCallback(() => {
-    if (groupsFetchDoneRef.current) return;
-    groupsFetchDoneRef.current = true;
-    setGroupsLoading(true);
-    courseService
-      .getCourseGroups()
-      .then((groupList) => {
-        setGroups(groupList || []);
-      })
-      .catch(() => {
-        groupsFetchDoneRef.current = false;
-      })
-      .finally(() => {
-        setGroupsLoading(false);
-      });
-  }, []);
-
   // Edit mode: load speakers if already assigned so chip labels show names without opening the dropdown
   useEffect(() => {
     const ids = currentCourse?.speakerIds;
@@ -175,13 +162,6 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       ensureSpeakersLoaded();
     }
   }, [currentCourse?.id, currentCourse?.speakerIds, ensureSpeakersLoaded]);
-
-  // Edit mode: load groups so saved level matches options without opening the dropdown
-  useEffect(() => {
-    if (currentCourse?.id && String(currentCourse?.level || '').trim()) {
-      ensureGroupsLoaded();
-    }
-  }, [currentCourse?.id, currentCourse?.level, ensureGroupsLoaded]);
 
   const ensureCoursesCatalogLoaded = useCallback(() => {
     if (coursesCatalogFetchRef.current) return;
@@ -216,17 +196,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
     defaultValues,
   });
 
-  const { reset, setValue, watch, handleSubmit, getValues } = methods;
-
-  useEffect(() => {
-    if (!currentCourse && groups.length > 0) {
-      const currentLevel = getValues('level');
-      const exists = groups.some((group) => group.name === currentLevel);
-      if (!exists) {
-        setValue('level', groups[0].name, { shouldValidate: true });
-      }
-    }
-  }, [currentCourse, getValues, groups, setValue]);
+  const { reset, setValue, watch, handleSubmit } = methods;
 
   // Use Redux loading state instead of form's isSubmitting
   const isSubmitting = currentCourse ? updating : creating;
@@ -278,7 +248,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         image: img,
         freeOrPaid: currentCourse.freeOrPaid ?? false,
         amount: currentCourse.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
-        level: currentCourse.level || 'Beginner',
+        level: normalizeCourseLevelForForm(currentCourse.level),
         languageIds: Array.isArray(currentCourse.languageIds) ? currentCourse.languageIds : [],
         speakerIds: Array.isArray(currentCourse.speakerIds) ? currentCourse.speakerIds : [],
         cpeHours: marketReset.cpeHours ?? marketReset.cpe ?? undefined,
@@ -292,27 +262,6 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCourse?.id, reset]);
-
-  const handleCreateGroup = useCallback(async () => {
-    const name = newGroupName.trim();
-    if (!name) {
-      toast.error('Group name is required');
-      return;
-    }
-
-    try {
-      setCreatingGroup(true);
-      const createdGroup = await courseService.createCourseGroup(name);
-      setGroups((prev) => [...prev, createdGroup].sort((a, b) => a.name.localeCompare(b.name)));
-      setValue('level', createdGroup.name, { shouldValidate: true });
-      setNewGroupName('');
-      toast.success('Group created');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to create group');
-    } finally {
-      setCreatingGroup(false);
-    }
-  }, [newGroupName, setValue]);
 
   // Handle image drop - store file for upload (not base64)
   const handleDropImage = useCallback((acceptedFiles) => {
@@ -483,39 +432,12 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                 <Grid xs={12} md={4}>
                   <Field.Autocomplete
                     name="level"
-                    label="Group / Level"
-                    loading={groupsLoading}
-                    options={(groups || []).map((group) => group.name)}
+                    label="Level"
+                    options={COURSE_LEVEL_OPTIONS}
                     getOptionLabel={(option) => option || ''}
                     isOptionEqualToValue={(option, value) => option === value}
-                    placeholder="Search group..."
-                    onOpen={() => ensureGroupsLoaded()}
+                    placeholder="Select level..."
                   />
-                </Grid>
-
-                <Grid xs={12}>
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.5}
-                    alignItems={{ sm: 'center' }}
-                  >
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Create new group"
-                      value={newGroupName}
-                      onChange={(event) => setNewGroupName(event.target.value)}
-                      placeholder="e.g. Expert"
-                    />
-                    <LoadingButton
-                      variant="outlined"
-                      loading={creatingGroup}
-                      onClick={handleCreateGroup}
-                      sx={{ minWidth: { sm: 140 } }}
-                    >
-                      Add Group
-                    </LoadingButton>
-                  </Stack>
                 </Grid>
 
                 

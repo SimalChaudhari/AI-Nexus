@@ -54,6 +54,10 @@ export function CourseTableToolbar({ filters, onResetPage, options = {} }) {
             labelId="course-filter-level-label"
             value={filters.state.level || ''}
             onChange={handleFilterLevel}
+            MenuProps={{
+              disableScrollLock: true,
+              keepMounted: true,
+            }}
             input={<OutlinedInput label="Level" />}
           >
             <MenuItem value="">All</MenuItem>
@@ -71,6 +75,10 @@ export function CourseTableToolbar({ filters, onResetPage, options = {} }) {
             labelId="course-filter-type-label"
             value={filters.state.type || ''}
             onChange={handleFilterType}
+            MenuProps={{
+              disableScrollLock: true,
+              keepMounted: true,
+            }}
             input={<OutlinedInput label="Type" />}
           >
             {types.map((opt) => (
@@ -86,7 +94,7 @@ export function CourseTableToolbar({ filters, onResetPage, options = {} }) {
             fullWidth
             value={filters.state.name}
             onChange={handleFilterName}
-            placeholder="Search course..."
+            placeholder="Search by course title or description..."
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">

@@ -28,6 +28,19 @@ export const fetchCourses = createAsyncThunk('courses/fetchCourses', async (para
   }
 });
 
+export const fetchCoursesList = createAsyncThunk(
+  'courses/fetchCoursesList',
+  async (params = {}, { rejectWithValue }) => {
+    try {
+      return await courseService.getAllCourses(params);
+    } catch (error) {
+      const errorMessage = error?.message || 'Failed to fetch courses';
+      toast.error(errorMessage);
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
 export const createCourse = createAsyncThunk('courses/createCourse', async ({ courseData, imageFile }, { rejectWithValue }) => {
   try {
     const response = await courseService.createCourse(courseData, imageFile);
@@ -88,6 +101,20 @@ const courseSlice = createSlice({
         state.hasFetched = true;
       })
       .addCase(fetchCourses.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchCoursesList.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchCoursesList.fulfilled, (state, action) => {
+        state.loading = false;
+        state.courses = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
+        state.hasFetched = true;
+      })
+      .addCase(fetchCoursesList.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

@@ -1,4 +1,6 @@
-import { Stack, Chip } from '@mui/material';
+import { useCallback } from 'react';
+import Chip from '@mui/material/Chip';
+import { chipProps, FiltersBlock, FiltersResult } from 'src/components/filters-result';
 
 // ----------------------------------------------------------------------
 
@@ -9,67 +11,48 @@ export function CourseTableFiltersResult({
   sx,
   ...other
 }) {
-  const handleRemoveName = () => {
+  const handleRemoveName = useCallback(() => {
+    onResetPage();
     filters.setState({ name: '' });
-    onResetPage();
-  };
+  }, [filters, onResetPage]);
 
-  const handleRemoveLevel = () => {
+  const handleRemoveLevel = useCallback(() => {
+    onResetPage();
     filters.setState({ level: '' });
-    onResetPage();
-  };
+  }, [filters, onResetPage]);
 
-  const handleRemoveType = () => {
+  const handleRemoveType = useCallback(() => {
+    onResetPage();
     filters.setState({ type: '' });
-    onResetPage();
-  };
+  }, [filters, onResetPage]);
 
-  const handleClearAll = () => {
+  const handleReset = useCallback(() => {
+    onResetPage();
     filters.setState({
       name: '',
       level: '',
       type: '',
     });
-    onResetPage();
-  };
+  }, [filters, onResetPage]);
 
   return (
-    <Stack spacing={1.5} sx={{ p: 2 }} {...other}>
-      <Stack flexGrow={1} spacing={1} direction="row" flexWrap="wrap" alignItems="center">
-        {!!filters.state.name && (
-          <Chip label={`Name: ${filters.state.name}`} size="small" onDelete={handleRemoveName} />
-        )}
-        {!!filters.state.level && (
-          <Chip
-            label={`Level: ${filters.state.level}`}
-            size="small"
-            onDelete={handleRemoveLevel}
-          />
-        )}
-        {!!filters.state.type && (
-          <Chip
-            label={`Type: ${filters.state.type === 'free' ? 'Free' : 'Paid'}`}
-            size="small"
-            onDelete={handleRemoveType}
-          />
-        )}
-        <Chip
-          label={`Total: ${totalResults} results`}
-          size="small"
-          variant="soft"
-          color="primary"
-        />
+    <FiltersResult totalResults={totalResults} onReset={handleReset} sx={sx} {...other}>
+      <FiltersBlock label="Level:" isShow={!!filters.state.level}>
+        <Chip {...chipProps} label={filters.state.level} onDelete={handleRemoveLevel} />
+      </FiltersBlock>
 
+      <FiltersBlock label="Type:" isShow={!!filters.state.type}>
         <Chip
-          label="Clear all"
-          size="small"
-          color="error"
-          variant="soft"
-          onClick={handleClearAll}
-          onDelete={handleClearAll}
+          {...chipProps}
+          label={filters.state.type === 'free' ? 'Free' : 'Paid'}
+          onDelete={handleRemoveType}
         />
-      </Stack>
-    </Stack>
+      </FiltersBlock>
+
+      <FiltersBlock label="Keyword:" isShow={!!filters.state.name}>
+        <Chip {...chipProps} label={filters.state.name} onDelete={handleRemoveName} />
+      </FiltersBlock>
+    </FiltersResult>
   );
 }
 
