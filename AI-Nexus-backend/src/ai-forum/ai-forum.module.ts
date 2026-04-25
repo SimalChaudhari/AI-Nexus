@@ -11,6 +11,7 @@ import { PinnedAiForumEntity } from './pinned-ai-forum.entity';
 import { UserEntity } from '../user/users.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 @Module({
     imports: [
@@ -20,7 +21,7 @@ import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
             signOptions: {},
         }),
     ],
-    providers: [AiForumService, AiForumInitService, AiForumCommentsGateway, OptionalJwtAuthGuard],
+    providers: [AiForumService, AiForumInitService, AiForumCommentsGateway, OptionalJwtAuthGuard, PaginationService],
     controllers: [AiForumController],
     exports: [AiForumService],
 })

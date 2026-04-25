@@ -29,7 +29,7 @@ import { fDateTimePersonal } from 'src/utils/format-time';
 
 // ----------------------------------------------------------------------
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 5;
 const SEARCH_DEBOUNCE_MS = 800;
 
 const DEFAULT_PAGINATION = {

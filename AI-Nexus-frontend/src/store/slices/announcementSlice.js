@@ -3,9 +3,12 @@ import { announcementService } from 'src/services/announcement.service';
 import { toast } from 'src/components/snackbar';
 
 // Async thunks for API calls
-export const fetchAnnouncements = createAsyncThunk('announcements/fetchAnnouncements', async (_, { rejectWithValue }) => {
+export const fetchAnnouncements = createAsyncThunk('announcements/fetchAnnouncements', async (params = {}, { rejectWithValue }) => {
   try {
-    const response = await announcementService.getAllAnnouncements();
+    const response = await announcementService.getAllAnnouncements(params);
+    if (Array.isArray(response)) {
+      return { data: response, pagination: null };
+    }
     return response;
   } catch (error) {
     const errorMessage = error?.message || 'Failed to fetch announcements';
@@ -51,6 +54,7 @@ const announcementSlice = createSlice({
   name: 'announcements',
   initialState: {
     announcements: [],
+    pagination: null,
     loading: false,
     error: null,
     hasFetched: false,
@@ -64,7 +68,8 @@ const announcementSlice = createSlice({
       })
       .addCase(fetchAnnouncements.fulfilled, (state, action) => {
         state.loading = false;
-        state.announcements = action.payload;
+        state.announcements = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
         state.hasFetched = true;
       })
       .addCase(fetchAnnouncements.rejected, (state, action) => {

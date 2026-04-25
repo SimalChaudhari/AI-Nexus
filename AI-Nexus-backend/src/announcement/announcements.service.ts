@@ -9,13 +9,14 @@ import { CreateAnnouncementDto, UpdateAnnouncementDto, CreateCommentDto, UpdateC
 import { UserEntity, UserRole } from '../user/users.entity';
 import { AnnouncementCommentsGateway } from './announcement-comments.gateway';
 import {
-    getPaginatedPinnedList,
     PaginatedQueryOptions,
     PaginatedResponse,
-} from '../common/pagination/paginated-list.util';
+    PaginationService,
+} from '../common/pagination/pagination.service';
 
 type GetAnnouncementsOptions = PaginatedQueryOptions & {
     userId?: string;
+    usePagination?: boolean;
 };
 
 @Injectable()
@@ -32,37 +33,83 @@ export class AnnouncementService {
         @InjectRepository(UserEntity)
         private userRepository: Repository<UserEntity>,
         private announcementCommentsGateway: AnnouncementCommentsGateway,
+        private readonly paginationService: PaginationService,
     ) {}
 
+    async getAll(options: GetAnnouncementsOptions = {}): Promise<any[] | PaginatedResponse<any>> {
+        const usePagination = Boolean(options.usePagination);
+        const { userId } = options;
+
+        if (usePagination) {
+            return this.paginationService.getPaginatedPinnedList({
+                userId,
+                queryOptions: options,
+                repository: this.announcementRepository,
+                entityAlias: 'announcement',
+                searchColumns: ['title', 'description'],
+                pinnedJoinTable: 'pinned_announcements',
+                pinnedJoinAlias: 'pinnedAnnouncement',
+                pinnedEntityIdColumn: 'announcementId',
+                relations: ['comments', 'comments.user', 'createdBy'],
+                enrichEntities: async (announcements, currentUserId) =>
+                    Promise.all(
+                        announcements.map(async (announcement) => {
+                            const commentsWithLikes = await this.enrichCommentsWithLikes(
+                                announcement.comments || [],
+                                currentUserId,
+                            );
+                            return { ...announcement, comments: commentsWithLikes };
+                        }),
+                    ),
+                loadPinnedIds: async (announcementIds, currentUserId) => {
+                    const pinnedAnnouncements = await this.pinnedAnnouncementRepository.find({
+                        where: { userId: currentUserId, announcementId: In(announcementIds) },
+                        select: ['announcementId'],
+                    });
+                    return new Set(pinnedAnnouncements.map((pinnedAnnouncement) => pinnedAnnouncement.announcementId));
+                },
+                orderByColumn: 'title',
+                orderByDirection: 'ASC',
+                orderByCaseInsensitive: true,
+                prioritizePinnedInAllResults: true,
+            });
+        }
+
+        const announcements = await this.announcementRepository
+            .createQueryBuilder('announcement')
+            .leftJoinAndSelect('announcement.comments', 'comments')
+            .leftJoinAndSelect('comments.user', 'commentUser')
+            .leftJoinAndSelect('announcement.createdBy', 'createdBy')
+            .orderBy('LOWER(announcement.title)', 'ASC')
+            .getMany();
+
+        const announcementIds = announcements.map((announcement) => announcement.id);
+        const pinnedIds =
+            userId && announcementIds.length
+                ? new Set(
+                      (
+                          await this.pinnedAnnouncementRepository.find({
+                              where: { userId, announcementId: In(announcementIds) },
+                              select: ['announcementId'],
+                          })
+                      ).map((pinnedAnnouncement) => pinnedAnnouncement.announcementId),
+                  )
+                : new Set<string>();
+
+        return Promise.all(
+            announcements.map(async (announcement) => {
+                const commentsWithLikes = await this.enrichCommentsWithLikes(announcement.comments || [], userId);
+                return {
+                    ...announcement,
+                    comments: commentsWithLikes,
+                    isPinned: userId ? pinnedIds.has(announcement.id) : false,
+                };
+            }),
+        );
+    }
+
     async getAllPaginated(options: GetAnnouncementsOptions = {}): Promise<PaginatedResponse<any>> {
-        return getPaginatedPinnedList({
-            userId: options.userId,
-            queryOptions: options,
-            repository: this.announcementRepository,
-            entityAlias: 'announcement',
-            searchColumns: ['title', 'description'],
-            pinnedJoinTable: 'pinned_announcements',
-            pinnedJoinAlias: 'pinnedAnnouncement',
-            pinnedEntityIdColumn: 'announcementId',
-            relations: ['comments', 'comments.user', 'createdBy'],
-            enrichEntities: async (announcements, userId) =>
-                Promise.all(
-                    announcements.map(async (announcement) => {
-                        const commentsWithLikes = await this.enrichCommentsWithLikes(announcement.comments || [], userId);
-                        return { ...announcement, comments: commentsWithLikes };
-                    }),
-                ),
-            loadPinnedIds: async (announcementIds, userId) => {
-                const pinnedAnnouncements = await this.pinnedAnnouncementRepository.find({
-                    where: { userId, announcementId: In(announcementIds) },
-                    select: ['announcementId'],
-                });
-                return new Set(pinnedAnnouncements.map((pinnedAnnouncement) => pinnedAnnouncement.announcementId));
-            },
-            orderByColumn: 'title',
-            orderByDirection: 'ASC',
-            orderByCaseInsensitive: true,
-        });
+        return this.getAll({ ...options, usePagination: true }) as Promise<PaginatedResponse<any>>;
     }
 
     async getById(id: string, userId?: string): Promise<any> {

@@ -12,6 +12,7 @@ import { UserEntity } from '../user/users.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { LocalStorageModule } from '../service/local-storage.module';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 @Module({
     imports: [
@@ -22,7 +23,13 @@ import { LocalStorageModule } from '../service/local-storage.module';
         }),
         LocalStorageModule,
     ],
-    providers: [AnnouncementService, AnnouncementsInitService, AnnouncementCommentsGateway, OptionalJwtAuthGuard],
+    providers: [
+        AnnouncementService,
+        AnnouncementsInitService,
+        AnnouncementCommentsGateway,
+        OptionalJwtAuthGuard,
+        PaginationService,
+    ],
     controllers: [AnnouncementController],
     exports: [AnnouncementService],
 })

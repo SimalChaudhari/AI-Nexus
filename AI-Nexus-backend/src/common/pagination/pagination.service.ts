@@ -59,6 +59,7 @@ export type GetPaginatedPinnedListOptions<TEntity extends ObjectLiteral, TItem e
   orderByColumn?: string;
   orderByDirection?: 'ASC' | 'DESC';
   orderByCaseInsensitive?: boolean;
+  prioritizePinnedInAllResults?: boolean;
 };
 
 @Injectable()
@@ -169,6 +170,7 @@ export class PaginationService {
       orderByColumn = 'createdAt',
       orderByDirection = 'DESC',
       orderByCaseInsensitive = false,
+      prioritizePinnedInAllResults = false,
     } = options;
 
     const normalizedQuery = this.normalizePaginatedQuery(queryOptions);
@@ -204,10 +206,17 @@ export class PaginationService {
       ? `LOWER(${entityAlias}.${orderByColumn})`
       : `${entityAlias}.${orderByColumn}`;
 
-    const entityIdRows = await baseQuery
-      .clone()
-      .select(`${entityAlias}.id`, 'id')
-      .orderBy(orderExpr, orderByDirection)
+    const pagedQuery = baseQuery.clone().select(`${entityAlias}.id`, 'id');
+
+    // For personalized lists, optionally show current user's pinned items first in the combined view.
+    if (prioritizePinnedInAllResults && userId && isPinned === undefined) {
+      pagedQuery.orderBy(`CASE WHEN ${pinnedJoinAlias}.id IS NULL THEN 1 ELSE 0 END`, 'ASC');
+      pagedQuery.addOrderBy(orderExpr, orderByDirection);
+    } else {
+      pagedQuery.orderBy(orderExpr, orderByDirection);
+    }
+
+    const entityIdRows = await pagedQuery
       .skip((page - 1) * limit)
       .take(limit)
       .getRawMany<{ id: string }>();

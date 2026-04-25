@@ -28,12 +28,15 @@ import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/paginated-list.util';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 @ApiTags('AiForumPosts')
 @Controller('posts')
 export class AiForumController {
-    constructor(private readonly postService: AiForumService) {}
+    constructor(
+        private readonly postService: AiForumService,
+        private readonly paginationService: PaginationService,
+    ) {}
 
     @Get()
     @UseGuards(OptionalJwtAuthGuard)
@@ -51,17 +54,37 @@ export class AiForumController {
         @Res() response?: Response,
     ) {
         const userId = request.user?.id;
-        const result = await this.postService.getAllPaginated({
-            userId,
-            page: parsePositiveInteger(page, 1),
-            limit: parsePositiveInteger(limit, 10),
-            search,
-            isPinned: parseBooleanQuery(isPinned),
-        });
+        const normalizedIsPinned = this.paginationService.parseBooleanQuery(isPinned);
+        const hasFilters = Boolean(page || limit || search || normalizedIsPinned !== undefined);
+
+        if (hasFilters) {
+            const result = await this.postService.getAll({
+                userId,
+                usePagination: true,
+                page: this.paginationService.parsePositiveInteger(page, 1),
+                limit: this.paginationService.parsePositiveInteger(limit, 10),
+                search,
+                isPinned: normalizedIsPinned,
+            });
+            const paginated = result as Awaited<ReturnType<AiForumService['getAllPaginated']>>;
+            const parsedPage = this.paginationService.parsePositiveInteger(page, 1);
+            const parsedLimit = this.paginationService.parsePositiveInteger(limit, 10);
+            const offset = (parsedPage - 1) * parsedLimit;
+            const correctedData =
+                Array.isArray(paginated.data) && paginated.data.length > parsedLimit
+                    ? paginated.data.slice(offset, offset + parsedLimit)
+                    : paginated.data;
+            return response!.status(HttpStatus.OK).json({
+                length: correctedData.length,
+                data: correctedData,
+                pagination: paginated.pagination,
+            });
+        }
+
+        const posts = (await this.postService.getAll({ userId })) as any[];
         return response!.status(HttpStatus.OK).json({
-            length: result.data.length,
-            data: result.data,
-            pagination: result.pagination,
+            length: posts.length,
+            data: posts,
         });
     }
 

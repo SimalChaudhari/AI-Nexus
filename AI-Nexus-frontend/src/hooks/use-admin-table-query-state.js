@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import { useSetState } from 'src/hooks/use-set-state';
 import { useTable } from 'src/components/table';
+import { ADMIN_TABLE_DEFAULTS } from 'src/sections/dashboard/constants/admin-table-defaults';
 
 /**
  * Shared hook for admin list screens:
@@ -11,8 +12,8 @@ import { useTable } from 'src/components/table';
  * - expose normalized backend query payload
  */
 export function useAdminTableQueryState({
-  defaultPage = 1,
-  defaultRowsPerPage = 10,
+  defaultPage = ADMIN_TABLE_DEFAULTS.page,
+  defaultRowsPerPage = ADMIN_TABLE_DEFAULTS.rowsPerPage,
   filterDefaults = {},
   queryMap = {},
 }) {

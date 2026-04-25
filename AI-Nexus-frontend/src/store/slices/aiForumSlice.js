@@ -2,9 +2,12 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { aiForumService } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
 
-export const fetchAiForumPosts = createAsyncThunk('aiForum/fetchPosts', async (_, { rejectWithValue }) => {
+export const fetchAiForumPosts = createAsyncThunk('aiForum/fetchPosts', async (params = {}, { rejectWithValue }) => {
   try {
-    const response = await aiForumService.getAllPosts();
+    const response = await aiForumService.getAllPosts(params);
+    if (Array.isArray(response)) {
+      return { data: response, pagination: null };
+    }
     return response;
   } catch (error) {
     const errorMessage = error?.message || 'Failed to fetch posts';
@@ -53,6 +56,7 @@ const aiForumSlice = createSlice({
   name: 'posts',
   initialState: {
     posts: [],
+    pagination: null,
     loading: false,
     error: null,
     hasFetched: false,
@@ -83,7 +87,8 @@ const aiForumSlice = createSlice({
       })
       .addCase(fetchAiForumPosts.fulfilled, (state, action) => {
         state.loading = false;
-        state.posts = action.payload;
+        state.posts = action.payload?.data || action.payload || [];
+        state.pagination = action.payload?.pagination || null;
         state.hasFetched = true;
       })
       .addCase(fetchAiForumPosts.rejected, (state, action) => {

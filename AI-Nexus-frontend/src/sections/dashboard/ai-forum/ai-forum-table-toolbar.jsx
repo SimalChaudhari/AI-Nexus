@@ -29,7 +29,7 @@ export function AiForumTableToolbar({ filters, onResetPage }) {
           fullWidth
           value={filters.state.name}
           onChange={handleFilterName}
-          placeholder="Search posts…"
+          placeholder="Search by title or description…"
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">

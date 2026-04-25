@@ -9,13 +9,14 @@ import { CreateAiForumPostDto, UpdateAiForumPostDto, CreateAiForumCommentDto, Up
 import { UserEntity, UserRole } from '../user/users.entity';
 import { AiForumCommentsGateway } from './ai-forum-comments.gateway';
 import {
-    getPaginatedPinnedList,
     PaginatedQueryOptions,
     PaginatedResponse,
-} from '../common/pagination/paginated-list.util';
+    PaginationService,
+} from '../common/pagination/pagination.service';
 
 type GetAiForumPostsOptions = PaginatedQueryOptions & {
     userId?: string;
+    usePagination?: boolean;
 };
 
 @Injectable()
@@ -32,34 +33,82 @@ export class AiForumService {
         @InjectRepository(UserEntity)
         private userRepository: Repository<UserEntity>,
         private aiForumCommentsGateway: AiForumCommentsGateway,
+        private readonly paginationService: PaginationService,
     ) {}
 
+    async getAll(options: GetAiForumPostsOptions = {}): Promise<any[] | PaginatedResponse<any>> {
+        const usePagination = Boolean(options.usePagination);
+        const { userId } = options;
+
+        if (usePagination) {
+            return this.paginationService.getPaginatedPinnedList({
+                userId,
+                queryOptions: options,
+                repository: this.aiForumRepository,
+                entityAlias: 'post',
+                searchColumns: ['title', 'description'],
+                pinnedJoinTable: 'pinned_posts',
+                pinnedJoinAlias: 'pinnedAiForumPost',
+                pinnedEntityIdColumn: 'postId',
+                relations: ['comments', 'comments.user'],
+                enrichEntities: async (posts, currentUserId) =>
+                    Promise.all(
+                        posts.map(async (post) => {
+                            const commentsWithLikes = await this.enrichCommentsWithLikes(
+                                post.comments || [],
+                                currentUserId,
+                            );
+                            return { ...post, comments: commentsWithLikes };
+                        }),
+                    ),
+                loadPinnedIds: async (postIds, currentUserId) => {
+                    const pinnedAiForumPosts = await this.pinnedAiForumRepository.find({
+                        where: { userId: currentUserId, postId: In(postIds) },
+                        select: ['postId'],
+                    });
+                    return new Set(pinnedAiForumPosts.map((pinnedAiForumPost) => pinnedAiForumPost.postId));
+                },
+                orderByColumn: 'title',
+                orderByDirection: 'ASC',
+                orderByCaseInsensitive: true,
+                prioritizePinnedInAllResults: true,
+            });
+        }
+
+        const posts = await this.aiForumRepository
+            .createQueryBuilder('post')
+            .leftJoinAndSelect('post.comments', 'comments')
+            .leftJoinAndSelect('comments.user', 'commentUser')
+            .orderBy('LOWER(post.title)', 'ASC')
+            .getMany();
+
+        const postIds = posts.map((post) => post.id);
+        const pinnedIds =
+            userId && postIds.length
+                ? new Set(
+                      (
+                          await this.pinnedAiForumRepository.find({
+                              where: { userId, postId: In(postIds) },
+                              select: ['postId'],
+                          })
+                      ).map((pinnedAiForumPost) => pinnedAiForumPost.postId),
+                  )
+                : new Set<string>();
+
+        return Promise.all(
+            posts.map(async (post) => {
+                const commentsWithLikes = await this.enrichCommentsWithLikes(post.comments || [], userId);
+                return {
+                    ...post,
+                    comments: commentsWithLikes,
+                    isPinned: userId ? pinnedIds.has(post.id) : false,
+                };
+            }),
+        );
+    }
+
     async getAllPaginated(options: GetAiForumPostsOptions = {}): Promise<PaginatedResponse<any>> {
-        return getPaginatedPinnedList({
-            userId: options.userId,
-            queryOptions: options,
-            repository: this.aiForumRepository,
-            entityAlias: 'post',
-            searchColumns: ['title', 'description'],
-            pinnedJoinTable: 'pinned_posts',
-            pinnedJoinAlias: 'pinnedAiForumPost',
-            pinnedEntityIdColumn: 'postId',
-            relations: ['comments', 'comments.user'],
-            enrichEntities: async (posts, userId) =>
-                Promise.all(
-                    posts.map(async (post) => {
-                        const commentsWithLikes = await this.enrichCommentsWithLikes(post.comments || [], userId);
-                        return { ...post, comments: commentsWithLikes };
-                    }),
-                ),
-            loadPinnedIds: async (postIds, userId) => {
-                const pinnedAiForumPosts = await this.pinnedAiForumRepository.find({
-                    where: { userId, postId: In(postIds) },
-                    select: ['postId'],
-                });
-                return new Set(pinnedAiForumPosts.map((pinnedAiForumPost) => pinnedAiForumPost.postId));
-            },
-        });
+        return this.getAll({ ...options, usePagination: true }) as Promise<PaginatedResponse<any>>;
     }
 
     async getById(id: string, userId?: string): Promise<any> {

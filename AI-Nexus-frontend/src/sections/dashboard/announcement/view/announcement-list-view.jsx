@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -14,7 +14,9 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
+import { useDebounce } from 'src/hooks/use-debounce';
+import { useAdminTableQueryState } from 'src/hooks/use-admin-table-query-state';
+import { useAdminTableDeleteRecovery } from 'src/hooks/use-admin-table-delete-recovery';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -24,9 +26,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
-  useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
@@ -36,24 +36,20 @@ import {
   TableLoadingOverlay,
 } from 'src/components/table';
 
-import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { fetchAnnouncements, deleteAnnouncement } from 'src/store/slices/announcementSlice';
 import { AnnouncementTableRow } from '../announcement-table-row';
 import { AnnouncementTableToolbar } from '../announcement-table-toolbar';
 import { AnnouncementTableFiltersResult } from '../announcement-table-filters-result';
+import {
+  ANNOUNCEMENT_LIST_DEFAULTS,
+  ANNOUNCEMENT_LIST_FILTER_DEFAULTS,
+  ANNOUNCEMENT_LIST_QUERY_MAP,
+  ANNOUNCEMENT_LIST_TABLE_HEAD,
+} from '../constants';
 
 // ----------------------------------------------------------------------
 
-const TABLE_HEAD = [
-  { id: 'title', label: 'Title' },
-  { id: 'viewCount', label: 'Views', width: 120 },
-  { id: 'action', label: 'Action', width: 88 },
-];
-
-// ----------------------------------------------------------------------
-
-function applyFilter({ inputData, comparator, filters }) {
-  const { name } = filters;
+function applyFilter({ inputData, comparator }) {
 
   const stabilizedThis = inputData.map((el, index) => [el, index]);
 
@@ -63,61 +59,70 @@ function applyFilter({ inputData, comparator, filters }) {
     return a[1] - b[1];
   });
 
-  inputData = stabilizedThis.map((el) => el[0]);
-
-  if (name) {
-    const q = name.toLowerCase();
-    inputData = inputData.filter((announcement) => {
-      const descPlain = htmlToPlainText(announcement.description || '');
-      return (
-        announcement.title?.toLowerCase().indexOf(q) !== -1 || descPlain.toLowerCase().indexOf(q) !== -1
-      );
-    });
-  }
-
-  return inputData;
+  return stabilizedThis.map((el) => el[0]);
 }
 
 // ----------------------------------------------------------------------
 
 export function AnnouncementListView() {
   const dispatch = useDispatch();
-  const { announcements: tableData, loading, hasFetched } = useSelector((state) => state.announcements);
-  const table = useTable({ defaultOrderBy: 'title', defaultOrder: 'asc' });
+  const { announcements: tableData, loading, pagination } = useSelector((state) => state.announcements);
+  const { table, filters, query } = useAdminTableQueryState({
+    defaultPage: ANNOUNCEMENT_LIST_DEFAULTS.page,
+    defaultRowsPerPage: ANNOUNCEMENT_LIST_DEFAULTS.rowsPerPage,
+    filterDefaults: ANNOUNCEMENT_LIST_FILTER_DEFAULTS,
+    queryMap: ANNOUNCEMENT_LIST_QUERY_MAP,
+  });
   const router = useRouter();
   const confirm = useBoolean();
-
-  const filters = useSetState({ name: '' });
+  const announcementsQuery = useMemo(
+    () => ({
+      page: query.page,
+      limit: query.limit,
+      search: query.name,
+    }),
+    [query.limit, query.name, query.page]
+  );
+  const debouncedSearch = useDebounce(announcementsQuery.search, 500);
+  const announcementsQueryForFetch = useMemo(
+    () => ({
+      page: announcementsQuery.page,
+      limit: announcementsQuery.limit,
+      search: debouncedSearch,
+    }),
+    [announcementsQuery.limit, announcementsQuery.page, debouncedSearch]
+  );
 
   useEffect(() => {
-    if (!hasFetched) {
-      dispatch(fetchAnnouncements());
-    }
-  }, [dispatch, hasFetched]);
+    dispatch(fetchAnnouncements(announcementsQueryForFetch));
+  }, [announcementsQueryForFetch, dispatch]);
 
   const dataFiltered = applyFilter({
     inputData: tableData,
     comparator: getComparator(table.order, table.orderBy),
-    filters: filters.state,
   });
-
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
 
   const canReset = !!filters.state.name;
 
-  const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
+  const notFound = !loading && !dataFiltered.length;
+
+  const { refreshAfterDelete } = useAdminTableDeleteRecovery({
+    table,
+    fetchAction: fetchAnnouncements,
+    query: announcementsQueryForFetch,
+  });
 
   const handleDeleteRow = useCallback(
     async (id) => {
       try {
         await dispatch(deleteAnnouncement(id)).unwrap();
         toast.success('Delete success!');
-        table.onUpdatePageDeleteRow(dataInPage.length);
+        await refreshAfterDelete();
       } catch (error) {
         toast.error(error || 'Failed to delete announcement');
       }
     },
-    [dataInPage.length, dispatch, table]
+    [dispatch, refreshAfterDelete]
   );
 
   const handleDeleteRows = useCallback(async () => {
@@ -125,15 +130,13 @@ export function AnnouncementListView() {
       const deletePromises = table.selected.map((id) => dispatch(deleteAnnouncement(id)).unwrap());
       await Promise.all(deletePromises);
       toast.success('Delete success!');
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: dataInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
+      table.setSelected([]);
+      await refreshAfterDelete();
       confirm.onFalse();
     } catch (error) {
       toast.error(error || 'Failed to delete announcements');
     }
-  }, [dataFiltered.length, dataInPage.length, dispatch, table, confirm]);
+  }, [confirm, dispatch, refreshAfterDelete, table]);
 
   const handleEditRow = useCallback(
     (id) => {
@@ -171,7 +174,7 @@ export function AnnouncementListView() {
           {canReset && (
             <AnnouncementTableFiltersResult
               filters={filters}
-              totalResults={dataFiltered.length}
+              totalResults={pagination?.totalItems || dataFiltered.length}
               onResetPage={table.onResetPage}
               sx={{ p: 2.5, pt: 0 }}
             />
@@ -202,7 +205,7 @@ export function AnnouncementListView() {
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
-                  headLabel={TABLE_HEAD}
+                  headLabel={ANNOUNCEMENT_LIST_TABLE_HEAD}
                   rowCount={dataFiltered.length}
                   numSelected={table.selected.length}
                   onSort={table.onSort}
@@ -215,12 +218,7 @@ export function AnnouncementListView() {
                 />
 
                 <TableBody>
-                  {dataFiltered
-                    .slice(
-                      table.page * table.rowsPerPage,
-                      table.page * table.rowsPerPage + table.rowsPerPage
-                    )
-                    .map((row) => (
+                  {dataFiltered.map((row) => (
                       <AnnouncementTableRow
                         key={row.id}
                         row={row}
@@ -233,7 +231,7 @@ export function AnnouncementListView() {
 
                   <TableEmptyRows
                     height={table.dense ? 52 : 72}
-                    emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
+                    emptyRows={emptyRows(0, table.rowsPerPage, dataFiltered.length)}
                   />
 
                   {notFound && <TableNoData notFound={notFound} />}
@@ -244,7 +242,7 @@ export function AnnouncementListView() {
           </Box>
 
           <TablePaginationCustom
-            count={dataFiltered.length}
+            count={pagination?.totalItems || dataFiltered.length}
             page={table.page}
             rowsPerPage={table.rowsPerPage}
             onPageChange={table.onChangePage}

@@ -30,7 +30,7 @@ export function AnnouncementTableToolbar({ filters, onResetPage }) {
           fullWidth
           value={filters.state.name}
           onChange={handleFilterName}
-          placeholder="Search announcement..."
+          placeholder="Search by title or description..."
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">

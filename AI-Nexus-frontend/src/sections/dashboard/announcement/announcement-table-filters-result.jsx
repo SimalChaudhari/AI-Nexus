@@ -1,31 +1,25 @@
-import { Stack, Chip } from '@mui/material';
+import { useCallback } from 'react';
+import Chip from '@mui/material/Chip';
+import { chipProps, FiltersBlock, FiltersResult } from 'src/components/filters-result';
 
 // ----------------------------------------------------------------------
 
 export function AnnouncementTableFiltersResult({ filters, onResetPage, totalResults, sx, ...other }) {
-  const handleRemoveStatus = () => {
-    filters.setState({ name: '' });
+  const handleRemoveKeyword = useCallback(() => {
     onResetPage();
-  };
+    filters.setState({ name: '' });
+  }, [filters, onResetPage]);
+
+  const handleReset = useCallback(() => {
+    onResetPage();
+    filters.setState({ name: '' });
+  }, [filters, onResetPage]);
 
   return (
-    <Stack spacing={1.5} sx={{ p: 2 }} {...other}>
-      <Stack flexGrow={1} spacing={1} direction="row" flexWrap="wrap" alignItems="center">
-        {!!filters.state.name && (
-          <Chip
-            label={`Name: ${filters.state.name}`}
-            size="small"
-            onDelete={handleRemoveStatus}
-          />
-        )}
-
-        <Chip
-          label={`Total: ${totalResults} results`}
-          size="small"
-          variant="soft"
-          color="primary"
-        />
-      </Stack>
-    </Stack>
+    <FiltersResult totalResults={totalResults} onReset={handleReset} sx={sx} {...other}>
+      <FiltersBlock label="Keyword:" isShow={!!filters.state.name}>
+        <Chip {...chipProps} label={filters.state.name} onDelete={handleRemoveKeyword} />
+      </FiltersBlock>
+    </FiltersResult>
   );
 }
