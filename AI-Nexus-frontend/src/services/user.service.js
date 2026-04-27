@@ -1,5 +1,31 @@
 import axios from 'src/utils/axios';
 import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
+import { resolveAssetUrl } from 'src/utils/asset-url';
+
+const isFileLike = (value) => typeof File !== 'undefined' && value instanceof File;
+
+const toUserPayload = (userData = {}) => {
+  const hasAvatarFile = isFileLike(userData.avatar);
+
+  if (!hasAvatarFile) {
+    const { avatar, ...rest } = userData;
+    return rest;
+  }
+
+  const formData = new FormData();
+  Object.entries(userData).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (key === 'avatar' && isFileLike(value)) {
+      formData.append('avatar', value);
+      return;
+    }
+    formData.append(key, value);
+  });
+  return formData;
+};
+
+const payloadConfig = (payload) =>
+  payload instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined;
 
 // Transform backend user data to frontend format
 const transformUser = (user) => {
@@ -28,10 +54,10 @@ const transformUser = (user) => {
     username: user.username || '',
     firstname: user.firstname || '',
     lastname: user.lastname || '',
+    avatarUrl: resolveAssetUrl(user.avatarUrl || user.photoURL || ''),
     isVerified: user.isVerified || false,
     authProvider: user.authProvider || 'LOCAL',
     createdAt: user.createdAt || null,
-    avatarUrl: null, // No images as per requirement
   };
 };
 
@@ -74,13 +100,14 @@ export const userService = {
 
   async createUser(userData) {
     try {
-      const response = await axios.post('/users', userData);
-      const payload = response.data;
-      const user = payload?.user || payload?.data || payload;
+      const requestPayload = toUserPayload(userData);
+      const response = await axios.post('/users', requestPayload, payloadConfig(requestPayload));
+      const responsePayload = response.data;
+      const user = responsePayload?.user || responsePayload?.data || responsePayload;
       return {
         user: transformUser(user),
-        message: payload?.message,
-        temporaryPasswordEmailSent: payload?.temporaryPasswordEmailSent,
+        message: responsePayload?.message,
+        temporaryPasswordEmailSent: responsePayload?.temporaryPasswordEmailSent,
       };
     } catch (error) {
       console.error('Error creating user:', error);
@@ -96,7 +123,8 @@ export const userService = {
 
   async updateUser(id, userData) {
     try {
-      const response = await axios.put(`/users/update/${id}`, userData);
+      const payload = toUserPayload(userData);
+      const response = await axios.put(`/users/update/${id}`, payload, payloadConfig(payload));
       const user = response.data?.user || response.data?.data || response.data;
       return transformUser(user);
     } catch (error) {
@@ -168,7 +196,8 @@ export const userService = {
 
   async updateUserProfile(userData) {
     try {
-      const response = await axios.put('/users/profile', userData);
+      const payload = toUserPayload(userData);
+      const response = await axios.put('/users/profile', payload, payloadConfig(payload));
       const user = response.data?.user || response.data?.data || response.data;
       return transformUser(user);
     } catch (error) {
@@ -211,7 +240,8 @@ export const userService = {
   async updateAdminProfile(userData) {
     try {
       // Backend will reject if user is not Admin (403 Forbidden)
-      const response = await axios.put('/admin/profile', userData);
+      const payload = toUserPayload(userData);
+      const response = await axios.put('/admin/profile', payload, payloadConfig(payload));
       const user = response.data?.user || response.data?.data || response.data;
       return transformUser(user);
     } catch (error) {

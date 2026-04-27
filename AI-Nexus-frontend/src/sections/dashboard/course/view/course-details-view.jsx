@@ -28,6 +28,7 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { fDate } from 'src/utils/format-time';
+import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { RichTextContent } from 'src/components/html-content';
 import { fetchSpeakers } from 'src/store/slices/speakerSlice';
 import { courseService } from 'src/services/course.service';
@@ -168,7 +169,11 @@ export function CourseDetailsView({ course, loading, error }) {
   const speakerList = speakerIds
     .map((id) => (speakers || []).find((s) => s.id === id))
     .filter(Boolean)
-    .map((s) => ({ id: s.id, name: s.name, profileimage: s.profileimage || '' }));
+    .map((s) => ({
+      id: s.id,
+      name: htmlToPlainText(s.name || '').trim() || 'Speaker',
+      profileimage: s.profileimage || '',
+    }));
 
   // Hero media: admin view should be lightweight – always use course cover image like a small card,
   // do not auto-play or embed the first video here (videos are visible in curriculum instead).

@@ -49,6 +49,9 @@ export class UserEntity {
     @Column({ nullable: true, type: 'varchar' })
     socialAccessToken?: string | null;
 
+    @Column({ nullable: true, type: 'varchar' })
+    avatarUrl?: string | null;
+
     @Column({ type: 'boolean', default: false })
     isVerified!: boolean;
 

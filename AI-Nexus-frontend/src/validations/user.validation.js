@@ -2,6 +2,17 @@ import { z as zod } from 'zod';
 
 // ----------------------------------------------------------------------
 
+const avatarFieldSchema = zod
+  .any()
+  .optional()
+  .refine(
+    (val) =>
+      !val ||
+      (typeof File !== 'undefined' && val instanceof File) ||
+      typeof val === 'string',
+    { message: 'Please upload a valid image file' }
+  );
+
 /**
  * User validation schema for create and update operations
  */
@@ -33,6 +44,8 @@ export const NewUserSchema = zod.object({
     .email({ message: 'Email must be a valid email address!' })
     .max(100, { message: 'Email must be less than 100 characters!' })
     .toLowerCase(),
+
+  avatar: avatarFieldSchema,
 
   status: zod
     .string()
@@ -85,6 +98,8 @@ export const UpdateUserSchema = zod.object({
     .toLowerCase()
     .optional(),
 
+  avatar: avatarFieldSchema,
+
   phoneNumber: zod
     .string()
     .optional()
@@ -133,6 +148,8 @@ export const ProfileSchema = zod.object({
     .email({ message: 'Email must be a valid email address!' })
     .max(100, { message: 'Email must be less than 100 characters!' })
     .toLowerCase(),
+
+  avatar: avatarFieldSchema,
 });
 
 // ----------------------------------------------------------------------

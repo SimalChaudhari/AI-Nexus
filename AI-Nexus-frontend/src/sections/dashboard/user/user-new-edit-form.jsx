@@ -13,6 +13,7 @@ import LoadingButton from '@mui/lab/LoadingButton';
 import MenuItem from '@mui/material/MenuItem';
 import Divider from '@mui/material/Divider';
 import Alert from '@mui/material/Alert';
+import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
@@ -24,6 +25,7 @@ import { Form, Field } from 'src/components/hook-form';
 import { createUser, updateUser } from 'src/store/slices/userSlice';
 import { userService } from 'src/services/user.service';
 import { NewUserSchema, ProfileSchema } from 'src/validations/user.validation';
+import { fData } from 'src/utils/format-number';
 
 // ----------------------------------------------------------------------
 
@@ -31,6 +33,8 @@ const STATUS_OPTIONS = [
   { value: 'Active', label: 'Active', description: 'User can sign in' },
   { value: 'Banned', label: 'Banned', description: 'Blocked from access' },
 ];
+const AVATAR_MAX_MB = 10;
+const AVATAR_MAX_BYTES = AVATAR_MAX_MB * 1024 * 1024;
 
 const normalizeStatus = (status) => {
   if (!status) return 'Active';
@@ -54,6 +58,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
       firstname: currentUser?.firstname || '',
       lastname: currentUser?.lastname || '',
       email: currentUser?.email || '',
+      avatar: currentUser?.avatarUrl || null,
     };
     if (isProfileEdit) {
       return base;
@@ -111,6 +116,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           firstname: data.firstname?.trim(),
           lastname: data.lastname?.trim(),
           email: data.email?.trim().toLowerCase(),
+          avatar: data.avatar,
         };
 
         if (!isProfileEdit) {
@@ -193,41 +199,72 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   if (isProfileEdit) {
     return (
       <Form methods={methods} onSubmit={onSubmit}>
-        <Card sx={{ ...cardSx, p: 3 }}>
+        <Card sx={{ ...cardSx, p: { xs: 2.5, md: 4 } }}>
           <CardHeader
             title="Profile details"
-            subheader="Update your name, username, and email."
-            sx={{ p: 0, mb: 2 }}
+            subheader="Update your name, username, email, and profile image."
+            sx={{ p: 0, mb: 3 }}
           />
-          <Divider sx={{ mb: 3 }} />
-          <Box
-            rowGap={3}
-            columnGap={2}
-            display="grid"
-            gridTemplateColumns={{
-              xs: 'repeat(1, 1fr)',
-              sm: 'repeat(2, 1fr)',
-            }}
-          >
-            <Field.Text name="firstname" label="First name" />
-            <Field.Text name="lastname" label="Last name" />
-            <Field.Text name="username" label="Username" />
-            <Field.Text name="email" label="Email" type="email" />
-          </Box>
+          <Divider sx={{ mb: 4 }} />
 
-          <Stack direction="row" justifyContent="flex-end" spacing={2} sx={{ mt: 3 }}>
-            <Button variant="outlined" startIcon={<Iconify icon="eva:arrow-back-fill" />} onClick={handleCancel}>
-              Cancel
-            </Button>
-            <LoadingButton
-              type="submit"
-              variant="contained"
-              loading={isSubmitting}
-              startIcon={<Iconify icon="eva:checkmark-fill" />}
+          <Stack spacing={4}>
+            <Box
+              sx={{
+                py: 2.5,
+                px: { xs: 1, md: 2 },
+                borderRadius: 2,
+                border: `1px dashed ${alpha(theme.palette.grey[500], 0.24)}`,
+                bgcolor: alpha(theme.palette.grey[500], 0.03),
+              }}
             >
-              Save changes
-            </LoadingButton>
+              <Field.UploadAvatar
+                name="avatar"
+                maxSize={AVATAR_MAX_BYTES}
+                helperText={
+                  <Typography
+                    variant="caption"
+                    sx={{ mt: 2, display: 'block', textAlign: 'center', color: 'text.secondary', lineHeight: 1.5 }}
+                  >
+                    Upload JPG, JPEG, PNG, GIF, or WEBP image.
+                    <br /> Maximum file size: {fData(AVATAR_MAX_BYTES)}.
+                  </Typography>
+                }
+              />
+            </Box>
+
+            <Box
+              rowGap={2.5}
+              columnGap={2}
+              display="grid"
+              gridTemplateColumns={{
+                xs: 'repeat(1, 1fr)',
+                sm: 'repeat(2, 1fr)',
+              }}
+            >
+              <Field.Text name="firstname" label="First name" />
+              <Field.Text name="lastname" label="Last name" />
+              <Field.Text name="username" label="Username" />
+              <Field.Text name="email" label="Email" type="email" />
+            </Box>
           </Stack>
+
+          <Divider sx={{ mt: 4, mb: 3 }} />
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Stack direction="row" spacing={1.5}>
+              <Button variant="outlined" startIcon={<Iconify icon="eva:arrow-back-fill" />} onClick={handleCancel}>
+                Cancel
+              </Button>
+              <LoadingButton
+                type="submit"
+                variant="contained"
+                loading={isSubmitting}
+                startIcon={<Iconify icon="eva:checkmark-fill" />}
+              >
+                Save changes
+              </LoadingButton>
+            </Stack>
+          </Box>
         </Card>
       </Form>
     );
@@ -305,6 +342,19 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           </Grid>
           <Grid xs={12} md={4}>
             <Stack spacing={3}>
+              <Card sx={{ ...cardSx, p: 3 }}>
+                <CardHeader title="Profile photo" subheader="Upload an avatar image." sx={{ p: 0, mb: 2 }} />
+                <Field.UploadAvatar
+                  name="avatar"
+                  maxSize={AVATAR_MAX_BYTES}
+                  helperText={
+                    <Typography variant="caption" sx={{ mt: 1.5, display: 'block', textAlign: 'center', color: 'text.secondary' }}>
+                      Upload JPG, JPEG, PNG, GIF, or WEBP image.
+                      <br /> Maximum file size: {fData(AVATAR_MAX_BYTES)}.
+                    </Typography>
+                  }
+                />
+              </Card>
               <Card sx={{ ...cardSx, p: 3 }}>
                 <CardHeader
                   title="Account status"
@@ -409,6 +459,19 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
         </Grid>
         <Grid xs={12} md={4}>
           <Stack spacing={3}>
+            <Card sx={{ ...cardSx, p: 3 }}>
+              <CardHeader title="Profile photo" subheader="Upload an avatar image." sx={{ p: 0, mb: 2 }} />
+              <Field.UploadAvatar
+                name="avatar"
+                maxSize={AVATAR_MAX_BYTES}
+                helperText={
+                  <Typography variant="caption" sx={{ mt: 1.5, display: 'block', textAlign: 'center', color: 'text.secondary' }}>
+                    Upload JPG, JPEG, PNG, GIF, or WEBP image.
+                    <br /> Maximum file size: {fData(AVATAR_MAX_BYTES)}.
+                  </Typography>
+                }
+              />
+            </Card>
             <Card sx={{ ...cardSx, p: 3 }}>
               <CardHeader
                 title="Account status"

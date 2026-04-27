@@ -27,6 +27,7 @@ import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
+import { RichTextContent } from 'src/components/html-content';
 import { courseService } from 'src/services/course.service';
 import { getCourseReviews } from 'src/services/review.service';
 import { useAuthContext } from 'src/auth/hooks';
@@ -1173,21 +1174,25 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                         </Box>
                       )}
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{s.name}</Typography>
-                        {s.about && (
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              color: 'text.secondary',
-                              mt: 0.5,
-                              display: '-webkit-box',
-                              WebkitLineClamp: 3,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {s.about}
-                          </Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {htmlToPlainText(s.name || '').trim() || 'Speaker'}
+                        </Typography>
+                        {htmlToPlainText(s.about || '').trim() && (
+                          <Box sx={{ mt: 0.5, color: 'text.secondary' }}>
+                            <RichTextContent
+                              html={s.about}
+                              sx={{
+                                color: 'text.secondary',
+                                '& p': { my: 0.5 },
+                                '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                  mt: 0.75,
+                                  mb: 0.5,
+                                  fontSize: '0.95rem',
+                                },
+                                '& ul, & ol': { my: 0.5, pl: 2.5 },
+                              }}
+                            />
+                          </Box>
                         )}
                         <Button
                           component={RouterLink}

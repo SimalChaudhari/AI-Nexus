@@ -107,6 +107,7 @@ export function UserDetailsView({ user, loading, error }) {
       header={{
         backgroundImage: '/assets/profilebg.jpg',
         avatarText: initials,
+        avatarSrc: user.avatarUrl || undefined,
         title: fullName,
         subtitle: user.email || '-',
         chips: headerChips,

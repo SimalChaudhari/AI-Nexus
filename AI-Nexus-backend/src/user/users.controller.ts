@@ -12,7 +12,13 @@ import {
     Query,
     UseGuards,
     Req,
+    UseInterceptors,
+    UploadedFile,
+    ParseFilePipe,
+    MaxFileSizeValidator,
+    FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole, UserStatus } from './users.entity';
 import { Response, Request } from 'express';
 import { UserPaginatedListResult, UserService } from './users.service';
@@ -23,9 +29,13 @@ import { Roles } from './../jwt/roles.decorator';
 import { SessionGuard } from './../jwt/session.guard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaginationService } from '../common/pagination/pagination.service';
+import { memoryStorage } from 'multer';
+import { LocalStorageService } from '../service/local-storage.service';
 
 const DEFAULT_USERS_PAGE = 1;
 const DEFAULT_USERS_LIMIT = 10;
+const USER_AVATAR_MAX_SIZE = (Number(process.env.UPLOAD_IMAGE_MAX_MB) || 10) * 1024 * 1024;
+const USER_AVATAR_FILE_TYPE = /(jpg|jpeg|png|gif|webp)$/;
 
 @ApiTags('Users')
 @ApiBearerAuth('bearer')
@@ -35,6 +45,7 @@ export class UserController {
     constructor(
         private readonly userService: UserService,
         private readonly paginationService: PaginationService,
+        private readonly localStorageService: LocalStorageService,
     ) { }
     @Get()
     @Roles(UserRole.Admin)
@@ -106,10 +117,29 @@ export class UserController {
     @Roles(UserRole.Admin)
     @ApiOperation({ summary: 'Create a new user' })
     @ApiBody({ type: UserDto })
+    @UseInterceptors(
+        FileInterceptor('avatar', {
+            storage: memoryStorage(),
+            limits: { fileSize: USER_AVATAR_MAX_SIZE },
+        }),
+    )
     async createUser(
         @Body() createUserDto: Partial<UserDto>,
         @Res() response: Response,
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: false,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: USER_AVATAR_MAX_SIZE }),
+                    new FileTypeValidator({ fileType: USER_AVATAR_FILE_TYPE }),
+                ],
+            }),
+        )
+        avatar: Express.Multer.File | undefined,
     ) {
+        if (avatar) {
+            createUserDto.avatarUrl = await this.localStorageService.saveFile(avatar, 'users');
+        }
         const result = await this.userService.create(createUserDto);
         return response.status(HttpStatus.CREATED).json(result);
     }
@@ -118,11 +148,34 @@ export class UserController {
     @Roles(UserRole.Admin)
     @ApiOperation({ summary: 'Update a user by id' })
     @ApiBody({ type: UpdateUserDto })
+    @UseInterceptors(
+        FileInterceptor('avatar', {
+            storage: memoryStorage(),
+            limits: { fileSize: USER_AVATAR_MAX_SIZE },
+        }),
+    )
     async updateUser(
         @Param('id') id: string,
         @Body() updateUserDto: UpdateUserDto,
         @Res() response: Response,
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: false,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: USER_AVATAR_MAX_SIZE }),
+                    new FileTypeValidator({ fileType: USER_AVATAR_FILE_TYPE }),
+                ],
+            }),
+        )
+        avatar: Express.Multer.File | undefined,
     ) {
+        const existingUser = await this.userService.getById(id);
+        if (avatar) {
+            await this.localStorageService.deleteFileByUrl(existingUser.avatarUrl);
+            updateUserDto.avatarUrl = await this.localStorageService.saveFile(avatar, 'users');
+        } else if (updateUserDto.avatarUrl === '') {
+            await this.localStorageService.deleteFileByUrl(existingUser.avatarUrl);
+        }
         const result = await this.userService.update(id, updateUserDto);
         return response.status(HttpStatus.OK).json(result);
     }
@@ -140,10 +193,26 @@ export class UserController {
     @Roles(UserRole.User, UserRole.Admin)
     @ApiOperation({ summary: 'Update current user profile' })
     @ApiBody({ type: UpdateUserDto })
+    @UseInterceptors(
+        FileInterceptor('avatar', {
+            storage: memoryStorage(),
+            limits: { fileSize: USER_AVATAR_MAX_SIZE },
+        }),
+    )
     async updateUserProfile(
         @Req() request: Request,
         @Body() updateUserDto: UpdateUserDto,
         @Res() response: Response,
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: false,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: USER_AVATAR_MAX_SIZE }),
+                    new FileTypeValidator({ fileType: USER_AVATAR_FILE_TYPE }),
+                ],
+            }),
+        )
+        avatar: Express.Multer.File | undefined,
     ) {
         const userId = request.user?.id;
         if (!userId) {
@@ -152,6 +221,14 @@ export class UserController {
             });
         }
         const userRole = request.user?.role;
+        const existingUser = await this.userService.getById(userId);
+
+        if (avatar) {
+            await this.localStorageService.deleteFileByUrl(existingUser.avatarUrl);
+            updateUserDto.avatarUrl = await this.localStorageService.saveFile(avatar, 'users');
+        } else if (updateUserDto.avatarUrl === '') {
+            await this.localStorageService.deleteFileByUrl(existingUser.avatarUrl);
+        }
         
         // If user is Admin, allow updating role and status. If User, prevent changing role/status
         if (userRole === UserRole.Admin) {

@@ -56,7 +56,7 @@ export function AccountPopover({ data = [], sx, ...other }) {
       <AccountButton
         open={popover.open}
         onClick={popover.onOpen}
-        photoURL={user?.photoURL}
+        photoURL={user?.avatarUrl || user?.photoURL}
         displayName={displayName}
         sx={sx}
         {...other}

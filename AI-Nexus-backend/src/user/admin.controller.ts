@@ -8,7 +8,13 @@ import {
     Res,
     UseGuards,
     Req,
+    UseInterceptors,
+    UploadedFile,
+    ParseFilePipe,
+    MaxFileSizeValidator,
+    FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from './users.entity';
 import { Response, Request } from 'express';
 import { UserService } from './users.service';
@@ -18,13 +24,21 @@ import { RolesGuard } from './../jwt/roles.guard';
 import { Roles } from './../jwt/roles.decorator';
 import { SessionGuard } from './../jwt/session.guard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
+import { LocalStorageService } from '../service/local-storage.service';
+
+const USER_AVATAR_MAX_SIZE = (Number(process.env.UPLOAD_IMAGE_MAX_MB) || 10) * 1024 * 1024;
+const USER_AVATAR_FILE_TYPE = /(jpg|jpeg|png|gif|webp)$/;
 
 @ApiTags('Admin')
 @ApiBearerAuth('bearer')
 @Controller('admin')
 @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
 export class AdminController {
-    constructor(private readonly userService: UserService) {}
+    constructor(
+        private readonly userService: UserService,
+        private readonly localStorageService: LocalStorageService,
+    ) {}
 
     // Profile endpoints for Admin role
     @Get('profile')
@@ -48,16 +62,39 @@ export class AdminController {
     @Roles(UserRole.Admin)
     @ApiOperation({ summary: 'Update current admin profile' })
     @ApiBody({ type: UpdateUserDto })
+    @UseInterceptors(
+        FileInterceptor('avatar', {
+            storage: memoryStorage(),
+            limits: { fileSize: USER_AVATAR_MAX_SIZE },
+        }),
+    )
     async updateAdminProfile(
         @Req() request: Request,
         @Body() updateUserDto: UpdateUserDto,
         @Res() response: Response,
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: false,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: USER_AVATAR_MAX_SIZE }),
+                    new FileTypeValidator({ fileType: USER_AVATAR_FILE_TYPE }),
+                ],
+            }),
+        )
+        avatar: Express.Multer.File | undefined,
     ) {
         const userId = request.user?.id;
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({
                 message: 'User not authenticated',
             });
+        }
+        const existingUser = await this.userService.getById(userId);
+        if (avatar) {
+            await this.localStorageService.deleteFileByUrl(existingUser.avatarUrl);
+            updateUserDto.avatarUrl = await this.localStorageService.saveFile(avatar, 'users');
+        } else if (updateUserDto.avatarUrl === '') {
+            await this.localStorageService.deleteFileByUrl(existingUser.avatarUrl);
         }
         // Admins can update their own profile including role and status
         const result = await this.userService.update(userId, updateUserDto);

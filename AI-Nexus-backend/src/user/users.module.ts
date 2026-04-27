@@ -5,6 +5,8 @@ import { UserService } from './users.service';
 import { UserController } from './users.controller';
 import { AdminController } from './admin.controller';
 import { UserEntity } from './users.entity';
+import { UsersInitService } from './users-init.service';
+import { LocalStorageModule } from '../service/local-storage.module';
 import { JwtModule } from '@nestjs/jwt';
 import { EmailService } from '../service/email.service';
 import { PaginationService } from '../common/pagination/pagination.service';
@@ -12,12 +14,13 @@ import { PaginationService } from '../common/pagination/pagination.service';
 @Module({
     imports: [
         TypeOrmModule.forFeature([UserEntity]),
+        LocalStorageModule,
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
     ],
-    providers: [UserService, EmailService, PaginationService],
+    providers: [UserService, UsersInitService, EmailService, PaginationService],
     controllers: [UserController, AdminController],
     exports: [UserService],
 })

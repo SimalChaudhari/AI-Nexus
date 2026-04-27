@@ -20,6 +20,10 @@ export class UserDto {
     @IsNotEmpty()
     email!: string;
 
+    @IsOptional()
+    @IsString()
+    avatarUrl?: string;
+
     /** Optional for admin-created users — backend generates a temporary password and emails it if omitted. */
     @IsOptional()
     @IsString()
@@ -51,6 +55,10 @@ export class UpdateUserDto {
     @IsOptional()
     @IsEmail()
     email?: string;
+
+    @IsOptional()
+    @IsString()
+    avatarUrl?: string;
 
     @IsOptional()
     @IsString()
