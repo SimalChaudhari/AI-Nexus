@@ -8,6 +8,7 @@ import Grid from '@mui/material/Unstable_Grid2';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
+import Drawer from '@mui/material/Drawer';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -17,7 +18,7 @@ import Divider from '@mui/material/Divider';
 import Avatar from '@mui/material/Avatar';
 import { alpha, useTheme } from '@mui/material/styles';
 
-import { fDate } from 'src/utils/format-time';
+import { fDate, fDateTimePersonal, fToNow } from 'src/utils/format-time';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -29,7 +30,6 @@ import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { RichTextContent } from 'src/components/html-content';
 import { courseService } from 'src/services/course.service';
-import { getCourseReviews } from 'src/services/review.service';
 import { useAuthContext } from 'src/auth/hooks';
 import { toast } from 'src/components/snackbar';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
@@ -47,6 +47,11 @@ const formatPrice = (freeOrPaid, amount) => {
 
 const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const DEFAULT_COURSE_IMAGE = import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
+const REVIEW_PREVIEW_COUNT = (() => {
+  const parsed = Number(import.meta.env.VITE_COURSE_REVIEW_PREVIEW_COUNT ?? 2);
+  if (!Number.isFinite(parsed)) return 2;
+  return Math.min(20, Math.max(1, Math.trunc(parsed)));
+})();
 
 // Parse description into synopsis and bullet points (plain text from HTML or legacy text)
 const getOverviewContent = (course) => {
@@ -89,106 +94,52 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   };
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [relatedCourses, setRelatedCourses] = useState([]);
   const [courseModules, setCourseModules] = useState([]);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [accessViaBundle, setAccessViaBundle] = useState(false);
-  const [enrolledLoading, setEnrolledLoading] = useState(false);
+  const enrolledLoading = false;
   const [courseReviewStats, setCourseReviewStats] = useState({ averageRating: 0, reviewCount: 0 });
   const [courseReviews, setCourseReviews] = useState([]);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const reviewsLoading = false;
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [bundleIncludedCourses, setBundleIncludedCourses] = useState([]);
   const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
   const [receiptDownloading, setReceiptDownloading] = useState(false);
+  const [reviewsDrawerOpen, setReviewsDrawerOpen] = useState(false);
 
-  // Speaker rows come from course API (`speakers`), same order as speakerIds — no GET /speakers
+  // Speaker rows come from course API (`speakers`) — no GET /speakers
   const speakerMap = useMemo(
     () => Object.fromEntries((Array.isArray(course?.speakers) ? course.speakers : []).map((s) => [s.id, s])),
     [course?.speakers]
   );
 
-  // Check if course is favorited
-  useEffect(() => {
-    if (!course?.id || !authenticated) {
-      setIsFavorite(false);
-      return undefined;
-    }
-    let cancelled = false;
-    courseService
-      .getCourseFavoriteStatus(course.id)
-      .then((data) => {
-        if (!cancelled) {
-          setIsFavorite(data?.isFavorite ?? false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setIsFavorite(false);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [course?.id, authenticated]);
-
-  // Check if user is enrolled (direct purchase, free enroll, or via an owned bundle)
+  // Enrollment comes from main course payload; avoid extra enrolled-status API call.
   useEffect(() => {
     if (!course?.id || !authenticated) {
       setIsEnrolled(false);
       setAccessViaBundle(false);
       return undefined;
     }
-    let cancelled = false;
-    setEnrolledLoading(true);
+    setIsEnrolled(Boolean(course.isEnrolled));
     setAccessViaBundle(Boolean(course.accessViaBundle));
-    courseService
-      .getCourseEnrolled(course.id)
-      .then((result) => {
-        if (!cancelled) {
-          setIsEnrolled(Boolean(result?.enrolled));
-          setAccessViaBundle(Boolean(result?.accessViaBundle));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setIsEnrolled(false);
-          setAccessViaBundle(false);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setEnrolledLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [course?.id, course?.accessViaBundle, authenticated]);
+    return undefined;
+  }, [course?.id, course?.isEnrolled, course?.accessViaBundle, authenticated]);
 
-  // Fetch course review stats from reviews table (isCourse: true, courseId = course.id)
+  // Reviews now come from main course payload (no separate /reviews call needed)
   useEffect(() => {
     if (!course?.id) {
       setCourseReviewStats({ averageRating: 0, reviewCount: 0 });
+      setCourseReviews([]);
       return undefined;
     }
-    let cancelled = false;
-    setReviewsLoading(true);
-    getCourseReviews(course.id)
-      .then((reviews) => {
-        if (cancelled) return;
-        const count = reviews.length;
-        const sum = reviews.reduce((acc, r) => acc + Number(r.rating || 0), 0);
-        const average = count > 0 ? Math.min(5, Math.max(0, sum / count)) : 0;
-        setCourseReviewStats({ averageRating: average, reviewCount: count });
-        setCourseReviews(Array.isArray(reviews) ? reviews : []);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCourseReviewStats({ averageRating: 0, reviewCount: 0 });
-          setCourseReviews([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setReviewsLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [course?.id]);
+    setCourseReviewStats({
+      averageRating: Number(course?.reviewStats?.averageRating || 0),
+      reviewCount: Number(course?.reviewStats?.reviewCount || 0),
+    });
+    setCourseReviews(Array.isArray(course?.reviews) ? course.reviews : []);
+    return undefined;
+  }, [course?.id, course?.reviewStats, course?.reviews]);
 
   // Initialize favorite status from course data
   useEffect(() => {
@@ -196,24 +147,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
       setIsFavorite(course.isFavorite);
     }
   }, [course?.isFavorite]);
-
-  // Fetch all courses for related section (exclude current, same level first, max 4)
-  useEffect(() => {
-    if (!course?.id) return undefined;
-    let cancelled = false;
-    courseService
-      .getAllCourses()
-      .then((list) => {
-        if (cancelled) return;
-        const others = (list || []).filter((c) => c.id !== course.id);
-        const sameLevel = others.filter((c) => (c.level || '').toLowerCase() === (course.level || '').toLowerCase());
-        const rest = others.filter((c) => !sameLevel.some((s) => s.id === c.id));
-        const combined = [...sameLevel, ...rest].slice(0, 4);
-        setRelatedCourses(combined);
-      })
-      .catch(() => setRelatedCourses([]));
-    return () => { cancelled = true; };
-  }, [course?.id, course?.level]);
 
   // Fetch course modules and sections for curriculum tab
   useEffect(() => {
@@ -371,9 +304,11 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const lessonCount = market.lessonCount ?? market.lessons ?? '—';
   const cpeHoursRaw = market.cpeHours ?? market.cpe ?? market.hours;
   const cpeHours = cpeHoursRaw != null && cpeHoursRaw !== '' ? `${Number(cpeHoursRaw)} CPE Hour${Number(cpeHoursRaw) !== 1 ? 's' : ''}` : '—';
-  const languageLabels = (course.languageIds || []).filter((label) => typeof label === 'string' && label.trim());
+  const languageLabels = (Array.isArray(course?.languages) ? course.languages : [])
+    .map((l) => l?.name || l?.title || '')
+    .filter((label) => typeof label === 'string' && label.trim());
   const languageLabel = languageLabels.length > 1 ? 'Multiple languages' : (languageLabels[0] || 'English');
-  const courseSpeakers = (course.speakerIds || []).map((id) => speakerMap[id]).filter(Boolean);
+  const courseSpeakers = (Array.isArray(course?.speakers) ? course.speakers : []).filter(Boolean);
   const { averageRating, reviewCount } = courseReviewStats;
   const learningOutcomes = topics.length > 0 ? topics : ['Establish a foundational understanding of the course subject and why it matters.', 'Apply key concepts in practical scenarios.'];
   const sectionCount = courseModules.reduce((acc, module) => acc + (module.sections?.length || 0), 0);
@@ -432,6 +367,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
 
   const showBrowseBundlePrograms =
     hasAccess && !hasCourseContent && isBundleCourse && bundleCount > 0;
+  const relatedCourses = Array.isArray(course?.relatedCourses) ? course.relatedCourses : [];
+  const previewReviews = courseReviews.slice(0, REVIEW_PREVIEW_COUNT);
 
   return (
     <DashboardContent>
@@ -1281,60 +1218,77 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       No reviews yet. Be the first to review after completing the course.
                     </Typography>
                   ) : (
-                    <Stack spacing={3} sx={{ pt: 1 }}>
-                      {courseReviews.map((review) => {
+                    <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+                      {previewReviews.map((review) => {
                         const user = review.user || {};
                         const name = [user.firstname, user.lastname].filter(Boolean).join(' ') || user.username || 'User';
                         const initials = name.slice(0, 2).toUpperCase();
                         return (
-                          <Stack
+                          <Box
                             key={review.id}
-                            direction={{ xs: 'column', md: 'row' }}
-                            spacing={2}
-                            sx={{ py: 2 }}
+                            sx={{
+                              p: 1.5,
+                              border: `1px solid ${alpha(theme.palette.grey[500], 0.18)}`,
+                              borderRadius: 1.5,
+                              bgcolor: alpha(theme.palette.background.neutral, 0.32),
+                            }}
                           >
-                            <Stack
-                              direction={{ xs: 'row', md: 'column' }}
-                              spacing={2}
-                              alignItems="center"
-                              sx={{ width: { md: 200 }, flexShrink: 0 }}
-                            >
+                            <Stack direction="row" spacing={1.5} alignItems="flex-start">
                               <Avatar
                                 sx={{
-                                  width: { xs: 48, md: 56 },
-                                  height: { xs: 48, md: 56 },
+                                  width: 42,
+                                  height: 42,
                                   bgcolor: 'primary.main',
                                   color: 'primary.contrastText',
+                                  flexShrink: 0,
                                 }}
                               >
                                 {initials}
                               </Avatar>
-                              <Stack alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ minWidth: 0 }}>
-                                <Typography variant="subtitle2" noWrap>
-                                  {name}
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                  {review.createdAt ? fDate(review.createdAt) : ''}
-                                </Typography>
+                              <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
+                                <Stack
+                                  direction="row"
+                                  justifyContent="space-between"
+                                  alignItems="center"
+                                  spacing={1}
+                                  sx={{ minWidth: 0 }}
+                                >
+                                  <Typography variant="subtitle2" noWrap sx={{ maxWidth: '60%' }}>
+                                    {name}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0 }}>
+                                    {review.createdAt ? `${fDateTimePersonal(review.createdAt)} (${fToNow(review.createdAt)} ago)` : ''}
+                                  </Typography>
+                                </Stack>
+                                <Rating
+                                  size="small"
+                                  value={Number(review.rating)}
+                                  precision={0.1}
+                                  readOnly
+                                  sx={{ '& .MuiRating-iconFilled': { color: 'warning.main' } }}
+                                />
+                                {review.feedback && (
+                                  <Typography variant="body2" sx={{ color: 'text.primary', lineHeight: 1.5 }}>
+                                    {review.feedback}
+                                  </Typography>
+                                )}
                               </Stack>
                             </Stack>
-                            <Stack spacing={1} flexGrow={1} sx={{ minWidth: 0 }}>
-                              <Rating
-                                size="small"
-                                value={Number(review.rating)}
-                                precision={0.1}
-                                readOnly
-                                sx={{ '& .MuiRating-iconFilled': { color: 'warning.main' } }}
-                              />
-                              {review.feedback && (
-                                <Typography variant="body2" sx={{ color: 'text.primary' }}>
-                                  {review.feedback}
-                                </Typography>
-                              )}
-                            </Stack>
-                          </Stack>
+                          </Box>
                         );
                       })}
+                      {courseReviews.length > REVIEW_PREVIEW_COUNT && (
+                        <Box sx={{ pt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                          <Button
+                            variant="outlined"
+                            endIcon={<Iconify icon="solar:arrow-right-bold" width={16} />}
+                            onClick={() => setReviewsDrawerOpen(true)}
+                            sx={{ textTransform: 'none' }}
+                          >
+                            View all reviews ({courseReviews.length})
+                          </Button>
+                        </Box>
+                      )}
                     </Stack>
                   )}
                 </>
@@ -1411,7 +1365,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
         </Grid>
       </Grid>
 
-      {/* Related courses - full width below */}
+      {/* Related courses - from single course details payload */}
       {relatedCourses.length > 0 && (
         <Box sx={{ mt: { xs: 4, md: 6 } }}>
           <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
@@ -1476,6 +1430,96 @@ export function LearningCourseDetailsView({ course, loading, error }) {
           </Grid>
         </Box>
       )}
+
+      <Drawer
+        anchor="right"
+        open={reviewsDrawerOpen}
+        onClose={() => setReviewsDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: { xs: '100%', sm: 520 },
+            p: 0,
+          },
+        }}
+      >
+        <Stack sx={{ height: '100%' }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}
+          >
+            <Box>
+              <Typography variant="h6">All Reviews</Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                {courseReviews.length} review{courseReviews.length !== 1 ? 's' : ''} from learners
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setReviewsDrawerOpen(false)}>
+              <Iconify icon="mingcute:close-line" width={20} />
+            </IconButton>
+          </Stack>
+          <Box sx={{ px: 2.5, py: 2, overflowY: 'auto', flex: 1 }}>
+            {courseReviews.length === 0 ? (
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                No reviews yet.
+              </Typography>
+            ) : (
+              <Stack spacing={2}>
+                {courseReviews.map((review) => {
+                  const user = review.user || {};
+                  const name =
+                    [user.firstname, user.lastname].filter(Boolean).join(' ') || user.username || 'User';
+                  const initials = name.slice(0, 2).toUpperCase();
+                  return (
+                    <Stack
+                      key={`drawer-${review.id}`}
+                      direction="row"
+                      spacing={1.5}
+                      sx={{ p: 1.5, border: `1px solid ${theme.palette.divider}`, borderRadius: 1.5 }}
+                    >
+                      <Avatar
+                        sx={{
+                          width: 42,
+                          height: 42,
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {initials}
+                      </Avatar>
+                      <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                          <Typography variant="subtitle2" noWrap>
+                            {name}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0 }}>
+                            {review.createdAt ? `${fDateTimePersonal(review.createdAt)} (${fToNow(review.createdAt)} ago)` : ''}
+                          </Typography>
+                        </Stack>
+                        <Rating
+                          size="small"
+                          value={Number(review.rating)}
+                          precision={0.1}
+                          readOnly
+                          sx={{ '& .MuiRating-iconFilled': { color: 'warning.main' } }}
+                        />
+                        {review.feedback && (
+                          <Typography variant="body2" sx={{ color: 'text.primary' }}>
+                            {review.feedback}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            )}
+          </Box>
+        </Stack>
+      </Drawer>
+
     </DashboardContent>
   );
 }

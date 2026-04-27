@@ -26,6 +26,35 @@ const transformSpeakers = (speakers) => {
 const transformCourse = (course) => {
   const raw = course._id || course.id;
   const amount = course.amount != null ? Number(course.amount) : 0;
+  const languages = Array.isArray(course.languages)
+    ? course.languages.map((l) => ({
+        id: l?.id || '',
+        name: l?.name || l?.title || '',
+      }))
+    : [];
+  const languageIds = Array.isArray(course.languageIds)
+    ? course.languageIds
+    : languages.map((l) => l.id).filter(Boolean);
+  const speakers = transformSpeakers(course.speakers);
+  const speakerIds = Array.isArray(course.speakerIds)
+    ? course.speakerIds
+    : speakers.map((s) => s.id).filter(Boolean);
+  const relatedCourses = Array.isArray(course.relatedCourses)
+    ? course.relatedCourses.map((rel) => ({
+        id: rel?.id || '',
+        title: rel?.title || '',
+        image: resolveAssetUrl(rel?.image || ''),
+        level: rel?.level || 'Beginner',
+        freeOrPaid: rel?.freeOrPaid ?? false,
+        amount: rel?.amount != null ? Number(rel.amount) : 0,
+      }))
+    : [];
+  const reviewStatsRaw = course.reviewStats && typeof course.reviewStats === 'object' ? course.reviewStats : {};
+  const reviewStats = {
+    averageRating: Number(reviewStatsRaw.averageRating || 0),
+    reviewCount: Number(reviewStatsRaw.reviewCount || 0),
+  };
+  const reviews = Array.isArray(course.reviews) ? course.reviews : [];
   return {
     id: raw,
     title: course.title || '',
@@ -34,10 +63,11 @@ const transformCourse = (course) => {
     freeOrPaid: course.freeOrPaid ?? false,
     amount,
     level: course.level || 'Beginner',
-    languageIds: Array.isArray(course.languageIds) ? course.languageIds : [],
-    speakerIds: Array.isArray(course.speakerIds) ? course.speakerIds : [],
+    languageIds,
+    languages,
+    speakerIds,
     /** Populated on GET /courses/:id and player-context — avoids separate GET /speakers */
-    speakers: transformSpeakers(course.speakers),
+    speakers,
     marketData: course.marketData || '',
     isBundle: course.isBundle ?? false,
     bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
@@ -45,6 +75,9 @@ const transformCourse = (course) => {
     isEnrolled: course.isEnrolled ?? false,
     /** True when access comes only from owning a bundle (not a direct enrollment row). */
     accessViaBundle: course.accessViaBundle ?? false,
+    relatedCourses,
+    reviewStats,
+    reviews,
     createdAt: course.createdAt || new Date(),
     updatedAt: course.updatedAt || new Date(),
   };
@@ -156,6 +189,18 @@ export const courseService = {
       };
     } catch (error) {
       console.error('Error fetching course player context:', error);
+      throw error;
+    }
+  },
+
+  // My Progress overview in one request (all eligible courses + modules + progress summary)
+  async getMyProgressOverview() {
+    try {
+      const response = await axios.get('/courses/progress/my-overview');
+      const rows = response.data?.data || [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error('Error fetching my progress overview:', error);
       throw error;
     }
   },
@@ -461,6 +506,90 @@ export const courseService = {
       return response.data?.data ?? response.data ?? null;
     } catch (error) {
       console.error('Error updating section progress:', error);
+      throw error;
+    }
+  },
+
+  async getMyCertificates() {
+    try {
+      const response = await axios.get('/courses/certificates/my');
+      const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+      return rows.map((row) => ({
+        id: row?.id || '',
+        courseId: row?.courseId || '',
+        certificateNo: row?.certificateNo || '',
+        completedAt: row?.completedAt || null,
+        courseTitle: row?.courseTitle || 'Untitled Course',
+        marketData: row?.marketData || '',
+        learnerName: row?.learnerName || 'Learner',
+      }));
+    } catch (error) {
+      if (error?.response?.status === 401) return [];
+      console.error('Error fetching certificates:', error);
+      throw error;
+    }
+  },
+
+  async issueCourseCertificate(courseId) {
+    try {
+      const response = await axios.post(`/courses/${courseId}/certificates/issue`);
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error issuing certificate:', error);
+      throw error;
+    }
+  },
+
+  async getAdminCertificates(params = {}) {
+    try {
+      const response = await axios.get('/courses/certificates/admin/list', { params });
+      const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+      const data = rows.map((row) => ({
+        id: row?.id || '',
+        courseId: row?.courseId || '',
+        userId: row?.userId || '',
+        certificateNo: row?.certificateNo || '',
+        completedAt: row?.completedAt || null,
+        createdAt: row?.createdAt || null,
+        courseTitle: row?.courseTitle || 'Untitled Course',
+        learnerName: row?.learnerName || 'Learner',
+        learnerEmail: row?.learnerEmail || '',
+        status: row?.status || 'active',
+      }));
+      const pagination = response.data?.pagination || null;
+      return { data, pagination };
+    } catch (error) {
+      console.error('Error fetching admin certificates:', error);
+      throw error;
+    }
+  },
+
+  async deleteAdminCertificate(certificateId) {
+    try {
+      const response = await axios.delete(`/courses/certificates/admin/${certificateId}`);
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error deleting admin certificate:', error);
+      throw error;
+    }
+  },
+
+  async blockAdminCertificate(certificateId) {
+    try {
+      const response = await axios.post(`/courses/certificates/admin/${certificateId}/block`);
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error blocking admin certificate:', error);
+      throw error;
+    }
+  },
+
+  async unblockAdminCertificate(certificateId) {
+    try {
+      const response = await axios.post(`/courses/certificates/admin/${certificateId}/unblock`);
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error unblocking admin certificate:', error);
       throw error;
     }
   },

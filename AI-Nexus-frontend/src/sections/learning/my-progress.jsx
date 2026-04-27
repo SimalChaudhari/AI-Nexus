@@ -14,8 +14,6 @@ import { GradientButton } from 'src/components/custom-button';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchCourses } from 'src/store/slices/courseSlice';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
@@ -52,18 +50,6 @@ function formatWatchTime(totalSeconds) {
   return `${Math.round(h * 10) / 10} h`;
 }
 
-/** Paid enrolment, bundle access, or free/open catalogue course (no purchase row required). */
-function courseEligibleForMyProgress(course) {
-  if (!course) return false;
-  if (course.isEnrolled || course.accessViaBundle) return true;
-  const paid =
-    course.freeOrPaid === true ||
-    course.freeOrPaid === 1 ||
-    course.freeOrPaid === 'true' ||
-    course.freeOrPaid === '1';
-  return !paid;
-}
-
 function formatLastAccessed(dateStr) {
   if (!dateStr) return '—';
   const date = new Date(dateStr);
@@ -78,131 +64,26 @@ function formatLastAccessed(dateStr) {
   return 'Just now';
 }
 
-/** Align with backend player-context + learning-course-player-view (no legacy isViewed / currentProgress). */
-function isSectionDone(row) {
-  if (!row || typeof row !== 'object') return false;
-  if (row.isWatched === true || row.isCompleted === true || row.isViewed === true) return true;
-  const pct = Number(row.completionPercent ?? row.currentProgress);
-  if (Number.isFinite(pct) && pct >= 99) return true;
-  const dur = Math.max(0, Number(row.durationSeconds || 0));
-  const watched = Math.max(0, Number(row.watchedSeconds || 0));
-  const lastPos = Math.max(0, Number(row.lastPositionSeconds || 0));
-  if (dur > 0 && Math.max(watched, lastPos) >= dur - 1) return true;
-  return false;
-}
-
 export function MyProgress({ onNavigateToCertificates }) {
   const theme = useTheme();
-  const dispatch = useDispatch();
   const { authenticated } = useAuthContext();
-  const { courses, loading: coursesLoading } = useSelector((state) => state.courses);
-  const [progressByCourse, setProgressByCourse] = useState({});
-  const [modulesByCourse, setModulesByCourse] = useState({});
-  const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
+  const [progressRows, setProgressRows] = useState([]);
   const [page, setPage] = useState(1);
   const [progressLoading, setProgressLoading] = useState(true);
 
-  const coursesEnrollmentKey = useMemo(
-    () =>
-      (courses || [])
-        .map(
-          (c) =>
-            `${String(c.id)}:${c.isEnrolled ? 1 : 0}:${c.accessViaBundle ? 1 : 0}:${c.freeOrPaid ? 1 : 0}`
-        )
-        .sort()
-        .join('|'),
-    [courses]
-  );
-
-  useEffect(() => {
-    if (!authenticated) return;
-    // Wider catalog than default grouped pagination so enrolled / free courses are not missing.
-    dispatch(fetchCourses({ limit: 120, page: 1 }));
-  }, [dispatch, authenticated]);
-
   useEffect(() => {
     if (!authenticated) {
-      setProgressByCourse({});
-      setModulesByCourse({});
-      setEnrolledCourseIds([]);
+      setProgressRows([]);
       setProgressLoading(false);
-      return () => {};
-    }
-    if (!courses?.length) {
-      setProgressByCourse({});
-      setModulesByCourse({});
-      setEnrolledCourseIds([]);
-      // Catalog still loading — avoid flashing "No progress" before grouped list arrives
-      setProgressLoading(Boolean(coursesLoading));
       return () => {};
     }
     let cancelled = false;
     const loadProgress = async () => {
       try {
         setProgressLoading(true);
-        const trackableCourses = (courses || []).filter(courseEligibleForMyProgress);
-        const normalizedEnrolledIds = trackableCourses
-          .map((course) => course?.id)
-          .filter(Boolean)
-          .map((id) => String(id));
-
-        const entries = await Promise.all(
-          trackableCourses.map(async (course) => {
-            try {
-              const ctx = await courseService.getCoursePlayerContext(course.id);
-              const modules = Array.isArray(ctx?.modules) ? ctx.modules : [];
-              const progressMap = courseService.sectionProgressMapFromModules(modules);
-              const progressRows = Object.values(progressMap).filter(Boolean);
-              const viewedSectionIds = progressRows
-                .filter((row) => isSectionDone(row))
-                .map((row) => row.sectionId)
-                .filter(Boolean)
-                .map((id) => String(id));
-              const latestByTime = progressRows
-                .filter((row) => row?.lastAccessedAt)
-                .sort(
-                  (a, b) =>
-                    new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime()
-                )[0];
-              const latestByProgress = progressRows
-                .filter((row) => row?.completionPercent != null || row?.currentProgress != null)
-                .sort(
-                  (a, b) =>
-                    Number(b.completionPercent ?? b.currentProgress ?? 0) -
-                    Number(a.completionPercent ?? a.currentProgress ?? 0)
-                )[0];
-              const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
-              const lastAccessedAt = latestByTime?.lastAccessedAt || null;
-
-              return [
-                String(course.id),
-                {
-                  modules,
-                  progress: {
-                    viewedSectionIds,
-                    currentSectionId: currentSectionId != null ? String(currentSectionId) : null,
-                    lastAccessedAt,
-                  },
-                },
-              ];
-            } catch {
-              return [String(course.id), { modules: [], progress: null }];
-            }
-          })
-        );
-
         if (cancelled) return;
-
-        const nextModulesByCourse = {};
-        const nextProgressByCourse = {};
-        entries.forEach(([courseId, data]) => {
-          const id = String(courseId);
-          nextModulesByCourse[id] = data.modules;
-          nextProgressByCourse[id] = data.progress;
-        });
-        setEnrolledCourseIds(normalizedEnrolledIds);
-        setModulesByCourse(nextModulesByCourse);
-        setProgressByCourse(nextProgressByCourse);
+        const rows = await courseService.getMyProgressOverview();
+        setProgressRows(Array.isArray(rows) ? rows : []);
       } finally {
         if (!cancelled) setProgressLoading(false);
       }
@@ -213,20 +94,17 @@ export function MyProgress({ onNavigateToCertificates }) {
     return () => {
       cancelled = true;
     };
-  }, [authenticated, courses?.length, coursesEnrollmentKey]);
+  }, [authenticated]);
 
   // Use only API courses for progress — no mock list so progress stays dynamic
   // Only show courses where user has progress (authenticated and progress exists)
   const myCourses = useMemo(() => {
-    const courseMap = new Map((courses || []).map((c) => [String(c.id), c]));
-    const list = authenticated
-      ? enrolledCourseIds.map((id) => courseMap.get(String(id))).filter(Boolean)
-      : [];
+    const list = authenticated ? (progressRows || []).filter(Boolean) : [];
     const visibleCourses = list
-      .map((c) => {
-        const cid = String(c.id);
-        const progress = progressByCourse[cid];
-        const modules = modulesByCourse[cid] || [];
+      .map((entry) => {
+        const c = entry?.course || {};
+        const progress = entry?.progress || null;
+        const modules = Array.isArray(entry?.modules) ? entry.modules : [];
         const flatSections = modules.flatMap((m) => (m.sections || []).map((s) => ({ id: s.id, title: s.title || 'Lesson' })));
         const sectionIdSet = new Set(flatSections.map((s) => String(s.id)));
         const totalLessons = flatSections.length;
@@ -238,6 +116,27 @@ export function MyProgress({ onNavigateToCertificates }) {
           ...(currentId != null && sectionIdSet.has(String(currentId)) ? [String(currentId)] : []),
         ]);
         const viewedCount = allViewed.size;
+        const hasMeaningfulProgress =
+          viewedCount > 0 ||
+          Boolean(progress?.lastAccessedAt) ||
+          modules.some((m) =>
+            (m.sections || []).some((s) => {
+              const sp = s?.sectionProgress;
+              if (!sp || typeof sp !== 'object') return false;
+              const completion = Number(sp.completionPercent ?? sp.currentProgress ?? 0);
+              const watched = Number(sp.watchedSeconds ?? 0);
+              const lastPos = Number(sp.lastPositionSeconds ?? 0);
+              return (
+                sp.isViewed === true ||
+                sp.isWatched === true ||
+                sp.isCompleted === true ||
+                (Number.isFinite(completion) && completion > 0) ||
+                (Number.isFinite(watched) && watched > 0) ||
+                (Number.isFinite(lastPos) && lastPos > 0)
+              );
+            })
+          );
+        if (!hasMeaningfulProgress) return null;
         const progressPercent = totalLessons ? Math.min(100, Math.round((viewedCount / totalLessons) * 100)) : 0;
         const currentSectionId = progress?.currentSectionId;
         const currentIndex = flatSections.findIndex((s) => s.id === currentSectionId);
@@ -261,7 +160,7 @@ export function MyProgress({ onNavigateToCertificates }) {
       })
       .filter(Boolean);
     return visibleCourses;
-  }, [courses, enrolledCourseIds, progressByCourse, modulesByCourse, authenticated]);
+  }, [progressRows, authenticated]);
 
   // Reset to page 1 when list shrinks
   useEffect(() => {
@@ -274,28 +173,29 @@ export function MyProgress({ onNavigateToCertificates }) {
   const completedCourses = myCourses.filter((c) => c.progress === 100);
 
   const totalWatchSeconds = useMemo(
-    () => sumWatchedSecondsFromModules(modulesByCourse),
-    [modulesByCourse]
+    () =>
+      sumWatchedSecondsFromModules(
+        Object.fromEntries(
+          (progressRows || []).map((row) => [String(row?.course?.id || ''), Array.isArray(row?.modules) ? row.modules : []])
+        )
+      ),
+    [progressRows]
   );
-
-  if (coursesLoading) {
-    return <LoadingScreen />;
-  }
 
   if (progressLoading && authenticated) {
     return <LoadingScreen />;
   }
 
-  if (!courses?.length) {
+  if (authenticated && !progressRows?.length) {
     return (
       <DashboardContent>
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <Iconify icon="solar:graph-up-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
           <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
-            No courses yet
+            No progress yet
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Enrolled or available courses will appear here. Check All Courses to get started.
+            Open a course once and your progress will appear here.
           </Typography>
         </Box>
       </DashboardContent>

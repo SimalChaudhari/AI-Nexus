@@ -27,13 +27,13 @@ import { Form, Field } from 'src/components/hook-form';
 import { Upload } from 'src/components/upload';
 import { createCourse, updateCourse } from 'src/store/slices/courseSlice';
 import { speakerService } from 'src/services/speaker.service';
+import { languageService } from 'src/services/language.service';
 import { courseService } from 'src/services/course.service';
 
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 import { CourseModulesCard } from './course-modules-card';
 import { CourseQuestionBankPanel } from './course-question-bank-panel';
-import { COURSE_LANGUAGE_OPTIONS } from './data/language-options';
 import { COURSE_LEVEL_OPTIONS } from './constants';
 
 // ----------------------------------------------------------------------
@@ -55,6 +55,20 @@ const normalizeCourseLevelForForm = (level) => {
     return 'Advanced';
   }
   return 'Beginner';
+};
+
+const getCourseLanguageIds = (course) => {
+  if (Array.isArray(course?.languages) && course.languages.length > 0) {
+    return course.languages.map((l) => l?.id).filter(Boolean);
+  }
+  return Array.isArray(course?.languageIds) ? course.languageIds : [];
+};
+
+const getCourseSpeakerIds = (course) => {
+  if (Array.isArray(course?.speakers) && course.speakers.length > 0) {
+    return course.speakers.map((s) => s?.id).filter(Boolean);
+  }
+  return Array.isArray(course?.speakerIds) ? course.speakerIds : [];
 };
 
 export const NewCourseSchema = zod.object({
@@ -109,6 +123,9 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [speakers, setSpeakers] = useState([]);
   const [speakersLoading, setSpeakersLoading] = useState(false);
   const speakersFetchDoneRef = useRef(false);
+  const [languages, setLanguages] = useState([]);
+  const [languagesLoading, setLanguagesLoading] = useState(false);
+  const languagesFetchDoneRef = useRef(false);
   /** Pending modules/sections when creating a course (before save); sent with create payload */
   const [pendingModules, setPendingModules] = useState([]);
   const [coursesCatalog, setCoursesCatalog] = useState([]);
@@ -128,8 +145,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       freeOrPaid: currentCourse?.freeOrPaid ?? false,
       amount: currentCourse?.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
       level: normalizeCourseLevelForForm(currentCourse?.level),
-      languageIds: Array.isArray(currentCourse?.languageIds) ? currentCourse.languageIds : [],
-      speakerIds: Array.isArray(currentCourse?.speakerIds) ? currentCourse.speakerIds : [],
+      languageIds: getCourseLanguageIds(currentCourse),
+      speakerIds: getCourseSpeakerIds(currentCourse),
       cpeHours: market.cpeHours ?? market.cpe ?? undefined,
       lessonCount: market.lessonCount ?? market.lessons ?? undefined,
       isBundle: currentCourse?.isBundle ?? false,
@@ -155,13 +172,38 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       });
   }, []);
 
+  const ensureLanguagesLoaded = useCallback(() => {
+    if (languagesFetchDoneRef.current) return;
+    languagesFetchDoneRef.current = true;
+    setLanguagesLoading(true);
+    languageService
+      .getAll()
+      .then((list) => {
+        setLanguages(list || []);
+      })
+      .catch(() => {
+        languagesFetchDoneRef.current = false;
+      })
+      .finally(() => {
+        setLanguagesLoading(false);
+      });
+  }, []);
+
   // Edit mode: load speakers if already assigned so chip labels show names without opening the dropdown
   useEffect(() => {
-    const ids = currentCourse?.speakerIds;
+    const ids = getCourseSpeakerIds(currentCourse);
     if (Array.isArray(ids) && ids.length > 0) {
       ensureSpeakersLoaded();
     }
-  }, [currentCourse?.id, currentCourse?.speakerIds, ensureSpeakersLoaded]);
+  }, [currentCourse?.id, currentCourse?.speakers, currentCourse?.speakerIds, ensureSpeakersLoaded]);
+
+  // Edit mode: load languages if already assigned so chip labels show titles without opening the dropdown
+  useEffect(() => {
+    const ids = getCourseLanguageIds(currentCourse);
+    if (Array.isArray(ids) && ids.length > 0) {
+      ensureLanguagesLoaded();
+    }
+  }, [currentCourse?.id, currentCourse?.languages, currentCourse?.languageIds, ensureLanguagesLoaded]);
 
   const ensureCoursesCatalogLoaded = useCallback(() => {
     if (coursesCatalogFetchRef.current) return;
@@ -249,8 +291,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         freeOrPaid: currentCourse.freeOrPaid ?? false,
         amount: currentCourse.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
         level: normalizeCourseLevelForForm(currentCourse.level),
-        languageIds: Array.isArray(currentCourse.languageIds) ? currentCourse.languageIds : [],
-        speakerIds: Array.isArray(currentCourse.speakerIds) ? currentCourse.speakerIds : [],
+        languageIds: getCourseLanguageIds(currentCourse),
+        speakerIds: getCourseSpeakerIds(currentCourse),
         cpeHours: marketReset.cpeHours ?? marketReset.cpe ?? undefined,
         lessonCount: marketReset.lessonCount ?? marketReset.lessons ?? undefined,
         isBundle: currentCourse.isBundle ?? false,
@@ -622,11 +664,15 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     label="Languages"
                     multiple
                     disableCloseOnSelect
-                    options={COURSE_LANGUAGE_OPTIONS}
-                    getOptionLabel={(option) => option}
+                    loading={languagesLoading}
+                    options={(languages || []).map((l) => l.id)}
+                    getOptionLabel={(option) =>
+                      languages.find((l) => l.id === option)?.title || option
+                    }
                     isOptionEqualToValue={(option, value) => option === value}
                     filterSelectedOptions
                     placeholder="Search and select languages..."
+                    onOpen={() => ensureLanguagesLoaded()}
                   />
                 </Grid>
 

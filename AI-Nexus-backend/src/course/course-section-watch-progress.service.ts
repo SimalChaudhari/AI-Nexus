@@ -388,6 +388,18 @@ export class CourseSectionWatchProgressService {
     return result;
   }
 
+  async getUserTouchedCourseIds(userId: string): Promise<string[]> {
+    const rows = await this.sectionProgressRepository
+      .createQueryBuilder('sp')
+      .select('sp.courseId', 'courseId')
+      .where('sp.userId = :userId', { userId })
+      .groupBy('sp.courseId')
+      .getRawMany<{ courseId: string }>();
+    return rows
+      .map((row) => String(row?.courseId || '').trim())
+      .filter(Boolean);
+  }
+
   async getSectionProgress(userId: string, courseId: string, sectionId: string) {
     if (!isUuid(sectionId)) {
       return {

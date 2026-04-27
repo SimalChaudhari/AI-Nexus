@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { LanguageEntity } from './language.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CreateLanguageDto, UpdateLanguageDto } from './language.dto';
 
 @Injectable()
@@ -42,6 +42,15 @@ export class LanguageService {
       throw new NotFoundException('Language not found');
     }
     return language;
+  }
+
+  async findByIds(ids: string[]): Promise<LanguageEntity[]> {
+    const unique = [...new Set((ids || []).filter(Boolean))];
+    if (unique.length === 0) return [];
+    return this.languageRepository.find({
+      where: { id: In(unique), deleted: false },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async create(

@@ -60,6 +60,9 @@ import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/pa
 import { randomUUID } from 'crypto';
 import { SpeakerService } from '../speaker/speaker.service';
 import { SpeakerEntity } from '../speaker/speaker.entity';
+import { LanguageService } from '../language/language.service';
+import { ReviewService } from '../review/review.service';
+import { CourseCertificateService } from './course-certificate.service';
 
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
@@ -72,6 +75,25 @@ async function orderedSpeakersForCourse(
     const rows = await speakerService.findByIds(ids);
     const map = new Map(rows.map((s) => [s.id, s]));
     return ids.map((id) => map.get(id)).filter((s): s is SpeakerEntity => Boolean(s));
+}
+
+async function orderedLanguagesForCourse(
+    languageService: LanguageService,
+    languageIds: unknown,
+): Promise<Array<{ id: string; name: string }>> {
+    const ids = Array.isArray(languageIds)
+        ? languageIds.filter((x): x is string => typeof x === 'string' && String(x).trim().length > 0)
+        : [];
+    if (ids.length === 0) return [];
+    const rows = await languageService.findByIds(ids);
+    const map = new Map(rows.map((l) => [l.id, l]));
+    return ids
+        .map((id) => map.get(id))
+        .filter(Boolean)
+        .map((row) => ({
+            id: row!.id,
+            name: row!.title || '',
+        }));
 }
 
 // Helper to normalize absolute URLs to "/uploads/..." paths for LocalStorageService
@@ -97,6 +119,119 @@ const parseOptionalPositiveInteger = (value?: string): number | undefined => {
     return parsePositiveInteger(value, 1);
 };
 
+const isPaidCourseValue = (value: unknown): boolean =>
+    value === true || value === 1 || value === 'true' || value === '1';
+
+const toOptionalNumber = (value: unknown): number | undefined => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+};
+
+type RawCourseSectionPayload = {
+    title?: unknown;
+    videoUrl?: unknown;
+    description?: unknown;
+    content?: unknown;
+    watchtime?: unknown;
+    durationTime?: unknown;
+    images?: unknown;
+    attachments?: unknown;
+    sortOrder?: unknown;
+};
+
+type RawCourseModulePayload = {
+    title?: unknown;
+    description?: unknown;
+    sortOrder?: unknown;
+    sections?: unknown;
+};
+
+const normalizeStringArray = (value: unknown): string[] | undefined => {
+    if (!Array.isArray(value)) return undefined;
+    const list = value
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter((item) => item.length > 0);
+    return list.length > 0 ? list : undefined;
+};
+
+const parseModulesPayload = (raw: unknown): RawCourseModulePayload[] => {
+    const parseJsonSafe = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        const text = value.trim();
+        if (!text) return undefined;
+        try {
+            return JSON.parse(text);
+        } catch {
+            return value;
+        }
+    };
+
+    const toArray = (value: unknown): RawCourseModulePayload[] => {
+        const rawItems = Array.isArray(value)
+            ? value
+            : value && typeof value === 'object'
+                ? Object.values(value as Record<string, unknown>)
+                : [];
+        return rawItems
+            .map((item) => {
+                const normalized = parseJsonSafe(item);
+                return normalized && typeof normalized === 'object'
+                    ? (normalized as RawCourseModulePayload)
+                    : undefined;
+            })
+            .filter((item): item is RawCourseModulePayload => Boolean(item));
+    };
+
+    let parsed = parseJsonSafe(raw);
+    // Handle double-encoded JSON payloads.
+    if (typeof parsed === 'string') {
+        parsed = parseJsonSafe(parsed);
+    }
+    return toArray(parsed);
+};
+
+const parseSectionsPayload = (raw: unknown): RawCourseSectionPayload[] => {
+    const parseJsonSafe = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        const text = value.trim();
+        if (!text) return undefined;
+        try {
+            return JSON.parse(text);
+        } catch {
+            return value;
+        }
+    };
+
+    const toArray = (value: unknown): RawCourseSectionPayload[] => {
+        const rawItems = Array.isArray(value)
+            ? value
+            : value && typeof value === 'object'
+                ? Object.values(value as Record<string, unknown>)
+                : [];
+        return rawItems
+            .map((item) => {
+                const normalized = parseJsonSafe(item);
+                return normalized && typeof normalized === 'object'
+                    ? (normalized as RawCourseSectionPayload)
+                    : undefined;
+            })
+            .filter((item): item is RawCourseSectionPayload => Boolean(item));
+    };
+
+    let parsed = parseJsonSafe(raw);
+    if (typeof parsed === 'string') {
+        parsed = parseJsonSafe(parsed);
+    }
+    return toArray(parsed);
+};
+
+const countParsedSections = (modules: RawCourseModulePayload[]): number =>
+    (Array.isArray(modules) ? modules : []).reduce((acc, mod) => {
+        const sections = parseSectionsPayload(mod?.sections);
+        return acc + sections.length;
+    }, 0);
+
 @ApiTags('Courses')
 @Controller('courses')
 export class CourseController {
@@ -112,6 +247,9 @@ export class CourseController {
         private readonly courseEnrollmentService: CourseEnrollmentService,
         private readonly courseQuestionBankService: CourseQuestionBankService,
         private readonly speakerService: SpeakerService,
+        private readonly languageService: LanguageService,
+        private readonly reviewService: ReviewService,
+        private readonly courseCertificateService: CourseCertificateService,
     ) {}
 
     @Get()
@@ -346,7 +484,9 @@ export class CourseController {
 
         const courseRow = await this.courseService.getById(courseId);
         const speakers = await orderedSpeakersForCourse(this.speakerService, courseRow.speakerIds);
-        const course = { ...courseRow, speakers };
+        const languages = await orderedLanguagesForCourse(this.languageService, courseRow.languageIds);
+        const { languageIds: _languageIds, speakerIds: _speakerIds, ...courseBase } = courseRow as any;
+        const course = { ...courseBase, speakers, languages };
 
         // Enrollment status (only meaningful for authenticated users)
         let enrolled = false;
@@ -639,10 +779,122 @@ export class CourseController {
             sectionId,
             dto,
         );
+        // Auto-issue certificate once all course sections are completed.
+        if (progress?.isCompleted) {
+            await this.courseCertificateService.issueIfCourseCompleted(userId, courseId);
+        }
         return response.status(HttpStatus.OK).json({
             message: 'Section progress updated',
             data: progress,
         });
+    }
+
+    @Get('certificates/my')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'List current user course completion certificates' })
+    async getMyCertificates(
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        // Backfill certificates for already-completed courses in case a prior progress update missed auto-issue.
+        const enrolledSet = await this.courseEnrollmentService.getEffectiveEnrolledCourseIdSet(userId);
+        const touchedCourseIds = await this.courseSectionWatchProgressService.getUserTouchedCourseIds(userId);
+        const candidateCourseIds = [...new Set([...enrolledSet, ...touchedCourseIds])];
+        await Promise.all(
+            candidateCourseIds.map((courseId) =>
+                this.courseCertificateService.issueIfCourseCompleted(userId, courseId),
+            ),
+        );
+        const certificates = await this.courseCertificateService.getUserCertificates(userId);
+        return response.status(HttpStatus.OK).json({ data: certificates });
+    }
+
+    @Post(':courseId/certificates/issue')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Issue certificate for current user if course is completed' })
+    async issueCourseCertificate(
+        @Param('courseId') courseId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const result = await this.courseCertificateService.issueIfCourseCompleted(userId, courseId);
+        return response.status(HttpStatus.OK).json({ data: result });
+    }
+
+    @Get('certificates/admin/list')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin: list certificates with filters' })
+    async getAdminCertificates(
+        @Query('page') page: string | undefined,
+        @Query('limit') limit: string | undefined,
+        @Query('q') q: string | undefined,
+        @Query('userName') userName: string | undefined,
+        @Query('courseTitle') courseTitle: string | undefined,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseCertificateService.getAdminCertificates({
+            page: parsePositiveInteger(page, 1),
+            limit: parsePositiveInteger(limit, 10),
+            q,
+            userName,
+            courseTitle,
+        });
+        return response.status(HttpStatus.OK).json({
+            length: result.data.length,
+            data: result.data,
+            pagination: result.pagination,
+        });
+    }
+
+    @Delete('certificates/admin/:id')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin: delete a certificate by id' })
+    async deleteAdminCertificate(
+        @Param('id') id: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseCertificateService.deleteCertificateById(id);
+        return response.status(HttpStatus.OK).json({ data: result });
+    }
+
+    @Post('certificates/admin/:id/block')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin: block a certificate (hide from user)' })
+    async blockAdminCertificate(
+        @Param('id') id: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseCertificateService.blockCertificateById(id);
+        return response.status(HttpStatus.OK).json({ data: result });
+    }
+
+    @Post('certificates/admin/:id/unblock')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin: unblock a certificate (visible to user again)' })
+    async unblockAdminCertificate(
+        @Param('id') id: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseCertificateService.unblockCertificateById(id);
+        return response.status(HttpStatus.OK).json({ data: result });
     }
 
 
@@ -680,6 +932,117 @@ export class CourseController {
             courseId,
         );
         return response.status(HttpStatus.OK).json({ data: { enrolled, accessViaBundle } });
+    }
+
+    @Get('progress/my-overview')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary:
+            'Get progress overview for current user in one call (eligible courses + modules + section progress)',
+    })
+    async getMyProgressOverview(
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+
+        const allCourses = await this.courseService.getAll({ userId });
+        const trackableCourses = (Array.isArray(allCourses) ? allCourses : []).filter((course) => {
+            if (!course) return false;
+            if (course.isEnrolled || course.accessViaBundle) return true;
+            return !isPaidCourseValue(course.freeOrPaid);
+        });
+
+        const rows = await Promise.all(
+            trackableCourses.map(async (course) => {
+                const courseId = String(course.id);
+                const sectionProgressBySectionId =
+                    await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(
+                        userId,
+                        courseId,
+                    );
+                const progressRows = Object.values(sectionProgressBySectionId || {}).filter(Boolean) as any[];
+                const hasMeaningfulProgress = progressRows.some((row) => {
+                    const completion = Number(row?.completionPercent ?? row?.currentProgress ?? 0);
+                    const watched = Number(row?.watchedSeconds ?? 0);
+                    const lastPos = Number(row?.lastPositionSeconds ?? 0);
+                    return (
+                        row?.isViewed === true ||
+                        row?.isWatched === true ||
+                        row?.isCompleted === true ||
+                        Boolean(row?.lastAccessedAt) ||
+                        (Number.isFinite(completion) && completion > 0) ||
+                        (Number.isFinite(watched) && watched > 0) ||
+                        (Number.isFinite(lastPos) && lastPos > 0)
+                    );
+                });
+                if (!hasMeaningfulProgress) {
+                    return null;
+                }
+                const viewedSectionIds = progressRows
+                    .filter(
+                        (row) =>
+                            row?.isWatched === true ||
+                            row?.isCompleted === true ||
+                            row?.isViewed === true ||
+                            Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99,
+                    )
+                    .map((row) => row?.sectionId)
+                    .filter((id) => Boolean(id))
+                    .map((id) => String(id));
+                const latestByTime = progressRows
+                    .filter((row) => row?.lastAccessedAt)
+                    .sort(
+                        (a, b) =>
+                            new Date(String(b.lastAccessedAt)).getTime() -
+                            new Date(String(a.lastAccessedAt)).getTime(),
+                    )[0];
+                const latestByProgress = progressRows
+                    .filter((row) => row?.completionPercent != null || row?.currentProgress != null)
+                    .sort(
+                        (a, b) =>
+                            Number(b?.completionPercent ?? b?.currentProgress ?? 0) -
+                            Number(a?.completionPercent ?? a?.currentProgress ?? 0),
+                    )[0];
+                const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
+                const lastAccessedAt = latestByTime?.lastAccessedAt || null;
+
+                const modules = await this.courseModuleService.findByCourseId(courseId);
+                const modulesWithSections = await Promise.all(
+                    modules.map(async (mod) => {
+                        const sections = await this.courseModuleSectionService.findByModuleId(mod.id);
+                        const sectionsWithProgress = sections.map((section) => ({
+                            ...section,
+                            sectionProgress: sectionProgressBySectionId[section.id] ?? null,
+                        }));
+                        return { ...mod, sections: sectionsWithProgress };
+                    }),
+                );
+
+                return {
+                    course: {
+                        id: course.id,
+                        title: course.title,
+                        image: course.image,
+                        freeOrPaid: course.freeOrPaid,
+                        isEnrolled: Boolean(course.isEnrolled),
+                        accessViaBundle: Boolean(course.accessViaBundle),
+                    },
+                    modules: modulesWithSections,
+                    progress: {
+                        viewedSectionIds,
+                        currentSectionId: currentSectionId ? String(currentSectionId) : null,
+                        lastAccessedAt,
+                    },
+                };
+            }),
+        );
+
+        return response.status(HttpStatus.OK).json({ data: rows.filter(Boolean) });
     }
 
     @Post('enroll/bulk')
@@ -732,7 +1095,29 @@ export class CourseController {
     async getCourseById(@Param('id') id: string, @Req() request: Request, @Res() response: Response) {
         const courseRow = await this.courseService.getById(id);
         const speakers = await orderedSpeakersForCourse(this.speakerService, courseRow.speakerIds);
-        const course = { ...courseRow, speakers };
+        const languages = await orderedLanguagesForCourse(this.languageService, courseRow.languageIds);
+        const relatedRows = await this.courseService.findRelatedCourses(id, courseRow.level, 4);
+        const relatedCourses = relatedRows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            image: row.image,
+            level: row.level,
+            freeOrPaid: row.freeOrPaid,
+            amount: row.amount,
+        }));
+        const reviews = await this.reviewService.findAll({ courseId: id });
+        const reviewCount = reviews.length;
+        const ratingTotal = reviews.reduce((acc, row) => acc + Number(row.rating || 0), 0);
+        const averageRating = reviewCount > 0 ? Math.min(5, Math.max(0, ratingTotal / reviewCount)) : 0;
+        const { languageIds: _languageIds, speakerIds: _speakerIds, ...courseBase } = courseRow as any;
+        const course = {
+            ...courseBase,
+            speakers,
+            languages,
+            relatedCourses,
+            reviewStats: { averageRating, reviewCount },
+            reviews,
+        };
         const userId = (request as any).user?.id;
         
         // If user is authenticated, include favorite status
@@ -1001,44 +1386,72 @@ export class CourseController {
 
         const result = await this.courseService.create(createCourseDto);
         const courseId = result.course.id;
+        let createdModulesCount = 0;
+        let createdSectionsCount = 0;
 
         // If modules (and optional sections) were sent, create them after the course.
         // FormData sends modules as a JSON string; read from body in case DTO doesn't have it.
-        let modulesPayload: Array<{ title: string; description?: string; sortOrder?: number; sections?: Array<{ title: string; videoUrl?: string; description?: string; content?: string; watchtime?: string; durationTime?: string; images?: string[]; attachments?: string[]; sortOrder?: number }> }> = [];
-        const raw = createCourseDto.modules ?? (req.body && (req.body as any).modules);
-        if (typeof raw === 'string' && raw.trim()) {
-            try {
-                const parsed = JSON.parse(raw) as unknown;
-                modulesPayload = Array.isArray(parsed) ? parsed : [];
-            } catch {
-                modulesPayload = [];
-            }
-        } else if (Array.isArray(raw)) {
-            modulesPayload = raw;
-        }
+        const rawBodyModules = req.body && (req.body as any).modules;
+        const parsedFromBody = parseModulesPayload(rawBodyModules);
+        const parsedFromDto = parseModulesPayload(createCourseDto.modules);
+        const bodySectionCount = countParsedSections(parsedFromBody);
+        const dtoSectionCount = countParsedSections(parsedFromDto);
+        // Prefer the source that actually contains more nested section data.
+        const modulesPayload =
+            bodySectionCount > dtoSectionCount
+                ? parsedFromBody
+                : parsedFromDto.length > 0
+                    ? parsedFromDto
+                    : parsedFromBody;
         if (modulesPayload.length > 0) {
-            for (const mod of modulesPayload) {
+            for (let moduleIndex = 0; moduleIndex < modulesPayload.length; moduleIndex += 1) {
+                const mod = modulesPayload[moduleIndex];
                 try {
+                    const moduleTitle =
+                        typeof mod?.title === 'string' && mod.title.trim().length > 0
+                            ? mod.title.trim()
+                            : `Module ${moduleIndex + 1}`;
                     const createdModule = await this.courseModuleService.create(courseId, {
-                        title: mod?.title ?? 'Untitled module',
-                        description: mod?.description,
-                        sortOrder: mod?.sortOrder,
+                        title: moduleTitle,
+                        description:
+                            typeof mod?.description === 'string' ? mod.description : undefined,
+                        sortOrder: toOptionalNumber(mod?.sortOrder),
                     });
-                    const sections = mod?.sections;
+                    createdModulesCount += 1;
+                    const sections = parseSectionsPayload(mod?.sections);
                     if (Array.isArray(sections) && sections.length > 0) {
-                        for (const sec of sections) {
+                        for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
+                            const sec = sections[sectionIndex];
                             try {
+                                const sectionTitle =
+                                    typeof sec?.title === 'string' && sec.title.trim().length > 0
+                                        ? sec.title.trim()
+                                        : `Section ${sectionIndex + 1}`;
                                 await this.courseModuleSectionService.create(createdModule.id, {
-                                    title: sec?.title ?? 'Untitled section',
-                                    videoUrl: sec?.videoUrl,
-                                    description: sec?.description,
-                                    content: sec?.content,
-                                    watchtime: sec?.watchtime,
-                                    durationTime: sec?.durationTime,
-                                    images: sec?.images,
-                                    attachments: sec?.attachments,
-                                    sortOrder: sec?.sortOrder,
+                                    title: sectionTitle,
+                                    videoUrl:
+                                        typeof sec?.videoUrl === 'string'
+                                            ? sec.videoUrl
+                                            : undefined,
+                                    description:
+                                        typeof sec?.description === 'string'
+                                            ? sec.description
+                                            : undefined,
+                                    content:
+                                        typeof sec?.content === 'string' ? sec.content : undefined,
+                                    watchtime:
+                                        typeof sec?.watchtime === 'string'
+                                            ? sec.watchtime
+                                            : undefined,
+                                    durationTime:
+                                        typeof sec?.durationTime === 'string'
+                                            ? sec.durationTime
+                                            : undefined,
+                                    images: normalizeStringArray(sec?.images),
+                                    attachments: normalizeStringArray(sec?.attachments),
+                                    sortOrder: toOptionalNumber(sec?.sortOrder),
                                 });
+                                createdSectionsCount += 1;
                             } catch (sectionErr) {
                                 console.error('Error creating section:', sectionErr);
                             }
@@ -1053,6 +1466,11 @@ export class CourseController {
         return response.status(HttpStatus.CREATED).json({
             message: result.message,
             course: result.course,
+            moduleBuild: {
+                requestedModules: modulesPayload.length,
+                createdModules: createdModulesCount,
+                createdSections: createdSectionsCount,
+            },
         });
     }
 
@@ -1209,7 +1627,20 @@ export class CourseController {
             this.courseFavoriteService.getUserFavorites(userId),
             this.courseSectionFavoriteService.getAllFavoriteSectionsWithDetails(userId),
         ]);
-        const courses = courseFavorites.map((f) => ({ ...f.course, isFavorite: true }));
+        const courses = await Promise.all(
+            courseFavorites.map(async (f) => {
+                const breakdown = await this.courseEnrollmentService.getEnrollmentBreakdown(
+                    userId,
+                    f.courseId,
+                );
+                return {
+                    ...f.course,
+                    isFavorite: true,
+                    isEnrolled: breakdown.enrolled,
+                    accessViaBundle: breakdown.accessViaBundle,
+                };
+            }),
+        );
 
         return response.status(HttpStatus.OK).json({
             data: {

@@ -93,9 +93,10 @@ const styles = StyleSheet.create({
   },
 });
 
-export function CertificatePdfDocument({ courseTitle, completedAt, cpeHours, logoSource }) {
+export function CertificatePdfDocument({ courseTitle, learnerName, completedAt, cpeHours, logoSource }) {
   const cpeText = typeof cpeHours === 'number' ? `${cpeHours} CPE Hour${cpeHours !== 1 ? 's' : ''}` : cpeHours;
-  const logo = logoSource || '/favicon.png';
+  const logo = logoSource || '/logo/logo-full.svg';
+  const issuedTo = String(learnerName || '').trim() || 'Learner';
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -107,6 +108,7 @@ export function CertificatePdfDocument({ courseTitle, completedAt, cpeHours, log
           </View>
           <View style={styles.body}>
             <Text style={styles.name}>This is to certify that</Text>
+            <Text style={[styles.name, { marginTop: 4, marginBottom: 8 }]}>{issuedTo}</Text>
             <Text style={styles.description}>
               The learner has successfully completed the course
             </Text>

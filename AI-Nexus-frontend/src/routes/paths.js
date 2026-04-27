@@ -271,6 +271,7 @@ export const paths = {
       new: `${ROOTS.ADMIN}/course/new`,
       list: `${ROOTS.ADMIN}/course/list`,
       attempts: `${ROOTS.ADMIN}/course/attempts`,
+      certificates: `${ROOTS.ADMIN}/course/certificates`,
       details: (id) => `${ROOTS.ADMIN}/course/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/course/${id}/edit`,
     },
@@ -280,6 +281,13 @@ export const paths = {
       list: `${ROOTS.ADMIN}/speaker/list`,
       details: (id) => `${ROOTS.ADMIN}/speaker/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/speaker/${id}/edit`,
+    },
+    language: {
+      root: `${ROOTS.ADMIN}/language`,
+      new: `${ROOTS.ADMIN}/language/new`,
+      list: `${ROOTS.ADMIN}/language/list`,
+      details: (id) => `${ROOTS.ADMIN}/language/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/language/${id}/edit`,
     },
     label: {
       root: `${ROOTS.ADMIN}/label`,
@@ -317,3 +325,4 @@ export const paths = {
     settings: `${ROOTS.ADMIN}/settings`,
   },
 };
+

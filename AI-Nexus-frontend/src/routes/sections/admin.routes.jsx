@@ -72,6 +72,7 @@ const CourseCreatePage = lazy(() => import('src/pages/dashboard/course/new'));
 const CourseEditPage = lazy(() => import('src/pages/dashboard/course/edit'));
 const CourseDetailsPage = lazy(() => import('src/pages/dashboard/course/details'));
 const CourseAttemptsPage = lazy(() => import('src/pages/dashboard/course/attempts'));
+const CourseCertificatesPage = lazy(() => import('src/pages/dashboard/course/certificates'));
 
 // Label Management (Admin only)
 const LabelListPage = lazy(() => import('src/pages/dashboard/label/list'));
@@ -96,6 +97,12 @@ const SpeakerListPage = lazy(() => import('../../pages/dashboard/speaker/list'))
 const SpeakerCreatePage = lazy(() => import('../../pages/dashboard/speaker/new'));
 const SpeakerEditPage = lazy(() => import('../../pages/dashboard/speaker/edit'));
 const SpeakerDetailsPage = lazy(() => import('../../pages/dashboard/speaker/details'));
+
+// Language Management (Admin only)
+const LanguageListPage = lazy(() => import('src/pages/dashboard/language/list'));
+const LanguageCreatePage = lazy(() => import('src/pages/dashboard/language/new'));
+const LanguageEditPage = lazy(() => import('src/pages/dashboard/language/edit'));
+const LanguageDetailsPage = lazy(() => import('src/pages/dashboard/language/details'));
 
 // Blog
 const BlogPostsPage = lazy(() => import('src/pages/dashboard/post/list'));
@@ -232,6 +239,7 @@ export const adminRoutes = [
           { path: 'list', element: <CourseListPage /> },
           { path: 'new', element: <CourseCreatePage /> },
           { path: 'attempts', element: <CourseAttemptsPage /> },
+          { path: 'certificates', element: <CourseCertificatesPage /> },
           { path: ':id', element: <CourseDetailsPage /> },
           { path: ':id/edit', element: <CourseEditPage /> },
         ],
@@ -274,6 +282,16 @@ export const adminRoutes = [
           { path: 'new', element: <SpeakerCreatePage /> },
           { path: ':id', element: <SpeakerDetailsPage /> },
           { path: ':id/edit', element: <SpeakerEditPage /> },
+        ],
+      },
+      {
+        path: 'language',
+        children: [
+          { element: <LanguageListPage />, index: true },
+          { path: 'list', element: <LanguageListPage /> },
+          { path: 'new', element: <LanguageCreatePage /> },
+          { path: ':id', element: <LanguageDetailsPage /> },
+          { path: ':id/edit', element: <LanguageEditPage /> },
         ],
       },
       {
@@ -347,4 +365,5 @@ export const adminRoutes = [
     ],
   },
 ];
+
 

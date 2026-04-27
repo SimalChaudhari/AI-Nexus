@@ -122,6 +122,7 @@ export const navData = [
           { title: 'List', path: paths.admin.course.list },
           { title: 'Create', path: paths.admin.course.new },
           { title: 'Quiz Attempts', path: paths.admin.course.attempts },
+          { title: 'Certificates', path: paths.admin.course.certificates },
         ],
       },
       {
@@ -131,6 +132,15 @@ export const navData = [
         children: [
           { title: 'List', path: paths.admin.speaker.list },
           { title: 'Create', path: paths.admin.speaker.new },
+        ],
+      },
+      {
+        title: 'Language',
+        path: paths.admin.language.root,
+        icon: <Iconify icon="solar:global-bold-duotone" width={24} />,
+        children: [
+          { title: 'List', path: paths.admin.language.list },
+          { title: 'Create', path: paths.admin.language.new },
         ],
       },
       {
@@ -356,6 +366,7 @@ export const navData = [
   //   ],
   // },
 ];
+
 
 
 

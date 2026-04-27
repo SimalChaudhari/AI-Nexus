@@ -162,13 +162,14 @@ export function CourseDetailsView({ course, loading, error }) {
     if (reviewsPage > maxPage) setReviewsPage(1);
   }, [courseReviews.length, reviewsPage]);
 
-  const languageIds = Array.isArray(course?.languageIds) ? course.languageIds : [];
-  const languageLabels = languageIds.filter((label) => label && typeof label === 'string');
+  const languageLabels = useMemo(() => {
+    const rows = Array.isArray(course?.languages) ? course.languages : [];
+    return rows
+      .map((l) => l?.name || l?.title || '')
+      .filter((name) => typeof name === 'string' && name.trim().length > 0);
+  }, [course?.languages]);
 
-  const speakerIds = Array.isArray(course?.speakerIds) ? course.speakerIds : [];
-  const speakerList = speakerIds
-    .map((id) => (speakers || []).find((s) => s.id === id))
-    .filter(Boolean)
+  const speakerList = (Array.isArray(course?.speakers) ? course.speakers : [])
     .map((s) => ({
       id: s.id,
       name: htmlToPlainText(s.name || '').trim() || 'Speaker',

@@ -377,6 +377,33 @@ export class CourseService {
         return course;
     }
 
+    async findRelatedCourses(courseId: string, level?: string, limit = 4): Promise<CourseEntity[]> {
+        const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 12) : 4;
+        const normalizedLevel = String(level || '').trim().toLowerCase();
+
+        const sameLevel = await this.courseRepository
+            .createQueryBuilder('course')
+            .where('course.id != :courseId', { courseId })
+            .andWhere('LOWER(course.level::text) = :level', { level: normalizedLevel || '__none__' })
+            .orderBy('course.createdAt', 'DESC')
+            .take(safeLimit)
+            .getMany();
+
+        if (sameLevel.length >= safeLimit) {
+            return sameLevel.slice(0, safeLimit);
+        }
+
+        const excludeIds = [courseId, ...sameLevel.map((c) => c.id)];
+        const rest = await this.courseRepository
+            .createQueryBuilder('course')
+            .where('course.id NOT IN (:...excludeIds)', { excludeIds })
+            .orderBy('course.createdAt', 'DESC')
+            .take(safeLimit - sameLevel.length)
+            .getMany();
+
+        return [...sameLevel, ...rest];
+    }
+
     /** Returns which of the given ids exist. Used e.g. for checkout validation. */
     async findExistingIds(ids: string[]): Promise<{ existing: string[]; missing: string[] }> {
         const unique = [...new Set(ids)].filter(Boolean);

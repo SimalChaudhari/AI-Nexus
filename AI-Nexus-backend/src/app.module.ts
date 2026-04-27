@@ -11,6 +11,7 @@ import { WorkflowModule } from './workflow/workflows.module';
 import { AnnouncementModule } from './announcement/announcements.module';
 import { AiForumModule } from './ai-forum/ai-forum.module';
 import { SpeakerModule } from './speaker/speaker.module';
+import { LanguageModule } from './language/language.module';
 import { ReviewModule } from './review/review.module';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -100,6 +101,7 @@ const resolveTypeOrmPoolMax = (): number => {
     AnnouncementModule,
     AiForumModule,
     SpeakerModule,
+    LanguageModule,
     ReviewModule,
     PaymentModule,
     OrderModule,

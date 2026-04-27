@@ -23,15 +23,20 @@ import Pagination, { paginationClasses } from '@mui/material/Pagination';
 
 const COURSES_PER_PAGE = 8;
 const LESSONS_PER_PAGE = 8;
+const DEFAULT_COURSE_IMAGE = import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
 
 const transformCourse = (course) => ({
   id: course.id,
   title: course.title || 'Untitled Course',
   description: course.description || '',
-  image: course.image || 'https://readdy.ai/api/search-image?query=Professional%20learning%20course&width=400&height=250&orientation=landscape',
+  image: course.image || DEFAULT_COURSE_IMAGE,
   freeOrPaid: course.freeOrPaid,
   amount: course.amount,
   level: course.level || 'Beginner',
+  isBundle: course.isBundle ?? false,
+  bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
+  isEnrolled: course.isEnrolled ?? false,
+  accessViaBundle: course.accessViaBundle ?? false,
   isFavorite: course.isFavorite ?? true, // Favorites tab shows only favorited courses
 });
 
@@ -243,7 +248,14 @@ export function MyFavorites() {
             My Favorites
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            {favoriteCourses.length} {favoriteCourses.length === 1 ? 'course' : 'courses'} • {favoriteSections.length} {favoriteSections.length === 1 ? 'lesson' : 'lessons'}
+            {[
+              `${favoriteCourses.length} ${favoriteCourses.length === 1 ? 'course' : 'courses'}`,
+              favoriteSections.length > 0
+                ? `${favoriteSections.length} ${favoriteSections.length === 1 ? 'lesson' : 'lessons'}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
           </Typography>
         </Box>
       </Stack>
@@ -251,9 +263,27 @@ export function MyFavorites() {
       {/* Course(s) Section */}
       {favoriteCourses.length > 0 && (
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-            Course(s)
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
+                letterSpacing: 0.2,
+                fontSize: { xs: '1.08rem', md: '1.2rem' },
+              }}
+            >
+              Course(s)
+            </Typography>
+            <Box
+              sx={{
+                flexGrow: 1,
+                height: 2,
+                borderRadius: 999,
+                background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
+              }}
+            />
+          </Stack>
           <Grid container spacing={2.5}>
         {(() => {
           const coursePageCount = Math.max(1, Math.ceil(favoriteCourses.length / COURSES_PER_PAGE));
@@ -273,6 +303,7 @@ export function MyFavorites() {
                 display: 'flex',
                 flexDirection: 'column',
                 borderRadius: 2,
+                minHeight: 250,
                 boxShadow: theme.customShadows.z4,
                 overflow: 'hidden',
                 textDecoration: 'none',
@@ -281,7 +312,15 @@ export function MyFavorites() {
                 '&:hover': { boxShadow: theme.customShadows.z16 },
               }}
             >
-              <Box sx={{ position: 'relative', aspectRatio: '16/10' }}>
+              <Box
+                sx={{
+                  position: 'relative',
+                  height: { xs: 150, sm: 165, md: 155, lg: 145 },
+                  bgcolor: 'grey.100',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                }}
+              >
                 <Image
                   alt={course.title}
                   src={course.image}
@@ -291,7 +330,7 @@ export function MyFavorites() {
                     objectFit: 'cover',
                   }}
                   onError={(e) => {
-                    e.target.src = 'https://readdy.ai/api/search-image?query=Professional%20learning%20course&width=400&height=250&orientation=landscape';
+                    e.target.src = DEFAULT_COURSE_IMAGE;
                   }}
                 />
                 <Box
@@ -332,8 +371,10 @@ export function MyFavorites() {
                     position: 'absolute',
                     top: 8,
                     right: 8,
-                    bgcolor: alpha(theme.palette.common.white, 0.9),
+                    bgcolor: alpha(theme.palette.common.white, 0.98),
                     color: 'error.main',
+                    boxShadow: theme.shadows[6],
+                    border: `1px solid ${alpha(theme.palette.common.black, 0.08)}`,
                     '&:hover': { bgcolor: 'common.white' },
                     opacity: favoriteLoading.has(course.id) ? 0.6 : 1,
                   }}
@@ -342,20 +383,66 @@ export function MyFavorites() {
                   <Iconify icon="solar:heart-bold" width={22} />
                 </IconButton>
               </Box>
-              <Box sx={{ p: 2, flex: 1, display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 96 }}>
                 <Typography
-                  variant="subtitle1"
+                  variant="body1"
                   sx={{
-                    fontWeight: 600,
+                    fontWeight: 500,
+                    fontSize: { xs: '1rem', md: '0.98rem' },
                     display: '-webkit-box',
-                    WebkitLineClamp: 3,
+                    WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
                     lineHeight: 1.4,
+                    mb: 0.75,
+                    height: '2.8em',
+                    wordBreak: 'break-word',
                   }}
                 >
                   {course.title}
                 </Typography>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: course.freeOrPaid
+                          ? course.isEnrolled
+                            ? 'text.disabled'
+                            : 'secondary.main'
+                          : 'success.main',
+                        fontWeight: 500,
+                        fontSize: { xs: '0.82rem', md: '0.85rem' },
+                        textDecoration:
+                          course.freeOrPaid && course.isEnrolled ? 'line-through' : 'none',
+                      }}
+                    >
+                      {course.freeOrPaid ? `${Number(course.amount || 0).toFixed(2)} SGD` : 'Free'}
+                    </Typography>
+                    {course.freeOrPaid && course.isEnrolled && (
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Iconify
+                          icon="solar:verified-check-bold"
+                          width={14}
+                          sx={{ color: 'success.main' }}
+                        />
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: 'success.main',
+                            fontWeight: 600,
+                            fontSize: { xs: '0.78rem', md: '0.82rem' },
+                          }}
+                        >
+                          {course.accessViaBundle ? 'Included in bundle' : 'Purchased'}
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Stack>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                    {course.level || 'Beginner'}
+                  </Typography>
+                </Stack>
               </Box>
             </Card>
           </Grid>
@@ -386,9 +473,27 @@ export function MyFavorites() {
       {/* Lesson(s) Section */}
       {favoriteSections.length > 0 && (
         <Box sx={{ mt: favoriteCourses.length > 0 ? 4 : 0 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-            Lesson(s)
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
+                letterSpacing: 0.2,
+                fontSize: { xs: '1.08rem', md: '1.2rem' },
+              }}
+            >
+              Lesson(s)
+            </Typography>
+            <Box
+              sx={{
+                flexGrow: 1,
+                height: 2,
+                borderRadius: 999,
+                background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
+              }}
+            />
+          </Stack>
           <Grid container spacing={2.5}>
             {(() => {
               const lessonPageCount = Math.max(1, Math.ceil(favoriteSections.length / LESSONS_PER_PAGE));

@@ -4,30 +4,22 @@ import Card from '@mui/material/Card';
 import Grid from '@mui/material/Unstable_Grid2';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
+import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
+import Divider from '@mui/material/Divider';
+import Chip from '@mui/material/Chip';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
-import { DashboardContent } from 'src/layouts/dashboard';
-import { paths } from 'src/routes/paths';
-import { RouterLink } from 'src/routes/components';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchCourses } from 'src/store/slices/courseSlice';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { pdf } from '@react-pdf/renderer';
 import { CertificatePdfDocument } from './certificate-pdf-document';
 import { svgToPngDataUrl } from 'src/utils/svg-to-png';
-import Pagination, { paginationClasses } from '@mui/material/Pagination';
+import { courseService } from 'src/services/course.service';
+import { appSettingsService } from 'src/services/app-settings.service';
 
 // ----------------------------------------------------------------------
-
-const CERTIFICATES_PER_PAGE = 8;
 
 function parseMarketData(marketData) {
   if (!marketData || typeof marketData !== 'string') return {};
@@ -41,77 +33,100 @@ function parseMarketData(marketData) {
 function formatCompletedDate(dateStr) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
-  return d.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d);
 }
 
 export function MyCertificates() {
   const theme = useTheme();
-  const dispatch = useDispatch();
   const { authenticated } = useAuthContext();
-  const { courses } = useSelector((state) => state.courses);
-  const [progressByCourse, setProgressByCourse] = useState({});
-  const [modulesByCourse, setModulesByCourse] = useState({});
-  const [page, setPage] = useState(1);
+  const [certificateRows, setCertificateRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
-  const [previewCert, setPreviewCert] = useState(null);
-  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [logoPngDataUrl, setLogoPngDataUrl] = useState(null);
+  const [logoSource, setLogoSource] = useState('/logo/logo-full.svg');
 
   useEffect(() => {
-    svgToPngDataUrl('/logo/logo-full.svg', 96, 96).then((dataUrl) => {
-      if (dataUrl) setLogoPngDataUrl(dataUrl);
-    });
+    let cancelled = false;
+
+    const resolveDynamicLogo = async () => {
+      const fallbackLogo =
+        (typeof window !== 'undefined' && window.localStorage.getItem('site-logo-url')) ||
+        '/logo/logo-full.svg';
+
+      let candidate = fallbackLogo;
+      try {
+        const settings = await appSettingsService.getPublic();
+        if (settings?.logoUrl) candidate = settings.logoUrl;
+      } catch {
+        // Keep fallback logo when settings API is unavailable.
+      }
+
+      const isSvg = /\.svg(\?.*)?$/i.test(String(candidate || ''));
+      if (isSvg) {
+        const dataUrl = await svgToPngDataUrl(candidate, 96, 96);
+        if (!cancelled) setLogoSource(dataUrl || '/logo/logo-full.svg');
+      } else if (!cancelled) {
+        setLogoSource(candidate || '/logo/logo-full.svg');
+      }
+    };
+
+    resolveDynamicLogo();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    dispatch(fetchCourses());
-  }, [dispatch]);
-
-  useEffect(() => {
-    if (!courses?.length) {
+    if (!authenticated) {
+      setCertificateRows([]);
       setLoading(false);
       return () => {};
     }
-    setProgressByCourse({});
-    setModulesByCourse({});
-    setLoading(false);
-    return () => {};
-  }, [authenticated, courses?.length]);
+    let cancelled = false;
+    const loadCertificates = async () => {
+      try {
+        setLoading(true);
+        const rows = await courseService.getMyCertificates();
+        if (!cancelled) setCertificateRows(rows);
+      } catch {
+        if (!cancelled) setCertificateRows([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    loadCertificates();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
 
   const certificates = useMemo(() => {
-    if (!courses?.length) return [];
-    return courses
-      .map((course) => {
-        const progress = progressByCourse[course.id];
-        const modules = modulesByCourse[course.id] || [];
-        const flatSections = modules.flatMap((m) => m.sections || []);
-        const totalLessons = flatSections.length;
-        const viewedIds = Array.isArray(progress?.viewedSectionIds) ? progress.viewedSectionIds : [];
-        const viewedInCourse = viewedIds.filter((id) => flatSections.some((s) => s.id === id));
-        const viewedCount = viewedInCourse.length;
-        const isComplete = totalLessons > 0 && viewedCount >= totalLessons;
-        if (!isComplete) return null;
-        const market = parseMarketData(course.marketData);
+    if (!certificateRows?.length) return [];
+    return certificateRows
+      .map((row) => {
+        const market = parseMarketData(row.marketData);
         const cpeHoursRaw = market.cpeHours ?? market.cpe ?? market.hours;
         const cpeHours = cpeHoursRaw != null && cpeHoursRaw !== '' ? Number(cpeHoursRaw) : null;
         return {
-          id: course.id,
-          courseId: course.id,
-          courseTitle: course.title || 'Untitled Course',
-          completedAt: progress?.lastAccessedAt ? formatCompletedDate(progress.lastAccessedAt) : '—',
+          id: row.id,
+          courseId: row.courseId,
+          courseTitle: row.courseTitle || 'Untitled Course',
+          certificateNo: row.certificateNo || '',
+          learnerName: row.learnerName || 'Learner',
+          completedAt: row.completedAt ? formatCompletedDate(row.completedAt) : '—',
           cpeHours: cpeHours != null ? cpeHours : '—',
         };
       })
       .filter(Boolean);
-  }, [courses, progressByCourse, modulesByCourse]);
-
-  // Reset to page 1 when certificate list shrinks
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(certificates.length / CERTIFICATES_PER_PAGE));
-    if (page > maxPage) setPage(1);
-  }, [certificates.length, page]);
+  }, [certificateRows]);
 
   const handleDownload = async (cert) => {
     setDownloadingId(cert.id);
@@ -119,9 +134,10 @@ export function MyCertificates() {
       const blob = await pdf(
         <CertificatePdfDocument
           courseTitle={cert.courseTitle}
+          learnerName={cert.learnerName}
           completedAt={cert.completedAt}
           cpeHours={cert.cpeHours}
-          logoSource={logoPngDataUrl}
+          logoSource={logoSource}
         />
       ).toBlob();
       const url = URL.createObjectURL(blob);
@@ -138,32 +154,28 @@ export function MyCertificates() {
   };
 
   const handlePreview = async (cert) => {
-    setPreviewCert(cert);
     setPreviewLoading(true);
-    setPreviewPdfUrl(null);
     try {
       const blob = await pdf(
         <CertificatePdfDocument
           courseTitle={cert.courseTitle}
+          learnerName={cert.learnerName}
           completedAt={cert.completedAt}
           cpeHours={cert.cpeHours}
-          logoSource={logoPngDataUrl}
+          logoSource={logoSource}
         />
       ).toBlob();
       const url = URL.createObjectURL(blob);
-      setPreviewPdfUrl(url);
+      const previewWindow = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!previewWindow) {
+        console.error('Certificate preview blocked by browser popup settings.');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       console.error('Certificate PDF preview failed:', err);
-      setPreviewCert(null);
     } finally {
       setPreviewLoading(false);
     }
-  };
-
-  const handleClosePreview = () => {
-    if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
-    setPreviewPdfUrl(null);
-    setPreviewCert(null);
   };
 
   if (loading && authenticated) {
@@ -181,7 +193,8 @@ export function MyCertificates() {
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: 1.5,
-            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            background: (t) =>
+              `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`,
           }}
         >
           <Iconify icon="solar:medal-ribbons-star-bold" width={24} sx={{ color: 'common.white' }} />
@@ -196,199 +209,204 @@ export function MyCertificates() {
         </Box>
       </Stack>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, sm: 2.5, md: 2 }}>
         {(() => {
-          const pageCount = Math.max(1, Math.ceil(certificates.length / CERTIFICATES_PER_PAGE));
-          const displayedCertificates = certificates.slice(
-            (page - 1) * CERTIFICATES_PER_PAGE,
-            page * CERTIFICATES_PER_PAGE
-          );
+          const minDesktopCards = 4;
+          const placeholdersNeeded = Math.max(0, minDesktopCards - certificates.length);
+          const displayedCertificates = [
+            ...certificates.map((cert) => ({ cert, isPlaceholder: false })),
+            ...Array.from({ length: placeholdersNeeded }, () => ({ cert: null, isPlaceholder: true })),
+          ];
           return (
             <>
-              {displayedCertificates.map((cert) => (
-          <Grid key={cert.id} xs={12} sm={6} md={4}>
+              {displayedCertificates.map((item, index) => (
+          <Grid key={item.cert?.id || `placeholder-${index}`} xs={12} sm={6} md={3}>
+            {item.isPlaceholder ? (
+              <Card
+                sx={{
+                  p: { xs: 2, md: 1.75 },
+                  height: '100%',
+                  minHeight: 190,
+                  borderRadius: 2,
+                  border: `1px dashed ${alpha(theme.palette.primary.main, 0.32)}`,
+                  bgcolor: alpha(theme.palette.primary.main, 0.02),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                  Empty certificate slot
+                </Typography>
+              </Card>
+            ) : (
             <Card
               sx={{
-                p: 2.5,
+                p: { xs: 2, md: 1.75 },
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 borderRadius: 2,
-                border: `1px solid ${alpha(theme.palette.warning.main, 0.24)}`,
-                bgcolor: alpha(theme.palette.warning.main, 0.04),
-                boxShadow: theme.customShadows.z8,
-                transition: 'box-shadow 0.25s ease',
-                '&:hover': { boxShadow: theme.customShadows.z16 },
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+                bgcolor: 'background.paper',
+                boxShadow: `0 8px 24px ${alpha(theme.palette.grey[500], 0.12)}`,
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 3,
+                  background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                },
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  right: -18,
+                  top: -18,
+                  width: 92,
+                  height: 92,
+                  borderRadius: '50%',
+                  background: alpha(theme.palette.primary.main, 0.06),
+                },
+                '& .certificate-watermark': {
+                  position: 'absolute',
+                  left: 10,
+                  bottom: 10,
+                  color: theme.palette.success.main,
+                  pointerEvents: 'none',
+                },
+                '&:hover': {
+                  boxShadow: `0 14px 30px ${alpha(theme.palette.grey[500], 0.2)}`,
+                  transform: 'translateY(-3px)',
+                  borderColor: alpha(theme.palette.primary.main, 0.32),
+                },
               }}
             >
-              <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 2 }}>
+              <Stack direction="row" spacing={1.25} alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1.25 }}>
                 <Box
                   sx={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 1,
-                    bgcolor: alpha(theme.palette.warning.main, 0.16),
+                    width: { xs: 44, lg: 38 },
+                    height: { xs: 44, lg: 38 },
+                    borderRadius: 1.25,
+                    bgcolor: alpha(theme.palette.success.main, 0.12),
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
                   }}
                 >
-                  <Iconify icon="solar:medal-ribbons-star-bold" width={28} sx={{ color: 'warning.main' }} />
+                  <Iconify icon="solar:medal-ribbons-star-bold" width={24} sx={{ color: 'success.main' }} />
                 </Box>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
-                    Certificate of Completion
+                <Box sx={{ minWidth: 0, flex: 1, pr: 1 }}>
+                  <Typography variant="overline" sx={{ color: 'text.secondary', lineHeight: 1.2, fontSize: '0.8rem', fontWeight: 700, letterSpacing: 0.6 }}>
+                    Certificate
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.25 }}>
-                    {cert.courseTitle}
-                  </Typography>
+              
                 </Box>
+                <Chip
+                  size="small"
+                  label="Issued"
+                  color="success"
+                  variant="soft"
+                  sx={{ flexShrink: 0 }}
+                />
               </Stack>
-              <Stack spacing={0.5} sx={{ mb: 2 }}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Iconify icon="solar:calendar-bold" width={18} sx={{ color: 'text.secondary' }} />
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Completed: {cert.completedAt}
+
+              <Divider sx={{ mb: 1.35, borderColor: alpha(theme.palette.grey[500], 0.18) }} />
+
+              <Stack spacing={0.7} sx={{ mb: 1.4 }}>
+                <Stack direction="row" alignItems="flex-start" spacing={1}>
+                  <Iconify icon="solar:book-bold" width={16} sx={{ color: 'text.secondary', mt: 0.2 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      fontWeight: 400,
+                      fontSize: '0.875rem',
+                      width: '100%',
+                      maxWidth: '100%',
+                      whiteSpace: 'normal',
+                      overflowWrap: 'anywhere',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Course: {item.cert.courseTitle || '—'}
                   </Typography>
                 </Stack>
                 <Stack direction="row" alignItems="center" spacing={1}>
-                  <Iconify icon="solar:clock-circle-bold" width={18} sx={{ color: 'text.secondary' }} />
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {typeof cert.cpeHours === 'number' ? `${cert.cpeHours} CPE Hour${cert.cpeHours !== 1 ? 's' : ''}` : cert.cpeHours}
+                  <Iconify icon="solar:clipboard-text-bold" width={16} sx={{ color: 'text.secondary' }} />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      width: '100%',
+                      maxWidth: '100%',
+                      whiteSpace: 'normal',
+                      overflowWrap: 'anywhere',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    No: {item.cert.certificateNo || '—'}
                   </Typography>
                 </Stack>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Iconify icon="solar:calendar-bold" width={16} sx={{ color: 'text.secondary' }} />
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 400, fontSize: '0.875rem' }}>
+                    Completed: {item.cert.completedAt}
+                  </Typography>
+                </Stack>
+                {typeof item.cert.cpeHours === 'number' && (
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, pl: 3.25, fontSize: '0.875rem' }}>
+                    {`${item.cert.cpeHours} CPE Hour${item.cert.cpeHours !== 1 ? 's' : ''}`}
+                  </Typography>
+                )}
               </Stack>
-              <Stack direction="row" spacing={1} sx={{ mt: 'auto' }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="warning"
-                  startIcon={<Iconify icon="solar:eye-bold" width={18} />}
-                  component={RouterLink}
-                  to={paths.learningCourse.details(cert.courseId)}
-                  sx={{ flex: 1 }}
-                >
-                  View course
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="inherit"
-                  startIcon={<Iconify icon="solar:document-text-bold" width={18} />}
-                  onClick={() => handlePreview(cert)}
-                  disabled={previewLoading && previewCert?.id === cert.id}
-                  sx={{ flex: 1 }}
-                >
-                  {previewLoading && previewCert?.id === cert.id ? 'Loading…' : 'Preview'}
-                </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="warning"
-                  startIcon={<Iconify icon="solar:download-bold" width={18} />}
-                  onClick={() => handleDownload(cert)}
-                  disabled={downloadingId === cert.id}
-                  sx={{ flex: 1 }}
-                >
-                  {downloadingId === cert.id ? 'Generating…' : 'Download'}
-                </Button>
+
+              <Stack direction="row" justifyContent="flex-end" spacing={0.5} sx={{ mt: 'auto', pt: 1 }}>
+                <Tooltip title="Preview">
+                  <IconButton
+                    size="small"
+                    color="default"
+                    onClick={() => handlePreview(item.cert)}
+                    disabled={previewLoading}
+                    sx={{
+                      border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
+                      bgcolor: alpha(theme.palette.grey[500], 0.04),
+                    }}
+                  >
+                    <Iconify icon="solar:eye-bold" width={18} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Download">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => handleDownload(item.cert)}
+                    disabled={downloadingId === item.cert?.id}
+                    sx={{
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+                      bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    }}
+                  >
+                    <Iconify icon="solar:download-bold" width={18} />
+                  </IconButton>
+                </Tooltip>
               </Stack>
+              <Iconify icon="solar:verified-check-bold" width={54} className="certificate-watermark" />
             </Card>
+            )}
           </Grid>
               ))}
-              {pageCount > 1 && (
-                <Grid xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                  <Pagination
-                    count={pageCount}
-                    page={page}
-                    onChange={(_, value) => setPage(value)}
-                    color="primary"
-                    shape="rounded"
-                    showFirstButton
-                    showLastButton
-                    sx={{
-                      [`& .${paginationClasses.ul}`]: { justifyContent: 'center' },
-                    }}
-                  />
-                </Grid>
-              )}
             </>
           );
         })()}
       </Grid>
-
-      {certificates.length === 0 && (
-        <Card sx={{ p: 6, textAlign: 'center' }}>
-          <Iconify icon="solar:medal-ribbons-star-bold" width={64} sx={{ color: 'text.disabled', mb: 2 }} />
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            No certificates yet
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Complete courses to earn certificates.
-          </Typography>
-          <Button component={RouterLink} to={paths.learning} variant="contained" color="primary">
-            Browse courses
-          </Button>
-        </Card>
-      )}
-
-      <Dialog
-        open={!!previewCert}
-        onClose={handleClosePreview}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{ sx: { minHeight: '80vh' } }}
-      >
-        <DialogTitle>
-          Certificate — {previewCert?.courseTitle}
-          <IconButton
-            aria-label="close"
-            onClick={handleClosePreview}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <Iconify icon="solar:close-circle-bold" width={24} />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, display: 'flex', flexDirection: 'column', minHeight: 560 }}>
-          {previewLoading && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: 400 }}>
-              <Typography color="text.secondary">Generating certificate…</Typography>
-            </Box>
-          )}
-          {!previewLoading && previewPdfUrl && (
-            <Box
-              component="iframe"
-              src={previewPdfUrl}
-              title="Certificate preview"
-              sx={{
-                flex: 1,
-                width: '100%',
-                minHeight: 560,
-                border: 'none',
-              }}
-            />
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.5 }}>
-          <Button onClick={handleClosePreview} color="inherit">
-            Close
-          </Button>
-          {previewCert && (
-            <Button
-              variant="contained"
-              color="warning"
-              startIcon={<Iconify icon="solar:download-bold" width={18} />}
-              onClick={async () => {
-                await handleDownload(previewCert);
-                handleClosePreview();
-              }}
-            >
-              Download
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
     </>
   );
 }
