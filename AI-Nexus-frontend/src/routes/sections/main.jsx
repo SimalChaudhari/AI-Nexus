@@ -62,7 +62,9 @@ export const mainRoutes = [
       {
         element: (
           <MainLayout>
-            <Suspense fallback={<CenteredCircularLoader py={6} />}>
+            <Suspense
+            //  fallback={<CenteredCircularLoader py={6} />}
+            >
               <Outlet />
             </Suspense>
           </MainLayout>
@@ -129,7 +131,14 @@ export const mainRoutes = [
             children: [
               { element: <LearningPage />, index: true },
               { path: 'course/:id', element: <LearningCourseDetailsPage /> },
-              { path: 'course/:id/learn', element: <AuthGuard><LearningCoursePlayerPage /></AuthGuard> },
+              {
+                path: 'course/:id/learn',
+                element: (
+                  <AuthGuard>
+                    <LearningCoursePlayerPage />
+                  </AuthGuard>
+                ),
+              },
             ],
           },
           {
