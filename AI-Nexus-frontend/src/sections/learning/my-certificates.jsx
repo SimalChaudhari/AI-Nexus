@@ -16,6 +16,10 @@ import { LoadingScreen } from 'src/components/loading-screen';
 import { pdf } from '@react-pdf/renderer';
 import { CertificatePdfDocument } from './certificate-pdf-document';
 import { svgToPngDataUrl } from 'src/utils/svg-to-png';
+import {
+  buildCertificateLinkedInShareText,
+  buildLinkedInFeedShareUrl,
+} from 'src/utils/linkedin-share';
 import { courseService } from 'src/services/course.service';
 import { appSettingsService } from 'src/services/app-settings.service';
 
@@ -176,6 +180,16 @@ export function MyCertificates() {
     } finally {
       setPreviewLoading(false);
     }
+  };
+
+  const handleShareLinkedIn = (cert) => {
+    const url = buildLinkedInFeedShareUrl(
+      buildCertificateLinkedInShareText({
+        courseTitle: cert?.courseTitle,
+        certificateNo: cert?.certificateNo,
+      })
+    );
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   if (loading && authenticated) {
@@ -369,6 +383,19 @@ export function MyCertificates() {
               </Stack>
 
               <Stack direction="row" justifyContent="flex-end" spacing={0.5} sx={{ mt: 'auto', pt: 1 }}>
+                <Tooltip title="Share on LinkedIn">
+                  <IconButton
+                    size="small"
+                    color="info"
+                    onClick={() => handleShareLinkedIn(item.cert)}
+                    sx={{
+                      border: `1px solid ${alpha(theme.palette.info.main, 0.28)}`,
+                      bgcolor: alpha(theme.palette.info.main, 0.08),
+                    }}
+                  >
+                    <Iconify icon="mdi:linkedin" width={18} />
+                  </IconButton>
+                </Tooltip>
                 <Tooltip title="Preview">
                   <IconButton
                     size="small"

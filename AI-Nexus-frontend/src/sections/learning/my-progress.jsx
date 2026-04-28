@@ -18,6 +18,10 @@ import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { courseService } from 'src/services/course.service';
+import {
+  buildCourseCompletionLinkedInShareText,
+  buildLinkedInFeedShareUrl,
+} from 'src/utils/linkedin-share';
 
 // ----------------------------------------------------------------------
 
@@ -427,22 +431,41 @@ export function MyProgress({ onNavigateToCertificates }) {
               </Stack>
               <Stack direction="row" flexWrap="wrap" gap={1.5}>
                 {completedCourses.map((course) => (
-                  <Button
-                    key={course.id}
-                    component={RouterLink}
-                    to={paths.learningCourse.details(course.id)}
-                    variant="outlined"
-                    size="small"
-                    startIcon={<Iconify icon="solar:medal-ribbons-star-bold" width={18} sx={{ color: 'warning.main' }} />}
-                    sx={{
-                      borderRadius: 2,
-                      borderColor: alpha(theme.palette.warning.main, 0.4),
-                      color: 'warning.darker',
-                      '&:hover': { borderColor: 'warning.main', bgcolor: alpha(theme.palette.warning.main, 0.08) },
-                    }}
-                  >
-                    {course.title}
-                  </Button>
+                  <Stack key={course.id} direction="row" spacing={0.75} alignItems="center">
+                    <Button
+                      component={RouterLink}
+                      to={paths.learningCourse.details(course.id)}
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Iconify icon="solar:medal-ribbons-star-bold" width={18} sx={{ color: 'warning.main' }} />}
+                      sx={{
+                        borderRadius: 2,
+                        borderColor: alpha(theme.palette.warning.main, 0.4),
+                        color: 'warning.darker',
+                        '&:hover': { borderColor: 'warning.main', bgcolor: alpha(theme.palette.warning.main, 0.08) },
+                      }}
+                    >
+                      {course.title}
+                    </Button>
+                    <Button
+                      size="small"
+                      color="info"
+                      variant="soft"
+                      startIcon={<Iconify icon="mdi:linkedin" width={16} />}
+                      onClick={() =>
+                        window.open(
+                          buildLinkedInFeedShareUrl(
+                            buildCourseCompletionLinkedInShareText({ courseTitle: course.title })
+                          ),
+                          '_blank',
+                          'noopener,noreferrer'
+                        )
+                      }
+                      sx={{ borderRadius: 2 }}
+                    >
+                      Share
+                    </Button>
+                  </Stack>
                 ))}
               </Stack>
             </Box>
