@@ -54,6 +54,7 @@ const transformUser = (user) => {
     username: user.username || '',
     firstname: user.firstname || '',
     lastname: user.lastname || '',
+    persona: user.persona || '',
     avatarUrl: resolveAssetUrl(user.avatarUrl || user.photoURL || ''),
     isVerified: user.isVerified || false,
     authProvider: user.authProvider || 'LOCAL',

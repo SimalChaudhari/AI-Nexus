@@ -52,6 +52,7 @@ const transformCourse = (course) => ({
   isFavorite: course.isFavorite ?? false,
   isBundle: course.isBundle ?? false,
   bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
+  isRecommended: course.isRecommended ?? false,
   isEnrolled: course.isEnrolled ?? false,
   accessViaBundle: course.accessViaBundle ?? false,
 });
@@ -79,6 +80,13 @@ export function AllCourses() {
   const checkout = useCheckoutContext();
   const latestRequestRef = useRef(0);
   const querySignatureRef = useRef('');
+  const groupPagesRef = useRef({
+    recommended: 1,
+    beginner: 1,
+    intermediate: 1,
+    advance: 1,
+  });
+  const skipNextFullFetchRef = useRef(false);
 
   const isInCart = (id) => checkout.items.some((item) => item.id === id);
   const addCourseToCart = (course) => {
@@ -92,7 +100,12 @@ export function AllCourses() {
   };
 
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
-  const [groupPages, setGroupPages] = useState({ beginner: 1, intermediate: 1, advance: 1 });
+  const [groupPages, setGroupPages] = useState({
+    recommended: 1,
+    beginner: 1,
+    intermediate: 1,
+    advance: 1,
+  });
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [courseFilter, setCourseFilter] = useState(null); // null | 'free' | 'paid' | 'purchased' | 'favorites'
   const [searchQuery, setSearchQuery] = useState('');
@@ -178,21 +191,43 @@ export function AllCourses() {
     };
   }, [searchQuery]);
 
+  const resolveGroupKey = useCallback((group) => {
+    if (group?.groupKey) return group.groupKey;
+    const name = String(group?.groupName || '').toLowerCase();
+    if (name === 'recommended') return 'recommended';
+    if (name === 'beginner' || name === 'basic' || name === 'ai foundation') return 'beginner';
+    if (name === 'intermediate' || name.includes('accounting workflows')) return 'intermediate';
+    return 'advance';
+  }, []);
+
   const fetchCoursesPage = useCallback(
-    async () => {
+    async (options = {}) => {
+      const { onlyGroupKey, pagesOverride } = options;
       const nextRequestId = latestRequestRef.current + 1;
       latestRequestRef.current = nextRequestId;
-      setLoading(true);
+      if (!onlyGroupKey) {
+        setLoading(true);
+      }
+      if (onlyGroupKey) {
+        setPaginatingGroupKey(onlyGroupKey);
+      }
+
+      const pages = pagesOverride || groupPagesRef.current;
 
       const params = {
-        beginnerPage: groupPages.beginner,
+        recommendedPage: pages.recommended,
+        recommendedLimit: ROWS_PER_PAGE,
+        beginnerPage: pages.beginner,
         beginnerLimit: ROWS_PER_PAGE,
-        intermediatePage: groupPages.intermediate,
+        intermediatePage: pages.intermediate,
         intermediateLimit: ROWS_PER_PAGE,
-        advancePage: groupPages.advance,
+        advancePage: pages.advance,
         advanceLimit: ROWS_PER_PAGE,
         search: debouncedSearchQuery || undefined,
       };
+      if (onlyGroupKey) {
+        params.group = onlyGroupKey;
+      }
 
       if (courseFilter === 'free') {
         params.freeOrPaid = false;
@@ -205,35 +240,72 @@ export function AllCourses() {
       }
 
       try {
-        const groupedResponse = await courseService.getGroupedCourses(params);
+        const groupedPayload = await courseService.getGroupedCourses(params);
+        const groupedResponse = groupedPayload?.groups || [];
         if (nextRequestId !== latestRequestRef.current) {
           return;
         }
 
-        setGroupedResult(groupedResponse);
-        const nextCourses = groupedResponse.flatMap((group) => group.items || []);
-        const totalItems = groupedResponse.reduce(
-          (sum, group) => sum + (group.pagination?.totalItems || 0),
-          0
-        );
-        const nextPagination = {
-          page: 1,
-          limit: ROWS_PER_PAGE,
-          totalItems,
-          totalPages: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-        };
+        if (onlyGroupKey) {
+          setGroupedResult((prev) => {
+            const incomingGroup = groupedResponse.find((group) => resolveGroupKey(group) === onlyGroupKey);
+            if (!incomingGroup) return prev;
+            let merged = [...prev];
+            const index = merged.findIndex((group) => resolveGroupKey(group) === onlyGroupKey);
+            if (index >= 0) {
+              merged[index] = incomingGroup;
+            } else if (onlyGroupKey === 'recommended') {
+              merged = [incomingGroup, ...merged];
+            } else {
+              merged.push(incomingGroup);
+            }
 
-        setCourses(nextCourses);
-        setPagination(nextPagination);
-        setFavorites(
-          new Set(
-            nextCourses
-              .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
-              .map((course) => course.id)
-          )
-        );
+            const nextCourses = merged.flatMap((group) => group.items || []);
+            const totalItems = merged.reduce((sum, group) => sum + (group.pagination?.totalItems || 0), 0);
+            setCourses(nextCourses);
+            setPagination({
+              page: 1,
+              limit: ROWS_PER_PAGE,
+              totalItems,
+              totalPages: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            });
+            setFavorites(
+              new Set(
+                nextCourses
+                  .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
+                  .map((course) => course.id)
+              )
+            );
+            return merged;
+          });
+        } else {
+          setGroupedResult(groupedResponse);
+          const nextCourses = groupedResponse.flatMap((group) => group.items || []);
+          const totalItems = groupedResponse.reduce(
+            (sum, group) => sum + (group.pagination?.totalItems || 0),
+            0
+          );
+          const nextPagination = {
+            page: 1,
+            limit: ROWS_PER_PAGE,
+            totalItems,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          };
+
+          setCourses(nextCourses);
+          setPagination(nextPagination);
+          setFavorites(
+            new Set(
+              nextCourses
+                .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
+                .map((course) => course.id)
+            )
+          );
+        }
       } catch (error) {
         if (nextRequestId === latestRequestRef.current) {
           toast.error(error?.response?.data?.message || 'Failed to fetch courses');
@@ -244,18 +316,26 @@ export function AllCourses() {
         }
       } finally {
         if (nextRequestId === latestRequestRef.current) {
-          setLoading(false);
+          if (!onlyGroupKey) {
+            setLoading(false);
+          }
           setPaginatingGroupKey(null);
         }
       }
     },
-    [courseFilter, debouncedSearchQuery, groupPages]
+    [courseFilter, debouncedSearchQuery, resolveGroupKey]
   );
 
   const handleGroupPageChange = useCallback((groupKey, value) => {
-    setPaginatingGroupKey(groupKey);
-    setGroupPages((prev) => ({ ...prev, [groupKey]: value }));
-  }, []);
+    const nextPages = { ...groupPages, [groupKey]: value };
+    skipNextFullFetchRef.current = true;
+    setGroupPages(nextPages);
+    fetchCoursesPage({ onlyGroupKey: groupKey, pagesOverride: nextPages });
+  }, [fetchCoursesPage, groupPages]);
+
+  useEffect(() => {
+    groupPagesRef.current = groupPages;
+  }, [groupPages]);
 
   useEffect(() => {
     if (!authenticated) {
@@ -266,7 +346,14 @@ export function AllCourses() {
 
     if (querySignatureRef.current !== filterSignature) {
       querySignatureRef.current = filterSignature;
-      setGroupPages({ beginner: 1, intermediate: 1, advance: 1 });
+      const resetPages = { recommended: 1, beginner: 1, intermediate: 1, advance: 1 };
+      setGroupPages(resetPages);
+      fetchCoursesPage({ pagesOverride: resetPages });
+      return;
+    }
+
+    if (skipNextFullFetchRef.current) {
+      skipNextFullFetchRef.current = false;
       return;
     }
 
@@ -278,19 +365,19 @@ export function AllCourses() {
     () =>
       (groupedResult || []).map((group) => ({
         level: group.groupName,
-        groupKey:
-          group.groupName?.toLowerCase() === 'beginner' ||
-          group.groupName?.toLowerCase() === 'basic'
-            ? 'beginner'
-            : group.groupName?.toLowerCase() === 'intermediate'
-              ? 'intermediate'
-              : 'advance',
+        groupKey: resolveGroupKey(group),
         items: group.items || [],
         pagination: group.pagination || DEFAULT_PAGINATION,
       })),
-    [groupedResult]
+    [groupedResult, resolveGroupKey]
   );
-  const totalCount = pagination.totalItems || 0;
+  const recommendedResultsCount = groupedCourses
+    .filter((group) => group.groupKey === 'recommended')
+    .reduce((sum, group) => sum + (group.pagination?.totalItems || 0), 0);
+  const levelResultsCount = groupedCourses
+    .filter((group) => group.groupKey !== 'recommended')
+    .reduce((sum, group) => sum + (group.pagination?.totalItems || 0), 0);
+  const totalCount = recommendedResultsCount + levelResultsCount;
   const displayedCourses = displayCourses;
 
   const handleRefresh = () => {
@@ -632,9 +719,17 @@ export function AllCourses() {
             spacing={2}
             sx={{ mb: 3 }}
           >
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-              {totalCount === 0 ? 'No results' : `${totalCount} total results`}
-            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 0.5, sm: 1.5 }} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                {totalCount === 0 ? 'No results' : `${totalCount} total results`}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Recommended: {recommendedResultsCount}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Level groups: {levelResultsCount}
+              </Typography>
+            </Stack>
 
             <Stack direction="row" spacing={0.75} alignItems="center">
               <Button
@@ -726,14 +821,14 @@ export function AllCourses() {
                           fontWeight: 800,
                           whiteSpace: 'nowrap',
                           color:
-                            loading && paginatingGroupKey === group.groupKey
+                            paginatingGroupKey === group.groupKey
                               ? 'secondary.main'
                               : 'text.primary',
                           letterSpacing: 0.2,
                           fontSize: { xs: '1.08rem', md: '1.2rem' },
                         }}
                       >
-                        {group.level}
+                        {group.level} ({group.pagination?.totalItems || 0})
                       </Typography>
                       <Divider
                         sx={{
@@ -828,6 +923,21 @@ export function AllCourses() {
                               {course.isBundle && (
                                 <LearningBundleRibbon
                                   count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
+                                />
+                              )}
+                              {group.groupKey !== 'recommended' && course.isRecommended && (
+                                <Chip
+                                  size="small"
+                                  label="Recommended"
+                                  color="warning"
+                                  sx={{
+                                    position: 'absolute',
+                                    top: 8,
+                                    left: 8,
+                                    height: 22,
+                                    fontWeight: 700,
+                                    zIndex: 2,
+                                  }}
                                 />
                               )}
                               <IconButton
@@ -1002,7 +1112,7 @@ export function AllCourses() {
                         </Grid>
                         ))}
                       </Grid>
-                      {loading && paginatingGroupKey === group.groupKey && (
+                      {paginatingGroupKey === group.groupKey && (
                         <CoursesLoaderOverlay size={32} zIndex={2} />
                       )}
                     </Box>
@@ -1012,7 +1122,7 @@ export function AllCourses() {
                           count={Math.max(1, group.pagination.totalPages || 1)}
                           page={groupPages[group.groupKey] || 1}
                           onChange={(_, value) => handleGroupPageChange(group.groupKey, value)}
-                          disabled={loading && paginatingGroupKey === group.groupKey}
+                          disabled={paginatingGroupKey === group.groupKey}
                           color="primary"
                           shape="rounded"
                           showFirstButton
@@ -1035,14 +1145,14 @@ export function AllCourses() {
                     fontWeight: 800,
                     whiteSpace: 'nowrap',
                     color:
-                      loading && paginatingGroupKey === group.groupKey
+                      paginatingGroupKey === group.groupKey
                         ? 'secondary.main'
                         : 'text.primary',
                     letterSpacing: 0.2,
                     fontSize: { xs: '1.08rem', md: '1.2rem' },
                   }}
                 >
-                  {group.level}
+                  {group.level} ({group.pagination?.totalItems || 0})
                 </Typography>
                 <Divider
                   sx={{
@@ -1095,6 +1205,21 @@ export function AllCourses() {
                       {course.isBundle && (
                         <LearningBundleRibbon
                           count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
+                        />
+                      )}
+                      {group.groupKey !== 'recommended' && course.isRecommended && (
+                        <Chip
+                          size="small"
+                          label="Recommended"
+                          color="warning"
+                          sx={{
+                            position: 'absolute',
+                            top: 8,
+                            left: 8,
+                            height: 22,
+                            fontWeight: 700,
+                            zIndex: 2,
+                          }}
                         />
                       )}
                       <IconButton
@@ -1263,7 +1388,7 @@ export function AllCourses() {
                   </Card>
                   ))}
                 </Stack>
-                {loading && paginatingGroupKey === group.groupKey && (
+                {paginatingGroupKey === group.groupKey && (
                   <CoursesLoaderOverlay size={32} zIndex={2} />
                 )}
               </Box>
@@ -1273,7 +1398,7 @@ export function AllCourses() {
                     count={Math.max(1, group.pagination.totalPages || 1)}
                     page={groupPages[group.groupKey] || 1}
                     onChange={(_, value) => handleGroupPageChange(group.groupKey, value)}
-                    disabled={loading && paginatingGroupKey === group.groupKey}
+                    disabled={paginatingGroupKey === group.groupKey}
                     color="primary"
                     shape="rounded"
                     showFirstButton

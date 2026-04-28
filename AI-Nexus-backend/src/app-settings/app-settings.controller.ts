@@ -1,11 +1,14 @@
 import {
   Controller,
+  Body,
   Delete,
   Get,
   HttpStatus,
   MaxFileSizeValidator,
   ParseFilePipe,
   Post,
+  Put,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
@@ -14,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -51,6 +54,42 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json({
       data: settings,
     });
+  }
+
+  @Get('persona-course-mappings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Get persona-course mappings (admin)' })
+  async getPersonaCourseMappings(@Res() response: Response) {
+    const mappings = await this.appSettingsService.getPersonaCourseMappings();
+    return response.status(HttpStatus.OK).json({ data: mappings });
+  }
+
+  @Put('persona-course-mappings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update persona-course mappings (admin)' })
+  async updatePersonaCourseMappings(
+    @Body() body: { mappings?: Array<{ persona?: string; courseIds?: string[] }> },
+    @Res() response: Response,
+  ) {
+    const result = await this.appSettingsService.updatePersonaCourseMappings(body?.mappings);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Get('recommendations/me')
+  @UseGuards(SessionGuard, JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Get personalized course recommendation ids for current user' })
+  async getMyRecommendations(@Res() response: Response, @Req() request: Request) {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+    }
+    const result = await this.appSettingsService.getRecommendationsForUser(userId);
+    return response.status(HttpStatus.OK).json({ data: result });
   }
 
   @Post('logo')

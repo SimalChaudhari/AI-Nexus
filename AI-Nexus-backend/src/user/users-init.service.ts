@@ -36,9 +36,25 @@ export class UsersInitService implements OnModuleInit {
         `);
         console.log('✅ Added users.avatarUrl column');
       }
+
+      const personaColumnExists = await queryRunner.query(`
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'users'
+          AND column_name = 'persona'
+        LIMIT 1
+      `);
+
+      if (!personaColumnExists.length) {
+        await queryRunner.query(`
+          ALTER TABLE "users"
+          ADD COLUMN IF NOT EXISTS "persona" varchar
+        `);
+        console.log('✅ Added users.persona column');
+      }
     } catch (error) {
       console.error(
-        '❌ Error ensuring users.avatarUrl column:',
+        '❌ Error ensuring users profile columns:',
         error instanceof Error ? error.message : error,
       );
     } finally {

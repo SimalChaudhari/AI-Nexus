@@ -7,6 +7,11 @@ import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import Autocomplete from '@mui/material/Autocomplete';
+import CircularProgress from '@mui/material/CircularProgress';
+import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import LoadingButton from '@mui/lab/LoadingButton';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
@@ -19,6 +24,8 @@ import { paths } from 'src/routes/paths';
 
 import { useSettingsContext } from 'src/components/settings';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { courseService } from 'src/services/course.service';
+import { PERSONA_OPTIONS } from 'src/constants/persona-options';
 
 // ----------------------------------------------------------------------
 
@@ -33,6 +40,11 @@ export function AdminSettingsView() {
   const [heroUrl, setHeroUrl] = useState('');
   const [heroLoading, setHeroLoading] = useState(true);
   const [heroSubmitting, setHeroSubmitting] = useState(false);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [mappingSubmitting, setMappingSubmitting] = useState(false);
+  const [courseOptions, setCourseOptions] = useState([]);
+  const [personaMappings, setPersonaMappings] = useState([]);
+  const [selectedPersona, setSelectedPersona] = useState(PERSONA_OPTIONS[0]?.value || '');
 
   const handleToggle = (field) => {
     settings.onUpdateField(field, !settings[field]);
@@ -45,11 +57,18 @@ export function AdminSettingsView() {
       const appSettings = await appSettingsService.getPublic();
       setLogoUrl(appSettings.logoUrl || '');
       setHeroUrl(appSettings.homeHeroImageUrl || '');
+      const [mappingsResult, coursesResult] = await Promise.all([
+        appSettingsService.getPersonaCourseMappings(),
+        courseService.getAllCourses({ page: 1, limit: 500 }),
+      ]);
+      setPersonaMappings(mappingsResult || []);
+      setCourseOptions(Array.isArray(coursesResult?.data) ? coursesResult.data : []);
     } catch (error) {
       toast.error(error?.message || 'Failed to load site settings');
     } finally {
       setLogoLoading(false);
       setHeroLoading(false);
+      setCoursesLoading(false);
     }
   }, []);
 
@@ -185,6 +204,39 @@ export function AdminSettingsView() {
       setLogoSubmitting(false);
     }
   };
+
+  const handleMappingCoursesChange = (persona, courses) => {
+    const nextCourseIds = [...new Set((courses || []).map((row) => row.id).filter(Boolean))];
+    setPersonaMappings((prev) => {
+      const existingIndex = prev.findIndex((row) => row.persona === persona);
+      if (existingIndex === -1) {
+        return [...prev, { persona, courseIds: nextCourseIds }];
+      }
+      const cloned = [...prev];
+      cloned[existingIndex] = { ...cloned[existingIndex], courseIds: nextCourseIds };
+      return cloned;
+    });
+  };
+
+  const handleSavePersonaMappings = async () => {
+    try {
+      setMappingSubmitting(true);
+      const saved = await appSettingsService.updatePersonaCourseMappings(personaMappings);
+      setPersonaMappings(saved || []);
+      toast.success('Persona course mappings saved');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to save persona course mappings');
+    } finally {
+      setMappingSubmitting(false);
+    }
+  };
+
+  const selectedMapping = personaMappings.find((row) => row.persona === selectedPersona);
+  const selectedCourses = (selectedMapping?.courseIds || [])
+    .map((id) => courseOptions.find((course) => course.id === id))
+    .filter(Boolean);
+  const mappedPersonasCount = personaMappings.filter((row) => (row?.courseIds || []).length > 0).length;
+  const selectedCoursesCount = selectedCourses.length;
 
 
   const headerVisibilityOptions = [
@@ -369,6 +421,96 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const renderPersonaCourseMappings = (
+    <Card
+      sx={{
+        p: 3,
+        border: (theme) => `1px solid ${theme.palette.divider}`,
+        background: (theme) =>
+          `linear-gradient(180deg, ${theme.palette.background.paper} 0%, ${theme.palette.background.neutral || theme.palette.grey[50]} 100%)`,
+      }}
+    >
+      <Stack spacing={2.25}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 0.75 }}>
+            Persona Course Recommendations
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Configure which courses should be recommended for each persona on the Learning page.
+          </Typography>
+        </Box>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap>
+          <Chip
+            color="primary"
+            variant="soft"
+            label={`Mapped personas: ${mappedPersonasCount}/${PERSONA_OPTIONS.length}`}
+            sx={{ fontWeight: 600 }}
+          />
+          <Chip
+            color="warning"
+            variant="soft"
+            label={`Selected courses: ${selectedCoursesCount}`}
+            sx={{ fontWeight: 600 }}
+          />
+        </Stack>
+
+        <Divider />
+
+        <Autocomplete
+          disablePortal
+          options={PERSONA_OPTIONS}
+          getOptionLabel={(option) => option?.label || ''}
+          value={PERSONA_OPTIONS.find((opt) => opt.value === selectedPersona) || null}
+          onChange={(_, option) => setSelectedPersona(option?.value || PERSONA_OPTIONS[0]?.value || '')}
+          renderInput={(params) => <TextField {...params} label="Persona" helperText="Choose a persona profile" />}
+        />
+
+        <Autocomplete
+          multiple
+          disableCloseOnSelect
+          options={courseOptions}
+          loading={coursesLoading}
+          getOptionLabel={(option) => option?.title || ''}
+          value={selectedCourses}
+          onChange={(_, next) => handleMappingCoursesChange(selectedPersona, next)}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Recommended Courses"
+              placeholder="Select one or more courses"
+              helperText="These courses will be highlighted for selected persona in Learning groups."
+              InputProps={{
+                ...params.InputProps,
+                endAdornment: (
+                  <>
+                    {coursesLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                    {params.InputProps.endAdornment}
+                  </>
+                ),
+              }}
+            />
+          )}
+        />
+
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Changes are saved for all personas in one update.
+          </Typography>
+          <LoadingButton
+            variant="contained"
+            loading={mappingSubmitting}
+            onClick={handleSavePersonaMappings}
+            size="large"
+          >
+            Save Persona Mapping
+          </LoadingButton>
+        </Stack>
+      </Stack>
+    </Card>
+  );
+
   return (
     <DashboardContent>
       <CustomBreadcrumbs
@@ -383,6 +525,7 @@ export function AdminSettingsView() {
       <Stack spacing={3}>
         {renderLogoSettings}
         {renderHomeHeroSettings}
+        {renderPersonaCourseMappings}
         {renderHeaderVisibility}
       </Stack>
     </DashboardContent>

@@ -31,6 +31,16 @@ export class CourseEnrollmentInitService implements OnModuleInit {
         console.log('✅ course_enrollments table created successfully');
       }
 
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_course_enrollments_userId" ON "course_enrollments" ("userId")`
+      );
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_course_enrollments_courseId" ON "course_enrollments" ("courseId")`
+      );
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_course_enrollments_user_course" ON "course_enrollments" ("userId", "courseId")`
+      );
+
       await queryRunner.release();
     } catch (error) {
       console.error(

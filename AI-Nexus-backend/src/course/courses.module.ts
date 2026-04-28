@@ -39,12 +39,14 @@ import { ReviewModule } from '../review/review.module';
 import { CourseCertificateEntity } from './course-certificate.entity';
 import { CourseCertificateService } from './course-certificate.service';
 import { CourseCertificateInitService } from './course-certificate-init.service';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
     imports: [
         SpeakerModule,
         LanguageModule,
         ReviewModule,
+        AppSettingsModule,
         TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseCertificateEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,

@@ -38,6 +38,9 @@ export class AuthService {
       if (!userDto.email) {
         throw new BadRequestException('Email is required');
       }
+      if (!userDto.persona) {
+        throw new BadRequestException('Persona is required');
+      }
       if (!userDto.password) {
         throw new BadRequestException('Password is required');
       }
@@ -73,6 +76,7 @@ export class AuthService {
         firstname: userDto.firstname,
         lastname: userDto.lastname,
         email: userDto.email,
+        persona: userDto.persona,
         password: hashedPassword,
         authProvider: AuthProvider.LOCAL,
         role: userDto.role || UserRole.User,

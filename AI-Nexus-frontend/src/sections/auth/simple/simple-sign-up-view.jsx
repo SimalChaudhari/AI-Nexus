@@ -23,6 +23,7 @@ import { Iconify } from 'src/components/iconify';
 
 import { signUp } from 'src/auth/context/jwt';
 import { useAuthContext } from 'src/auth/hooks';
+import { PERSONA_OPTIONS } from 'src/constants/persona-options';
 
 // ----------------------------------------------------------------------
 
@@ -38,6 +39,7 @@ export const SignUpSchema = zod.object({
     .string()
     .min(1, { message: 'Email is required!' })
     .email({ message: 'Email must be a valid email address!' }),
+  persona: zod.string().min(1, { message: 'Persona is required!' }),
   password: zod
     .string()
     .min(1, { message: 'Password is required!' })
@@ -57,6 +59,7 @@ export function SimpleSignUpView() {
     firstName: '',
     lastName: '',
     email: '',
+    persona: '',
     password: '',
   };
 
@@ -78,6 +81,7 @@ export function SimpleSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        persona: data.persona,
       });
 
       // Redirect to verify page after successful registration
@@ -122,6 +126,22 @@ export function SimpleSignUpView() {
         <Field.Text name="lastName" label="Last name" InputLabelProps={{ shrink: true }} />
       </Stack>
 
+      <Field.Autocomplete
+        name="persona"
+        label="Persona"
+        placeholder="Search persona..."
+        options={PERSONA_OPTIONS.map((option) => option.value)}
+        autoHighlight
+        autoSelect
+        clearOnEscape
+        slotProps={{
+          popper: {
+            placement: 'bottom-start',
+            modifiers: [{ name: 'flip', enabled: false }],
+            sx: { zIndex: (theme) => theme.zIndex.modal + 2 },
+          },
+        }}
+      />
       <Field.Text name="email" label="Email address" InputLabelProps={{ shrink: true }} />
 
       <Field.Text

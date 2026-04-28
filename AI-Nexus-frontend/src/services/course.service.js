@@ -71,6 +71,7 @@ const transformCourse = (course) => {
     marketData: course.marketData || '',
     isBundle: course.isBundle ?? false,
     bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
+    isRecommended: course.isRecommended ?? false,
     isFavorite: course.isFavorite ?? false,
     isEnrolled: course.isEnrolled ?? false,
     /** True when access comes only from owning a bundle (not a direct enrollment row). */
@@ -90,10 +91,12 @@ export const courseService = {
       const response = await axios.get('/courses/grouped/list', { params: queryParams });
       const groups = response.data?.data?.groups || [];
 
-      return groups.map((group) => ({
-        ...group,
-        items: (group.items || []).map(transformCourse),
-      }));
+      return {
+        groups: groups.map((group) => ({
+          ...group,
+          items: (group.items || []).map(transformCourse),
+        })),
+      };
     } catch (error) {
       console.error('Error fetching grouped courses:', error);
       throw error;

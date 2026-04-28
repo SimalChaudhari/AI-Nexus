@@ -594,12 +594,28 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     Use the toolbar for <strong>bold</strong>, lists, and links. This appears on the public course page
                     (plain-text parts are used for short previews).
                   </Alert>
+                  <Alert
+                    severity="success"
+                    variant="outlined"
+                    sx={{ mb: 2 }}
+                    icon={<Iconify icon="solar:list-check-bold" width={22} />}
+                  >
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                      Suggested format (bullet points)
+                    </Typography>
+                    <Box component="ul" sx={{ m: 0, pl: 2.25 }}>
+                      <li>What this course covers</li>
+                      <li>Who this course is for</li>
+                      <li>3-5 key learning outcomes</li>
+                      <li>Prerequisites (if any)</li>
+                    </Box>
+                  </Alert>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
                     Description
                   </Typography>
                   <Field.Editor
                     name="description"
-                    placeholder="Overview, learning outcomes, prerequisites…"
+                    placeholder="• What this course covers&#10;• Who this course is for&#10;• Key outcomes&#10;• Prerequisites"
                     fullItem={false}
                     onUploadImage={handleEditorMediaUpload}
                   />

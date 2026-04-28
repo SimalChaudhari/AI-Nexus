@@ -63,6 +63,7 @@ import { SpeakerEntity } from '../speaker/speaker.entity';
 import { LanguageService } from '../language/language.service';
 import { ReviewService } from '../review/review.service';
 import { CourseCertificateService } from './course-certificate.service';
+import { AppSettingsService } from '../app-settings/app-settings.service';
 
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
@@ -250,6 +251,7 @@ export class CourseController {
         private readonly languageService: LanguageService,
         private readonly reviewService: ReviewService,
         private readonly courseCertificateService: CourseCertificateService,
+        private readonly appSettingsService: AppSettingsService,
     ) {}
 
     @Get()
@@ -318,6 +320,8 @@ export class CourseController {
     @ApiQuery({ name: 'intermediateLimit', required: false, description: 'Limit for Intermediate group', example: 5 })
     @ApiQuery({ name: 'advancePage', required: false, description: 'Page for Advance group', example: 1 })
     @ApiQuery({ name: 'advanceLimit', required: false, description: 'Limit for Advance group', example: 5 })
+    @ApiQuery({ name: 'recommendedPage', required: false, description: 'Page for recommended courses', example: 1 })
+    @ApiQuery({ name: 'recommendedLimit', required: false, description: 'Limit for recommended courses', example: 5 })
     @ApiQuery({ name: 'search', required: false, description: 'Search in title/description' })
     @ApiQuery({ name: 'freeOrPaid', required: false, description: 'true = paid, false = free' })
     @ApiQuery({ name: 'isFavorite', required: false, description: 'true/false favorite filter' })
@@ -339,36 +343,95 @@ export class CourseController {
         @Query('intermediateLimit') intermediateLimit?: string,
         @Query('advancePage') advancePage?: string,
         @Query('advanceLimit') advanceLimit?: string,
+        @Query('recommendedPage') recommendedPage?: string,
+        @Query('recommendedLimit') recommendedLimit?: string,
         @Res() response?: Response,
     ) {
         const userId = (request as any).user?.id;
-        const groups = await this.courseService.getGroupedCourses({
+        const requestedGroup = String(group || '').trim().toLowerCase();
+        const isRecommendedOnlyRequest = requestedGroup === 'recommended';
+        const isSpecificStandardGroup =
+            requestedGroup === 'beginner' ||
+            requestedGroup === 'basic' ||
+            requestedGroup === 'intermediate' ||
+            requestedGroup === 'advance' ||
+            requestedGroup === 'advanced';
+        let recommendation: { persona: string | null; courseIds: string[] } = {
+            persona: null,
+            courseIds: [],
+        };
+        let recommendedCourseIds: string[] = [];
+        if (userId) {
+            recommendation = await this.appSettingsService.getRecommendationsForUser(userId);
+            recommendedCourseIds = Array.isArray(recommendation?.courseIds) ? recommendation.courseIds : [];
+        }
+        const recommendedResult = await this.courseService.getRecommendedCourses({
             userId,
-            group,
+            recommendedCourseIds,
+            page: parsePositiveInteger(recommendedPage, 1),
+            limit: parsePositiveInteger(recommendedLimit, 5),
             search,
             freeOrPaid: parseBooleanQuery(freeOrPaid),
             isFavorite: parseBooleanQuery(isFavorite),
             isEnrolled: parseBooleanQuery(isEnrolled),
-            defaultPage: parsePositiveInteger(page, 1),
-            defaultLimit: parsePositiveInteger(limit, 12),
-            beginnerPage:
-                parseOptionalPositiveInteger(beginnerPage) ??
-                parseOptionalPositiveInteger(basicPage),
-            beginnerLimit:
-                parseOptionalPositiveInteger(beginnerLimit) ??
-                parseOptionalPositiveInteger(basicLimit),
-            basicPage: parseOptionalPositiveInteger(basicPage),
-            basicLimit: parseOptionalPositiveInteger(basicLimit),
-            intermediatePage: parseOptionalPositiveInteger(intermediatePage),
-            intermediateLimit: parseOptionalPositiveInteger(intermediateLimit),
-            advancePage: parseOptionalPositiveInteger(advancePage),
-            advanceLimit: parseOptionalPositiveInteger(advanceLimit),
         });
+        const recommendedGroup =
+            recommendedCourseIds.length > 0
+                ? {
+                    groupId: 'group_recommended',
+                    groupName: 'Recommended',
+                    groupKey: 'recommended',
+                    pagination: {
+                        page: recommendedResult.pagination.page,
+                        limit: recommendedResult.pagination.limit,
+                        totalItems: recommendedResult.pagination.totalItems,
+                        totalPages: recommendedResult.pagination.totalPages,
+                        hasNextPage: recommendedResult.pagination.hasNextPage,
+                        hasPrevPage: recommendedResult.pagination.hasPreviousPage,
+                    },
+                    items: recommendedResult.data,
+                }
+                : null;
+
+        let groups: any[] = [];
+        if (!isRecommendedOnlyRequest) {
+            groups = await this.courseService.getGroupedCourses({
+                userId,
+                group: isSpecificStandardGroup ? group : undefined,
+                search,
+                freeOrPaid: parseBooleanQuery(freeOrPaid),
+                isFavorite: parseBooleanQuery(isFavorite),
+                isEnrolled: parseBooleanQuery(isEnrolled),
+                defaultPage: parsePositiveInteger(page, 1),
+                defaultLimit: parsePositiveInteger(limit, 12),
+                beginnerPage:
+                    parseOptionalPositiveInteger(beginnerPage) ??
+                    parseOptionalPositiveInteger(basicPage),
+                beginnerLimit:
+                    parseOptionalPositiveInteger(beginnerLimit) ??
+                    parseOptionalPositiveInteger(basicLimit),
+                basicPage: parseOptionalPositiveInteger(basicPage),
+                basicLimit: parseOptionalPositiveInteger(basicLimit),
+                intermediatePage: parseOptionalPositiveInteger(intermediatePage),
+                intermediateLimit: parseOptionalPositiveInteger(intermediateLimit),
+                advancePage: parseOptionalPositiveInteger(advancePage),
+                advanceLimit: parseOptionalPositiveInteger(advanceLimit),
+                recommendedCourseIds,
+            });
+        }
+
+        const groupsWithRecommended = isRecommendedOnlyRequest
+            ? (recommendedGroup ? [recommendedGroup] : [])
+            : (!isSpecificStandardGroup && recommendedGroup
+                ? [recommendedGroup, ...groups]
+                : groups);
 
         return response!.status(HttpStatus.OK).json({
             success: true,
             message: 'Data fetched successfully',
-            data: { groups },
+            data: {
+                groups: groupsWithRecommended,
+            },
             meta: {
                 timestamp: new Date().toISOString(),
                 requestId: (request.headers['x-request-id'] as string) || randomUUID(),

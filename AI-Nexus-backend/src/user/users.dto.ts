@@ -20,6 +20,10 @@ export class UserDto {
     @IsNotEmpty()
     email!: string;
 
+    @IsString()
+    @IsNotEmpty()
+    persona!: string;
+
     @IsOptional()
     @IsString()
     avatarUrl?: string;
@@ -55,6 +59,10 @@ export class UpdateUserDto {
     @IsOptional()
     @IsEmail()
     email?: string;
+
+    @IsOptional()
+    @IsString()
+    persona?: string;
 
     @IsOptional()
     @IsString()

@@ -5,7 +5,8 @@ import { toast } from 'src/components/snackbar';
 // Async thunks for API calls
 export const fetchCourses = createAsyncThunk('courses/fetchCourses', async (params = {}, { rejectWithValue }) => {
   try {
-    const groups = await courseService.getGroupedCourses(params);
+    const groupedPayload = await courseService.getGroupedCourses(params);
+    const groups = groupedPayload?.groups || [];
     const data = groups.flatMap((group) => group.items || []);
     const totalItems = groups.reduce((sum, group) => sum + (group.pagination?.totalItems || 0), 0);
     const totalPages = groups.reduce((max, group) => Math.max(max, group.pagination?.totalPages || 0), 0);

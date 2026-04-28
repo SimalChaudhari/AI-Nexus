@@ -48,6 +48,8 @@ type GetCoursesOptions = PaginatedQueryOptions & {
   isEnrolled?: boolean;
   usePagination?: boolean;
   group?: string;
+  recommendedCourseIds?: string[];
+  courseIds?: string[];
 };
 
 type GroupKey = 'basic' | 'intermediate' | 'advance';
@@ -69,6 +71,9 @@ type GroupedCoursesQuery = {
   intermediateLimit?: number;
   advancePage?: number;
   advanceLimit?: number;
+  recommendedCourseIds?: string[];
+  recommendedPage?: number;
+  recommendedLimit?: number;
 };
 
 function mapGroupToLevel(group?: string): CourseLevel | undefined {
@@ -125,6 +130,22 @@ export class CourseService {
         const favoriteFilter = options.isFavorite;
         const enrolledFilter = options.isEnrolled;
         const usePagination = options.usePagination === true;
+        const courseIdsFilter = Array.isArray(options.courseIds)
+            ? [...new Set(options.courseIds.filter(Boolean))]
+            : undefined;
+
+        if (courseIdsFilter && courseIdsFilter.length === 0) {
+            return usePagination
+                ? buildPaginatedResponse(
+                    [],
+                    normalizedQuery.page,
+                    normalizedQuery.limit,
+                    0,
+                    normalizedQuery.hasSearch ? normalizedQuery.search : null,
+                    undefined,
+                )
+                : [];
+        }
 
         if (!userId && (favoriteFilter === true || enrolledFilter === true)) {
             return usePagination
@@ -140,6 +161,9 @@ export class CourseService {
         }
 
         const baseQuery = this.courseRepository.createQueryBuilder('course');
+        if (courseIdsFilter && courseIdsFilter.length > 0) {
+            baseQuery.andWhere('course.id IN (:...courseIds)', { courseIds: courseIdsFilter });
+        }
 
         if (normalizedQuery.hasSearch) {
             baseQuery.andWhere('(course.title ILIKE :search OR course.description ILIKE :search)', {
@@ -201,7 +225,34 @@ export class CourseService {
         }
 
         const totalItems = usePagination ? await baseQuery.clone().getCount() : 0;
-        const courseQuery = baseQuery.clone().orderBy('course.createdAt', 'DESC');
+        const courseQuery = baseQuery.clone();
+        const recommendedCourseIds = Array.isArray(options.recommendedCourseIds)
+            ? [...new Set(options.recommendedCourseIds.filter(Boolean))]
+            : [];
+        if (userId) {
+            courseQuery.addSelect(
+                `CASE
+                    WHEN courseEnrollment.id IS NOT NULL
+                      OR course.id IN (${bundleChildIdsSql})
+                    THEN 0 ELSE 1
+                 END`,
+                'purchase_priority',
+            );
+            courseQuery.orderBy('purchase_priority', 'ASC');
+        }
+
+        if (recommendedCourseIds.length > 0) {
+            courseQuery
+                .addSelect(
+                    'CASE WHEN course.id = ANY(:recommendedCourseIds) THEN 0 ELSE 1 END',
+                    'persona_priority',
+                )
+                .addOrderBy('persona_priority', 'ASC')
+                .addOrderBy('course.createdAt', 'DESC')
+                .setParameter('recommendedCourseIds', recommendedCourseIds);
+        } else {
+            courseQuery.addOrderBy('course.createdAt', 'DESC');
+        }
         const courses = usePagination
             ? await courseQuery
                 .skip((normalizedQuery.page - 1) * normalizedQuery.limit)
@@ -210,6 +261,7 @@ export class CourseService {
             : await courseQuery.getMany();
 
         const courseIds = courses.map((course) => course.id);
+        const recommendedSet = new Set(recommendedCourseIds);
         let favoriteIds = new Set<string>();
         let effectiveEnrolledIds = new Set<string>();
 
@@ -236,6 +288,7 @@ export class CourseService {
                 isFavorite: userId ? favoriteIds.has(course.id) : false,
                 isEnrolled: effective,
                 accessViaBundle: userId ? effective && !directOnPage : false,
+                isRecommended: recommendedSet.has(course.id),
             };
         });
 
@@ -284,6 +337,7 @@ export class CourseService {
                     freeOrPaid: query.freeOrPaid,
                     isFavorite: query.isFavorite,
                     isEnrolled: query.isEnrolled,
+                    recommendedCourseIds: query.recommendedCourseIds,
                 })) as PaginatedResponse<any>;
 
                 return {
@@ -301,6 +355,37 @@ export class CourseService {
                 };
             }),
         );
+    }
+
+    async getRecommendedCourses(query: {
+        userId?: string;
+        recommendedCourseIds: string[];
+        page?: number;
+        limit?: number;
+        search?: string;
+        freeOrPaid?: boolean;
+        isFavorite?: boolean;
+        isEnrolled?: boolean;
+    }) {
+        const ids = Array.isArray(query.recommendedCourseIds)
+            ? [...new Set(query.recommendedCourseIds.filter(Boolean))]
+            : [];
+        if (ids.length === 0) {
+            return buildPaginatedResponse([], query.page || 1, query.limit || 5, 0, query.search || null, undefined);
+        }
+
+        return this.getAll({
+            userId: query.userId,
+            usePagination: true,
+            page: query.page || 1,
+            limit: query.limit || 5,
+            search: query.search,
+            freeOrPaid: query.freeOrPaid,
+            isFavorite: query.isFavorite,
+            isEnrolled: query.isEnrolled,
+            courseIds: ids,
+            recommendedCourseIds: ids,
+        }) as Promise<PaginatedResponse<any>>;
     }
 
     async getCourseGroups(activeOnly = true) {

@@ -18,6 +18,10 @@ export class AppSettingsEntity {
   @Column({ type: 'varchar', nullable: true })
   homeHeroImageUrl?: string | null;
 
+  /** Persona -> recommended course IDs mapping, configurable by admin. */
+  @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })
+  personaCourseMappings?: Array<{ persona: string; courseIds: string[] }> | null;
+
   @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;
 

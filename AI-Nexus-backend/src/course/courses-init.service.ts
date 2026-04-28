@@ -183,6 +183,20 @@ export class CoursesInitService implements OnModuleInit {
         console.log('✅ course_favorites table already exists');
       }
 
+      // Performance indexes for Learning grouped/recommended queries.
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_courses_level_createdAt" ON "courses" ("level", "createdAt" DESC)`
+      );
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_courses_createdAt" ON "courses" ("createdAt" DESC)`
+      );
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_course_favorites_userId" ON "course_favorites" ("userId")`
+      );
+      await queryRunner.query(
+        `CREATE INDEX IF NOT EXISTS "IDX_course_favorites_courseId" ON "course_favorites" ("courseId")`
+      );
+
       // Check and create course_section_favorites table
       console.log('🔍 Checking course_section_favorites table...');
       const sectionFavoritesExists = await queryRunner.hasTable('course_section_favorites');

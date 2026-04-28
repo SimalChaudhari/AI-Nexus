@@ -1,0 +1,21 @@
+export const PERSONA_OPTIONS = [
+  { value: 'Audit Executive', label: 'Audit Executive' },
+  { value: 'Audit Manager', label: 'Audit Manager' },
+  { value: 'Chief Financial Officer (CFO)', label: 'Chief Financial Officer (CFO)' },
+  { value: 'Compliance Manager', label: 'Compliance Manager' },
+  { value: 'Data Analyst (Finance)', label: 'Data Analyst (Finance)' },
+  { value: 'External Auditor', label: 'External Auditor' },
+  { value: 'Finance Executive', label: 'Finance Executive' },
+  { value: 'Finance Leader', label: 'Finance Leader' },
+  { value: 'Financial Controller', label: 'Financial Controller' },
+  { value: 'General Accountant', label: 'General Accountant' },
+  { value: 'Head of Finance', label: 'Head of Finance' },
+  { value: 'Internal Auditor', label: 'Internal Auditor' },
+  { value: 'Risk & Compliance', label: 'Risk & Compliance' },
+  { value: 'Risk Manager', label: 'Risk Manager' },
+  { value: 'Student / Fresh Graduate', label: 'Student / Fresh Graduate' },
+  { value: 'Tax Manager', label: 'Tax Manager' },
+  { value: 'Treasury Manager', label: 'Treasury Manager' },
+  { value: 'Other', label: 'Other' },
+];
+

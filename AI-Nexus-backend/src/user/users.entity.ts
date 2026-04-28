@@ -32,6 +32,9 @@ export class UserEntity {
     @Column({ type: 'varchar', unique: true })
     email!: string;
 
+    @Column({ type: 'varchar', nullable: true })
+    persona!: string | null;
+
     /** Empty for OAuth users; required for LOCAL. */
     @Column({ type: 'varchar', nullable: true })
     password!: string | null;

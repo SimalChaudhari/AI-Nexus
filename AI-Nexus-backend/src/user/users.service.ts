@@ -135,6 +135,7 @@ export class UserService {
             firstname: createUserDto.firstname,
             lastname: createUserDto.lastname,
             email: createUserDto.email,
+            persona: createUserDto.persona?.trim() || null,
             avatarUrl: createUserDto.avatarUrl?.trim() || null,
             password: passwordHash,
             authProvider: AuthProvider.LOCAL,
@@ -207,6 +208,9 @@ export class UserService {
         }
         if (updateUserDto.avatarUrl !== undefined) {
             user.avatarUrl = updateUserDto.avatarUrl?.trim() || null;
+        }
+        if (updateUserDto.persona !== undefined) {
+            user.persona = updateUserDto.persona?.trim() || null;
         }
         if (updateUserDto.password) {
             // Hash new password

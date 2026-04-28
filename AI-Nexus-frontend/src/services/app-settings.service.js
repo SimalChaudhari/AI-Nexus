@@ -16,6 +16,18 @@ function transformSettings(settings) {
   };
 }
 
+function normalizePersonaMappings(payload) {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .map((row) => ({
+      persona: String(row?.persona || '').trim(),
+      courseIds: Array.isArray(row?.courseIds)
+        ? [...new Set(row.courseIds.map((id) => String(id || '').trim()).filter(Boolean))]
+        : [],
+    }))
+    .filter((row) => row.persona);
+}
+
 export const appSettingsService = {
   async getPublic() {
     const response = await axios.get('/app-settings');
@@ -57,5 +69,27 @@ export const appSettingsService = {
     const response = await axios.delete('/app-settings/home-hero');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
+  },
+
+  async getPersonaCourseMappings() {
+    const response = await axios.get('/app-settings/persona-course-mappings');
+    return normalizePersonaMappings(response.data?.data || []);
+  },
+
+  async updatePersonaCourseMappings(mappings) {
+    const response = await axios.put('/app-settings/persona-course-mappings', {
+      mappings: normalizePersonaMappings(mappings),
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return normalizePersonaMappings(data?.personaCourseMappings || []);
+  },
+
+  async getMyRecommendations() {
+    const response = await axios.get('/app-settings/recommendations/me');
+    const data = response.data?.data || {};
+    return {
+      persona: data?.persona ? String(data.persona) : null,
+      courseIds: Array.isArray(data?.courseIds) ? data.courseIds : [],
+    };
   },
 };
