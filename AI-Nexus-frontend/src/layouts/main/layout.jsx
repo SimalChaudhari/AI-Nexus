@@ -14,6 +14,7 @@ import { HeaderBase } from '../core/header-base';
 import { LayoutSection } from '../core/layout-section';
 import { navData as mainNavData } from '../config-nav-main';
 import { _account } from '../config-nav-account';
+import { ChatbotWidget } from 'src/components/chatbot/chatbot-widget';
 
 // ----------------------------------------------------------------------
 
@@ -96,6 +97,7 @@ export function MainLayout({ sx, data, children }) {
         sx={sx}
       >
         <Main>{children}</Main>
+        <ChatbotWidget title="AI Nexus Chatbot" provider="openrouter" />
       </LayoutSection>
     </>
   );

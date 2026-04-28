@@ -12,6 +12,7 @@ import { UserEntity } from '../user/users.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { PaginationService } from '../common/pagination/pagination.service';
+import { EmailService } from '../service/email.service';
 
 @Module({
     imports: [
@@ -21,7 +22,14 @@ import { PaginationService } from '../common/pagination/pagination.service';
             signOptions: {},
         }),
     ],
-    providers: [AiForumService, AiForumInitService, AiForumCommentsGateway, OptionalJwtAuthGuard, PaginationService],
+    providers: [
+        AiForumService,
+        AiForumInitService,
+        AiForumCommentsGateway,
+        OptionalJwtAuthGuard,
+        PaginationService,
+        EmailService,
+    ],
     controllers: [AiForumController],
     exports: [AiForumService],
 })

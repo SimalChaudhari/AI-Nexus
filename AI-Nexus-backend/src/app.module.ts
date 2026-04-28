@@ -21,6 +21,7 @@ import { CartModule } from './cart/cart.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AppSettingsModule } from './app-settings/app-settings.module';
 import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 
 const resolveTypeOrmPoolMax = (): number => {
   const raw = process.env.TYPEORM_POOL_MAX;
@@ -109,6 +110,7 @@ const resolveTypeOrmPoolMax = (): number => {
     DashboardModule,
     AppSettingsModule,
     PromptCatalogModule,
+    ChatbotModule,
   ],
   controllers: [AppController],
 })

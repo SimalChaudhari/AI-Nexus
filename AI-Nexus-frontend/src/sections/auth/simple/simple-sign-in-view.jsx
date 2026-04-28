@@ -309,15 +309,7 @@ export function SimpleSignInView() {
                 </Link>
               </Stack>
             )}
-            <Button
-              component={RouterLink}
-              href={paths.auth.simple.verify}
-              variant="outlined"
-              size="small"
-              sx={{ alignSelf: 'flex-start' }}
-            >
-              Go to verification page
-            </Button>
+           
           </Stack>
         </Alert>
       )}

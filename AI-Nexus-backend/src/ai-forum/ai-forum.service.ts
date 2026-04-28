@@ -13,6 +13,7 @@ import {
     PaginatedResponse,
     PaginationService,
 } from '../common/pagination/pagination.service';
+import { EmailService } from '../service/email.service';
 
 type GetAiForumPostsOptions = PaginatedQueryOptions & {
     userId?: string;
@@ -34,6 +35,7 @@ export class AiForumService {
         private userRepository: Repository<UserEntity>,
         private aiForumCommentsGateway: AiForumCommentsGateway,
         private readonly paginationService: PaginationService,
+        private readonly emailService: EmailService,
     ) {}
 
     async getAll(options: GetAiForumPostsOptions = {}): Promise<any[] | PaginatedResponse<any>> {
@@ -352,6 +354,35 @@ export class AiForumService {
             where: { id: comment.id },
             relations: ['user', 'post'],
         });
+
+        const threadStarterId = post.userId;
+        const isSelfReply = threadStarterId != null && threadStarterId === userId;
+        if (threadStarterId && !isSelfReply) {
+            try {
+                const threadStarter = await this.userRepository.findOne({
+                    where: { id: threadStarterId },
+                    select: ['id', 'email', 'firstname', 'lastname'],
+                });
+
+                if (threadStarter?.email) {
+                    const threadStarterName =
+                        `${threadStarter.firstname || ''} ${threadStarter.lastname || ''}`.trim() || 'there';
+                    const replierName = `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username || 'A user';
+
+                    await this.emailService.sendForumReplyNotificationEmail({
+                        toEmail: threadStarter.email,
+                        threadStarterName,
+                        replierName,
+                        postTitle: post.title,
+                        replyContent: createCommentDto.content,
+                        postId: post.id,
+                    });
+                }
+            } catch (emailError) {
+                // Keep forum interaction fast and resilient even if SMTP fails.
+                console.error('Failed to send forum reply notification email:', emailError);
+            }
+        }
 
         const payload = this.toCommentPayload(commentWithRelations!, 0, false);
         this.aiForumCommentsGateway.emitToAiForumPost(postId, 'comment:added', payload);
