@@ -18,17 +18,28 @@ export function CheckoutSummary({ total, discount, subtotal, shipping, onApplyDi
   const displayDiscount = discountDisabled ? '-' : (discount ? fCurrency(-discount) : '-');
 
   return (
-    <Card sx={{ mb: 3 }}>
-      <CardHeader title="Order summary" />
+    <Card
+      sx={{
+        mb: 2,
+        borderRadius: 2,
+        border: (theme) => `1px solid ${theme.palette.secondary.light}`,
+        boxShadow: (theme) => theme.customShadows.z4,
+      }}
+    >
+      <CardHeader
+        title="Order Summary"
+        titleTypographyProps={{ variant: 'h6', fontWeight: 800, fontSize: { xs: '1.02rem', md: '1.25rem' } }}
+        sx={{ pb: { xs: 0.75, md: 1 } }}
+      />
 
-      <Stack spacing={2} sx={{ p: 3 }}>
+      <Stack spacing={1.25} sx={{ p: { xs: 1.75, md: 2 } }}>
         <Box display="flex">
           <Typography
             component="span"
             variant="body2"
             sx={{ flexGrow: 1, color: 'text.secondary' }}
           >
-            Sub total
+            Subtotal
           </Typography>
           <Typography component="span" variant="subtitle2">
             {fCurrency(subtotal)}
@@ -48,7 +59,7 @@ export function CheckoutSummary({ total, discount, subtotal, shipping, onApplyDi
           </Typography>
         </Box>
 
-        <Divider sx={{ borderStyle: 'dashed' }} />
+        <Divider sx={{ borderStyle: 'dashed', borderColor: 'secondary.light' }} />
 
         <Box
           display="flex"
@@ -58,19 +69,17 @@ export function CheckoutSummary({ total, discount, subtotal, shipping, onApplyDi
             py: 1.5,
             px: 2,
             borderRadius: 1,
-            bgcolor: 'background.neutral',
+            bgcolor: 'secondary.lighter',
+            border: (theme) => `1px solid ${theme.palette.secondary.light}`,
           }}
         >
-          <Typography component="span" variant="subtitle1" sx={{ fontWeight: 600 }}>
+          <Typography component="span" variant="subtitle1" sx={{ fontWeight: 700 }}>
             Total
           </Typography>
 
           <Box sx={{ textAlign: 'right' }}>
-            <Typography component="span" variant="h6" sx={{ color: 'primary.main', fontWeight: 700 }}>
+            <Typography component="span" variant="h6" sx={{ color: 'primary.main', fontWeight: 800, fontSize: { xs: '1.02rem', md: '1.25rem' } }}>
               {fCurrency(total)}
-            </Typography>
-            <Typography variant="caption" display="block" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
-              (VAT included if applicable)
             </Typography>
           </Box>
         </Box>

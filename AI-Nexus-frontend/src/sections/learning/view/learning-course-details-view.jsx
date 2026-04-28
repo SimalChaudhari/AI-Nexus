@@ -1302,62 +1302,31 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 Course Description
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: 'text.secondary' }}>
-                Synopsis
-              </Typography>
-              <Typography
-                variant="body2"
+              <RichTextContent
+                html={course.description || '<p>No description available.</p>'}
+                clampLines={showFullDescription ? undefined : 10}
                 sx={{
                   color: 'text.secondary',
-                  mb: 2,
                   lineHeight: 1.7,
-                  display: '-webkit-box',
-                  WebkitBoxOrient: 'vertical',
-                  WebkitLineClamp: showFullDescription ? 'unset' : 4,
-                  overflow: 'hidden',
+                  '& p': { my: 0.6 },
+                  '& ul, & ol': { my: 0.75, pl: 2.5 },
+                  '& li': { mb: 0.4 },
+                  '& h1, & h2, & h3, & h4, & h5, & h6': {
+                    mt: 1,
+                    mb: 0.5,
+                    fontSize: '1rem',
+                  },
                 }}
-              >
-                {synopsis}
-              </Typography>
-              {remainder ? (
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: 'text.secondary',
-                    mb: 2,
-                    lineHeight: 1.7,
-                    display: '-webkit-box',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: showFullDescription ? 'unset' : 6,
-                    overflow: 'hidden',
-                  }}
-                >
-                  {remainder}
-                </Typography>
-              ) : null}
+              />
               {plainDesc.length > 260 && (
                 <Button
                   size="small"
                   color="secondary"
                   onClick={() => setShowFullDescription((prev) => !prev)}
-                  sx={{ textTransform: 'none', px: 0, mb: topics.length > 0 ? 2 : 0 }}
+                  sx={{ textTransform: 'none', px: 0, mt: 1 }}
                 >
                   {showFullDescription ? 'Read less' : 'Read more'}
                 </Button>
-              )}
-              {topics.length > 0 && (
-                <>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'text.secondary' }}>
-                    The session covers the following topics:
-                  </Typography>
-                  <Stack component="ol" sx={{ pl: 2.5, m: 0 }}>
-                    {topics.map((t, i) => (
-                      <Typography key={i} component="li" variant="body2" sx={{ color: 'text.secondary', mb: 0.5, lineHeight: 1.6 }}>
-                        {t}
-                      </Typography>
-                    ))}
-                  </Stack>
-                </>
               )}
               </Box>
             </Stack>

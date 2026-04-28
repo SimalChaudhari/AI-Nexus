@@ -11,12 +11,15 @@ import { Iconify } from 'src/components/iconify';
 // ----------------------------------------------------------------------
 
 const StepConnector = styled(MuiStepConnector)(({ theme }) => ({
-  top: 10,
+  top: 14,
   left: 'calc(-50% + 20px)',
   right: 'calc(50% + 20px)',
   [`& .${stepConnectorClasses.line}`]: {
     borderTopWidth: 2,
-    borderColor: theme.vars.palette.divider,
+    borderColor: theme.vars.palette.grey[400],
+    borderRadius: 999,
+    opacity: 0.7,
+    transition: 'border-color 220ms ease',
   },
   [`&.${stepConnectorClasses.active}, &.${stepConnectorClasses.completed}`]: {
     [`& .${stepConnectorClasses.line}`]: { borderColor: theme.vars.palette.primary.main },
@@ -27,24 +30,41 @@ const StepConnector = styled(MuiStepConnector)(({ theme }) => ({
 
 export function CheckoutSteps({ steps, activeStep, sx, ...other }) {
   return (
-    <Stepper
-      alternativeLabel
-      activeStep={activeStep}
-      connector={<StepConnector />}
-      sx={{ mb: { xs: 3, md: 5 }, ...sx }}
-      {...other}
+    <Box
+      sx={{
+        py: { xs: 0.25, md: 0.5 },
+        ...sx,
+      }}
     >
-      {steps.map((label) => (
-        <Step key={label}>
-          <StepLabel
-            StepIconComponent={StepIcon}
-            sx={{ [`& .${stepLabelClasses.label}`]: { fontWeight: 'fontWeightSemiBold' } }}
-          >
-            {label}
-          </StepLabel>
-        </Step>
-      ))}
-    </Stepper>
+      <Stepper
+        alternativeLabel
+        activeStep={activeStep}
+        connector={<StepConnector />}
+        sx={{
+          mb: 0,
+          px: { xs: 0.25, md: 1 },
+          [`& .${stepLabelClasses.label}`]: {
+            mt: 0.75,
+            fontWeight: 700,
+            fontSize: { xs: 12, sm: 13, md: 14 },
+            color: 'text.secondary',
+          },
+          [`& .${stepLabelClasses.label}.${stepLabelClasses.active}`]: {
+            color: 'primary.main',
+          },
+          [`& .${stepLabelClasses.label}.${stepLabelClasses.completed}`]: {
+            color: 'secondary.main',
+          },
+        }}
+        {...other}
+      >
+        {steps.map((label) => (
+          <Step key={label}>
+            <StepLabel StepIconComponent={StepIcon}>{label}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
+    </Box>
   );
 }
 
@@ -54,10 +74,23 @@ function StepIcon({ active, completed }) {
       alignItems="center"
       justifyContent="center"
       sx={{
-        width: 24,
-        height: 24,
+        width: { xs: 24, sm: 26, md: 28 },
+        height: { xs: 24, sm: 26, md: 28 },
+        borderRadius: '50%',
         color: 'text.disabled',
-        ...(active && { color: 'primary.main' }),
+        bgcolor: 'background.paper',
+        border: { xs: '1.5px solid currentColor', md: '2px solid currentColor' },
+        transition: 'all 220ms ease',
+        ...(active && {
+          color: 'primary.main',
+          bgcolor: 'background.paper',
+          transform: 'scale(1.06)',
+          boxShadow: (theme) => `0 0 0 4px ${theme.palette.primary.lighter}`,
+        }),
+        ...(completed && {
+          color: 'primary.main',
+          bgcolor: 'background.paper',
+        }),
       }}
     >
       {completed ? (

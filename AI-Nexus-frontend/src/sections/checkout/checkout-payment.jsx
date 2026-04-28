@@ -7,6 +7,8 @@ import Card from '@mui/material/Card';
 import List from '@mui/material/List';
 import Button from '@mui/material/Button';
 import Avatar from '@mui/material/Avatar';
+import Stack from '@mui/material/Stack';
+import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Unstable_Grid2';
 import ListItem from '@mui/material/ListItem';
 import LoadingButton from '@mui/lab/LoadingButton';
@@ -174,19 +176,43 @@ export function CheckoutPayment() {
         <Grid xs={12} md={8}>
           {/* Your courses – review before payment */}
           {courseItems.length > 0 && (
-            <Card sx={{ mb: 3 }}>
+            <Card
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+                border: (theme) => `1px solid ${theme.palette.secondary.light}`,
+                boxShadow: (theme) => theme.customShadows.z8,
+              }}
+            >
               <CardHeader
-                title="Your courses"
-                subheader="Review your selection before payment"
+                title={
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    Cart Items
+                    <Typography component="span" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                      &nbsp;(
+                      {checkout.totalItems} {checkout.totalItems === 1 ? 'course' : 'courses'})
+                    </Typography>
+                  </Typography>
+                }
+                subheader="Review your selection before payment."
+                sx={{
+                  mb: 0,
+                  pb: { xs: 1, md: 1.5 },
+                  borderBottom: (theme) => `1px solid ${theme.palette.secondary.light}`,
+                }}
               />
-              <List disablePadding sx={{ pb: 2 }}>
+              <List disablePadding sx={{ p: 1 }}>
                 {courseItems.map((item) => (
                   <ListItem
                     key={item.id}
                     sx={{
-                      py: 1.5,
-                      px: 3,
-                      '&:not(:last-of-type)': { borderBottom: '1px dashed', borderColor: 'divider' },
+                      py: 1,
+                      px: 1.5,
+                      borderRadius: 1.25,
+                      mx: 0.5,
+                      my: 0.4,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                      bgcolor: 'background.paper',
                     }}
                   >
                     <ListItemAvatar>
@@ -194,30 +220,32 @@ export function CheckoutPayment() {
                         variant="rounded"
                         alt={item.name}
                         src={item.coverUrl}
-                        sx={{ width: 56, height: 56 }}
+                        sx={{
+                          width: 50,
+                          height: 50,
+                          borderRadius: 1.25,
+                          border: (theme) => `1px solid ${theme.palette.divider}`,
+                          boxShadow: (theme) => theme.shadows[2],
+                        }}
                       />
                     </ListItemAvatar>
                     <ListItemText
                       primary={item.name}
-                      primaryTypographyProps={{ variant: 'subtitle2' }}
-                      secondary={`${item.quantity || 1} × ${fCurrency(item.price)}`}
+                      primaryTypographyProps={{ variant: 'subtitle2', fontWeight: 700 }}
+                      secondary="Digital course access"
                       secondaryTypographyProps={{ variant: 'body2', color: 'text.secondary' }}
                     />
-                    <Typography variant="subtitle2">{fCurrency((item.quantity || 1) * item.price)}</Typography>
+                    <Stack alignItems="flex-end" spacing={0.6}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                        {fCurrency(Number(item.price) || 0)}
+                      </Typography>
+                    </Stack>
                   </ListItem>
                 ))}
               </List>
             </Card>
           )}
 
-          <Button
-            size="small"
-            color="inherit"
-            onClick={checkout.onBackStep}
-            startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
-          >
-            Back
-          </Button>
         </Grid>
 
         <Grid xs={12} md={4}>
@@ -233,27 +261,54 @@ export function CheckoutPayment() {
             discountDisabled
           />
 
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            {(checkout.total || 0) <= 0
-              ? 'Free courses — you will be enrolled and taken to My learning.'
-              : 'Click "Complete order" to get your payment link. You will be redirected to the secure payment page (WooshPay) to pay by card.'}
-            {(checkout.total || 0) > 0 && CONFIG.payment.publicKey && (
-              <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
-                Secure payment powered by WooshPay.
-              </Box>
-            )}
-          </Typography>
-
-          <LoadingButton
-            fullWidth
-            size="large"
-            type="submit"
-            variant="contained"
-            loading={isSubmitting}
-            startIcon={<Iconify icon="solar:card-bold" />}
+          <Card
+            sx={{
+              p: 2.5,
+              borderRadius: 2,
+              border: (theme) => `1px solid ${theme.palette.secondary.light}`,
+              boxShadow: (theme) => theme.customShadows.z12,
+              background: (theme) =>
+                `linear-gradient(180deg, ${theme.palette.background.paper} 0%, ${theme.palette.primary.lighter} 150%)`,
+            }}
           >
-            Complete order
-          </LoadingButton>
+            <Stack spacing={1.5}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                {(checkout.total || 0) <= 0
+                  ? 'Free courses - you will be enrolled and redirected to My Learning.'
+                  : 'Click "Complete order" to continue to secure payment.'}
+                {(checkout.total || 0) > 0 && CONFIG.payment.publicKey && (
+                  <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+                    Secure payment powered by WooshPay.
+                  </Box>
+                )}
+              </Typography>
+
+              <LoadingButton
+                fullWidth
+                size="large"
+                type="submit"
+                variant="contained"
+                loading={isSubmitting}
+                startIcon={<Iconify icon="solar:card-bold" />}
+                sx={{
+                  py: { xs: 1.1, md: 1.3 },
+                  fontWeight: 800,
+                  borderRadius: 1.25,
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                }}
+              >
+                Complete order
+              </LoadingButton>
+
+              <Divider sx={{ borderStyle: 'dashed' }} />
+
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                By continuing, you agree to our terms. Course access is activated immediately
+                after successful payment.
+              </Typography>
+            </Stack>
+          </Card>
         </Grid>
       </Grid>
     </Form>

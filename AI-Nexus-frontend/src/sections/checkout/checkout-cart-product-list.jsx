@@ -1,34 +1,15 @@
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-
-import { Scrollbar } from 'src/components/scrollbar';
-import { TableHeadCustom } from 'src/components/table';
+import Stack from '@mui/material/Stack';
 
 import { CheckoutCartProduct } from './checkout-cart-product';
 
 // ----------------------------------------------------------------------
 
-const TABLE_HEAD = [
-  { id: 'product', label: 'Product' },
-  { id: 'price', label: 'Price' },
-  { id: 'totalAmount', label: 'Total', align: 'right' },
-  { id: '' },
-];
-
-// ----------------------------------------------------------------------
-
 export function CheckoutCartProductList({ products, onDelete }) {
   return (
-    <Scrollbar>
-      <Table sx={{ minWidth: 720 }}>
-        <TableHeadCustom headLabel={TABLE_HEAD} />
-
-        <TableBody>
-          {products.map((row) => (
-            <CheckoutCartProduct key={row.id} row={row} onDelete={() => onDelete(row.id)} />
-          ))}
-        </TableBody>
-      </Table>
-    </Scrollbar>
+    <Stack spacing={1} sx={{ p: 1.25 }}>
+      {products.map((row) => (
+        <CheckoutCartProduct key={row.id} row={row} onDelete={() => onDelete(row.id)} />
+      ))}
+    </Stack>
   );
 }

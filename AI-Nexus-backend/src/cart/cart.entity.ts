@@ -7,6 +7,15 @@ export type CartItem = {
   coverUrl?: string;
   price: number;
   quantity: number;
+  description?: string;
+  subDescription?: string;
+  level?: string;
+  mode?: string;
+  deliveryMode?: string;
+  cpeHours?: number;
+  lessonCount?: number;
+  modulesCount?: number;
+  sectionsCount?: number;
 };
 
 @Entity('user_cart')
