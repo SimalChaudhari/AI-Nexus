@@ -113,14 +113,22 @@ export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
 
   return (
     <Box
-      sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: (theme) => theme.zIndex.tooltip + 2 }}
+      sx={{
+        position: 'fixed',
+        right: 16,
+        bottom: 16,
+        zIndex: (theme) => theme.zIndex.tooltip + 2,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 1.5,
+      }}
     >
       {open && (
         <Paper
           elevation={10}
           sx={{
             width: { xs: 'min(92vw, 360px)', sm: 380 },
-            mb: 1.5,
             borderRadius: 2.5,
             overflow: 'hidden',
             border: (theme) => `1px solid ${theme.palette.divider}`,
