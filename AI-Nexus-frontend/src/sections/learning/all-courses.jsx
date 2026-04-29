@@ -121,6 +121,7 @@ export function AllCourses({ refreshSignal = 0 }) {
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
   const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(true);
   const [isDesktopFilterPanelVisible, setIsDesktopFilterPanelVisible] = useState(true);
+  const [showDesktopFloatingFilterButton, setShowDesktopFloatingFilterButton] = useState(false);
   const [groupPages, setGroupPages] = useState({
     recommended: 1,
     beginner: 1,
@@ -444,6 +445,21 @@ export function AllCourses({ refreshSignal = 0 }) {
     observer.observe(target);
 
     return () => observer.disconnect();
+  }, [desktopFiltersOpen, isDesktop]);
+
+  useEffect(() => {
+    if (!isDesktop || !desktopFiltersOpen) {
+      setShowDesktopFloatingFilterButton(false);
+      return undefined;
+    }
+
+    const onScroll = () => {
+      setShowDesktopFloatingFilterButton(window.scrollY > 260);
+    };
+
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, [desktopFiltersOpen, isDesktop]);
 
   const displayCourses = useMemo(() => courses.map(transformCourse), [courses]);
@@ -1837,7 +1853,9 @@ export function AllCourses({ refreshSignal = 0 }) {
         </Grid>
       </Grid>
 
-      {isDesktop && desktopFiltersOpen && !isDesktopFilterPanelVisible && (
+      {isDesktop &&
+        desktopFiltersOpen &&
+        (!isDesktopFilterPanelVisible || showDesktopFloatingFilterButton) && (
         <Button
           variant="contained"
           color="secondary"
