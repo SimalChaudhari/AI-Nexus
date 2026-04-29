@@ -13,6 +13,55 @@ const avatarFieldSchema = zod
     { message: 'Please upload a valid image file' }
   );
 
+const blockedEmailDomains = [
+  'example.com',
+  'test.com',
+  'mailinator.com',
+  'tempmail.com',
+  '10minutemail.com',
+  // 'yopmail.com',
+  'guerrillamail.com',
+];
+
+const emailSchema = zod
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1, { message: 'Email is required!' })
+  .email({ message: 'Email must be a valid email address!' })
+  .max(100, { message: 'Email must be less than 100 characters!' })
+  .refine(
+    (value) => !blockedEmailDomains.includes(value.split('@')[1]?.toLowerCase() || ''),
+    { message: 'Please enter a real email address.' }
+  );
+
+const optionalEmailSchema = emailSchema.optional();
+
+export const AuthSignInSchema = zod.object({
+  identifier: zod.string().min(1, { message: 'Email or username is required!' }),
+  password: zod
+    .string()
+    .min(1, { message: 'Password is required!' })
+    .min(6, { message: 'Password must be at least 6 characters!' }),
+});
+
+export const AuthSignUpSchema = zod.object({
+  username: zod
+    .string()
+    .min(1, { message: 'Username is required!' })
+    .min(3, { message: 'Username must be at least 3 characters!' })
+    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
+      message: 'Username must contain both letters and numbers, and no special characters!',
+    }),
+  firstName: zod.string().min(1, { message: 'First name is required!' }),
+  lastName: zod.string().min(1, { message: 'Last name is required!' }),
+  email: emailSchema,
+  password: zod
+    .string()
+    .min(1, { message: 'Password is required!' })
+    .min(6, { message: 'Password must be at least 6 characters!' }),
+});
+
 /**
  * User validation schema for create and update operations
  */
@@ -22,7 +71,9 @@ export const NewUserSchema = zod.object({
     .min(1, { message: 'Username is required!' })
     .min(3, { message: 'Username must be at least 3 characters!' })
     .max(50, { message: 'Username must be less than 50 characters!' })
-    .regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores!' }),
+    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
+      message: 'Username must contain both letters and numbers, and no special characters!',
+    }),
 
   firstname: zod
     .string()
@@ -38,12 +89,7 @@ export const NewUserSchema = zod.object({
     .max(50, { message: 'Last name must be less than 50 characters!' })
     .regex(/^[a-zA-Z\s'-]+$/, { message: 'Last name can only contain letters, spaces, hyphens, and apostrophes!' }),
 
-  email: zod
-    .string()
-    .min(1, { message: 'Email is required!' })
-    .email({ message: 'Email must be a valid email address!' })
-    .max(100, { message: 'Email must be less than 100 characters!' })
-    .toLowerCase(),
+  email: emailSchema,
 
   avatar: avatarFieldSchema,
 
@@ -74,7 +120,9 @@ export const UpdateUserSchema = zod.object({
     .string()
     .min(3, { message: 'Username must be at least 3 characters!' })
     .max(50, { message: 'Username must be less than 50 characters!' })
-    .regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores!' })
+    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
+      message: 'Username must contain both letters and numbers, and no special characters!',
+    })
     .optional(),
 
   firstname: zod
@@ -91,12 +139,7 @@ export const UpdateUserSchema = zod.object({
     .regex(/^[a-zA-Z\s'-]+$/, { message: 'Last name can only contain letters, spaces, hyphens, and apostrophes!' })
     .optional(),
 
-  email: zod
-    .string()
-    .email({ message: 'Email must be a valid email address!' })
-    .max(100, { message: 'Email must be less than 100 characters!' })
-    .toLowerCase()
-    .optional(),
+  email: optionalEmailSchema,
 
   avatar: avatarFieldSchema,
 
@@ -126,7 +169,9 @@ export const ProfileSchema = zod.object({
     .min(1, { message: 'Username is required!' })
     .min(3, { message: 'Username must be at least 3 characters!' })
     .max(50, { message: 'Username must be less than 50 characters!' })
-    .regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores!' }),
+    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
+      message: 'Username must contain both letters and numbers, and no special characters!',
+    }),
 
   firstname: zod
     .string()
@@ -142,12 +187,7 @@ export const ProfileSchema = zod.object({
     .max(50, { message: 'Last name must be less than 50 characters!' })
     .regex(/^[a-zA-Z\s'-]+$/, { message: 'Last name can only contain letters, spaces, hyphens, and apostrophes!' }),
 
-  email: zod
-    .string()
-    .min(1, { message: 'Email is required!' })
-    .email({ message: 'Email must be a valid email address!' })
-    .max(100, { message: 'Email must be less than 100 characters!' })
-    .toLowerCase(),
+  email: emailSchema,
 
   avatar: avatarFieldSchema,
 });

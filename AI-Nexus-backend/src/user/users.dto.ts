@@ -1,11 +1,14 @@
 //users.dto.ts
-import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean, IsArray } from 'class-validator';
+import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean, IsArray, Matches } from 'class-validator';
 import { UserRole, UserStatus } from './users.entity';
 
 // For registration - all fields required
 export class UserDto {
     @IsString()
     @IsNotEmpty()
+    @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
+        message: 'Username must contain both letters and numbers, and no special characters',
+    })
     username!: string;
 
     @IsString()
@@ -17,6 +20,9 @@ export class UserDto {
     lastname!: string;
 
     @IsEmail()
+    @Matches(/^(?!\.)(?!.*\.\.)([a-z0-9._%+-]{1,64})@([a-z0-9-]+\.)+[a-z]{2,}$/i, {
+        message: 'Email must be a valid real email address',
+    })
     @IsNotEmpty()
     email!: string;
 
@@ -64,6 +70,9 @@ export class UserDto {
 export class UpdateUserDto {
     @IsOptional()
     @IsString()
+    @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
+        message: 'Username must contain both letters and numbers, and no special characters',
+    })
     username?: string;
 
     @IsOptional()

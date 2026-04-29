@@ -9,8 +9,37 @@ export function normalizeEmail(email: string | undefined): string {
 // Utility function to validate if the input is an email or not
 export const validateEmail = (input: string | undefined): boolean => {
   if (!input) return false;
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(input);
+  const email = input.trim().toLowerCase();
+  const strictEmailRegex =
+    /^(?!\.)(?!.*\.\.)([a-z0-9._%+-]{1,64})@([a-z0-9-]+\.)+[a-z]{2,}$/i;
+  if (!strictEmailRegex.test(email)) return false;
+
+  const [localPart = '', domain = ''] = email.split('@');
+  if (!localPart || !domain) return false;
+
+  const blockedLocalParts = new Set([
+    'test',
+    'testing',
+    'demo',
+    'admin',
+    'user',
+    'fake',
+    'temp',
+    'example',
+  ]);
+  const blockedDomains = new Set([
+    'example.com',
+    'test.com',
+    'mailinator.com',
+    'tempmail.com',
+    '10minutemail.com',
+    'yopmail.com',
+    'guerrillamail.com',
+  ]);
+
+  if (blockedLocalParts.has(localPart)) return false;
+  if (blockedDomains.has(domain)) return false;
+  return true;
 };
 
 export function isAdmin(userRole: UserRole): userRole is UserRole.Admin {

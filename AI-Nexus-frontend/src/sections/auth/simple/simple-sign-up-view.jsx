@@ -1,15 +1,18 @@
-import { z as zod } from 'zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import Link from '@mui/material/Link';
+import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Chip from '@mui/material/Chip';
+import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
 import InputAdornment from '@mui/material/InputAdornment';
+import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
@@ -20,37 +23,17 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { AnimateLogo2 } from 'src/components/animate';
 import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
+import { AuthSignUpSchema } from 'src/validations/user.validation';
 
 import { signUp } from 'src/auth/context/jwt';
-import { useAuthContext } from 'src/auth/hooks';
-
-// ----------------------------------------------------------------------
-
-export const SignUpSchema = zod.object({
-  username: zod
-    .string()
-    .min(1, { message: 'Username is required!' })
-    .min(3, { message: 'Username must be at least 3 characters!' })
-    .regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores!' }),
-  firstName: zod.string().min(1, { message: 'First name is required!' }),
-  lastName: zod.string().min(1, { message: 'Last name is required!' }),
-  email: zod
-    .string()
-    .min(1, { message: 'Email is required!' })
-    .email({ message: 'Email must be a valid email address!' }),
-  password: zod
-    .string()
-    .min(1, { message: 'Password is required!' })
-    .min(6, { message: 'Password must be at least 6 characters!' }),
-});
-
-// ----------------------------------------------------------------------
 
 export function SimpleSignUpView() {
-  const { checkUserSession } = useAuthContext();
   const router = useRouter();
   const password = useBoolean();
   const [errorMsg, setErrorMsg] = useState('');
+  const [usernameSuggestions, setUsernameSuggestions] = useState([]);
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+  const [appliedSuggestion, setAppliedSuggestion] = useState('');
 
   const defaultValues = {
     username: '',
@@ -61,17 +44,53 @@ export function SimpleSignUpView() {
   };
 
   const methods = useForm({
-    resolver: zodResolver(SignUpSchema),
+    resolver: zodResolver(AuthSignUpSchema),
     defaultValues,
   });
 
   const {
     handleSubmit,
+    watch,
     formState: { isSubmitting },
   } = methods;
+  const usernameValue = watch('username');
+
+  const buildUsernameSuggestions = (username, count = 10) => {
+    const base = String(username || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 14);
+
+    if (!base) return [];
+
+    const randomTwoDigits = () => Math.floor(Math.random() * 90 + 10).toString();
+    const candidates = new Set();
+    const targetSize = count;
+
+    while (candidates.size < targetSize) {
+      candidates.add(`${base}${randomTwoDigits()}`);
+    }
+
+    // Keep unique + valid by your current username rules.
+    return [...candidates]
+      .filter((name) => /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(name))
+      .slice(0, count);
+  };
+
+  const applyUsernameSuggestion = (suggestion) => {
+    methods.setValue('username', suggestion, { shouldDirty: true, shouldValidate: true });
+    setErrorMsg('');
+    setAppliedSuggestion(suggestion);
+    setUsernameSuggestions([]);
+    setShowAllSuggestions(false);
+  };
 
   const onSubmit = handleSubmit(async (data) => {
     try {
+      setErrorMsg('');
+      setUsernameSuggestions([]);
+      setShowAllSuggestions(false);
+      setAppliedSuggestion('');
       await signUp({
         username: data.username,
         email: data.email,
@@ -86,15 +105,43 @@ export function SimpleSignUpView() {
       router.push(href);
     } catch (error) {
       console.error(error);
-      setErrorMsg(error && error.message ? error.message : error);
+      const message = error && error.message ? error.message : String(error || 'Sign up failed.');
+      setErrorMsg(message);
+
+      if (String(message).toLowerCase().includes('username already exists')) {
+        setUsernameSuggestions(buildUsernameSuggestions(data.username, 10));
+        setShowAllSuggestions(false);
+        setAppliedSuggestion('');
+      }
     }
   });
 
-  const renderLogo = <AnimateLogo2 sx={{ mb: 3, mx: 'auto' }} />;
+  const renderLogo = <AnimateLogo2 sx={{ mb: 1.5, mx: 'auto', transform: 'scale(0.88)' }} />;
 
   const renderHead = (
-    <Stack alignItems="center" spacing={1.5} sx={{ mb: 5 }}>
-      <Typography variant="h5">Get started absolutely free</Typography>
+    <Stack alignItems="center" spacing={1} sx={{ mb: 2.5 }}>
+      <Box
+        sx={(theme) => ({
+          px: 1.5,
+          py: 0.5,
+          borderRadius: 10,
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: 0.3,
+          color: 'primary.main',
+          bgcolor: alpha(theme.palette.primary.main, 0.1),
+        })}
+      >
+        CREATE ACCOUNT
+      </Box>
+
+      <Typography variant="h5" sx={{ textAlign: 'center' }}>
+        Get started absolutely free
+      </Typography>
+
+      <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
+        Build your profile and start learning in minutes.
+      </Typography>
 
       <Stack direction="row" spacing={0.5}>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -109,20 +156,99 @@ export function SimpleSignUpView() {
   );
 
   const renderForm = (
-    <Stack spacing={3}>
+    <Stack spacing={2}>
       <Field.Text
         name="username"
         label="Username"
         placeholder="Choose a username"
         InputLabelProps={{ shrink: true }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Iconify icon="solar:user-circle-bold-duotone" width={18} />
+            </InputAdornment>
+          ),
+          endAdornment:
+            appliedSuggestion && usernameValue === appliedSuggestion ? (
+              <InputAdornment position="end">
+                <Iconify icon="solar:verified-check-bold" width={18} sx={{ color: 'success.main' }} />
+              </InputAdornment>
+            ) : null,
+        }}
       />
+      {usernameSuggestions.length > 0 && (
+        <Stack spacing={1} sx={{ mt: -1 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Username is taken. Try one of these:
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+            {(showAllSuggestions ? usernameSuggestions : usernameSuggestions.slice(0, 4)).map((suggestion) => (
+              <Chip
+                key={suggestion}
+                label={suggestion}
+                size="small"
+                clickable
+                color="default"
+                variant="outlined"
+                onClick={() => applyUsernameSuggestion(suggestion)}
+              />
+            ))}
+          </Stack>
+          {!showAllSuggestions && usernameSuggestions.length > 4 && (
+            <Stack direction="row" justifyContent="flex-end">
+              <Button
+                size="small"
+                variant="contained"
+                color="inherit"
+                onClick={() => setShowAllSuggestions(true)}
+                sx={{ minWidth: 'auto' }}
+              >
+                Show more
+              </Button>
+            </Stack>
+          )}
+        </Stack>
+      )}
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <Field.Text name="firstName" label="First name" InputLabelProps={{ shrink: true }} />
-        <Field.Text name="lastName" label="Last name" InputLabelProps={{ shrink: true }} />
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+        <Field.Text
+          name="firstName"
+          label="First name"
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Iconify icon="solar:user-id-bold-duotone" width={18} />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <Field.Text
+          name="lastName"
+          label="Last name"
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Iconify icon="solar:user-id-bold-duotone" width={18} />
+              </InputAdornment>
+            ),
+          }}
+        />
       </Stack>
 
-      <Field.Text name="email" label="Email address" InputLabelProps={{ shrink: true }} />
+      <Field.Text
+        name="email"
+        label="Email address"
+        InputLabelProps={{ shrink: true }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Iconify icon="solar:letter-bold-duotone" width={18} />
+            </InputAdornment>
+          ),
+        }}
+      />
 
       <Field.Text
         name="password"
@@ -131,6 +257,11 @@ export function SimpleSignUpView() {
         type={password.value ? 'text' : 'password'}
         InputLabelProps={{ shrink: true }}
         InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Iconify icon="solar:lock-password-bold-duotone" width={18} />
+            </InputAdornment>
+          ),
           endAdornment: (
             <InputAdornment position="end">
               <IconButton onClick={password.onToggle} edge="end">
@@ -149,6 +280,7 @@ export function SimpleSignUpView() {
         variant="contained"
         loading={isSubmitting}
         loadingIndicator="Create account..."
+        sx={{ height: 44, fontWeight: 700 }}
       >
         Create account
       </LoadingButton>
@@ -160,6 +292,7 @@ export function SimpleSignUpView() {
       component="div"
       sx={{
         mt: 3,
+        mb: 0.5,
         textAlign: 'center',
         typography: 'caption',
         color: 'text.secondary',
@@ -184,14 +317,24 @@ export function SimpleSignUpView() {
       {renderHead}
 
       {!!errorMsg && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
           {errorMsg}
         </Alert>
       )}
 
-      <Form methods={methods} onSubmit={onSubmit}>
-        {renderForm}
-      </Form>
+      <Box
+        sx={(theme) => ({
+          p: 2.25,
+          borderRadius: 3,
+          border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
+          background: `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.9)} 0%, ${alpha(theme.palette.background.neutral, 0.8)} 100%)`,
+          boxShadow: `0 20px 40px ${alpha(theme.palette.grey[500], 0.12)}`,
+        })}
+      >
+        <Form methods={methods} onSubmit={onSubmit}>
+          {renderForm}
+        </Form>
+      </Box>
 
       {renderTerms}
     </>

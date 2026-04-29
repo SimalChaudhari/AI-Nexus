@@ -245,11 +245,17 @@ export class OAuthAuthService {
 
   private async generateUniqueUsername(email: string, first: string, last: string): Promise<string> {
     const base = [first, last].filter(Boolean).join('').replace(/\s+/g, '') || email.split('@')[0];
-    const sanitized = base.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 20) || 'user';
-    let username = sanitized;
+    const sanitized = base.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20) || 'user';
+    const withRequiredPattern = /[a-z]/.test(sanitized) && /\d/.test(sanitized) ? sanitized : `${sanitized}1`;
+    let username = withRequiredPattern;
     let n = 0;
-    while (await this.userRepository.findOne({ where: { username } })) {
-      username = `${sanitized}${++n}`;
+    while (
+      await this.userRepository
+        .createQueryBuilder('user')
+        .where('LOWER(user.username) = LOWER(:username)', { username })
+        .getOne()
+    ) {
+      username = `${withRequiredPattern}${++n}`;
     }
     return username;
   }

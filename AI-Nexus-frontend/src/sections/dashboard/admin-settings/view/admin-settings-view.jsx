@@ -480,13 +480,6 @@ export function AdminSettingsView() {
             sx={{ fontWeight: 600 }}
           />
         </Stack>
-
-        {unmappedPersonas.length > 0 && (
-          <Alert severity="warning" variant="outlined">
-            {`Unmapped personas: ${unmappedPersonas.length}. Users in these roles will get fallback recommendations until mapping is set.`}
-          </Alert>
-        )}
-
         <Divider />
 
         <Autocomplete

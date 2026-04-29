@@ -12,6 +12,7 @@ import {
     PaginatedResultWithMeta,
     PaginationService,
 } from '../common/pagination/pagination.service';
+import { verifyEmailAddress } from '../utils/email-verification.util';
 
 function generateTemporaryPassword(length = 14): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
@@ -41,6 +42,10 @@ export class UserService {
         private readonly emailService: EmailService,
         private readonly paginationService: PaginationService,
     ) { }
+
+    private normalizeUsername(username: string): string {
+        return username.trim().toLowerCase();
+    }
 
     async getAll(queryOptions?: UserListQueryOptions): Promise<UserEntity[] | UserPaginatedListResult> {
         const usePagination = Boolean(queryOptions?.usePagination);
@@ -121,10 +126,30 @@ export class UserService {
             throw new BadRequestException('Email already exists');
         }
 
-        // Check if username already exists
-        const existingUserByUsername = await this.userRepository.findOne({
-            where: { username: createUserDto.username },
-        });
+        const normalizedUsername = this.normalizeUsername(createUserDto.username || '');
+        if (!normalizedUsername) {
+            throw new BadRequestException('Username is required');
+        }
+        if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
+            throw new BadRequestException(
+                'Username must contain both letters and numbers, and no special characters.',
+            );
+        }
+        if (!createUserDto.email) {
+            throw new BadRequestException('Email is required');
+        }
+        const createEmailVerification = await verifyEmailAddress(createUserDto.email);
+        if (!createEmailVerification.isValid) {
+            throw new BadRequestException(
+                createEmailVerification.reason || 'Please provide a valid real email address.',
+            );
+        }
+
+        // Check if username already exists (case-insensitive)
+        const existingUserByUsername = await this.userRepository
+            .createQueryBuilder('user')
+            .where('LOWER(user.username) = LOWER(:username)', { username: normalizedUsername })
+            .getOne();
         if (existingUserByUsername) {
             throw new BadRequestException('Username already exists');
         }
@@ -137,7 +162,7 @@ export class UserService {
 
         // Create new user (LOCAL auth)
         const user = this.userRepository.create({
-            username: createUserDto.username,
+            username: normalizedUsername,
             firstname: createUserDto.firstname,
             lastname: createUserDto.lastname,
             email: createUserDto.email,
@@ -188,6 +213,12 @@ export class UserService {
 
         // Check if email is being updated and if it already exists
         if (updateUserDto.email && updateUserDto.email !== user.email) {
+            const updateEmailVerification = await verifyEmailAddress(updateUserDto.email);
+            if (!updateEmailVerification.isValid) {
+                throw new BadRequestException(
+                    updateEmailVerification.reason || 'Please provide a valid real email address.',
+                );
+            }
             const existingUser = await this.userRepository.findOne({
                 where: { email: updateUserDto.email },
             });
@@ -199,13 +230,22 @@ export class UserService {
 
         // Check if username is being updated and if it already exists
         if (updateUserDto.username && updateUserDto.username !== user.username) {
-            const existingUser = await this.userRepository.findOne({
-                where: { username: updateUserDto.username },
-            });
+            const normalizedUsername = this.normalizeUsername(updateUserDto.username);
+            if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
+                throw new BadRequestException(
+                    'Username must contain both letters and numbers, and no special characters.',
+                );
+            }
+
+            const existingUser = await this.userRepository
+                .createQueryBuilder('user')
+                .where('LOWER(user.username) = LOWER(:username)', { username: normalizedUsername })
+                .andWhere('user.id != :id', { id: user.id })
+                .getOne();
             if (existingUser) {
                 throw new BadRequestException('Username already exists');
             }
-            user.username = updateUserDto.username;
+            user.username = normalizedUsername;
         }
 
         // Update other fields if provided

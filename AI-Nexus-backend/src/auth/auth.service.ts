@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from './../user/users.entity';
 import { UserRole, UserStatus, AuthProvider } from './../user/users.entity';
 import { validateEmail } from './../utils/auth.utils';
+import { verifyEmailAddress } from './../utils/email-verification.util';
 import { EmailService } from './../service/email.service';
 import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from '../user/users.dto';
 import * as crypto from 'crypto';
@@ -23,11 +24,21 @@ export class AuthService {
     private readonly oauthAuthService: OAuthAuthService,
   ) { }
 
+  private normalizeUsername(username: string): string {
+    return username.trim().toLowerCase();
+  }
+
   async register(userDto: UserDto): Promise<{ message: string, user: UserEntity }> {
     try {
       // Validate required fields
-      if (!userDto.username) {
+      const normalizedUsername = this.normalizeUsername(userDto.username || '');
+      if (!normalizedUsername) {
         throw new BadRequestException('Username is required');
+      }
+      if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
+        throw new BadRequestException(
+          'Username must contain both letters and numbers, and no special characters.'
+        );
       }
       if (!userDto.firstname) {
         throw new BadRequestException('Firstname is required');
@@ -37,6 +48,12 @@ export class AuthService {
       }
       if (!userDto.email) {
         throw new BadRequestException('Email is required');
+      }
+      const emailVerification = await verifyEmailAddress(userDto.email);
+      if (!emailVerification.isValid) {
+        throw new BadRequestException(
+          emailVerification.reason || 'Please provide a valid real email address.'
+        );
       }
       if (!userDto.password) {
         throw new BadRequestException('Password is required');
@@ -52,9 +69,10 @@ export class AuthService {
       }
 
       // Check if the username already exists
-      const existingUserByUsername = await this.userRepository.findOne({
-        where: { username: userDto.username },
-      });
+      const existingUserByUsername = await this.userRepository
+        .createQueryBuilder('user')
+        .where('LOWER(user.username) = LOWER(:username)', { username: normalizedUsername })
+        .getOne();
 
       if (existingUserByUsername) {
         throw new BadRequestException('Username already exists');
@@ -69,7 +87,7 @@ export class AuthService {
 
       // Create the new user (LOCAL auth provider)
       const newUser = this.userRepository.create({
-        username: userDto.username,
+        username: normalizedUsername,
         firstname: userDto.firstname,
         lastname: userDto.lastname,
         email: userDto.email,
@@ -112,7 +130,7 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<{ message: string, access_token: string; user: Partial<UserEntity> }> {
     try {
       // Support both 'identifier' (from frontend) and 'email' (from Postman)
-      const identifier = loginDto.identifier || loginDto.email;
+      const identifier = (loginDto.identifier || loginDto.email || '').trim();
       
       if (!identifier) {
         throw new BadRequestException('Email or username must be provided.');
@@ -121,16 +139,17 @@ export class AuthService {
       if (!loginDto.password) {
         throw new BadRequestException('Password must be provided.');
       }
-
-      // Check if identifier is email or username
-      const isEmail = validateEmail(identifier);
+      // const isEmail = validateEmail(identifier);
+      // For login identification, only check email format (do not apply disposable/blocked-name rules).
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
 
       // Find the user by email or username
-      const user = await this.userRepository.findOne({ 
-        where: isEmail 
-          ? { email: identifier }
-          : { username: identifier }
-      });
+      const user = isEmail
+        ? await this.userRepository.findOne({ where: { email: identifier } })
+        : await this.userRepository
+            .createQueryBuilder('user')
+            .where('LOWER(user.username) = LOWER(:username)', { username: this.normalizeUsername(identifier) })
+            .getOne();
 
       if (!user) {
         throw new NotFoundException('User not found');
@@ -217,8 +236,7 @@ export class AuthService {
       });
 
       if (!user) {
-        // Don't reveal if user exists or not for security
-        return { message: 'If the email exists, a password reset link has been sent.' };
+        throw new NotFoundException('Email not found. Please enter a registered email address.');
       }
 
       // Banned accounts are blocked.
@@ -244,9 +262,13 @@ export class AuthService {
       const userName = `${user.firstname} ${user.lastname}`;
       await this.emailService.sendResetPasswordEmail(user.email, resetToken, userName);
 
-      return { message: 'If the email exists, a password reset link has been sent.' };
+      return { message: 'Password reset link has been sent to your email.' };
     } catch (error: any) {
-      if (error instanceof BadRequestException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException ||
+        error instanceof UnauthorizedException
+      ) {
         throw error;
       }
       throw new BadRequestException('Failed to process password reset request.', error.message);

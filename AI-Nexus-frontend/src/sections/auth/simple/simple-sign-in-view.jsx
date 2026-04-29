@@ -1,18 +1,18 @@
-import { z as zod } from 'zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import Link from '@mui/material/Link';
+import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
-import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
-import CardContent from '@mui/material/CardContent';
 import LoadingButton from '@mui/lab/LoadingButton';
 import InputAdornment from '@mui/material/InputAdornment';
+import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { useRouter, useSearchParams } from 'src/routes/hooks';
@@ -23,21 +23,10 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { AnimateLogo2 } from 'src/components/animate';
 import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
+import { AuthSignInSchema } from 'src/validations/user.validation';
 
 import { useAuthContext } from 'src/auth/hooks';
 import { signInWithPassword, resendVerification } from 'src/auth/context/jwt';
-
-// ----------------------------------------------------------------------
-
-export const SignInSchema = zod.object({
-  identifier: zod
-    .string()
-    .min(1, { message: 'Email or username is required!' }),
-  password: zod
-    .string()
-    .min(1, { message: 'Password is required!' })
-    .min(6, { message: 'Password must be at least 6 characters!' }),
-});
 
 // ----------------------------------------------------------------------
 
@@ -58,7 +47,7 @@ export function SimpleSignInView() {
   };
 
   const methods = useForm({
-    resolver: zodResolver(SignInSchema),
+    resolver: zodResolver(AuthSignInSchema),
     defaultValues,
   });
 
@@ -66,11 +55,6 @@ export function SimpleSignInView() {
     handleSubmit,
     formState: { isSubmitting },
   } = methods;
-
-  const fillTestCredentials = (identifier, pwd) => {
-    methods.setValue('identifier', identifier);
-    methods.setValue('password', pwd);
-  };
 
   const onSubmit = handleSubmit(async (data) => {
     try {
@@ -135,11 +119,32 @@ export function SimpleSignInView() {
     }
   };
 
-  const renderLogo = <AnimateLogo2 sx={{ mb: 3, mx: 'auto' }} />;
+  const renderLogo = <AnimateLogo2 sx={{ mb: 1.5, mx: 'auto', transform: 'scale(0.88)' }} />;
 
   const renderHead = (
-    <Stack alignItems="center" spacing={1.5} sx={{ mb: 5 }}>
-      <Typography variant="h5">Sign in to your account</Typography>
+    <Stack alignItems="center" spacing={1} sx={{ mb: 2.5 }}>
+      <Box
+        sx={(theme) => ({
+          px: 1.5,
+          py: 0.5,
+          borderRadius: 10,
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: 0.3,
+          color: 'primary.main',
+          bgcolor: alpha(theme.palette.primary.main, 0.1),
+        })}
+      >
+        WELCOME BACK
+      </Box>
+
+      <Typography variant="h5" sx={{ textAlign: 'center' }}>
+        Sign in to your account
+      </Typography>
+
+      <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
+        Access your dashboard, courses, and AI tools securely.
+      </Typography>
 
       <Stack direction="row" spacing={0.5}>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -154,15 +159,22 @@ export function SimpleSignInView() {
   );
 
   const renderForm = (
-    <Stack spacing={3}>
+    <Stack spacing={2}>
       <Field.Text
         name="identifier"
         label="Email or username"
         placeholder="Enter your email or username"
         InputLabelProps={{ shrink: true }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Iconify icon="solar:user-circle-bold-duotone" width={18} />
+            </InputAdornment>
+          ),
+        }}
       />
 
-      <Stack spacing={1.5}>
+      <Stack spacing={1}>
         <Link
           component={RouterLink}
           href={paths.auth.simple.forgotPassword}
@@ -180,6 +192,11 @@ export function SimpleSignInView() {
           type={password.value ? 'text' : 'password'}
           InputLabelProps={{ shrink: true }}
           InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Iconify icon="solar:lock-password-bold-duotone" width={18} />
+              </InputAdornment>
+            ),
             endAdornment: (
               <InputAdornment position="end">
                 <IconButton onClick={password.onToggle} edge="end">
@@ -199,9 +216,12 @@ export function SimpleSignInView() {
         variant="contained"
         loading={isSubmitting}
         loadingIndicator="Sign in..."
+        sx={{ height: 44, fontWeight: 700 }}
       >
         Sign in
       </LoadingButton>
+
+      <Divider sx={{ borderStyle: 'dashed', my: 0.25 }}>or</Divider>
 
       <Button
         fullWidth
@@ -212,61 +232,11 @@ export function SimpleSignInView() {
         component={RouterLink}
         href={paths.auth.oauth.start}
         startIcon={<Iconify icon="solar:login-3-bold-duotone" />}
-        sx={{ borderStyle: 'dashed' }}
+        sx={{ height: 44, borderStyle: 'dashed', fontWeight: 600 }}
       >
         Sign in with SSO
       </Button>
     </Stack>
-  );
-
-  const renderTestCredentials = (
-    <Card variant="outlined" sx={{ mt: 3, bgcolor: 'background.neutral' }}>
-      <CardContent>
-        <Stack spacing={1.5}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-            Test Credentials (click to fill):
-          </Typography>
-          <Stack spacing={1}>
-            <Typography
-              variant="body2"
-              component="button"
-              type="button"
-              onClick={() => fillTestCredentials('admin', 'Admin@123')}
-              sx={{
-                display: 'block',
-                textAlign: 'left',
-                cursor: 'pointer',
-                border: 'none',
-                background: 'none',
-                width: '100%',
-                p: 0,
-                '&:hover': { color: 'primary.main' },
-              }}
-            >
-              <strong>Admin:</strong> email: <strong>admin@ainexus.com</strong> or username: <strong>admin</strong> | password: <strong>Admin@123</strong>
-            </Typography>
-            <Typography
-              variant="body2"
-              component="button"
-              type="button"
-              onClick={() => fillTestCredentials('user', 'User@123')}
-              sx={{
-                display: 'block',
-                textAlign: 'left',
-                cursor: 'pointer',
-                border: 'none',
-                background: 'none',
-                width: '100%',
-                p: 0,
-                '&:hover': { color: 'primary.main' },
-              }}
-            >
-              <strong>User:</strong> email: <strong>user@ainexus.com</strong> or username: <strong>user</strong> | password: <strong>User@123</strong>
-            </Typography>
-          </Stack>
-        </Stack>
-      </CardContent>
-    </Card>
   );
 
   return (
@@ -276,20 +246,20 @@ export function SimpleSignInView() {
       {renderHead}
 
       {!!errorMsg && !showResendOption && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
           {errorMsg}
         </Alert>
       )}
 
       {!!successMsg && (
-        <Alert severity="success" sx={{ mb: 3 }}>
+        <Alert severity="success" sx={{ mb: 2 }}>
           {successMsg}
         </Alert>
       )}
 
       {showResendOption && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          <Stack spacing={2}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Stack spacing={1}>
             <Typography variant="body2">
               Your account is not verified. A verification email has been sent to your email address.
             </Typography>
@@ -314,11 +284,19 @@ export function SimpleSignInView() {
         </Alert>
       )}
 
-      <Form methods={methods} onSubmit={onSubmit}>
-        {renderForm}
-      </Form>
-
-      {renderTestCredentials}
+      <Box
+        sx={(theme) => ({
+          p: 2.25,
+          borderRadius: 3,
+          border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
+          background: `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.9)} 0%, ${alpha(theme.palette.background.neutral, 0.8)} 100%)`,
+          boxShadow: `0 20px 40px ${alpha(theme.palette.grey[500], 0.12)}`,
+        })}
+      >
+        <Form methods={methods} onSubmit={onSubmit}>
+          {renderForm}
+        </Form>
+      </Box>
     </>
   );
 }

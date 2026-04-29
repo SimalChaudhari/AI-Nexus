@@ -1,5 +1,5 @@
 import { z as zod } from 'zod';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
 
 import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { PasswordIcon } from 'src/assets/icons';
@@ -31,8 +32,12 @@ export const ForgotPasswordSchema = zod.object({
 // ----------------------------------------------------------------------
 
 export function JwtForgotPasswordView() {
+  const router = useRouter();
+  const redirectTimeoutRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [countdown, setCountdown] = useState(0);
 
   const defaultValues = {
     email: '',
@@ -45,8 +50,21 @@ export function JwtForgotPasswordView() {
 
   const {
     handleSubmit,
+    reset,
     formState: { isSubmitting },
   } = methods;
+
+  useEffect(
+    () => () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    },
+    []
+  );
 
   const onSubmit = handleSubmit(async (data) => {
     try {
@@ -54,9 +72,30 @@ export function JwtForgotPasswordView() {
       setSuccessMsg('');
       const result = await forgotPassword({ email: data.email });
       setSuccessMsg(result.message || 'Password reset link has been sent to your email.');
+      reset();
+      setCountdown(10);
+
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+
+      redirectTimeoutRef.current = setTimeout(() => {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+        router.push(paths.auth.jwt.signIn);
+      }, 10000);
     } catch (error) {
       console.error(error);
       setErrorMsg(error && error.message ? error.message : 'Failed to send reset email. Please try again.');
+      reset();
     }
   });
 
@@ -120,7 +159,7 @@ export function JwtForgotPasswordView() {
 
       {!!successMsg && (
         <Alert severity="success" sx={{ mb: 3 }}>
-          {successMsg}
+          {`${successMsg} Redirecting to sign in in ${countdown} second${countdown === 1 ? '' : 's'}...`}
         </Alert>
       )}
 
