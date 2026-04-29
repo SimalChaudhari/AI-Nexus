@@ -17,6 +17,7 @@ import { chatbotService } from 'src/services/chatbot.service';
 
 export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
   const [open, setOpen] = useState(false);
+  const [hiddenByOverlay, setHiddenByOverlay] = useState(false);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesRef = useRef(null);
@@ -62,6 +63,25 @@ export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
     if (!messagesRef.current) return;
     messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   }, [messages, loading, open]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleVisibilityToggle = (event) => {
+      const hidden = Boolean(event?.detail?.hidden);
+      setHiddenByOverlay(hidden);
+      if (hidden) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('chatbot-visibility-change', handleVisibilityToggle);
+    return () => {
+      window.removeEventListener('chatbot-visibility-change', handleVisibilityToggle);
+    };
+  }, []);
+
+  if (hiddenByOverlay) {
+    return null;
+  }
 
   const handleSend = async () => {
     if (!hasInput || loading) return;

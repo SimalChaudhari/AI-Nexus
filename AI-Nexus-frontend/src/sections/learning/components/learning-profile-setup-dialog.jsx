@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Dialog from '@mui/material/Dialog';
 import DialogContent from '@mui/material/DialogContent';
@@ -263,6 +263,22 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    window.dispatchEvent(
+      new CustomEvent('chatbot-visibility-change', {
+        detail: { hidden: Boolean(open), source: 'learning-profile-dialog' },
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent('chatbot-visibility-change', {
+          detail: { hidden: false, source: 'learning-profile-dialog' },
+        })
+      );
+    };
+  }, [open]);
 
   return (
     <Dialog
