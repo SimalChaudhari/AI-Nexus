@@ -74,6 +74,8 @@ const transformCourse = (course) => {
     isRecommended: course.isRecommended ?? false,
     isFavorite: course.isFavorite ?? false,
     isEnrolled: course.isEnrolled ?? false,
+    modulesCount: Number(course.modulesCount ?? course.moduleCount ?? 0),
+    sectionsCount: Number(course.sectionsCount ?? course.sectionCount ?? course.lessonCount ?? 0),
     /** True when access comes only from owning a bundle (not a direct enrollment row). */
     accessViaBundle: course.accessViaBundle ?? false,
     relatedCourses,

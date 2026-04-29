@@ -10,6 +10,8 @@ import { existsSync, readFileSync } from 'fs';
 import { CourseFavoriteEntity } from './course-favorite.entity';
 import { CourseEnrollmentEntity } from './course-enrollment.entity';
 import { CourseGroupEntity } from './course-group.entity';
+import { CourseModuleEntity } from './course-module.entity';
+import { CourseModuleSectionEntity } from './course-module-section.entity';
 import {
   buildPaginatedResponse,
   PaginatedQueryOptions,
@@ -119,8 +121,59 @@ export class CourseService {
         private courseEnrollmentRepository: Repository<CourseEnrollmentEntity>,
         @InjectRepository(CourseGroupEntity)
         private courseGroupRepository: Repository<CourseGroupEntity>,
+        @InjectRepository(CourseModuleEntity)
+        private courseModuleRepository: Repository<CourseModuleEntity>,
+        @InjectRepository(CourseModuleSectionEntity)
+        private courseModuleSectionRepository: Repository<CourseModuleSectionEntity>,
         private readonly courseEnrollmentService: CourseEnrollmentService,
     ) { }
+
+    private async attachCourseContentCounts(data: any[]): Promise<any[]> {
+        if (!Array.isArray(data) || data.length === 0) {
+            return data;
+        }
+
+        const courseIds = [...new Set(data.map((course) => course?.id).filter(Boolean))];
+        if (courseIds.length === 0) {
+            return data;
+        }
+
+        const [moduleRows, sectionRows] = await Promise.all([
+            this.courseModuleRepository
+                .createQueryBuilder('module')
+                .select('module.courseId', 'courseId')
+                .addSelect('COUNT(*)::int', 'count')
+                .where('module.courseId IN (:...courseIds)', { courseIds })
+                .groupBy('module.courseId')
+                .getRawMany<{ courseId: string; count: string | number }>(),
+            this.courseModuleSectionRepository
+                .createQueryBuilder('section')
+                .innerJoin(CourseModuleEntity, 'module', 'module.id = section.moduleId')
+                .select('module.courseId', 'courseId')
+                .addSelect('COUNT(*)::int', 'count')
+                .where('module.courseId IN (:...courseIds)', { courseIds })
+                .groupBy('module.courseId')
+                .getRawMany<{ courseId: string; count: string | number }>(),
+        ]);
+
+        const modulesByCourseId = new Map(
+            moduleRows.map((row) => [row.courseId, Number(row.count) || 0]),
+        );
+        const sectionsByCourseId = new Map(
+            sectionRows.map((row) => [row.courseId, Number(row.count) || 0]),
+        );
+
+        return data.map((course) => {
+            const modulesCount = modulesByCourseId.get(course.id) ?? 0;
+            const sectionsCount = sectionsByCourseId.get(course.id) ?? 0;
+
+            return {
+                ...course,
+                modulesCount,
+                sectionsCount,
+            };
+        });
+    }
 
     async getAll(options: GetCoursesOptions & { usePagination: true }): Promise<PaginatedResponse<any>>;
     async getAll(options?: GetCoursesOptions): Promise<any[]>;
@@ -285,7 +338,7 @@ export class CourseService {
             directEnrolledOnPage = new Set(directRows.map((r) => r.courseId));
         }
 
-        const data = courses.map((course) => {
+        const mappedData = courses.map((course) => {
             const effective = userId ? effectiveEnrolledIds.has(course.id) : false;
             const directOnPage = userId ? directEnrolledOnPage.has(course.id) : false;
             return {
@@ -296,6 +349,7 @@ export class CourseService {
                 isRecommended: recommendedSet.has(course.id),
             };
         });
+        const data = await this.attachCourseContentCounts(mappedData);
 
         if (!usePagination) {
             return data;

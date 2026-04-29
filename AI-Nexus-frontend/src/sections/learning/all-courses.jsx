@@ -7,6 +7,7 @@ import Drawer from '@mui/material/Drawer';
 import Grid from '@mui/material/Unstable_Grid2';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import InputBase from '@mui/material/InputBase';
@@ -72,6 +73,18 @@ const getLevelSection = (level) => {
 
   return 'AI Foundation';
 };
+
+const getCourseContentMeta = (course = {}) => {
+  const modulesCount = Number(course.modulesCount ?? course.moduleCount ?? 0);
+  const sectionsCount = Number(course.sectionsCount ?? course.sectionCount ?? 0);
+
+  return {
+    moduleCount: Number.isFinite(modulesCount) && modulesCount > 0 ? modulesCount : 0,
+    sectionCount: Number.isFinite(sectionsCount) && sectionsCount > 0 ? sectionsCount : 0,
+  };
+};
+
+const shouldShowTitleTooltip = (title) => String(title || '').trim().length > 42;
 
 export function AllCourses({ refreshSignal = 0 }) {
   const theme = useTheme();
@@ -847,9 +860,11 @@ export function AllCourses({ refreshSignal = 0 }) {
                       <Grid
                         container
                         spacing={{ xs: 2, md: 2.5 }}
-                        columns={{ xs: 1, sm: 2, md: 3, lg: 4, xl: 5 }}
+                        columns={{ xs: 2, sm: 3, md: 3, lg: 4, xl: 5 }}
                       >
-                        {group.items.map((course) => (
+                        {group.items.map((course) => {
+                        const { moduleCount, sectionCount } = getCourseContentMeta(course);
+                        return (
                         <Grid
                           key={course.id}
                           xs={1}
@@ -857,7 +872,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                           <Card
                             sx={{
                               height: '100%',
-                              minHeight: 250,
+                              minHeight: { xs: 210, sm: 235, md: 250 },
                               display: 'flex',
                               flexDirection: 'column',
                               borderRadius: 2,
@@ -873,7 +888,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                               onClick={(e) => handleCourseImageClick(e, course)}
                               sx={{
                                 position: 'relative',
-                                height: { xs: 150, sm: 165, md: 155, lg: 145 },
+                                height: { xs: 112, sm: 150, md: 155, lg: 145 },
                                 bgcolor: 'grey.100',
                                 flexShrink: 0,
                                 cursor: 'pointer',
@@ -967,35 +982,109 @@ export function AllCourses({ refreshSignal = 0 }) {
                             </Box>
                             <Box
                               sx={{
-                                p: 1.5,
+                                p: { xs: 1, sm: 1.5 },
                                 flex: 1,
                                 display: 'flex',
                                 flexDirection: 'column',
-                                justifyContent: 'center',
-                                minHeight: 96,
+                                justifyContent: 'space-between',
+                                minHeight: { xs: 88, sm: 108, md: 96 },
                               }}
                             >
-                              <Typography
-                                variant="body1"
-                                component={RouterLink}
-                                to={getCourseDetailsPath(course.id)}
-                                sx={{
-                                  fontWeight: 500,
-                                  fontSize: { xs: '1rem', md: '0.98rem' },
-                                  display: '-webkit-box',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical',
-                                  overflow: 'hidden',
-                                  lineHeight: 1.4,
-                                  mb: 0.75,
-                                  height: '2.8em',
-                                  wordBreak: 'break-word',
-                                  color: 'inherit',
-                                  textDecoration: 'none',
-                                }}
+                              <Tooltip
+                                title={course.title}
+                                arrow
+                                placement="top"
+                                disableHoverListener={!shouldShowTitleTooltip(course.title)}
                               >
-                                {course.title}
-                              </Typography>
+                                <Typography
+                                  variant="body1"
+                                  component={RouterLink}
+                                  to={getCourseDetailsPath(course.id)}
+                                  sx={{
+                                    fontWeight: 500,
+                                    fontSize: { xs: 'clamp(0.72rem, 2.2vw, 0.9rem)', sm: '0.95rem', md: '0.98rem' },
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 1,
+                                    WebkitBoxOrient: 'vertical',
+                                    overflow: 'hidden',
+                                    lineHeight: { xs: 1.32, sm: 1.36, md: 1.4 },
+                                    mb: { xs: 0.45, sm: 0.75 },
+                                    minHeight: { xs: '1.2em', sm: '1.25em', md: '1.35em' },
+                                    wordBreak: 'break-word',
+                                    color: 'inherit',
+                                    textDecoration: 'none',
+                                  }}
+                                >
+                                  {course.title}
+                                </Typography>
+                              </Tooltip>
+                              <Box sx={{ mb: { xs: 0.45, sm: 0.85 }, minHeight: { xs: 34, sm: 24 } }}>
+                                {(moduleCount > 0 || sectionCount > 0) ? (
+                                  <Stack
+                                    direction={{ xs: 'column', sm: 'row' }}
+                                    spacing={0.6}
+                                    alignItems="flex-start"
+                                  >
+                                    {moduleCount > 0 && (
+                                      <Stack
+                                        direction="row"
+                                        spacing={0.45}
+                                        alignItems="center"
+                                        sx={{
+                                          px: 0.8,
+                                          py: 0.2,
+                                          borderRadius: 1,
+                                          bgcolor: alpha(theme.palette.info.main, 0.1),
+                                          width: 'fit-content',
+                                          maxWidth: '100%',
+                                        }}
+                                      >
+                                        <Iconify icon="solar:widget-5-bold" width={13} sx={{ color: 'info.main' }} />
+                                        <Typography
+                                          variant="caption"
+                                          sx={{ color: 'info.main', fontWeight: 700, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                                        >
+                                          {moduleCount} Modules
+                                        </Typography>
+                                      </Stack>
+                                    )}
+                                    {sectionCount > 0 && (
+                                      <Stack
+                                        direction="row"
+                                        spacing={0.45}
+                                        alignItems="center"
+                                        sx={{
+                                          px: 0.8,
+                                          py: 0.2,
+                                          borderRadius: 1,
+                                          bgcolor: alpha(theme.palette.warning.main, 0.12),
+                                          width: 'fit-content',
+                                          maxWidth: '100%',
+                                        }}
+                                      >
+                                        <Iconify
+                                          icon="solar:document-text-bold"
+                                          width={13}
+                                          sx={{ color: 'warning.main' }}
+                                        />
+                                        <Typography
+                                          variant="caption"
+                                          sx={{ color: 'warning.main', fontWeight: 700, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                                        >
+                                          {sectionCount} Sections
+                                        </Typography>
+                                      </Stack>
+                                    )}
+                                  </Stack>
+                                ) : (
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ color: 'text.disabled', fontStyle: 'italic', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                                  >
+                                    Modules & Sections not available
+                                  </Typography>
+                                )}
+                              </Box>
                               {course.isBundle && (
                                 <LearningBundlePill
                                   count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
@@ -1112,7 +1201,8 @@ export function AllCourses({ refreshSignal = 0 }) {
                             </Box>
                           </Card>
                         </Grid>
-                        ))}
+                        );
+                        })}
                       </Grid>
                       {paginatingGroupKey === group.groupKey && (
                         <CoursesLoaderOverlay size={32} zIndex={2} />
@@ -1169,7 +1259,9 @@ export function AllCourses({ refreshSignal = 0 }) {
               </Stack>
               <Box sx={{ position: 'relative' }}>
                 <Stack spacing={2}>
-                  {group.items.map((course) => (
+                  {group.items.map((course) => {
+                  const { moduleCount, sectionCount } = getCourseContentMeta(course);
+                  return (
                   <Card
                     key={course.id}
                     sx={{
@@ -1252,27 +1344,87 @@ export function AllCourses({ refreshSignal = 0 }) {
                         minWidth: 0,
                       }}
                     >
-                      <Typography
-                        variant="body1"
-                        component={RouterLink}
-                        to={getCourseDetailsPath(course.id)}
-                        sx={{
-                          fontWeight: 500,
-                          fontSize: { xs: '1rem', md: '1.05rem' },
-                          lineHeight: 1.4,
-                          mb: 0.75,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          height: '2.8em',
-                          wordBreak: 'break-word',
-                          color: 'inherit',
-                          textDecoration: 'none',
-                        }}
+                      <Tooltip
+                        title={course.title}
+                        arrow
+                        placement="top"
+                        disableHoverListener={!shouldShowTitleTooltip(course.title)}
                       >
-                        {course.title}
-                      </Typography>
+                        <Typography
+                          variant="body1"
+                          component={RouterLink}
+                          to={getCourseDetailsPath(course.id)}
+                          sx={{
+                            fontWeight: 500,
+                            fontSize: { xs: 'clamp(0.76rem, 1.9vw, 0.92rem)', sm: '0.98rem', md: '1.05rem' },
+                            lineHeight: { xs: 1.32, sm: 1.36, md: 1.4 },
+                            mb: 0.75,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 1,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            minHeight: { xs: '1.2em', sm: '1.25em', md: '1.35em' },
+                            wordBreak: 'break-word',
+                            color: 'inherit',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          {course.title}
+                        </Typography>
+                      </Tooltip>
+                      <Box sx={{ mb: 0.85, minHeight: 24 }}>
+                        {(moduleCount > 0 || sectionCount > 0) ? (
+                          <Stack direction="row" spacing={0.75} alignItems="center">
+                            {moduleCount > 0 && (
+                              <Stack
+                                direction="row"
+                                spacing={0.45}
+                                alignItems="center"
+                                sx={{
+                                  px: 0.8,
+                                  py: 0.2,
+                                  borderRadius: 1,
+                                  bgcolor: alpha(theme.palette.info.main, 0.1),
+                                }}
+                              >
+                                <Iconify icon="solar:widget-5-bold" width={13} sx={{ color: 'info.main' }} />
+                                <Typography variant="caption" sx={{ color: 'info.main', fontWeight: 700 }}>
+                                  {moduleCount} Modules
+                                </Typography>
+                              </Stack>
+                            )}
+                            {sectionCount > 0 && (
+                              <Stack
+                                direction="row"
+                                spacing={0.45}
+                                alignItems="center"
+                                sx={{
+                                  px: 0.8,
+                                  py: 0.2,
+                                  borderRadius: 1,
+                                  bgcolor: alpha(theme.palette.warning.main, 0.12),
+                                }}
+                              >
+                                <Iconify
+                                  icon="solar:document-text-bold"
+                                  width={13}
+                                  sx={{ color: 'warning.main' }}
+                                />
+                                <Typography variant="caption" sx={{ color: 'warning.main', fontWeight: 700 }}>
+                                  {sectionCount} Sections
+                                </Typography>
+                              </Stack>
+                            )}
+                          </Stack>
+                        ) : (
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'text.disabled', fontStyle: 'italic', fontSize: { xs: '0.76rem', md: '0.8rem' } }}
+                          >
+                            Modules & Sections not available
+                          </Typography>
+                        )}
+                      </Box>
                       {course.isBundle && (
                         <LearningBundlePill
                           count={Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0}
@@ -1388,7 +1540,8 @@ export function AllCourses({ refreshSignal = 0 }) {
                       </Stack>
                     </Box>
                   </Card>
-                  ))}
+                  );
+                  })}
                 </Stack>
                 {paginatingGroupKey === group.groupKey && (
                   <CoursesLoaderOverlay size={32} zIndex={2} />
