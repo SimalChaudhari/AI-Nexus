@@ -98,6 +98,7 @@ export function AllCourses({ refreshSignal = 0 }) {
   const checkout = useCheckoutContext();
   const latestRequestRef = useRef(0);
   const querySignatureRef = useRef('');
+  const desktopFilterPanelRef = useRef(null);
   const groupPagesRef = useRef({
     recommended: 1,
     beginner: 1,
@@ -119,6 +120,7 @@ export function AllCourses({ refreshSignal = 0 }) {
 
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
   const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(true);
+  const [isDesktopFilterPanelVisible, setIsDesktopFilterPanelVisible] = useState(true);
   const [groupPages, setGroupPages] = useState({
     recommended: 1,
     beginner: 1,
@@ -412,6 +414,37 @@ export function AllCourses({ refreshSignal = 0 }) {
 
     fetchCoursesPage();
   }, [authenticated, courseFilter, debouncedSearchQuery, fetchCoursesPage, refreshSignal]);
+
+  useEffect(() => {
+    if (!isDesktop) {
+      setIsDesktopFilterPanelVisible(true);
+      return undefined;
+    }
+
+    if (!desktopFiltersOpen) {
+      // Keep it true while closed to avoid flash
+      // when reopening before observer recalculates visibility.
+      setIsDesktopFilterPanelVisible(true);
+      return undefined;
+    }
+
+    const target = desktopFilterPanelRef.current;
+    if (!target) {
+      setIsDesktopFilterPanelVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsDesktopFilterPanelVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.15 }
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [desktopFiltersOpen, isDesktop]);
 
   const displayCourses = useMemo(() => courses.map(transformCourse), [courses]);
   const groupedCourses = useMemo(
@@ -747,6 +780,7 @@ export function AllCourses({ refreshSignal = 0 }) {
         {desktopFiltersOpen && (
           <Grid xs={12} md={3} lg={2.8} sx={{ display: { xs: 'none', md: 'block' } }}>
             <Card
+              ref={desktopFilterPanelRef}
               sx={{
                 p: 2,
                 top: { md: 96 },
@@ -1802,6 +1836,29 @@ export function AllCourses({ refreshSignal = 0 }) {
           )}
         </Grid>
       </Grid>
+
+      {isDesktop && desktopFiltersOpen && !isDesktopFilterPanelVisible && (
+        <Button
+          variant="contained"
+          color="secondary"
+          startIcon={<Iconify icon="solar:filter-bold" width={18} />}
+          onClick={() => setDesktopFiltersOpen((prev) => !prev)}
+          sx={{
+            position: 'fixed',
+            left: 0,
+            top: 168,
+            zIndex: (theme) => theme.zIndex.drawer - 1,
+            borderRadius: '0 12px 12px 0',
+            pl: 1.25,
+            pr: 1.75,
+            py: 1,
+            boxShadow: (theme) => theme.customShadows?.z8 || theme.shadows[6],
+            textTransform: 'none',
+          }}
+        >
+          Remove Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
+        </Button>
+      )}
 
       <Drawer
         anchor="right"
