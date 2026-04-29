@@ -73,7 +73,7 @@ const getLevelSection = (level) => {
   return 'AI Foundation';
 };
 
-export function AllCourses() {
+export function AllCourses({ refreshSignal = 0 }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { authenticated } = useAuthContext();
@@ -358,7 +358,7 @@ export function AllCourses() {
     }
 
     fetchCoursesPage();
-  }, [authenticated, courseFilter, debouncedSearchQuery, fetchCoursesPage]);
+  }, [authenticated, courseFilter, debouncedSearchQuery, fetchCoursesPage, refreshSignal]);
 
   const displayCourses = useMemo(() => courses.map(transformCourse), [courses]);
   const groupedCourses = useMemo(

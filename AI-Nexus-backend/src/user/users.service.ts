@@ -141,7 +141,6 @@ export class UserService {
             firstname: createUserDto.firstname,
             lastname: createUserDto.lastname,
             email: createUserDto.email,
-            persona: createUserDto.persona?.trim() || null,
             aiExperienceLevel: createUserDto.aiExperienceLevel?.trim() || null,
             aiLearningGoals: normalizeStringArray(createUserDto.aiLearningGoals),
             aiUseAreas: normalizeStringArray(createUserDto.aiUseAreas),
@@ -218,9 +217,6 @@ export class UserService {
         }
         if (updateUserDto.avatarUrl !== undefined) {
             user.avatarUrl = updateUserDto.avatarUrl?.trim() || null;
-        }
-        if (updateUserDto.persona !== undefined) {
-            user.persona = updateUserDto.persona?.trim() || null;
         }
         if (updateUserDto.aiExperienceLevel !== undefined) {
             user.aiExperienceLevel = updateUserDto.aiExperienceLevel?.trim() || null;

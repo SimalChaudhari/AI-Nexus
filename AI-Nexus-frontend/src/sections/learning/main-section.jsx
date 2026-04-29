@@ -14,9 +14,10 @@ import { LearningProfileSetupDialog } from './components/learning-profile-setup-
 
 export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: setActiveTabProp }) {
   const theme = useTheme();
-  const { authenticated, user } = useAuthContext();
+  const { authenticated, user, checkUserSession } = useAuthContext();
   const [internalTab, setInternalTab] = useState('courses');
   const [profileSetupCompleted, setProfileSetupCompleted] = useState(false);
+  const [coursesRefreshSignal, setCoursesRefreshSignal] = useState(0);
   const activeTab = activeTabProp ?? internalTab;
   const setActiveTab = setActiveTabProp ?? setInternalTab;
   const shouldOpenProfileDialog = useMemo(() => {
@@ -43,7 +44,7 @@ export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: se
       }}
     >
       {/* All Courses View */}
-      {activeTab === 'courses' && <AllCourses />}
+      {activeTab === 'courses' && <AllCourses refreshSignal={coursesRefreshSignal} />}
 
       {/* My Progress View */}
       {activeTab === 'progress' && <MyProgress onNavigateToCertificates={() => setActiveTab('certificates')} />}
@@ -57,7 +58,11 @@ export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: se
       <LearningProfileSetupDialog
         open={shouldOpenProfileDialog}
         user={user}
-        onSaved={() => setProfileSetupCompleted(true)}
+        onSaved={async () => {
+          await checkUserSession();
+          setCoursesRefreshSignal((prev) => prev + 1);
+          setProfileSetupCompleted(true);
+        }}
       />
     </DashboardContent>
   );

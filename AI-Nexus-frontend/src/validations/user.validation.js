@@ -45,10 +45,6 @@ export const NewUserSchema = zod.object({
     .max(100, { message: 'Email must be less than 100 characters!' })
     .toLowerCase(),
 
-  persona: zod
-    .string()
-    .min(1, { message: 'Persona is required!' }),
-
   avatar: avatarFieldSchema,
 
   status: zod
@@ -100,10 +96,6 @@ export const UpdateUserSchema = zod.object({
     .email({ message: 'Email must be a valid email address!' })
     .max(100, { message: 'Email must be less than 100 characters!' })
     .toLowerCase()
-    .optional(),
-
-  persona: zod
-    .string()
     .optional(),
 
   avatar: avatarFieldSchema,

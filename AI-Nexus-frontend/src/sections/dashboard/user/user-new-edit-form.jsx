@@ -26,7 +26,6 @@ import { createUser, updateUser } from 'src/store/slices/userSlice';
 import { userService } from 'src/services/user.service';
 import { NewUserSchema, ProfileSchema } from 'src/validations/user.validation';
 import { fData } from 'src/utils/format-number';
-import { PERSONA_OPTIONS } from 'src/constants/persona-options';
 
 // ----------------------------------------------------------------------
 
@@ -59,7 +58,6 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
       firstname: currentUser?.firstname || '',
       lastname: currentUser?.lastname || '',
       email: currentUser?.email || '',
-      persona: currentUser?.persona || '',
       avatar: currentUser?.avatarUrl || null,
     };
     if (isProfileEdit) {
@@ -118,7 +116,6 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           firstname: data.firstname?.trim(),
           lastname: data.lastname?.trim(),
           email: data.email?.trim().toLowerCase(),
-          persona: data.persona?.trim(),
           avatar: data.avatar,
         };
 
@@ -324,25 +321,6 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                   <Field.Text name="lastname" label="Last name" />
                 </Box>
                 <Stack spacing={3}>
-                  <Field.Autocomplete
-                    name="persona"
-                    label="Persona"
-                    placeholder="Search persona..."
-                    options={PERSONA_OPTIONS.map((option) => option.value)}
-                    autoHighlight
-                    autoSelect
-                    clearOnEscape
-                    slotProps={{
-                      popper: {
-                        placement: 'bottom-start',
-                        modifiers: [{ name: 'flip', enabled: false }],
-                        sx: { zIndex: (theme) => theme.zIndex.modal + 2 },
-                      },
-                      listbox: {
-                        sx: { maxHeight: 180 },
-                      },
-                    }}
-                  />
                   <Field.Text name="email" label="Email address" type="email" />
                   <Field.Text
                     name="password"
@@ -462,25 +440,6 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                 <Field.Text name="lastname" label="Last name" />
               </Box>
               <Stack spacing={3}>
-                <Field.Autocomplete
-                  name="persona"
-                  label="Persona"
-                  placeholder="Search persona..."
-                  options={PERSONA_OPTIONS.map((option) => option.value)}
-                  autoHighlight
-                  autoSelect
-                  clearOnEscape
-                  slotProps={{
-                    popper: {
-                      placement: 'bottom-start',
-                      modifiers: [{ name: 'flip', enabled: false }],
-                      sx: { zIndex: (theme) => theme.zIndex.modal + 2 },
-                    },
-                    listbox: {
-                      sx: { maxHeight: 180 },
-                    },
-                  }}
-                />
                 <Field.Text name="email" label="Email address" type="email" />
                 <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
                   {STATUS_OPTIONS.map((opt) => (
