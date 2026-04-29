@@ -23,9 +23,9 @@ import {
   FINANCE_ROLE_OPTIONS,
 } from 'src/constants/learning-profile-options';
 
-const getAutocompleteSlotProps = (isNarrow) => ({
+const getAutocompleteSlotProps = (isNarrow, placement = 'bottom-start') => ({
   popper: {
-    placement: 'bottom-start',
+    placement,
     sx: (theme) => ({ zIndex: theme.zIndex.modal + 2 }),
   },
   paper: {
@@ -200,6 +200,10 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const autocompleteSlots = useMemo(() => getAutocompleteSlotProps(isMobile), [isMobile]);
+  const roleAutocompleteSlots = useMemo(
+    () => getAutocompleteSlotProps(isMobile, isMobile ? 'top-start' : 'bottom-start'),
+    [isMobile]
+  );
   const autocompleteListboxProps = useMemo(() => getAutocompleteListboxProps(isMobile), [isMobile]);
   const [submitting, setSubmitting] = useState(false);
   const [experienceLevel, setExperienceLevel] = useState(user?.aiExperienceLevel || '');
@@ -230,6 +234,13 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
   }, [experienceLevel, learningGoals.length, useAreas.length, financeRole]);
 
   const progress = (filledSteps / 4) * 100;
+  const getMobileNoSearchInputProps = (params) => ({
+    ...params,
+    inputProps: {
+      ...params.inputProps,
+      readOnly: isMobile,
+    },
+  });
 
   const handleSave = async () => {
     if (!isValid) return;
@@ -403,7 +414,12 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
               slotProps={autocompleteSlots}
               ListboxProps={autocompleteListboxProps}
               renderInput={(params) => (
-                <TextField {...params} placeholder="Select your level" size="small" sx={textFieldMobileDenseSx} />
+                <TextField
+                  {...getMobileNoSearchInputProps(params)}
+                  placeholder="Select your level"
+                  size="small"
+                  sx={textFieldMobileDenseSx}
+                />
               )}
             />
           </FieldCard>
@@ -424,7 +440,12 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
               slotProps={autocompleteSlots}
               ListboxProps={autocompleteListboxProps}
               renderInput={(params) => (
-                <TextField {...params} placeholder="Select goals" size="small" sx={textFieldMobileDenseSx} />
+                <TextField
+                  {...getMobileNoSearchInputProps(params)}
+                  placeholder="Select goals"
+                  size="small"
+                  sx={textFieldMobileDenseSx}
+                />
               )}
             />
           </FieldCard>
@@ -445,7 +466,7 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
               slotProps={autocompleteSlots}
               ListboxProps={autocompleteListboxProps}
               renderInput={(params) => (
-                <TextField {...params} placeholder="Select areas" size="small" />
+                <TextField {...getMobileNoSearchInputProps(params)} placeholder="Select areas" size="small" />
               )}
             />
           </FieldCard>
@@ -461,10 +482,15 @@ export function LearningProfileSetupDialog({ open, user, onSaved }) {
               options={FINANCE_ROLE_OPTIONS}
               value={financeRole || null}
               onChange={(_, value) => setFinanceRole(value || '')}
-              slotProps={autocompleteSlots}
+              slotProps={roleAutocompleteSlots}
               ListboxProps={autocompleteListboxProps}
               renderInput={(params) => (
-                <TextField {...params} placeholder="Select role" size="small" sx={textFieldMobileDenseSx} />
+                <TextField
+                  {...getMobileNoSearchInputProps(params)}
+                  placeholder="Select role"
+                  size="small"
+                  sx={textFieldMobileDenseSx}
+                />
               )}
             />
           </FieldCard>
