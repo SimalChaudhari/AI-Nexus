@@ -20,6 +20,12 @@ function generateTemporaryPassword(length = 14): string {
     return out;
 }
 
+function normalizeStringArray(value: unknown): string[] | null {
+    if (!Array.isArray(value)) return null;
+    const normalized = [...new Set(value.map((v) => String(v || '').trim()).filter(Boolean))];
+    return normalized.length > 0 ? normalized : [];
+}
+
 export type UserListQueryOptions = PaginatedQueryOptions & {
     status?: UserStatus;
     usePagination?: boolean;
@@ -136,6 +142,10 @@ export class UserService {
             lastname: createUserDto.lastname,
             email: createUserDto.email,
             persona: createUserDto.persona?.trim() || null,
+            aiExperienceLevel: createUserDto.aiExperienceLevel?.trim() || null,
+            aiLearningGoals: normalizeStringArray(createUserDto.aiLearningGoals),
+            aiUseAreas: normalizeStringArray(createUserDto.aiUseAreas),
+            financeRole: createUserDto.financeRole?.trim() || null,
             avatarUrl: createUserDto.avatarUrl?.trim() || null,
             password: passwordHash,
             authProvider: AuthProvider.LOCAL,
@@ -211,6 +221,21 @@ export class UserService {
         }
         if (updateUserDto.persona !== undefined) {
             user.persona = updateUserDto.persona?.trim() || null;
+        }
+        if (updateUserDto.aiExperienceLevel !== undefined) {
+            user.aiExperienceLevel = updateUserDto.aiExperienceLevel?.trim() || null;
+        }
+        if (updateUserDto.aiLearningGoals !== undefined) {
+            user.aiLearningGoals = normalizeStringArray(updateUserDto.aiLearningGoals);
+        }
+        if (updateUserDto.aiUseAreas !== undefined) {
+            user.aiUseAreas = normalizeStringArray(updateUserDto.aiUseAreas);
+        }
+        if (updateUserDto.financeRole !== undefined) {
+            user.financeRole = updateUserDto.financeRole?.trim() || null;
+            if (updateUserDto.persona === undefined) {
+                user.persona = updateUserDto.financeRole?.trim() || null;
+            }
         }
         if (updateUserDto.password) {
             // Hash new password

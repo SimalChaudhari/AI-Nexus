@@ -141,6 +141,73 @@ export class AppSettingsService {
       .filter((row): row is PersonaCourseMapping => Boolean(row));
   }
 
+  private normalizeText(value: string | null | undefined): string {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /** Match admin mapping row to the learner key (finance role or legacy persona). Exact only — substring matching caused wrong rows / wrong counts. */
+  private findMappingForLearnerKey(
+    mappings: PersonaCourseMapping[],
+    learnerKey: string,
+  ): PersonaCourseMapping | undefined {
+    const normalizedKey = this.normalizeText(learnerKey);
+    if (!normalizedKey) return undefined;
+    return mappings.find((row) => this.normalizeText(row.persona) === normalizedKey);
+  }
+
+  private inferFallbackLevelFromLearningGoals(goals: unknown): string | null {
+    const normalizedGoals = Array.isArray(goals)
+      ? goals.map((goal) => this.normalizeText(typeof goal === 'string' ? goal : '')).filter(Boolean)
+      : [];
+    if (!normalizedGoals.length) return null;
+
+    if (
+      normalizedGoals.some(
+        (goal) =>
+          goal.includes('understand ai basics') ||
+          goal.includes('use ai tools for work') ||
+          goal.includes('improve productivity')
+      )
+    ) {
+      return 'Beginner';
+    }
+
+    if (
+      normalizedGoals.some(
+        (goal) =>
+          goal.includes('build ai apps') ||
+          goal.includes('machine learning') ||
+          goal.includes('generative ai')
+      )
+    ) {
+      return 'Advanced';
+    }
+
+    return 'Intermediate';
+  }
+
+  private async getFallbackCourseIdsForUser(
+    learningGoals: unknown,
+    limit = 8
+  ): Promise<string[]> {
+    const inferredLevel = this.inferFallbackLevelFromLearningGoals(learningGoals);
+    const query = this.courseRepository
+      .createQueryBuilder('course')
+      .select('course.id', 'id')
+      .orderBy('course.createdAt', 'DESC')
+      .limit(limit);
+
+    if (inferredLevel) {
+      query.where('course.level = :inferredLevel', { inferredLevel });
+    }
+
+    const rows = await query.getRawMany<{ id: string }>();
+    return rows.map((row) => row.id).filter(Boolean);
+  }
+
   async getPersonaCourseMappings(): Promise<PersonaCourseMapping[]> {
     const now = Date.now();
     if (this.personaMappingsCache && this.personaMappingsCache.expiresAt > now) {
@@ -195,10 +262,17 @@ export class AppSettingsService {
       return cached.value;
     }
 
-    const user = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'persona'] });
-    const persona = user?.persona?.trim() || null;
-    if (!persona) {
-      const value = { persona: null, courseIds: [] };
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'persona', 'financeRole', 'aiLearningGoals'],
+    });
+    // Learning profile stores role in financeRole; persona is synced to the same value when possible.
+    const learnerKey = user?.financeRole?.trim() || user?.persona?.trim() || null;
+    const displayPersona = learnerKey;
+
+    if (!learnerKey) {
+      const fallbackCourseIds = await this.getFallbackCourseIdsForUser(user?.aiLearningGoals);
+      const value = { persona: null, courseIds: fallbackCourseIds };
       this.recommendationsCache.set(userId, {
         value,
         expiresAt: now + this.recommendationsCacheTtlMs,
@@ -207,10 +281,24 @@ export class AppSettingsService {
     }
 
     const mappings = await this.getPersonaCourseMappings();
-    const match = mappings.find((row) => row.persona.toLowerCase() === persona.toLowerCase());
+    const match = this.findMappingForLearnerKey(mappings, learnerKey);
+
+    if (match) {
+      const value = {
+        persona: displayPersona,
+        courseIds: Array.isArray(match.courseIds) ? [...match.courseIds] : [],
+      };
+      this.recommendationsCache.set(userId, {
+        value,
+        expiresAt: now + this.recommendationsCacheTtlMs,
+      });
+      return value;
+    }
+
+    const fallbackCourseIds = await this.getFallbackCourseIdsForUser(user?.aiLearningGoals);
     const value = {
-      persona,
-      courseIds: match?.courseIds || [],
+      persona: displayPersona,
+      courseIds: fallbackCourseIds,
     };
     this.recommendationsCache.set(userId, {
       value,

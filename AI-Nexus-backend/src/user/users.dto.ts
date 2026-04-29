@@ -1,5 +1,5 @@
 //users.dto.ts
-import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean } from 'class-validator';
+import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean, IsArray } from 'class-validator';
 import { UserRole, UserStatus } from './users.entity';
 
 // For registration - all fields required
@@ -20,9 +20,27 @@ export class UserDto {
     @IsNotEmpty()
     email!: string;
 
+    @IsOptional()
     @IsString()
-    @IsNotEmpty()
-    persona!: string;
+    persona?: string;
+
+    @IsOptional()
+    @IsString()
+    aiExperienceLevel?: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiLearningGoals?: string[];
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiUseAreas?: string[];
+
+    @IsOptional()
+    @IsString()
+    financeRole?: string;
 
     @IsOptional()
     @IsString()
@@ -63,6 +81,24 @@ export class UpdateUserDto {
     @IsOptional()
     @IsString()
     persona?: string;
+
+    @IsOptional()
+    @IsString()
+    aiExperienceLevel?: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiLearningGoals?: string[];
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiUseAreas?: string[];
+
+    @IsOptional()
+    @IsString()
+    financeRole?: string;
 
     @IsOptional()
     @IsString()

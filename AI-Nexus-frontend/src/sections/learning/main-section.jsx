@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 
@@ -7,14 +7,31 @@ import { MyProgress } from './my-progress';
 import { MyCertificates } from './my-certificates';
 import { MyFavorites } from './my-favorites';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useAuthContext } from 'src/auth/hooks';
+import { LearningProfileSetupDialog } from './components/learning-profile-setup-dialog';
 
 // ----------------------------------------------------------------------
 
 export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: setActiveTabProp }) {
   const theme = useTheme();
+  const { authenticated, user } = useAuthContext();
   const [internalTab, setInternalTab] = useState('courses');
+  const [profileSetupCompleted, setProfileSetupCompleted] = useState(false);
   const activeTab = activeTabProp ?? internalTab;
   const setActiveTab = setActiveTabProp ?? setInternalTab;
+  const shouldOpenProfileDialog = useMemo(() => {
+    if (!authenticated) return false;
+    if (profileSetupCompleted) return false;
+    const missingExperience = !String(user?.aiExperienceLevel || '').trim();
+    const missingGoals = !Array.isArray(user?.aiLearningGoals) || user.aiLearningGoals.length === 0;
+    const missingAreas = !Array.isArray(user?.aiUseAreas) || user.aiUseAreas.length === 0;
+    const missingRole = !String(user?.financeRole || user?.persona || '').trim();
+    return missingExperience || missingGoals || missingAreas || missingRole;
+  }, [authenticated, user, profileSetupCompleted]);
+
+  useEffect(() => {
+    setProfileSetupCompleted(false);
+  }, [user?.id]);
 
   return (
     <DashboardContent
@@ -36,6 +53,12 @@ export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: se
 
       {/* Certificates View */}
       {activeTab === 'certificates' && <MyCertificates />}
+
+      <LearningProfileSetupDialog
+        open={shouldOpenProfileDialog}
+        user={user}
+        onSaved={() => setProfileSetupCompleted(true)}
+      />
     </DashboardContent>
   );
 }

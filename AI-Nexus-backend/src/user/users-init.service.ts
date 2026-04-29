@@ -52,6 +52,23 @@ export class UsersInitService implements OnModuleInit {
         `);
         console.log('✅ Added users.persona column');
       }
+
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "aiExperienceLevel" varchar
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "aiLearningGoals" jsonb
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "aiUseAreas" jsonb
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "financeRole" varchar
+      `);
     } catch (error) {
       console.error(
         '❌ Error ensuring users profile columns:',

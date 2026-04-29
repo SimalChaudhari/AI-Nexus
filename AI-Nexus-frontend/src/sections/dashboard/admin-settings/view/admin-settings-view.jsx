@@ -12,6 +12,7 @@ import Autocomplete from '@mui/material/Autocomplete';
 import CircularProgress from '@mui/material/CircularProgress';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
+import Alert from '@mui/material/Alert';
 import LoadingButton from '@mui/lab/LoadingButton';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
@@ -25,9 +26,10 @@ import { paths } from 'src/routes/paths';
 import { useSettingsContext } from 'src/components/settings';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { courseService } from 'src/services/course.service';
-import { PERSONA_OPTIONS } from 'src/constants/persona-options';
+import { FINANCE_ROLE_OPTIONS } from 'src/constants/learning-profile-options';
 
 // ----------------------------------------------------------------------
+const FINANCE_ROLE_MAPPING_OPTIONS = FINANCE_ROLE_OPTIONS.map((role) => ({ value: role, label: role }));
 
 export function AdminSettingsView() {
   const settings = useSettingsContext();
@@ -44,11 +46,32 @@ export function AdminSettingsView() {
   const [mappingSubmitting, setMappingSubmitting] = useState(false);
   const [courseOptions, setCourseOptions] = useState([]);
   const [personaMappings, setPersonaMappings] = useState([]);
-  const [selectedPersona, setSelectedPersona] = useState(PERSONA_OPTIONS[0]?.value || '');
+  const [selectedPersona, setSelectedPersona] = useState(FINANCE_ROLE_MAPPING_OPTIONS[0]?.value || '');
 
   const handleToggle = (field) => {
     settings.onUpdateField(field, !settings[field]);
   };
+
+  const ensureAllPersonaRows = useCallback(
+    (mappings = []) => {
+      const byPersona = new Map();
+      mappings.forEach((row) => {
+        const persona = row?.persona?.trim();
+        if (!persona) return;
+        const uniqueIds = [...new Set((row?.courseIds || []).filter(Boolean))];
+        byPersona.set(persona, { persona, courseIds: uniqueIds });
+      });
+
+      FINANCE_ROLE_MAPPING_OPTIONS.forEach((option) => {
+        if (!byPersona.has(option.value)) {
+          byPersona.set(option.value, { persona: option.value, courseIds: [] });
+        }
+      });
+
+      return Array.from(byPersona.values()).sort((a, b) => a.persona.localeCompare(b.persona));
+    },
+    [FINANCE_ROLE_MAPPING_OPTIONS]
+  );
 
   const loadSettings = useCallback(async () => {
     try {
@@ -61,7 +84,7 @@ export function AdminSettingsView() {
         appSettingsService.getPersonaCourseMappings(),
         courseService.getAllCourses({ page: 1, limit: 500 }),
       ]);
-      setPersonaMappings(mappingsResult || []);
+      setPersonaMappings(ensureAllPersonaRows(mappingsResult || []));
       setCourseOptions(Array.isArray(coursesResult?.data) ? coursesResult.data : []);
     } catch (error) {
       toast.error(error?.message || 'Failed to load site settings');
@@ -70,7 +93,7 @@ export function AdminSettingsView() {
       setHeroLoading(false);
       setCoursesLoading(false);
     }
-  }, []);
+  }, [ensureAllPersonaRows]);
 
   useEffect(() => {
     loadSettings();
@@ -222,7 +245,7 @@ export function AdminSettingsView() {
     try {
       setMappingSubmitting(true);
       const saved = await appSettingsService.updatePersonaCourseMappings(personaMappings);
-      setPersonaMappings(saved || []);
+      setPersonaMappings(ensureAllPersonaRows(saved || []));
       toast.success('Persona course mappings saved');
     } catch (error) {
       toast.error(error?.message || 'Failed to save persona course mappings');
@@ -237,6 +260,9 @@ export function AdminSettingsView() {
     .filter(Boolean);
   const mappedPersonasCount = personaMappings.filter((row) => (row?.courseIds || []).length > 0).length;
   const selectedCoursesCount = selectedCourses.length;
+  const unmappedPersonas = personaMappings
+    .filter((row) => (row?.courseIds || []).length === 0)
+    .map((row) => row.persona);
 
 
   const headerVisibilityOptions = [
@@ -444,7 +470,7 @@ export function AdminSettingsView() {
           <Chip
             color="primary"
             variant="soft"
-            label={`Mapped personas: ${mappedPersonasCount}/${PERSONA_OPTIONS.length}`}
+            label={`Mapped personas: ${mappedPersonasCount}/${FINANCE_ROLE_MAPPING_OPTIONS.length}`}
             sx={{ fontWeight: 600 }}
           />
           <Chip
@@ -455,15 +481,25 @@ export function AdminSettingsView() {
           />
         </Stack>
 
+        {unmappedPersonas.length > 0 && (
+          <Alert severity="warning" variant="outlined">
+            {`Unmapped personas: ${unmappedPersonas.length}. Users in these roles will get fallback recommendations until mapping is set.`}
+          </Alert>
+        )}
+
         <Divider />
 
         <Autocomplete
           disablePortal
-          options={PERSONA_OPTIONS}
+          options={FINANCE_ROLE_MAPPING_OPTIONS}
           getOptionLabel={(option) => option?.label || ''}
-          value={PERSONA_OPTIONS.find((opt) => opt.value === selectedPersona) || null}
-          onChange={(_, option) => setSelectedPersona(option?.value || PERSONA_OPTIONS[0]?.value || '')}
-          renderInput={(params) => <TextField {...params} label="Persona" helperText="Choose a persona profile" />}
+          value={FINANCE_ROLE_MAPPING_OPTIONS.find((opt) => opt.value === selectedPersona) || null}
+          onChange={(_, option) =>
+            setSelectedPersona(option?.value || FINANCE_ROLE_MAPPING_OPTIONS[0]?.value || '')
+          }
+          renderInput={(params) => (
+            <TextField {...params} label="Finance Role (Persona)" helperText="Choose a role profile" />
+          )}
         />
 
         <Autocomplete
@@ -493,6 +529,42 @@ export function AdminSettingsView() {
             />
           )}
         />
+
+        <Box
+          sx={{
+            p: 1.5,
+            borderRadius: 1.5,
+            border: (theme) => `1px dashed ${theme.palette.divider}`,
+            bgcolor: 'background.neutral',
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+            Preview for Learning page
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
+            If persona = <strong>{selectedPersona || '-'}</strong>, recommended courses shown ={' '}
+            <strong>{selectedCoursesCount}</strong>.
+          </Typography>
+          {selectedCoursesCount > 0 ? (
+            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+              {selectedCourses.slice(0, 8).map((course) => (
+                <Chip key={course.id} size="small" label={course.title} />
+              ))}
+              {selectedCoursesCount > 8 && (
+                <Chip
+                  size="small"
+                  color="default"
+                  variant="soft"
+                  label={`+${selectedCoursesCount - 8} more`}
+                />
+              )}
+            </Stack>
+          ) : (
+            <Typography variant="caption" sx={{ color: 'warning.main' }}>
+              No direct mapping set. Fallback recommendation will be used.
+            </Typography>
+          )}
+        </Box>
 
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>

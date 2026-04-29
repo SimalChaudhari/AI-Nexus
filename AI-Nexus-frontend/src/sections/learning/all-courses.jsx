@@ -377,7 +377,9 @@ export function AllCourses() {
   const levelResultsCount = groupedCourses
     .filter((group) => group.groupKey !== 'recommended')
     .reduce((sum, group) => sum + (group.pagination?.totalItems || 0), 0);
-  const totalCount = recommendedResultsCount + levelResultsCount;
+  const totalCount = new Set(
+    groupedCourses.flatMap((group) => (group.items || []).map((course) => course.id).filter(Boolean))
+  ).size;
   const displayedCourses = displayCourses;
 
   const handleRefresh = () => {

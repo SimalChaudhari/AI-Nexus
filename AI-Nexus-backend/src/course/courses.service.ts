@@ -247,7 +247,12 @@ export class CourseService {
                     'CASE WHEN course.id = ANY(:recommendedCourseIds) THEN 0 ELSE 1 END',
                     'persona_priority',
                 )
+                .addSelect(
+                    'COALESCE(array_position(:recommendedCourseIds::uuid[], course.id), 2147483647)',
+                    'persona_order',
+                )
                 .addOrderBy('persona_priority', 'ASC')
+                .addOrderBy('persona_order', 'ASC')
                 .addOrderBy('course.createdAt', 'DESC')
                 .setParameter('recommendedCourseIds', recommendedCourseIds);
         } else {

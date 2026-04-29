@@ -35,6 +35,18 @@ export class UserEntity {
     @Column({ type: 'varchar', nullable: true })
     persona!: string | null;
 
+    @Column({ type: 'varchar', nullable: true })
+    aiExperienceLevel!: string | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    aiLearningGoals!: string[] | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    aiUseAreas!: string[] | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    financeRole!: string | null;
+
     /** Empty for OAuth users; required for LOCAL. */
     @Column({ type: 'varchar', nullable: true })
     password!: string | null;
