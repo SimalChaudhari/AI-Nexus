@@ -930,18 +930,20 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       .filter((id) => isUuid(id));
   }, [apiModules]);
 
-  // Guard: only allow access if user is enrolled (purchased). Redirect to course details if not.
+  // Guard: require membership login before taking any course.
   useEffect(() => {
     if (!course?.id || loading || playerLoading) return undefined;
+    if (!authenticated) {
+      navigate(paths.learningCourse.details(course.id), {
+        replace: true,
+        state: { promptMembershipSignup: true },
+      });
+      return undefined;
+    }
     const paidCourse = isPaidCourse(course.freeOrPaid);
     if (!paidCourse) {
       setEnrollmentChecked(true);
       setEnrolled(true);
-      return undefined;
-    }
-    if (!authenticated) {
-      toast.error('Sign in and purchase this course to access content');
-      navigate(paths.learningCourse.details(course.id), { replace: true });
       return undefined;
     }
     // When player context is loaded, it already tells us whether user is enrolled.

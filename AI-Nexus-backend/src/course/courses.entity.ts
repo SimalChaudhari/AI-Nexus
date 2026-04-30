@@ -29,6 +29,22 @@ export class CourseEntity {
     @Column({ type: 'varchar', default: CourseLevel.Beginner })
     level!: string;
 
+    /** Target learner roles for recommendation matching */
+    @Column({ type: 'jsonb', nullable: true })
+    roles?: string[];
+
+    /** Supported AI experience levels for this course */
+    @Column({ type: 'jsonb', nullable: true })
+    aiLevel?: string[];
+
+    /** Learning goals covered by this course */
+    @Column({ type: 'jsonb', nullable: true })
+    goals?: string[];
+
+    /** AI use areas covered by this course */
+    @Column({ type: 'jsonb', nullable: true })
+    useAreas?: string[];
+
     /** Language IDs this course is available in (array of UUIDs) */
     @Column({ type: 'jsonb', nullable: true })
     languageIds?: string[];

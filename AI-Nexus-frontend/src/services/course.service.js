@@ -63,6 +63,10 @@ const transformCourse = (course) => {
     freeOrPaid: course.freeOrPaid ?? false,
     amount,
     level: course.level || 'Beginner',
+    roles: Array.isArray(course.roles) ? course.roles : [],
+    aiLevel: Array.isArray(course.aiLevel) ? course.aiLevel : [],
+    goals: Array.isArray(course.goals) ? course.goals : [],
+    useAreas: Array.isArray(course.useAreas) ? course.useAreas : [],
     languageIds,
     languages,
     speakerIds,
@@ -227,6 +231,18 @@ export const courseService = {
       if (courseData.level) {
         formData.append('level', courseData.level);
       }
+      if (Array.isArray(courseData.roles)) {
+        formData.append('roles', JSON.stringify(courseData.roles));
+      }
+      if (Array.isArray(courseData.aiLevel)) {
+        formData.append('aiLevel', JSON.stringify(courseData.aiLevel));
+      }
+      if (Array.isArray(courseData.goals)) {
+        formData.append('goals', JSON.stringify(courseData.goals));
+      }
+      if (Array.isArray(courseData.useAreas)) {
+        formData.append('useAreas', JSON.stringify(courseData.useAreas));
+      }
       if (Array.isArray(courseData.languageIds) && courseData.languageIds.length > 0) {
         formData.append('languageIds', JSON.stringify(courseData.languageIds));
       }
@@ -329,6 +345,18 @@ export const courseService = {
       }
       if (courseData.level !== undefined) {
         formData.append('level', courseData.level);
+      }
+      if (courseData.roles !== undefined) {
+        formData.append('roles', JSON.stringify(Array.isArray(courseData.roles) ? courseData.roles : []));
+      }
+      if (courseData.aiLevel !== undefined) {
+        formData.append('aiLevel', JSON.stringify(Array.isArray(courseData.aiLevel) ? courseData.aiLevel : []));
+      }
+      if (courseData.goals !== undefined) {
+        formData.append('goals', JSON.stringify(Array.isArray(courseData.goals) ? courseData.goals : []));
+      }
+      if (courseData.useAreas !== undefined) {
+        formData.append('useAreas', JSON.stringify(Array.isArray(courseData.useAreas) ? courseData.useAreas : []));
       }
       if (courseData.languageIds !== undefined) {
         formData.append('languageIds', JSON.stringify(Array.isArray(courseData.languageIds) ? courseData.languageIds : []));

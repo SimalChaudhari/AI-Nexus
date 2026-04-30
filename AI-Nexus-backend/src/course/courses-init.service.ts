@@ -28,6 +28,10 @@ export class CoursesInitService implements OnModuleInit {
             "freeOrPaid" boolean NOT NULL DEFAULT false,
             "amount" decimal(10,2) DEFAULT 0,
             "level" varchar NOT NULL DEFAULT 'Beginner',
+            "roles" jsonb,
+            "aiLevel" jsonb,
+            "goals" jsonb,
+            "useAreas" jsonb,
             "languageIds" jsonb,
             "speakerIds" jsonb,
             "marketData" jsonb,
@@ -69,6 +73,46 @@ export class CoursesInitService implements OnModuleInit {
           console.log('📋 Adding languageIds column to courses table...');
           await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "languageIds" jsonb`);
           console.log('✅ languageIds column added successfully');
+        }
+
+        const hasRolesColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'roles'
+        `);
+        if (!hasRolesColumn?.length) {
+          console.log('📋 Adding roles column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "roles" jsonb`);
+          console.log('✅ roles column added successfully');
+        }
+
+        const hasAiLevelColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'aiLevel'
+        `);
+        if (!hasAiLevelColumn?.length) {
+          console.log('📋 Adding aiLevel column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "aiLevel" jsonb`);
+          console.log('✅ aiLevel column added successfully');
+        }
+
+        const hasGoalsColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'goals'
+        `);
+        if (!hasGoalsColumn?.length) {
+          console.log('📋 Adding goals column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "goals" jsonb`);
+          console.log('✅ goals column added successfully');
+        }
+
+        const hasUseAreasColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'useAreas'
+        `);
+        if (!hasUseAreasColumn?.length) {
+          console.log('📋 Adding useAreas column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "useAreas" jsonb`);
+          console.log('✅ useAreas column added successfully');
         }
 
         // Migrate spikerIds -> speakerIds if old column exists

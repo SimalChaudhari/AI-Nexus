@@ -82,6 +82,30 @@ function toLanguageIdsArray(value: unknown): string[] | undefined {
   return undefined;
 }
 
+function toStringArray(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((x) => (typeof x === 'string' ? x.trim() : ''))
+      .filter(Boolean);
+    return normalized.length ? normalized : undefined;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .map((x) => (typeof x === 'string' ? x.trim() : ''))
+          .filter(Boolean);
+        return normalized.length ? normalized : undefined;
+      }
+    } catch {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : undefined;
+    }
+  }
+  return undefined;
+}
+
 function toBoolean(value: unknown): boolean | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value === 'boolean') return value;
@@ -119,6 +143,30 @@ export class CreateCourseDto {
     @IsOptional()
   @IsString()
   level?: string;
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    roles?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    aiLevel?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    goals?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    useAreas?: string[];
 
     /** Language IDs (UUIDs) this course is available in */
     @IsOptional()
@@ -199,6 +247,30 @@ export class UpdateCourseDto {
     level?: string;
 
     @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    roles?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    aiLevel?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    goals?: string[];
+
+    @IsOptional()
+    @Transform(({ value }) => toStringArray(value))
+    @IsArray()
+    @IsString({ each: true })
+    useAreas?: string[];
+
+    @IsOptional()
     @Transform(({ value }) => toLanguageIdsArray(value))
     @IsArray()
     @IsUUID('4', { each: true })
@@ -235,6 +307,10 @@ export class SeedDummyCoursesDto {
         freeOrPaid?: boolean;
         amount?: number;
         level?: string;
+        roles?: string[];
+        aiLevel?: string[];
+        goals?: string[];
+        useAreas?: string[];
         languageIds?: string[];
         marketData?: string;
     }>;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -37,6 +37,7 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
 import { LearningBundleHighlight } from '../components/course-bundle-badge';
+import { MembershipSignupDialog } from '../components/membership-signup-dialog';
 
 // ----------------------------------------------------------------------
 
@@ -79,6 +80,7 @@ const parseMarketData = (marketData) => {
 export function LearningCourseDetailsView({ course, loading, error }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const { authenticated } = useAuthContext();
   const checkout = useCheckoutContext();
 
@@ -107,6 +109,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
   const [receiptDownloading, setReceiptDownloading] = useState(false);
   const [reviewsDrawerOpen, setReviewsDrawerOpen] = useState(false);
+  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
 
   // Speaker rows come from course API (`speakers`) — no GET /speakers
   const speakerMap = useMemo(
@@ -197,8 +200,19 @@ export function LearningCourseDetailsView({ course, loading, error }) {
     };
   }, [course?.id, course?.isBundle, course?.bundleCourseIds]);
 
+  useEffect(() => {
+    if (!location.state?.promptMembershipSignup) return undefined;
+    setMembershipSignupOpen(true);
+    navigate('.', { replace: true, state: null });
+    return undefined;
+  }, [location.state, navigate]);
+
   const scrollToBundlePrograms = () => {
     document.getElementById('bundle-included')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const promptMembershipSignUp = () => {
+    setMembershipSignupOpen(true);
   };
 
   const handleToggleFavorite = async () => {
@@ -450,6 +464,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                     !hasAccess && !enrolledLoading
                       ? (e) => {
                           e.preventDefault();
+                          if (!authenticated) {
+                            promptMembershipSignUp();
+                            return;
+                          }
                           if (!isInCart(course.id)) {
                             addCourseToCart({
                               id: course.id,
@@ -621,6 +639,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                         e.preventDefault();
                         scrollToBundlePrograms();
                       }
+                    : !authenticated
+                      ? () => {
+                          promptMembershipSignUp();
+                        }
                     : !hasAccess && !enrolledLoading
                       ? () => {
                           if (!isInCart(course.id)) {
@@ -657,6 +679,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   startIcon={<Iconify icon={hasAccess ? 'solar:check-circle-bold' : isInCart(course.id) ? 'solar:cart-check-bold' : 'solar:cart-plus-bold'} width={20} />}
                   sx={{ mt: 1.5, py: 1.25, fontWeight: 600 }}
                   onClick={() => {
+                  if (!authenticated) {
+                    promptMembershipSignUp();
+                    return;
+                  }
                     if (hasAccess) return;
                     if (isInCart(course.id)) {
                       toast.info('Already in cart');
@@ -1489,6 +1515,14 @@ export function LearningCourseDetailsView({ course, loading, error }) {
         </Stack>
       </Drawer>
 
+      <MembershipSignupDialog
+        open={membershipSignupOpen}
+        onClose={() => setMembershipSignupOpen(false)}
+        onContinue={() => {
+          setMembershipSignupOpen(false);
+          navigate(paths.auth.simple.signUp);
+        }}
+      />
     </DashboardContent>
   );
 }

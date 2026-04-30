@@ -169,6 +169,23 @@ export function CourseDetailsView({ course, loading, error }) {
       .filter((name) => typeof name === 'string' && name.trim().length > 0);
   }, [course?.languages]);
 
+  const roleLabels = useMemo(
+    () => (Array.isArray(course?.roles) ? course.roles.filter(Boolean) : []),
+    [course?.roles]
+  );
+  const aiLevelLabels = useMemo(
+    () => (Array.isArray(course?.aiLevel) ? course.aiLevel.filter(Boolean) : []),
+    [course?.aiLevel]
+  );
+  const goalLabels = useMemo(
+    () => (Array.isArray(course?.goals) ? course.goals.filter(Boolean) : []),
+    [course?.goals]
+  );
+  const useAreaLabels = useMemo(
+    () => (Array.isArray(course?.useAreas) ? course.useAreas.filter(Boolean) : []),
+    [course?.useAreas]
+  );
+
   const speakerList = (Array.isArray(course?.speakers) ? course.speakers : [])
     .map((s) => ({
       id: s.id,
@@ -520,6 +537,66 @@ export function CourseDetailsView({ course, loading, error }) {
             <Typography variant="body2">
               {course.updatedAt ? new Date(course.updatedAt).toLocaleString() : '—'}
             </Typography>
+          </Grid>
+
+          <Grid xs={12}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+              Roles
+            </Typography>
+            {roleLabels.length > 0 ? (
+              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                {roleLabels.map((label) => (
+                  <Chip key={label} label={label} size="small" variant="soft" color="primary" />
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2">—</Typography>
+            )}
+          </Grid>
+
+          <Grid xs={12}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+              AI Levels
+            </Typography>
+            {aiLevelLabels.length > 0 ? (
+              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                {aiLevelLabels.map((label) => (
+                  <Chip key={label} label={label} size="small" variant="soft" color="warning" />
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2">—</Typography>
+            )}
+          </Grid>
+
+          <Grid xs={12}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+              Goals
+            </Typography>
+            {goalLabels.length > 0 ? (
+              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                {goalLabels.map((label) => (
+                  <Chip key={label} label={label} size="small" variant="soft" color="success" />
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2">—</Typography>
+            )}
+          </Grid>
+
+          <Grid xs={12}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+              Use Areas
+            </Typography>
+            {useAreaLabels.length > 0 ? (
+              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                {useAreaLabels.map((label) => (
+                  <Chip key={label} label={label} size="small" variant="soft" color="secondary" />
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2">—</Typography>
+            )}
           </Grid>
 
           <Grid xs={12}>

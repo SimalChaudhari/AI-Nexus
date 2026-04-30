@@ -30,6 +30,7 @@ import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { Divider } from '@mui/material';
 import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
 import { LearningBundlePill, LearningBundleRibbon } from './components/course-bundle-badge';
+import { MembershipSignupDialog } from './components/membership-signup-dialog';
 
 // ----------------------------------------------------------------------
 
@@ -141,6 +142,7 @@ export function AllCourses({ refreshSignal = 0 }) {
   const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
   const [favorites, setFavorites] = useState(new Set());
   const [favoriteLoading, setFavoriteLoading] = useState(new Set());
+  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
   const enrolledCourseIds = useMemo(
     () => new Set(courses.filter((course) => course.isEnrolled).map((course) => course.id)),
     [courses]
@@ -168,13 +170,17 @@ export function AllCourses({ refreshSignal = 0 }) {
     event.stopPropagation();
 
     if (isEnrolled(course.id)) return;
+    if (!authenticated) {
+      setMembershipSignupOpen(true);
+      return;
+    }
 
     if (!isInCart(course.id)) {
       addCourseToCart(course);
       toast.success('Added to cart');
+      return;
     }
-
-    navigate(paths.product.checkout);
+    toast.info('Already in cart');
   };
 
   const activeFilterCount = (courseFilter ? 1 : 0) + (debouncedSearchQuery ? 1 : 0);
@@ -1891,6 +1897,15 @@ export function AllCourses({ refreshSignal = 0 }) {
       >
         {renderFiltersContent(true)}
       </Drawer>
+
+      <MembershipSignupDialog
+        open={membershipSignupOpen}
+        onClose={() => setMembershipSignupOpen(false)}
+        onContinue={() => {
+          setMembershipSignupOpen(false);
+          navigate(paths.auth.simple.signUp);
+        }}
+      />
     </>
   );
 }

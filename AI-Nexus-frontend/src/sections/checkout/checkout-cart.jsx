@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
@@ -8,6 +9,8 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 
 import { CONFIG } from 'src/config-global';
+import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
 
 import { EmptyContent } from 'src/components/empty-content';
 
@@ -18,10 +21,23 @@ import { CheckoutCartProductList } from './checkout-cart-product-list';
 // ----------------------------------------------------------------------
 
 export function CheckoutCart() {
+  const router = useRouter();
   const checkout = useCheckoutContext();
+  const prevItemsCountRef = useRef(checkout.items.length);
 
   const empty = !checkout.items.length;
   const totalLabel = `${checkout.totalItems} ${checkout.totalItems === 1 ? 'course' : 'courses'}`;
+
+  useEffect(() => {
+    const prevCount = prevItemsCountRef.current;
+    const currentCount = checkout.items.length;
+
+    if (prevCount > 0 && currentCount === 0) {
+      router.push(paths.learning);
+    }
+
+    prevItemsCountRef.current = currentCount;
+  }, [checkout.items.length, router]);
 
   return (
     <Grid container spacing={{ xs: 2.5, md: 3 }}>
@@ -59,7 +75,11 @@ export function CheckoutCart() {
               sx={{ pt: 7, pb: 9 }}
             />
           ) : (
-            <CheckoutCartProductList products={checkout.items} onDelete={checkout.onDeleteCart} />
+            <CheckoutCartProductList
+              products={checkout.items}
+              onDelete={checkout.onDeleteCart}
+              deletingItemIds={checkout.deletingItemIds}
+            />
           )}
         </Card>
 

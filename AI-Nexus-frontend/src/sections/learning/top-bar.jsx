@@ -4,12 +4,13 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Badge from '@mui/material/Badge';
 import { alpha, useTheme } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
 
 import { Iconify } from 'src/components/iconify';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { RouterLink } from 'src/routes/components';
 import { paths } from 'src/routes/paths';
 import { useCheckoutContext } from 'src/sections/checkout/context';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
@@ -21,8 +22,10 @@ export function LearningTopBar({
   sticky = true,
 }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const checkout = useCheckoutContext();
   const cartCount = checkout.totalItems;
+  const hasItems = cartCount > 0;
 
   return (
     <Box
@@ -195,8 +198,22 @@ export function LearningTopBar({
           >
             {showCart && (
               <Box
-                component={RouterLink}
-                to={paths.product.checkout}
+                component="button"
+                type="button"
+                onClick={() => {
+                  if (cartCount > 0) {
+                    navigate(paths.product.checkout);
+                    return;
+                  }
+                  toast.info('Cart is empty', {
+                    description: 'Add a course to continue checkout.',
+                    style: {
+                      background: '#0f172a',
+                      color: '#f8fafc',
+                      border: '1px solid #334155',
+                    },
+                  });
+                }}
                 sx={{
                   display: { xs: 'none', md: 'flex' },
                   alignItems: 'center',
@@ -204,17 +221,45 @@ export function LearningTopBar({
                   color: 'text.primary',
                   textDecoration: 'none',
                   cursor: 'pointer',
+                  p: 0,
+                  m: 0,
                   width: 40,
                   height: 40,
                   borderRadius: '50%',
                   border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
                   backgroundColor: alpha(theme.palette.background.paper, 0.72),
-                  transition: (t) => t.transitions.create(['opacity']),
-                  '&:hover': { opacity: 0.72 },
+                  transition: 'none',
                 }}
               >
-                <Badge showZero badgeContent={cartCount} color="error" max={99}>
-                  <Iconify icon="solar:cart-3-bold" width={24} />
+                <Badge
+                  showZero
+                  badgeContent={cartCount}
+                  color="error"
+                  max={99}
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      bgcolor: 'common.white',
+                      color: 'text.secondary',
+                      border: (theme) => `1px solid ${theme.palette.grey[300]}`,
+                      fontWeight: 700,
+                    },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: hasItems ? 'secondary.main' : 'warning.main',
+                      color: hasItems ? 'common.white' : 'warning.contrastText',
+                      borderRadius: '50%',
+                      p: 0.5,
+                      '&::after': undefined,
+                    }}
+                  >
+                    <Iconify icon="solar:cart-plus-bold" width={24} />
+                  </Box>
                 </Badge>
               </Box>
             )}

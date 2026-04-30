@@ -1,6 +1,5 @@
 import {
   Controller,
-  Body,
   Delete,
   Get,
   HttpStatus,
@@ -54,29 +53,6 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json({
       data: settings,
     });
-  }
-
-  @Get('persona-course-mappings')
-  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Get persona-course mappings (admin)' })
-  async getPersonaCourseMappings(@Res() response: Response) {
-    const mappings = await this.appSettingsService.getPersonaCourseMappings();
-    return response.status(HttpStatus.OK).json({ data: mappings });
-  }
-
-  @Put('persona-course-mappings')
-  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Update persona-course mappings (admin)' })
-  async updatePersonaCourseMappings(
-    @Body() body: { mappings?: Array<{ persona?: string; courseIds?: string[] }> },
-    @Res() response: Response,
-  ) {
-    const result = await this.appSettingsService.updatePersonaCourseMappings(body?.mappings);
-    return response.status(HttpStatus.OK).json(result);
   }
 
   @Get('recommendations/me')

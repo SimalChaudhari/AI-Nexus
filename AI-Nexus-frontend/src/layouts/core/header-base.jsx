@@ -24,6 +24,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import { useScrollOffSetTop } from 'src/hooks/use-scroll-offset-top';
 import { Iconify } from 'src/components/iconify';
 import { useCheckoutContext } from 'src/sections/checkout/context';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
@@ -83,6 +84,7 @@ export function HeaderBase({
   const { authenticated } = useAuthContext();
   const checkout = useCheckoutContext();
   const cartCount = checkout.totalItems;
+  const hasItems = cartCount > 0;
 
   const { offsetTop: headerScrolled } = useScrollOffSetTop();
   /** Matches home header CSS: below this width the bar is solid white, not over the hero */
@@ -323,6 +325,18 @@ export function HeaderBase({
               <Box
                 component={RouterLink}
                 to={paths.product.checkout}
+                onClick={(event) => {
+                  if (cartCount > 0) return;
+                  event.preventDefault();
+                  toast.info('Cart is empty', {
+                    description: 'Add a course to continue checkout.',
+                    style: {
+                      background: '#0f172a',
+                      color: '#f8fafc',
+                      border: '1px solid #334155',
+                    },
+                  });
+                }}
                 sx={{
                   display: { xs: 'flex', md: 'none' },
                   alignItems: 'center',
@@ -335,12 +349,25 @@ export function HeaderBase({
                   borderRadius: '50%',
                   border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
                   backgroundColor: alpha(theme.palette.background.paper, 0.72),
-                  transition: (t) => t.transitions.create(['opacity']),
-                  '&:hover': { opacity: 0.72 },
+                  transition: 'none',
                 }}
               >
                 <Badge showZero badgeContent={cartCount} color="error" max={99}>
-                  <Iconify icon="solar:cart-3-bold" width={22} />
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: hasItems ? 'secondary.main' : 'warning.main',
+                      color: hasItems ? 'common.white' : 'warning.contrastText',
+                      borderRadius: '50%',
+                      p: 0.45,
+                      '&::after': undefined,
+                    }}
+                  >
+                    <Iconify icon="solar:cart-plus-bold" width={22} />
+                  </Box>
                 </Badge>
               </Box>
             )}

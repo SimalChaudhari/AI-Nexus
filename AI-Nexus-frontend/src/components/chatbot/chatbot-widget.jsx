@@ -10,12 +10,15 @@ import Divider from '@mui/material/Divider';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import Avatar from '@mui/material/Avatar';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { Iconify } from 'src/components/iconify';
+import { useAuthContext } from 'src/auth/hooks';
 import { chatbotService } from 'src/services/chatbot.service';
 
 export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
+  const { user } = useAuthContext();
   const [open, setOpen] = useState(false);
   const [hiddenByOverlay, setHiddenByOverlay] = useState(false);
   const [text, setText] = useState('');
@@ -38,6 +41,17 @@ export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
 
   const hasInput = useMemo(() => text.trim().length > 0, [text]);
   const logoSrc = siteLogoUrl || '/favicon.png';
+  const userAvatarSrc = user?.avatarUrl || user?.photoURL || '';
+  const userInitial = String(
+    user?.displayName ||
+      user?.firstname ||
+      user?.firstName ||
+      user?.email ||
+      'U'
+  )
+    .trim()
+    .charAt(0)
+    .toUpperCase();
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -228,40 +242,108 @@ export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
                 key={msg.id}
                 sx={{
                   alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+                  gap: 0.75,
                   maxWidth: '85%',
-                  px: 1.25,
-                  py: 0.95,
-                  borderRadius: 2,
-                  bgcolor: msg.role === 'user' ? '#0b63f6' : '#ffffff',
-                  color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary',
-                  border: (theme) =>
-                    msg.role === 'user' ? 'none' : `1px solid ${theme.palette.grey[300]}`,
-                  boxShadow: (theme) => (msg.role === 'user' ? theme.shadows[3] : 'none'),
                 }}
               >
-                <Typography
-                  variant="body2"
-                  sx={{ color: msg.role === 'user' ? '#fff' : '#1f2937' }}
+                <Box
+                  sx={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    mt: 0.35,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: msg.role === 'user' ? 'transparent' : 'secondary.main',
+                    color: msg.role === 'user' ? '#334155' : 'common.white',
+                    border: 'none',
+                  }}
                 >
-                  {msg.content}
-                </Typography>
+                  {msg.role === 'user' ? (
+                    <Avatar
+                      src={userAvatarSrc}
+                      alt={user?.displayName || 'User'}
+                      sx={{
+                        width: 26,
+                        height: 26,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        bgcolor: '#e2e8f0',
+                        color: '#334155',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    >
+                      {userInitial}
+                    </Avatar>
+                  ) : (
+                    <Iconify icon="mdi:robot-happy-outline" width={16} />
+                  )}
+                </Box>
+                <Box
+                  sx={{
+                    px: 1.25,
+                    py: 0.95,
+                    borderRadius: 2,
+                    bgcolor: msg.role === 'user' ? '#0b63f6' : '#ffffff',
+                    color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary',
+                    border: (theme) =>
+                      msg.role === 'user' ? 'none' : `1px solid ${theme.palette.grey[300]}`,
+                    boxShadow: (theme) => (msg.role === 'user' ? theme.shadows[3] : 'none'),
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{ color: msg.role === 'user' ? '#fff' : '#1f2937' }}
+                  >
+                    {msg.content}
+                  </Typography>
+                </Box>
               </Box>
             ))}
             {loading && (
               <Box
                 sx={{
                   alignSelf: 'flex-start',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 0.75,
                   maxWidth: '72%',
-                  px: 1.2,
-                  py: 0.95,
-                  borderRadius: 2,
-                  bgcolor: 'common.white',
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
                 }}
               >
-                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                  AI Nexus is typing...
-                </Typography>
+                <Box
+                  sx={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    mt: 0.35,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: 'secondary.main',
+                    color: 'common.white',
+                  }}
+                >
+                  <Iconify icon="mdi:robot-happy-outline" width={16} />
+                </Box>
+                <Box
+                  sx={{
+                    px: 1.2,
+                    py: 0.95,
+                    borderRadius: 2,
+                    bgcolor: 'common.white',
+                    border: (theme) => `1px solid ${theme.palette.divider}`,
+                  }}
+                >
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                    AI Nexus is typing...
+                  </Typography>
+                </Box>
               </Box>
             )}
           </Stack>
@@ -325,9 +407,37 @@ export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
           boxShadow: (theme) => theme.customShadows?.z24 || theme.shadows[10],
           background: (theme) =>
             `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+          position: 'relative',
+          overflow: 'visible',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            inset: -4,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.35)',
+            animation: 'chatFabPulse 1.8s ease-out infinite',
+          },
+          '@keyframes chatFabPulse': {
+            '0%': { transform: 'scale(0.92)', opacity: 0.9 },
+            '70%': { transform: 'scale(1.12)', opacity: 0 },
+            '100%': { transform: 'scale(1.12)', opacity: 0 },
+          },
         }}
       >
-        <Iconify icon="solar:chat-round-line-duotone" width={24} />
+        <Box
+          sx={{
+            width: 34,
+            height: 34,
+            borderRadius: '50%',
+            bgcolor: 'rgba(255,255,255,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.35)',
+          }}
+        >
+          <Iconify icon="mdi:robot-excited-outline" width={22} />
+        </Box>
         <Box
           sx={{
             position: 'absolute',

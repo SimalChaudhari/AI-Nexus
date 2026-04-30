@@ -28,6 +28,7 @@ const defaultContextValue = {
   completed: false,
   onAddToCart: () => {},
   onDeleteCart: () => {},
+  deletingItemIds: new Set(),
   onIncreaseQuantity: () => {},
   onDecreaseQuantity: () => {},
   onCreateBilling: () => {},
@@ -117,6 +118,7 @@ function Container({ children }) {
   const activeStep = Number(searchParams.get('step'));
 
   const [state, setState] = useState(initialState);
+  const [deletingItemIds, setDeletingItemIds] = useState(new Set());
   const prevAuthenticatedRef = useRef(authenticated);
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
@@ -307,12 +309,24 @@ function Container({ children }) {
   const onDeleteCart = useCallback(
     (itemId) => {
       if (authenticated) {
+        setDeletingItemIds((prev) => {
+          const next = new Set(prev);
+          next.add(itemId);
+          return next;
+        });
         removeCartItem(itemId)
           .then((data) => {
             const items = Array.isArray(data?.items) ? data.items : [];
             setState((prev) => ({ ...prev, items }));
           })
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => {
+            setDeletingItemIds((prev) => {
+              const next = new Set(prev);
+              next.delete(itemId);
+              return next;
+            });
+          });
         return;
       }
       setState((prev) => {
@@ -378,6 +392,7 @@ function Container({ children }) {
       onUpdateField: setField,
       //
       completed,
+      deletingItemIds,
       //
       onAddToCart,
       onDeleteCart,
@@ -401,6 +416,7 @@ function Container({ children }) {
       canReset,
       setField,
       completed,
+      deletingItemIds,
       setState,
       activeStep,
       onBackStep,

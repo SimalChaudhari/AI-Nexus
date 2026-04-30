@@ -29,6 +29,12 @@ import { createCourse, updateCourse } from 'src/store/slices/courseSlice';
 import { speakerService } from 'src/services/speaker.service';
 import { languageService } from 'src/services/language.service';
 import { courseService } from 'src/services/course.service';
+import {
+  AI_EXPERIENCE_OPTIONS,
+  LEARNING_GOAL_OPTIONS,
+  AI_USE_AREA_OPTIONS,
+  FINANCE_ROLE_OPTIONS,
+} from 'src/constants/learning-profile-options';
 
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
@@ -89,6 +95,10 @@ export const NewCourseSchema = zod.object({
     return Number.isNaN(num) ? undefined : num;
   }, zod.number().optional()),
   level: zod.string(),
+  roles: zod.array(zod.string()).optional(),
+  aiLevel: zod.array(zod.string()).optional(),
+  goals: zod.array(zod.string()).optional(),
+  useAreas: zod.array(zod.string()).optional(),
   languageIds: zod.array(zod.string()).optional(),
   speakerIds: zod.array(zod.string()).optional(),
   cpeHours: zod.preprocess(
@@ -145,6 +155,10 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       freeOrPaid: currentCourse?.freeOrPaid ?? false,
       amount: currentCourse?.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
       level: normalizeCourseLevelForForm(currentCourse?.level),
+      roles: Array.isArray(currentCourse?.roles) ? currentCourse.roles : [],
+      aiLevel: Array.isArray(currentCourse?.aiLevel) ? currentCourse.aiLevel : [],
+      goals: Array.isArray(currentCourse?.goals) ? currentCourse.goals : [],
+      useAreas: Array.isArray(currentCourse?.useAreas) ? currentCourse.useAreas : [],
       languageIds: getCourseLanguageIds(currentCourse),
       speakerIds: getCourseSpeakerIds(currentCourse),
       cpeHours: market.cpeHours ?? market.cpe ?? undefined,
@@ -291,6 +305,10 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         freeOrPaid: currentCourse.freeOrPaid ?? false,
         amount: currentCourse.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
         level: normalizeCourseLevelForForm(currentCourse.level),
+        roles: Array.isArray(currentCourse.roles) ? currentCourse.roles : [],
+        aiLevel: Array.isArray(currentCourse.aiLevel) ? currentCourse.aiLevel : [],
+        goals: Array.isArray(currentCourse.goals) ? currentCourse.goals : [],
+        useAreas: Array.isArray(currentCourse.useAreas) ? currentCourse.useAreas : [],
         languageIds: getCourseLanguageIds(currentCourse),
         speakerIds: getCourseSpeakerIds(currentCourse),
         cpeHours: marketReset.cpeHours ?? marketReset.cpe ?? undefined,
@@ -381,6 +399,10 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         freeOrPaid: data.freeOrPaid ?? false,
         amount: data.freeOrPaid && data.amount != null ? parseFloat(data.amount.toString()) : 0,
         level: data.level || 'Beginner',
+        roles: Array.isArray(data.roles) ? data.roles : undefined,
+        aiLevel: Array.isArray(data.aiLevel) ? data.aiLevel : undefined,
+        goals: Array.isArray(data.goals) ? data.goals : undefined,
+        useAreas: Array.isArray(data.useAreas) ? data.useAreas : undefined,
         languageIds: Array.isArray(data.languageIds) ? data.languageIds : undefined,
         speakerIds: Array.isArray(data.speakerIds) ? data.speakerIds : undefined,
         marketData: marketDataStr,
@@ -479,6 +501,58 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     getOptionLabel={(option) => option || ''}
                     isOptionEqualToValue={(option, value) => option === value}
                     placeholder="Select level..."
+                  />
+                </Grid>
+                <Grid xs={12}>
+                  <Field.Autocomplete
+                    name="roles"
+                    label="Roles"
+                    multiple
+                    disableCloseOnSelect
+                    options={FINANCE_ROLE_OPTIONS}
+                    getOptionLabel={(option) => option || ''}
+                    isOptionEqualToValue={(option, value) => option === value}
+                    filterSelectedOptions
+                    placeholder="Select target roles..."
+                  />
+                </Grid>
+                <Grid xs={12}>
+                  <Field.Autocomplete
+                    name="aiLevel"
+                    label="AI Level"
+                    multiple
+                    disableCloseOnSelect
+                    options={AI_EXPERIENCE_OPTIONS}
+                    getOptionLabel={(option) => option || ''}
+                    isOptionEqualToValue={(option, value) => option === value}
+                    filterSelectedOptions
+                    placeholder="Select matching AI levels..."
+                  />
+                </Grid>
+                <Grid xs={12}>
+                  <Field.Autocomplete
+                    name="goals"
+                    label="Goals"
+                    multiple
+                    disableCloseOnSelect
+                    options={LEARNING_GOAL_OPTIONS}
+                    getOptionLabel={(option) => option || ''}
+                    isOptionEqualToValue={(option, value) => option === value}
+                    filterSelectedOptions
+                    placeholder="Select course goals..."
+                  />
+                </Grid>
+                <Grid xs={12}>
+                  <Field.Autocomplete
+                    name="useAreas"
+                    label="Use Areas"
+                    multiple
+                    disableCloseOnSelect
+                    options={AI_USE_AREA_OPTIONS}
+                    getOptionLabel={(option) => option || ''}
+                    isOptionEqualToValue={(option, value) => option === value}
+                    filterSelectedOptions
+                    placeholder="Select course use areas..."
                   />
                 </Grid>
 

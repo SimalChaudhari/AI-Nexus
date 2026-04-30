@@ -494,6 +494,23 @@ export class CourseController {
         });
     }
 
+    @Post('test/create-dummy-courses')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Test API: create dummy courses only when explicitly triggered (admin)' })
+    async createDummyCoursesForTesting(@Res() response: Response) {
+        const result = await this.courseService.seedDummyCourses();
+        return response.status(HttpStatus.CREATED).json({
+            success: true,
+            message: `Test seed executed. ${result.createdCount} courses created.`,
+            data: {
+                count: result.createdCount,
+                courses: result.courses,
+            },
+        });
+    }
+
     @Get(':courseId/modules/with-sections')
     @UseGuards(OptionalJwtAuthGuard)
     @ApiOperation({ summary: 'Get course modules with nested sections' })

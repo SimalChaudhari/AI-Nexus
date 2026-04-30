@@ -498,6 +498,18 @@ export class CourseService {
                 freeOrPaid: Boolean(item.freeOrPaid),
                 amount: Boolean(item.freeOrPaid) ? Number(item.amount || 0) : 0,
                 level: normalizeCourseLevel(item.level),
+                roles: Array.isArray(item.roles)
+                    ? item.roles.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+                    : [],
+                aiLevel: Array.isArray(item.aiLevel)
+                    ? item.aiLevel.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+                    : [],
+                goals: Array.isArray(item.goals)
+                    ? item.goals.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+                    : [],
+                useAreas: Array.isArray(item.useAreas)
+                    ? item.useAreas.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+                    : [],
                 languageIds: Array.isArray(item.languageIds)
                     ? item.languageIds.filter((x): x is string => typeof x === 'string')
                     : [],
@@ -603,6 +615,18 @@ export class CourseService {
         if (createCourseDto.languageIds !== undefined) {
             courseData.languageIds = normalizeStringArray(createCourseDto.languageIds);
         }
+        if (createCourseDto.roles !== undefined) {
+            courseData.roles = normalizeStringArray(createCourseDto.roles);
+        }
+        if (createCourseDto.aiLevel !== undefined) {
+            courseData.aiLevel = normalizeStringArray(createCourseDto.aiLevel);
+        }
+        if (createCourseDto.goals !== undefined) {
+            courseData.goals = normalizeStringArray(createCourseDto.goals);
+        }
+        if (createCourseDto.useAreas !== undefined) {
+            courseData.useAreas = normalizeStringArray(createCourseDto.useAreas);
+        }
         if (createCourseDto.speakerIds !== undefined) {
             courseData.speakerIds = normalizeStringArray(createCourseDto.speakerIds);
         }
@@ -675,6 +699,18 @@ export class CourseService {
         }
         if (updateCourseDto.languageIds !== undefined) {
             course.languageIds = normalizeStringArray(updateCourseDto.languageIds);
+        }
+        if (updateCourseDto.roles !== undefined) {
+            course.roles = normalizeStringArray(updateCourseDto.roles);
+        }
+        if (updateCourseDto.aiLevel !== undefined) {
+            course.aiLevel = normalizeStringArray(updateCourseDto.aiLevel);
+        }
+        if (updateCourseDto.goals !== undefined) {
+            course.goals = normalizeStringArray(updateCourseDto.goals);
+        }
+        if (updateCourseDto.useAreas !== undefined) {
+            course.useAreas = normalizeStringArray(updateCourseDto.useAreas);
         }
         if (updateCourseDto.speakerIds !== undefined) {
             course.speakerIds = normalizeStringArray(updateCourseDto.speakerIds);

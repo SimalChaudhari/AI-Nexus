@@ -2,9 +2,10 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
-import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -25,7 +26,7 @@ function toDisplayText(value) {
   return String(value);
 }
 
-export function CheckoutCartProduct({ row, onDelete }) {
+export function CheckoutCartProduct({ row, onDelete, deleting = false }) {
   const displayName = toDisplayText(row.name);
   const priceTotal = Number(row.price) || 0;
   const itemDetailsPath = paths.learningCourse.details(row.id);
@@ -165,15 +166,26 @@ export function CheckoutCartProduct({ row, onDelete }) {
             gridRow: { xs: '1 / 2', md: 'auto' },
           }}
         >
-          <Button
-            size="small"
+          <IconButton
+            size="medium"
             color="error"
             onClick={onDelete}
-            startIcon={<Iconify icon="solar:trash-bin-trash-bold" width={14} />}
-            sx={{ minWidth: 0, px: 0.25 }}
+            disabled={deleting}
+            aria-label="Delete item"
+            sx={{
+              width: 34,
+              height: 34,
+              bgcolor: 'error.lighter',
+              border: (theme) => `1px solid ${theme.palette.error.light}`,
+              '&:hover': { bgcolor: 'error.light' },
+            }}
           >
-            Delete
-          </Button>
+            {deleting ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <Iconify icon="solar:trash-bin-trash-bold" width={20} />
+            )}
+          </IconButton>
           <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
             Price
           </Typography>
