@@ -12,10 +12,9 @@ export class AnnouncementsInitService implements OnModuleInit {
     if (shouldSkipRuntimeSchemaInit()) {
       return;
     }
+    const queryRunner = this.dataSource.createQueryRunner();
     try {
       console.log('🔍 Checking announcements and comments tables...');
-      
-      const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
 
       // Check and create announcements table
@@ -146,11 +145,11 @@ export class AnnouncementsInitService implements OnModuleInit {
       } else {
         console.log('✅ Pinned announcements table already exists');
       }
-
-      await queryRunner.release();
     } catch (error) {
       console.error('❌ Error initializing tables:', error instanceof Error ? error.message : error);
       // Don't throw - let the app continue
+    } finally {
+      await queryRunner.release();
     }
   }
 }

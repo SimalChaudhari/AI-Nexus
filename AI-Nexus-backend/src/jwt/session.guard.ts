@@ -20,8 +20,10 @@ export class SessionGuard implements CanActivate {
 
     const token = authHeader.split(' ')[1];
     try {
-      const decoded = this.jwtService.verify(token);
-      const user = await this.userRepository.findOne({ where: { id: decoded.id } });
+      const decoded = this.jwtService.verify(token, { secret: process.env.JWT_SECRET });
+      const user = await this.userRepository.findOne({
+        where: { id: decoded.id },
+      });
 
       if (!user) {
         throw new UnauthorizedException('User not found. Please log in again.');
@@ -29,7 +31,7 @@ export class SessionGuard implements CanActivate {
 
       request.user = decoded; // Attach user info to request
       return true;
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Session expired or invalid. Please log in again.');
     }
   }

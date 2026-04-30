@@ -10,10 +10,9 @@ export class AiForumInitService implements OnModuleInit {
         if (shouldSkipRuntimeSchemaInit()) {
             return;
         }
+        const queryRunner = this.dataSource.createQueryRunner();
         try {
             console.log('🔍 Checking posts, post_comments, post_comment_likes tables...');
-
-            const queryRunner = this.dataSource.createQueryRunner();
             await queryRunner.connect();
 
             // Create posts table
@@ -130,10 +129,10 @@ export class AiForumInitService implements OnModuleInit {
             } else {
                 console.log('✅ Pinned posts table already exists');
             }
-
-            await queryRunner.release();
         } catch (error) {
             console.error('❌ Error initializing post tables:', error instanceof Error ? error.message : error);
+        } finally {
+            await queryRunner.release();
         }
     }
 }

@@ -10,8 +10,8 @@ export class OrderInitService implements OnModuleInit {
     if (shouldSkipRuntimeSchemaInit()) {
       return;
     }
+    const queryRunner = this.dataSource.createQueryRunner();
     try {
-      const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
 
       const exists = await queryRunner.hasTable('orders');
@@ -39,13 +39,13 @@ export class OrderInitService implements OnModuleInit {
         await queryRunner.query(`CREATE INDEX "IDX_orders_createdAt" ON "orders" ("createdAt")`);
         console.log('✅ orders table created successfully');
       }
-
-      await queryRunner.release();
     } catch (error) {
       console.error(
         '❌ Error initializing orders table:',
         error instanceof Error ? error.message : error,
       );
+    } finally {
+      await queryRunner.release();
     }
   }
 }

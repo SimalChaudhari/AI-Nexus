@@ -18,7 +18,36 @@ export class UsersInitService implements OnModuleInit {
 
       const usersTableExists = await queryRunner.hasTable('users');
       if (!usersTableExists) {
-        return;
+        await queryRunner.query(`
+          CREATE TABLE IF NOT EXISTS "users" (
+            "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+            "username" varchar NOT NULL UNIQUE,
+            "firstname" varchar NOT NULL,
+            "lastname" varchar NOT NULL,
+            "email" varchar NOT NULL UNIQUE,
+            "persona" varchar,
+            "aiExperienceLevel" varchar,
+            "aiLearningGoals" jsonb,
+            "aiUseAreas" jsonb,
+            "financeRole" varchar,
+            "password" varchar,
+            "authProvider" varchar NOT NULL DEFAULT 'LOCAL',
+            "socialId" varchar,
+            "socialAccessToken" varchar,
+            "avatarUrl" varchar,
+            "isVerified" boolean NOT NULL DEFAULT false,
+            "role" varchar NOT NULL DEFAULT 'User',
+            "status" varchar NOT NULL DEFAULT 'active',
+            "verificationToken" varchar,
+            "verificationTokenExpires" TIMESTAMP,
+            "resetToken" varchar,
+            "resetTokenExpires" TIMESTAMP,
+            "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+            "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+            CONSTRAINT "PK_users" PRIMARY KEY ("id")
+          )
+        `);
+        console.log('✅ Users table created successfully');
       }
 
       const avatarColumnExists = await queryRunner.query(`

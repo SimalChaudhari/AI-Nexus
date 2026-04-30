@@ -10,8 +10,8 @@ export class CartInitService implements OnModuleInit {
     if (shouldSkipRuntimeSchemaInit()) {
       return;
     }
+    const queryRunner = this.dataSource.createQueryRunner();
     try {
-      const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
 
       const exists = await queryRunner.hasTable('user_cart');
@@ -36,13 +36,13 @@ export class CartInitService implements OnModuleInit {
           console.log('✅ user_cart.discount column added');
         }
       }
-
-      await queryRunner.release();
     } catch (error) {
       console.error(
         '❌ Error initializing user_cart table:',
         error instanceof Error ? error.message : error,
       );
+    } finally {
+      await queryRunner.release();
     }
   }
 }
