@@ -11,6 +11,8 @@ function normalizeAssetUrl(url) {
 
 function transformSettings(settings) {
   const sourceContent = settings?.homeHeroContent;
+  const sourceCards = settings?.homeCardsContent;
+  const sourceJoin = settings?.homeJoinContent;
   const normalizedStats = Array.isArray(sourceContent?.stats)
     ? sourceContent.stats.slice(0, 3).map((item) => ({
         value: item?.value ? String(item.value) : '',
@@ -48,6 +50,34 @@ function transformSettings(settings) {
           stats: normalizedStats,
         }
       : null,
+    homeCardsContent:
+      sourceCards && typeof sourceCards === 'object'
+        ? {
+            heading: sourceCards?.heading != null ? String(sourceCards.heading) : '',
+            headingAccent: sourceCards?.headingAccent != null ? String(sourceCards.headingAccent) : '',
+            headingColor: sourceCards?.headingColor != null ? String(sourceCards.headingColor) : '',
+            headingAccentColor:
+              sourceCards?.headingAccentColor != null ? String(sourceCards.headingAccentColor) : '',
+            subtitle: sourceCards?.subtitle != null ? String(sourceCards.subtitle) : '',
+            cards: Array.isArray(sourceCards?.cards)
+              ? sourceCards.cards.slice(0, 12).map((card) => ({
+                  icon: card?.icon != null ? String(card.icon) : '',
+                  title: card?.title != null ? String(card.title) : '',
+                  description: card?.description != null ? String(card.description) : '',
+                }))
+              : [],
+          }
+        : null,
+    homeJoinContent:
+      sourceJoin && typeof sourceJoin === 'object'
+        ? {
+            heading: sourceJoin?.heading != null ? String(sourceJoin.heading) : '',
+            subtitle: sourceJoin?.subtitle != null ? String(sourceJoin.subtitle) : '',
+            ctaLabel: sourceJoin?.ctaLabel != null ? String(sourceJoin.ctaLabel) : '',
+            ctaHref: sourceJoin?.ctaHref != null ? String(sourceJoin.ctaHref) : '',
+            ctaIcon: sourceJoin?.ctaIcon != null ? String(sourceJoin.ctaIcon) : '',
+          }
+        : null,
   };
 }
 
@@ -96,6 +126,18 @@ export const appSettingsService = {
 
   async updateHomeHeroContent(payload) {
     const response = await axios.put('/app-settings/home-hero-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeCardsContent(payload) {
+    const response = await axios.put('/app-settings/home-cards-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeJoinContent(payload) {
+    const response = await axios.put('/app-settings/home-join-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

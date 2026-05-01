@@ -1,4 +1,5 @@
 import { m } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -6,8 +7,10 @@ import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Unstable_Grid2';
 
 import { Iconify } from 'src/components/iconify';
+import { RichTextContent } from 'src/components/html-content';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { appSettingsService } from 'src/services/app-settings.service';
 
 // ----------------------------------------------------------------------
 
@@ -32,9 +35,65 @@ const CARDS = [
   },
 ];
 
+const DEFAULT_CARDS_CONTENT = {
+  heading: 'Powered by',
+  headingAccent: 'Artificial Intelligence',
+  headingColor: '',
+  headingAccentColor: '',
+  subtitle: 'Experience the future of community learning with AI-driven features that adapt to your needs',
+  cards: CARDS,
+};
+
 // ----------------------------------------------------------------------
 
 export function HomeCardsSection() {
+  const [cardsContent, setCardsContent] = useState(DEFAULT_CARDS_CONTENT);
+
+  useEffect(() => {
+    let active = true;
+    appSettingsService
+      .getPublic()
+      .then((settings) => {
+        if (!active) return;
+        const remote = settings?.homeCardsContent;
+        if (!remote || typeof remote !== 'object') {
+          setCardsContent(DEFAULT_CARDS_CONTENT);
+          return;
+        }
+        const remoteCards = Array.isArray(remote.cards) ? remote.cards : [];
+        const mergedCards = (remoteCards.length ? remoteCards : CARDS).map((card, i) => ({
+          icon: card?.icon?.trim() || CARDS[i % CARDS.length].icon,
+          title: card?.title?.trim() || CARDS[i % CARDS.length].title,
+          description: card?.description?.trim() || CARDS[i % CARDS.length].description,
+        }));
+        setCardsContent({
+          heading: remote.heading?.trim() || DEFAULT_CARDS_CONTENT.heading,
+          headingAccent: remote.headingAccent?.trim() || DEFAULT_CARDS_CONTENT.headingAccent,
+          headingColor: remote.headingColor?.trim() || DEFAULT_CARDS_CONTENT.headingColor,
+          headingAccentColor: remote.headingAccentColor?.trim() || DEFAULT_CARDS_CONTENT.headingAccentColor,
+          subtitle: remote.subtitle?.trim() || DEFAULT_CARDS_CONTENT.subtitle,
+          cards: mergedCards,
+        });
+      })
+      .catch(() => {
+        if (active) setCardsContent(DEFAULT_CARDS_CONTENT);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleCards = useMemo(
+    () =>
+      (Array.isArray(cardsContent.cards) ? cardsContent.cards : CARDS)
+        .map((card, i) => ({
+          icon: card?.icon || CARDS[i % CARDS.length].icon,
+          title: card?.title || CARDS[i % CARDS.length].title,
+          description: card?.description || CARDS[i % CARDS.length].description,
+        })),
+    [cardsContent.cards]
+  );
   return (
     <Box
       component="section"
@@ -59,34 +118,37 @@ export function HomeCardsSection() {
                 fontSize: { xs: '2rem', md: '2.5rem' },
                 fontWeight: 'bold',
                 mb: 2,
-                color: 'text.primary',
+                color: cardsContent.headingColor || 'text.primary',
               }}
             >
-              Powered by{' '}
-              <Box component="span" sx={{ color: 'primary.main' }}>
-                Artificial Intelligence
+              {cardsContent.heading}{' '}
+              <Box
+                component="span"
+                sx={{
+                  color: cardsContent.headingAccentColor || 'primary.main',
+                }}
+              >
+                {cardsContent.headingAccent}
               </Box>
             </Typography>
           </Box>
 
           <Box component={m.div} variants={varFade().inUp}>
-            <Typography
-              variant="body1"
+            <RichTextContent
+              html={cardsContent.subtitle}
               sx={{
-                fontSize: { xs: '1rem', md: '1.125rem' },
+                // typography: { xs: 'body1', md: 'body2' },
+                fontSize: '0.875rem',
                 color: 'text.secondary',
                 maxWidth: { xs: '100%', lg: '90%' },
               }}
-            >
-              Experience the future of community learning with AI-driven features that adapt to your
-              needs
-            </Typography>
+            />
           </Box>
         </Stack>
 
         <Grid container spacing={3}>
-          {CARDS.map((card, index) => (
-            <Grid key={card.title} xs={12} md={4}>
+          {visibleCards.map((card, index) => (
+            <Grid key={`${card.title}-${index}`} xs={12} md={4}>
               <Box
                 component={m.div}
                 variants={varFade().inUp}
@@ -129,16 +191,17 @@ export function HomeCardsSection() {
                   {card.title}
                 </Typography>
 
-                <Typography
-                  variant="body2"
+                <RichTextContent
+                  html={card.description}
                   sx={{
+                    '&, & p, & li': {
+                      color: 'text.secondary',
+                    },
                     color: 'text.secondary',
                     lineHeight: 1.8,
                     fontSize: '0.875rem',
                   }}
-                >
-                  {card.description}
-                </Typography>
+                />
               </Box>
             </Grid>
           ))}

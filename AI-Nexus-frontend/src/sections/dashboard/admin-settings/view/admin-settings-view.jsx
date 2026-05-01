@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
@@ -19,16 +19,23 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
 import { Upload } from 'src/components/upload';
+import { Editor } from 'src/components/editor';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 
 import { paths } from 'src/routes/paths';
 
 import { useSettingsContext } from 'src/components/settings';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { categoryIcons } from 'src/_mock/_category-icons';
 import { HeroTextCard } from './components/hero-text-card';
 import { HeroImageCard } from './components/hero-image-card';
 import { CtaButtonCard } from './components/cta-button-card';
 import { EventAndStatsCard } from './components/event-and-stats-card';
+import { ColorPaletteField } from './components/color-palette-field';
+import { HomeCardItem } from './components/home-card-item';
+import { HexColorToolDrawer } from './components/hex-color-tool-drawer';
+import { IconPickerDrawer } from './components/icon-picker-drawer';
+import { HomeJoinSettingsCard } from './components/home-join-settings-card';
 
 export function AdminSettingsView() {
   const navigate = useNavigate();
@@ -49,6 +56,30 @@ export function AdminSettingsView() {
   const emptyHeroEventSlot = () => ({ startDateLabel: '', startDate: '', startTimeLabel: '', startTime: '' });
   const [emojiPickerStatIndex, setEmojiPickerStatIndex] = useState(null);
   const [visibleStatsCount, setVisibleStatsCount] = useState(0);
+  const [cardsContentSubmitting, setCardsContentSubmitting] = useState(false);
+  const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
+  const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
+  const HOME_CARDS_MAX = 12;
+  const DEFAULT_JOIN_CONTENT = {
+    heading: 'Ready to Join the AI Revolution?',
+    subtitle:
+      'Connect with the brightest AI minds, learn cutting-edge techniques, and build the future together.',
+    ctaLabel: 'Get Started Now',
+    ctaHref: '',
+    ctaIcon: 'mingcute:arrow-right-line',
+  };
+  const homeCardRefs = useRef({});
+  const [colorToolOpen, setColorToolOpen] = useState(false);
+  const [iconToolOpen, setIconToolOpen] = useState(false);
+  const [iconToolCardIndex, setIconToolCardIndex] = useState(0);
+  const [iconSearchQuery, setIconSearchQuery] = useState('');
+  const [generatorStartColor, setGeneratorStartColor] = useState('#9b2a77');
+  const [generatorEndColor, setGeneratorEndColor] = useState('#57c785');
+  const availableCategoryIcons = useMemo(() => [...new Set(categoryIcons)], []);
+  const filteredCategoryIcons = useMemo(
+    () => availableCategoryIcons.filter((iconName) => iconName.toLowerCase().includes(iconSearchQuery.toLowerCase())),
+    [availableCategoryIcons, iconSearchQuery]
+  );
 
   const [heroContent, setHeroContent] = useState({
     headline: '',
@@ -63,6 +94,22 @@ export function AdminSettingsView() {
     event: emptyHeroEventSlot(),
     stats: [emptyHeroStatsRow(), emptyHeroStatsRow(), emptyHeroStatsRow()],
   });
+  const defaultCardIcons = ['mingcute:user-group-line', 'mingcute:flash-line', 'mingcute:git-branch-line'];
+  const getDefaultCardIcon = (index) => defaultCardIcons[index] || 'mingcute:apps-line';
+  const emptyHomeCard = (icon = '') => ({ icon, title: '', description: '' });
+  const [cardsContent, setCardsContent] = useState({
+    heading: 'Powered by',
+    headingAccent: 'Artificial Intelligence',
+    headingColor: '',
+    headingAccentColor: '',
+    subtitle: 'Experience the future of community learning with AI-driven features that adapt to your needs',
+    cards: [
+      emptyHomeCard(defaultCardIcons[0]),
+      emptyHomeCard(defaultCardIcons[1]),
+      emptyHomeCard(defaultCardIcons[2]),
+    ],
+  });
+  const [joinContent, setJoinContent] = useState(DEFAULT_JOIN_CONTENT);
 
   const handleToggle = (field) => {
     settings.onUpdateField(field, !settings[field]);
@@ -102,6 +149,38 @@ export function AdminSettingsView() {
         stats: statsThree,
       });
       setVisibleStatsCount(statsUsedCount);
+      const remoteCards = appSettings.homeCardsContent || {};
+      const remoteCardsRows = Array.isArray(remoteCards?.cards) ? remoteCards.cards : [];
+      const normalizedCards = (
+        remoteCardsRows.length
+          ? remoteCardsRows
+          : [emptyHomeCard(getDefaultCardIcon(0)), emptyHomeCard(getDefaultCardIcon(1)), emptyHomeCard(getDefaultCardIcon(2))]
+      )
+        .slice(0, HOME_CARDS_MAX)
+        .map((card, i) => ({
+          icon: String(card?.icon || getDefaultCardIcon(i) || '').trim(),
+          title: String(card?.title || '').trim(),
+          description: String(card?.description || '').trim(),
+        }));
+      setCardsContent({
+        heading: String(remoteCards?.heading || 'Powered by').trim(),
+        headingAccent: String(remoteCards?.headingAccent || 'Artificial Intelligence').trim(),
+        headingColor: String(remoteCards?.headingColor || '').trim(),
+        headingAccentColor: String(remoteCards?.headingAccentColor || '').trim(),
+        subtitle: String(
+          remoteCards?.subtitle ||
+            'Experience the future of community learning with AI-driven features that adapt to your needs'
+        ).trim(),
+        cards: normalizedCards,
+      });
+      const remoteJoin = appSettings.homeJoinContent || {};
+      setJoinContent({
+        heading: String(remoteJoin?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
+        subtitle: String(remoteJoin?.subtitle || DEFAULT_JOIN_CONTENT.subtitle).trim(),
+        ctaLabel: String(remoteJoin?.ctaLabel || DEFAULT_JOIN_CONTENT.ctaLabel).trim(),
+        ctaHref: String(remoteJoin?.ctaHref || DEFAULT_JOIN_CONTENT.ctaHref).trim(),
+        ctaIcon: String(remoteJoin?.ctaIcon || DEFAULT_JOIN_CONTENT.ctaIcon).trim(),
+      });
     } catch (error) {
       toast.error(error?.message || 'Failed to load site settings');
     } finally {
@@ -339,6 +418,124 @@ export function AdminSettingsView() {
     }
   };
 
+  const updateHomeCardField = (index, field, value) => {
+    setCardsContent((prev) => {
+      const nextCards = [...(prev.cards || [])];
+      while (nextCards.length <= index && nextCards.length < HOME_CARDS_MAX) {
+        nextCards.push(emptyHomeCard(getDefaultCardIcon(nextCards.length)));
+      }
+      if (!nextCards[index]) return prev;
+      nextCards[index] = { ...nextCards[index], [field]: value };
+      return { ...prev, cards: nextCards };
+    });
+  };
+
+  const addHomeCardRow = () => {
+    setCardsContent((prev) => {
+      const nextCards = [...(prev.cards || [])];
+      if (nextCards.length >= HOME_CARDS_MAX) return prev;
+      const newCardIndex = nextCards.length;
+      nextCards.push(emptyHomeCard(getDefaultCardIcon(nextCards.length)));
+      setPendingScrollCardIndex(newCardIndex);
+      return { ...prev, cards: nextCards };
+    });
+  };
+
+  useEffect(() => {
+    if (pendingScrollCardIndex == null) return;
+    const target = homeCardRefs.current[pendingScrollCardIndex];
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setPendingScrollCardIndex(null);
+  }, [cardsContent.cards, pendingScrollCardIndex]);
+
+  const removeHomeCardRow = (index) => {
+    setCardsContent((prev) => {
+      const nextCards = [...(prev.cards || [])];
+      if (nextCards.length <= 1) return prev;
+      nextCards.splice(index, 1);
+      return { ...prev, cards: nextCards };
+    });
+  };
+
+  const openIconPickerForCard = (index) => {
+    setIconToolCardIndex(index);
+    setIconSearchQuery('');
+    setIconToolOpen(true);
+  };
+
+  const handleSaveHomeCardsContent = async () => {
+    try {
+      setCardsContentSubmitting(true);
+      const payload = {
+        heading: cardsContent.heading || '',
+        headingAccent: cardsContent.headingAccent || '',
+        headingColor: cardsContent.headingColor || '',
+        headingAccentColor: cardsContent.headingAccentColor || '',
+        subtitle: cardsContent.subtitle || '',
+        cards: (cardsContent.cards || []).slice(0, HOME_CARDS_MAX).map((card) => ({
+          icon: card?.icon || '',
+          title: card?.title || '',
+          description: card?.description || '',
+        })),
+      };
+      const updated = await appSettingsService.updateHomeCardsContent(payload);
+      const next = updated?.homeCardsContent || {};
+      const nextCardsRows = Array.isArray(next?.cards) ? next.cards : [];
+      setCardsContent({
+        heading: String(next?.heading || 'Powered by').trim(),
+        headingAccent: String(next?.headingAccent || 'Artificial Intelligence').trim(),
+        headingColor: String(next?.headingColor || '').trim(),
+        headingAccentColor: String(next?.headingAccentColor || '').trim(),
+        subtitle: String(
+          next?.subtitle || 'Experience the future of community learning with AI-driven features that adapt to your needs'
+        ).trim(),
+        cards: (nextCardsRows.length
+          ? nextCardsRows
+          : [emptyHomeCard(getDefaultCardIcon(0)), emptyHomeCard(getDefaultCardIcon(1)), emptyHomeCard(getDefaultCardIcon(2))]
+        )
+          .slice(0, HOME_CARDS_MAX)
+          .map((card, i) => ({
+            icon: String(card?.icon || getDefaultCardIcon(i) || '').trim(),
+            title: String(card?.title || '').trim(),
+            description: String(card?.description || '').trim(),
+          })),
+      });
+      toast.success('Home cards content updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update home cards content');
+    } finally {
+      setCardsContentSubmitting(false);
+    }
+  };
+
+  const handleSaveHomeJoinContent = async () => {
+    try {
+      setJoinContentSubmitting(true);
+      const payload = {
+        heading: joinContent.heading || '',
+        subtitle: joinContent.subtitle || '',
+        ctaLabel: joinContent.ctaLabel || '',
+        ctaHref: joinContent.ctaHref || '',
+        ctaIcon: joinContent.ctaIcon || '',
+      };
+      const updated = await appSettingsService.updateHomeJoinContent(payload);
+      const next = updated?.homeJoinContent || {};
+      setJoinContent({
+        heading: String(next?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
+        subtitle: String(next?.subtitle || DEFAULT_JOIN_CONTENT.subtitle).trim(),
+        ctaLabel: String(next?.ctaLabel || DEFAULT_JOIN_CONTENT.ctaLabel).trim(),
+        ctaHref: String(next?.ctaHref || DEFAULT_JOIN_CONTENT.ctaHref).trim(),
+        ctaIcon: String(next?.ctaIcon || DEFAULT_JOIN_CONTENT.ctaIcon).trim(),
+      });
+      toast.success('Home join section updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update home join section');
+    } finally {
+      setJoinContentSubmitting(false);
+    }
+  };
+
   const headerVisibilityOptions = [
     {
       field: 'headerWorkspaces',
@@ -386,6 +583,18 @@ export function AdminSettingsView() {
       description: 'Manage hero background and content together.',
     },
     {
+      key: 'cards',
+      badge: 'C',
+      title: 'Home Cards',
+      description: 'Manage second home section heading and cards.',
+    },
+    {
+      key: 'join',
+      badge: 'J',
+      title: 'Join Section',
+      description: 'Manage call-to-action join section content.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       title: 'Header Visibility',
@@ -393,7 +602,7 @@ export function AdminSettingsView() {
     },
   ];
 
-  const validSectionKeys = ['logo', 'hero', 'header-visibility'];
+  const validSectionKeys = ['logo', 'hero', 'cards', 'join', 'header-visibility'];
 
   useEffect(() => {
     if (!section) {
@@ -544,6 +753,200 @@ export function AdminSettingsView() {
     </Stack>
   );
 
+  const renderHomeCardsSettings = (
+    <Card sx={{ p: 3 }}>
+      <Stack spacing={2.5}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Home Cards Section
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Configure the second home section heading, subtitle, and multiple cards (up to {HOME_CARDS_MAX}).
+          </Typography>
+        </Box>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Heading (left)"
+              value={cardsContent.heading}
+              onChange={(event) => setCardsContent((prev) => ({ ...prev, heading: event.target.value }))}
+              fullWidth
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Heading accent (highlighted)"
+              value={cardsContent.headingAccent}
+              onChange={(event) => setCardsContent((prev) => ({ ...prev, headingAccent: event.target.value }))}
+              fullWidth
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <ColorPaletteField
+              label="Heading color"
+              value={cardsContent.headingColor}
+              onChange={(value) => setCardsContent((prev) => ({ ...prev, headingColor: value }))}
+              onOpenGenerator={() => setColorToolOpen(true)}
+              presets={[
+                '#1e293b',
+                '#0f172a',
+                '#334155',
+                '#0ea5e9',
+                '#2563eb',
+                '#0f766e',
+                '#7c3aed',
+                '#be123c',
+              ]}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <ColorPaletteField
+              label="Heading accent color"
+              value={cardsContent.headingAccentColor}
+              onChange={(value) => setCardsContent((prev) => ({ ...prev, headingAccentColor: value }))}
+              onOpenGenerator={() => setColorToolOpen(true)}
+              presets={[
+                '#ef4444',
+                '#f97316',
+                '#f59e0b',
+                '#84cc16',
+                '#22c55e',
+                '#06b6d4',
+                '#3b82f6',
+                '#a855f7',
+              ]}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Stack spacing={0.75}>
+              <Typography variant="subtitle2">Subtitle</Typography>
+              <Editor
+                value={cardsContent.subtitle}
+                onChange={(value) => setCardsContent((prev) => ({ ...prev, subtitle: value }))}
+                placeholder="Write section subtitle..."
+                editable
+                slotProps={{
+                  wrap: {
+                    sx: {
+                      minHeight: 150,
+                      borderRadius: 1.5,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                    },
+                  },
+                }}
+              />
+            </Stack>
+          </Grid>
+        </Grid>
+
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          justifyContent="space-between"
+        >
+          <Stack spacing={0.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              Cards
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Limit: up to {HOME_CARDS_MAX} cards
+            </Typography>
+          </Stack>
+
+          <Button
+            variant="outlined"
+            onClick={addHomeCardRow}
+            disabled={(cardsContent.cards || []).length >= HOME_CARDS_MAX}
+          >
+            Add card
+          </Button>
+        </Stack>
+
+        <Grid container spacing={2}>
+          {(cardsContent.cards || []).map((cardRow, i) => (
+            <Grid
+              item
+              xs={12}
+              md={6}
+              key={`home-card-config-${i}`}
+              ref={(node) => {
+                if (node) {
+                  homeCardRefs.current[i] = node;
+                } else {
+                  delete homeCardRefs.current[i];
+                }
+              }}
+            >
+              <HomeCardItem
+                index={i}
+                cardRow={cardRow}
+                canRemove={(cardsContent.cards || []).length > 1}
+                onRemove={() => removeHomeCardRow(i)}
+                onPickIcon={() => openIconPickerForCard(i)}
+                onTitleChange={(event) => updateHomeCardField(i, 'title', event.target.value)}
+                onDescriptionChange={(value) => updateHomeCardField(i, 'description', value)}
+                getDefaultCardIcon={getDefaultCardIcon}
+              />
+            </Grid>
+          ))}
+        </Grid>
+
+        <Stack direction="row" spacing={1.5} sx={{ pt: 0.5 }}>
+          <LoadingButton variant="contained" loading={cardsContentSubmitting} onClick={handleSaveHomeCardsContent}>
+            Save home cards content
+          </LoadingButton>
+        </Stack>
+
+        <HexColorToolDrawer
+          open={colorToolOpen}
+          onClose={() => setColorToolOpen(false)}
+          startColor={generatorStartColor}
+          endColor={generatorEndColor}
+          onStartColorChange={(event) => setGeneratorStartColor(event.target.value)}
+          onEndColorChange={(event) => setGeneratorEndColor(event.target.value)}
+          onApplyHeadingColor={() => setCardsContent((prev) => ({ ...prev, headingColor: generatorStartColor }))}
+          onApplyAccentColor={() => setCardsContent((prev) => ({ ...prev, headingAccentColor: generatorEndColor }))}
+          headingColor={cardsContent.headingColor}
+          accentColor={cardsContent.headingAccentColor}
+        />
+
+        <IconPickerDrawer
+          open={iconToolOpen}
+          onClose={() => setIconToolOpen(false)}
+          contextLabel={iconToolCardIndex >= 0 ? `card ${iconToolCardIndex + 1}` : 'join section button'}
+          searchQuery={iconSearchQuery}
+          onSearchQueryChange={(event) => setIconSearchQuery(event.target.value)}
+          filteredIcons={filteredCategoryIcons}
+          selectedIcon={
+            iconToolCardIndex >= 0
+              ? cardsContent.cards?.[iconToolCardIndex]?.icon || ''
+              : joinContent.ctaIcon || DEFAULT_JOIN_CONTENT.ctaIcon
+          }
+          onSelectIcon={(iconName) => {
+            if (iconToolCardIndex >= 0) {
+              updateHomeCardField(iconToolCardIndex, 'icon', iconName);
+            } else {
+              setJoinContent((prev) => ({ ...prev, ctaIcon: iconName }));
+            }
+            setIconToolOpen(false);
+          }}
+        />
+      </Stack>
+    </Card>
+  );
+
+  const renderHomeJoinSettings = (
+    <HomeJoinSettingsCard
+      joinContent={joinContent}
+      setJoinContent={setJoinContent}
+      joinContentSubmitting={joinContentSubmitting}
+      onSave={handleSaveHomeJoinContent}
+      defaultJoinIcon={DEFAULT_JOIN_CONTENT.ctaIcon}
+    />
+  );
+
   const renderSectionSwitcher = (
     <Card sx={{ p: 3 }}>
       <Stack spacing={2}>
@@ -627,6 +1030,8 @@ export function AdminSettingsView() {
             {renderHomeHeroContentSettings}
           </Stack>
         )}
+        {activeSection === 'cards' && renderHomeCardsSettings}
+        {activeSection === 'join' && renderHomeJoinSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

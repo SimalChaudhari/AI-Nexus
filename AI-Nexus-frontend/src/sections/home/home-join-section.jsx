@@ -1,16 +1,72 @@
 import { m } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import { GradientButton } from 'src/components/custom-button';
+import { RichTextContent } from 'src/components/html-content';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { appSettingsService } from 'src/services/app-settings.service';
+
+const DEFAULT_JOIN_CONTENT = {
+  heading: 'Ready to Join the AI Revolution?',
+  subtitle:
+    'Connect with the brightest AI minds, learn cutting-edge techniques, and build the future together.',
+  ctaLabel: 'Get Started Now',
+  ctaHref: '',
+  ctaIcon: 'mingcute:arrow-right-line',
+};
+
+function normalizeRichTextHtml(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/<[a-z][\s\S]*>/i.test(raw)) return raw;
+  return raw
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph.replace(/\n/g, '<br/>')}</p>`)
+    .join('');
+}
 
 // ----------------------------------------------------------------------
 
 export function HomeJoinSection() {
+  const [joinContent, setJoinContent] = useState(DEFAULT_JOIN_CONTENT);
+
+  useEffect(() => {
+    let active = true;
+    appSettingsService
+      .getPublic()
+      .then((settings) => {
+        if (!active) return;
+        const remote = settings?.homeJoinContent;
+        if (!remote || typeof remote !== 'object') {
+          setJoinContent(DEFAULT_JOIN_CONTENT);
+          return;
+        }
+        setJoinContent({
+          heading: remote.heading?.trim() || DEFAULT_JOIN_CONTENT.heading,
+          subtitle: remote.subtitle?.trim() || DEFAULT_JOIN_CONTENT.subtitle,
+          ctaLabel: remote.ctaLabel?.trim() || DEFAULT_JOIN_CONTENT.ctaLabel,
+          ctaHref: remote.ctaHref?.trim() || DEFAULT_JOIN_CONTENT.ctaHref,
+          ctaIcon: remote.ctaIcon?.trim() || DEFAULT_JOIN_CONTENT.ctaIcon,
+        });
+      })
+      .catch(() => {
+        if (active) setJoinContent(DEFAULT_JOIN_CONTENT);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const subtitleHtml = useMemo(() => normalizeRichTextHtml(joinContent.subtitle), [joinContent.subtitle]);
+
   return (
     <Box
       component="section"
@@ -37,29 +93,29 @@ export function HomeJoinSection() {
               fontFamily: 'Montserrat, sans-serif',
             }}
           >
-            Ready to Join the AI Revolution?
+            {joinContent.heading}
           </Typography>
 
-          <Typography
-            variant="h5"
+          <RichTextContent
+            html={subtitleHtml}
             sx={{
+              typography: 'h5',
               color: 'grey.300',
               mb: 4,
               fontWeight: 'normal',
               fontFamily: 'Montserrat, sans-serif',
             }}
-          >
-            Connect with the brightest AI minds, learn cutting-edge techniques, and build the
-            future together.
-          </Typography>
+          />
 
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
             <GradientButton
               size="large"
-              icon="mingcute:arrow-right-line"
+              icon={joinContent.ctaIcon || DEFAULT_JOIN_CONTENT.ctaIcon}
               iconPosition="left"
+              href={joinContent.ctaHref || undefined}
+              component={joinContent.ctaHref ? 'a' : 'button'}
             >
-              Get Started Now
+              {joinContent.ctaLabel}
             </GradientButton>
           </Box>
         </Stack>

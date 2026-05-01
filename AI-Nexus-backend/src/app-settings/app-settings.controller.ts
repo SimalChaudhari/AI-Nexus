@@ -176,4 +176,24 @@ export class AppSettingsController {
     const result = await this.appSettingsService.updateHomeHeroContent(payload || {});
     return response.status(HttpStatus.OK).json(result);
   }
+
+  @Put('home-cards-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page cards section content' })
+  async updateHomeCardsContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeCardsContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-join-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page join section content' })
+  async updateHomeJoinContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeJoinContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
 }

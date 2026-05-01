@@ -26,11 +26,33 @@ type HomeHeroContentPayload = {
   stats?: Array<{ value?: string; label?: string; icon?: string }>;
 };
 
+type HomeCardsContentPayload = {
+  heading?: string;
+  headingAccent?: string;
+  headingColor?: string;
+  headingAccentColor?: string;
+  subtitle?: string;
+  cards?: Array<{ icon?: string; title?: string; description?: string }>;
+};
+
+type HomeJoinContentPayload = {
+  heading?: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  ctaIcon?: string;
+};
+
 const HERO_HEADLINE_MAX_LENGTH = 60;
 const HERO_CTA_LABEL_MAX_LENGTH = 32;
+const HOME_JOIN_HEADING_MAX_LENGTH = 100;
+const HOME_JOIN_CTA_LABEL_MAX_LENGTH = 40;
 
 @Injectable()
 export class AppSettingsService {
+  private homeCardsColumnChecked = false;
+  private homeJoinColumnChecked = false;
+
   constructor(
     @InjectRepository(AppSettingsEntity)
     private readonly appSettingsRepository: Repository<AppSettingsEntity>,
@@ -41,7 +63,26 @@ export class AppSettingsService {
     private readonly localStorageService: LocalStorageService
   ) {}
 
+  private async ensureHomeCardsColumn(): Promise<void> {
+    if (this.homeCardsColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeCardsContent" jsonb'
+    );
+    this.homeCardsColumnChecked = true;
+  }
+
+  private async ensureHomeJoinColumn(): Promise<void> {
+    if (this.homeJoinColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeJoinContent" jsonb'
+    );
+    this.homeJoinColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
+    await this.ensureHomeCardsColumn();
+    await this.ensureHomeJoinColumn();
+
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
       take: 1,
@@ -173,6 +214,34 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizeHomeCardsContent(input: unknown): HomeCardsContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawCards = Array.isArray(source.cards) ? source.cards : [];
+    return {
+      heading: this.cleanText(source.heading, 80),
+      headingAccent: this.cleanText(source.headingAccent, 80),
+      headingColor: this.sanitizeHexColor(source.headingColor),
+      headingAccentColor: this.sanitizeHexColor(source.headingAccentColor),
+      subtitle: this.cleanText(source.subtitle),
+      cards: rawCards.slice(0, 12).map((card: any) => ({
+        icon: this.cleanText(card?.icon, 120),
+        title: this.cleanText(card?.title, 80),
+        description: this.cleanText(card?.description),
+      })),
+    };
+  }
+
+  private sanitizeHomeJoinContent(input: unknown): HomeJoinContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    return {
+      heading: this.cleanText(source.heading, HOME_JOIN_HEADING_MAX_LENGTH),
+      subtitle: this.cleanText(source.subtitle),
+      ctaLabel: this.cleanText(source.ctaLabel, HOME_JOIN_CTA_LABEL_MAX_LENGTH),
+      ctaHref: this.cleanText(source.ctaHref),
+      ctaIcon: this.cleanText(source.ctaIcon, 120),
+    };
+  }
+
   async updateHomeHeroContent(
     payload: HomeHeroContentPayload
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -185,10 +254,36 @@ export class AppSettingsService {
     };
   }
 
+  async updateHomeCardsContent(
+    payload: HomeCardsContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeCardsContent = this.sanitizeHomeCardsContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home cards content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeJoinContent(
+    payload: HomeJoinContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeJoinContent = this.sanitizeHomeJoinContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home join content updated successfully',
+      settings: saved,
+    };
+  }
+
   async getPublicSettings(): Promise<{
     logoUrl: string | null;
     homeHeroImageUrl: string | null;
     homeHeroContent: HomeHeroContentPayload | null;
+    homeCardsContent: HomeCardsContentPayload | null;
+    homeJoinContent: HomeJoinContentPayload | null;
   }> {
     const settings = await this.getSettings();
 
@@ -196,6 +291,8 @@ export class AppSettingsService {
       logoUrl: settings.logoUrl ?? null,
       homeHeroImageUrl: settings.homeHeroImageUrl ?? null,
       homeHeroContent: settings.homeHeroContent ?? null,
+      homeCardsContent: settings.homeCardsContent ?? null,
+      homeJoinContent: settings.homeJoinContent ?? null,
     };
   }
 

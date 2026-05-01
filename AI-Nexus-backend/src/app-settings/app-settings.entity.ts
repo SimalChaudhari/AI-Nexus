@@ -28,6 +28,23 @@ export type HomeHeroContent = {
   stats?: Array<{ value?: string; label?: string; icon?: string }>;
 };
 
+export type HomeCardsContent = {
+  heading?: string;
+  headingAccent?: string;
+  headingColor?: string;
+  headingAccentColor?: string;
+  subtitle?: string;
+  cards?: Array<{ icon?: string; title?: string; description?: string }>;
+};
+
+export type HomeJoinContent = {
+  heading?: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  ctaIcon?: string;
+};
+
 @Entity('app_settings')
 export class AppSettingsEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -43,6 +60,14 @@ export class AppSettingsEntity {
   /** Public home hero text/cta/stats content managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
   homeHeroContent?: HomeHeroContent | null;
+
+  /** Public home cards section content managed from admin panel. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeCardsContent?: HomeCardsContent | null;
+
+  /** Public home join section content managed from admin panel. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeJoinContent?: HomeJoinContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })
