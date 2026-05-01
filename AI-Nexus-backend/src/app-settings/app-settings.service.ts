@@ -7,6 +7,28 @@ import { LocalStorageService } from '../service/local-storage.service';
 import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
 
+type HomeHeroContentPayload = {
+  headline?: string;
+  description?: string;
+  cta?: {
+    label?: string;
+    href?: string;
+    buttonColor?: string;
+    buttonTextColor?: string;
+    align?: 'left' | 'center' | 'right' | '';
+  };
+  event?: {
+    startDateLabel?: string;
+    startDate?: string;
+    startTimeLabel?: string;
+    startTime?: string;
+  };
+  stats?: Array<{ value?: string; label?: string; icon?: string }>;
+};
+
+const HERO_HEADLINE_MAX_LENGTH = 60;
+const HERO_CTA_LABEL_MAX_LENGTH = 32;
+
 @Injectable()
 export class AppSettingsService {
   constructor(
@@ -100,12 +122,80 @@ export class AppSettingsService {
     };
   }
 
-  async getPublicSettings(): Promise<{ logoUrl: string | null; homeHeroImageUrl: string | null }> {
+  private cleanText(value: unknown, maxLength?: number): string {
+    const cleaned = typeof value === 'string' ? value.trim() : '';
+    if (!maxLength || maxLength < 1) return cleaned;
+    return cleaned.slice(0, maxLength);
+  }
+
+  /** Allow #RGB, #RRGGBB, #RRGGBBAA only (empty = unset). */
+  private sanitizeHexColor(value: unknown): string {
+    const s = this.cleanText(value);
+    if (!s) return '';
+    return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(s) ? s : '';
+  }
+
+  private sanitizeCtaAlign(value: unknown): 'left' | 'center' | 'right' | '' {
+    const s = this.cleanText(value).toLowerCase();
+    if (s === 'left' || s === 'center' || s === 'right') return s;
+    return '';
+  }
+
+  private sanitizeEventSlot(input: any) {
+    return {
+      startDateLabel: this.cleanText(input?.startDateLabel),
+      startDate: this.cleanText(input?.startDate),
+      startTimeLabel: this.cleanText(input?.startTimeLabel),
+      startTime: this.cleanText(input?.startTime),
+    };
+  }
+
+  private sanitizeHomeHeroContent(input: unknown): HomeHeroContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const stats = Array.isArray(source.stats) ? source.stats : [];
+    const primaryEvent = this.sanitizeEventSlot(source.event);
+    return {
+      headline: this.cleanText(source.headline, HERO_HEADLINE_MAX_LENGTH),
+      description: this.cleanText(source.description),
+      cta: {
+        label: this.cleanText(source.cta?.label, HERO_CTA_LABEL_MAX_LENGTH),
+        href: this.cleanText(source.cta?.href),
+        buttonColor: this.sanitizeHexColor(source.cta?.buttonColor),
+        buttonTextColor: this.sanitizeHexColor(source.cta?.buttonTextColor),
+        align: this.sanitizeCtaAlign(source.cta?.align),
+      },
+      event: primaryEvent,
+      stats: stats.slice(0, 3).map((item: any) => ({
+        value: this.cleanText(item?.value),
+        label: this.cleanText(item?.label),
+        icon: this.cleanText(item?.icon),
+      })),
+    };
+  }
+
+  async updateHomeHeroContent(
+    payload: HomeHeroContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeHeroContent = this.sanitizeHomeHeroContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home hero content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async getPublicSettings(): Promise<{
+    logoUrl: string | null;
+    homeHeroImageUrl: string | null;
+    homeHeroContent: HomeHeroContentPayload | null;
+  }> {
     const settings = await this.getSettings();
 
     return {
       logoUrl: settings.logoUrl ?? null,
       homeHeroImageUrl: settings.homeHeroImageUrl ?? null,
+      homeHeroContent: settings.homeHeroContent ?? null,
     };
   }
 

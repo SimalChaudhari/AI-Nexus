@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -163,6 +164,16 @@ export class AppSettingsController {
   async removeHomeHero(@Res() response: Response) {
     const result = await this.appSettingsService.removeHomeHeroImage();
 
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-hero-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page hero text/cta/stats content' })
+  async updateHomeHeroContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeHeroContent(payload || {});
     return response.status(HttpStatus.OK).json(result);
   }
 }

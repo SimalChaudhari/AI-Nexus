@@ -323,6 +323,7 @@ export const paths = {
       edit: (id) => `${ROOTS.ADMIN}/product/${id}/edit`,
     },
     settings: `${ROOTS.ADMIN}/settings`,
+    settingsSection: (section) => `${ROOTS.ADMIN}/settings/${section}`,
   },
 };
 

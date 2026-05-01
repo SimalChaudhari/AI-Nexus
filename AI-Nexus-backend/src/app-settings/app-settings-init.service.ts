@@ -22,6 +22,7 @@ export class AppSettingsInitService implements OnModuleInit {
             "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
             "logoUrl" varchar,
             "homeHeroImageUrl" varchar,
+            "homeHeroContent" jsonb,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_app_settings" PRIMARY KEY ("id")
@@ -35,6 +36,10 @@ export class AppSettingsInitService implements OnModuleInit {
         await queryRunner.query(`
           ALTER TABLE "app_settings"
           ADD COLUMN IF NOT EXISTS "personaCourseMappings" jsonb DEFAULT '[]'::jsonb
+        `);
+        await queryRunner.query(`
+          ALTER TABLE "app_settings"
+          ADD COLUMN IF NOT EXISTS "homeHeroContent" jsonb
         `);
       }
 

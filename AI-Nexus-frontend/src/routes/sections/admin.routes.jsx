@@ -361,6 +361,7 @@ export const adminRoutes = [
       { path: 'params', element: <ParamsPage /> },
       { path: 'blank', element: <BlankPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'settings/:section', element: <SettingsPage /> },
       { path: 'profile', element: <AdminProfilePage /> },
     ],
   },

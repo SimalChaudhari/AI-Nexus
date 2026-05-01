@@ -5942,6 +5942,13 @@ embla-carousel@^8.1.5, embla-carousel@8.1.5:
   resolved "https://registry.npmjs.org/embla-carousel/-/embla-carousel-8.1.5.tgz"
   integrity sha512-R6xTf7cNdR2UTNM6/yUPZlJFRmZSogMiRjJ5vXHO65II5MoUlrVYUAP0fHQei/py82Vf15lj+WI+QdhnzBxA2g==
 
+emoji-picker-react@^4.19.1:
+  version "4.19.1"
+  resolved "https://registry.npmjs.org/emoji-picker-react/-/emoji-picker-react-4.19.1.tgz"
+  integrity sha512-BmDdqInKFVYJpv7qS9WI6L9656cDAC+FkDvUjJds56nKHbaVTBNeDmLwKBytRnzu37zWHs9Isg7gt5PT43y6xA==
+  dependencies:
+    flairup "1.0.0"
+
 emoji-regex@^10.3.0:
   version "10.3.0"
   resolved "https://registry.npmjs.org/emoji-regex/-/emoji-regex-10.3.0.tgz"
@@ -6674,6 +6681,11 @@ firebase@^10.12.2:
     "@firebase/storage-compat" "0.3.8"
     "@firebase/util" "1.9.6"
     "@firebase/vertexai-preview" "0.0.2"
+
+flairup@1.0.0:
+  version "1.0.0"
+  resolved "https://registry.npmjs.org/flairup/-/flairup-1.0.0.tgz"
+  integrity sha512-IKlE+pNvL2R+kVL1kEhUYqRxVqeFnjiIvHWDMLFXNaqyUdFXQM2wte44EfMYJNHkW16X991t2Zg8apKkhv7OBA==
 
 flat-cache@^3.0.4:
   version "3.2.0"

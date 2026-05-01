@@ -1,26 +1,56 @@
-import { paths } from 'src/routes/paths';
-
 /**
- * Marketing copy + stats for the public home hero.
- * Edit here (or later wire to CMS / app-settings) — shape matches the hero UI.
+ * Hero data is loaded only from backend app-settings (admin).
+ * No marketing copy defaults on the frontend.
  */
-export const HOME_HERO_DATA = {
-  headline: 'Transform Your Career with AI in One Weekend',
-  description:
-    'Master AI in one weekend and become the go-to expert for AI solutions.',
+export const EMPTY_HERO_DATA = {
+  headline: '',
+  description: '',
   cta: {
-    label: 'Begin with Free AI Fluency Program',
-    href: paths.learning,
+    label: '',
+    href: '',
+    buttonColor: '',
+    buttonTextColor: '',
+    align: '',
   },
   event: {
-    startDateLabel: 'Start Date',
-    startDate: '27 Mar 2026',
-    startTimeLabel: 'Start Time',
-    startTime: '10 AM EST',
+    startDateLabel: '',
+    startDate: '',
+    startTimeLabel: '',
+    startTime: '',
   },
-  stats: [
-    { value: '10M+', label: 'Active Learners' },
-    { value: '160+', label: 'Countries' },
-    { value: '4.9/5', label: 'Rating' },
-  ],
+  stats: [],
+  backgroundImageUrl: '',
 };
+
+/**
+ * Map public app-settings API response to hero shape. Missing fields stay empty.
+ */
+export function buildHomeHeroData(appSettings = {}) {
+  const remote = appSettings?.homeHeroContent || {};
+  const remoteStats = Array.isArray(remote.stats) ? remote.stats : [];
+  const remoteEvent = remote?.event || {};
+
+  return {
+    headline: remote?.headline?.trim() || '',
+    description: remote?.description?.trim() || '',
+    cta: {
+      label: remote?.cta?.label?.trim() || '',
+      href: remote?.cta?.href?.trim() || '',
+      buttonColor: remote?.cta?.buttonColor?.trim() || '',
+      buttonTextColor: remote?.cta?.buttonTextColor?.trim() || '',
+      align: remote?.cta?.align?.trim() || '',
+    },
+    event: {
+      startDateLabel: remoteEvent?.startDateLabel?.trim() || '',
+      startDate: remoteEvent?.startDate?.trim() || '',
+      startTimeLabel: remoteEvent?.startTimeLabel?.trim() || '',
+      startTime: remoteEvent?.startTime?.trim() || '',
+    },
+    stats: remoteStats.slice(0, 3).map((item) => ({
+      value: item?.value?.trim() || '',
+      label: item?.label?.trim() || '',
+      icon: item?.icon?.trim() || '',
+    })),
+    backgroundImageUrl: appSettings?.homeHeroImageUrl?.trim() || '',
+  };
+}
