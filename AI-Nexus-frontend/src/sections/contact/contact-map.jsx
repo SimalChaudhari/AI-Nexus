@@ -1,74 +1,79 @@
-import { useState } from 'react';
-
 import Box from '@mui/material/Box';
-import { useTheme } from '@mui/material/styles';
+import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-
-import { Iconify } from 'src/components/iconify';
-import { Map, MapPopup, MapMarker, MapControl } from 'src/components/map';
 
 // ----------------------------------------------------------------------
 
 export function ContactMap({ contacts }) {
-  const theme = useTheme();
-
-  const [popupInfo, setPopupInfo] = useState(null);
-
-  const lightMode = theme.palette.mode === 'light';
+  const primaryContact = Array.isArray(contacts) && contacts.length > 0 ? contacts[0] : null;
+  const latitude = Number(primaryContact?.latlng?.[0]);
+  const longitude = Number(primaryContact?.latlng?.[1]);
+  const hasLatLng = Number.isFinite(latitude) && Number.isFinite(longitude);
+  const plainDetails = String(primaryContact?.details || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const mapQuery = hasLatLng
+    ? `${latitude},${longitude}`
+    : encodeURIComponent(plainDetails || 'Singapore');
+  const iframeSrc = `https://maps.google.com/maps?q=${mapQuery}&z=12&output=embed`;
 
   return (
     <Box
       sx={{
         zIndex: 0,
-        borderRadius: 1.5,
-        overflow: 'hidden',
-        position: 'relative',
-        height: { xs: 320, md: 560 },
+        p: { xs: 2, md: 2.5 },
+        borderRadius: 2,
+        border: (theme) => `1px solid ${theme.palette.divider}`,
+        bgcolor: 'background.paper',
+        boxShadow: (theme) => theme.customShadows.z8,
       }}
     >
-      <Map
-        initialViewState={{ latitude: 12, longitude: 42, zoom: 2 }}
-        mapStyle={`mapbox://styles/mapbox/${lightMode ? 'light' : 'dark'}-v10`}
+  
+      <Box
+        sx={{
+          borderRadius: 1.5,
+          overflow: 'hidden',
+          position: 'relative',
+          height: { xs: 320, md: 560 },
+          border: (theme) => `1px solid ${theme.palette.divider}`,
+          bgcolor: 'background.neutral',
+        }}
       >
-        <MapControl hideGeolocate />
+        <Box
+          component="iframe"
+          title="Contact location map"
+          src={iframeSrc}
+          width="100%"
+          height="100%"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          sx={{ border: 0 }}
+        />
+      </Box>
 
-        {contacts.map((country, index) => (
-          <MapMarker
-            key={`marker-${index}`}
-            latitude={country.latlng[0]}
-            longitude={country.latlng[1]}
-            onClick={(event) => {
-              event.originalEvent.stopPropagation();
-              setPopupInfo(country);
-            }}
-          />
-        ))}
-
-        {popupInfo && (
-          <MapPopup
-            longitude={popupInfo.latlng[1]}
-            latitude={popupInfo.latlng[0]}
-            onClose={() => setPopupInfo(null)}
-          >
-            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-              Address
-            </Typography>
-
-            <Typography component="div" variant="caption">
-              {popupInfo.address}
-            </Typography>
-
-            <Typography
-              component="div"
-              variant="caption"
-              sx={{ mt: 1, display: 'flex', alignItems: 'center' }}
+      {!!primaryContact && (
+        <Stack spacing={0.75} sx={{ mt: 1.75 }}>
+            {(plainDetails || hasLatLng) && (
+            <Button
+              size="small"
+              variant="outlined"
+              component="a"
+              href={
+                hasLatLng
+                  ? `https://maps.google.com/?q=${latitude},${longitude}`
+                  : `https://maps.google.com/?q=${encodeURIComponent(plainDetails)}`
+              }
+              target="_blank"
+              rel="noreferrer"
+              sx={{ alignSelf: 'flex-start' }}
             >
-              <Iconify icon="solar:phone-bold" width={14} sx={{ mr: 0.5 }} />
-              {popupInfo.phoneNumber}
-            </Typography>
-          </MapPopup>
-        )}
-      </Map>
+              Open in Google Maps
+            </Button>
+          )}
+        </Stack>
+      )}
     </Box>
   );
 }

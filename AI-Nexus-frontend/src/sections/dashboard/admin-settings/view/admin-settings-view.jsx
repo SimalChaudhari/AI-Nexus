@@ -27,6 +27,7 @@ import { paths } from 'src/routes/paths';
 import { useSettingsContext } from 'src/components/settings';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { categoryIcons } from 'src/_mock/_category-icons';
+import { Iconify } from 'src/components/iconify';
 import { HeroTextCard } from './components/hero-text-card';
 import { HeroImageCard } from './components/hero-image-card';
 import { CtaButtonCard } from './components/cta-button-card';
@@ -36,6 +37,84 @@ import { HomeCardItem } from './components/home-card-item';
 import { HexColorToolDrawer } from './components/hex-color-tool-drawer';
 import { IconPickerDrawer } from './components/icon-picker-drawer';
 import { HomeJoinSettingsCard } from './components/home-join-settings-card';
+
+const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
+const CONTACT_ICON_KEY_BY_FIELD = {
+  address: 'addressIcon',
+  phone: 'phoneIcon',
+  email: 'emailIcon',
+  whatsapp: 'whatsappIcon',
+  website: 'websiteIcon',
+};
+const CONTACT_FIELD_META = [
+  { key: 'address', label: 'Address', defaultIcon: 'solar:map-point-bold' },
+  { key: 'phone', label: 'Phone', defaultIcon: 'solar:phone-bold' },
+  { key: 'email', label: 'Email', defaultIcon: 'solar:letter-bold' },
+  { key: 'whatsapp', label: 'WhatsApp', defaultIcon: 'ri:whatsapp-fill' },
+  { key: 'website', label: 'Website', defaultIcon: 'mdi:web' },
+];
+
+const parseContactDetailFields = (detailsHtml = '') => {
+  const normalizedText = String(detailsHtml || '')
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n+/g, '\n')
+    .trim();
+
+  const lines = normalizedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const result = {
+    address: '',
+    phone: '',
+    email: '',
+    whatsapp: '',
+    website: '',
+  };
+  let activeKey = '';
+
+  lines.forEach((line) => {
+    const match = line.match(/^(Address|Phone|Email|WhatsApp|Website)\s*:?\s*(.*)$/i);
+    if (match) {
+      activeKey = match[1].toLowerCase();
+      if (CONTACT_DETAIL_KEYS.includes(activeKey)) {
+        result[activeKey] = (match[2] || '').trim();
+      }
+      return;
+    }
+
+    if (activeKey && CONTACT_DETAIL_KEYS.includes(activeKey)) {
+      result[activeKey] = result[activeKey] ? `${result[activeKey]} ${line}`.trim() : line;
+    }
+  });
+
+  return result;
+};
+
+const buildContactDetailsHtml = (row = {}) => {
+  const sections = [
+    ['Address', row?.address],
+    ['Phone', row?.phone],
+    ['Email', row?.email],
+    ['WhatsApp', row?.whatsapp],
+    ['Website', row?.website],
+  ]
+    .map(([label, value]) => [label, String(value || '').trim()])
+    .filter(([, value]) => Boolean(value));
+
+  return sections.map(([label, value]) => `${label}: ${value}`).join('<br/>');
+};
+
+const getContactFieldIcon = (row, fieldKey) => {
+  const iconKey = CONTACT_ICON_KEY_BY_FIELD[fieldKey];
+  const fallback = CONTACT_FIELD_META.find((item) => item.key === fieldKey)?.defaultIcon || '';
+  return String(row?.[iconKey] || fallback || '').trim();
+};
 
 export function AdminSettingsView() {
   const navigate = useNavigate();
@@ -52,6 +131,11 @@ export function AdminSettingsView() {
   const [heroLoading, setHeroLoading] = useState(true);
   const [heroSubmitting, setHeroSubmitting] = useState(false);
   const [heroContentSubmitting, setHeroContentSubmitting] = useState(false);
+  const [contactHeroFile, setContactHeroFile] = useState(null);
+  const [contactHeroUrl, setContactHeroUrl] = useState('');
+  const [contactHeroLoading, setContactHeroLoading] = useState(true);
+  const [contactHeroSubmitting, setContactHeroSubmitting] = useState(false);
+  const [contactHeroContentSubmitting, setContactHeroContentSubmitting] = useState(false);
   const emptyHeroStatsRow = () => ({ value: '', label: '', icon: '' });
   const emptyHeroEventSlot = () => ({ startDateLabel: '', startDate: '', startTimeLabel: '', startTime: '' });
   const [emojiPickerStatIndex, setEmojiPickerStatIndex] = useState(null);
@@ -72,6 +156,8 @@ export function AdminSettingsView() {
   const [colorToolOpen, setColorToolOpen] = useState(false);
   const [iconToolOpen, setIconToolOpen] = useState(false);
   const [iconToolCardIndex, setIconToolCardIndex] = useState(0);
+  const [contactIconToolOpen, setContactIconToolOpen] = useState(false);
+  const [contactIconField, setContactIconField] = useState('address');
   const [iconSearchQuery, setIconSearchQuery] = useState('');
   const [generatorStartColor, setGeneratorStartColor] = useState('#9b2a77');
   const [generatorEndColor, setGeneratorEndColor] = useState('#57c785');
@@ -110,6 +196,28 @@ export function AdminSettingsView() {
     ],
   });
   const [joinContent, setJoinContent] = useState(DEFAULT_JOIN_CONTENT);
+  const emptyContactRow = () => ({
+    details: '',
+    address: '',
+    phone: '',
+    email: '',
+    whatsapp: '',
+    website: '',
+    addressIcon: 'solar:map-point-bold',
+    phoneIcon: 'solar:phone-bold',
+    emailIcon: 'solar:letter-bold',
+    whatsappIcon: 'ri:whatsapp-fill',
+    websiteIcon: 'mdi:web',
+    lat: '',
+    lng: '',
+  });
+  const [contactHeroContent, setContactHeroContent] = useState({
+    headingLine1: 'Where',
+    headingLine2: 'to find us?',
+    infoTitle: 'How can we help you?',
+    infoSubtitle: 'Fill up the form and our team will get back to you within 24 hours.',
+    contacts: [emptyContactRow()],
+  });
 
   const handleToggle = (field) => {
     settings.onUpdateField(field, !settings[field]);
@@ -122,6 +230,7 @@ export function AdminSettingsView() {
       const appSettings = await appSettingsService.getPublic();
       setLogoUrl(appSettings.logoUrl || '');
       setHeroUrl(appSettings.homeHeroImageUrl || '');
+      setContactHeroUrl(appSettings.contactHeroImageUrl || '');
       const remoteHero = appSettings.homeHeroContent || {};
       const rawStats = Array.isArray(remoteHero.stats) ? remoteHero.stats : [];
       const statsThree = [0, 1, 2].map((i) => ({
@@ -181,11 +290,49 @@ export function AdminSettingsView() {
         ctaHref: String(remoteJoin?.ctaHref || DEFAULT_JOIN_CONTENT.ctaHref).trim(),
         ctaIcon: String(remoteJoin?.ctaIcon || DEFAULT_JOIN_CONTENT.ctaIcon).trim(),
       });
+      const remoteContact = appSettings.contactHeroContent || {};
+      const remoteContacts = Array.isArray(remoteContact?.contacts) ? remoteContact.contacts : [];
+      const normalizedContacts = (remoteContacts.length ? remoteContacts : [emptyContactRow()]).map((row) => {
+        const details = String(
+          row?.details ||
+            [row?.country, row?.address, row?.phoneNumber]
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+              .join('<br/>')
+        ).trim();
+        const parsedFields = parseContactDetailFields(details);
+
+        return {
+          details,
+          address: String(row?.address || parsedFields.address || '').trim(),
+          phone: String(row?.phone || parsedFields.phone || '').trim(),
+          email: String(row?.email || parsedFields.email || '').trim(),
+          whatsapp: String(row?.whatsapp || parsedFields.whatsapp || '').trim(),
+          website: String(row?.website || parsedFields.website || '').trim(),
+          addressIcon: String(row?.addressIcon || emptyContactRow().addressIcon || '').trim(),
+          phoneIcon: String(row?.phoneIcon || emptyContactRow().phoneIcon || '').trim(),
+          emailIcon: String(row?.emailIcon || emptyContactRow().emailIcon || '').trim(),
+          whatsappIcon: String(row?.whatsappIcon || emptyContactRow().whatsappIcon || '').trim(),
+          websiteIcon: String(row?.websiteIcon || emptyContactRow().websiteIcon || '').trim(),
+          lat: row?.lat != null ? String(row.lat).trim() : '',
+          lng: row?.lng != null ? String(row.lng).trim() : '',
+        };
+      });
+      setContactHeroContent({
+        headingLine1: String(remoteContact?.headingLine1 || 'Where').trim(),
+        headingLine2: String(remoteContact?.headingLine2 || 'to find us?').trim(),
+        infoTitle: String(remoteContact?.infoTitle || 'How can we help you?').trim(),
+        infoSubtitle: String(
+          remoteContact?.infoSubtitle || 'Fill up the form and our team will get back to you within 24 hours.'
+        ).trim(),
+        contacts: normalizedContacts,
+      });
     } catch (error) {
       toast.error(error?.message || 'Failed to load site settings');
     } finally {
       setLogoLoading(false);
       setHeroLoading(false);
+      setContactHeroLoading(false);
     }
   }, []);
 
@@ -243,6 +390,17 @@ export function AdminSettingsView() {
     setHeroFile(null);
   };
 
+  const handleDropContactHero = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) {
+      setContactHeroFile(file);
+    }
+  }, []);
+
+  const handleClearContactHeroSelection = () => {
+    setContactHeroFile(null);
+  };
+
   const handleUploadHero = async () => {
     if (!heroFile) {
       toast.error('Please select an image first');
@@ -290,6 +448,45 @@ export function AdminSettingsView() {
       toast.error(error?.message || 'Failed to remove hero image');
     } finally {
       setHeroSubmitting(false);
+    }
+  };
+
+  const handleUploadContactHero = async () => {
+    if (!contactHeroFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+
+    try {
+      setContactHeroSubmitting(true);
+      const updatedSettings = await appSettingsService.uploadContactHero(contactHeroFile);
+      setContactHeroUrl(updatedSettings.contactHeroImageUrl || '');
+      setContactHeroFile(null);
+      toast.success('Contact hero background updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload contact hero image');
+    } finally {
+      setContactHeroSubmitting(false);
+    }
+  };
+
+  const handleRemoveContactHero = async () => {
+    if (contactHeroFile) {
+      setContactHeroFile(null);
+      return;
+    }
+
+    if (!contactHeroUrl) return;
+
+    try {
+      setContactHeroSubmitting(true);
+      const updatedSettings = await appSettingsService.removeContactHero();
+      setContactHeroUrl(updatedSettings.contactHeroImageUrl || '');
+      toast.success('Contact hero background removed (default image will show)');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove contact hero image');
+    } finally {
+      setContactHeroSubmitting(false);
     }
   };
 
@@ -464,6 +661,12 @@ export function AdminSettingsView() {
     setIconToolOpen(true);
   };
 
+  const openIconPickerForContactField = (fieldKey) => {
+    setContactIconField(fieldKey);
+    setIconSearchQuery('');
+    setContactIconToolOpen(true);
+  };
+
   const handleSaveHomeCardsContent = async () => {
     try {
       setCardsContentSubmitting(true);
@@ -536,6 +739,88 @@ export function AdminSettingsView() {
     }
   };
 
+  const updateContactHeroField = (field, value) => {
+    setContactHeroContent((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateContactRowField = (index, field, value) => {
+    setContactHeroContent((prev) => {
+      const rows = [...(prev.contacts || [])];
+      while (rows.length <= index) rows.push(emptyContactRow());
+      rows[index] = { ...rows[index], [field]: value };
+      return { ...prev, contacts: rows };
+    });
+  };
+
+  const handleSaveContactHeroContent = async () => {
+    try {
+      setContactHeroContentSubmitting(true);
+      const payload = {
+        headingLine1: contactHeroContent.headingLine1 || '',
+        headingLine2: contactHeroContent.headingLine2 || '',
+        infoTitle: contactHeroContent.infoTitle || '',
+        infoSubtitle: contactHeroContent.infoSubtitle || '',
+        contacts: (contactHeroContent.contacts || []).slice(0, 1).map((row) => ({
+          details: buildContactDetailsHtml(row),
+          address: row?.address || '',
+          phone: row?.phone || '',
+          email: row?.email || '',
+          whatsapp: row?.whatsapp || '',
+          website: row?.website || '',
+          addressIcon: row?.addressIcon || emptyContactRow().addressIcon,
+          phoneIcon: row?.phoneIcon || emptyContactRow().phoneIcon,
+          emailIcon: row?.emailIcon || emptyContactRow().emailIcon,
+          whatsappIcon: row?.whatsappIcon || emptyContactRow().whatsappIcon,
+          websiteIcon: row?.websiteIcon || emptyContactRow().websiteIcon,
+          lat: row?.lat || '',
+          lng: row?.lng || '',
+        })),
+      };
+      const updated = await appSettingsService.updateContactHeroContent(payload);
+      const next = updated?.contactHeroContent || {};
+      const nextContacts = Array.isArray(next?.contacts) ? next.contacts : [];
+      setContactHeroContent({
+        headingLine1: String(next?.headingLine1 || 'Where').trim(),
+        headingLine2: String(next?.headingLine2 || 'to find us?').trim(),
+        infoTitle: String(next?.infoTitle || 'How can we help you?').trim(),
+        infoSubtitle: String(
+          next?.infoSubtitle || 'Fill up the form and our team will get back to you within 24 hours.'
+        ).trim(),
+        contacts: (nextContacts.length ? nextContacts : [emptyContactRow()]).slice(0, 1).map((row) => {
+          const details = String(
+            row?.details ||
+              [row?.country, row?.address, row?.phoneNumber]
+                .map((item) => String(item || '').trim())
+                .filter(Boolean)
+                .join('<br/>')
+          ).trim();
+          const parsedFields = parseContactDetailFields(details);
+
+          return {
+            details,
+            address: String(row?.address || parsedFields.address || '').trim(),
+            phone: String(row?.phone || parsedFields.phone || '').trim(),
+            email: String(row?.email || parsedFields.email || '').trim(),
+            whatsapp: String(row?.whatsapp || parsedFields.whatsapp || '').trim(),
+            website: String(row?.website || parsedFields.website || '').trim(),
+            addressIcon: String(row?.addressIcon || emptyContactRow().addressIcon || '').trim(),
+            phoneIcon: String(row?.phoneIcon || emptyContactRow().phoneIcon || '').trim(),
+            emailIcon: String(row?.emailIcon || emptyContactRow().emailIcon || '').trim(),
+            whatsappIcon: String(row?.whatsappIcon || emptyContactRow().whatsappIcon || '').trim(),
+            websiteIcon: String(row?.websiteIcon || emptyContactRow().websiteIcon || '').trim(),
+            lat: row?.lat != null ? String(row.lat).trim() : '',
+            lng: row?.lng != null ? String(row.lng).trim() : '',
+          };
+        }),
+      });
+      toast.success('Contact hero content updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update contact hero content');
+    } finally {
+      setContactHeroContentSubmitting(false);
+    }
+  };
+
   const headerVisibilityOptions = [
     {
       field: 'headerWorkspaces',
@@ -595,6 +880,12 @@ export function AdminSettingsView() {
       description: 'Manage call-to-action join section content.',
     },
     {
+      key: 'contact',
+      badge: 'CT',
+      title: 'Contact Hero',
+      description: 'Manage contact page banner, heading, and map points.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       title: 'Header Visibility',
@@ -602,7 +893,7 @@ export function AdminSettingsView() {
     },
   ];
 
-  const validSectionKeys = ['logo', 'hero', 'cards', 'join', 'header-visibility'];
+  const validSectionKeys = ['logo', 'hero', 'cards', 'join', 'contact', 'header-visibility'];
 
   useEffect(() => {
     if (!section) {
@@ -947,6 +1238,180 @@ export function AdminSettingsView() {
     />
   );
 
+  const renderContactHeroSettings = (
+    <Card sx={{ p: 3 }}>
+      <Stack spacing={2.5}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Contact Hero Section
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Upload dynamic contact banner (.webp supported), update hero text, and manage map points.
+          </Typography>
+        </Box>
+
+        <Upload
+          value={contactHeroFile || contactHeroUrl || null}
+          onDrop={handleDropContactHero}
+          onDelete={contactHeroFile || contactHeroUrl ? handleRemoveContactHero : undefined}
+          sx={{
+            '& > .MuiBox-root:first-of-type': {
+              minHeight: 180,
+              p: 2.5,
+            },
+          }}
+          accept={{
+            'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
+          }}
+          maxSize={5 * 1024 * 1024}
+          disabled={contactHeroLoading || contactHeroSubmitting}
+          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Max size: 5 MB."
+        />
+
+        <Stack direction="row" spacing={1.5}>
+          <LoadingButton
+            variant="contained"
+            loading={contactHeroSubmitting}
+            onClick={handleUploadContactHero}
+            disabled={!contactHeroFile}
+          >
+            Save Contact Banner
+          </LoadingButton>
+          <Button
+            color="inherit"
+            variant="outlined"
+            onClick={contactHeroFile ? handleClearContactHeroSelection : handleRemoveContactHero}
+            disabled={contactHeroSubmitting || (!contactHeroFile && !contactHeroUrl)}
+          >
+            {contactHeroFile ? 'Clear Selected' : 'Remove Current Banner'}
+          </Button>
+        </Stack>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Heading line 1"
+              value={contactHeroContent.headingLine1}
+              onChange={(event) => updateContactHeroField('headingLine1', event.target.value)}
+              fullWidth
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Heading line 2"
+              value={contactHeroContent.headingLine2}
+              onChange={(event) => updateContactHeroField('headingLine2', event.target.value)}
+              fullWidth
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Info card title"
+              value={contactHeroContent.infoTitle}
+              onChange={(event) => updateContactHeroField('infoTitle', event.target.value)}
+              fullWidth
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              label="Info card subtitle"
+              value={contactHeroContent.infoSubtitle}
+              onChange={(event) => updateContactHeroField('infoSubtitle', event.target.value)}
+              fullWidth
+            />
+          </Grid>
+        </Grid>
+
+        <Stack spacing={0.25}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Contact information
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Configure contact fields and choose icons shown on frontend.
+          </Typography>
+        </Stack>
+
+        {(contactHeroContent.contacts || []).slice(0, 1).map((row, index) => (
+          <Grid container spacing={2} key={`contact-point-${index}`}>
+            <Grid item xs={12}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Latitude"
+                    value={row?.lat || ''}
+                    onChange={(event) => updateContactRowField(index, 'lat', event.target.value)}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Longitude"
+                    value={row?.lng || ''}
+                    onChange={(event) => updateContactRowField(index, 'lng', event.target.value)}
+                    fullWidth
+                  />
+                </Grid>
+              </Grid>
+            </Grid>
+            <Grid item xs={12}>
+              <Grid container spacing={2}>
+                {CONTACT_FIELD_META.map((item) => (
+                  <Grid item xs={12} md={item.key === 'address' ? 12 : 6} key={`contact-field-${item.key}`}>
+                    <Stack spacing={0.75}>
+                      <TextField
+                        label={item.label}
+                        value={row?.[item.key] || ''}
+                        onChange={(event) => updateContactRowField(index, item.key, event.target.value)}
+                        fullWidth
+                      />
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Iconify icon={getContactFieldIcon(row, item.key)} width={20} />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => openIconPickerForContactField(item.key)}
+                        >
+                          Pick {item.label} icon
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Grid>
+                ))}
+              </Grid>
+            </Grid>
+          </Grid>
+        ))}
+
+        <IconPickerDrawer
+          open={contactIconToolOpen}
+          onClose={() => setContactIconToolOpen(false)}
+          contextLabel={`${CONTACT_FIELD_META.find((item) => item.key === contactIconField)?.label || 'contact'} field`}
+          searchQuery={iconSearchQuery}
+          onSearchQueryChange={(event) => setIconSearchQuery(event.target.value)}
+          filteredIcons={filteredCategoryIcons}
+          selectedIcon={getContactFieldIcon(contactHeroContent.contacts?.[0], contactIconField)}
+          onSelectIcon={(iconName) => {
+            const iconKey = CONTACT_ICON_KEY_BY_FIELD[contactIconField];
+            if (iconKey) {
+              updateContactRowField(0, iconKey, iconName);
+            }
+            setContactIconToolOpen(false);
+          }}
+        />
+
+        <Box>
+          <LoadingButton
+            variant="contained"
+            loading={contactHeroContentSubmitting}
+            onClick={handleSaveContactHeroContent}
+          >
+            Save contact hero content
+          </LoadingButton>
+        </Box>
+      </Stack>
+    </Card>
+  );
+
   const renderSectionSwitcher = (
     <Card sx={{ p: 3 }}>
       <Stack spacing={2}>
@@ -1032,6 +1497,7 @@ export function AdminSettingsView() {
         )}
         {activeSection === 'cards' && renderHomeCardsSettings}
         {activeSection === 'join' && renderHomeJoinSettings}
+        {activeSection === 'contact' && renderContactHeroSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

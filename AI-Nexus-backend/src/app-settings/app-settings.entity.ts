@@ -45,6 +45,28 @@ export type HomeJoinContent = {
   ctaIcon?: string;
 };
 
+export type ContactHeroContent = {
+  headingLine1?: string;
+  headingLine2?: string;
+  infoTitle?: string;
+  infoSubtitle?: string;
+  contacts?: Array<{
+    details?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    whatsapp?: string;
+    website?: string;
+    addressIcon?: string;
+    phoneIcon?: string;
+    emailIcon?: string;
+    whatsappIcon?: string;
+    websiteIcon?: string;
+    lat?: number | string;
+    lng?: number | string;
+  }>;
+};
+
 @Entity('app_settings')
 export class AppSettingsEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -68,6 +90,14 @@ export class AppSettingsEntity {
   /** Public home join section content managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
   homeJoinContent?: HomeJoinContent | null;
+
+  /** Public contact hero background (uploaded asset path or null = use built-in default). */
+  @Column({ type: 'varchar', nullable: true })
+  contactHeroImageUrl?: string | null;
+
+  /** Public contact hero text and map points managed from admin panel. */
+  @Column({ type: 'jsonb', nullable: true })
+  contactHeroContent?: ContactHeroContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

@@ -9,7 +9,7 @@ import { useSettingsContext } from 'src/components/settings';
 import { Main } from './main';
 import { NavMobile } from './nav/mobile';
 import { NavDesktop } from './nav/desktop';
-// import { Footer, HomeFooter } from './footer'; // footer commented out below
+import { Footer, HomeFooter } from './footer';
 import { HeaderBase } from '../core/header-base';
 import { LayoutSection } from '../core/layout-section';
 import { navData as mainNavData } from '../config-nav-main';
@@ -80,10 +80,9 @@ export function MainLayout({ sx, data, children }) {
           />
         }
         /** **************************************
-         * Footer – commented out
+         * Footer (stats + dynamic contact + links)
          *************************************** */
-        footerSection={null}
-        // footerSection={homePage ? <HomeFooter /> : <Footer layoutQuery={layoutQuery} />}
+        footerSection={homePage ? <HomeFooter /> : <Footer layoutQuery={layoutQuery} />}
         /** **************************************
          * Style
          *************************************** */

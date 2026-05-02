@@ -167,6 +167,53 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Post('contact-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload contact page hero background image' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadContactHero(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadContactHeroImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('contact-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove contact page hero background image (revert to default)' })
+  async removeContactHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removeContactHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('home-hero-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
@@ -194,6 +241,16 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Update home page join section content' })
   async updateHomeJoinContent(@Res() response: Response, @Body() payload: any) {
     const result = await this.appSettingsService.updateHomeJoinContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('contact-hero-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update contact page hero text and map content' })
+  async updateContactHeroContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateContactHeroContent(payload || {});
     return response.status(HttpStatus.OK).json(result);
   }
 }

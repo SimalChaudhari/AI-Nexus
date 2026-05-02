@@ -13,6 +13,7 @@ function transformSettings(settings) {
   const sourceContent = settings?.homeHeroContent;
   const sourceCards = settings?.homeCardsContent;
   const sourceJoin = settings?.homeJoinContent;
+  const sourceContactHero = settings?.contactHeroContent;
   const normalizedStats = Array.isArray(sourceContent?.stats)
     ? sourceContent.stats.slice(0, 3).map((item) => ({
         value: item?.value ? String(item.value) : '',
@@ -24,6 +25,7 @@ function transformSettings(settings) {
   return {
     logoUrl: normalizeAssetUrl(settings?.logoUrl || ''),
     homeHeroImageUrl: normalizeAssetUrl(settings?.homeHeroImageUrl || ''),
+    contactHeroImageUrl: normalizeAssetUrl(settings?.contactHeroImageUrl || ''),
     homeHeroContent: sourceContent && typeof sourceContent === 'object'
       ? {
           headline: sourceContent.headline != null ? String(sourceContent.headline) : '',
@@ -78,6 +80,35 @@ function transformSettings(settings) {
             ctaIcon: sourceJoin?.ctaIcon != null ? String(sourceJoin.ctaIcon) : '',
           }
         : null,
+    contactHeroContent:
+      sourceContactHero && typeof sourceContactHero === 'object'
+        ? {
+            headingLine1:
+              sourceContactHero?.headingLine1 != null ? String(sourceContactHero.headingLine1) : '',
+            headingLine2:
+              sourceContactHero?.headingLine2 != null ? String(sourceContactHero.headingLine2) : '',
+            infoTitle: sourceContactHero?.infoTitle != null ? String(sourceContactHero.infoTitle) : '',
+            infoSubtitle:
+              sourceContactHero?.infoSubtitle != null ? String(sourceContactHero.infoSubtitle) : '',
+            contacts: Array.isArray(sourceContactHero?.contacts)
+              ? sourceContactHero.contacts.slice(0, 12).map((row) => ({
+                  details: row?.details != null ? String(row.details) : '',
+                  address: row?.address != null ? String(row.address) : '',
+                  phone: row?.phone != null ? String(row.phone) : '',
+                  email: row?.email != null ? String(row.email) : '',
+                  whatsapp: row?.whatsapp != null ? String(row.whatsapp) : '',
+                  website: row?.website != null ? String(row.website) : '',
+                  addressIcon: row?.addressIcon != null ? String(row.addressIcon) : '',
+                  phoneIcon: row?.phoneIcon != null ? String(row.phoneIcon) : '',
+                  emailIcon: row?.emailIcon != null ? String(row.emailIcon) : '',
+                  whatsappIcon: row?.whatsappIcon != null ? String(row.whatsappIcon) : '',
+                  websiteIcon: row?.websiteIcon != null ? String(row.websiteIcon) : '',
+                  lat: row?.lat != null ? Number(row.lat) : '',
+                  lng: row?.lng != null ? Number(row.lng) : '',
+                }))
+              : [],
+          }
+        : null,
   };
 }
 
@@ -124,6 +155,24 @@ export const appSettingsService = {
     return transformSettings(data);
   },
 
+  async uploadContactHero(file) {
+    const formData = new FormData();
+    formData.append('hero', file);
+
+    const response = await axios.post('/app-settings/contact-hero', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeContactHero() {
+    const response = await axios.delete('/app-settings/contact-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
   async updateHomeHeroContent(payload) {
     const response = await axios.put('/app-settings/home-hero-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
@@ -138,6 +187,12 @@ export const appSettingsService = {
 
   async updateHomeJoinContent(payload) {
     const response = await axios.put('/app-settings/home-join-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateContactHeroContent(payload) {
+    const response = await axios.put('/app-settings/contact-hero-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

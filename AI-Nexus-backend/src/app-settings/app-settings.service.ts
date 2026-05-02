@@ -43,15 +43,39 @@ type HomeJoinContentPayload = {
   ctaIcon?: string;
 };
 
+type ContactHeroContentPayload = {
+  headingLine1?: string;
+  headingLine2?: string;
+  infoTitle?: string;
+  infoSubtitle?: string;
+  contacts?: Array<{
+    details?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    whatsapp?: string;
+    website?: string;
+    addressIcon?: string;
+    phoneIcon?: string;
+    emailIcon?: string;
+    whatsappIcon?: string;
+    websiteIcon?: string;
+    lat?: number | string;
+    lng?: number | string;
+  }>;
+};
+
 const HERO_HEADLINE_MAX_LENGTH = 60;
 const HERO_CTA_LABEL_MAX_LENGTH = 32;
 const HOME_JOIN_HEADING_MAX_LENGTH = 100;
 const HOME_JOIN_CTA_LABEL_MAX_LENGTH = 40;
+const CONTACT_HEADING_LINE_MAX_LENGTH = 80;
 
 @Injectable()
 export class AppSettingsService {
   private homeCardsColumnChecked = false;
   private homeJoinColumnChecked = false;
+  private contactHeroColumnsChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -79,9 +103,21 @@ export class AppSettingsService {
     this.homeJoinColumnChecked = true;
   }
 
+  private async ensureContactHeroColumns(): Promise<void> {
+    if (this.contactHeroColumnsChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "contactHeroImageUrl" varchar'
+    );
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "contactHeroContent" jsonb'
+    );
+    this.contactHeroColumnsChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
+    await this.ensureContactHeroColumns();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -159,6 +195,38 @@ export class AppSettingsService {
 
     return {
       message: 'Home hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadContactHeroImage(file: Express.Multer.File): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('contact-hero');
+
+    const relativeUrl = await this.localStorageService.saveFile(file, 'contact-hero', {
+      fileName: 'contact-hero-bg',
+    });
+
+    settings.contactHeroImageUrl = relativeUrl;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Contact hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeContactHeroImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('contact-hero');
+
+    settings.contactHeroImageUrl = null;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Contact hero image removed successfully',
       settings: saved,
     };
   }
@@ -242,6 +310,42 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizeContactLatLng(value: unknown): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private sanitizeContactHeroContent(input: unknown): ContactHeroContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const contacts = Array.isArray(source.contacts) ? source.contacts : [];
+
+    return {
+      headingLine1: this.cleanText(source.headingLine1, CONTACT_HEADING_LINE_MAX_LENGTH),
+      headingLine2: this.cleanText(source.headingLine2, CONTACT_HEADING_LINE_MAX_LENGTH),
+      infoTitle: this.cleanText(source.infoTitle, 120),
+      infoSubtitle: this.cleanText(source.infoSubtitle, 240),
+      contacts: contacts.slice(0, 12).map((item: any) => {
+        const lat = this.sanitizeContactLatLng(item?.lat);
+        const lng = this.sanitizeContactLatLng(item?.lng);
+        return {
+          details: this.cleanText(item?.details),
+          address: this.cleanText(item?.address),
+          phone: this.cleanText(item?.phone, 60),
+          email: this.cleanText(item?.email, 120),
+          whatsapp: this.cleanText(item?.whatsapp, 60),
+          website: this.cleanText(item?.website, 160),
+          addressIcon: this.cleanText(item?.addressIcon, 120),
+          phoneIcon: this.cleanText(item?.phoneIcon, 120),
+          emailIcon: this.cleanText(item?.emailIcon, 120),
+          whatsappIcon: this.cleanText(item?.whatsappIcon, 120),
+          websiteIcon: this.cleanText(item?.websiteIcon, 120),
+          lat: lat ?? '',
+          lng: lng ?? '',
+        };
+      }),
+    };
+  }
+
   async updateHomeHeroContent(
     payload: HomeHeroContentPayload
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -278,12 +382,26 @@ export class AppSettingsService {
     };
   }
 
+  async updateContactHeroContent(
+    payload: ContactHeroContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.contactHeroContent = this.sanitizeContactHeroContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Contact hero content updated successfully',
+      settings: saved,
+    };
+  }
+
   async getPublicSettings(): Promise<{
     logoUrl: string | null;
     homeHeroImageUrl: string | null;
     homeHeroContent: HomeHeroContentPayload | null;
     homeCardsContent: HomeCardsContentPayload | null;
     homeJoinContent: HomeJoinContentPayload | null;
+    contactHeroImageUrl: string | null;
+    contactHeroContent: ContactHeroContentPayload | null;
   }> {
     const settings = await this.getSettings();
 
@@ -293,6 +411,8 @@ export class AppSettingsService {
       homeHeroContent: settings.homeHeroContent ?? null,
       homeCardsContent: settings.homeCardsContent ?? null,
       homeJoinContent: settings.homeJoinContent ?? null,
+      contactHeroImageUrl: settings.contactHeroImageUrl ?? null,
+      contactHeroContent: settings.contactHeroContent ?? null,
     };
   }
 
