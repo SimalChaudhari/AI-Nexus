@@ -16,6 +16,12 @@ export function HexColorToolDrawer({
   onApplyAccentColor,
   headingColor,
   accentColor,
+  title = 'HEX Color Tool',
+  description = 'Pick color from box or type HEX. Then apply to fields.',
+  startLabel = 'Primary HEX',
+  endLabel = 'Secondary HEX',
+  applyStartLabel = 'Apply',
+  applyEndLabel = 'Apply',
 }) {
   return (
     <Drawer
@@ -26,14 +32,14 @@ export function HexColorToolDrawer({
     >
       <Stack spacing={2.25}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">HEX Color Tool</Typography>
+          <Typography variant="h6">{title}</Typography>
           <Button color="inherit" onClick={onClose}>
             Close
           </Button>
         </Stack>
 
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          Pick color from box or type HEX. Then apply to heading fields.
+          {description}
         </Typography>
 
         <Stack spacing={1.5} sx={{ p: 1.5, borderRadius: 1.5, border: (theme) => `1px solid ${theme.palette.divider}` }}>
@@ -52,9 +58,9 @@ export function HexColorToolDrawer({
                 cursor: 'pointer',
               }}
             />
-            <TextField label="Heading HEX" size="small" value={startColor} onChange={onStartColorChange} fullWidth placeholder="#9b2a77" />
+            <TextField label={startLabel} size="small" value={startColor} onChange={onStartColorChange} fullWidth placeholder="#9b2a77" />
             <Button variant="outlined" onClick={onApplyHeadingColor}>
-              Apply
+              {applyStartLabel}
             </Button>
           </Stack>
 
@@ -73,9 +79,9 @@ export function HexColorToolDrawer({
                 cursor: 'pointer',
               }}
             />
-            <TextField label="Accent HEX" size="small" value={endColor} onChange={onEndColorChange} fullWidth placeholder="#57c785" />
+            <TextField label={endLabel} size="small" value={endColor} onChange={onEndColorChange} fullWidth placeholder="#57c785" />
             <Button variant="outlined" onClick={onApplyAccentColor}>
-              Apply
+              {applyEndLabel}
             </Button>
           </Stack>
         </Stack>

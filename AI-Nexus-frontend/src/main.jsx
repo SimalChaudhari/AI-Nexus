@@ -7,6 +7,7 @@ import { Provider } from 'react-redux';
 import App from './app';
 import { CONFIG } from './config-global';
 import { store } from './store';
+import { LoadingScreen } from './components/loading-screen';
 
 // ----------------------------------------------------------------------
 
@@ -17,7 +18,7 @@ root.render(
     <Provider store={store}>
       <HelmetProvider>
         <BrowserRouter basename={CONFIG.site.basePath}>
-          <Suspense>
+          <Suspense fallback={<LoadingScreen />}>
             <App />
           </Suspense>
         </BrowserRouter>

@@ -17,19 +17,33 @@ import { TableHeadCustom } from 'src/components/table';
 
 // ----------------------------------------------------------------------
 
-export function AppNewInvoice({ title, subheader, tableData = [], headLabel, onViewAll, ...other }) {
+export function AppNewInvoice({ title, subheader, tableData = [], headLabel, onViewAll, sx, ...other }) {
+  const columnCount = Array.isArray(headLabel) && headLabel.length ? headLabel.length : 5;
+
   return (
-    <Card {...other}>
+    <Card
+      {...other}
+      sx={[
+        { height: 1, display: 'flex', flexDirection: 'column' },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+    >
       <CardHeader title={title} subheader={subheader} sx={{ mb: 3 }} />
 
-      <Scrollbar sx={{ minHeight: 402 }}>
+      <Scrollbar sx={{ minHeight: 0, flex: 1 }}>
         <Table sx={{ minWidth: 680 }}>
           <TableHeadCustom headLabel={headLabel} />
 
           <TableBody>
-            {tableData.map((row) => (
-              <RowItem key={row.id} row={row} />
-            ))}
+            {tableData.length ? (
+              tableData.map((row) => <RowItem key={row.id} row={row} />)
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columnCount} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  No order found.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </Scrollbar>
@@ -53,7 +67,7 @@ export function AppNewInvoice({ title, subheader, tableData = [], headLabel, onV
 function RowItem({ row }) {
   return (
     <TableRow>
-      <TableCell>{row.invoiceNumber}</TableCell>
+      <TableCell>{row.invoiceNumber || 'Order ID not found'}</TableCell>
 
       <TableCell>{row.category}</TableCell>
 

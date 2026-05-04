@@ -4,6 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import Button from '@mui/material/Button';
@@ -47,11 +49,11 @@ const CONTACT_ICON_KEY_BY_FIELD = {
   website: 'websiteIcon',
 };
 const CONTACT_FIELD_META = [
-  { key: 'address', label: 'Address', defaultIcon: 'solar:map-point-bold' },
-  { key: 'phone', label: 'Phone', defaultIcon: 'solar:phone-bold' },
-  { key: 'email', label: 'Email', defaultIcon: 'solar:letter-bold' },
-  { key: 'whatsapp', label: 'WhatsApp', defaultIcon: 'ri:whatsapp-fill' },
-  { key: 'website', label: 'Website', defaultIcon: 'mdi:web' },
+  { key: 'address', label: 'Address', defaultIcon: 'solar:map-point-bold', color: 'error' },
+  { key: 'phone', label: 'Phone', defaultIcon: 'solar:phone-bold', color: 'info' },
+  { key: 'email', label: 'Email', defaultIcon: 'solar:letter-bold', color: 'secondary' },
+  { key: 'whatsapp', label: 'WhatsApp', defaultIcon: 'ri:whatsapp-fill', color: 'success' },
+  { key: 'website', label: 'Website', defaultIcon: 'mdi:web', color: 'warning' },
 ];
 
 const parseContactDetailFields = (detailsHtml = '') => {
@@ -858,36 +860,42 @@ export function AdminSettingsView() {
     {
       key: 'logo',
       badge: 'L',
+      icon: 'solar:camera-bold-duotone',
       title: 'Site Logo',
       description: 'Manage public header logo image.',
     },
     {
       key: 'hero',
       badge: 'H',
+      icon: 'solar:gallery-wide-bold-duotone',
       title: 'Hero',
       description: 'Manage hero background and content together.',
     },
     {
       key: 'cards',
       badge: 'C',
+      icon: 'solar:widget-6-bold-duotone',
       title: 'Home Cards',
       description: 'Manage second home section heading and cards.',
     },
     {
       key: 'join',
       badge: 'J',
+      icon: 'solar:hand-heart-bold-duotone',
       title: 'Join Section',
       description: 'Manage call-to-action join section content.',
     },
     {
       key: 'contact',
       badge: 'CT',
+      icon: 'solar:phone-calling-rounded-bold-duotone',
       title: 'Contact Hero',
       description: 'Manage contact page banner, heading, and map points.',
     },
     {
       key: 'header-visibility',
       badge: 'V',
+      icon: 'solar:eye-bold-duotone',
       title: 'Header Visibility',
       description: 'Toggle top bar icons visibility.',
     },
@@ -1322,11 +1330,11 @@ export function AdminSettingsView() {
           </Grid>
         </Grid>
 
-        <Stack spacing={0.25}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+        <Stack spacing={0.25} sx={{ pb: 0.25 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
             Contact information
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Configure contact fields and choose icons shown on frontend.
           </Typography>
         </Stack>
@@ -1357,21 +1365,54 @@ export function AdminSettingsView() {
               <Grid container spacing={2}>
                 {CONTACT_FIELD_META.map((item) => (
                   <Grid item xs={12} md={item.key === 'address' ? 12 : 6} key={`contact-field-${item.key}`}>
-                    <Stack spacing={0.75}>
+                    <Stack
+                      spacing={1}
+                      sx={(theme) => ({
+                        p: 1.5,
+                        borderRadius: 2,
+                        border: `1px solid ${theme.palette.divider}`,
+                        bgcolor: theme.palette.background.neutral,
+                      })}
+                    >
                       <TextField
                         label={item.label}
                         value={row?.[item.key] || ''}
                         onChange={(event) => updateContactRowField(index, item.key, event.target.value)}
                         fullWidth
                       />
-                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                        <Iconify icon={getContactFieldIcon(row, item.key)} width={20} />
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        justifyContent="space-between"
+                        flexWrap="wrap"
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box
+                            sx={(theme) => ({
+                              width: 30,
+                              height: 30,
+                              borderRadius: 1.25,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: theme.palette[item.color || 'primary'].main,
+                              bgcolor: theme.palette[item.color || 'primary'].lighter,
+                            })}
+                          >
+                            <Iconify icon={getContactFieldIcon(row, item.key)} width={18} />
+                          </Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                            {item.label} icon
+                          </Typography>
+                        </Stack>
                         <Button
                           size="small"
-                          variant="outlined"
+                          variant="contained"
+                          color={item.color || 'primary'}
                           onClick={() => openIconPickerForContactField(item.key)}
                         >
-                          Pick {item.label} icon
+                          Change icon
                         </Button>
                       </Stack>
                     </Stack>
@@ -1412,66 +1453,60 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const activeSectionItem = sectionCards.find((item) => item.key === activeSection);
+
   const renderSectionSwitcher = (
-    <Card sx={{ p: 3 }}>
-      <Stack spacing={2}>
-        <Grid container spacing={2}>
-          {sectionCards.map((section) => {
-            const isActive = activeSection === section.key;
-            return (
-              <Grid item xs={12} sm={6} md={3} key={section.key}>
-                <Box
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(paths.admin.settingsSection(section.key))}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      navigate(paths.admin.settingsSection(section.key));
-                    }
-                  }}
-                  sx={{
-                    p: 2,
-                    borderRadius: 2,
-                    cursor: 'pointer',
-                    border: (theme) =>
-                      `1px solid ${isActive ? theme.palette.primary.main : theme.palette.divider}`,
-                    bgcolor: (theme) =>
-                      isActive ? theme.palette.action.selected : theme.palette.background.paper,
-                    transition: 'all 0.2s ease',
-                    '&:hover': {
-                      borderColor: 'primary.main',
-                    },
-                  }}
-                >
-                  <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 0.75 }}>
-                    <Box
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: '50%',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: isActive ? 'primary.main' : 'text.secondary',
-                        bgcolor: isActive ? 'primary.lighter' : 'action.hover',
-                      }}
-                    >
-                      {section.badge}
-                    </Box>
-                    <Typography variant="subtitle2">{section.title}</Typography>
-                  </Stack>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {section.description}
-                  </Typography>
-                </Box>
-              </Grid>
-            );
-          })}
-        </Grid>
-      </Stack>
+    <Card sx={{ p: { xs: 1, sm: 1.5 } }}>
+      <Tabs
+        value={activeSection}
+        onChange={(_, value) => navigate(paths.admin.settingsSection(value))}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
+        sx={(theme) => ({
+          px: { xs: 0.5, sm: 1 },
+          '& .MuiTabs-indicator': {
+            height: 4,
+            borderRadius: 99,
+            background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+          },
+          '& .MuiTab-root': {
+            minHeight: 48,
+            textTransform: 'none',
+            fontWeight: 600,
+            px: 1.5,
+            borderRadius: 1.5,
+            color: 'text.secondary',
+            transition: 'all 0.2s ease',
+            '& .MuiSvgIcon-root, & svg': { opacity: 0.8 },
+            '&:hover': {
+              color: 'primary.main',
+              bgcolor: 'action.hover',
+            },
+          },
+          '& .MuiTab-root.Mui-selected': {
+            color: 'primary.main',
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(227,43,36,0.18)' : 'rgba(227,43,36,0.10)',
+            '& .MuiSvgIcon-root, & svg': { opacity: 1 },
+          },
+        })}
+      >
+        {sectionCards.map((section) => (
+          <Tab
+            key={section.key}
+            value={section.key}
+            icon={<Iconify icon={section.icon || 'solar:settings-bold-duotone'} width={18} />}
+            iconPosition="start"
+            label={section.title}
+          />
+        ))}
+      </Tabs>
+
+      {activeSectionItem ? (
+        <Typography variant="body2" sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.5, color: 'text.secondary' }}>
+          {activeSectionItem.description}
+        </Typography>
+      ) : null}
     </Card>
   );
 

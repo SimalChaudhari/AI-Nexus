@@ -154,7 +154,7 @@ export function OverviewAppView() {
           />
         </Grid>
 
-        <Grid xs={12} lg={8}>
+        <Grid xs={12} lg={6} sx={{ display: 'flex' }}>
           <AppNewInvoice
             title="Recent orders"
             subheader="Latest completed orders"
@@ -167,14 +167,16 @@ export function OverviewAppView() {
               { id: 'status', label: 'Status' },
             ]}
             onViewAll={() => router.push(paths.admin.order.list)}
+            sx={{ width: 1 }}
           />
         </Grid>
 
-        <Grid xs={12} lg={4}>
+        <Grid xs={12} lg={6} sx={{ display: 'flex' }}>
           <AppTopRatedCourses
             title="Top rated courses"
             subheader="Based on learner reviews"
             list={topRatedCourses}
+            sx={{ width: 1 }}
           />
         </Grid>
       </Grid>

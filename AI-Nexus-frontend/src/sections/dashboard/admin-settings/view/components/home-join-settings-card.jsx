@@ -7,6 +7,8 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
 import LoadingButton from '@mui/lab/LoadingButton';
 
 import { Editor } from 'src/components/editor';
@@ -27,7 +29,7 @@ export function HomeJoinSettingsCard({ joinContent, setJoinContent, joinContentS
     <Card sx={{ p: 3 }}>
       <Stack spacing={2.5}>
         <Box>
-          <Typography variant="h6" sx={{ mb: 1 }}>
+          <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
             Home Join Section
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -35,15 +37,34 @@ export function HomeJoinSettingsCard({ joinContent, setJoinContent, joinContentS
           </Typography>
         </Box>
 
-        <TextField
-          label="Heading"
-          value={joinContent.heading}
-          onChange={(event) => setJoinContent((prev) => ({ ...prev, heading: event.target.value }))}
-          fullWidth
-        />
+        <Box
+          sx={(theme) => ({
+            p: 1.5,
+            borderRadius: 2,
+            border: `1px solid ${theme.palette.divider}`,
+            bgcolor: theme.palette.background.neutral,
+          })}
+        >
+          <TextField
+            label="Heading"
+            value={joinContent.heading}
+            onChange={(event) => setJoinContent((prev) => ({ ...prev, heading: event.target.value }))}
+            fullWidth
+          />
+        </Box>
 
-        <Stack spacing={0.75}>
-          <Typography variant="subtitle2">Subtitle</Typography>
+        <Stack
+          spacing={0.75}
+          sx={(theme) => ({
+            p: 1.5,
+            borderRadius: 2,
+            border: `1px solid ${theme.palette.divider}`,
+            bgcolor: theme.palette.background.neutral,
+          })}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Subtitle
+          </Typography>
           <Editor
             value={joinContent.subtitle}
             onChange={(value) => setJoinContent((prev) => ({ ...prev, subtitle: value }))}
@@ -55,6 +76,7 @@ export function HomeJoinSettingsCard({ joinContent, setJoinContent, joinContentS
                   minHeight: 170,
                   borderRadius: 1.5,
                   border: (theme) => `1px solid ${theme.palette.divider}`,
+                  bgcolor: 'background.paper',
                 },
               },
             }}
@@ -62,56 +84,37 @@ export function HomeJoinSettingsCard({ joinContent, setJoinContent, joinContentS
         </Stack>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{
-                p: 1,
-                borderRadius: 1.5,
-                border: (theme) => `1px solid ${theme.palette.divider}`,
-                bgcolor: 'background.neutral',
-                width: '100%',
-                minHeight: 56,
-              }}
-            >
-              <Box
-                sx={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 1.2,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: 'background.paper',
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
-                  flexShrink: 0,
-                }}
-              >
-                <Iconify icon={joinContent.ctaIcon || defaultJoinIcon} width={22} />
-              </Box>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  setIconSearchQuery('');
-                  setIconToolOpen(true);
-                }}
-                sx={{ flex: 1 }}
-              >
-                Pick icon
-              </Button>
-            </Stack>
-          </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6}>
             <TextField
               label="Button label"
               value={joinContent.ctaLabel}
               onChange={(event) => setJoinContent((prev) => ({ ...prev, ctaLabel: event.target.value }))}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setIconSearchQuery('');
+                        setIconToolOpen(true);
+                      }}
+                      sx={{
+                        width: 34,
+                        height: 34,
+                        bgcolor: 'primary.main',
+                        color: 'common.white',
+                        '&:hover': { bgcolor: 'primary.dark' },
+                      }}
+                    >
+                      <Iconify icon={joinContent.ctaIcon || defaultJoinIcon} width={18} />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
               fullWidth
             />
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6}>
             <TextField
               label="Button URL"
               value={joinContent.ctaHref}
