@@ -235,7 +235,7 @@ export function HeaderBase({
                   isCustomerFacingRoute
                     ? {
                         /* One size on all breakpoints so branding doesn’t scale when the bar reflows */
-                        width: 140,
+                        width: { xs: 100, md: 150 },
                         height: 'auto',
                         minHeight: 'unset',
                         display: 'block',
