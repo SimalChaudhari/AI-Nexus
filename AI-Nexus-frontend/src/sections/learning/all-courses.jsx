@@ -11,6 +11,7 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
+import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
@@ -72,6 +73,40 @@ const getCourseContentMeta = (course = {}) => {
   };
 };
 
+const getCourseProgressPercent = (overviewRow) => {
+  const modules = Array.isArray(overviewRow?.modules) ? overviewRow.modules : [];
+  const progress = overviewRow?.progress && typeof overviewRow.progress === 'object' ? overviewRow.progress : {};
+  const viewedIds = Array.isArray(progress.viewedSectionIds)
+    ? new Set(progress.viewedSectionIds.filter(Boolean).map(String))
+    : new Set();
+
+  let totalSections = 0;
+  let weightedCompletion = 0;
+  modules.forEach((moduleRow) => {
+    const sections = Array.isArray(moduleRow?.sections) ? moduleRow.sections : [];
+    sections.forEach((section) => {
+      totalSections += 1;
+      const sectionId = String(section?.id || '');
+      const sp = section?.sectionProgress && typeof section.sectionProgress === 'object' ? section.sectionProgress : {};
+      const explicitCompletion = Number(sp.completionPercent ?? sp.currentProgress ?? 0);
+      const duration = Number(sp.durationSeconds ?? 0);
+      const lastPosition = Number(sp.lastPositionSeconds ?? 0);
+      let sectionPercent = 0;
+      if (Number.isFinite(explicitCompletion) && explicitCompletion > 0) {
+        sectionPercent = Math.max(0, Math.min(100, explicitCompletion));
+      } else if (duration > 0 && Number.isFinite(lastPosition) && lastPosition > 0) {
+        sectionPercent = Math.max(0, Math.min(100, (lastPosition / duration) * 100));
+      } else if (sp.isCompleted === true || sp.isWatched === true || viewedIds.has(sectionId)) {
+        sectionPercent = 100;
+      }
+      weightedCompletion += sectionPercent;
+    });
+  });
+
+  if (!totalSections) return 0;
+  return Math.min(100, Math.round(weightedCompletion / totalSections));
+};
+
 const shouldShowTitleTooltip = (title) => String(title || '').trim().length > 42;
 
 export function AllCourses({ refreshSignal = 0 }) {
@@ -125,6 +160,7 @@ export function AllCourses({ refreshSignal = 0 }) {
   const [favorites, setFavorites] = useState(new Set());
   const [favoriteLoading, setFavoriteLoading] = useState(new Set());
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
+  const [courseProgressById, setCourseProgressById] = useState({});
   const enrolledCourseIds = useMemo(
     () => new Set(courses.filter((course) => course.isEnrolled).map((course) => course.id)),
     [courses]
@@ -373,6 +409,35 @@ export function AllCourses({ refreshSignal = 0 }) {
 
     fetchCoursesPage();
   }, [authenticated, debouncedSearchQuery, fetchCoursesPage, refreshSignal]);
+
+  useEffect(() => {
+    let active = true;
+    if (!authenticated) {
+      setCourseProgressById({});
+      return () => {
+        active = false;
+      };
+    }
+    const loadProgressOverview = async () => {
+      try {
+        const rows = await courseService.getMyProgressOverview();
+        if (!active) return;
+        const nextProgressMap = (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+          const courseId = row?.course?.id ? String(row.course.id) : '';
+          if (!courseId) return acc;
+          acc[courseId] = getCourseProgressPercent(row);
+          return acc;
+        }, {});
+        setCourseProgressById(nextProgressMap);
+      } catch (_error) {
+        if (active) setCourseProgressById({});
+      }
+    };
+    loadProgressOverview();
+    return () => {
+      active = false;
+    };
+  }, [authenticated, refreshSignal]);
 
   /* Desktop filter panel visibility / floating filter button — restore with filters UI
   useEffect(() => { ... }, [desktopFiltersOpen, isDesktop]);
@@ -690,6 +755,13 @@ export function AllCourses({ refreshSignal = 0 }) {
                         >
                           {group.items.map((course) => {
                             const { moduleCount, sectionCount } = getCourseContentMeta(course);
+                            const courseProgress = Number.isFinite(courseProgressById[course.id])
+                              ? courseProgressById[course.id]
+                              : 0;
+                            const showCourseProgress =
+                              authenticated &&
+                              courseProgress > 0 &&
+                              (!course.freeOrPaid || isEnrolled(course.id));
                             return (
                               <Grid key={course.id} xs={1}>
                                 <Card
@@ -967,6 +1039,28 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         sx={{ mb: 0.75 }}
                                       />
                                     )}
+                                    {showCourseProgress && (
+                                      <Box sx={{ mb: 0.8 }}>
+                                        <Stack
+                                          direction="row"
+                                          alignItems="center"
+                                          justifyContent="space-between"
+                                          sx={{ mb: 0.35 }}
+                                        >
+                                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                                            Progress
+                                          </Typography>
+                                          <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                                            {courseProgress}%
+                                          </Typography>
+                                        </Stack>
+                                        <LinearProgress
+                                          variant="determinate"
+                                          value={Math.max(0, Math.min(100, courseProgress))}
+                                          sx={{ height: 6, borderRadius: 999 }}
+                                        />
+                                      </Box>
+                                    )}
                                     <Stack
                                       direction="row"
                                       alignItems="center"
@@ -1160,6 +1254,13 @@ export function AllCourses({ refreshSignal = 0 }) {
                           <Stack spacing={2}>
                             {group.items.map((course) => {
                               const { moduleCount, sectionCount } = getCourseContentMeta(course);
+                              const courseProgress = Number.isFinite(courseProgressById[course.id])
+                                ? courseProgressById[course.id]
+                                : 0;
+                              const showCourseProgress =
+                                authenticated &&
+                                courseProgress > 0 &&
+                                (!course.freeOrPaid || isEnrolled(course.id));
                               return (
                                 <Card
                                   key={course.id}
@@ -1379,6 +1480,28 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         }
                                         sx={{ mb: 1 }}
                                       />
+                                    )}
+                                    {showCourseProgress && (
+                                      <Box sx={{ mb: 0.95 }}>
+                                        <Stack
+                                          direction="row"
+                                          alignItems="center"
+                                          justifyContent="space-between"
+                                          sx={{ mb: 0.35 }}
+                                        >
+                                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                                            Progress
+                                          </Typography>
+                                          <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                                            {courseProgress}%
+                                          </Typography>
+                                        </Stack>
+                                        <LinearProgress
+                                          variant="determinate"
+                                          value={Math.max(0, Math.min(100, courseProgress))}
+                                          sx={{ height: 6, borderRadius: 999 }}
+                                        />
+                                      </Box>
                                     )}
                                     <Stack
                                       direction="row"

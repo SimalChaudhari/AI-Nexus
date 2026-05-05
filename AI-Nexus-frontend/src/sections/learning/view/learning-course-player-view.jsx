@@ -497,9 +497,9 @@ function getModuleIdFromPracticeLessonId(lessonId) {
   return isUuid(rest) ? rest : null;
 }
 const swrOptions = {
-  revalidateIfStale: false,
-  revalidateOnFocus: false,
-  revalidateOnReconnect: false,
+  revalidateIfStale: true,
+  revalidateOnFocus: true,
+  revalidateOnReconnect: true,
 };
 
 const LESSON_FRAME_HEIGHT = { xs: 260, sm: 320, md: 580 };
@@ -3423,30 +3423,56 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 const v = e.target;
                 if (!v || embedUrl) return;
                 if (sectionProgressData?.isCompleted || nativeVideoProgressRef.current.markedComplete) return;
+                const prog = nativeVideoProgressRef.current;
+                const current = Math.max(0, Number(v.currentTime || 0));
                 const durRounded = Math.round(Number(v.duration) || 0);
                 const merged = mergeCoverageRangesPlayer(parseCoverageRangePairs(videoCoverageRangesRef.current));
                 let maxAllowed = maxCoverageEndPlayer(merged);
                 if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
-                const progMax = Number(nativeVideoProgressRef.current.maxWatchedTimeline || 0);
-                maxAllowed = Math.max(maxAllowed, progMax);
-                const slack = 0.5;
-                if (v.currentTime > maxAllowed + slack) {
-                  try {
-                    const cap = durRounded > 0 ? Math.min(maxAllowed, durRounded) : maxAllowed;
-                    v.currentTime = Math.max(0, cap);
-                  } catch {
-                    // ignore seek errors
-                  }
+                maxAllowed = Math.max(
+                  maxAllowed,
+                  Number(prog.maxWatchedTimeline || 0),
+                  Number(sectionProgressData?.lastPositionSeconds || 0)
+                );
+                // Allow seeking only inside already watched timeline.
+                if (current <= maxAllowed + 0.35) {
+                  prog.lastTime = current;
+                  return;
                 }
-                nativeVideoProgressRef.current.lastTime = v.currentTime;
+                try {
+                  v.currentTime = Math.max(0, maxAllowed);
+                } catch {
+                  // ignore seek errors
+                }
+                prog.lastTime = Math.max(0, maxAllowed);
               }}
               onTimeUpdate={() => {
                 const v = videoRef.current;
                 if (!v) return;
                 const prog = nativeVideoProgressRef.current;
                 if (prog.markedComplete) return;
-                const required = effectiveRequiredSeconds(watchtimeSeconds, v.duration);
+                const currentTime = Number(v.currentTime || 0);
                 const durRounded = Math.round(Number(v.duration) || 0);
+                const merged = mergeCoverageRangesPlayer(parseCoverageRangePairs(videoCoverageRangesRef.current));
+                let maxAllowed = maxCoverageEndPlayer(merged);
+                if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
+                maxAllowed = Math.max(
+                  maxAllowed,
+                  Number(prog.maxWatchedTimeline || 0),
+                  Number(sectionProgressData?.lastPositionSeconds || 0)
+                );
+                const allowedForwardDrift = 0.35;
+                // Allow moving only within watched timeline; block forward jumps beyond watched point.
+                if (currentTime > maxAllowed + allowedForwardDrift) {
+                  try {
+                    v.currentTime = Math.max(0, maxAllowed);
+                  } catch {
+                    // ignore seek reset errors
+                  }
+                  prog.lastTime = Math.max(0, maxAllowed);
+                  return;
+                }
+                const required = effectiveRequiredSeconds(watchtimeSeconds, v.duration);
                 if (prog.isPlaying) {
                   const delta = Math.abs(v.currentTime - prog.lastTime);
                   if (delta <= 2.5) {

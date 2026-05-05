@@ -506,11 +506,14 @@ export class CourseSectionWatchProgressService {
     const isCompleted = stickyCompleted || explicitCompletion || reachedRequired;
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
     const finalDuration = Math.max(computed.duration, 0);
-    const finalWatched = Math.max(0, computed.watched);
+    const previousLastPosition = Math.max(0, Number(existing?.lastPositionSeconds || 0));
+    const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
+    // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
+    const finalLastPosition = Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
+    const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched), finalLastPosition);
     const finalRemaining = Math.max(0, finalDuration - finalWatched);
-    const finalPercent = finalDuration > 0
-      ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
-      : 0;
+    const finalPercent =
+      finalDuration > 0 ? Number(((finalWatched / finalDuration) * 100).toFixed(2)) : 0;
 
     // Atomic upsert prevents duplicate-key races when multiple progress updates arrive together.
     await this.sectionProgressRepository.upsert(
@@ -519,7 +522,7 @@ export class CourseSectionWatchProgressService {
         userId,
         courseId,
         sectionId,
-        lastPositionSeconds: computed.lastPosition,
+        lastPositionSeconds: finalLastPosition,
         watchedSeconds: finalWatched,
         watchedCoverageRanges: dtoHasRanges ? nextCoverageColumn : (existing?.watchedCoverageRanges ?? null),
         durationSeconds: finalDuration,
