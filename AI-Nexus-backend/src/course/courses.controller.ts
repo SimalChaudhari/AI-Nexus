@@ -1133,6 +1133,21 @@ export class CourseController {
                     )[0];
                 const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
                 const lastAccessedAt = latestByTime?.lastAccessedAt || null;
+                const totalSections = progressRows.length;
+                const completionSum = progressRows.reduce(
+                    (sum, row) => sum + Math.max(0, Math.min(100, Number(row?.completionPercent ?? row?.currentProgress ?? 0))),
+                    0,
+                );
+                const completionPercent =
+                    totalSections > 0 ? Math.round(completionSum / totalSections) : 0;
+                const completedSectionsCount = progressRows.filter(
+                    (row) =>
+                        row?.isCompleted === true ||
+                        row?.isWatched === true ||
+                        Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99,
+                ).length;
+                const isCompleted = totalSections > 0 && completedSectionsCount >= totalSections;
+                const status = isCompleted ? 'completed' : 'in_progress';
 
                 const modules = await this.courseModuleService.findByCourseId(courseId);
                 const modulesWithSections = await Promise.all(
@@ -1157,6 +1172,9 @@ export class CourseController {
                     },
                     modules: modulesWithSections,
                     progress: {
+                        completionPercent,
+                        isCompleted,
+                        status,
                         viewedSectionIds,
                         currentSectionId: currentSectionId ? String(currentSectionId) : null,
                         lastAccessedAt,
