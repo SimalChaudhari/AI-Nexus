@@ -10,6 +10,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { RouterLink } from 'src/routes/components';
 import { RichTextContent } from 'src/components/html-content';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 
 import { EMPTY_HERO_DATA, buildHomeHeroData } from './home-hero-content';
 
@@ -505,16 +506,7 @@ export function HomeHeroSection() {
                     variant="h1"
                     sx={{
                       color: 'common.white',
-                      fontWeight: 800,
-                      fontSize: {
-                        xs: 'clamp(0.88rem, 2.2vw + 0.5rem, 1.2rem)',
-                        sm: 'clamp(1.45rem, 2.9vw, 2rem)',
-                        md: 'clamp(2rem, 2.2vw, 2.45rem)',
-                        lg: '2.95rem',
-                        xl: '3.2rem',
-                      },
-                      lineHeight: { xs: 1.18, md: 1.1 },
-                      letterSpacing: { xs: '-0.01em', md: '-0.02em' },
+                      ...HERO_TYPOGRAPHY.homeHeadline,
                       textWrap: 'balance',
                       maxWidth: { xs: '100%', sm: '24ch', md: '22ch', lg: '24ch' },
                       overflowWrap: 'anywhere',
@@ -546,14 +538,7 @@ export function HomeHeroSection() {
                     sx={{
                       display: { xs: 'none', sm: 'block' },
                       color: alpha('#fff', 0.72),
-                      fontWeight: 400,
-                      fontSize: {
-                        xs: 'clamp(0.72rem, 0.9vw + 0.62rem, 0.84rem)',
-                        sm: 'clamp(0.86rem, 1.25vw, 1rem)',
-                        md: 'clamp(0.96rem, 1.1vw, 1.05rem)',
-                        lg: '1.125rem',
-                      },
-                      lineHeight: { xs: 1.6, md: 1.65 },
+                      ...HERO_TYPOGRAPHY.homeDescription,
                       maxWidth: { xs: '100%', md: '50ch', lg: '54ch' },
                       pr: { xs: 0.5, sm: 0 },
                       '&, & *': { color: alpha('#fff', 0.72) },

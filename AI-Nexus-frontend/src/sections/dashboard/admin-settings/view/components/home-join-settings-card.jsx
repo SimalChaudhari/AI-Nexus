@@ -14,6 +14,7 @@ import LoadingButton from '@mui/lab/LoadingButton';
 import { Editor } from 'src/components/editor';
 import { Iconify } from 'src/components/iconify';
 import { categoryIcons } from 'src/_mock/_category-icons';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { IconPickerDrawer } from './icon-picker-drawer';
 
 export function HomeJoinSettingsCard({ joinContent, setJoinContent, joinContentSubmitting, onSave, defaultJoinIcon }) {
@@ -29,10 +30,10 @@ export function HomeJoinSettingsCard({ joinContent, setJoinContent, joinContentS
     <Card sx={{ p: 3 }}>
       <Stack spacing={2.5}>
         <Box>
-          <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
+          <Typography variant="h6" sx={{ mb: 1, ...HERO_TYPOGRAPHY.adminCardTitle }}>
             Home Join Section
           </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
             Configure the final call-to-action section content on the home page.
           </Typography>
         </Box>

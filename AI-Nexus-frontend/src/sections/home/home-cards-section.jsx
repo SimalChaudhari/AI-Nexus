@@ -11,6 +11,7 @@ import { RichTextContent } from 'src/components/html-content';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 
 // ----------------------------------------------------------------------
 
@@ -115,10 +116,11 @@ export function HomeCardsSection() {
             <Typography
               variant="h2"
               sx={{
-                fontSize: { xs: '2rem', md: '2.5rem' },
-                fontWeight: 'bold',
+                ...HERO_TYPOGRAPHY.homeCardsHeading,
                 mb: 2,
                 color: cardsContent.headingColor || 'text.primary',
+                textWrap: 'balance',
+                overflowWrap: 'anywhere',
               }}
             >
               {cardsContent.heading}{' '}
@@ -126,6 +128,7 @@ export function HomeCardsSection() {
                 component="span"
                 sx={{
                   color: cardsContent.headingAccentColor || 'primary.main',
+                  display: { xs: 'block', sm: 'inline' },
                 }}
               >
                 {cardsContent.headingAccent}
@@ -138,7 +141,7 @@ export function HomeCardsSection() {
               html={cardsContent.subtitle}
               sx={{
                 // typography: { xs: 'body1', md: 'body2' },
-                fontSize: '0.875rem',
+                ...HERO_TYPOGRAPHY.sectionSubtitle,
                 color: 'text.secondary',
                 maxWidth: { xs: '100%', lg: '90%' },
               }}
@@ -146,18 +149,21 @@ export function HomeCardsSection() {
           </Box>
         </Stack>
 
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }}>
           {visibleCards.map((card, index) => (
-            <Grid key={`${card.title}-${index}`} xs={12} md={4}>
+            <Grid key={`${card.title}-${index}`} xs={6} md={4}>
               <Box
                 component={m.div}
                 variants={varFade().inUp}
                 sx={{
                   height: 1,
-                  p: 4,
+                  p: { xs: 1.5, sm: 2.25, md: 3 },
+                  minHeight: { xs: 208, sm: 236, md: 280 },
                   borderRadius: 2,
                   bgcolor: 'background.paper',
                   boxShadow: (theme) => theme.shadows[2],
+                  display: 'flex',
+                  flexDirection: 'column',
                   transition: 'all 0.3s ease',
                   '&:hover': {
                     boxShadow: (theme) => theme.shadows[8],
@@ -167,25 +173,32 @@ export function HomeCardsSection() {
               >
                 <Box
                   sx={{
-                    width: 64,
-                    height: 64,
+                    width: { xs: 46, sm: 54, md: 64 },
+                    height: { xs: 46, sm: 54, md: 64 },
                     borderRadius: '50%',
                     background: 'linear-gradient(135deg, #56c7da, #fcd60b)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    mb: 3,
+                    mb: { xs: 1.25, sm: 1.75, md: 2.25 },
                   }}
                 >
-                  <Iconify icon={card.icon} width={32} sx={{ color: 'common.white' }} />
+                  <Iconify icon={card.icon} width={24} sx={{ color: 'common.white' }} />
                 </Box>
 
                 <Typography
                   variant="h6"
                   sx={{
                     fontWeight: 600,
-                    mb: 2,
+                    mb: { xs: 0.75, sm: 1, md: 1.5 },
+                    minHeight: { xs: 40, sm: 46, md: 54 },
+                    fontSize: { xs: '1rem', sm: '1.1rem', md: '1.25rem' },
                     color: 'text.primary',
+                    lineHeight: 1.3,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
                   }}
                 >
                   {card.title}
@@ -197,9 +210,17 @@ export function HomeCardsSection() {
                     '&, & p, & li': {
                       color: 'text.secondary',
                     },
+                    '& p': {
+                      m: 0,
+                      display: '-webkit-box',
+                      WebkitLineClamp: { xs: 4, sm: 4, md: 5 },
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    },
                     color: 'text.secondary',
-                    lineHeight: 1.8,
-                    fontSize: '0.875rem',
+                    lineHeight: 1.55,
+                    fontSize: { xs: '0.77rem', sm: '0.84rem', md: '0.9rem' },
+                    flex: 1,
                   }}
                 />
               </Box>

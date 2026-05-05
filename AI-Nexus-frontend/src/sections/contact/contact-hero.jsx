@@ -6,6 +6,7 @@ import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { varAlpha, bgGradient } from 'src/theme/styles';
 
 import { AnimateText, MotionContainer, animateTextClasses } from 'src/components/animate';
@@ -43,6 +44,7 @@ export function ContactHero({ headingLine1 = 'Where', headingLine2 = 'to find us
             text={[headingLine1, headingLine2]}
             sx={{
               color: 'common.white',
+              ...HERO_TYPOGRAPHY.sectionMainTitle,
               [`& .${animateTextClasses.line}[data-index="0"]`]: {
                 [`& .${animateTextClasses.word}[data-index="0"]`]: { color: 'primary.main' },
               },

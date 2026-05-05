@@ -5,6 +5,7 @@ import Stack from '@mui/material/Stack';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { varAlpha, textGradient } from 'src/theme/styles';
 
 import { varFade } from 'src/components/animate';
@@ -28,7 +29,7 @@ export function SectionTitle({ title, caption, slotProps, txtGradient, descripti
         component={m.h2}
         variant="h2"
         variants={slotProps?.title?.variants ?? varFade({ distance: 24 }).inUp}
-        sx={slotProps?.title?.sx}
+        sx={{ ...HERO_TYPOGRAPHY.sectionMainTitle, ...slotProps?.title?.sx }}
       >
         {`${title} `}
         <Box

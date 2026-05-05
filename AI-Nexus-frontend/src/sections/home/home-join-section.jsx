@@ -10,6 +10,7 @@ import { RichTextContent } from 'src/components/html-content';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 
 const DEFAULT_JOIN_CONTENT = {
   heading: 'Ready to Join the AI Revolution?',
@@ -82,15 +83,16 @@ export function HomeJoinSection() {
           textAlign: 'center',
         }}
       >
-        <Stack spacing={4} component={m.div} variants={varFade().inUp}>
+        <Stack spacing={{ xs: 2.5, md: 4 }} component={m.div} variants={varFade().inUp}>
           <Typography
             variant="h2"
             sx={{
-              fontSize: { xs: '2rem', md: '2.5rem' },
-              fontWeight: 'bold',
+              ...HERO_TYPOGRAPHY.joinHeading,
               color: 'common.white',
               mb: 2,
               fontFamily: 'Montserrat, sans-serif',
+              textWrap: 'balance',
+              overflowWrap: 'anywhere',
             }}
           >
             {joinContent.heading}
@@ -100,20 +102,32 @@ export function HomeJoinSection() {
             html={subtitleHtml}
             sx={{
               typography: 'h5',
+              ...HERO_TYPOGRAPHY.joinSubtitle,
               color: 'grey.300',
               mb: 4,
-              fontWeight: 'normal',
               fontFamily: 'Montserrat, sans-serif',
+              maxWidth: { xs: '100%', sm: 760 },
+              mx: 'auto',
+              px: { xs: 0.5, sm: 0 },
+              '&, & p, & li': { overflowWrap: 'anywhere' },
             }}
           />
 
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
             <GradientButton
               size="large"
               icon={joinContent.ctaIcon || DEFAULT_JOIN_CONTENT.ctaIcon}
               iconPosition="left"
               href={joinContent.ctaHref || undefined}
               component={joinContent.ctaHref ? 'a' : 'button'}
+              sx={{
+                width: { xs: '100%', sm: 'auto' },
+                maxWidth: { xs: 280, sm: 'none' },
+                mx: 'auto',
+                px: { xs: 2.5, sm: 4 },
+                py: { xs: 1.25, sm: 1.8 },
+                fontSize: { xs: '0.98rem', sm: '1.125rem' },
+              }}
             >
               {joinContent.ctaLabel}
             </GradientButton>

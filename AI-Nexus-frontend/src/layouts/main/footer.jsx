@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
 import { RouterLink } from 'src/routes/components';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { DashboardContent } from '../dashboard';
 
 // ----------------------------------------------------------------------
@@ -42,13 +43,10 @@ function FooterStatsBand() {
         <Grid container spacing={{ xs: 2, sm: 3, md: 4 }}>
           {FOOTER_STATS.map((stat) => (
             <Grid item xs={6} md={3} key={stat.label}>
-              <Stack spacing={0.5}>
+              <Stack spacing={0.5} sx={{ textAlign: { xs: 'center', md: 'left' } }}>
                 <Typography
                   sx={{
-                    fontWeight: 700,
-                    fontSize: { xs: '1.75rem', sm: '2rem', md: '2.25rem' },
-                    lineHeight: 1.1,
-                    letterSpacing: '-0.04em',
+                    ...HERO_TYPOGRAPHY.footerStatValue,
                     color: 'text.primary',
                   }}
                 >
@@ -58,8 +56,7 @@ function FooterStatsBand() {
                   variant="body2"
                   sx={{
                     color: 'text.secondary',
-                    fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                    fontWeight: 500,
+                    ...HERO_TYPOGRAPHY.footerMetaText,
                   }}
                 >
                   {stat.label}
@@ -75,7 +72,7 @@ function FooterStatsBand() {
           sx={{
             mt: { xs: 2.5, md: 3 },
             color: 'text.disabled',
-            fontSize: '0.8125rem',
+            ...HERO_TYPOGRAPHY.footerMetaText,
             letterSpacing: '0.02em',
           }}
         >
@@ -89,9 +86,8 @@ function FooterStatsBand() {
 function FooterLink({ label, path, external }) {
   const sx = {
     color: 'text.secondary',
-    fontSize: '0.875rem',
+    ...HERO_TYPOGRAPHY.footerMetaText,
     textDecoration: 'none',
-    fontWeight: 500,
     '&:hover': { color: 'text.primary' },
   };
   if (external) {
@@ -114,16 +110,24 @@ function FooterBottomLinksAndBrand({ currentYear, useContainer }) {
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', md: 'center' }}
+        alignItems={{ xs: 'center', md: 'center' }}
         spacing={2}
       >
-        <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ mb: { xs: 2, md: 0 }, gap: 1 }}>
+        <Stack
+          direction="row"
+          spacing={3}
+          flexWrap="wrap"
+          sx={{ mb: { xs: 2, md: 0 }, gap: 1, justifyContent: { xs: 'center', md: 'flex-start' } }}
+        >
           {FOOTER_LINKS.map((item) => (
             <FooterLink key={item.label} {...item} />
           ))}
         </Stack>
 
-        <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+        <Typography
+          variant="body2"
+          sx={{ color: 'text.secondary', textAlign: { xs: 'center', md: 'right' }, ...HERO_TYPOGRAPHY.footerMetaText }}
+        >
           © {currentYear} AI Nexus. All rights reserved.
         </Typography>
       </Stack>

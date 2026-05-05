@@ -16,6 +16,7 @@ import { ContactHero } from '../contact-hero';
 import { ContactForm } from '../contact-form';
 import { buildContactFieldRows } from '../utils/contact-hero-public-fields';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 
 // ----------------------------------------------------------------------
 
@@ -146,10 +147,7 @@ export function ContactSection() {
                     component="h2"
                     sx={{
                       mb: 0.5,
-                      fontWeight: 700,
-                      fontSize: { xs: '1.2rem', sm: '1.35rem' },
-                      lineHeight: 1.25,
-                      letterSpacing: '-0.03em',
+                      ...HERO_TYPOGRAPHY.contactInfoTitle,
                     }}
                   >
                     {contactHeroContent.infoTitle || 'How can we help you?'}
@@ -157,9 +155,7 @@ export function ContactSection() {
                   <Typography
                     sx={{
                       color: 'text.secondary',
-                      fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                      lineHeight: 1.55,
-                      fontWeight: 400,
+                      ...HERO_TYPOGRAPHY.contactInfoSubtitle,
                     }}
                   >
                     {contactHeroContent.infoSubtitle ||

@@ -11,6 +11,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
+import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { ColorPaletteField } from './color-palette-field';
 import { HexColorToolDrawer } from './hex-color-tool-drawer';
 
@@ -42,10 +43,10 @@ export function CtaButtonCard({ heroContent, setHeroContent }) {
     <Card sx={{ p: 3 }}>
       <Stack spacing={2.5}>
         <Box>
-          <Typography variant="h6" sx={{ mb: 1 }}>
+          <Typography variant="h6" sx={{ mb: 1, ...HERO_TYPOGRAPHY.adminCardTitle }}>
             CTA button
           </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
             Button label, link, optional colors, and horizontal alignment. Link target can be an in-app path{' '}
             <Box component="span" sx={{ fontFamily: 'monospace' }}>
               /learning
