@@ -1523,7 +1523,30 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   const requiredSec = effectiveRequiredSeconds(watchtimeSeconds, d);
                   const prog = youtubeProgressRef.current;
                   if (prog.markedComplete) return;
+                  const previousTime = Math.max(0, Number(prog.lastTime || 0));
                   const durRounded = Math.round(Number(d) || 0);
+                  const merged = mergeCoverageRangesPlayer(parseCoverageRangePairs(videoCoverageRangesRef.current));
+                  let maxAllowed = maxCoverageEndPlayer(merged);
+                  if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
+                  maxAllowed = Math.max(
+                    maxAllowed,
+                    Number(prog.maxWatchedTimeline || 0),
+                    Number(sectionProgressData?.lastPositionSeconds || 0)
+                  );
+                  const jumpDelta = Math.abs(Number(t || 0) - previousTime);
+                  const isLikelySeekJump = jumpDelta > 2.5;
+                  // YouTube lock: rollback only true seek jumps beyond watched timeline.
+                  if (isLikelySeekJump && t > maxAllowed + 0.35) {
+                    if (typeof player.seekTo === 'function') {
+                      try {
+                        player.seekTo(Math.max(0, maxAllowed), true);
+                      } catch {
+                        // ignore seek rollback errors
+                      }
+                    }
+                    prog.lastTime = Math.max(0, maxAllowed);
+                    return;
+                  }
                   if (prog.isPlaying) {
                     appendCoverageSlicePlayer(videoCoverageRangesRef, prog.lastTime, t, durRounded);
                     const cov =
@@ -1560,7 +1583,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               if (e.data === 1) {
                 prog.isPlaying = true;
                 try {
-                  prog.lastTime = player ? player.getCurrentTime() : 0;
+                  const current = player ? player.getCurrentTime() : 0;
+                  prog.lastTime = Math.max(0, Number(current || 0));
                 } catch {
                   // ignore player not ready
                 }
@@ -3462,8 +3486,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   Number(sectionProgressData?.lastPositionSeconds || 0)
                 );
                 const allowedForwardDrift = 0.35;
-                // Allow moving only within watched timeline; block forward jumps beyond watched point.
-                if (currentTime > maxAllowed + allowedForwardDrift) {
+                const previousTime = Math.max(0, Number(prog.lastTime || 0));
+                const jumpDelta = Math.abs(currentTime - previousTime);
+                const isLikelySeekJump = jumpDelta > 2.5;
+                // Allow normal playback; block only true seek jumps beyond watched point.
+                if (isLikelySeekJump && currentTime > maxAllowed + allowedForwardDrift) {
                   try {
                     v.currentTime = Math.max(0, maxAllowed);
                   } catch {
