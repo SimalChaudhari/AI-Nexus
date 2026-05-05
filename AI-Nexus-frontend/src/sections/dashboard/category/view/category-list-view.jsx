@@ -136,6 +136,7 @@ export function CategoryListView() {
           heading="List"
           links={[
             { name: 'Dashboard', href: paths.dashboard.root },
+            { name: 'Course', href: paths.admin.course.list },
             { name: 'Category', href: paths.admin.category.list },
             { name: 'List' },
           ]}

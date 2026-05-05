@@ -29,6 +29,10 @@ export class CourseEntity {
     @Column({ type: 'varchar', default: CourseLevel.Beginner })
     level!: string;
 
+    /** Optional category assigned from admin category list. */
+    @Column({ type: 'uuid', nullable: true })
+    categoryId?: string | null;
+
     /** Target learner roles for recommendation matching */
     @Column({ type: 'jsonb', nullable: true })
     roles?: string[];

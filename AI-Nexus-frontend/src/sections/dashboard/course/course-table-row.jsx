@@ -23,6 +23,7 @@ import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { fServerDate } from 'src/utils/format-time';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 import { AdminBundleTableCell } from './admin-bundle-ui';
 
@@ -33,6 +34,7 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
   const confirm = useBoolean();
   const popover = usePopover();
   const { deleting } = useSelector((state) => state.courses);
+  const defaultCourseImage = getCourseDefaultImage();
 
   return (
     <>
@@ -44,7 +46,7 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
         <TableCell>
           <Stack spacing={2} direction="row" alignItems="center">
             <Avatar
-              src={row.image || '/assets/images/cover/cover-1.jpg'}
+              src={row.image || defaultCourseImage}
               alt={row.title}
               variant="rounded"
               sx={{ width: 48, height: 48 }}
@@ -98,7 +100,16 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
 
         <TableCell>
           <Chip
-            label={row.freeOrPaid ? 'Paid' : 'Free'}
+            label={row.categoryTitle || 'Uncategorized'}
+            color={row.categoryTitle ? 'default' : 'warning'}
+            variant={row.categoryTitle ? 'soft' : 'outlined'}
+            size="small"
+          />
+        </TableCell>
+
+        <TableCell>
+          <Chip
+            label={row.freeOrPaid ? 'Paid' : 'AI Fluency'}
             color={row.freeOrPaid ? 'success' : 'default'}
             size="small"
           />

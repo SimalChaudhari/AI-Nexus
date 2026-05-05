@@ -35,6 +35,7 @@ import { getSpeakerReviews } from 'src/services/review.service';
 import { useAuthContext } from 'src/auth/hooks';
 import { RichTextContent } from 'src/components/html-content';
 import { toast } from 'src/components/snackbar';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 // ----------------------------------------------------------------------
 
@@ -51,6 +52,7 @@ export function LearningInstructorDetailsView({ id }) {
   const [speakerReviews, setSpeakerReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('courses');
+  const defaultCourseImage = getCourseDefaultImage();
 
   const ratingDistribution = useMemo(() => {
     const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
@@ -324,7 +326,7 @@ export function LearningInstructorDetailsView({ id }) {
                       <Box sx={{ position: 'relative' }}>
                         <Image
                           alt={course.title}
-                          src={course.image || ''}
+                          src={course.image || defaultCourseImage}
                           sx={{
                             width: '100%',
                             height: 160,

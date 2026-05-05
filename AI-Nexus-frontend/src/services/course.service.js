@@ -63,6 +63,18 @@ const transformCourse = (course) => {
     freeOrPaid: course.freeOrPaid ?? false,
     amount,
     level: course.level || 'Beginner',
+    categoryId: course.categoryId || course.category?.id || null,
+    category: course.category
+      ? {
+          id: course.category.id || '',
+          title: course.category.title || '',
+          slug: course.category.slug || '',
+          image: resolveAssetUrl(course.category.image || ''),
+          description: course.category.description || '',
+          status: course.category.status || '',
+          icon: course.category.icon || '',
+        }
+      : null,
     roles: Array.isArray(course.roles) ? course.roles : [],
     aiLevel: Array.isArray(course.aiLevel) ? course.aiLevel : [],
     goals: Array.isArray(course.goals) ? course.goals : [],
@@ -112,6 +124,37 @@ export const courseService = {
   async getCourseGroups() {
     const response = await axios.get('/courses/groups');
     return response.data?.data || [];
+  },
+
+  async getCourseFormOptions() {
+    const response = await axios.get('/courses/form-options');
+    return response.data?.data || {
+      levels: [],
+      roles: [],
+      aiLevels: [],
+      goals: [],
+      useAreas: [],
+    };
+  },
+
+  async getCourseOptions(type) {
+    const response = await axios.get('/courses/options', { params: { type } });
+    return response.data?.data || [];
+  },
+
+  async createCourseOption(type, label) {
+    const response = await axios.post('/courses/options', { type, label });
+    return response.data?.data || null;
+  },
+
+  async updateCourseOption(id, label) {
+    const response = await axios.put(`/courses/options/${id}`, { label });
+    return response.data?.data || null;
+  },
+
+  async deleteCourseOption(id) {
+    const response = await axios.delete(`/courses/options/${id}`);
+    return response.data?.data || null;
   },
 
   async createCourseGroup(name) {
@@ -231,6 +274,9 @@ export const courseService = {
       if (courseData.level) {
         formData.append('level', courseData.level);
       }
+      if (courseData.categoryId) {
+        formData.append('categoryId', courseData.categoryId);
+      }
       if (Array.isArray(courseData.roles)) {
         formData.append('roles', JSON.stringify(courseData.roles));
       }
@@ -345,6 +391,9 @@ export const courseService = {
       }
       if (courseData.level !== undefined) {
         formData.append('level', courseData.level);
+      }
+      if (courseData.categoryId !== undefined) {
+        formData.append('categoryId', courseData.categoryId || '');
       }
       if (courseData.roles !== undefined) {
         formData.append('roles', JSON.stringify(Array.isArray(courseData.roles) ? courseData.roles : []));

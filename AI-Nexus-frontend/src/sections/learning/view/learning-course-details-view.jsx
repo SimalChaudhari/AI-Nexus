@@ -33,6 +33,7 @@ import { courseService } from 'src/services/course.service';
 import { useAuthContext } from 'src/auth/hooks';
 import { toast } from 'src/components/snackbar';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
@@ -42,12 +43,12 @@ import { MembershipSignupDialog } from '../components/membership-signup-dialog';
 // ----------------------------------------------------------------------
 
 const formatPrice = (freeOrPaid, amount) => {
-  if (!freeOrPaid) return 'Free';
+  if (!freeOrPaid) return 'AI Fluency';
   return `${Number(amount || 0).toFixed(2)} SGD`;
 };
 
 const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
-const DEFAULT_COURSE_IMAGE = import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
+const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
 const REVIEW_PREVIEW_COUNT = (() => {
   const parsed = Number(import.meta.env.VITE_COURSE_REVIEW_PREVIEW_COUNT ?? 2);
   if (!Number.isFinite(parsed)) return 2;
@@ -564,7 +565,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                           ? 'In Cart'
                           : paidCourse
                             ? 'Paid Course'
-                            : 'Free Course'
+                            : 'AI Fluency Course'
                     }
                     color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
                     variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
@@ -608,7 +609,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                     ? 'You already unlocked this program through a bundle (paid or free). No separate purchase is required.'
                     : paidCourse
                       ? 'One-time payment with full access'
-                      : 'Free access for this course'}
+                      : 'AI Fluency access for this course'}
               </Typography>
               <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 2 }}>
                 {reviewCount > 0 ? `${reviewCount} review${reviewCount > 1 ? 's' : ''}` : 'Be the first learner to review this course'}
@@ -921,7 +922,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                               ? ' · Included with this bundle'
                               : inc.freeOrPaid
                                 ? ' · Paid'
-                                : ' · Free'}
+                                : ' · AI Fluency'}
                           </Typography>
                         </Box>
                         <Iconify
@@ -950,7 +951,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 <Stack spacing={1}>
                   {courseModules.map((module, moduleIndex) => {
                     const sections = module.sections || [];
-                    const sectionCount = sections.length;
+                    const moduleSectionCount = sections.length;
                     return (
                       <Accordion
                         key={module.id}
@@ -988,7 +989,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                               {moduleIndex + 1}. {module.title}
                             </Typography>
                             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                              {sectionCount} {sectionCount === 1 ? 'Lesson' : 'Lesson(s)'}
+                              {moduleSectionCount} {moduleSectionCount === 1 ? 'Lesson' : 'Lesson(s)'}
                             </Typography>
                           </Stack>
                         </AccordionSummary>
@@ -1002,7 +1003,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                                   section.videoUrl
                                   && (section.videoUrl.includes('youtube.com') || section.videoUrl.includes('youtu.be'))
                                 );
-                                const fallbackPreviewImage = course?.image || '/assets/images/cover/cover-1.jpg';
+                                const fallbackPreviewImage = course?.image || DEFAULT_COURSE_IMAGE;
                                 const previewImage = hasImages ? section.images[0] : fallbackPreviewImage;
                                 const mediaLabel = hasVideo
                                   ? [

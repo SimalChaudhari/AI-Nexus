@@ -245,12 +245,13 @@ export const paths = {
       details: (id) => `${ROOTS.ADMIN}/user/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/user/${id}/edit`,
     },
+    /** Course categories (nested under Course in admin nav) */
     category: {
-      root: `${ROOTS.ADMIN}/category`,
-      new: `${ROOTS.ADMIN}/category/new`,
-      list: `${ROOTS.ADMIN}/category/list`,
-      details: (id) => `${ROOTS.ADMIN}/category/${id}`,
-      edit: (id) => `${ROOTS.ADMIN}/category/${id}/edit`,
+      root: `${ROOTS.ADMIN}/course/category`,
+      new: `${ROOTS.ADMIN}/course/category/new`,
+      list: `${ROOTS.ADMIN}/course/category/list`,
+      details: (id) => `${ROOTS.ADMIN}/course/category/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/course/category/${id}/edit`,
     },
     announcement: {
       root: `${ROOTS.ADMIN}/announcement`,

@@ -137,6 +137,10 @@ export function AdminSettingsView() {
   const [contactHeroUrl, setContactHeroUrl] = useState('');
   const [contactHeroLoading, setContactHeroLoading] = useState(true);
   const [contactHeroSubmitting, setContactHeroSubmitting] = useState(false);
+  const [courseDefaultImageFile, setCourseDefaultImageFile] = useState(null);
+  const [courseDefaultImageUrl, setCourseDefaultImageUrl] = useState('');
+  const [courseDefaultImageLoading, setCourseDefaultImageLoading] = useState(true);
+  const [courseDefaultImageSubmitting, setCourseDefaultImageSubmitting] = useState(false);
   const [contactHeroContentSubmitting, setContactHeroContentSubmitting] = useState(false);
   const emptyHeroStatsRow = () => ({ value: '', label: '', icon: '' });
   const emptyHeroEventSlot = () => ({ startDateLabel: '', startDate: '', startTimeLabel: '', startTime: '' });
@@ -233,6 +237,7 @@ export function AdminSettingsView() {
       setLogoUrl(appSettings.logoUrl || '');
       setHeroUrl(appSettings.homeHeroImageUrl || '');
       setContactHeroUrl(appSettings.contactHeroImageUrl || '');
+      setCourseDefaultImageUrl(appSettings.courseDefaultImageUrl || '');
       const remoteHero = appSettings.homeHeroContent || {};
       const rawStats = Array.isArray(remoteHero.stats) ? remoteHero.stats : [];
       const statsThree = [0, 1, 2].map((i) => ({
@@ -335,6 +340,7 @@ export function AdminSettingsView() {
       setLogoLoading(false);
       setHeroLoading(false);
       setContactHeroLoading(false);
+      setCourseDefaultImageLoading(false);
     }
   }, []);
 
@@ -518,6 +524,67 @@ export function AdminSettingsView() {
       toast.error(error?.message || 'Failed to remove site logo');
     } finally {
       setLogoSubmitting(false);
+    }
+  };
+
+  const handleDropCourseDefaultImage = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) {
+      setCourseDefaultImageFile(file);
+    }
+  }, []);
+
+  const handleClearCourseDefaultImageSelection = () => {
+    setCourseDefaultImageFile(null);
+  };
+
+  const handleUploadCourseDefaultImage = async () => {
+    if (!courseDefaultImageFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+    try {
+      setCourseDefaultImageSubmitting(true);
+      const updatedSettings = await appSettingsService.uploadCourseDefaultImage(courseDefaultImageFile);
+      const next = updatedSettings.courseDefaultImageUrl || '';
+      setCourseDefaultImageUrl(next);
+      setCourseDefaultImageFile(null);
+      if (typeof window !== 'undefined') {
+        if (next) {
+          window.localStorage.setItem('course-default-image-url', next);
+        } else {
+          window.localStorage.removeItem('course-default-image-url');
+        }
+      }
+      toast.success('Course default image updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload course default image');
+    } finally {
+      setCourseDefaultImageSubmitting(false);
+    }
+  };
+
+  const handleRemoveCourseDefaultImage = async () => {
+    if (courseDefaultImageFile) {
+      setCourseDefaultImageFile(null);
+      return;
+    }
+
+    if (!courseDefaultImageUrl) return;
+
+    try {
+      setCourseDefaultImageSubmitting(true);
+      const updatedSettings = await appSettingsService.removeCourseDefaultImage();
+      const next = updatedSettings.courseDefaultImageUrl || '';
+      setCourseDefaultImageUrl(next);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('course-default-image-url');
+      }
+      toast.success('Course default image removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove course default image');
+    } finally {
+      setCourseDefaultImageSubmitting(false);
     }
   };
 
@@ -893,6 +960,13 @@ export function AdminSettingsView() {
       description: 'Manage contact page banner, heading, and map points.',
     },
     {
+      key: 'course-image',
+      badge: 'CI',
+      icon: 'solar:album-bold-duotone',
+      title: 'Course Image',
+      description: 'Manage default fallback image for course cards.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       icon: 'solar:eye-bold-duotone',
@@ -901,7 +975,7 @@ export function AdminSettingsView() {
     },
   ];
 
-  const validSectionKeys = ['logo', 'hero', 'cards', 'join', 'contact', 'header-visibility'];
+  const validSectionKeys = ['logo', 'hero', 'cards', 'join', 'contact', 'course-image', 'header-visibility'];
 
   useEffect(() => {
     if (!section) {
@@ -1453,6 +1527,60 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const renderCourseDefaultImageSettings = (
+    <Card sx={{ p: 3 }}>
+      <Stack spacing={2.5}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Default Course Image
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Upload a fallback image used when a course has no image. WEBP is supported.
+          </Typography>
+        </Box>
+
+        <Upload
+          value={courseDefaultImageFile || courseDefaultImageUrl || null}
+          onDrop={handleDropCourseDefaultImage}
+          onDelete={courseDefaultImageFile || courseDefaultImageUrl ? handleRemoveCourseDefaultImage : undefined}
+          sx={{
+            '& > .MuiBox-root:first-of-type': {
+              minHeight: 180,
+              p: 2.5,
+            },
+          }}
+          accept={{
+            'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
+          }}
+          maxSize={5 * 1024 * 1024}
+          disabled={courseDefaultImageLoading || courseDefaultImageSubmitting}
+          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Max size: 5 MB."
+        />
+
+        <Stack direction="row" spacing={1.5}>
+          <LoadingButton
+            variant="contained"
+            loading={courseDefaultImageSubmitting}
+            onClick={handleUploadCourseDefaultImage}
+            disabled={!courseDefaultImageFile}
+          >
+            Save default course image
+          </LoadingButton>
+          <Button
+            color="inherit"
+            variant="outlined"
+            onClick={
+              courseDefaultImageFile ? handleClearCourseDefaultImageSelection : handleRemoveCourseDefaultImage
+            }
+            disabled={courseDefaultImageSubmitting || (!courseDefaultImageFile && !courseDefaultImageUrl)}
+          >
+            {courseDefaultImageFile ? 'Clear Selected' : 'Remove Current Image'}
+          </Button>
+        </Stack>
+      </Stack>
+    </Card>
+  );
+
   const activeSectionItem = sectionCards.find((item) => item.key === activeSection);
 
   const renderSectionSwitcher = (
@@ -1491,13 +1619,13 @@ export function AdminSettingsView() {
           },
         })}
       >
-        {sectionCards.map((section) => (
+        {sectionCards.map((sectionItem) => (
           <Tab
-            key={section.key}
-            value={section.key}
-            icon={<Iconify icon={section.icon || 'solar:settings-bold-duotone'} width={18} />}
+            key={sectionItem.key}
+            value={sectionItem.key}
+            icon={<Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={18} />}
             iconPosition="start"
-            label={section.title}
+            label={sectionItem.title}
           />
         ))}
       </Tabs>
@@ -1533,6 +1661,7 @@ export function AdminSettingsView() {
         {activeSection === 'cards' && renderHomeCardsSettings}
         {activeSection === 'join' && renderHomeJoinSettings}
         {activeSection === 'contact' && renderContactHeroSettings}
+        {activeSection === 'course-image' && renderCourseDefaultImageSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

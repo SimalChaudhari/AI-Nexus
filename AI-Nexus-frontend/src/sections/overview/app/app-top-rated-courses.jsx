@@ -15,10 +15,12 @@ import { alpha } from '@mui/material/styles';
 import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { Iconify } from 'src/components/iconify';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 export function AppTopRatedCourses({ title, subheader, list, sx, ...other }) {
   const router = useRouter();
   const hasCourses = Array.isArray(list) && list.length > 0;
+  const defaultCourseImage = getCourseDefaultImage();
 
   return (
     <Card
@@ -43,7 +45,7 @@ export function AppTopRatedCourses({ title, subheader, list, sx, ...other }) {
                 >
                   <Avatar
                     variant="rounded"
-                    src={course.image || '/assets/images/cover/cover-1.jpg'}
+                    src={course.image || defaultCourseImage}
                     alt={course.title}
                     sx={{ width: 48, height: 48, mr: 2 }}
                   />

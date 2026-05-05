@@ -3,17 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
-import Drawer from '@mui/material/Drawer';
-import Collapse from '@mui/material/Collapse';
-import Checkbox from '@mui/material/Checkbox';
 import Grid from '@mui/material/Unstable_Grid2';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
-import InputBase from '@mui/material/InputBase';
-import useMediaQuery from '@mui/material/useMediaQuery';
+import TextField from '@mui/material/TextField';
+import InputAdornment from '@mui/material/InputAdornment';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
@@ -24,8 +21,10 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
 import { courseService } from 'src/services/course.service';
+import { appSettingsService } from 'src/services/app-settings.service';
 import { toast } from 'src/components/snackbar';
 import { useCheckoutContext } from 'src/sections/checkout/context';
+import { ENV_DEFAULT_COURSE_IMAGE, getCourseDefaultImage } from 'src/utils/course-default-image';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { Divider } from '@mui/material';
 import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
@@ -35,9 +34,7 @@ import { MembershipSignupDialog } from './components/membership-signup-dialog';
 // ----------------------------------------------------------------------
 
 const ROWS_PER_PAGE = 10;
-const SEARCH_DEBOUNCE_MS = 800;
-const DEFAULT_COURSE_IMAGE =
-  import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
+const SEARCH_DEBOUNCE_MS = 450;
 const DEFAULT_PAGINATION = {
   page: 1,
   limit: ROWS_PER_PAGE,
@@ -47,11 +44,11 @@ const DEFAULT_PAGINATION = {
   hasPreviousPage: false,
 };
 
-const transformCourse = (course) => ({
+const transformCourse = (course, defaultCourseImage) => ({
   id: course.id,
   title: course.title || 'Untitled Course',
   description: course.description || '',
-  image: course.image || DEFAULT_COURSE_IMAGE,
+  image: course.image || defaultCourseImage,
   freeOrPaid: course.freeOrPaid,
   amount: course.amount,
   level: course.level || 'Beginner',
@@ -61,23 +58,9 @@ const transformCourse = (course) => ({
   isRecommended: course.isRecommended ?? false,
   isEnrolled: course.isEnrolled ?? false,
   accessViaBundle: course.accessViaBundle ?? false,
+  categoryId: course.categoryId || course.category?.id || null,
+  category: course.category || null,
 });
-
-const LEVEL_SECTIONS = ['AI Foundation', 'AI in Accounting Workflows', 'AI Builder Track'];
-
-const getLevelSection = (level) => {
-  const normalizedLevel = String(level || '').toLowerCase();
-
-  if (normalizedLevel.includes('intermediate')) {
-    return 'AI in Accounting Workflows';
-  }
-
-  if (normalizedLevel.includes('advance') || normalizedLevel.includes('advanced')) {
-    return 'AI Builder Track';
-  }
-
-  return 'AI Foundation';
-};
 
 const getCourseContentMeta = (course = {}) => {
   const modulesCount = Number(course.modulesCount ?? course.moduleCount ?? 0);
@@ -93,19 +76,14 @@ const shouldShowTitleTooltip = (title) => String(title || '').trim().length > 42
 
 export function AllCourses({ refreshSignal = 0 }) {
   const theme = useTheme();
-  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  // const isDesktop = useMediaQuery(theme.breakpoints.up('md')); // filters UI disabled
   const navigate = useNavigate();
   const { authenticated } = useAuthContext();
   const checkout = useCheckoutContext();
   const latestRequestRef = useRef(0);
   const querySignatureRef = useRef('');
-  const desktopFilterPanelRef = useRef(null);
-  const groupPagesRef = useRef({
-    recommended: 1,
-    beginner: 1,
-    intermediate: 1,
-    advance: 1,
-  });
+  // const desktopFilterPanelRef = useRef(null); // filters UI disabled
+  const groupPagesRef = useRef({ recommended: 1 });
   const skipNextFullFetchRef = useRef(false);
 
   const isInCart = (id) => checkout.items.some((item) => item.id === id);
@@ -120,22 +98,26 @@ export function AllCourses({ refreshSignal = 0 }) {
   };
 
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
+  /* Course filters / search UI temporarily disabled — uncomment useStates below to restore.
   const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(true);
   const [isDesktopFilterPanelVisible, setIsDesktopFilterPanelVisible] = useState(true);
   const [showDesktopFloatingFilterButton, setShowDesktopFloatingFilterButton] = useState(false);
-  const [groupPages, setGroupPages] = useState({
-    recommended: 1,
-    beginner: 1,
-    intermediate: 1,
-    advance: 1,
-  });
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  */
+  const [groupPages, setGroupPages] = useState({ recommended: 1 });
+  /* const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [desktopFiltersExpanded, setDesktopFiltersExpanded] = useState(true);
   const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(true);
-  const [courseFilter, setCourseFilter] = useState(null); // null | 'free' | 'paid' | 'purchased' | 'favorites'
+  const [courseFilter, setCourseFilter] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(''); */
+  const courseFilter = null;
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [courses, setCourses] = useState([]);
+  const [defaultCourseImage, setDefaultCourseImage] = useState(() => {
+    if (typeof window === 'undefined') return ENV_DEFAULT_COURSE_IMAGE;
+    return getCourseDefaultImage();
+  });
   const [groupedResult, setGroupedResult] = useState([]);
   const [loading, setLoading] = useState(true);
   const [paginatingGroupKey, setPaginatingGroupKey] = useState(null);
@@ -183,51 +165,10 @@ export function AllCourses({ refreshSignal = 0 }) {
     toast.info('Already in cart');
   };
 
+  /* Filters disabled — restore with filter UI
   const activeFilterCount = (courseFilter ? 1 : 0) + (debouncedSearchQuery ? 1 : 0);
-  const selectedFilterLabel =
-    courseFilter === 'free'
-      ? 'Free'
-      : courseFilter === 'paid'
-        ? 'Paid'
-        : courseFilter === 'purchased'
-          ? 'Purchased'
-          : courseFilter === 'favorites'
-            ? 'Favorites'
-            : null;
-  const filterOptions = [
-    {
-      value: 'free',
-      label: 'Free',
-      description: 'Free courses only',
-      icon: 'solar:ticket-sale-bold-duotone',
-      iconColor: '#22c55e',
-    },
-    {
-      value: 'paid',
-      label: 'Paid',
-      description: 'Paid courses only',
-      icon: 'solar:wallet-money-bold-duotone',
-      iconColor: '#f59e0b',
-    },
-    ...(authenticated
-      ? [
-          {
-            value: 'purchased',
-            label: 'Purchased',
-            description: 'Courses you enrolled in',
-            icon: 'solar:verified-check-bold-duotone',
-            iconColor: '#0ea5e9',
-          },
-          {
-            value: 'favorites',
-            label: 'Favorites',
-            description: 'Your favorite courses',
-            icon: 'solar:heart-bold-duotone',
-            iconColor: '#ef4444',
-          },
-        ]
-      : []),
-  ];
+  const selectedFilterLabel = ...
+  const filterOptions = [ ... ];
 
   useEffect(() => {
     if (!authenticated) {
@@ -239,19 +180,15 @@ export function AllCourses({ refreshSignal = 0 }) {
     const timeoutId = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery.trim());
     }, SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
+    return () => clearTimeout(timeoutId);
   }, [searchQuery]);
+  */
 
   const resolveGroupKey = useCallback((group) => {
     if (group?.groupKey) return group.groupKey;
     const name = String(group?.groupName || '').toLowerCase();
     if (name === 'recommended') return 'recommended';
-    if (name === 'beginner' || name === 'basic' || name === 'ai foundation') return 'beginner';
-    if (name === 'intermediate' || name.includes('accounting workflows')) return 'intermediate';
-    return 'advance';
+    return name.trim().replace(/[^a-z0-9]+/g, '-');
   }, []);
 
   const fetchCoursesPage = useCallback(
@@ -269,20 +206,18 @@ export function AllCourses({ refreshSignal = 0 }) {
       const pages = pagesOverride || groupPagesRef.current;
 
       const params = {
-        recommendedPage: pages.recommended,
-        recommendedLimit: ROWS_PER_PAGE,
-        beginnerPage: pages.beginner,
-        beginnerLimit: ROWS_PER_PAGE,
-        intermediatePage: pages.intermediate,
-        intermediateLimit: ROWS_PER_PAGE,
-        advancePage: pages.advance,
-        advanceLimit: ROWS_PER_PAGE,
         search: debouncedSearchQuery || undefined,
       };
       if (onlyGroupKey) {
         params.group = onlyGroupKey;
+        params.page = pages[onlyGroupKey] || 1;
+        params.limit = ROWS_PER_PAGE;
+      } else {
+        params.page = 1;
+        params.limit = ROWS_PER_PAGE;
       }
 
+      /* Course filter query params — restore when re-enabling filters UI
       if (courseFilter === 'free') {
         params.freeOrPaid = false;
       } else if (courseFilter === 'paid') {
@@ -292,6 +227,7 @@ export function AllCourses({ refreshSignal = 0 }) {
       } else if (courseFilter === 'purchased') {
         params.isEnrolled = true;
       }
+      */
 
       try {
         const groupedPayload = await courseService.getGroupedCourses(params);
@@ -315,6 +251,9 @@ export function AllCourses({ refreshSignal = 0 }) {
             } else {
               merged.push(incomingGroup);
             }
+            const recommended = merged.filter((group) => resolveGroupKey(group) === 'recommended');
+            const others = merged.filter((group) => resolveGroupKey(group) !== 'recommended');
+            merged = [...recommended, ...others];
 
             const nextCourses = merged.flatMap((group) => group.items || []);
             const totalItems = merged.reduce(
@@ -341,6 +280,12 @@ export function AllCourses({ refreshSignal = 0 }) {
           });
         } else {
           setGroupedResult(groupedResponse);
+          const dynamicPages = groupedResponse.reduce((acc, group) => {
+            const key = resolveGroupKey(group);
+            if (key) acc[key] = 1;
+            return acc;
+          }, {});
+          setGroupPages(dynamicPages);
           const nextCourses = groupedResponse.flatMap((group) => group.items || []);
           const totalItems = groupedResponse.reduce(
             (sum, group) => sum + (group.pagination?.totalItems || 0),
@@ -382,7 +327,7 @@ export function AllCourses({ refreshSignal = 0 }) {
         }
       }
     },
-    [courseFilter, debouncedSearchQuery, resolveGroupKey]
+    [debouncedSearchQuery, resolveGroupKey]
   );
 
   const handleGroupPageChange = useCallback(
@@ -400,15 +345,22 @@ export function AllCourses({ refreshSignal = 0 }) {
   }, [groupPages]);
 
   useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  useEffect(() => {
     if (!authenticated) {
       setFavorites(new Set());
     }
 
-    const filterSignature = `${courseFilter || 'all'}|${debouncedSearchQuery}|${authenticated ? 'auth' : 'guest'}`;
+    const filterSignature = `all|${authenticated ? 'auth' : 'guest'}|${debouncedSearchQuery}`;
 
     if (querySignatureRef.current !== filterSignature) {
       querySignatureRef.current = filterSignature;
-      const resetPages = { recommended: 1, beginner: 1, intermediate: 1, advance: 1 };
+      const resetPages = { recommended: 1 };
       setGroupPages(resetPages);
       fetchCoursesPage({ pagesOverride: resetPages });
       return;
@@ -420,55 +372,42 @@ export function AllCourses({ refreshSignal = 0 }) {
     }
 
     fetchCoursesPage();
-  }, [authenticated, courseFilter, debouncedSearchQuery, fetchCoursesPage, refreshSignal]);
+  }, [authenticated, debouncedSearchQuery, fetchCoursesPage, refreshSignal]);
+
+  /* Desktop filter panel visibility / floating filter button — restore with filters UI
+  useEffect(() => { ... }, [desktopFiltersOpen, isDesktop]);
+  useEffect(() => { ... }, [desktopFiltersOpen, isDesktop]);
+  */
+
+  const displayCourses = useMemo(
+    () => courses.map((course) => transformCourse(course, defaultCourseImage)),
+    [courses, defaultCourseImage]
+  );
 
   useEffect(() => {
-    if (!isDesktop) {
-      setIsDesktopFilterPanelVisible(true);
-      return undefined;
-    }
-
-    if (!desktopFiltersOpen) {
-      // Keep it true while closed to avoid flash
-      // when reopening before observer recalculates visibility.
-      setIsDesktopFilterPanelVisible(true);
-      return undefined;
-    }
-
-    const target = desktopFilterPanelRef.current;
-    if (!target) {
-      setIsDesktopFilterPanelVisible(true);
-      return undefined;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsDesktopFilterPanelVisible(Boolean(entry?.isIntersecting));
-      },
-      { threshold: 0.15 }
-    );
-
-    observer.observe(target);
-
-    return () => observer.disconnect();
-  }, [desktopFiltersOpen, isDesktop]);
-
-  useEffect(() => {
-    if (!isDesktop || !desktopFiltersOpen) {
-      setShowDesktopFloatingFilterButton(false);
-      return undefined;
-    }
-
-    const onScroll = () => {
-      setShowDesktopFloatingFilterButton(window.scrollY > 260);
+    let active = true;
+    const loadCourseDefaultImage = async () => {
+      try {
+        const appSettings = await appSettingsService.getPublic();
+        const next = appSettings?.courseDefaultImageUrl || ENV_DEFAULT_COURSE_IMAGE;
+        if (!active) return;
+        setDefaultCourseImage(next);
+        if (typeof window !== 'undefined') {
+          if (appSettings?.courseDefaultImageUrl) {
+            window.localStorage.setItem('course-default-image-url', appSettings.courseDefaultImageUrl);
+          } else {
+            window.localStorage.removeItem('course-default-image-url');
+          }
+        }
+      } catch (_error) {
+        // keep existing fallback image when settings fetch fails
+      }
     };
-
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [desktopFiltersOpen, isDesktop]);
-
-  const displayCourses = useMemo(() => courses.map(transformCourse), [courses]);
+    loadCourseDefaultImage();
+    return () => {
+      active = false;
+    };
+  }, []);
   const groupedCourses = useMemo(
     () =>
       (groupedResult || []).map((group) => ({
@@ -490,246 +429,17 @@ export function AllCourses({ refreshSignal = 0 }) {
       (group.items || []).map((course) => course.id).filter(Boolean)
     )
   ).size;
+  const getCategoryTitle = useCallback(
+    (course) => course?.category?.title || '',
+    []
+  );
   const displayedCourses = displayCourses;
 
   const handleRefresh = () => {
     fetchCoursesPage();
   };
 
-  const handleClearFilters = () => {
-    setCourseFilter(null);
-    setSearchQuery('');
-  };
-
-  const renderFiltersContent = (isMobile = false) => (
-    <Stack spacing={2}>
-      {isMobile && (
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Course Filters
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-              {activeFilterCount > 0
-                ? `${activeFilterCount} active filter${activeFilterCount > 1 ? 's' : ''}`
-                : 'Use filters to refine courses'}
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <IconButton
-              onClick={() => setMobileFiltersExpanded((prev) => !prev)}
-              aria-label={mobileFiltersExpanded ? 'Collapse filters' : 'Expand filters'}
-            >
-              <Iconify
-                icon={mobileFiltersExpanded ? 'solar:alt-arrow-up-bold' : 'solar:alt-arrow-down-bold'}
-                width={20}
-              />
-            </IconButton>
-            <IconButton onClick={() => setMobileFiltersOpen(false)} aria-label="Close filters">
-              <Iconify icon="solar:close-circle-bold" width={22} />
-            </IconButton>
-          </Stack>
-        </Stack>
-      )}
-
-      {!isMobile && (
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Course Filters
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-              {activeFilterCount > 0
-                ? `${activeFilterCount} active filter${activeFilterCount > 1 ? 's' : ''}`
-                : 'Use filters to refine courses'}
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={() => setDesktopFiltersExpanded((prev) => !prev)}
-            aria-label={desktopFiltersExpanded ? 'Collapse filters' : 'Expand filters'}
-          >
-            <Iconify
-              icon={desktopFiltersExpanded ? 'solar:alt-arrow-up-bold' : 'solar:alt-arrow-down-bold'}
-              width={20}
-            />
-          </IconButton>
-        </Stack>
-      )}
-
-      <Collapse in={isMobile ? mobileFiltersExpanded : desktopFiltersExpanded}>
-        <Stack spacing={2}>
-          {!isMobile && (
-            <>
-              <Box
-                sx={{
-                  position: 'relative',
-                }}
-              >
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: 14,
-                    transform: 'translateY(-50%)',
-                    color: 'text.disabled',
-                    display: 'flex',
-                    alignItems: 'center',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <Iconify icon="solar:magnifer-linear" width={20} />
-                </Box>
-                <InputBase
-                  placeholder="Search courses..."
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  sx={{
-                    width: '100%',
-                    height: 46,
-                    pl: 5,
-                    pr: searchQuery ? 6 : 2,
-                    borderRadius: 1.5,
-                    border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
-                  }}
-                />
-                {searchQuery && (
-                  <IconButton
-                    size="small"
-                    onClick={() => setSearchQuery('')}
-                    sx={{
-                      position: 'absolute',
-                      top: '50%',
-                      right: 8,
-                      transform: 'translateY(-50%)',
-                      color: 'text.secondary',
-                    }}
-                  >
-                    <Iconify icon="solar:close-circle-bold" width={18} />
-                  </IconButton>
-                )}
-              </Box>
-
-              {debouncedSearchQuery && (
-                <Chip
-                  size="small"
-                  label={`Search: ${debouncedSearchQuery}`}
-                  onDelete={() => setSearchQuery('')}
-                  color="primary"
-                  variant="soft"
-                  sx={{ width: 'fit-content', fontWeight: 600 }}
-                />
-              )}
-            </>
-          )}
-
-          <Stack spacing={1}>
-            {filterOptions.map((filter) => {
-              const active = courseFilter === filter.value;
-
-              return (
-                <Button
-                  key={filter.value}
-                  fullWidth
-                  onClick={() => {
-                    setCourseFilter(active ? null : filter.value);
-                    if (isMobile) {
-                      setMobileFiltersOpen(false);
-                    }
-                  }}
-                  variant={active ? 'contained' : 'text'}
-                  color={active ? 'primary' : 'secondary'}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    px: 1.5,
-                    py: 1.25,
-                    borderRadius: 1.5,
-                    textTransform: 'none',
-                    ...(active
-                      ? {
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          '&:hover': {
-                            bgcolor: 'primary.dark',
-                          },
-                        }
-                      : {
-                          color: 'secondary.main',
-                          '&:hover': {
-                            backgroundColor: alpha(theme.palette.secondary.main, 0.08),
-                          },
-                        }),
-                  }}
-                >
-                  <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center' }}>
-                    <Checkbox
-                      size="small"
-                      checked={active}
-                      disableRipple
-                      sx={{
-                        p: 0,
-                        color: active ? alpha(theme.palette.common.white, 0.9) : 'text.disabled',
-                        '&.Mui-checked': {
-                          color: active ? theme.palette.common.white : theme.palette.primary.main,
-                        },
-                      }}
-                    />
-                    <Stack spacing={0.25} sx={{ alignItems: 'flex-start' }}>
-                      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'inherit' }}>
-                          {filter.label}
-                        </Typography>
-                        <Iconify
-                          icon={filter.icon}
-                          width={16}
-                          sx={{ color: active ? alpha(theme.palette.common.white, 0.9) : filter.iconColor }}
-                        />
-                      </Stack>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: active ? alpha(theme.palette.common.white, 0.8) : 'text.secondary',
-                        }}
-                      >
-                        {filter.description}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                </Button>
-              );
-            })}
-          </Stack>
-
-          {courseFilter && (
-            <Chip
-              size="small"
-              label={selectedFilterLabel}
-              onDelete={() => setCourseFilter(null)}
-              color="primary"
-              variant="soft"
-              sx={{ width: 'fit-content', fontWeight: 600 }}
-            />
-          )}
-
-          {(courseFilter || searchQuery) && (
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={() => {
-                handleClearFilters();
-                if (isMobile) {
-                  setMobileFiltersOpen(false);
-                }
-              }}
-              startIcon={<Iconify icon="solar:filter-bold" width={18} />}
-              sx={{ textTransform: 'none' }}
-            >
-              Clear filters
-            </Button>
-          )}
-        </Stack>
-      </Collapse>
-    </Stack>
-  );
+  /* handleClearFilters + renderFiltersContent (sidebar / mobile drawer filters) — restore with filter useStates */
 
   const handleFavorite = async (e, id) => {
     e.preventDefault();
@@ -799,75 +509,22 @@ export function AllCourses({ refreshSignal = 0 }) {
   return (
     <>
       <Grid container spacing={{ xs: 3, md: 4 }} alignItems="flex-start">
+        {/* Desktop filter column — restore with renderFiltersContent
         {desktopFiltersOpen && (
           <Grid xs={12} md={3} lg={2.8} sx={{ display: { xs: 'none', md: 'block' } }}>
-            <Card
-              ref={desktopFilterPanelRef}
-              sx={{
-                p: 2,
-                top: { md: 96 },
-                position: { md: 'sticky' },
-                boxShadow: theme.customShadows.z4,
-              }}
-            >
+            <Card ref={desktopFilterPanelRef} sx={{ p: 2, top: { md: 96 }, position: { md: 'sticky' }, boxShadow: theme.customShadows.z4 }}>
               {renderFiltersContent()}
             </Card>
           </Grid>
         )}
+        */}
 
-        <Grid xs={12} md={desktopFiltersOpen ? 9 : 12} lg={desktopFiltersOpen ? 9.2 : 12}>
-          <Box
-            sx={{
-              display: { xs: 'block', md: 'none' },
-              mb: 2,
-              position: 'relative',
-            }}
-          >
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                left: 14,
-                transform: 'translateY(-50%)',
-                color: 'text.secondary',
-                display: 'flex',
-                alignItems: 'center',
-                pointerEvents: 'none',
-                zIndex: 1,
-              }}
-            >
-              <Iconify icon="solar:magnifer-linear" width={20} />
-            </Box>
-            <InputBase
-              placeholder="Search courses..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              sx={{
-                width: '100%',
-                height: 46,
-                pl: 5,
-                pr: searchQuery ? 6 : 2,
-                borderRadius: 1.5,
-                border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
-                bgcolor: 'background.paper',
-              }}
-            />
-            {searchQuery && (
-              <IconButton
-                size="small"
-                onClick={() => setSearchQuery('')}
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  right: 8,
-                  transform: 'translateY(-50%)',
-                  color: 'text.secondary',
-                }}
-              >
-                <Iconify icon="solar:close-circle-bold" width={18} />
-              </IconButton>
-            )}
+        <Grid xs={12} md={12} lg={12}>
+          {/* Mobile search bar — restore with filters
+          <Box sx={{ display: { xs: 'block', md: 'none' }, mb: 2, position: 'relative' }}>
+            ...
           </Box>
+          */}
 
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
@@ -876,12 +533,7 @@ export function AllCourses({ refreshSignal = 0 }) {
             spacing={2}
             sx={{ mb: 3 }}
           >
-            <Stack
-              direction="row"
-              spacing={1.5}
-              alignItems="center"
-              sx={{ flexWrap: 'wrap' }}
-            >
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', flex: 1 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                 {totalCount === 0 ? 'No results' : `${totalCount} total results`}
               </Typography>
@@ -889,30 +541,27 @@ export function AllCourses({ refreshSignal = 0 }) {
                 Recommended: {recommendedResultsCount}
               </Typography>
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Level groups: {levelResultsCount}
+                Category groups: {levelResultsCount}
               </Typography>
             </Stack>
 
-            <Stack direction="row" spacing={0.75} alignItems="center">
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={<Iconify icon="solar:filter-bold" width={18} />}
-                onClick={() => {
-                  if (isDesktop) {
-                    setDesktopFiltersOpen((prev) => !prev);
-                  } else {
-                    setMobileFiltersOpen(true);
-                  }
-                }}
-                sx={{
-                  display: 'inline-flex',
-                  textTransform: 'none',
-                }}
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={0.75}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
+            >
+              <Stack
+                direction="row"
+                spacing={0.75}
+                alignItems="center"
+                sx={{ justifyContent: { xs: 'flex-end', sm: 'flex-start' } }}
               >
-                {desktopFiltersOpen ? 'Hide filters' : 'Filters'}
-                {activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              {/* Filters toggle — restore with desktopFiltersOpen / mobileFiltersOpen
+              <Button variant="outlined" color="secondary" startIcon={<Iconify icon="solar:filter-bold" width={18} />} ...>
+                ...
               </Button>
+              */}
               <Stack direction="row" spacing={0.25}>
                 <IconButton
                   size="small"
@@ -947,6 +596,33 @@ export function AllCourses({ refreshSignal = 0 }) {
               >
                 <Iconify icon="solar:refresh-bold" width={20} />
               </IconButton>
+              </Stack>
+              <TextField
+                size="small"
+                fullWidth
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search courses..."
+                sx={{ minWidth: { xs: '100%', sm: 300 }, maxWidth: { sm: 380 } }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Iconify icon="solar:magnifer-linear" width={18} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: searchQuery ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={() => setSearchQuery('')}
+                        aria-label="Clear search"
+                      >
+                        <Iconify icon="mingcute:close-line" width={16} />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : null,
+                }}
+              />
             </Stack>
           </Stack>
 
@@ -965,26 +641,20 @@ export function AllCourses({ refreshSignal = 0 }) {
                   ? 'No courses match the current search or filter. Try clearing them or choosing a different option.'
                   : 'Check back later for new courses.'}
               </Typography>
+              {/* Clear search/filters — restore with filter state setters
               {(courseFilter || searchQuery) && (
-                <Button
-                  variant="soft"
-                  color="primary"
-                  onClick={() => {
-                    setCourseFilter(null);
-                    setSearchQuery('');
-                  }}
-                  startIcon={<Iconify icon="solar:filter-bold" width={18} />}
-                >
+                <Button variant="soft" color="primary" onClick={() => { setCourseFilter(null); setSearchQuery(''); }} ...>
                   Clear search and filters
                 </Button>
               )}
+              */}
             </Box>
           ) : (
             <Box sx={{ position: 'relative' }}>
               <>
                 {viewMode === 'grid' &&
                   groupedCourses.map((group) => (
-                    <Box key={group.level} sx={{ mb: 3 }}>
+                    <Box key={group.groupKey || group.level} sx={{ mb: 3 }}>
                       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
                         <Typography
                           variant="h6"
@@ -1049,7 +719,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                                   >
                                     <Image
                                       alt={course.title}
-                                      src={course.image || DEFAULT_COURSE_IMAGE}
+                                      src={course.image || defaultCourseImage}
                                       sx={{
                                         width: '100%',
                                         height: '100%',
@@ -1057,7 +727,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         objectFit: 'cover',
                                       }}
                                       onError={(e) => {
-                                        e.target.src = DEFAULT_COURSE_IMAGE;
+                                        e.target.src = defaultCourseImage;
                                       }}
                                     />
                                     <Box
@@ -1190,6 +860,15 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         {course.title}
                                       </Typography>
                                     </Tooltip>
+                                    {getCategoryTitle(course) ? (
+                                      <Chip
+                                        size="small"
+                                        label={getCategoryTitle(course)}
+                                        variant="soft"
+                                        color="default"
+                                        sx={{ alignSelf: 'flex-start', mb: 0.65, height: 22, fontWeight: 600 }}
+                                      />
+                                    ) : null}
                                     <Box
                                       sx={{
                                         mb: { xs: 0.45, sm: 0.85 },
@@ -1319,7 +998,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         >
                                           {course.freeOrPaid
                                             ? `${Number(course.amount || 0).toFixed(2)} SGD`
-                                            : 'Free'}
+                                            : 'AI Fluency'}
                                         </Typography>
                                         {course.freeOrPaid && isEnrolled(course.id) && (
                                           <Stack direction="row" spacing={0.5} alignItems="center">
@@ -1449,7 +1128,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                 {viewMode === 'list' && (
                   <Stack spacing={2} sx={{ mt: 2 }}>
                     {groupedCourses.map((group) => (
-                      <Box key={group.level}>
+                      <Box key={group.groupKey || group.level}>
                         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
                           <Typography
                             variant="h6"
@@ -1510,7 +1189,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                                   >
                                     <Image
                                       alt={course.title}
-                                      src={course.image || DEFAULT_COURSE_IMAGE}
+                                      src={course.image || defaultCourseImage}
                                       sx={{
                                         width: '100%',
                                         height: '100%',
@@ -1518,7 +1197,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         objectFit: 'cover',
                                       }}
                                       onError={(e) => {
-                                        e.target.src = DEFAULT_COURSE_IMAGE;
+                                        e.target.src = defaultCourseImage;
                                       }}
                                     />
                                     {course.isBundle && (
@@ -1615,6 +1294,15 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         {course.title}
                                       </Typography>
                                     </Tooltip>
+                                    {getCategoryTitle(course) ? (
+                                      <Chip
+                                        size="small"
+                                        label={getCategoryTitle(course)}
+                                        variant="soft"
+                                        color="default"
+                                        sx={{ alignSelf: 'flex-start', mb: 0.65, height: 22, fontWeight: 600 }}
+                                      />
+                                    ) : null}
                                     <Box sx={{ mb: 0.85, minHeight: 24 }}>
                                       {moduleCount > 0 || sectionCount > 0 ? (
                                         <Stack direction="row" spacing={0.75} alignItems="center">
@@ -1723,7 +1411,7 @@ export function AllCourses({ refreshSignal = 0 }) {
                                         >
                                           {course.freeOrPaid
                                             ? `${Number(course.amount || 0).toFixed(2)} SGD`
-                                            : 'Free'}
+                                            : 'AI Fluency'}
                                         </Typography>
                                         {course.freeOrPaid && isEnrolled(course.id) && (
                                           <Stack direction="row" spacing={0.5} alignItems="center">
@@ -1859,44 +1547,17 @@ export function AllCourses({ refreshSignal = 0 }) {
         </Grid>
       </Grid>
 
-      {isDesktop &&
-        desktopFiltersOpen &&
-        (!isDesktopFilterPanelVisible || showDesktopFloatingFilterButton) && (
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<Iconify icon="solar:filter-bold" width={18} />}
-          onClick={() => setDesktopFiltersOpen((prev) => !prev)}
-          sx={{
-            position: 'fixed',
-            left: 0,
-            top: 168,
-            zIndex: (theme) => theme.zIndex.drawer - 1,
-            borderRadius: '0 12px 12px 0',
-            pl: 1.25,
-            pr: 1.75,
-            py: 1,
-            boxShadow: (theme) => theme.customShadows?.z8 || theme.shadows[6],
-            textTransform: 'none',
-          }}
-        >
-          Remove Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
-        </Button>
+      {/* Floating desktop filter control — restore with isDesktop + desktopFiltersOpen
+      {isDesktop && desktopFiltersOpen && (!isDesktopFilterPanelVisible || showDesktopFloatingFilterButton) && (
+        <Button ...>Remove Filters ...</Button>
       )}
+      */}
 
-      <Drawer
-        anchor="right"
-        open={mobileFiltersOpen}
-        onClose={() => setMobileFiltersOpen(false)}
-        PaperProps={{
-          sx: {
-            width: { xs: '100%', sm: 360 },
-            p: 2.5,
-          },
-        }}
-      >
+      {/* Mobile filter drawer — restore with mobileFiltersOpen + renderFiltersContent
+      <Drawer anchor="right" open={mobileFiltersOpen} onClose={() => setMobileFiltersOpen(false)} ...>
         {renderFiltersContent(true)}
       </Drawer>
+      */}
 
       <MembershipSignupDialog
         open={membershipSignupOpen}

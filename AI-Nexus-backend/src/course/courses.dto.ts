@@ -145,6 +145,10 @@ export class CreateCourseDto {
   level?: string;
 
     @IsOptional()
+    @IsUUID('4')
+    categoryId?: string;
+
+    @IsOptional()
     @Transform(({ value }) => toStringArray(value))
     @IsArray()
     @IsString({ each: true })
@@ -247,6 +251,10 @@ export class UpdateCourseDto {
     level?: string;
 
     @IsOptional()
+    @IsUUID('4')
+    categoryId?: string;
+
+    @IsOptional()
     @Transform(({ value }) => toStringArray(value))
     @IsArray()
     @IsString({ each: true })
@@ -307,6 +315,7 @@ export class SeedDummyCoursesDto {
         freeOrPaid?: boolean;
         amount?: number;
         level?: string;
+        categoryId?: string;
         roles?: string[];
         aiLevel?: string[];
         goals?: string[];

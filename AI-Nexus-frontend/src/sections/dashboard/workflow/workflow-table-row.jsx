@@ -21,6 +21,7 @@ import { usePopover, CustomPopover } from 'src/components/custom-popover';
 import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 // ----------------------------------------------------------------------
 
@@ -28,6 +29,7 @@ export function WorkflowTableRow({ row, selected, onEditRow, onSelectRow, onDele
   const router = useRouter();
   const confirm = useBoolean();
   const popover = usePopover();
+  const defaultCourseImage = getCourseDefaultImage();
 
   return (
     <>
@@ -39,7 +41,7 @@ export function WorkflowTableRow({ row, selected, onEditRow, onSelectRow, onDele
         <TableCell>
           <Stack spacing={2} direction="row" alignItems="center">
             <Avatar
-              src={row.image || '/assets/images/cover/cover-1.jpg'}
+              src={row.image || defaultCourseImage}
               alt={row.title}
               variant="rounded"
               sx={{ width: 48, height: 48 }}

@@ -22,13 +22,13 @@ import {
   buildCourseCompletionLinkedInShareText,
   buildLinkedInFeedShareUrl,
 } from 'src/utils/linkedin-share';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 // ----------------------------------------------------------------------
 
 const COURSES_PER_PAGE = 8;
 
-const DEFAULT_COURSE_IMAGE =
-  import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
+const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
 
 /** Sum watchedSeconds from player-context modules (nested sectionProgress). */
 function sumWatchedSecondsFromModules(modulesByCourse) {
@@ -305,7 +305,7 @@ export function MyProgress({ onNavigateToCertificates }) {
                 >
                   <Image
                     alt={course.title}
-                    src={course.image}
+                    src={course.image || DEFAULT_COURSE_IMAGE}
                     ratio="1/1"
                     sx={{
                       width: { xs: '100%', sm: 80 },

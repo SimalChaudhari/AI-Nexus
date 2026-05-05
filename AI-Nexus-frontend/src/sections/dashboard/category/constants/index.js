@@ -12,6 +12,7 @@ export const CATEGORY_LIST_QUERY_MAP = {
 
 export const CATEGORY_LIST_TABLE_HEAD = [
   { id: 'title', label: 'Title' },
+  { id: 'slug', label: 'Slug', width: 200 },
   { id: 'status', label: 'Status', width: 120 },
   { id: 'action', label: 'Action', width: 88 },
 ];

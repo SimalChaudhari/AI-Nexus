@@ -95,6 +95,10 @@ export class AppSettingsEntity {
   @Column({ type: 'varchar', nullable: true })
   contactHeroImageUrl?: string | null;
 
+  /** Default fallback image for course cards across public pages. */
+  @Column({ type: 'varchar', nullable: true })
+  courseDefaultImageUrl?: string | null;
+
   /** Public contact hero text and map points managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
   contactHeroContent?: ContactHeroContent | null;

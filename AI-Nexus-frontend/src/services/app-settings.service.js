@@ -26,6 +26,7 @@ function transformSettings(settings) {
     logoUrl: normalizeAssetUrl(settings?.logoUrl || ''),
     homeHeroImageUrl: normalizeAssetUrl(settings?.homeHeroImageUrl || ''),
     contactHeroImageUrl: normalizeAssetUrl(settings?.contactHeroImageUrl || ''),
+    courseDefaultImageUrl: normalizeAssetUrl(settings?.courseDefaultImageUrl || ''),
     homeHeroContent: sourceContent && typeof sourceContent === 'object'
       ? {
           headline: sourceContent.headline != null ? String(sourceContent.headline) : '',
@@ -169,6 +170,22 @@ export const appSettingsService = {
 
   async removeContactHero() {
     const response = await axios.delete('/app-settings/contact-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadCourseDefaultImage(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await axios.post('/app-settings/course-default-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeCourseDefaultImage() {
+    const response = await axios.delete('/app-settings/course-default-image');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

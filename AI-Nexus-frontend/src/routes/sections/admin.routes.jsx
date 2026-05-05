@@ -203,16 +203,6 @@ export const adminRoutes = [
         ],
       },
       {
-        path: 'category',
-        children: [
-          { element: <CategoryListPage />, index: true },
-          { path: 'list', element: <CategoryListPage /> },
-          { path: 'new', element: <CategoryCreatePage /> },
-          { path: ':id', element: <CategoryDetailsPage /> },
-          { path: ':id/edit', element: <CategoryEditPage /> },
-        ],
-      },
-      {
         path: 'announcement',
         children: [
           { element: <AnnouncementListPage />, index: true },
@@ -240,6 +230,16 @@ export const adminRoutes = [
           { path: 'new', element: <CourseCreatePage /> },
           { path: 'attempts', element: <CourseAttemptsPage /> },
           { path: 'certificates', element: <CourseCertificatesPage /> },
+          {
+            path: 'category',
+            children: [
+              { element: <CategoryListPage />, index: true },
+              { path: 'list', element: <CategoryListPage /> },
+              { path: 'new', element: <CategoryCreatePage /> },
+              { path: ':id', element: <CategoryDetailsPage /> },
+              { path: ':id/edit', element: <CategoryEditPage /> },
+            ],
+          },
           { path: ':id', element: <CourseDetailsPage /> },
           { path: ':id/edit', element: <CourseEditPage /> },
         ],

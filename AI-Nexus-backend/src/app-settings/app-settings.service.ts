@@ -231,6 +231,38 @@ export class AppSettingsService {
     };
   }
 
+  async uploadCourseDefaultImage(file: Express.Multer.File): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('course-default');
+
+    const relativeUrl = await this.localStorageService.saveFile(file, 'course-default', {
+      fileName: 'course-default',
+    });
+
+    settings.courseDefaultImageUrl = relativeUrl;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Course default image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeCourseDefaultImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('course-default');
+
+    settings.courseDefaultImageUrl = null;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Course default image removed successfully',
+      settings: saved,
+    };
+  }
+
   private cleanText(value: unknown, maxLength?: number): string {
     const cleaned = typeof value === 'string' ? value.trim() : '';
     if (!maxLength || maxLength < 1) return cleaned;
@@ -401,6 +433,7 @@ export class AppSettingsService {
     homeCardsContent: HomeCardsContentPayload | null;
     homeJoinContent: HomeJoinContentPayload | null;
     contactHeroImageUrl: string | null;
+    courseDefaultImageUrl: string | null;
     contactHeroContent: ContactHeroContentPayload | null;
   }> {
     const settings = await this.getSettings();
@@ -412,6 +445,7 @@ export class AppSettingsService {
       homeCardsContent: settings.homeCardsContent ?? null,
       homeJoinContent: settings.homeJoinContent ?? null,
       contactHeroImageUrl: settings.contactHeroImageUrl ?? null,
+      courseDefaultImageUrl: settings.courseDefaultImageUrl ?? null,
       contactHeroContent: settings.contactHeroContent ?? null,
     };
   }

@@ -19,6 +19,8 @@ import {
   normalizePaginatedQuery,
 } from '../common/pagination/paginated-list.util';
 import { CourseEnrollmentService } from './course-enrollment.service';
+import { CategoryEntity } from '../category/categories.entity';
+import { CourseOptionEntity, CourseOptionType } from './course-option.entity';
 
 /** Multipart / plain body may send booleans as strings. */
 function coerceBoolean(value: unknown, defaultValue = false): boolean {
@@ -54,8 +56,6 @@ type GetCoursesOptions = PaginatedQueryOptions & {
   courseIds?: string[];
 };
 
-type GroupKey = 'basic' | 'intermediate' | 'advance';
-
 type GroupedCoursesQuery = {
   userId?: string;
   group?: string;
@@ -65,17 +65,7 @@ type GroupedCoursesQuery = {
   isEnrolled?: boolean;
   defaultPage?: number;
   defaultLimit?: number;
-  beginnerPage?: number;
-  beginnerLimit?: number;
-  basicPage?: number;
-  basicLimit?: number;
-  intermediatePage?: number;
-  intermediateLimit?: number;
-  advancePage?: number;
-  advanceLimit?: number;
   recommendedCourseIds?: string[];
-  recommendedPage?: number;
-  recommendedLimit?: number;
 };
 
 function mapGroupToLevel(group?: string): CourseLevel | undefined {
@@ -95,21 +85,6 @@ function normalizeCourseLevel(level?: string): CourseLevel {
     return CourseLevel.Beginner;
 }
 
-function normalizeGroupKey(group?: string): GroupKey | undefined {
-  const normalized = group?.trim().toLowerCase();
-  if (!normalized) return undefined;
-  if (normalized === 'basic' || normalized === 'beginner') return 'basic';
-  if (normalized === 'intermediate') return 'intermediate';
-  if (normalized === 'advance' || normalized === 'advanced') return 'advance';
-  return undefined;
-}
-
-function toGroupName(group: GroupKey): string {
-  if (group === 'basic') return 'AI Foundation';
-  if (group === 'intermediate') return 'AI in Accounting Workflows';
-  return 'AI Builder Track';
-}
-
 @Injectable()
 export class CourseService {
     constructor(
@@ -125,8 +100,67 @@ export class CourseService {
         private courseModuleRepository: Repository<CourseModuleEntity>,
         @InjectRepository(CourseModuleSectionEntity)
         private courseModuleSectionRepository: Repository<CourseModuleSectionEntity>,
+        @InjectRepository(CategoryEntity)
+        private categoryRepository: Repository<CategoryEntity>,
+        @InjectRepository(CourseOptionEntity)
+        private courseOptionRepository: Repository<CourseOptionEntity>,
         private readonly courseEnrollmentService: CourseEnrollmentService,
     ) { }
+
+    private normalizeCourseOptionType(type?: string): CourseOptionType {
+        const normalized = String(type || '').trim().toLowerCase();
+        if (normalized === 'level' || normalized === 'levels') return CourseOptionType.Level;
+        if (normalized === 'role' || normalized === 'roles') return CourseOptionType.Role;
+        if (
+            normalized === 'ailevel' ||
+            normalized === 'ai-level' ||
+            normalized === 'ai_level' ||
+            normalized === 'ai'
+        ) {
+            return CourseOptionType.AiLevel;
+        }
+        if (normalized === 'goal' || normalized === 'goals') return CourseOptionType.Goal;
+        if (
+            normalized === 'usearea' ||
+            normalized === 'use-area' ||
+            normalized === 'use_area' ||
+            normalized === 'useareas' ||
+            normalized === 'use-areas'
+        ) {
+            return CourseOptionType.UseArea;
+        }
+        throw new BadRequestException('Invalid option type');
+    }
+
+    private async attachCourseCategories(data: any[]): Promise<any[]> {
+        if (!Array.isArray(data) || data.length === 0) {
+            return data;
+        }
+
+        const categoryIds = [...new Set(data.map((course) => course?.categoryId).filter(Boolean))];
+        if (categoryIds.length === 0) {
+            return data.map((course) => ({ ...course, category: null }));
+        }
+
+        const categories = await this.categoryRepository.find({
+            where: { id: In(categoryIds) },
+            select: ['id', 'title', 'slug', 'status', 'icon', 'image', 'description'],
+        });
+        const categoryMap = new Map(categories.map((category) => [category.id, category]));
+
+        return data.map((course) => ({
+            ...course,
+            category: course?.categoryId ? categoryMap.get(course.categoryId) || null : null,
+        }));
+    }
+
+    private stripCategoryIdFromCourses(data: any[]): any[] {
+        if (!Array.isArray(data)) return [];
+        return data.map((course) => {
+            const { categoryId: _categoryId, ...rest } = course || {};
+            return rest;
+        });
+    }
 
     private async attachCourseContentCounts(data: any[]): Promise<any[]> {
         if (!Array.isArray(data) || data.length === 0) {
@@ -349,7 +383,9 @@ export class CourseService {
                 isRecommended: recommendedSet.has(course.id),
             };
         });
-        const data = await this.attachCourseContentCounts(mappedData);
+        const withCategories = await this.attachCourseCategories(mappedData);
+        const withCounts = await this.attachCourseContentCounts(withCategories);
+        const data = this.stripCategoryIdFromCourses(withCounts);
 
         if (!usePagination) {
             return data;
@@ -366,42 +402,55 @@ export class CourseService {
     }
 
     async getGroupedCourses(query: GroupedCoursesQuery) {
-        const selectedGroup = normalizeGroupKey(query.group);
-        const groups: GroupKey[] = selectedGroup ? [selectedGroup] : ['basic', 'intermediate', 'advance'];
         const defaultPage = query.defaultPage ?? 1;
         const defaultLimit = query.defaultLimit ?? 12;
+        const normalizedRequestedGroup = String(query.group || '').trim().toLowerCase();
+        const allCategories = await this.categoryRepository.find({
+            select: ['id', 'title', 'slug', 'status', 'createdAt'],
+            order: { createdAt: 'ASC' },
+        });
+        const activeCategories = allCategories.filter(
+            (category) => String(category.status || '').toLowerCase() === 'active',
+        );
+        const selectedCategories = normalizedRequestedGroup
+            ? activeCategories.filter((category) => {
+                const slug = String(category.slug || '').trim().toLowerCase();
+                const title = String(category.title || '').trim().toLowerCase();
+                return (
+                    slug === normalizedRequestedGroup ||
+                    title === normalizedRequestedGroup ||
+                    category.id === query.group
+                );
+            })
+            : activeCategories;
 
         return Promise.all(
-            groups.map(async (groupKey, index) => {
-                const page =
-                    groupKey === 'basic'
-                        ? query.beginnerPage ?? query.basicPage ?? defaultPage
-                        : groupKey === 'intermediate'
-                          ? query.intermediatePage ?? defaultPage
-                          : query.advancePage ?? defaultPage;
-                const limit =
-                    groupKey === 'basic'
-                        ? query.beginnerLimit ?? query.basicLimit ?? defaultLimit
-                        : groupKey === 'intermediate'
-                          ? query.intermediateLimit ?? defaultLimit
-                          : query.advanceLimit ?? defaultLimit;
-
-                const result = (await this.getAll({
-                    userId: query.userId,
-                    usePagination: true,
-                    page,
-                    limit,
-                    group: groupKey,
-                    search: query.search,
-                    freeOrPaid: query.freeOrPaid,
-                    isFavorite: query.isFavorite,
-                    isEnrolled: query.isEnrolled,
-                    recommendedCourseIds: query.recommendedCourseIds,
-                })) as PaginatedResponse<any>;
+            selectedCategories.map(async (category) => {
+                const courseIdRows = await this.courseRepository.find({
+                    where: { categoryId: category.id },
+                    select: ['id'],
+                });
+                const courseIds = courseIdRows.map((row) => row.id).filter(Boolean);
+                const result =
+                    courseIds.length > 0
+                        ? ((await this.getAll({
+                            userId: query.userId,
+                            usePagination: true,
+                            page: defaultPage,
+                            limit: defaultLimit,
+                            search: query.search,
+                            freeOrPaid: query.freeOrPaid,
+                            isFavorite: query.isFavorite,
+                            isEnrolled: query.isEnrolled,
+                            recommendedCourseIds: query.recommendedCourseIds,
+                            courseIds,
+                        })) as PaginatedResponse<any>)
+                        : buildPaginatedResponse([], defaultPage, defaultLimit, 0, query.search || null, undefined);
 
                 return {
-                    groupId: `group_${index + 1}`,
-                    groupName: toGroupName(groupKey),
+                    groupId: `category_${category.id}`,
+                    groupName: category.title,
+                    groupKey: category.slug || category.id,
                     pagination: {
                         page: result.pagination.page,
                         limit: result.pagination.limit,
@@ -455,6 +504,94 @@ export class CourseService {
         });
     }
 
+    async getCourseFormOptions() {
+        const options = await this.courseOptionRepository.find({
+            where: { isActive: true },
+            order: { createdAt: 'ASC' },
+        });
+        const mapByType = (type: CourseOptionType) =>
+            options
+                .filter((item) => item.type === type)
+                .map((item) => ({ id: item.id, label: item.label }));
+
+        return {
+            levels: mapByType(CourseOptionType.Level),
+            roles: mapByType(CourseOptionType.Role),
+            aiLevels: mapByType(CourseOptionType.AiLevel),
+            goals: mapByType(CourseOptionType.Goal),
+            useAreas: mapByType(CourseOptionType.UseArea),
+        };
+    }
+
+    async getCourseOptions(type: string) {
+        const normalizedType = this.normalizeCourseOptionType(type);
+        const rows = await this.courseOptionRepository.find({
+            where: { type: normalizedType, isActive: true },
+            order: { createdAt: 'ASC' },
+        });
+        return rows.map((row) => ({ id: row.id, type: row.type, label: row.label }));
+    }
+
+    async createCourseOption(type: string, label: string) {
+        const normalizedType = this.normalizeCourseOptionType(type);
+        const normalizedLabel = String(label || '').trim();
+        if (!normalizedLabel) {
+            throw new BadRequestException('Label is required');
+        }
+        const existing = await this.courseOptionRepository
+            .createQueryBuilder('option')
+            .where('option.type = :type', { type: normalizedType })
+            .andWhere('LOWER(option.label) = LOWER(:label)', { label: normalizedLabel })
+            .getOne();
+        if (existing) {
+            if (!existing.isActive) {
+                existing.isActive = true;
+                await this.courseOptionRepository.save(existing);
+            }
+            return existing;
+        }
+
+        const created = this.courseOptionRepository.create({
+            type: normalizedType,
+            label: normalizedLabel,
+            isActive: true,
+        });
+        return this.courseOptionRepository.save(created);
+    }
+
+    async updateCourseOption(id: string, label: string) {
+        const normalizedLabel = String(label || '').trim();
+        if (!normalizedLabel) {
+            throw new BadRequestException('Label is required');
+        }
+        const option = await this.courseOptionRepository.findOne({ where: { id } });
+        if (!option) {
+            throw new NotFoundException('Option not found');
+        }
+
+        const duplicate = await this.courseOptionRepository
+            .createQueryBuilder('option')
+            .where('option.type = :type', { type: option.type })
+            .andWhere('LOWER(option.label) = LOWER(:label)', { label: normalizedLabel })
+            .andWhere('option.id != :id', { id })
+            .getOne();
+        if (duplicate) {
+            throw new BadRequestException('Option with same label already exists');
+        }
+
+        option.label = normalizedLabel;
+        return this.courseOptionRepository.save(option);
+    }
+
+    async deleteCourseOption(id: string) {
+        const option = await this.courseOptionRepository.findOne({ where: { id } });
+        if (!option) {
+            throw new NotFoundException('Option not found');
+        }
+        await this.courseOptionRepository.delete({ id });
+        return { id };
+    }
+
     async createCourseGroup(name: string) {
         const normalizedName = name.trim();
         const existing = await this.courseGroupRepository.findOne({
@@ -473,21 +610,77 @@ export class CourseService {
     }
 
     async seedDummyCourses(inputCourses?: Array<Partial<CreateCourseDto>>) {
+        type SeedCourseInput = Partial<CreateCourseDto> & {
+            categorySlug?: string;
+            categoryTitle?: string;
+        };
         const seedFilePath = join(process.cwd(), 'src', 'course', 'data', 'dummy-courses.json');
-        let fileCourses: Array<Partial<CreateCourseDto>> = [];
+        let fileCourses: SeedCourseInput[] = [];
         if (existsSync(seedFilePath)) {
             try {
                 const raw = readFileSync(seedFilePath, 'utf-8');
                 const parsed = JSON.parse(raw) as unknown;
-                fileCourses = Array.isArray(parsed) ? (parsed as Array<Partial<CreateCourseDto>>) : [];
+                fileCourses = Array.isArray(parsed) ? (parsed as SeedCourseInput[]) : [];
             } catch {
                 fileCourses = [];
             }
         }
 
-        const seedSource = Array.isArray(inputCourses) && inputCourses.length > 0
-            ? inputCourses
+        const seedSource: SeedCourseInput[] = Array.isArray(inputCourses) && inputCourses.length > 0
+            ? (inputCourses as SeedCourseInput[])
             : fileCourses;
+
+        const categories = await this.categoryRepository.find({
+            select: ['id', 'title', 'slug'],
+        });
+        const categoryById = new Map(categories.map((category) => [category.id, category.id]));
+        const categoryBySlug = new Map(
+            categories
+                .filter((category) => category.slug)
+                .map((category) => [String(category.slug).trim().toLowerCase(), category.id]),
+        );
+        const categoryByTitle = new Map(
+            categories
+                .filter((category) => category.title)
+                .map((category) => [String(category.title).trim().toLowerCase(), category.id]),
+        );
+
+        const resolveCategoryId = (item: SeedCourseInput): string | null => {
+            const explicitId = String(item.categoryId || '').trim();
+            if (explicitId && categoryById.has(explicitId)) {
+                return explicitId;
+            }
+
+            const slugKey = String(item.categorySlug || '').trim().toLowerCase();
+            if (slugKey && categoryBySlug.has(slugKey)) {
+                return categoryBySlug.get(slugKey) || null;
+            }
+
+            const titleKey = String(item.categoryTitle || '').trim().toLowerCase();
+            if (titleKey && categoryByTitle.has(titleKey)) {
+                return categoryByTitle.get(titleKey) || null;
+            }
+
+            const normalizedLevel = String(item.level || '').trim().toLowerCase();
+            const fallbackCategoryTitle =
+                normalizedLevel === 'intermediate'
+                    ? 'ai in accounting workflows'
+                    : normalizedLevel === 'advanced' || normalizedLevel === 'advance'
+                        ? 'ai builder track'
+                        : 'ai foundation';
+            if (categoryByTitle.has(fallbackCategoryTitle)) {
+                return categoryByTitle.get(fallbackCategoryTitle) || null;
+            }
+
+            // Final fallback when categories are named as levels.
+            const fallbackLevelTitle =
+                normalizedLevel === 'intermediate'
+                    ? 'intermediate'
+                    : normalizedLevel === 'advanced' || normalizedLevel === 'advance'
+                        ? 'advanced'
+                        : 'beginner';
+            return categoryByTitle.get(fallbackLevelTitle) || null;
+        };
 
         const prepared = seedSource.map((item, index) =>
             this.courseRepository.create({
@@ -498,6 +691,7 @@ export class CourseService {
                 freeOrPaid: Boolean(item.freeOrPaid),
                 amount: Boolean(item.freeOrPaid) ? Number(item.amount || 0) : 0,
                 level: normalizeCourseLevel(item.level),
+                categoryId: resolveCategoryId(item),
                 roles: Array.isArray(item.roles)
                     ? item.roles.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
                     : [],
@@ -525,12 +719,22 @@ export class CourseService {
         };
     }
 
-    async getById(id: string): Promise<CourseEntity> {
+    async getById(id: string): Promise<any> {
         const course = await this.courseRepository.findOne({ where: { id } });
         if (!course) {
             throw new NotFoundException("Course not found");
         }
-        return course;
+        let category: CategoryEntity | null = null;
+        if (course.categoryId) {
+            category = await this.categoryRepository.findOne({
+                where: { id: course.categoryId },
+                select: ['id', 'title', 'slug', 'status', 'icon', 'image', 'description'],
+            });
+        }
+        return {
+            ...course,
+            category: category || null,
+        };
     }
 
     async findRelatedCourses(courseId: string, level?: string, limit = 4): Promise<CourseEntity[]> {
@@ -603,6 +807,7 @@ export class CourseService {
             level: normalizeCourseLevel(createCourseDto.level),
             amount: createCourseDto.freeOrPaid && createCourseDto.amount ? createCourseDto.amount : 0,
         };
+        courseData.categoryId = createCourseDto.categoryId?.trim() || null;
 
         if (createCourseDto.description !== undefined) {
             courseData.description = createCourseDto.description;
@@ -696,6 +901,9 @@ export class CourseService {
         }
         if (updateCourseDto.level !== undefined) {
             course.level = normalizeCourseLevel(updateCourseDto.level);
+        }
+        if (updateCourseDto.categoryId !== undefined) {
+            course.categoryId = updateCourseDto.categoryId?.trim() || null;
         }
         if (updateCourseDto.languageIds !== undefined) {
             course.languageIds = normalizeStringArray(updateCourseDto.languageIds);

@@ -19,6 +19,7 @@ import { usePopover, CustomPopover } from 'src/components/custom-popover';
 import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 // ----------------------------------------------------------------------
 
@@ -30,6 +31,7 @@ export function CourseCard({ row, onEditRow, onDeleteRow }) {
 
   const levelColor =
     row.level === 'Advanced' ? 'error' : row.level === 'Intermediate' ? 'warning' : 'info';
+  const defaultCourseImage = getCourseDefaultImage();
 
   return (
     <>
@@ -75,7 +77,7 @@ export function CourseCard({ row, onEditRow, onDeleteRow }) {
         >
           <CardMedia
             component="img"
-            image={row.image || '/assets/images/cover/cover-1.jpg'}
+            image={row.image || defaultCourseImage}
             alt={row.title}
             sx={{
               height: 180,
@@ -112,7 +114,7 @@ export function CourseCard({ row, onEditRow, onDeleteRow }) {
               sx={{ height: 22, fontWeight: 600 }}
             />
             <Chip
-              label={row.freeOrPaid ? 'Paid' : 'Free'}
+              label={row.freeOrPaid ? 'Paid' : 'AI Fluency'}
               color={row.freeOrPaid ? 'success' : 'default'}
               size="small"
               sx={{ height: 22, fontWeight: 600 }}

@@ -309,17 +309,9 @@ export class CourseController {
     @Get('grouped/list')
     @UseGuards(OptionalJwtAuthGuard)
     @ApiOperation({ summary: 'List courses grouped with independent pagination metadata per group' })
-    @ApiQuery({ name: 'group', required: false, description: 'Optional group: basic | intermediate | advance' })
+    @ApiQuery({ name: 'group', required: false, description: 'Optional group: category slug/title/id or recommended' })
     @ApiQuery({ name: 'page', required: false, description: 'Default page for all groups', example: 1 })
     @ApiQuery({ name: 'limit', required: false, description: 'Default limit for all groups', example: 12 })
-    @ApiQuery({ name: 'beginnerPage', required: false, description: 'Page for Beginner group', example: 1 })
-    @ApiQuery({ name: 'beginnerLimit', required: false, description: 'Limit for Beginner group', example: 5 })
-    @ApiQuery({ name: 'basicPage', required: false, description: 'Deprecated alias for beginnerPage', example: 1 })
-    @ApiQuery({ name: 'basicLimit', required: false, description: 'Deprecated alias for beginnerLimit', example: 5 })
-    @ApiQuery({ name: 'intermediatePage', required: false, description: 'Page for Intermediate group', example: 1 })
-    @ApiQuery({ name: 'intermediateLimit', required: false, description: 'Limit for Intermediate group', example: 5 })
-    @ApiQuery({ name: 'advancePage', required: false, description: 'Page for Advance group', example: 1 })
-    @ApiQuery({ name: 'advanceLimit', required: false, description: 'Limit for Advance group', example: 5 })
     @ApiQuery({ name: 'recommendedPage', required: false, description: 'Page for recommended courses', example: 1 })
     @ApiQuery({ name: 'recommendedLimit', required: false, description: 'Limit for recommended courses', example: 5 })
     @ApiQuery({ name: 'search', required: false, description: 'Search in title/description' })
@@ -335,14 +327,6 @@ export class CourseController {
         @Query('freeOrPaid') freeOrPaid?: string,
         @Query('isFavorite') isFavorite?: string,
         @Query('isEnrolled') isEnrolled?: string,
-        @Query('beginnerPage') beginnerPage?: string,
-        @Query('beginnerLimit') beginnerLimit?: string,
-        @Query('basicPage') basicPage?: string,
-        @Query('basicLimit') basicLimit?: string,
-        @Query('intermediatePage') intermediatePage?: string,
-        @Query('intermediateLimit') intermediateLimit?: string,
-        @Query('advancePage') advancePage?: string,
-        @Query('advanceLimit') advanceLimit?: string,
         @Query('recommendedPage') recommendedPage?: string,
         @Query('recommendedLimit') recommendedLimit?: string,
         @Res() response?: Response,
@@ -350,12 +334,6 @@ export class CourseController {
         const userId = (request as any).user?.id;
         const requestedGroup = String(group || '').trim().toLowerCase();
         const isRecommendedOnlyRequest = requestedGroup === 'recommended';
-        const isSpecificStandardGroup =
-            requestedGroup === 'beginner' ||
-            requestedGroup === 'basic' ||
-            requestedGroup === 'intermediate' ||
-            requestedGroup === 'advance' ||
-            requestedGroup === 'advanced';
         let recommendation: { persona: string | null; courseIds: string[] } = {
             persona: null,
             courseIds: [],
@@ -368,8 +346,8 @@ export class CourseController {
         const recommendedResult = await this.courseService.getRecommendedCourses({
             userId,
             recommendedCourseIds,
-            page: parsePositiveInteger(recommendedPage, 1),
-            limit: parsePositiveInteger(recommendedLimit, 5),
+            page: parsePositiveInteger(recommendedPage || page, 1),
+            limit: parsePositiveInteger(recommendedLimit || limit, 5),
             search,
             freeOrPaid: parseBooleanQuery(freeOrPaid),
             isFavorite: parseBooleanQuery(isFavorite),
@@ -397,32 +375,20 @@ export class CourseController {
         if (!isRecommendedOnlyRequest) {
             groups = await this.courseService.getGroupedCourses({
                 userId,
-                group: isSpecificStandardGroup ? group : undefined,
+                group,
                 search,
                 freeOrPaid: parseBooleanQuery(freeOrPaid),
                 isFavorite: parseBooleanQuery(isFavorite),
                 isEnrolled: parseBooleanQuery(isEnrolled),
                 defaultPage: parsePositiveInteger(page, 1),
                 defaultLimit: parsePositiveInteger(limit, 12),
-                beginnerPage:
-                    parseOptionalPositiveInteger(beginnerPage) ??
-                    parseOptionalPositiveInteger(basicPage),
-                beginnerLimit:
-                    parseOptionalPositiveInteger(beginnerLimit) ??
-                    parseOptionalPositiveInteger(basicLimit),
-                basicPage: parseOptionalPositiveInteger(basicPage),
-                basicLimit: parseOptionalPositiveInteger(basicLimit),
-                intermediatePage: parseOptionalPositiveInteger(intermediatePage),
-                intermediateLimit: parseOptionalPositiveInteger(intermediateLimit),
-                advancePage: parseOptionalPositiveInteger(advancePage),
-                advanceLimit: parseOptionalPositiveInteger(advanceLimit),
                 recommendedCourseIds,
             });
         }
 
         const groupsWithRecommended = isRecommendedOnlyRequest
             ? (recommendedGroup ? [recommendedGroup] : [])
-            : (!isSpecificStandardGroup && recommendedGroup
+            : (recommendedGroup
                 ? [recommendedGroup, ...groups]
                 : groups);
 
@@ -446,6 +412,78 @@ export class CourseController {
         return response.status(HttpStatus.OK).json({
             success: true,
             data: groups,
+        });
+    }
+
+    @Get('form-options')
+    @ApiOperation({ summary: 'Get dynamic options for course form fields' })
+    async getCourseFormOptions(@Res() response: Response) {
+        const options = await this.courseService.getCourseFormOptions();
+        return response.status(HttpStatus.OK).json({
+            success: true,
+            data: options,
+        });
+    }
+
+    @Get('options')
+    @ApiOperation({ summary: 'Get dynamic options by type (level/role/aiLevel/goal/useArea)' })
+    async getCourseOptions(
+        @Query('type') type: string,
+        @Res() response: Response,
+    ) {
+        const data = await this.courseService.getCourseOptions(type);
+        return response.status(HttpStatus.OK).json({
+            success: true,
+            data,
+        });
+    }
+
+    @Post('options')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Create dynamic option (admin)' })
+    async createCourseOption(
+        @Body() body: { type?: string; label?: string },
+        @Res() response: Response,
+    ) {
+        const created = await this.courseService.createCourseOption(body?.type || '', body?.label || '');
+        return response.status(HttpStatus.CREATED).json({
+            success: true,
+            data: created,
+        });
+    }
+
+    @Put('options/:id')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Update dynamic option label (admin)' })
+    async updateCourseOption(
+        @Param('id') id: string,
+        @Body() body: { label?: string },
+        @Res() response: Response,
+    ) {
+        const updated = await this.courseService.updateCourseOption(id, body?.label || '');
+        return response.status(HttpStatus.OK).json({
+            success: true,
+            data: updated,
+        });
+    }
+
+    @Delete('options/:id')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Delete dynamic option (admin)' })
+    async deleteCourseOption(
+        @Param('id') id: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.courseService.deleteCourseOption(id);
+        return response.status(HttpStatus.OK).json({
+            success: true,
+            data: result,
         });
     }
 
@@ -565,7 +603,12 @@ export class CourseController {
         const courseRow = await this.courseService.getById(courseId);
         const speakers = await orderedSpeakersForCourse(this.speakerService, courseRow.speakerIds);
         const languages = await orderedLanguagesForCourse(this.languageService, courseRow.languageIds);
-        const { languageIds: _languageIds, speakerIds: _speakerIds, ...courseBase } = courseRow as any;
+        const {
+            languageIds: _languageIds,
+            speakerIds: _speakerIds,
+            categoryId: _categoryId,
+            ...courseBase
+        } = courseRow as any;
         const course = { ...courseBase, speakers, languages };
 
         // Enrollment status (only meaningful for authenticated users)

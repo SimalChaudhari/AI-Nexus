@@ -13,7 +13,7 @@ import { NavUl, NavLi, NavCollapse } from '../styles';
 export function NavList({ data, render, depth, slotProps, enabledRootRedirect }) {
   const pathname = usePathname();
 
-  const active = useActiveLink(data.path, !!data.children);
+  const active = useActiveLink(data.path, !!data.children || !!data.deepMatch);
 
   const [openMenu, setOpenMenu] = useState(active);
 

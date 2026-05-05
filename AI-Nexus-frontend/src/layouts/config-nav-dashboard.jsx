@@ -88,15 +88,6 @@ export const navData = [
         ],
       },
       {
-        title: 'Category',
-        path: paths.admin.category.root,
-        icon: ICONS.category,
-        children: [
-          { title: 'List', path: paths.admin.category.list },
-          { title: 'Create', path: paths.admin.category.new },
-        ],
-      },
-      {
         title: 'Announcement',
         path: paths.admin.announcement.root,
         icon: ICONS.announcement,
@@ -120,7 +111,7 @@ export const navData = [
         icon: ICONS.course,
         children: [
           { title: 'List', path: paths.admin.course.list },
-          { title: 'Create', path: paths.admin.course.new },
+          { title: 'Category', path: paths.admin.category.root, deepMatch: true },
           { title: 'Quiz Attempts', path: paths.admin.course.attempts },
           { title: 'Certificates', path: paths.admin.course.certificates },
         ],

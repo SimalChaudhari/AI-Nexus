@@ -28,6 +28,7 @@ export class CoursesInitService implements OnModuleInit {
             "freeOrPaid" boolean NOT NULL DEFAULT false,
             "amount" decimal(10,2) DEFAULT 0,
             "level" varchar NOT NULL DEFAULT 'Beginner',
+            "categoryId" uuid,
             "roles" jsonb,
             "aiLevel" jsonb,
             "goals" jsonb,
@@ -83,6 +84,16 @@ export class CoursesInitService implements OnModuleInit {
           console.log('📋 Adding roles column to courses table...');
           await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "roles" jsonb`);
           console.log('✅ roles column added successfully');
+        }
+
+        const hasCategoryIdColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'categoryId'
+        `);
+        if (!hasCategoryIdColumn?.length) {
+          console.log('📋 Adding categoryId column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "categoryId" uuid`);
+          console.log('✅ categoryId column added successfully');
         }
 
         const hasAiLevelColumn = await queryRunner.query(`
@@ -185,7 +196,7 @@ export class CoursesInitService implements OnModuleInit {
 
         await queryRunner.query(`
           INSERT INTO "course_groups" ("name", "isActive")
-          VALUES ('AI Foundation', true), ('AI in Accounting Workflows', true), ('AI Builder Track', true)
+          VALUES ('Beginner', true), ('Intermediate', true), ('Advanced', true)
           ON CONFLICT ("name") DO NOTHING
         `);
         console.log('✅ course_groups table created successfully');
@@ -194,12 +205,15 @@ export class CoursesInitService implements OnModuleInit {
         await queryRunner.query(`
           UPDATE "course_groups"
           SET "name" = CASE
-            WHEN lower("name") IN ('beginner', 'basic') THEN 'AI Foundation'
-            WHEN lower("name") = 'intermediate' THEN 'AI in Accounting Workflows'
-            WHEN lower("name") IN ('advance', 'advanced') THEN 'AI Builder Track'
+            WHEN lower("name") IN ('beginner', 'basic', 'ai foundation') THEN 'Beginner'
+            WHEN lower("name") IN ('intermediate', 'ai in accounting workflows') THEN 'Intermediate'
+            WHEN lower("name") IN ('advance', 'advanced', 'ai builder track') THEN 'Advanced'
             ELSE "name"
           END
-          WHERE lower("name") IN ('beginner', 'basic', 'intermediate', 'advance', 'advanced')
+          WHERE lower("name") IN (
+            'beginner', 'basic', 'intermediate', 'advance', 'advanced',
+            'ai foundation', 'ai in accounting workflows', 'ai builder track'
+          )
         `);
       }
 

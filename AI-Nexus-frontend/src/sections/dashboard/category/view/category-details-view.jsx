@@ -1,3 +1,4 @@
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 
@@ -68,6 +69,36 @@ export function CategoryDetailsView({ category, loading, error }) {
           value: category.title || '-',
         },
         {
+          label: 'Slug',
+          value: (
+            <Box component="code" sx={{ typography: 'body2', wordBreak: 'break-all' }}>
+              {category.slug || '-'}
+            </Box>
+          ),
+        },
+        {
+          label: 'Description',
+          value: category.description?.trim() ? category.description : '-',
+        },
+        {
+          label: 'Image',
+          value: (() => {
+            const img = String(category.image || '').trim();
+            if (!img) return '-';
+            if (/^https?:\/\//.test(img) || img.startsWith('/')) {
+              return (
+                <Box
+                  component="img"
+                  alt=""
+                  src={img}
+                  sx={{ maxWidth: 240, maxHeight: 140, borderRadius: 1, objectFit: 'cover' }}
+                />
+              );
+            }
+            return img;
+          })(),
+        },
+        {
           label: 'Icon',
           value: category.icon ? (
             <>
@@ -112,6 +143,7 @@ export function CategoryDetailsView({ category, loading, error }) {
       heading="Category Details"
       links={[
         { name: 'Dashboard', href: paths.dashboard.root },
+        { name: 'Course', href: paths.admin.course.list },
         { name: 'Category', href: paths.admin.category.list },
         { name: category?.title },
       ]}

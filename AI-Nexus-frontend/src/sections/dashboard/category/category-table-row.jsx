@@ -41,8 +41,16 @@ export function CategoryTableRow({ row, selected, onEditRow, onSelectRow, onDele
                 <Iconify icon={row.icon} width={24} />
               </Box>
             )}
+            {row.image && (
+              <Box
+                component="img"
+                alt=""
+                src={row.image}
+                sx={{ width: 40, height: 40, borderRadius: 1, objectFit: 'cover', flexShrink: 0 }}
+              />
+            )}
 
-            <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start' }}>
+            <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start', minWidth: 0 }}>
               <Link
                 component={RouterLink}
                 href={paths.admin.category.details(row.id)}
@@ -56,6 +64,24 @@ export function CategoryTableRow({ row, selected, onEditRow, onSelectRow, onDele
               </Box>
             </Stack>
           </Stack>
+        </TableCell>
+
+        <TableCell>
+          <Box
+            sx={{
+              typography: 'body2',
+              color: 'text.secondary',
+              maxWidth: 220,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: 13,
+            }}
+            title={row.slug || ''}
+          >
+            {row.slug || '-'}
+          </Box>
         </TableCell>
 
         <TableCell>

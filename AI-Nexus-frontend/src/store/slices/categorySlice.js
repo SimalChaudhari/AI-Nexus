@@ -3,9 +3,9 @@ import { categoryService } from 'src/services/category.service';
 import { toast } from 'src/components/snackbar';
 
 // Async thunks for API calls
-export const fetchCategories = createAsyncThunk('categories/fetchCategories', async (params = {}, { rejectWithValue }) => {
+export const fetchCategories = createAsyncThunk('categories/fetchCategories', async (params, { rejectWithValue }) => {
   try {
-    const response = await categoryService.getAllCategories(params);
+    const response = await categoryService.getAllCategories(params || {});
     return response;
   } catch (error) {
     const errorMessage = error?.message || 'Failed to fetch categories';
@@ -14,9 +14,11 @@ export const fetchCategories = createAsyncThunk('categories/fetchCategories', as
   }
 });
 
-export const createCategory = createAsyncThunk('categories/createCategory', async (categoryData, { rejectWithValue }) => {
+export const createCategory = createAsyncThunk('categories/createCategory', async (payload, { rejectWithValue }) => {
   try {
-    const response = await categoryService.createCategory(categoryData);
+    const categoryData = payload?.categoryData ?? payload ?? {};
+    const imageFile = payload?.imageFile ?? null;
+    const response = await categoryService.createCategory(categoryData, imageFile);
     return response;
   } catch (error) {
     const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create category';
@@ -25,9 +27,12 @@ export const createCategory = createAsyncThunk('categories/createCategory', asyn
   }
 });
 
-export const updateCategory = createAsyncThunk('categories/updateCategory', async ({ id, categoryData }, { rejectWithValue }) => {
+export const updateCategory = createAsyncThunk('categories/updateCategory', async (payload, { rejectWithValue }) => {
   try {
-    const response = await categoryService.updateCategory(id, categoryData);
+    const id = payload?.id;
+    const categoryData = payload?.categoryData ?? {};
+    const imageFile = payload?.imageFile ?? null;
+    const response = await categoryService.updateCategory(id, categoryData, imageFile);
     return response;
   } catch (error) {
     const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update category';

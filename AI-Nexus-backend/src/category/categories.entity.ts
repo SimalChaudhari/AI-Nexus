@@ -13,6 +13,17 @@ export class CategoryEntity {
     @Column({ type: 'varchar' })
     title!: string;
 
+    @Column({ type: 'text', nullable: true })
+    description?: string | null;
+
+    /** Public URL or stored file path for category image */
+    @Column({ type: 'text', nullable: true })
+    image?: string | null;
+
+    /** URL-safe unique identifier */
+    @Column({ type: 'varchar', unique: true })
+    slug!: string;
+
     @Column({ type: 'varchar', nullable: true })
     icon?: string;
 

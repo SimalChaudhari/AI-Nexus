@@ -16,7 +16,7 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 // ----------------------------------------------------------------------
 
 function formatPrice(freeOrPaid, amount) {
-  if (!freeOrPaid) return 'Free';
+  if (!freeOrPaid) return 'AI Fluency';
   return `$${Number(amount || 0).toFixed(2)}`;
 }
 

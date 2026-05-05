@@ -11,7 +11,14 @@ import {
     Query,
     Res,
     UseGuards,
+    UseInterceptors,
+    UploadedFile,
+    ParseFilePipe,
+    MaxFileSizeValidator,
+    FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { UserRole } from '../user/users.entity';
 import { Response } from 'express';
 import { CategoryService } from './categories.service';
@@ -20,12 +27,15 @@ import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaginationService } from '../common/pagination/pagination.service';
 import { CategoryPaginatedListResult } from './categories.service';
+import { LocalStorageService } from '../service/local-storage.service';
 
 const DEFAULT_CATEGORIES_PAGE = 1;
 const DEFAULT_CATEGORIES_LIMIT = 10;
+const CATEGORY_IMAGE_LIMIT = 5 * 1024 * 1024;
+const CATEGORY_IMAGE_TYPE = /(jpg|jpeg|png|gif|webp)$/;
 
 @ApiTags('Categories')
 @Controller('categories')
@@ -33,6 +43,7 @@ export class CategoryController {
     constructor(
         private readonly categoryService: CategoryService,
         private readonly paginationService: PaginationService,
+        private readonly localStorageService: LocalStorageService,
     ) { }
 
     @Get()
@@ -79,12 +90,33 @@ export class CategoryController {
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
+    @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Create a category' })
     @ApiBody({ type: CreateCategoryDto })
+    @UseInterceptors(
+        FileInterceptor('image', {
+            storage: memoryStorage(),
+            limits: { fileSize: CATEGORY_IMAGE_LIMIT },
+        }),
+    )
     async createCategory(
         @Body() createCategoryDto: CreateCategoryDto,
         @Res() response: Response,
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: false,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: CATEGORY_IMAGE_LIMIT }),
+                    new FileTypeValidator({ fileType: CATEGORY_IMAGE_TYPE }),
+                ],
+            }),
+        )
+        imageFile?: Express.Multer.File,
     ) {
+        if (imageFile) {
+            const imageUrl = await this.localStorageService.saveFile(imageFile, 'category');
+            createCategoryDto.image = imageUrl;
+        }
         const result = await this.categoryService.create(createCategoryDto);
         return response.status(HttpStatus.CREATED).json(result);
     }
@@ -93,13 +125,38 @@ export class CategoryController {
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
+    @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Update a category' })
     @ApiBody({ type: UpdateCategoryDto })
+    @UseInterceptors(
+        FileInterceptor('image', {
+            storage: memoryStorage(),
+            limits: { fileSize: CATEGORY_IMAGE_LIMIT },
+        }),
+    )
     async updateCategory(
         @Param('id') id: string,
         @Body() updateCategoryDto: UpdateCategoryDto,
         @Res() response: Response,
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: false,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: CATEGORY_IMAGE_LIMIT }),
+                    new FileTypeValidator({ fileType: CATEGORY_IMAGE_TYPE }),
+                ],
+            }),
+        )
+        imageFile?: Express.Multer.File,
     ) {
+        const existingCategory = await this.categoryService.getById(id);
+        if (imageFile) {
+            await this.localStorageService.deleteFileByUrl(existingCategory.image || undefined);
+            const imageUrl = await this.localStorageService.saveFile(imageFile, 'category');
+            updateCategoryDto.image = imageUrl;
+        } else if (updateCategoryDto.image === '') {
+            await this.localStorageService.deleteFileByUrl(existingCategory.image || undefined);
+        }
         const result = await this.categoryService.update(id, updateCategoryDto);
         return response.status(HttpStatus.OK).json(result);
     }
@@ -110,6 +167,8 @@ export class CategoryController {
     @ApiBearerAuth('bearer')
     @ApiOperation({ summary: 'Delete a category' })
     async deleteCategory(@Param('id') id: string, @Res() response: Response) {
+        const category = await this.categoryService.getById(id);
+        await this.localStorageService.deleteFileByUrl(category.image || undefined);
         const result = await this.categoryService.delete(id);
         return response.status(HttpStatus.OK).json(result);
     }

@@ -44,7 +44,7 @@ export function CourseTableFiltersResult({
       <FiltersBlock label="Type:" isShow={!!filters.state.type}>
         <Chip
           {...chipProps}
-          label={filters.state.type === 'free' ? 'Free' : 'Paid'}
+          label={filters.state.type === 'free' ? 'AI Fluency' : 'Paid'}
           onDelete={handleRemoveType}
         />
       </FiltersBlock>

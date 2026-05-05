@@ -45,10 +45,12 @@ import {
 import { toast } from 'src/components/snackbar';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
 // ----------------------------------------------------------------------
 
 const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
+const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
 
 /** Parse watchtime string to seconds. Supports "HH:MM:SS", "MM:SS", or seconds ("330"). */
 function parseWatchtimeToSeconds(str) {
@@ -2353,7 +2355,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         (lesson.videoUrl.includes('youtube.com') || lesson.videoUrl.includes('youtu.be'));
                       const lessonPreviewImage = lessonHasImages
                         ? lesson.images[0]
-                        : course?.image || '/assets/images/cover/cover-1.jpg';
+                        : course?.image || DEFAULT_COURSE_IMAGE;
                       return (
                         <Stack
                           key={lesson.id}
@@ -3184,7 +3186,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               <Box sx={{ position: 'relative', aspectRatio: '16/9', bgcolor: 'grey.900' }}>
                 <Box
                   component="img"
-                  src={course.image || ''}
+                  src={course.image || DEFAULT_COURSE_IMAGE}
                   alt={course.title}
                   sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />

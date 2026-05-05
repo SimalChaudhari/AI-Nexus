@@ -29,6 +29,7 @@ import { RouterLink } from 'src/routes/components';
 
 import { fDate } from 'src/utils/format-time';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { RichTextContent } from 'src/components/html-content';
 import { fetchSpeakers } from 'src/store/slices/speakerSlice';
 import { courseService } from 'src/services/course.service';
@@ -65,6 +66,7 @@ export function CourseDetailsView({ course, loading, error }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [bundleLinkedCourses, setBundleLinkedCourses] = useState([]);
   const [bundleLinkedLoading, setBundleLinkedLoading] = useState(false);
+  const defaultCourseImage = getCourseDefaultImage();
 
   const ratingDistribution = useMemo(() => {
     const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
@@ -382,7 +384,7 @@ export function CourseDetailsView({ course, loading, error }) {
         ) : (
           <Box
             component="img"
-            src={heroMedia.url || '/assets/images/cover/cover-1.jpg'}
+            src={heroMedia.url || defaultCourseImage}
             alt={course?.title}
             sx={{
               position: 'absolute',
@@ -846,7 +848,7 @@ export function CourseDetailsView({ course, loading, error }) {
                                       hasVideo &&
                                       (section.videoUrl.includes('youtube.com') ||
                                         section.videoUrl.includes('youtu.be'));
-                                    const fallbackPreviewImage = course?.image || '/assets/images/cover/cover-1.jpg';
+                                    const fallbackPreviewImage = course?.image || defaultCourseImage;
                                     const previewImage = hasImages ? section.images[0] : fallbackPreviewImage;
                                     const mediaLabel = hasVideo
                                       ? [

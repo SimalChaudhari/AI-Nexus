@@ -15,7 +15,8 @@ export function CategoryCreateView() {
         heading="Create a new category"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
-          { name: 'Category', href: paths.admin.category.root },
+          { name: 'Course', href: paths.admin.course.list },
+          { name: 'Category', href: paths.admin.category.list },
           { name: 'New category' },
         ]}
         sx={{ mb: { xs: 3, md: 5 } }}

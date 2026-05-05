@@ -15,6 +15,7 @@ export function CategoryEditView({ category: currentCategory }) {
         heading="Edit"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
+          { name: 'Course', href: paths.admin.course.list },
           { name: 'Category', href: paths.admin.category.list },
           { name: currentCategory?.title },
         ]}

@@ -41,6 +41,10 @@ export class AppSettingsInitService implements OnModuleInit {
           ALTER TABLE "app_settings"
           ADD COLUMN IF NOT EXISTS "homeHeroContent" jsonb
         `);
+        await queryRunner.query(`
+          ALTER TABLE "app_settings"
+          ADD COLUMN IF NOT EXISTS "courseDefaultImageUrl" varchar
+        `);
       }
 
       const existingRows = await queryRunner.query(`SELECT "id" FROM "app_settings" LIMIT 1`);

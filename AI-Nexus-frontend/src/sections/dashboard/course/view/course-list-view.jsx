@@ -139,7 +139,7 @@ export function CourseListView() {
     const hasPaid = (tableData || []).some((course) => Boolean(course?.freeOrPaid));
 
     const next = [{ value: '', label: 'All' }];
-    if (hasFree || filters.state.type === 'free') next.push({ value: 'free', label: 'Free' });
+    if (hasFree || filters.state.type === 'free') next.push({ value: 'free', label: 'AI Fluency' });
     if (hasPaid || filters.state.type === 'paid') next.push({ value: 'paid', label: 'Paid' });
     return next;
   }, [filters.state.type, tableData]);
@@ -262,7 +262,10 @@ export function CourseListView() {
                 {dataFiltered.map((row) => (
                   <CourseTableRow
                     key={row.id}
-                    row={row}
+                    row={{
+                      ...row,
+                      categoryTitle: row?.category?.title || '',
+                    }}
                     selected={table.selected.includes(row.id)}
                     onSelectRow={() => table.onSelectRow(row.id)}
                     onDeleteRow={() => handleDeleteRow(row.id)}

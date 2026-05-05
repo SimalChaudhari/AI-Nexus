@@ -17,13 +17,14 @@ import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
 import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
+import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 
 // ----------------------------------------------------------------------
 
 const COURSES_PER_PAGE = 8;
 const LESSONS_PER_PAGE = 8;
-const DEFAULT_COURSE_IMAGE = import.meta.env.VITE_DEFAULT_COURSE_IMAGE || '/assets/images/cover/cover-1.jpg';
+const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
 
 const transformCourse = (course) => ({
   id: course.id,
@@ -323,7 +324,7 @@ export function MyFavorites() {
               >
                 <Image
                   alt={course.title}
-                  src={course.image}
+                  src={course.image || DEFAULT_COURSE_IMAGE}
                   sx={{
                     width: '100%',
                     height: '100%',
@@ -417,7 +418,7 @@ export function MyFavorites() {
                           course.freeOrPaid && course.isEnrolled ? 'line-through' : 'none',
                       }}
                     >
-                      {course.freeOrPaid ? `${Number(course.amount || 0).toFixed(2)} SGD` : 'Free'}
+                      {course.freeOrPaid ? `${Number(course.amount || 0).toFixed(2)} SGD` : 'AI Fluency'}
                     </Typography>
                     {course.freeOrPaid && course.isEnrolled && (
                       <Stack direction="row" spacing={0.5} alignItems="center">
