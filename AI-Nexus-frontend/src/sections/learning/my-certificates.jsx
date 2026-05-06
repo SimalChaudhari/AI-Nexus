@@ -6,6 +6,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
+import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Chip from '@mui/material/Chip';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -13,6 +14,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Iconify } from 'src/components/iconify';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
+import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import { pdf } from '@react-pdf/renderer';
 import { CertificatePdfDocument } from './certificate-pdf-document';
 import { svgToPngDataUrl } from 'src/utils/svg-to-png';
@@ -49,7 +51,7 @@ function formatCompletedDate(dateStr) {
 
 export function MyCertificates() {
   const theme = useTheme();
-  const { authenticated } = useAuthContext();
+  const { authenticated, loading: authLoading } = useAuthContext();
   const [certificateRows, setCertificateRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
@@ -89,6 +91,9 @@ export function MyCertificates() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) {
+      return () => {};
+    }
     if (!authenticated) {
       setCertificateRows([]);
       setLoading(false);
@@ -110,7 +115,7 @@ export function MyCertificates() {
     return () => {
       cancelled = true;
     };
-  }, [authenticated]);
+  }, [authenticated, authLoading]);
 
   const certificates = useMemo(() => {
     if (!certificateRows?.length) return [];
@@ -192,8 +197,13 @@ export function MyCertificates() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  if (loading && authenticated) {
+  if (authLoading || loading) {
     return <LoadingScreen />;
+  }
+
+  // Guest: same reusable sign-in shell as Progress & Favorites (`learning-guest-sign-in-prompt` presets.certificates).
+  if (!authenticated) {
+    return <LearningGuestSignInPrompt variant="certificates" />;
   }
 
   return (

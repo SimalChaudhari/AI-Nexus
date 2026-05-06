@@ -23,6 +23,7 @@ import {
   buildLinkedInFeedShareUrl,
 } from 'src/utils/linkedin-share';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
+import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 
 // ----------------------------------------------------------------------
 
@@ -206,30 +207,25 @@ export function MyProgress({ onNavigateToCertificates }) {
     );
   }
 
-  // Show empty state if no courses with progress
+  // Empty progress list: guest uses shared sign-in component; signed-in user sees simple empty state.
   if (!myCourses?.length && !progressLoading) {
+    if (!authenticated) {
+      return (
+        <DashboardContent>
+          <LearningGuestSignInPrompt variant="progress" />
+        </DashboardContent>
+      );
+    }
     return (
       <DashboardContent>
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <Iconify icon="solar:graph-up-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
           <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
-            {!authenticated ? 'Sign in to track your progress' : 'No progress yet'}
+            No progress yet
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-            {!authenticated
-              ? 'Sign in to see your learning progress and continue where you left off.'
-              : 'Free courses and purchased courses appear here after you open them once. Use All Courses to browse, then return to My Progress.'}
+            Free courses and purchased courses appear here after you open them once. Use All Courses to browse, then return to My Progress.
           </Typography>
-          {!authenticated && (
-            <Button
-              component={RouterLink}
-              to={paths.auth.simple.signIn}
-              variant="contained"
-              startIcon={<Iconify icon="solar:login-2-bold" width={18} />}
-            >
-              Sign in
-            </Button>
-          )}
         </Box>
       </DashboardContent>
     );
@@ -259,33 +255,6 @@ export function MyProgress({ onNavigateToCertificates }) {
               Your Learning Journey
             </Typography>
           </Stack>
-
-          {!authenticated && (
-            <Box
-              sx={{
-                mb: 2,
-                p: 2,
-                borderRadius: 2,
-                bgcolor: alpha(theme.palette.primary.main, 0.08),
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
-              }}
-            >
-              <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between" spacing={2}>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  Sign in to see your progress, lesson completion, and last accessed time for each course.
-                </Typography>
-                <Button
-                  component={RouterLink}
-                  to={paths.auth.simple.signIn}
-                  variant="contained"
-                  size="small"
-                  startIcon={<Iconify icon="solar:login-2-bold" width={18} />}
-                >
-                  Sign in
-                </Button>
-              </Stack>
-            </Box>
-          )}
 
           <Stack spacing={{ xs: 2, md: 3 }}>
             {(() => {

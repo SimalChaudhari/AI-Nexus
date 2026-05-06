@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { CourseEntity } from '../course/courses.entity';
+import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 
 import { UserEntity } from '../user/users.entity';
 import { LocalStorageModule } from '../service/local-storage.module';
@@ -12,7 +13,7 @@ import { AppSettingsInitService } from './app-settings-init.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AppSettingsEntity, UserEntity, CourseEntity]),
+    TypeOrmModule.forFeature([AppSettingsEntity, UserEntity, CourseEntity, CourseEnrollmentEntity]),
     LocalStorageModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,

@@ -18,6 +18,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
+import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 
 // ----------------------------------------------------------------------
@@ -156,28 +157,9 @@ export function MyFavorites() {
     return <LoadingScreen />;
   }
 
+  // Guest: shared Learning guest prompt (same layout as Progress / Certificates).
   if (!authenticated) {
-    return (
-      <>
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <Iconify icon="solar:heart-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
-          <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
-            Sign in to view favorites
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-            Sign in to see your favorite courses and access them quickly.
-          </Typography>
-          <Button
-            component={RouterLink}
-            to={paths.auth.simple.signIn}
-            variant="contained"
-            startIcon={<Iconify icon="solar:login-2-bold" width={18} />}
-          >
-            Sign in
-          </Button>
-        </Box>
-      </>
-    );
+    return <LearningGuestSignInPrompt variant="favorites" />;
   }
 
   if (favoriteCourses.length === 0 && favoriteSections.length === 0) {

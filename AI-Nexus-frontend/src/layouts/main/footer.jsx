@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
@@ -9,15 +10,26 @@ import { alpha } from '@mui/material/styles';
 import { RouterLink } from 'src/routes/components';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { DashboardContent } from '../dashboard';
+import { appSettingsService } from 'src/services/app-settings.service';
 
 // ----------------------------------------------------------------------
-/** Static until wired to analytics / CMS */
-const FOOTER_STATS = [
-  { value: '12K+', label: 'Active learners' },
+
+/** Compact display for footer enrollment total (matches prior “12K+” style). */
+function formatEnrollmentDisplay(count) {
+  if (count == null || !Number.isFinite(count) || count < 0) return null;
+  const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(count);
+  return `${compact}+`;
+}
+
+/** First stat: live course enrollment count from API; remaining stats static until CMS wires them. */
+const FOOTER_STATS_STATIC_TAIL = [
   { value: '180+', label: 'AI resources' },
   { value: '40+', label: 'Expert mentors' },
   { value: '24/7', label: 'Community access' },
 ];
+
+const ENROLLMENT_LABEL = 'Learners enrolled in courses';
+const ENROLLMENT_FALLBACK_VALUE = '12K+';
 
 /** Static domain line (replace with env later) */
 const FOOTER_DOMAIN_LINE = 'ainexus.com · AI learning & community';
@@ -30,6 +42,34 @@ const FOOTER_LINKS = [
 ];
 
 function FooterStatsBand() {
+  const [enrollmentDisplay, setEnrollmentDisplay] = useState(ENROLLMENT_FALLBACK_VALUE);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await appSettingsService.getPublic();
+        const formatted = formatEnrollmentDisplay(settings?.totalCourseEnrollments);
+        if (!cancelled && formatted) {
+          setEnrollmentDisplay(formatted);
+        }
+      } catch {
+        /* keep fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const footerStats = useMemo(
+    () => [
+      { value: enrollmentDisplay, label: ENROLLMENT_LABEL },
+      ...FOOTER_STATS_STATIC_TAIL,
+    ],
+    [enrollmentDisplay]
+  );
+
   return (
     <Box
       sx={{
@@ -41,7 +81,7 @@ function FooterStatsBand() {
     >
       <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3 }, py: { xs: 3, md: 4 } }}>
         <Grid container spacing={{ xs: 2, sm: 3, md: 4 }}>
-          {FOOTER_STATS.map((stat) => (
+          {footerStats.map((stat) => (
             <Grid item xs={6} md={3} key={stat.label}>
               <Stack spacing={0.5} sx={{ textAlign: { xs: 'center', md: 'left' } }}>
                 <Typography

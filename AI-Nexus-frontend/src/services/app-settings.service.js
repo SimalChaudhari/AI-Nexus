@@ -110,6 +110,10 @@ function transformSettings(settings) {
               : [],
           }
         : null,
+    totalCourseEnrollments:
+      typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
+        ? settings.totalCourseEnrollments
+        : null,
   };
 }
 

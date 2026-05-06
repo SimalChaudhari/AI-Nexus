@@ -68,20 +68,35 @@ export class AnnouncementService {
                     });
                     return new Set(pinnedAnnouncements.map((pinnedAnnouncement) => pinnedAnnouncement.announcementId));
                 },
-                orderByColumn: 'title',
+                orderByColumn: 'createdAt',
                 orderByDirection: 'ASC',
-                orderByCaseInsensitive: true,
+                orderByCaseInsensitive: false,
                 prioritizePinnedInAllResults: true,
             });
         }
 
-        const announcements = await this.announcementRepository
+        const listQuery = this.announcementRepository
             .createQueryBuilder('announcement')
             .leftJoinAndSelect('announcement.comments', 'comments')
             .leftJoinAndSelect('comments.user', 'commentUser')
-            .leftJoinAndSelect('announcement.createdBy', 'createdBy')
-            .orderBy('LOWER(announcement.title)', 'ASC')
-            .getMany();
+            .leftJoinAndSelect('announcement.createdBy', 'createdBy');
+
+        if (userId) {
+            listQuery.leftJoin(
+                'pinned_announcements',
+                'pinnedAnnouncement',
+                'pinnedAnnouncement.announcementId = announcement.id AND pinnedAnnouncement.userId = :pinListUserId',
+                { pinListUserId: userId },
+            );
+            listQuery
+                .orderBy('CASE WHEN pinnedAnnouncement.id IS NULL THEN 1 ELSE 0 END', 'ASC')
+                .addOrderBy('announcement.createdAt', 'ASC')
+                .addOrderBy('announcement.id', 'ASC');
+        } else {
+            listQuery.orderBy('announcement.createdAt', 'ASC').addOrderBy('announcement.id', 'ASC');
+        }
+
+        const announcements = await listQuery.getMany();
 
         const announcementIds = announcements.map((announcement) => announcement.id);
         const pinnedIds =

@@ -445,8 +445,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 }}
               >
                 <Box
-                  component={canStartCourse ? RouterLink : 'div'}
-                  href={canStartCourse ? paths.learningCourse.learn(course.id) : undefined}
+                  component={canStartCourse && authenticated ? RouterLink : 'div'}
+                  href={canStartCourse && authenticated ? paths.learningCourse.learn(course.id) : undefined}
                   sx={{
                     width: 64,
                     height: 64,
@@ -461,28 +461,27 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                     opacity: enrolledLoading || (hasAccess && !hasCourseContent) ? 0.6 : 1,
                     pointerEvents: enrolledLoading || (hasAccess && !hasCourseContent) ? 'none' : undefined,
                   }}
-                  onClick={
-                    !hasAccess && !enrolledLoading
-                      ? (e) => {
-                          e.preventDefault();
-                          if (!authenticated) {
-                            promptMembershipSignUp();
-                            return;
-                          }
-                          if (!isInCart(course.id)) {
-                            addCourseToCart({
-                              id: course.id,
-                              title: course.title,
-                              image: course.image,
-                              amount: course.amount,
-                              freeOrPaid: paidCourse,
-                            });
-                            toast.success('Added to cart');
-                          }
-                          navigate(paths.product.checkout);
-                        }
-                      : undefined
-                  }
+                  onClick={(e) => {
+                    if (!authenticated) {
+                      e.preventDefault();
+                      promptMembershipSignUp();
+                      return;
+                    }
+                    if (!hasAccess && !enrolledLoading) {
+                      e.preventDefault();
+                      if (!isInCart(course.id)) {
+                        addCourseToCart({
+                          id: course.id,
+                          title: course.title,
+                          image: course.image,
+                          amount: course.amount,
+                          freeOrPaid: paidCourse,
+                        });
+                        toast.success('Added to cart');
+                      }
+                      navigate(paths.product.checkout);
+                    }
+                  }}
                   role={!hasAccess ? 'button' : undefined}
                 >
                   <Iconify
@@ -616,8 +615,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               </Typography>
 
               <Button
-                component={canStartCourse ? RouterLink : 'button'}
-                href={canStartCourse ? paths.learningCourse.learn(course.id) : undefined}
+                component={canStartCourse && authenticated ? RouterLink : 'button'}
+                href={canStartCourse && authenticated ? paths.learningCourse.learn(course.id) : undefined}
                 variant="outlined"
                 color="info"
                 fullWidth
@@ -634,32 +633,32 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   borderWidth: 2,
                   '&:hover': { borderWidth: 2 },
                 }}
-                onClick={
-                  showBrowseBundlePrograms
-                    ? (e) => {
-                        e.preventDefault();
-                        scrollToBundlePrograms();
-                      }
-                    : !authenticated
-                      ? () => {
-                          promptMembershipSignUp();
-                        }
-                    : !hasAccess && !enrolledLoading
-                      ? () => {
-                          if (!isInCart(course.id)) {
-                            addCourseToCart({
-                              id: course.id,
-                              title: course.title,
-                              image: course.image,
-                              amount: course.amount,
-                              freeOrPaid: paidCourse,
-                            });
-                            toast.success('Added to cart');
-                          }
-                          navigate(paths.product.checkout);
-                        }
-                      : undefined
-                }
+                onClick={(e) => {
+                  if (showBrowseBundlePrograms) {
+                    e.preventDefault();
+                    scrollToBundlePrograms();
+                    return;
+                  }
+                  if (!authenticated) {
+                    e.preventDefault();
+                    promptMembershipSignUp();
+                    return;
+                  }
+                  if (!hasAccess && !enrolledLoading) {
+                    e.preventDefault();
+                    if (!isInCart(course.id)) {
+                      addCourseToCart({
+                        id: course.id,
+                        title: course.title,
+                        image: course.image,
+                        amount: course.amount,
+                        freeOrPaid: paidCourse,
+                      });
+                      toast.success('Added to cart');
+                    }
+                    navigate(paths.product.checkout);
+                  }
+                }}
               >
                 {enrolledLoading
                   ? 'Checking...'
@@ -1521,7 +1520,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
         onClose={() => setMembershipSignupOpen(false)}
         onContinue={() => {
           setMembershipSignupOpen(false);
-          navigate(paths.auth.simple.signUp);
+          const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
+          navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`);
         }}
       />
     </DashboardContent>

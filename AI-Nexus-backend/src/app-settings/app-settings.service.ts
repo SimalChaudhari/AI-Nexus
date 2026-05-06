@@ -6,6 +6,7 @@ import { AppSettingsEntity } from './app-settings.entity';
 import { LocalStorageService } from '../service/local-storage.service';
 import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
+import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 
 type HomeHeroContentPayload = {
   headline?: string;
@@ -84,6 +85,8 @@ export class AppSettingsService {
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(CourseEntity)
     private readonly courseRepository: Repository<CourseEntity>,
+    @InjectRepository(CourseEnrollmentEntity)
+    private readonly courseEnrollmentRepository: Repository<CourseEnrollmentEntity>,
     private readonly localStorageService: LocalStorageService
   ) {}
 
@@ -435,8 +438,11 @@ export class AppSettingsService {
     contactHeroImageUrl: string | null;
     courseDefaultImageUrl: string | null;
     contactHeroContent: ContactHeroContentPayload | null;
+    /** Total rows in course_enrollments (direct course enrollments). */
+    totalCourseEnrollments: number;
   }> {
     const settings = await this.getSettings();
+    const totalCourseEnrollments = await this.courseEnrollmentRepository.count();
 
     return {
       logoUrl: settings.logoUrl ?? null,
@@ -447,6 +453,7 @@ export class AppSettingsService {
       contactHeroImageUrl: settings.contactHeroImageUrl ?? null,
       courseDefaultImageUrl: settings.courseDefaultImageUrl ?? null,
       contactHeroContent: settings.contactHeroContent ?? null,
+      totalCourseEnrollments,
     };
   }
 

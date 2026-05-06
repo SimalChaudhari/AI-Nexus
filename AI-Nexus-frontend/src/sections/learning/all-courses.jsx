@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -85,6 +85,7 @@ export function AllCourses({ refreshSignal = 0 }) {
   const theme = useTheme();
   // const isDesktop = useMediaQuery(theme.breakpoints.up('md')); // filters UI disabled
   const navigate = useNavigate();
+  const location = useLocation();
   const { authenticated } = useAuthContext();
   const checkout = useCheckoutContext();
   const latestRequestRef = useRef(0);
@@ -1671,7 +1672,8 @@ export function AllCourses({ refreshSignal = 0 }) {
         onClose={() => setMembershipSignupOpen(false)}
         onContinue={() => {
           setMembershipSignupOpen(false);
-          navigate(paths.auth.simple.signUp);
+          const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
+          navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`);
         }}
       />
     </>

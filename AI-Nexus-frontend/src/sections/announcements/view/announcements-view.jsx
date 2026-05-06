@@ -63,13 +63,6 @@ const transformAnnouncement = (announcement) => {
   };
 };
 
-const sortAnnouncements = (announcementList) =>
-  [...announcementList].sort((a, b) => {
-    if (a.isPinned && !b.isPinned) return -1;
-    if (!a.isPinned && b.isPinned) return 1;
-    return (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
-  });
-
 export function AnnouncementsView() {
   const theme = useTheme();
   const [announcements, setAnnouncements] = useState([]);
@@ -253,7 +246,7 @@ export function AnnouncementsView() {
     { enabled: true }
   );
 
-  const displayedAnnouncements = sortAnnouncements(announcements);
+  const displayedAnnouncements = announcements;
   const hasMore = pagination.hasNextPage;
   const showInitialLoader = loading && announcements.length === 0;
   const showRefreshingState = loading && announcements.length > 0;
