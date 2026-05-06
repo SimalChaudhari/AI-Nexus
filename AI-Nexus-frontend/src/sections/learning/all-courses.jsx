@@ -1670,10 +1670,15 @@ export function AllCourses({ refreshSignal = 0 }) {
       <MembershipSignupDialog
         open={membershipSignupOpen}
         onClose={() => setMembershipSignupOpen(false)}
-        onContinue={() => {
+        onContinue={(payload) => {
           setMembershipSignupOpen(false);
+          const outcome = payload?.result?.outcome || '';
+          const actionTarget = payload?.result?.actionTarget || '';
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
-          navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`);
+          const membershipOutcome = encodeURIComponent(outcome);
+          const targetPath = actionTarget === 'signUp' ? paths.auth.simple.signUp : paths.auth.simple.signIn;
+          const extra = actionTarget === 'scaq' ? '&membershipAction=scaq' : '';
+          navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
         }}
       />
     </>
