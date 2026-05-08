@@ -1802,17 +1802,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         backdrop: {
           sx: {
             bgcolor: (theme) => alpha(theme.palette.common.black, 0.5),
-            bgcolor: (theme) => alpha(theme.palette.common.black, 0.5),
           },
         },
       }}
       PaperProps={{
         sx: (theme) => ({
-          width: '100%',
-          maxWidth: 560,
-          borderRadius: 2,
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: theme.shadows[8],
           width: '100%',
           maxWidth: 560,
           borderRadius: 2,
@@ -1848,15 +1842,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             position: 'absolute',
             top: 10,
             right: 10,
-            top: 10,
-            right: 10,
             fontWeight: 600,
             opacity: 0.72,
             textTransform: 'none',
             '&:hover': { opacity: 1, bgcolor: 'action.hover' },
           }}
         >
-          Close
+          Skip
         </Button>
         <Typography
           variant="h6"
@@ -1898,15 +1890,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             bgcolor: alpha(theme.palette.info.main, 0.08),
             border: `1px solid ${alpha(theme.palette.info.main, 0.24)}`,
             color: 'text.secondary',
-            bgcolor: alpha(theme.palette.info.main, 0.08),
-            border: `1px solid ${alpha(theme.palette.info.main, 0.24)}`,
-            color: 'text.secondary',
             fontWeight: 700,
             fontSize: 13,
           })}
         >
-          <Iconify icon="solar:info-circle-bold" width={16} />
-          {requirementLabel}
           <Iconify icon="solar:info-circle-bold" width={16} />
           {requirementLabel}
         </Box>
