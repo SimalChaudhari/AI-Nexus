@@ -8,14 +8,17 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import LoadingButton from '@mui/lab/LoadingButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
-import { useRouter } from 'src/routes/hooks';
+import { useRouter, useSearchParams } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
@@ -29,11 +32,19 @@ import { signUp } from 'src/auth/context/jwt';
 
 export function SimpleSignUpView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const password = useBoolean();
   const [errorMsg, setErrorMsg] = useState('');
   const [usernameSuggestions, setUsernameSuggestions] = useState([]);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const [appliedSuggestion, setAppliedSuggestion] = useState('');
+  const [paymentConsentChecked, setPaymentConsentChecked] = useState(false);
+  const membershipOutcome = searchParams.get('membershipOutcome');
+  const isPaidMembershipFlow = membershipOutcome === 'paid-signup';
+  const membershipBaseAmount = 900;
+  const gstRate = 0.09;
+  const gstAmount = membershipBaseAmount * gstRate;
+  const totalAmount = membershipBaseAmount + gstAmount;
 
   const defaultValues = {
     username: '',
@@ -152,6 +163,7 @@ export function SimpleSignUpView() {
           Sign in
         </Link>
       </Stack>
+
     </Stack>
   );
 
@@ -271,6 +283,101 @@ export function SimpleSignUpView() {
           ),
         }}
       />
+
+      {isPaidMembershipFlow && (
+        <Box
+          sx={(theme) => ({
+            width: 1,
+            px: 1.5,
+            py: 1.25,
+            borderRadius: 1.5,
+            border: `1px solid ${alpha(theme.palette.info.main, 0.24)}`,
+            bgcolor: alpha(theme.palette.info.main, 0.08),
+          })}
+        >
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.25}
+            alignItems={{ xs: 'flex-start', sm: 'center' }}
+            justifyContent="space-between"
+          >
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+              <Iconify icon="solar:info-circle-bold" width={18} />
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Membership paid plan selected. Base fee is SGD 900 (excluding GST).
+              </Typography>
+            </Stack>
+          </Stack>
+        </Box>
+      )}
+
+      {isPaidMembershipFlow && (
+        <Box
+          sx={(theme) => ({
+            width: 1,
+            p: 2,
+            borderRadius: 2,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+            bgcolor: alpha(theme.palette.primary.main, 0.06),
+          })}
+        >
+          <Stack spacing={1}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Payment summary
+              </Typography>
+              <Chip size="small" color="warning" variant="outlined" label="GST included" />
+            </Stack>
+            <Divider sx={{ borderStyle: 'dashed' }} />
+            <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Base amount</span>
+              <strong>SGD {membershipBaseAmount.toFixed(2)}</strong>
+            </Typography>
+            <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>GST (9%)</span>
+              <strong>SGD {gstAmount.toFixed(2)}</strong>
+            </Typography>
+            <Typography variant="subtitle2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Total payable</span>
+              <strong>SGD {totalAmount.toFixed(2)}</strong>
+            </Typography>
+            <FormControlLabel
+              sx={{ m: 0, mt: 0.25 }}
+              control={(
+                <Checkbox
+                  size="small"
+                  checked={paymentConsentChecked}
+                  onChange={(event) => setPaymentConsentChecked(event.target.checked)}
+                />
+              )}
+              label={(
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  I confirm this payable amount and want to continue to payment.
+                </Typography>
+              )}
+            />
+            <Button
+              size="medium"
+              variant="contained"
+              disabled={!paymentConsentChecked}
+              onClick={() => {
+                const paymentParams = new URLSearchParams({
+                  amount: totalAmount.toFixed(2),
+                  baseAmount: membershipBaseAmount.toFixed(2),
+                  gstAmount: gstAmount.toFixed(2),
+                  gstRate: `${Math.round(gstRate * 100)}`,
+                  currency: 'SGD',
+                  source: 'membership-paid-signup',
+                });
+                // router.push(`${paths.payment}?${paymentParams.toString()}`);
+                alert(paymentParams.toString() + " | WooshPay checkout session created successfully. Redirecting to payment page...");
+              }}
+            >
+              Pay SGD {totalAmount.toFixed(2)}
+            </Button>
+          </Stack>
+        </Box>
+      )}
 
       <LoadingButton
         fullWidth

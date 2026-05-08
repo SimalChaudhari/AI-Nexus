@@ -1438,6 +1438,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
         }}
       >
         <Stack sx={{ height: '100%' }}>
+
+console.log('',);
           <Stack
             direction="row"
             alignItems="center"
@@ -1524,7 +1526,11 @@ export function LearningCourseDetailsView({ course, loading, error }) {
           const actionTarget = payload?.result?.actionTarget || '';
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
           const membershipOutcome = encodeURIComponent(outcome);
-          const targetPath = actionTarget === 'signUp' ? paths.auth.simple.signUp : paths.auth.simple.signIn;
+          const targetPath = actionTarget === 'signUp'
+            ? paths.auth.simple.signUp
+            : actionTarget === 'salesforce'
+              ? paths.auth.oauth.start
+              : paths.auth.simple.signIn;
           const extra = actionTarget === 'scaq' ? '&membershipAction=scaq' : '';
           navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
         }}

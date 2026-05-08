@@ -149,6 +149,28 @@ export const resendVerification = async ({ email }) => {
 };
 
 /** **************************************
+ * Verify NRIC front/back images (membership pre-check)
+ *************************************** */
+export const verifyNricImages = async ({ frontImage, backImage }) => {
+  try {
+    const formData = new FormData();
+    formData.append('frontImage', frontImage);
+    formData.append('backImage', backImage);
+
+    const res = await axios.post('/auth/verify-nric', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'NRIC verification failed. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
 export const getOAuthAuthUrl = async () => {

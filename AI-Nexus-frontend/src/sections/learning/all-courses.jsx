@@ -1676,7 +1676,11 @@ export function AllCourses({ refreshSignal = 0 }) {
           const actionTarget = payload?.result?.actionTarget || '';
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
           const membershipOutcome = encodeURIComponent(outcome);
-          const targetPath = actionTarget === 'signUp' ? paths.auth.simple.signUp : paths.auth.simple.signIn;
+          const targetPath = actionTarget === 'signUp'
+            ? paths.auth.simple.signUp
+            : actionTarget === 'salesforce'
+              ? paths.auth.oauth.start
+              : paths.auth.simple.signIn;
           const extra = actionTarget === 'scaq' ? '&membershipAction=scaq' : '';
           navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
         }}

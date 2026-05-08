@@ -205,26 +205,21 @@ export function HomeHeroSection() {
   const { headline, description, cta, event: heroEvent, stats: heroStats } = heroData;
   const descriptionHtml = normalizeDescriptionHtml(description);
   const showHeadline = Boolean(headline);
-  const scheduleActive = isHeroScheduleActive(heroEvent);
-  const eventItems = scheduleActive
-    ? [
-        {
-          label: String(heroEvent?.startDateLabel || '').trim(),
-          value: String(heroEvent?.startDate || '').trim(),
-        },
-        {
-          label: String(heroEvent?.startTimeLabel || '').trim(),
-          value: String(heroEvent?.startTime || '').trim(),
-        },
-      ].filter((item) => item.label || item.value)
-    : [];
+  const eventItems = [
+    {
+      label: String(heroEvent?.startDateLabel || '').trim(),
+      value: String(heroEvent?.startDate || '').trim(),
+    },
+    {
+      label: String(heroEvent?.startTimeLabel || '').trim(),
+      value: String(heroEvent?.startTime || '').trim(),
+    },
+  ].filter((item) => item.label || item.value);
   const showEventBlock = eventItems.length > 0;
   const visibleStats = useMemo(
     () =>
-      scheduleActive
-        ? heroStats.filter((row) => String(row?.value || '').trim() || String(row?.label || '').trim())
-        : [],
-    [scheduleActive, heroStats]
+      heroStats.filter((row) => String(row?.value || '').trim() || String(row?.label || '').trim()),
+    [heroStats]
   );
   const showStatsBlock = visibleStats.length > 0;
   const ctaBg = String(cta?.buttonColor || '').trim();

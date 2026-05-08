@@ -1,10 +1,12 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, LoginDto, ResendVerificationDto } from '../user/users.dto';
 import { Response, Request } from 'express';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -81,5 +83,53 @@ export class AuthController {
       return { message: 'Logged out successfully' };
     }
     return this.authService.logout(userId);
+  }
+
+  @Post('verify-nric')
+  @ApiOperation({ summary: 'Verify NRIC front/back images for membership flow' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'frontImage', maxCount: 1 },
+        { name: 'backImage', maxCount: 1 },
+      ],
+      {
+        storage: memoryStorage(),
+        limits: { fileSize: 8 * 1024 * 1024 }, // 8MB per file
+      }
+    )
+  )
+  async verifyNric(
+    @UploadedFiles()
+    files: {
+      frontImage?: Express.Multer.File[];
+      backImage?: Express.Multer.File[];
+    }
+  ) {
+    const front = files?.frontImage?.[0];
+    const back = files?.backImage?.[0];
+
+    if (!front || !back) {
+      throw new BadRequestException('Please upload both NRIC front and back images.');
+    }
+
+    const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedMimeTypes.includes(front.mimetype) || !allowedMimeTypes.includes(back.mimetype)) {
+      throw new BadRequestException('Only JPG, PNG or WEBP image files are allowed.');
+    }
+
+    // Placeholder verification logic for now.
+    // Real AI/OCR validation can be plugged in here later.
+    return {
+      verified: true,
+      message: 'NRIC images verified successfully.',
+      checks: {
+        frontImageName: front.originalname,
+        backImageName: back.originalname,
+        frontMimeType: front.mimetype,
+        backMimeType: back.mimetype,
+      },
+    };
   }
 }

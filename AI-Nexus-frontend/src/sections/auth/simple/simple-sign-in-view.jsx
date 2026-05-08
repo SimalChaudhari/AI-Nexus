@@ -146,15 +146,15 @@ export function SimpleSignInView() {
         Access your dashboard, courses, and AI tools securely.
       </Typography>
 
-      <Stack direction="row" spacing={0.5}>
+      {/* <Stack direction="row" spacing={0.5}>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {`Don't have an account?`}
-        </Typography>
+        </Typography> */}
 
-        <Link component={RouterLink} href={paths.auth.simple.signUp} variant="subtitle2">
-          Get started
-        </Link>
-      </Stack>
+        {/* <Link component={RouterLink} href={paths.auth.simple.signUp} variant="subtitle2">
+          Get started11
+        </Link> */}
+      {/* </Stack> */}
     </Stack>
   );
 
