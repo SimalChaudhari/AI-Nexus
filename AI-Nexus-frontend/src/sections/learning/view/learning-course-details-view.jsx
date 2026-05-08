@@ -1521,10 +1521,7 @@ console.log('',);
         open={membershipSignupOpen}
         onClose={() => setMembershipSignupOpen(false)}
         onContinue={(payload) => {
-        onContinue={(payload) => {
           setMembershipSignupOpen(false);
-          const outcome = payload?.result?.outcome || '';
-          const actionTarget = payload?.result?.actionTarget || '';
           const outcome = payload?.result?.outcome || '';
           const actionTarget = payload?.result?.actionTarget || '';
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
