@@ -205,7 +205,9 @@ export class WooshPayService {
     payment_status?: string;
     status?: string;
     amount_total?: number;
+    amount_subtotal?: number;
     currency?: string;
+    payment_intent?: string;
   }> {
     return this.makeApiRequest<any>('GET', `/v1/checkout/sessions/${sessionId}`);
   }

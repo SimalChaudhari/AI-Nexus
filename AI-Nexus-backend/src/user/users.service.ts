@@ -183,11 +183,11 @@ export class UserService {
         let temporaryPasswordEmailSent = false;
         try {
             const displayName =
-                [user.firstname, user.lastname].filter(Boolean).join(' ').trim() || user.username;
+                [user.firstname, user.lastname].filter(Boolean).join(' ').trim() || user.username || '';
             await this.emailService.sendTemporaryPasswordEmail(
-                user.email,
+                user.email!,
                 displayName,
-                user.username,
+                user.username!,
                 plainPassword,
             );
             temporaryPasswordEmailSent = true;

@@ -9,11 +9,13 @@ import { CourseModule } from '../course/courses.module';
 import { OrderModule } from '../order/order.module';
 import { UserModule } from '../user/users.module';
 import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PaymentReferenceEntity]),
     UserModule,
+    AuthModule,
     CourseModule,
     OrderModule,
     JwtModule.register({

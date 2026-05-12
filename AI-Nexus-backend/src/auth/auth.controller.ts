@@ -1,5 +1,5 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, LoginDto, ResendVerificationDto } from '../user/users.dto';
 import { Response, Request } from 'express';
@@ -34,6 +34,21 @@ export class AuthController {
     const result = await this.authService.register(userDto);
     return response.status(HttpStatus.OK).json({
       message: result.message,
+      user: result.user,
+    });
+  }
+
+  @Post('membership-signup-draft')
+  @ApiOperation({ summary: 'Save membership signup details as a draft before payment' })
+  @ApiBody({ type: UserDto })
+  async saveMembershipSignupDraft(
+    @Res() response: Response,
+    @Body() userDto: UserDto,
+  ) {
+    const result = await this.authService.saveMembershipSignupDraft(userDto);
+    return response.status(HttpStatus.OK).json({
+      message: result.message,
+      draftUserId: result.draftUserId,
       user: result.user,
     });
   }
@@ -88,6 +103,17 @@ export class AuthController {
   @Post('verify-nric')
   @ApiOperation({ summary: 'Verify NRIC front/back images for membership flow' })
   @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        userId: { type: 'string', format: 'uuid', nullable: true },
+        frontImage: { type: 'string', format: 'binary' },
+        backImage: { type: 'string', format: 'binary' },
+      },
+      required: ['frontImage', 'backImage'],
+    },
+  })
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -101,35 +127,22 @@ export class AuthController {
     )
   )
   async verifyNric(
+    @Req() req: Request,
     @UploadedFiles()
     files: {
       frontImage?: Express.Multer.File[];
       backImage?: Express.Multer.File[];
-    }
+    },
+    @Body('userId') userId?: string,
   ) {
     const front = files?.frontImage?.[0];
     const back = files?.backImage?.[0];
+    return this.authService.verifyNricImages(front, back, userId, req.headers.authorization);
+  }
 
-    if (!front || !back) {
-      throw new BadRequestException('Please upload both NRIC front and back images.');
-    }
-
-    const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowedMimeTypes.includes(front.mimetype) || !allowedMimeTypes.includes(back.mimetype)) {
-      throw new BadRequestException('Only JPG, PNG or WEBP image files are allowed.');
-    }
-
-    // Placeholder verification logic for now.
-    // Real AI/OCR validation can be plugged in here later.
-    return {
-      verified: true,
-      message: 'NRIC images verified successfully.',
-      checks: {
-        frontImageName: front.originalname,
-        backImageName: back.originalname,
-        frontMimeType: front.mimetype,
-        backMimeType: back.mimetype,
-      },
-    };
+  @Post('verified-signup-access')
+  @ApiOperation({ summary: 'Validate verified NRIC signup access token and return signup prefill data' })
+  async getVerifiedSignupAccess(@Body('token') token: string) {
+    return this.authService.getVerifiedSignupAccess(token);
   }
 }

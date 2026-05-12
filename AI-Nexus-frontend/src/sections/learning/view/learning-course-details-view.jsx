@@ -1524,6 +1524,7 @@ console.log('',);
           setMembershipSignupOpen(false);
           const outcome = payload?.result?.outcome || '';
           const actionTarget = payload?.result?.actionTarget || '';
+          const signupAccessToken = payload?.signupAccessToken || '';
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
           const membershipOutcome = encodeURIComponent(outcome);
           const targetPath = actionTarget === 'signUp'
@@ -1531,7 +1532,7 @@ console.log('',);
             : actionTarget === 'salesforce'
               ? paths.auth.oauth.start
               : paths.auth.simple.signIn;
-          const extra = actionTarget === 'scaq' ? '&membershipAction=scaq' : '';
+          const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}`;
           navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
         }}
       />

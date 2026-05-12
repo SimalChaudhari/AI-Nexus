@@ -89,7 +89,9 @@ export class DashboardService {
       status: o.status,
       createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : String(o.createdAt),
       userEmail: o.user?.email ?? undefined,
-      userName: o.user ? [o.user.firstname, o.user.lastname].filter(Boolean).join(' ') || o.user.username : undefined,
+      userName: o.user
+        ? [o.user.firstname, o.user.lastname].filter(Boolean).join(' ') || o.user.username || undefined
+        : undefined,
     }));
   }
 

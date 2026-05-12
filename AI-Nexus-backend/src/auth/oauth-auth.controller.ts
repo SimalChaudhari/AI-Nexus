@@ -113,7 +113,7 @@ export class OAuthAuthController {
         accessToken,
         isNewUser: String(isNewUser),
         userId: user.id,
-        email: user.email,
+        email: user.email || '',
         firstName: user.firstname,
         lastName: user.lastname,
       });

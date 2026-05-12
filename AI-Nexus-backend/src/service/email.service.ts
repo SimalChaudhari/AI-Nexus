@@ -4,6 +4,7 @@ import {
     buildBrandTemplate,
     buildCredentialsBodyHtml,
     buildForumReplyBodyHtml,
+    buildOrderReceiptBodyHtml,
 } from './email-template.util';
 
 @Injectable()
@@ -166,6 +167,66 @@ export class EmailService {
         } catch (error) {
             console.error('Error sending forum reply notification email:', error);
             throw new Error('Failed to send forum reply notification email');
+        }
+    }
+
+    async sendOrderReceiptEmail(params: {
+        toEmail: string;
+        customerName: string;
+        orderId: string;
+        amount: number | string;
+        currency: string;
+        itemLabel: string;
+        receiptFilename: string;
+        receiptBuffer: Buffer;
+    }): Promise<void> {
+        const {
+            toEmail,
+            customerName,
+            orderId,
+            amount,
+            currency,
+            itemLabel,
+            receiptFilename,
+            receiptBuffer,
+        } = params;
+
+        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
+        const normalizedPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
+        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedPath}`;
+        const bodyHtml = buildOrderReceiptBodyHtml({ orderId, amount, currency, itemLabel });
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'Your Payment Receipt',
+            greetingName: customerName,
+            intro: 'Thank you for your payment. Your receipt is attached as a PDF for your records.',
+            bodyHtml,
+            ctaLabel: 'Sign In',
+            ctaUrl: loginUrl,
+            note: 'Please keep this receipt for your accounting and audit records.',
+            footer: 'AI Nexus payment receipt',
+        });
+
+        const mailOptions = {
+            from: process.env.SMTP_USER,
+            to: toEmail,
+            subject: 'Your AI Nexus payment receipt',
+            text: `Hello ${customerName},\n\nThank you for your payment.\nOrder ID: ${orderId}\nItem: ${itemLabel}\nAmount Paid: ${currency} ${amount}\n\nYour PDF receipt is attached to this email.\n`,
+            html,
+            attachments: [
+                {
+                    filename: receiptFilename,
+                    content: receiptBuffer,
+                    contentType: 'application/pdf',
+                },
+            ],
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Order receipt email sent to ${toEmail}`);
+        } catch (error) {
+            console.error('Error sending order receipt email:', error);
+            throw new Error('Failed to send order receipt email');
         }
     }
 

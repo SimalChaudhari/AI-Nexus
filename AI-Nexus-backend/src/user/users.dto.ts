@@ -57,6 +57,14 @@ export class UserDto {
     @IsString()
     password?: string;
 
+    @IsOptional()
+    @IsString()
+    signupAccessToken?: string;
+
+    @IsOptional()
+    @IsString()
+    draftUserId?: string;
+
     @IsEnum(UserRole)
     @IsOptional()
     role?: UserRole;

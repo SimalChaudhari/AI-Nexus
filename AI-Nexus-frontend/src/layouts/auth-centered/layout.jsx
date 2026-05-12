@@ -3,6 +3,8 @@ import Alert from '@mui/material/Alert';
 import { useBoolean } from 'src/hooks/use-boolean';
 
 import { CONFIG } from 'src/config-global';
+import { paths } from 'src/routes/paths';
+import { usePathname } from 'src/routes/hooks';
 import { stylesMode } from 'src/theme/styles';
 
 import { Main } from './main';
@@ -13,8 +15,10 @@ import { LayoutSection } from '../core/layout-section';
 
 export function AuthCenteredLayout({ sx, children, showHeader = true }) {
   const mobileNavOpen = useBoolean();
+  const pathname = usePathname();
 
   const layoutQuery = 'md';
+  const isWideDesktopSignupPage = pathname === paths.auth.simple.signUp;
 
   return (
     <LayoutSection
@@ -63,6 +67,11 @@ export function AuthCenteredLayout({ sx, children, showHeader = true }) {
         '--layout-auth-content-width': '420px',
       }}
       sx={{
+        '--layout-auth-content-width': {
+          xs: '420px',
+          md: isWideDesktopSignupPage ? '920px' : '420px',
+          lg: isWideDesktopSignupPage ? '1040px' : '420px',
+        },
         '&::before': {
           width: 1,
           height: 1,

@@ -106,3 +106,40 @@ export const buildForumReplyBodyHtml = (postTitle: string, replierName: string, 
         </div>
     `;
 };
+
+export const buildOrderReceiptBodyHtml = (params: {
+    orderId: string;
+    amount: number | string;
+    currency: string;
+    itemLabel: string;
+}): string => {
+    const safeOrderId = escapeHtml(params.orderId);
+    const safeAmount = escapeHtml(String(params.amount));
+    const safeCurrency = escapeHtml(params.currency || 'SGD');
+    const safeItemLabel = escapeHtml(params.itemLabel || 'Order payment');
+
+    return `
+        <div style="margin-top:18px; background:#ffffff; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden;">
+            <div style="background:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; padding:10px 14px; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                Payment Receipt
+            </div>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
+                <tr>
+                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Order ID</td>
+                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeOrderId}</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Item</td>
+                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeItemLabel}</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Amount Paid</td>
+                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeCurrency} ${safeAmount}</td>
+                </tr>
+            </table>
+            <div style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5;">
+                Your PDF receipt is attached to this email for your records.
+            </div>
+        </div>
+    `;
+};

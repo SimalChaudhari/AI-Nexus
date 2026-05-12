@@ -511,6 +511,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const [nricAiChecking, setNricAiChecking] = useState(false);
   const [nricAiVerified, setNricAiVerified] = useState(false);
   const [nricAiError, setNricAiError] = useState('');
+  const [nricAiFailureReason, setNricAiFailureReason] = useState('');
+  const [nricAiFailureMode, setNricAiFailureMode] = useState('default');
+  const [nricSignupAccessToken, setNricSignupAccessToken] = useState('');
   const [studentDemoPin, setStudentDemoPin] = useState('');
   const [studentPinInput, setStudentPinInput] = useState('');
   const [studentPinError, setStudentPinError] = useState('');
@@ -521,6 +524,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setNricAiChecking(false);
     setNricAiVerified(false);
     setNricAiError('');
+    setNricAiFailureReason('');
+    setNricAiFailureMode('default');
+    setNricSignupAccessToken('');
   };
 
   const resetStudentVerificationState = () => {
@@ -617,11 +623,152 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const continueAfterNricAiVerified = () => {
-    setFlowState((prev) => ({ ...prev, nricUploadAcknowledged: true, spPrVerified: true }));
+    if (!nricSignupAccessToken) {
+      setNricAiError('Verified signup access could not be created. Please run the verification again.');
+      setNricAiFailureReason('Secure signup token was not generated for this verified NRIC check.');
+      return;
+    }
+
+    onContinue?.({
+      flow: flowState,
+      signupAccessToken: nricSignupAccessToken,
+      result: {
+        outcome: 'verified-nric-signup',
+        title: 'Verified signup route',
+        summary: 'NRIC verified successfully. Continue to the secure signup page.',
+        ctaLabel: 'Continue to sign up',
+        actionTarget: 'signUp',
+      },
+    });
   };
 
   const continueAfterNricOtherOptions = () => {
     setFlowState((prev) => ({ ...prev, nricUploadAcknowledged: true, spPrVerified: false }));
+  };
+
+  const continueToPaidSignupAfterNricFailure = () => {
+    onContinue?.({
+      flow: flowState,
+      result: {
+        outcome: 'paid-signup',
+        title: 'Paid access route',
+        summary: 'Continue with account signup at SGD 900 (excluding GST).',
+        ctaLabel: 'Continue to paid signup',
+        actionTarget: 'signUp',
+      },
+    });
+  };
+
+  const continueToSignInAfterNricFailure = () => {
+    onContinue?.({
+      flow: flowState,
+      result: {
+        outcome: 'login-platform',
+        title: 'Continue to platform login',
+        summary: 'Please sign in with your credentials.',
+        ctaLabel: 'Go to sign in',
+        actionTarget: 'signIn',
+      },
+    });
+  };
+
+  const getNricFailureState = (message) => {
+    const fallbackSummary =
+      'Verification failed. We could not identify a valid NRIC/FIN from the uploaded images. You can upload clearer images, continue with paid signup at SGD 900, or sign in if you already have an account.';
+
+    const rawMessage = String(message || '').trim();
+    const normalized = rawMessage.toLowerCase();
+
+    if (!rawMessage) {
+      return {
+        summary: fallbackSummary,
+        reason: 'AI could not identify a valid NRIC/FIN from the uploaded images.',
+        mode: 'default',
+      };
+    }
+
+    if (
+      normalized.includes('could not extract')
+      || normalized.includes('could not validate')
+      || normalized.includes('failed checksum validation')
+      || normalized.includes('not found')
+      || normalized.includes('not identify')
+    ) {
+      return {
+        summary: fallbackSummary,
+        reason: rawMessage,
+        mode: 'default',
+      };
+    }
+
+    if (
+      normalized.includes('manual review is required')
+      || normalized.includes('confidence is too low')
+      || normalized.includes('could not confirm the full name clearly')
+      || normalized.includes('could not confirm the date of birth clearly')
+    ) {
+      return {
+        summary:
+          'Verification needs manual review. The uploaded document could not be auto-approved securely. Please upload a clearer NRIC image set, continue with paid signup at SGD 900, or sign in if you already have an account.',
+        reason: rawMessage,
+        mode: 'default',
+      };
+    }
+
+    if (
+      normalized.includes('insufficient credits')
+      || normalized.includes('temporarily unavailable because the document ocr service has insufficient credits')
+      || normalized.includes('temporarily busy')
+      || normalized.includes('automatic nric verification is temporarily unavailable')
+      || normalized.includes('automatic nric verification failed during')
+    ) {
+      return {
+        summary:
+          'Verification is temporarily unavailable right now. Please try again later, continue with paid signup at SGD 900, or sign in if you already have an account.',
+        reason: rawMessage,
+        mode: 'default',
+      };
+    }
+
+    if (normalized.includes('front and back nric images must be different')) {
+      return {
+        summary:
+          'Verification failed. Front and back uploads must be different images. You can upload the correct images and try again, continue with paid signup at SGD 900, or sign in if you already have an account.',
+        reason: 'Front and back uploads must be different image files.',
+        mode: 'default',
+      };
+    }
+
+    if (
+      normalized.includes('same nric/fin document')
+      || normalized.includes('same document')
+      || normalized.includes('different identity details')
+    ) {
+      return {
+        summary:
+          'Verification failed. The front and back uploads do not match the same NRIC document. Please upload the correct front and back images of the same document, or continue with paid signup at SGD 900, or sign in if you already have an account.',
+        reason: rawMessage,
+        mode: 'default',
+      };
+    }
+
+    if (
+      normalized.includes('already verified this document')
+      || normalized.includes('already completed signup with this verified document')
+      || (normalized.includes('please sign in') && normalized.includes('credentials'))
+    ) {
+      return {
+        summary: 'Verification already exists for this document.',
+        reason: 'You have already completed signup with this verified document. Please sign in with your credentials.',
+        mode: 'sign-in-only',
+      };
+    }
+
+    return {
+      summary: `Verification failed. ${rawMessage}`,
+      reason: rawMessage,
+      mode: 'default',
+    };
   };
 
   const handleNricImageSelect = (side, file) => {
@@ -630,14 +777,21 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     if (side === 'back') setNricBackImage(file);
     setNricAiVerified(false);
     setNricAiError('');
+    setNricAiFailureReason('');
+    setNricAiFailureMode('default');
+    setNricSignupAccessToken('');
   };
 
   const runNricAiCheck = async () => {
     if (!nricFrontImage || !nricBackImage) {
       setNricAiError('Please upload NRIC front and back images before AI check.');
+      setNricAiFailureReason('Both front and back NRIC images are required before verification.');
+      setNricAiFailureMode('default');
       return;
     }
     setNricAiError('');
+    setNricAiFailureReason('');
+    setNricAiFailureMode('default');
     setNricAiChecking(true);
     setNricAiVerified(false);
     try {
@@ -646,12 +800,26 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         backImage: nricBackImage,
       });
       if (!response?.verified) {
-        setNricAiError(response?.message || 'AI verification failed. Please upload clear images and try again.');
+        const failureState = getNricFailureState(response?.message);
+        setNricAiError(failureState.summary);
+        setNricAiFailureReason(failureState.reason);
+        setNricAiFailureMode(failureState.mode);
         return;
       }
+      if (!response?.signupAccessToken) {
+        const failureState = getNricFailureState('Verified signup access token was not created.');
+        setNricAiError(failureState.summary);
+        setNricAiFailureReason(failureState.reason);
+        setNricAiFailureMode(failureState.mode);
+        return;
+      }
+      setNricSignupAccessToken(response.signupAccessToken);
       setNricAiVerified(true);
     } catch (error) {
-      setNricAiError(error?.message || 'AI verification failed. Please try again.');
+      const failureState = getNricFailureState(error?.message);
+      setNricAiError(failureState.summary);
+      setNricAiFailureReason(failureState.reason);
+      setNricAiFailureMode(failureState.mode);
     } finally {
       setNricAiChecking(false);
     }
@@ -2067,24 +2235,81 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               </Typography>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                <Button variant="outlined" onClick={runNricAiCheck} disabled={nricAiChecking || nricAiVerified}>
+                <Button
+                  variant="outlined"
+                  onClick={runNricAiCheck}
+                  disabled={nricAiChecking || nricAiVerified || Boolean(nricAiError)}
+                >
                   {nricAiVerified ? 'AI check completed' : nricAiChecking ? 'AI checking...' : 'Run AI NRIC check'}
                 </Button>
                 {nricAiVerified ? (
                   <Button variant="contained" onClick={continueAfterNricAiVerified}>
-                    Login to platform
+                    Continue to sign up
                   </Button>
-                ) : (
+                ) : nricAiFailureMode !== 'sign-in-only' ? (
                   <Button variant="contained" color="inherit" onClick={continueAfterNricOtherOptions}>
                     Continue with other options
                   </Button>
-                )}
+                ) : null}
               </Stack>
 
               {!!nricAiError && (
-                <Typography variant="caption" color="error.main">
-                  {nricAiError}
-                </Typography>
+                <Box
+                  sx={(theme) => ({
+                    p: 1.5,
+                    borderRadius: 1.5,
+                    border: `1px solid ${alpha(theme.palette.error.main, 0.35)}`,
+                    bgcolor: alpha(theme.palette.error.main, 0.08),
+                  })}
+                >
+                  <Stack spacing={1.25}>
+                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                      <Box
+                        sx={(theme) => ({
+                          mt: 0.2,
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: theme.palette.error.main,
+                          bgcolor: alpha(theme.palette.error.main, 0.16),
+                          flexShrink: 0,
+                        })}
+                      >
+                        <Iconify icon="solar:close-circle-bold" width={18} />
+                      </Box>
+                      <Stack spacing={0.5}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          Verification failed
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {nricAiError}
+                        </Typography>
+                        {!!nricAiFailureReason && (
+                          <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }}>
+                            Reason: {nricAiFailureReason}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+
+                    {nricAiFailureMode === 'sign-in-only' ? (
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                        <Button variant="contained" onClick={continueToSignInAfterNricFailure}>
+                          Sign in
+                        </Button>
+                      </Stack>
+                    ) : (
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                        <Button variant="contained" onClick={continueToPaidSignupAfterNricFailure}>
+                          Use SGD 900 paid signup
+                        </Button>
+                      </Stack>
+                    )}
+                  </Stack>
+                </Box>
               )}
             </Stack>
           </Stack>

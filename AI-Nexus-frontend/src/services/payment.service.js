@@ -1,5 +1,11 @@
 import axios from 'src/utils/axios';
 
+const trimPaymentLogValue = (value, keep = 18) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '(none)';
+  return normalized.length > keep ? `${normalized.slice(0, keep)}...` : normalized;
+};
+
 /**
  * Create a WooshPay checkout session (card-only). Returns URL to redirect the user to pay.
  * Backend uses PAYMENT_SECRET_KEY; this call is authenticated as the current user.
@@ -17,6 +23,75 @@ export async function createCheckoutSession({ items, successUrl, cancelUrl, curr
     currency,
   });
   return response.data;
+}
+
+export async function createMembershipCheckoutSession({
+  draftUserId,
+  signupAccessToken,
+  source,
+  successUrl,
+  cancelUrl,
+  currency = 'sgd',
+}) {
+  try {
+    console.info('[MembershipPaymentService] Create checkout request', {
+      draftUserId: trimPaymentLogValue(draftUserId),
+      source: source || 'membership-paid-signup',
+      currency: String(currency || 'sgd').toUpperCase(),
+    });
+    const response = await axios.post('/payments/create-membership-checkout', {
+      draftUserId,
+      signupAccessToken,
+      source,
+      successUrl,
+      cancelUrl,
+      currency,
+    });
+    console.info('[MembershipPaymentService] Create checkout success', {
+      refId: trimPaymentLogValue(response?.data?.refId),
+      sessionId: trimPaymentLogValue(response?.data?.sessionId),
+    });
+    return response.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Could not start membership payment.';
+    console.error('[MembershipPaymentService] Create checkout failed', {
+      draftUserId: trimPaymentLogValue(draftUserId),
+      message: errorMessage,
+    });
+    throw new Error(errorMessage);
+  }
+}
+
+export async function confirmMembershipPayment({ ref, sessionId }) {
+  try {
+    console.info('[MembershipPaymentService] Confirm payment request', {
+      refId: trimPaymentLogValue(ref),
+      sessionId: trimPaymentLogValue(sessionId),
+    });
+    const response = await axios.post('/payments/confirm-membership-payment', {
+      ref,
+      sessionId,
+    });
+    console.info('[MembershipPaymentService] Confirm payment success', {
+      refId: trimPaymentLogValue(ref),
+      userId: trimPaymentLogValue(response?.data?.userId),
+    });
+    return response.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Could not confirm membership payment.';
+    console.error('[MembershipPaymentService] Confirm payment failed', {
+      refId: trimPaymentLogValue(ref),
+      sessionId: trimPaymentLogValue(sessionId),
+      message: errorMessage,
+    });
+    throw new Error(errorMessage);
+  }
 }
 
 /**

@@ -52,7 +52,7 @@ export const signInWithPassword = async ({ email, username, password }) => {
 /** **************************************
  * Sign up with backend API
  *************************************** */
-export const signUp = async ({ email, password, firstName, lastName, username }) => {
+export const signUp = async ({ email, password, firstName, lastName, username, signupAccessToken }) => {
   try {
     const params = {
       username: username || email.split('@')[0], // Use email prefix as username if not provided
@@ -60,6 +60,7 @@ export const signUp = async ({ email, password, firstName, lastName, username })
       lastname: lastName,
       email,
       password,
+      signupAccessToken: signupAccessToken || undefined,
     };
     const res = await axios.post('/auth/register', params);
     const { user, message } = res.data;
@@ -67,6 +68,9 @@ export const signUp = async ({ email, password, firstName, lastName, username })
     // Store user data in sessionStorage
     if (user) {
       sessionStorage.setItem('user', JSON.stringify(normalizeUserForSession(user)));
+    }
+    if (signupAccessToken) {
+      sessionStorage.removeItem('membershipDraftUserId');
     }
 
     // Note: Backend register doesn't return access_token, user needs to login after registration
@@ -76,6 +80,61 @@ export const signUp = async ({ email, password, firstName, lastName, username })
       error?.response?.data?.message ||
       error?.message ||
       (typeof error === 'string' ? error : 'Registration failed. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Save membership signup details as a draft before payment
+ *************************************** */
+export const saveMembershipSignupDraft = async ({
+  email,
+  password,
+  firstName,
+  lastName,
+  username,
+  signupAccessToken,
+  draftUserId,
+}) => {
+  try {
+    const params = {
+      username: username || email.split('@')[0],
+      firstname: firstName,
+      lastname: lastName,
+      email,
+      password,
+      signupAccessToken: signupAccessToken || undefined,
+      draftUserId: draftUserId || undefined,
+    };
+    const res = await axios.post('/auth/membership-signup-draft', params);
+    const nextDraftUserId = res?.data?.draftUserId || res?.data?.user?.id || '';
+
+    if (nextDraftUserId) {
+      sessionStorage.setItem('membershipDraftUserId', nextDraftUserId);
+    }
+
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not save membership signup draft.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Validate verified NRIC signup access token
+ *************************************** */
+export const getVerifiedSignupAccess = async ({ token }) => {
+  try {
+    const res = await axios.post('/auth/verified-signup-access', { token });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Verified signup access is invalid or expired.');
     throw new Error(errorMessage);
   }
 };
@@ -154,12 +213,30 @@ export const resendVerification = async ({ email }) => {
 export const verifyNricImages = async ({ frontImage, backImage }) => {
   try {
     const formData = new FormData();
+    let currentUser = null;
+    let draftUserId = '';
+    try {
+      currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
+    } catch {
+      currentUser = null;
+    }
+    draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
+    if (currentUser?.id) {
+      formData.append('userId', currentUser.id);
+    } else if (draftUserId) {
+      formData.append('userId', draftUserId);
+    }
     formData.append('frontImage', frontImage);
     formData.append('backImage', backImage);
 
     const res = await axios.post('/auth/verify-nric', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+
+    if (!currentUser?.id && res?.data?.userId) {
+      sessionStorage.setItem('membershipDraftUserId', res.data.userId);
+    }
+
     return res.data;
   } catch (error) {
     const errorMessage =

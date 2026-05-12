@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -11,7 +11,7 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
-import InputAdornment from '@mui/material/InputAdornment';
+import InputAdornment from '@mui/material/InputAdornment';  
 import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
@@ -34,6 +34,8 @@ export function SimpleSignInView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { checkUserSession } = useAuthContext();
+  const membershipPaymentConfirmed = searchParams.get('membershipPaymentConfirmed') === '1';
+  const prefilledEmail = searchParams.get('email') || '';
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isResending, setIsResending] = useState(false);
@@ -42,7 +44,7 @@ export function SimpleSignInView() {
   const password = useBoolean();
 
   const defaultValues = {
-    identifier: '',
+    identifier: prefilledEmail,
     password: '',
   };
 
@@ -53,8 +55,25 @@ export function SimpleSignInView() {
 
   const {
     handleSubmit,
+    setValue,
     formState: { isSubmitting },
   } = methods;
+
+  useEffect(() => {
+    if (!prefilledEmail) return;
+    setValue('identifier', prefilledEmail, { shouldDirty: false, shouldValidate: false });
+    setUserEmail(prefilledEmail);
+  }, [prefilledEmail, setValue]);
+
+  useEffect(() => {
+    if (!membershipPaymentConfirmed) return;
+
+    setSuccessMsg(
+      prefilledEmail
+        ? `Payment confirmed. Your account was created successfully. Please verify ${prefilledEmail} from your email inbox, then sign in.`
+        : 'Payment confirmed. Your account was created successfully. Please verify your email from your inbox, then sign in.'
+    );
+  }, [membershipPaymentConfirmed, prefilledEmail]);
 
   const onSubmit = handleSubmit(async (data) => {
     try {
