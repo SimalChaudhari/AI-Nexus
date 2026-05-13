@@ -79,7 +79,13 @@ export const navData = [
         path: paths.admin.user.root,
         icon: ICONS.user,
         children: [
-          { title: 'List', path: paths.admin.user.list },
+          {
+            title: 'List',
+            path: paths.admin.user.root,
+            deepMatch: true,
+            href: paths.admin.user.list,
+            activeExcludePaths: [paths.admin.user.new],
+          },
           // { title: 'Profile', path: paths.dashboard.user.root },
           // { title: 'Cards', path: paths.dashboard.user.cards },
           { title: 'Create', path: paths.admin.user.new },
@@ -92,7 +98,13 @@ export const navData = [
         path: paths.admin.announcement.root,
         icon: ICONS.announcement,
         children: [
-          { title: 'List', path: paths.admin.announcement.list },
+          {
+            title: 'List',
+            path: paths.admin.announcement.root,
+            deepMatch: true,
+            href: paths.admin.announcement.list,
+            activeExcludePaths: [paths.admin.announcement.new],
+          },
           { title: 'Create', path: paths.admin.announcement.new },
         ],
       },
@@ -101,7 +113,13 @@ export const navData = [
         path: paths.admin.aiForum.root,
         icon: <Iconify icon="solar:chat-round-bold-duotone" width={24} />,
         children: [
-          { title: 'List', path: paths.admin.aiForum.list },
+          {
+            title: 'List',
+            path: paths.admin.aiForum.root,
+            deepMatch: true,
+            href: paths.admin.aiForum.list,
+            activeExcludePaths: [paths.admin.aiForum.new],
+          },
           { title: 'Create', path: paths.admin.aiForum.new },
         ],
       },
@@ -110,7 +128,13 @@ export const navData = [
         path: paths.admin.course.root,
         icon: ICONS.course,
         children: [
-          { title: 'List', path: paths.admin.course.list },
+          {
+            title: 'List',
+            path: paths.admin.course.root,
+            deepMatch: true,
+            href: paths.admin.course.list,
+            activeExcludePaths: [paths.admin.course.new],
+          },
           { title: 'Category', path: paths.admin.category.root, deepMatch: true },
           { title: 'Quiz Attempts', path: paths.admin.course.attempts },
           { title: 'Certificates', path: paths.admin.course.certificates },
@@ -121,7 +145,13 @@ export const navData = [
         path: paths.admin.speaker.root,
         icon: <Iconify icon="solar:microphone-bold-duotone" width={24} />,
         children: [
-          { title: 'List', path: paths.admin.speaker.list },
+          {
+            title: 'List',
+            path: paths.admin.speaker.root,
+            deepMatch: true,
+            href: paths.admin.speaker.list,
+            activeExcludePaths: [paths.admin.speaker.new],
+          },
           { title: 'Create', path: paths.admin.speaker.new },
         ],
       },
@@ -130,7 +160,13 @@ export const navData = [
         path: paths.admin.language.root,
         icon: <Iconify icon="solar:global-bold-duotone" width={24} />,
         children: [
-          { title: 'List', path: paths.admin.language.list },
+          {
+            title: 'List',
+            path: paths.admin.language.root,
+            deepMatch: true,
+            href: paths.admin.language.list,
+            activeExcludePaths: [paths.admin.language.new],
+          },
           { title: 'Create', path: paths.admin.language.new },
         ],
       },
@@ -139,7 +175,12 @@ export const navData = [
         path: paths.admin.order.root,
         icon: ICONS.order,
         children: [
-          { title: 'List', path: paths.admin.order.list },
+          {
+            title: 'List',
+            path: paths.admin.order.root,
+            deepMatch: true,
+            href: paths.admin.order.list,
+          },
         ],
       },
       {
@@ -147,7 +188,13 @@ export const navData = [
         path: paths.admin.label.root,
         icon: ICONS.label,
         children: [
-          { title: 'List', path: paths.admin.label.list },
+          {
+            title: 'List',
+            path: paths.admin.label.root,
+            deepMatch: true,
+            href: paths.admin.label.list,
+            activeExcludePaths: [paths.admin.label.new],
+          },
           { title: 'Create', path: paths.admin.label.new },
         ],
       },
@@ -156,7 +203,13 @@ export const navData = [
         path: paths.admin.tag.root,
         icon: ICONS.tag,
         children: [
-          { title: 'List', path: paths.admin.tag.list },
+          {
+            title: 'List',
+            path: paths.admin.tag.root,
+            deepMatch: true,
+            href: paths.admin.tag.list,
+            activeExcludePaths: [paths.admin.tag.new],
+          },
           { title: 'Create', path: paths.admin.tag.new },
         ],
       },
@@ -164,14 +217,26 @@ export const navData = [
         title: 'AI Resource',
         path: paths.admin.workflow.root,
         icon: ICONS.workflow,
+        activePathPrefixes: [paths.admin.prompt.root],
         children: [
           {
             title: 'Template',
             path: paths.admin.workflow.root,
             children: [
-              { title: 'List', path: paths.admin.workflow.list },
+              {
+                title: 'List',
+                path: paths.admin.workflow.root,
+                deepMatch: true,
+                href: paths.admin.workflow.list,
+                activeExcludePaths: [paths.admin.workflow.new],
+              },
               { title: 'Create', path: paths.admin.workflow.new },
             ],
+          },
+          {
+            title: 'Prompts',
+            path: paths.admin.prompt.root,
+            deepMatch: true,
           },
         ],
       },

@@ -19,7 +19,7 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { Iconify } from 'src/components/iconify';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { getProviderPromptDetail } from 'src/sections/workflows/data/prompt-providers';
+import { getProviderPromptDetail, PROMPT_PROVIDER_IDS } from 'src/sections/workflows/data/prompt-providers';
 import { getProviderPromptTheme } from 'src/sections/workflows/provider-prompt-theme';
 import { ProviderPromptIcon } from 'src/sections/workflows/provider-prompt-icon';
 import { toast } from 'src/components/snackbar';
@@ -126,6 +126,20 @@ export default function PromptDetailsPage() {
     [provider, config?.color, config?.bgColor]
   );
   const metadata = { title: `${config?.title || 'Prompts'} | ${CONFIG.site.name}` };
+
+  const backToPromptsHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('tab', 'resources');
+    const p = String(provider || '').toLowerCase();
+    if (PROMPT_PROVIDER_IDS.has(p)) {
+      params.set('provider', p);
+    }
+    const cat = selectedCategoryFromQuery.trim();
+    if (cat) {
+      params.set('category', cat);
+    }
+    return `${paths.workflows}?${params.toString()}`;
+  }, [provider, selectedCategoryFromQuery]);
 
   useEffect(() => {
     let mounted = true;
@@ -272,7 +286,7 @@ export default function PromptDetailsPage() {
           <Box>
             <Button
               component={RouterLink}
-              href={`${paths.workflows}?tab=resources`}
+              href={backToPromptsHref}
               variant="outlined"
               color="inherit"
               startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}

@@ -2,27 +2,32 @@ import { useState, useEffect, useCallback } from 'react';
 
 import { usePathname } from 'src/routes/hooks';
 import { isExternalLink } from 'src/routes/utils';
-import { useActiveLink } from 'src/routes/hooks/use-active-link';
 
 import { NavItem } from './nav-item';
 import { navSectionClasses } from '../classes';
 import { NavUl, NavLi, NavCollapse } from '../styles';
+import { useNavListActive } from '../use-nav-list-active';
 
 // ----------------------------------------------------------------------
 
 export function NavList({ data, render, depth, slotProps, enabledRootRedirect }) {
-  const pathname = usePathname();
+  const pathnameRaw = usePathname();
 
-  const active = useActiveLink(data.path, !!data.children || !!data.deepMatch);
+  const active = useNavListActive(data, pathnameRaw);
 
   const [openMenu, setOpenMenu] = useState(active);
+
+  const handleCloseMenu = useCallback(() => {
+    setOpenMenu(false);
+  }, []);
 
   useEffect(() => {
     if (!active) {
       handleCloseMenu();
+    } else if (data.children) {
+      setOpenMenu(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [pathnameRaw, active, data.children, handleCloseMenu]);
 
   const handleToggleMenu = useCallback(() => {
     if (data.children) {
@@ -30,15 +35,12 @@ export function NavList({ data, render, depth, slotProps, enabledRootRedirect })
     }
   }, [data.children]);
 
-  const handleCloseMenu = useCallback(() => {
-    setOpenMenu(false);
-  }, []);
-
   const renderNavItem = (
     <NavItem
       render={render}
       // slots
       path={data.path}
+      href={data.href}
       icon={data.icon}
       info={data.info}
       title={data.title}

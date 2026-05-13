@@ -91,6 +91,10 @@ const WorkflowListPage = lazy(() => import('src/pages/dashboard/workflow/list'))
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowEditPage = lazy(() => import('src/pages/dashboard/workflow/edit'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/dashboard/workflow/details'));
+const PromptListPage = lazy(() => import('src/pages/dashboard/prompt/list'));
+const PromptCategoryItemsPage = lazy(() => import('src/pages/dashboard/prompt/items'));
+const PromptDetailsPage = lazy(() => import('src/pages/dashboard/prompt/details'));
+const PromptEditPage = lazy(() => import('src/pages/dashboard/prompt/edit'));
 
 // Speaker Management (Admin only)
 const SpeakerListPage = lazy(() => import('../../pages/dashboard/speaker/list'));
@@ -272,6 +276,16 @@ export const adminRoutes = [
           { path: 'new', element: <WorkflowCreatePage /> },
           { path: ':id', element: <WorkflowDetailsPage /> },
           { path: ':id/edit', element: <WorkflowEditPage /> },
+        ],
+      },
+      {
+        path: 'prompt',
+        children: [
+          { element: <PromptListPage />, index: true },
+          { path: 'list', element: <PromptListPage /> },
+          { path: 'items', element: <PromptCategoryItemsPage /> },
+          { path: ':id', element: <PromptDetailsPage /> },
+          { path: ':id/edit', element: <PromptEditPage /> },
         ],
       },
       {

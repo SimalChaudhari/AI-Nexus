@@ -10,6 +10,7 @@ import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Unstable_Grid2';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
+import { useTheme } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
@@ -48,6 +49,7 @@ const normalizeHtml = (value) => {
 };
 
 export default function WorkflowDetailsPublicPage() {
+  const theme = useTheme();
   const { id = '' } = useParams();
   const [workflow, setWorkflow] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -175,7 +177,7 @@ export default function WorkflowDetailsPublicPage() {
           minHeight: '100vh',
           py: { xs: 4, md: 6 },
           background:
-            'radial-gradient(circle at top right, rgba(130, 20, 40, 0.55), transparent 45%), linear-gradient(135deg, #0b0e1f 0%, #120b27 45%, #1c0f2d 100%)',
+            `radial-gradient(circle at top right, ${theme.palette.primary.main}8c, transparent 45%), linear-gradient(135deg, ${theme.palette.secondary.dark} 0%, ${theme.palette.secondary.main} 45%, ${theme.palette.primary.dark} 100%)`,
         }}
       >
         <DashboardContent>

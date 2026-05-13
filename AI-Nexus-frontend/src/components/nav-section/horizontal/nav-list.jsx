@@ -6,24 +6,24 @@ import { useTheme } from '@mui/material/styles';
 
 import { usePathname } from 'src/routes/hooks';
 import { isExternalLink } from 'src/routes/utils';
-import { useActiveLink } from 'src/routes/hooks/use-active-link';
 
 import { paper } from 'src/theme/styles';
 
 import { NavItem } from './nav-item';
 import { NavUl, NavLi } from '../styles';
 import { navSectionClasses } from '../classes';
+import { useNavListActive } from '../use-nav-list-active';
 
 // ----------------------------------------------------------------------
   
 export function NavList({ data, depth, render, cssVars, slotProps, enabledRootRedirect }) {
   const theme = useTheme();
 
-  const pathname = usePathname();
+  const pathnameRaw = usePathname();
 
   const navItemRef = useRef(null);
 
-  const active = useActiveLink(data.path, !!data.children || !!data.deepMatch);
+  const active = useNavListActive(data, pathnameRaw);
 
   const [openMenu, setOpenMenu] = useState(false);
 
@@ -32,7 +32,7 @@ export function NavList({ data, depth, render, cssVars, slotProps, enabledRootRe
       handleCloseMenu();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [pathnameRaw]);
 
   const handleOpenMenu = useCallback(() => {
     if (data.children) {
@@ -51,6 +51,7 @@ export function NavList({ data, depth, render, cssVars, slotProps, enabledRootRe
       // slots
       title={data.title}
       path={data.path}
+      href={data.href}
       icon={data.icon}
       info={data.info}
       caption={data.caption}

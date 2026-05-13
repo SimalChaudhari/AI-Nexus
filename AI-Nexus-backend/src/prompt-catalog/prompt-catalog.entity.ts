@@ -56,6 +56,17 @@ export class PromptCatalogItemEntity {
   @Column({ type: 'text' })
   prompt!: string;
 
+  /**
+   * Stable key matching `promptCatalogMergeKey` during external sync (topic + use case).
+   * Used to re-apply admin-edited prompt bodies after sync.
+   */
+  @Column({ type: 'varchar', length: 2048, nullable: true, default: null })
+  syncMergeKey?: string | null;
+
+  /** When true, `syncFromExternalProviders` keeps this row's `prompt` for the same merge key. */
+  @Column({ type: 'boolean', default: false })
+  adminPromptLocked!: boolean;
+
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 

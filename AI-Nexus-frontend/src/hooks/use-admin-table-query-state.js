@@ -16,6 +16,10 @@ export function useAdminTableQueryState({
   defaultRowsPerPage = ADMIN_TABLE_DEFAULTS.rowsPerPage,
   filterDefaults = {},
   queryMap = {},
+  /** Query keys that are always written to the URL when non-empty (even if equal to default). */
+  persistFilterKeys = [],
+  /** Passed through to `useTable` (e.g. `defaultOrderBy`, `defaultOrder`, `defaultDense`). */
+  useTableProps = {},
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -31,7 +35,11 @@ export function useAdminTableQueryState({
     return next;
   }, [filterDefaults, searchParams]);
 
-  const table = useTable({ defaultCurrentPage: initialPage, defaultRowsPerPage: initialRowsPerPage });
+  const table = useTable({
+    defaultCurrentPage: initialPage,
+    defaultRowsPerPage: initialRowsPerPage,
+    ...useTableProps,
+  });
   const filters = useSetState(initialFilters);
 
   const query = useMemo(() => {
@@ -60,6 +68,14 @@ export function useAdminTableQueryState({
 
         Object.entries(filterDefaults).forEach(([key, defaultValue]) => {
           const value = filters.state[key];
+          if (persistFilterKeys.includes(key)) {
+            if (value !== undefined && value !== null && String(value) !== '') {
+              next.set(key, String(value));
+            } else {
+              next.delete(key);
+            }
+            return;
+          }
           if (value !== undefined && value !== null && String(value) !== '' && value !== defaultValue) {
             next.set(key, String(value));
           } else {
@@ -72,7 +88,7 @@ export function useAdminTableQueryState({
       },
       { replace: true }
     );
-  }, [filterDefaults, filters.state, setSearchParams, table.page, table.rowsPerPage]);
+  }, [filterDefaults, filters.state, persistFilterKeys, setSearchParams, table.page, table.rowsPerPage]);
 
   return { table, filters, query };
 }

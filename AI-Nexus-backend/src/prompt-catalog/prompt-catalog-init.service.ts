@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import { shouldSkipRuntimeSchemaInit } from '../common/schema-init-guard';
+import { promptCatalogMergeKey } from './prompt-catalog-keys.util';
 
 const DEFAULT_PROVIDER_PROFILES = [
   {
@@ -191,12 +192,39 @@ const DEFAULT_PROMPT_SECTIONS = [
 export class PromptCatalogInitService implements OnModuleInit {
   constructor(private dataSource: DataSource) {}
 
-  async onModuleInit() {
-    if (shouldSkipRuntimeSchemaInit()) {
+  /**
+   * Adds columns required by the current TypeORM entity even when full runtime DDL is skipped
+   * (`DATABASE_SKIP_RUNTIME_SCHEMA_INIT=true`), so admin prompt APIs do not fail on SELECT.
+   * Uses the pool driver directly (no QueryRunner) to avoid overlapping use of one client at boot.
+   */
+  private async ensurePromptCatalogItemSyncColumns(): Promise<void> {
+    const tableCheck = await this.dataSource.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'prompt_catalog_items'
+      ) AS "exists"`
+    );
+    if (!tableCheck?.[0]?.exists) {
       return;
     }
+    await this.dataSource.query(
+      `ALTER TABLE "prompt_catalog_items" ADD COLUMN IF NOT EXISTS "syncMergeKey" character varying(2048) NULL`
+    );
+    await this.dataSource.query(
+      `ALTER TABLE "prompt_catalog_items" ADD COLUMN IF NOT EXISTS "adminPromptLocked" boolean NOT NULL DEFAULT false`
+    );
+  }
+
+  async onModuleInit() {
+    let queryRunner: QueryRunner | undefined;
     try {
-      const queryRunner = this.dataSource.createQueryRunner();
+      await this.ensurePromptCatalogItemSyncColumns();
+
+      if (shouldSkipRuntimeSchemaInit()) {
+        return;
+      }
+
+      queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
 
       const exists = await queryRunner.hasTable('prompt_catalog_items');
@@ -222,6 +250,8 @@ export class PromptCatalogInitService implements OnModuleInit {
             "useCase" text NOT NULL,
             "prompt" text NOT NULL,
             "isActive" boolean NOT NULL DEFAULT true,
+            "syncMergeKey" character varying(2048) NULL,
+            "adminPromptLocked" boolean NOT NULL DEFAULT false,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_prompt_catalog_items" PRIMARY KEY ("id")
@@ -338,22 +368,26 @@ export class PromptCatalogInitService implements OnModuleInit {
           const section = DEFAULT_PROMPT_SECTIONS[sectionIndex];
           for (let itemIndex = 0; itemIndex < section.items.length; itemIndex += 1) {
             const item = section.items[itemIndex];
+            const mergeKey = promptCatalogMergeKey(section.title, item.useCase);
             await queryRunner.query(
               `INSERT INTO "prompt_catalog_items"
-               ("providers", "category", "sectionTitle", "sectionOrder", "itemOrder", "useCase", "prompt", "isActive")
-               VALUES ($1::prompt_provider_enum[], NULL, $2, $3, $4, $5, $6, true)`,
-              [ALL_PROVIDERS, section.title, sectionIndex + 1, itemIndex + 1, item.useCase, item.prompt]
+               ("providers", "category", "sectionTitle", "sectionOrder", "itemOrder", "useCase", "prompt", "isActive", "syncMergeKey", "adminPromptLocked")
+               VALUES ($1::prompt_provider_enum[], NULL, $2, $3, $4, $5, $6, true, $7, false)`,
+              [ALL_PROVIDERS, section.title, sectionIndex + 1, itemIndex + 1, item.useCase, item.prompt, mergeKey]
             );
           }
         }
       }
 
-      await queryRunner.release();
     } catch (error) {
       console.error(
         'Error initializing prompt_catalog_items table:',
         error instanceof Error ? error.message : error
       );
+    } finally {
+      if (queryRunner && !queryRunner.isReleased) {
+        await queryRunner.release();
+      }
     }
   }
 }

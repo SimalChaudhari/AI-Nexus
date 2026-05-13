@@ -18,6 +18,7 @@ export const NavItem = forwardRef(
   (
     {
       path,
+      href,
       icon,
       info,
       title,
@@ -38,6 +39,7 @@ export const NavItem = forwardRef(
   ) => {
     const navItem = useNavItem({
       path,
+      href,
       icon,
       info,
       depth,

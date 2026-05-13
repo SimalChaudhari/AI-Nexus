@@ -311,6 +311,16 @@ export const paths = {
       details: (id) => `${ROOTS.ADMIN}/ai-resources/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/ai-resources/${id}/edit`,
     },
+    prompt: {
+      root: `${ROOTS.ADMIN}/prompt`,
+      list: `${ROOTS.ADMIN}/prompt/list`,
+      /** Category → prompts CRUD (query: categoryKey, page, rowsPerPage, name). */
+      items: `${ROOTS.ADMIN}/prompt/items`,
+      categoryItems: (categoryKey) =>
+        `${ROOTS.ADMIN}/prompt/items?categoryKey=${encodeURIComponent(categoryKey)}`,
+      details: (id) => `${ROOTS.ADMIN}/prompt/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/prompt/${id}/edit`,
+    },
     order: {
       root: `${ROOTS.ADMIN}/order`,
       list: `${ROOTS.ADMIN}/order/list`,

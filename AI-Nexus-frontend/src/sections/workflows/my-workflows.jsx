@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -15,7 +16,7 @@ import { useTheme } from '@mui/material/styles';
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
-import { getProviderPromptDetail, PROMPT_PROVIDERS } from 'src/sections/workflows/data/prompt-providers';
+import { getProviderPromptDetail, PROMPT_PROVIDERS, PROMPT_PROVIDER_IDS } from 'src/sections/workflows/data/prompt-providers';
 import { getProviderPromptTheme } from 'src/sections/workflows/provider-prompt-theme';
 import { ProviderPromptIcon } from 'src/sections/workflows/provider-prompt-icon';
 import { Iconify } from 'src/components/iconify';
@@ -26,6 +27,7 @@ import { toast } from 'src/components/snackbar';
 export function MyWorkflows() {
   const theme = useTheme();
   const router = useRouter();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [promptLevels] = useState(PROMPT_PROVIDERS);
   const [activeProvider, setActiveProvider] = useState('chatgpt');
   const [activeProviderDetail, setActiveProviderDetail] = useState(null);
@@ -68,9 +70,34 @@ export function MyWorkflows() {
     };
   }, [activeProvider, providerDetailMap]);
 
+  const providerFromUrl = searchParams.get('provider');
+  useEffect(() => {
+    if (!providerFromUrl || !PROMPT_PROVIDER_IDS.has(providerFromUrl)) {
+      return;
+    }
+    setActiveProvider((prev) => (prev === providerFromUrl ? prev : providerFromUrl));
+  }, [providerFromUrl]);
+
   useEffect(() => {
     setSearchQuery('');
   }, [activeProvider]);
+
+  const categoryFromUrl = searchParams.get('category');
+  useEffect(() => {
+    if (!categoryFromUrl?.trim() || loading) {
+      return;
+    }
+    const run = () => {
+      const safe =
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(categoryFromUrl)
+          : categoryFromUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const el = document.querySelector(`[data-prompt-category="${safe}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const id = window.requestAnimationFrame(run);
+    return () => window.cancelAnimationFrame(id);
+  }, [categoryFromUrl, loading, activeProvider, activeProviderDetail]);
 
   const resolveProviderColor = (colorValue) => {
     if (!colorValue || typeof colorValue !== 'string') return '';
@@ -163,7 +190,13 @@ export function MyWorkflows() {
                 return (
                   <Button
                     key={level.id}
-                    onClick={() => setActiveProvider(level.id)}
+                    onClick={() => {
+                      setActiveProvider(level.id);
+                      const next = new URLSearchParams(searchParams);
+                      next.set('tab', 'resources');
+                      next.set('provider', level.id);
+                      setSearchParams(next, { replace: true });
+                    }}
                     startIcon={
                       <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
                         <ProviderPromptIcon providerId={level.id} iconifyIcon={level.icon} width={18} />
@@ -277,7 +310,7 @@ export function MyWorkflows() {
             const totalPromptsInCategory = sectionItems.length;
 
             return (
-              <Grid key={section.title} xs={12} md={6} lg={4}>
+              <Grid key={section.title} xs={12} md={6} lg={4} data-prompt-category={section.title}>
                 <Card
                   variant="outlined"
                   sx={{

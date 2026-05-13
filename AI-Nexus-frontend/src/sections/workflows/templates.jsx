@@ -49,6 +49,15 @@ export function Templates() {
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
   const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
   const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
+  const fallbackTemplate = {
+    id: 'default-fallback-template',
+    title: 'No Templates Found',
+    description: 'Template data was not found. Create a new workflow to get started.',
+    source: 'fallback',
+    label: { title: 'Not Found' },
+    tags: ['Getting Started'],
+    isFallback: true,
+  };
 
   useEffect(() => {
     dispatch(fetchWorkflows());
@@ -89,7 +98,7 @@ export function Templates() {
 
   const handleCreateWorkflow = useCallback(
     (event) => {
-      event.preventDefault();
+      event?.preventDefault?.();
       const accessToken = sessionStorage.getItem(STORAGE_KEY) || getCookie('access-token');
       if (!accessToken) {
         window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
@@ -106,7 +115,12 @@ export function Templates() {
     return <LoadingScreen />;
   }
 
-  const templates = [...(flowiseTemplates || []), ...(workflows || [])];
+  const templates = [...(workflows || []), ...(flowiseTemplates || [])].sort((a, b) => {
+    const aPreviewRank = a?.isPreviewOnly ? 1 : 0;
+    const bPreviewRank = b?.isPreviewOnly ? 1 : 0;
+    return aPreviewRank - bPreviewRank;
+  });
+  const templatesToRender = templates.length > 0 ? templates : [fallbackTemplate];
 
   return (
     <Box>
@@ -309,7 +323,7 @@ export function Templates() {
           </Button>
         </Stack>
         <Grid container spacing={{ xs: 3, md: 4 }}>
-          {templates.map((template) => (
+          {templatesToRender.map((template) => (
             <Grid key={template.id} xs={12} sm={6} lg={4}>
               <Card
                 sx={{
@@ -468,8 +482,18 @@ export function Templates() {
                     </Stack>
                   </Stack>
                   <Stack direction="row" spacing={1}>
-                    <GradientButton size="small" onClick={() => handleOpenTemplate(template)} sx={{ flex: 1 }}>
-                      {template.source === 'flowise' && template.isPreviewOnly ? 'Preview Template' : template.source === 'flowise' ? 'Open in Flowise' : 'View Template'}
+                    <GradientButton
+                      size="small"
+                      onClick={template.isFallback ? handleCreateWorkflow : () => handleOpenTemplate(template)}
+                      sx={{ flex: 1 }}
+                    >
+                      {template.isFallback
+                        ? 'Create Workflow'
+                        : template.source === 'flowise' && template.isPreviewOnly
+                          ? 'Preview Template'
+                          : template.source === 'flowise'
+                            ? 'Open in Flowise'
+                            : 'View Template'}
                     </GradientButton>
                   </Stack>
                 </Box>

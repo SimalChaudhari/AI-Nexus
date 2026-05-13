@@ -24,55 +24,29 @@ export const PROMPT_PROVIDERS = [
   },
 ];
 
-function normalizeText(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function toSections(categories) {
-  if (!Array.isArray(categories)) return [];
-  return categories.map((category) => ({
-    title: normalizeText(category.category || 'Prompts'),
-    items: Array.isArray(category.prompts)
-      ? category.prompts.map((prompt) => ({
-          useCase: normalizeText(prompt.title || ''),
-          prompt: normalizeText(prompt.prompt || ''),
-        }))
-      : [],
-  }));
-}
+export const PROMPT_PROVIDER_IDS = new Set(PROMPT_PROVIDERS.map((p) => p.id));
 
 async function fetchProviderPrompts(providerId) {
-  const response = await axios.get(`/prompt-catalog/external/prompts-json/${providerId}`);
-  return response.data || {};
+  const response = await axios.get(`/prompt-catalog/provider/${providerId}`);
+  return response.data?.data || null;
 }
 
 /**
- * Wrappers to consume external Prompt Advance JSON endpoints.
+ * Provider metadata for UI tabs (static). Prompt bodies load from DB via `provider/:provider`.
  */
 export async function getProviderMetadataList() {
-  const payloads = await Promise.all(
-    PROMPT_PROVIDERS.map(async (provider) => {
-      try {
-        const data = await fetchProviderPrompts(provider.id);
-        return { provider, data };
-      } catch {
-        return { provider, data: null };
-      }
-    })
-  );
-
-  return payloads.map(({ provider, data }) => ({
+  return PROMPT_PROVIDERS.map((provider) => ({
     id: provider.id,
     title: provider.title,
-    description: `Curated ${provider.title} prompts from Prompt Advance.`,
+    description: `${provider.title} prompt pack`,
     color: provider.color || '',
     bgColor: provider.bgColor || '',
     icon: provider.icon,
     redirectUrl: '',
     detailTitle: provider.title,
-    promptCount: Number(data?.totalPrompts || 0),
-    categoryCount: Number(data?.totalCategories || 0),
-    hasPrompts: Number(data?.totalPrompts || 0) > 0,
+    promptCount: 0,
+    categoryCount: 0,
+    hasPrompts: true,
   }));
 }
 
@@ -82,16 +56,8 @@ export async function getProviderPromptDetail(providerId) {
 
   try {
     const data = await fetchProviderPrompts(providerId);
-    return {
-      title: `${provider.title} Prompts`,
-      subtitle: '',
-      sections: toSections(data?.categories),
-      toolTitle: provider.title,
-      toolIcon: provider.icon,
-      redirectUrl: '',
-      color: provider.color || '',
-      bgColor: provider.bgColor || '',
-    };
+    if (data) return data;
+    return null;
   } catch {
     return null;
   }

@@ -11,6 +11,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Templates } from './templates';
 import { MyWorkflows } from './my-workflows';
+import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
 
 // ----------------------------------------------------------------------
 
@@ -34,10 +35,48 @@ export function WorkflowMainSection() {
     }
   }, [tabFromQuery, activeTab]);
 
+  useEffect(() => {
+    if (resolveTab(tabFromQuery) !== 'resources') return;
+    const next = new URLSearchParams(searchParams);
+    const raw = next.get('provider') || next.get('cproivder');
+    const typo = next.get('cproivder');
+    if (typo && PROMPT_PROVIDER_IDS.has(typo)) {
+      next.set('provider', typo);
+      next.delete('cproivder');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (!raw || !PROMPT_PROVIDER_IDS.has(raw)) {
+      next.set('provider', 'chatgpt');
+      next.delete('cproivder');
+      setSearchParams(next, { replace: true });
+    }
+  }, [tabFromQuery, searchParams, setSearchParams]);
+
+  /** Provider is only used on the Prompts tab; strip it for Templates / Tools (incl. shared URLs). */
+  useEffect(() => {
+    if (resolveTab(tabFromQuery) === 'resources') return;
+    if (!searchParams.has('provider') && !searchParams.has('cproivder')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('provider');
+    next.delete('cproivder');
+    setSearchParams(next, { replace: true });
+  }, [tabFromQuery, searchParams, setSearchParams]);
+
   const handleTabChange = (nextTab) => {
     setActiveTab(nextTab);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('tab', nextTab);
+    if (nextTab === 'resources') {
+      const raw = nextParams.get('provider') || nextParams.get('cproivder');
+      if (!raw || !PROMPT_PROVIDER_IDS.has(raw)) {
+        nextParams.set('provider', 'chatgpt');
+      }
+      nextParams.delete('cproivder');
+    } else {
+      nextParams.delete('provider');
+      nextParams.delete('cproivder');
+    }
     setSearchParams(nextParams);
   };
 

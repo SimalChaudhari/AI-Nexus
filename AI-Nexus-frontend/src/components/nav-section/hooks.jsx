@@ -6,6 +6,7 @@ import { RouterLink } from 'src/routes/components';
 
 export function useNavItem({
   path,
+  href,
   icon,
   info,
   depth,
@@ -20,9 +21,11 @@ export function useNavItem({
 
   const subDeepItem = Number(depth) > 2;
 
+  const routerHref = href || path;
+
   const linkProps = externalLink
     ? { href: path, target: '_blank', rel: 'noopener' }
-    : { component: RouterLink, href: path };
+    : { component: RouterLink, href: routerHref };
 
   const baseProps = hasChild && !enabledRootRedirect ? { component: 'div' } : linkProps;
 
