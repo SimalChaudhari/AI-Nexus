@@ -1,5 +1,11 @@
 // src/auth/auth.service.ts
-import { Injectable, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -68,6 +74,7 @@ interface StudentEligibilityAssessment {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly studentVerificationSessions = new Map<string, StudentVerificationSession>();
 
   constructor(
@@ -1676,6 +1683,264 @@ export class AuthService {
 
     try {
       const aiAssessment = await this.assessStudentEligibilityWithOpenRouter(validated);
+      const blendedScore = Math.round((heuristicAssessment.score * 0.4) + (aiAssessment.score * 0.6));
+      const normalizedScore = Math.max(0, Math.min(100, blendedScore));
+      let status: StudentEligibilityAssessment['status'] =
+        normalizedScore >= 70 ? 'eligible' : normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+
+      if (aiAssessment.status === 'ineligible' || heuristicAssessment.status === 'ineligible') {
+        status = normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+      } else if (aiAssessment.status === 'manual_review' || heuristicAssessment.status === 'manual_review') {
+        status = 'manual_review';
+      }
+
+      return {
+        verified: status === 'eligible',
+        score: normalizedScore,
+        status,
+        reasons: [...new Set([...aiAssessment.reasons, ...heuristicAssessment.reasons])].slice(0, 5),
+        confidence: aiAssessment.confidence,
+        source: aiAssessment.source,
+      };
+    } catch {
+      return heuristicAssessment;
+    }
+  }
+
+  private getExperiencedAiMaxTokens(): number {
+    const configured = Number(process.env.OPENROUTER_EXPERIENCED_MAX_TOKENS ?? '400');
+    if (!Number.isFinite(configured)) return 400;
+    return Math.min(1024, Math.max(200, Math.round(configured)));
+  }
+
+  private getExperiencedResumeFormat(file: Express.Multer.File): 'pdf' | 'docx' | 'doc' | null {
+    const name = String(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (mime === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+    if (
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || name.endsWith('.docx')
+    ) {
+      return 'docx';
+    }
+    if (mime === 'application/msword' || name.endsWith('.doc')) return 'doc';
+    return null;
+  }
+
+  private validateExperiencedResumeFile(file: Express.Multer.File | undefined) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please upload your resume.');
+    }
+    const maxBytes = 8 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException('Resume file is too large. Maximum size is 8MB.');
+    }
+    if (!this.getExperiencedResumeFormat(file)) {
+      throw new BadRequestException('Please upload a PDF or Word file (.pdf, .doc, or .docx).');
+    }
+  }
+
+  private async extractResumePlainTextFromPdfBuffer(buffer: Buffer): Promise<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+      const pdfParse = require('pdf-parse') as (data: Buffer) => Promise<{ text?: string }>;
+      const result = await pdfParse(buffer);
+      return this.sanitizeExtractedTextField(String(result?.text || ''));
+    } catch {
+      throw new BadRequestException(
+        'Could not read text from this PDF. Try a text-based PDF (exported from Word), not a scanned image-only file.',
+      );
+    }
+  }
+
+  private async extractResumePlainTextFromUpload(file: Express.Multer.File): Promise<string> {
+    const format = this.getExperiencedResumeFormat(file);
+    if (format === 'pdf') {
+      return this.extractResumePlainTextFromPdfBuffer(file.buffer);
+    }
+    if (format === 'docx') {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        const mammoth = require('mammoth') as {
+          extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }>;
+        };
+        const { value } = await mammoth.extractRawText({ buffer: file.buffer });
+        return this.sanitizeExtractedTextField(String(value || ''));
+      } catch {
+        throw new BadRequestException('Could not read this Word document (.docx). Please try another file or save as PDF.');
+      }
+    }
+    if (format === 'doc') {
+      const fs = await import('fs/promises');
+      const os = await import('os');
+      const path = await import('path');
+      const tmp = path.join(os.tmpdir(), `resume-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
+      await fs.writeFile(tmp, file.buffer);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        const WordExtractor = require('word-extractor') as new () => {
+          extract: (p: string) => Promise<{ getBody: () => string }>;
+        };
+        const extractor = new WordExtractor();
+        const document = await extractor.extract(tmp);
+        return this.sanitizeExtractedTextField(String(document.getBody() || ''));
+      } catch {
+        throw new BadRequestException('Could not read this Word document (.doc). Please try .docx or PDF.');
+      } finally {
+        await fs.unlink(tmp).catch(() => undefined);
+      }
+    }
+    return '';
+  }
+
+  private getExperiencedResumeHeuristicAssessment(resumeText: string): StudentEligibilityAssessment {
+    const text = String(resumeText || '').toLowerCase();
+    const reasons: string[] = [];
+    let score = 0;
+
+    if (resumeText.length > 600) {
+      score += 18;
+      reasons.push('Resume contains substantial detail for review.');
+    } else if (resumeText.length > 200) {
+      score += 12;
+      reasons.push('Resume contains moderate detail.');
+    } else {
+      score += 5;
+      reasons.push('Resume text is very short, which lowers confidence.');
+    }
+
+    const managerial = /(manager|director|head of|head,|team lead|lead\b|supervisor|cfo|chief financial|controller|finance manager|accounting manager)/i.test(text);
+    if (managerial) {
+      score += 28;
+      reasons.push('Resume suggests managerial or senior leadership experience.');
+    }
+
+    const domain = /(accounting|finance|audit|auditing|treasury|fp&a|financial control|corporate finance|management accounting)/i.test(text);
+    if (domain) {
+      score += 28;
+      reasons.push('Resume references accounting or finance-related roles.');
+    }
+
+    const fivePlusYears =
+      /\b(1[0-9]|[2-9][0-9])\s*\+?\s*(years?|yrs?)\b/i.test(text)
+      || /\b(5|6|7|8|9)\s*\+?\s*(years?|yrs?)\b/i.test(text)
+      || /\b(5|6|7|8|9)\s*\+?\s*years?\s+of\b/i.test(text)
+      || /(10|15|20)\s*\+?\s*(years?|yrs?)/i.test(text);
+
+    if (fivePlusYears) {
+      score += 22;
+      reasons.push('Resume text suggests at least five years of professional experience.');
+    } else if (/\b(3|4)\s*\+?\s*(years?|yrs?)\b/i.test(text)) {
+      score += 10;
+      reasons.push('Resume suggests several years of experience, but five or more years is not clearly stated.');
+    }
+
+    const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
+    const status =
+      normalizedScore >= 70 ? 'eligible' : normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+
+    return {
+      verified: status === 'eligible',
+      score: normalizedScore,
+      status,
+      reasons: reasons.slice(0, 4),
+      confidence: null,
+      source: 'heuristic',
+    };
+  }
+
+  private logOpenRouterExperiencedResumeTokenUsage(
+    model: string,
+    excerptCharLength: number,
+    usage: unknown,
+  ): void {
+    if (!usage || typeof usage !== 'object') {
+      this.logger.log(
+        `Experienced resume OpenRouter: model=${model} excerptChars=${excerptCharLength} — usage field missing from API response.`,
+      );
+      return;
+    }
+    const u = usage as Record<string, unknown>;
+    const prompt = u.prompt_tokens;
+    const completion = u.completion_tokens;
+    const total = u.total_tokens;
+    this.logger.log(
+      `Experienced resume OpenRouter token usage: model=${model} excerptChars=${excerptCharLength} prompt_tokens=${String(prompt)} completion_tokens=${String(completion)} total_tokens=${String(total)}`,
+    );
+  }
+
+  private async assessExperiencedResumeWithOpenRouter(resumeText: string): Promise<StudentEligibilityAssessment> {
+    const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new BadRequestException('OpenRouter is not configured. Please set OPENROUTER_API_KEY.');
+    }
+
+    const baseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').trim().replace(/\/$/, '');
+    const model = String(
+      process.env.OPENROUTER_EXPERIENCED_MODEL || process.env.OPENROUTER_STUDENT_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+    ).trim();
+    const appName = String(process.env.OPENROUTER_APP_NAME || 'AI Nexus').trim();
+    const appUrl = String(process.env.OPENROUTER_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
+
+    const excerpt = resumeText.slice(0, 12000);
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': appUrl,
+        'X-Title': appName,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: this.getExperiencedAiMaxTokens(),
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an ATS-style eligibility reviewer. The applicant must show at least 5 years of relevant managerial or senior professional experience in accounting, audit, or finance-related roles. Evaluate ONLY the resume text excerpt. Return strict JSON only with keys: score, status, reasons, confidence. "score" must be 0-100. "status" must be one of eligible, manual_review, ineligible. "reasons" must be an array of 1-5 short strings. "confidence" must be 0-1. Be conservative when evidence is weak. Do not add markdown.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              pathwayRule:
+                'Minimum 5 years relevant managerial experience in accounting and finance related roles.',
+              resumeTextExcerpt: excerpt,
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new BadRequestException(
+        this.getOpenRouterFriendlyErrorMessage(response.status, errorText, 'single'),
+      );
+    }
+
+    const data = await response.json();
+    this.logOpenRouterExperiencedResumeTokenUsage(model, excerpt.length, data?.usage);
+    const rawText = this.getOpenRouterMessageText(data?.choices?.[0]?.message?.content);
+    return this.parseStudentEligibilityAiResponse(rawText);
+  }
+
+  async verifyExperiencedResume(file: Express.Multer.File | undefined): Promise<StudentEligibilityAssessment> {
+    this.validateExperiencedResumeFile(file);
+
+    const plainText = await this.extractResumePlainTextFromUpload(file!);
+    if (plainText.length < 120) {
+      throw new BadRequestException(
+        'Not enough readable text was found in this file. Please upload a document with selectable text.',
+      );
+    }
+
+    const heuristicAssessment = this.getExperiencedResumeHeuristicAssessment(plainText);
+
+    try {
+      const aiAssessment = await this.assessExperiencedResumeWithOpenRouter(plainText);
       const blendedScore = Math.round((heuristicAssessment.score * 0.4) + (aiAssessment.score * 0.6));
       const normalizedScore = Math.max(0, Math.min(100, blendedScore));
       let status: StudentEligibilityAssessment['status'] =

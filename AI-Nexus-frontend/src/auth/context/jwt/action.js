@@ -321,6 +321,26 @@ export const verifyStudentEligibility = async ({ schoolName, graduationDate, sch
 };
 
 /** **************************************
+ * Experienced pathway: verify resume/CV (PDF or Word) and ATS-style score
+ *************************************** */
+export const verifyExperiencedResume = async ({ resume }) => {
+  try {
+    const formData = new FormData();
+    formData.append('resume', resume);
+    const res = await axios.post('/auth/experienced-pathway/verify-resume', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to verify resume. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
 export const getOAuthAuthUrl = async () => {

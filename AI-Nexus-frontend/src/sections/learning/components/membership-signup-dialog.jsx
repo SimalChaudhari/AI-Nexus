@@ -18,6 +18,7 @@ import { Iconify } from 'src/components/iconify';
 import {
   sendStudentVerificationPin as sendStudentVerificationPinRequest,
   verifyStudentEligibility as verifyStudentEligibilityRequest,
+  verifyExperiencedResume as verifyExperiencedResumeRequest,
   verifyNricImages,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
 } from 'src/auth/context/jwt';
@@ -526,6 +527,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const [studentPinVerifying, setStudentPinVerifying] = useState(false);
   const [studentEligibilityChecking, setStudentEligibilityChecking] = useState(false);
   const [studentEligibilityAssessment, setStudentEligibilityAssessment] = useState(null);
+  const [experiencedResumeVerifying, setExperiencedResumeVerifying] = useState(false);
+  const [experiencedResumeVerificationError, setExperiencedResumeVerificationError] = useState('');
+  const [experiencedResumeAssessment, setExperiencedResumeAssessment] = useState(null);
+
+  const resetExperiencedResumeLocalState = () => {
+    setExperiencedResumeVerifying(false);
+    setExperiencedResumeVerificationError('');
+    setExperiencedResumeAssessment(null);
+  };
 
   const resetNricCheckState = () => {
     setNricFrontImage(null);
@@ -554,6 +564,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       setCharteredUploadedFiles({});
       resetNricCheckState();
       resetStudentVerificationState();
+      resetExperiencedResumeLocalState();
     }
   }, [open]);
 
@@ -844,7 +855,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       ...prev,
       eligibilityType: value,
       eligibilityRequirementsAcknowledged: true,
-      eligibilityVerified: value === 'student' ? null : true,
+      eligibilityVerified: value === 'student' || value === 'experienced' ? null : true,
       retryDecision: '',
       studentMembershipOptIn: null,
       scaqInterested: null,
@@ -1072,10 +1083,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const agreeExperiencedMembershipApplication = () => {
+    resetExperiencedResumeLocalState();
     setFlowState((prev) => ({
       ...prev,
       experiencedMembershipApplicationAgreed: true,
       experiencedMembershipApplicationDeclined: false,
+      experiencedResumeUploaded: false,
+      experiencedResumeFileName: '',
       experiencedVerificationStatus: null,
       experiencedVerificationAcknowledged: false,
       experiencedFailureAcknowledged: false,
@@ -1090,8 +1104,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     }));
   };
 
-  const handleExperiencedResumeUpload = (file) => {
+  const handleExperiencedResumeUpload = async (event) => {
+    const file = event?.target?.files?.[0];
+    const inputEl = event?.target;
     if (!file) return;
+
+    setExperiencedResumeVerificationError('');
+    setExperiencedResumeAssessment(null);
     setFlowState((prev) => ({
       ...prev,
       experiencedResumeUploaded: true,
@@ -1099,21 +1118,31 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       experiencedVerificationStatus: null,
       experiencedVerificationAcknowledged: false,
       experiencedFailureAcknowledged: false,
+      eligibilityVerified: null,
     }));
-  };
 
-  const runExperiencedDummyVerification = () => {
-    setFlowState((prev) => {
-      if (!prev.experiencedResumeUploaded) return prev;
-      const fileName = String(prev.experiencedResumeFileName || '').toLowerCase();
-      const shouldFail = fileName.includes('fail') || fileName.includes('invalid');
-      return {
+    try {
+      setExperiencedResumeVerifying(true);
+      const assessment = await verifyExperiencedResumeRequest({ resume: file });
+      setExperiencedResumeAssessment(assessment || null);
+      const passed = assessment?.verified === true;
+      setFlowState((prev) => ({
         ...prev,
-        experiencedVerificationStatus: shouldFail ? false : true,
-        experiencedVerificationAcknowledged: false,
-        experiencedFailureAcknowledged: false,
-      };
-    });
+        experiencedVerificationStatus: passed,
+        eligibilityVerified: passed ? true : null,
+      }));
+    } catch (error) {
+      setExperiencedResumeVerificationError(error?.message || 'Could not verify resume. Please try again.');
+      setExperiencedResumeAssessment(null);
+      setFlowState((prev) => ({
+        ...prev,
+        experiencedVerificationStatus: null,
+        eligibilityVerified: null,
+      }));
+    } finally {
+      setExperiencedResumeVerifying(false);
+      if (inputEl) inputEl.value = '';
+    }
   };
 
   const continueAfterExperiencedVerification = () => {
@@ -1995,14 +2024,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       return;
     }
     if (step === 'experienced-documents') {
+      resetExperiencedResumeLocalState();
       setFlowState((prev) => ({
         ...prev,
         experiencedResumeUploaded: false,
         experiencedResumeFileName: '',
-        experiencedMembershipApplicationAgreed: false,
         experiencedVerificationStatus: null,
         experiencedVerificationAcknowledged: false,
         experiencedFailureAcknowledged: false,
+        eligibilityVerified: null,
       }));
       return;
     }
@@ -3694,19 +3724,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         {step === 'experienced-documents' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Submit supporting documents
+              Resume / CV
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Experienced pathway requires your latest resume/CV.
+              Experienced pathway requires your latest resume/CV. Upload a PDF or Word file (.pdf, .doc, .docx). After upload we
+              run an AI check and show an ATS-style score.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-              <Button variant="outlined" component="label" sx={{ textTransform: 'none' }}>
-                Upload latest resume/CV
+              <Button variant="outlined" component="label" sx={{ textTransform: 'none' }} disabled={experiencedResumeVerifying}>
+                Upload resume/CV
                 <input
                   hidden
                   type="file"
-                  accept=".pdf,.doc,.docx"
-                  onChange={(event) => handleExperiencedResumeUpload(event.target.files?.[0])}
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={handleExperiencedResumeUpload}
                 />
               </Button>
               {flowState.experiencedResumeFileName && (
@@ -3715,14 +3746,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 </Typography>
               )}
             </Stack>
-            {flowState.experiencedResumeUploaded && (
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                <Button variant="outlined" onClick={runExperiencedDummyVerification}>
-                  Verify uploaded file
-                </Button>
-              </Stack>
+            {experiencedResumeVerifying && <LinearProgress />}
+            {experiencedResumeVerificationError && (
+              <Typography variant="body2" color="error">
+                {experiencedResumeVerificationError}
+              </Typography>
             )}
-            {flowState.experiencedVerificationStatus === true && (
+            {flowState.experiencedVerificationStatus === true && experiencedResumeAssessment && (
               <Box
                 sx={(theme) => ({
                   display: 'flex',
@@ -3736,12 +3766,24 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 })}
               >
                 <Iconify icon="solar:verified-check-bold" width={18} style={{ marginTop: 2 }} />
-                <Box>
+                <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark', lineHeight: 1.35 }}>
-                    Resume verification successful
+                    Resume verified for this pathway
                   </Typography>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Verification complete. Continue to create membership account in Salesforce.
+                  <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>
+                    ATS-style score: {experiencedResumeAssessment.score ?? '—'}/100
+                  </Typography>
+                  {Array.isArray(experiencedResumeAssessment.reasons) && experiencedResumeAssessment.reasons.length > 0 && (
+                    <Stack component="ul" sx={{ m: 0, pl: 2.5, mt: 0.75 }} spacing={0.25}>
+                      {experiencedResumeAssessment.reasons.map((reason, idx) => (
+                        <Typography key={`${idx}-${reason}`} component="li" variant="caption" sx={{ color: 'text.secondary' }}>
+                          {reason}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  )}
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.75 }}>
+                    Continue to create your membership account in Salesforce.
                   </Typography>
                   <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 1 }}>
                     <Button size="small" variant="contained" color="inherit" onClick={continueAfterExperiencedVerification}>
@@ -3751,26 +3793,54 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 </Box>
               </Box>
             )}
-            {flowState.experiencedVerificationStatus === false && (
+            {flowState.experiencedVerificationStatus === false && experiencedResumeAssessment && (
               <Box
-                sx={(theme) => ({
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 1,
-                  px: 1.25,
-                  py: 1,
-                  borderRadius: 1.5,
-                  border: `1px solid ${alpha(theme.palette.error.main, 0.35)}`,
-                  bgcolor: alpha(theme.palette.error.main, 0.08),
-                })}
+                sx={(theme) => {
+                  const manual = experiencedResumeAssessment.status === 'manual_review';
+                  const main = manual ? theme.palette.warning : theme.palette.error;
+                  return {
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1,
+                    px: 1.25,
+                    py: 1,
+                    borderRadius: 1.5,
+                    border: `1px solid ${alpha(main.main, 0.45)}`,
+                    bgcolor: alpha(main.main, 0.08),
+                  };
+                }}
               >
                 <Iconify icon="solar:danger-triangle-bold" width={18} style={{ marginTop: 2 }} />
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main', lineHeight: 1.35 }}>
-                    Verification failed
+                  <Typography
+                    variant="body2"
+                    sx={(theme) => ({
+                      fontWeight: 700,
+                      lineHeight: 1.35,
+                      color:
+                        experiencedResumeAssessment.status === 'manual_review'
+                          ? theme.palette.warning.dark
+                          : theme.palette.error.main,
+                    })}
+                  >
+                    {experiencedResumeAssessment.status === 'manual_review'
+                      ? 'Manual review recommended'
+                      : 'Did not meet automatic pathway check'}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Verification failed. Continue to check other eligibility or skip membership.
+                  <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>
+                    ATS-style score: {experiencedResumeAssessment.score ?? '—'}/100
+                  </Typography>
+                  {Array.isArray(experiencedResumeAssessment.reasons) && experiencedResumeAssessment.reasons.length > 0 && (
+                    <Stack component="ul" sx={{ m: 0, pl: 2.5, mt: 0.75 }} spacing={0.25}>
+                      {experiencedResumeAssessment.reasons.map((reason, idx) => (
+                        <Typography key={`${idx}-${reason}`} component="li" variant="caption" sx={{ color: 'text.secondary' }}>
+                          {reason}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  )}
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.75 }}>
+                    Continue to check other eligibility options or skip membership.
                   </Typography>
                   <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 1 }}>
                     <Button size="small" variant="contained" color="inherit" onClick={continueAfterExperiencedVerification}>
@@ -3780,9 +3850,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 </Box>
               </Box>
             )}
-            <Typography variant="caption" color="text.secondary">
-              Tip: Use file name containing "fail" to test failed verification.
-            </Typography>
           </Stack>
         )}
         {step === 'retry-eligibility' && (
