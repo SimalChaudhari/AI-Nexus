@@ -156,6 +156,24 @@ export class UserEntity {
     @Column({ nullable: true, type: 'timestamp' })
     spPrStatusVerifiedAt!: Date | null;
 
+    @Column({ type: 'boolean', nullable: true })
+    eligibilityIsSingaporePr!: boolean | null;
+
+    @Column({ type: 'boolean', nullable: true })
+    eligibilityIsIscaMember!: boolean | null;
+
+    @Column({ type: 'boolean', nullable: true })
+    eligibilityWantsMembership!: boolean | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    eligibilityType!: string | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    eligibilitySnapshot!: Record<string, unknown> | null;
+
+    @Column({ nullable: true, type: 'timestamp' })
+    eligibilityCheckedAt!: Date | null;
+
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;
 

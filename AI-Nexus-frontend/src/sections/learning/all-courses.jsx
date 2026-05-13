@@ -1675,6 +1675,15 @@ export function AllCourses({ refreshSignal = 0 }) {
           const outcome = payload?.result?.outcome || '';
           const actionTarget = payload?.result?.actionTarget || '';
           const signupAccessToken = payload?.signupAccessToken || '';
+          if (actionTarget === 'signUp' && payload?.flow) {
+            sessionStorage.setItem(
+              'membershipEligibilityFlow',
+              JSON.stringify({
+                membershipOutcome: outcome,
+                flow: payload.flow,
+              })
+            );
+          }
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
           const membershipOutcome = encodeURIComponent(outcome);
           const targetPath = actionTarget === 'signUp'

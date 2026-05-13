@@ -48,8 +48,28 @@ interface NricVerificationAttemptResult {
   matchingCandidate: ReturnType<typeof collectValidSingaporeNricFinCandidates>[number] | null;
 }
 
+interface StudentVerificationSession {
+  schoolName: string;
+  graduationDate: string;
+  schoolEmail: string;
+  pinHash: string;
+  expiresAt: number;
+  attempts: number;
+}
+
+interface StudentEligibilityAssessment {
+  verified: boolean;
+  score: number;
+  status: 'eligible' | 'manual_review' | 'ineligible';
+  reasons: string[];
+  confidence: number | null;
+  source: 'openrouter' | 'heuristic';
+}
+
 @Injectable()
 export class AuthService {
+  private readonly studentVerificationSessions = new Map<string, StudentVerificationSession>();
+
   constructor(
     @InjectRepository(UserEntity)
     private userRepository: Repository<UserEntity>,
@@ -64,6 +84,239 @@ export class AuthService {
 
   private hashSignupAccessToken(token: string): string {
     return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex');
+  }
+
+  private cleanupExpiredStudentVerificationSessions(): void {
+    const now = Date.now();
+    for (const [token, session] of this.studentVerificationSessions.entries()) {
+      if (!session || session.expiresAt <= now) {
+        this.studentVerificationSessions.delete(token);
+      }
+    }
+  }
+
+  private normalizeStudentSchoolEmail(email: string): string {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  private isBasicEmailFormat(email: string): boolean {
+    return /^(?!\.)(?!.*\.\.)([a-z0-9._%+-]{1,64})@([a-z0-9-]+\.)+[a-z]{2,}$/i.test(String(email || '').trim());
+  }
+
+  private shouldLogStudentVerificationPin(): boolean {
+    const explicit = String(process.env.STUDENT_VERIFICATION_LOG_PIN || '').trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(explicit)) {
+      return true;
+    }
+
+    return String(process.env.NODE_ENV || '').trim().toLowerCase() !== 'production';
+  }
+
+  private hashStudentVerificationPin(verificationToken: string, pin: string): string {
+    const secret = String(process.env.JWT_SECRET || 'student-verification-secret').trim() || 'student-verification-secret';
+    return crypto
+      .createHmac('sha256', secret)
+      .update(`${String(verificationToken || '').trim()}:${String(pin || '').trim()}`)
+      .digest('hex');
+  }
+
+  private validateStudentVerificationInput(input: {
+    schoolName?: string;
+    graduationDate?: string;
+    schoolEmail?: string;
+  }) {
+    const schoolName = String(input?.schoolName || '').trim();
+    const graduationDate = String(input?.graduationDate || '').trim();
+    const schoolEmail = this.normalizeStudentSchoolEmail(input?.schoolEmail || '');
+
+    if (!schoolName || !graduationDate || !schoolEmail) {
+      throw new BadRequestException('Please fill school name, graduation date, and school email first.');
+    }
+
+    if (!this.isBasicEmailFormat(schoolEmail)) {
+      throw new BadRequestException('Please enter a valid school email address.');
+    }
+
+    if (!(schoolEmail.endsWith('.edu') || schoolEmail.endsWith('@yopmail.com'))) {
+      throw new BadRequestException('School email must end with .edu or use @yopmail.com');
+    }
+
+    return { schoolName, graduationDate, schoolEmail };
+  }
+
+  private getStudentAiMaxTokens(): number {
+    const configured = Number(process.env.OPENROUTER_STUDENT_MAX_TOKENS ?? '300');
+    if (!Number.isFinite(configured)) return 300;
+    return Math.min(1024, Math.max(128, Math.round(configured)));
+  }
+
+  private getStudentEligibilityHeuristicAssessment(input: {
+    schoolName: string;
+    graduationDate: string;
+    schoolEmail: string;
+  }): StudentEligibilityAssessment {
+    const schoolName = this.sanitizeExtractedTextField(input.schoolName);
+    const schoolEmail = this.normalizeStudentSchoolEmail(input.schoolEmail);
+    const graduationDate = this.sanitizeExtractedTextField(input.graduationDate);
+    const reasons: string[] = [];
+    let score = 0;
+
+    const hasInstitutionKeyword = /(university|college|polytechnic|institute|academy|school)/i.test(schoolName);
+    if (hasInstitutionKeyword) {
+      score += 30;
+      reasons.push('School name matches a recognised education institution pattern.');
+    } else if (schoolName.length >= 8) {
+      score += 22;
+      reasons.push('School name looks complete enough for review.');
+    } else {
+      score += 10;
+      reasons.push('School name looks too limited, which lowers confidence.');
+    }
+
+    if (schoolEmail.endsWith('.edu')) {
+      score += 30;
+      reasons.push('Email uses an education domain, which improves confidence.');
+    } else if (schoolEmail.endsWith('@yopmail.com')) {
+      score += 12;
+      reasons.push('Yopmail is accepted for testing, but it reduces verification confidence.');
+    }
+
+    const graduationTime = Date.parse(graduationDate);
+    if (Number.isFinite(graduationTime)) {
+      const now = Date.now();
+      const sixMonthsAgo = now - (1000 * 60 * 60 * 24 * 30 * 6);
+      const eightYearsAhead = now + (1000 * 60 * 60 * 24 * 365 * 8);
+      if (graduationTime >= sixMonthsAgo && graduationTime <= eightYearsAhead) {
+        score += 25;
+        reasons.push('Graduation date falls in a believable student timeline.');
+      } else {
+        score += 8;
+        reasons.push('Graduation date is outside the usual student range.');
+      }
+    } else {
+      reasons.push('Graduation date could not be validated clearly.');
+    }
+
+    if (hasInstitutionKeyword && schoolEmail.endsWith('.edu')) {
+      score += 15;
+      reasons.push('School name and email domain are consistent with an academic profile.');
+    } else if (schoolEmail.endsWith('@yopmail.com')) {
+      score += 3;
+    }
+
+    const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
+    const status =
+      normalizedScore >= 70 ? 'eligible' : normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+
+    return {
+      verified: status === 'eligible',
+      score: normalizedScore,
+      status,
+      reasons: reasons.slice(0, 4),
+      confidence: null,
+      source: 'heuristic',
+    };
+  }
+
+  private parseStudentEligibilityAiResponse(rawResponse: string): StudentEligibilityAssessment {
+    const trimmed = String(rawResponse || '').trim();
+    const withoutFence = trimmed.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    const firstBrace = withoutFence.indexOf('{');
+    const lastBrace = withoutFence.lastIndexOf('}');
+    const jsonCandidate =
+      firstBrace >= 0 && lastBrace > firstBrace
+        ? withoutFence.slice(firstBrace, lastBrace + 1)
+        : withoutFence;
+
+    const parsed = JSON.parse(jsonCandidate) as {
+      score?: number | string;
+      status?: string;
+      reasons?: unknown;
+      confidence?: number | string;
+    };
+
+    const parsedScore = Number(parsed.score);
+    const normalizedScore = Number.isFinite(parsedScore) ? Math.max(0, Math.min(100, Math.round(parsedScore))) : 0;
+    const rawStatus = String(parsed.status || '').trim().toLowerCase();
+    const status: StudentEligibilityAssessment['status'] =
+      rawStatus === 'eligible' || rawStatus === 'manual_review' || rawStatus === 'ineligible'
+        ? rawStatus
+        : normalizedScore >= 70
+          ? 'eligible'
+          : normalizedScore >= 50
+            ? 'manual_review'
+            : 'ineligible';
+    const reasons = Array.isArray(parsed.reasons)
+      ? parsed.reasons.map((reason) => this.sanitizeExtractedTextField(reason)).filter(Boolean).slice(0, 5)
+      : [];
+    const parsedConfidence = Number(parsed.confidence);
+
+    return {
+      verified: status === 'eligible',
+      score: normalizedScore,
+      status,
+      reasons,
+      confidence: Number.isFinite(parsedConfidence) ? parsedConfidence : null,
+      source: 'openrouter',
+    };
+  }
+
+  private async assessStudentEligibilityWithOpenRouter(input: {
+    schoolName: string;
+    graduationDate: string;
+    schoolEmail: string;
+  }): Promise<StudentEligibilityAssessment> {
+    const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new BadRequestException('OpenRouter is not configured. Please set OPENROUTER_API_KEY.');
+    }
+
+    const baseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').trim().replace(/\/$/, '');
+    const model = String(process.env.OPENROUTER_STUDENT_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini').trim();
+    const appName = String(process.env.OPENROUTER_APP_NAME || 'AI Nexus').trim();
+    const appUrl = String(process.env.OPENROUTER_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': appUrl,
+        'X-Title': appName,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: this.getStudentAiMaxTokens(),
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an ATS-style eligibility reviewer for student membership screening. Evaluate only the provided fields. Return strict JSON only with keys: score, status, reasons, confidence. "score" must be 0-100. "status" must be one of eligible, manual_review, ineligible. "reasons" must be an array of 1-5 short strings. "confidence" must be 0-1. Be conservative with temporary inboxes and inconsistent graduation dates. Do not add markdown.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              schoolName: input.schoolName,
+              graduationDate: input.graduationDate,
+              schoolEmail: input.schoolEmail,
+              rule: 'Current tertiary student evidence only.',
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new BadRequestException(
+        this.getOpenRouterFriendlyErrorMessage(response.status, errorText, 'single'),
+      );
+    }
+
+    const data = await response.json();
+    const rawText = this.getOpenRouterMessageText(data?.choices?.[0]?.message?.content);
+    return this.parseStudentEligibilityAiResponse(rawText);
   }
 
   private getNricDataKey(): Buffer {
@@ -306,6 +559,89 @@ export class AuthService {
     };
   }
 
+  private sanitizeEligibilitySnapshot(snapshot: Record<string, unknown> | undefined): Record<string, unknown> | null {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  private readEligibilityBoolean(
+    explicitValue: boolean | undefined,
+    snapshot: Record<string, unknown> | null,
+    key: string,
+  ): boolean | null {
+    if (typeof explicitValue === 'boolean') {
+      return explicitValue;
+    }
+
+    const snapshotValue = snapshot?.[key];
+    return typeof snapshotValue === 'boolean' ? snapshotValue : null;
+  }
+
+  private readEligibilityType(
+    explicitValue: string | undefined,
+    snapshot: Record<string, unknown> | null,
+  ): string | null {
+    const candidate = typeof explicitValue === 'string'
+      ? explicitValue
+      : typeof snapshot?.eligibilityType === 'string'
+        ? String(snapshot.eligibilityType)
+        : '';
+
+    const normalized = candidate.trim();
+    return normalized || null;
+  }
+
+  private applyEligibilityTracking(user: UserEntity, userDto: UserDto) {
+    const snapshot = this.sanitizeEligibilitySnapshot(userDto.eligibilitySnapshot);
+    const eligibilityIsSingaporePr = this.readEligibilityBoolean(
+      userDto.eligibilityIsSingaporePr,
+      snapshot,
+      'isSingaporePr',
+    );
+    const eligibilityIsIscaMember = this.readEligibilityBoolean(
+      userDto.eligibilityIsIscaMember,
+      snapshot,
+      'isIscaMember',
+    );
+    const eligibilityWantsMembership = this.readEligibilityBoolean(
+      userDto.eligibilityWantsMembership,
+      snapshot,
+      'wantsIscaMembership',
+    );
+    const eligibilityType = this.readEligibilityType(userDto.eligibilityType, snapshot);
+
+    const hasEligibilityPayload = [
+      eligibilityIsSingaporePr !== null,
+      eligibilityIsIscaMember !== null,
+      eligibilityWantsMembership !== null,
+      Boolean(eligibilityType),
+      Boolean(snapshot),
+    ].some(Boolean);
+
+    if (!hasEligibilityPayload) {
+      return;
+    }
+
+    user.eligibilityIsSingaporePr = eligibilityIsSingaporePr;
+    user.eligibilityIsIscaMember = eligibilityIsIscaMember;
+    user.eligibilityWantsMembership = eligibilityWantsMembership;
+    user.eligibilityType = eligibilityType;
+    user.eligibilitySnapshot = snapshot ?? {
+      isSingaporePr: eligibilityIsSingaporePr,
+      isIscaMember: eligibilityIsIscaMember,
+      wantsIscaMembership: eligibilityWantsMembership,
+      eligibilityType,
+    };
+    user.eligibilityCheckedAt = new Date();
+  }
+
   private async resolveExistingSignupDraft(userDto: UserDto) {
     const verifiedSignupUser = userDto.signupAccessToken
       ? await this.resolveUserByVerifiedSignupAccessToken(userDto.signupAccessToken)
@@ -358,6 +694,7 @@ export class AuthService {
         existingDraft.isDraft = true;
         existingDraft.verificationToken = null;
         existingDraft.verificationTokenExpires = null;
+        this.applyEligibilityTracking(existingDraft, userDto);
         draftUser = existingDraft;
       } else {
         draftUser = this.userRepository.create({
@@ -375,6 +712,7 @@ export class AuthService {
           verificationToken: null,
           verificationTokenExpires: null,
         });
+        this.applyEligibilityTracking(draftUser, userDto);
       }
 
       await this.userRepository.save(draftUser);
@@ -1236,6 +1574,132 @@ export class AuthService {
     return existingUser;
   }
 
+  async sendStudentVerificationPin(params: {
+    schoolName?: string;
+    graduationDate?: string;
+    schoolEmail?: string;
+  }) {
+    this.cleanupExpiredStudentVerificationSessions();
+
+    const { schoolName, graduationDate, schoolEmail } = this.validateStudentVerificationInput(params);
+    const verificationToken = crypto.randomBytes(24).toString('hex');
+    const pin = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    if (this.shouldLogStudentVerificationPin()) {
+      console.info(`[Student Verification OTP] ${schoolEmail} -> ${pin}`);
+    }
+
+    this.studentVerificationSessions.set(verificationToken, {
+      schoolName,
+      graduationDate,
+      schoolEmail,
+      pinHash: this.hashStudentVerificationPin(verificationToken, pin),
+      expiresAt,
+      attempts: 0,
+    });
+
+    try {
+      await this.emailService.sendStudentVerificationPinEmail(schoolEmail, pin, schoolName);
+    } catch (error) {
+      this.studentVerificationSessions.delete(verificationToken);
+      throw new BadRequestException('Could not send verification PIN right now. Please try again in a moment.');
+    }
+
+    return {
+      sent: true,
+      verificationToken,
+      schoolEmail,
+      expiresAt: new Date(expiresAt).toISOString(),
+      message: 'Verification PIN sent successfully.',
+    };
+  }
+
+  async verifyStudentVerificationPin(params: {
+    verificationToken?: string;
+    pin?: string;
+    schoolEmail?: string;
+  }) {
+    this.cleanupExpiredStudentVerificationSessions();
+
+    const verificationToken = String(params?.verificationToken || '').trim();
+    const pin = String(params?.pin || '').trim();
+    const schoolEmail = this.normalizeStudentSchoolEmail(params?.schoolEmail || '');
+
+    if (!verificationToken) {
+      throw new BadRequestException('Please send verification PIN first.');
+    }
+
+    if (!pin) {
+      throw new BadRequestException('Please enter the verification PIN.');
+    }
+
+    const session = this.studentVerificationSessions.get(verificationToken);
+    if (!session || session.expiresAt <= Date.now()) {
+      this.studentVerificationSessions.delete(verificationToken);
+      throw new BadRequestException('Verification PIN expired or invalid. Please request a new PIN.');
+    }
+
+    if (schoolEmail && session.schoolEmail !== schoolEmail) {
+      throw new BadRequestException('School email changed. Please request a new verification PIN.');
+    }
+
+    const expectedHash = this.hashStudentVerificationPin(verificationToken, pin);
+    if (expectedHash !== session.pinHash) {
+      session.attempts += 1;
+      if (session.attempts >= 5) {
+        this.studentVerificationSessions.delete(verificationToken);
+        throw new BadRequestException('Too many invalid PIN attempts. Please request a new verification PIN.');
+      }
+      this.studentVerificationSessions.set(verificationToken, session);
+      throw new BadRequestException('Invalid PIN. Please check and try again.');
+    }
+
+    this.studentVerificationSessions.delete(verificationToken);
+
+    return {
+      verified: true,
+      schoolEmail: session.schoolEmail,
+      schoolName: session.schoolName,
+      graduationDate: session.graduationDate,
+      message: 'Student email verification successful.',
+    };
+  }
+
+  async verifyStudentEligibilityWithAi(params: {
+    schoolName?: string;
+    graduationDate?: string;
+    schoolEmail?: string;
+  }): Promise<StudentEligibilityAssessment> {
+    const validated = this.validateStudentVerificationInput(params);
+    const heuristicAssessment = this.getStudentEligibilityHeuristicAssessment(validated);
+
+    try {
+      const aiAssessment = await this.assessStudentEligibilityWithOpenRouter(validated);
+      const blendedScore = Math.round((heuristicAssessment.score * 0.4) + (aiAssessment.score * 0.6));
+      const normalizedScore = Math.max(0, Math.min(100, blendedScore));
+      let status: StudentEligibilityAssessment['status'] =
+        normalizedScore >= 70 ? 'eligible' : normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+
+      if (aiAssessment.status === 'ineligible' || heuristicAssessment.status === 'ineligible') {
+        status = normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+      } else if (aiAssessment.status === 'manual_review' || heuristicAssessment.status === 'manual_review') {
+        status = 'manual_review';
+      }
+
+      return {
+        verified: status === 'eligible',
+        score: normalizedScore,
+        status,
+        reasons: [...new Set([...aiAssessment.reasons, ...heuristicAssessment.reasons])].slice(0, 5),
+        confidence: aiAssessment.confidence,
+        source: aiAssessment.source,
+      };
+    } catch {
+      return heuristicAssessment;
+    }
+  }
+
   async getVerifiedSignupAccess(token: string) {
     const user = await this.resolveUserByVerifiedSignupAccessToken(token);
 
@@ -1578,6 +2042,7 @@ export class AuthService {
         verifiedSignupUser.verificationTokenExpires = verificationTokenExpires;
         verifiedSignupUser.signupAccessTokenHash = null;
         verifiedSignupUser.signupAccessTokenExpiresAt = null;
+        this.applyEligibilityTracking(verifiedSignupUser, userDto);
         newUser = verifiedSignupUser;
       } else {
         // Create the new user (LOCAL auth provider)
@@ -1595,6 +2060,7 @@ export class AuthService {
           verificationToken: verificationToken,
           verificationTokenExpires: verificationTokenExpires,
         });
+        this.applyEligibilityTracking(newUser, userDto);
       }
 
       await this.userRepository.save(newUser); // Save the new user

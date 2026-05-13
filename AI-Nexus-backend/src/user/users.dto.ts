@@ -1,5 +1,5 @@
 //users.dto.ts
-import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean, IsArray, Matches } from 'class-validator';
+import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean, IsArray, Matches, IsObject } from 'class-validator';
 import { UserRole, UserStatus } from './users.entity';
 
 // For registration - all fields required
@@ -64,6 +64,26 @@ export class UserDto {
     @IsOptional()
     @IsString()
     draftUserId?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    eligibilityIsSingaporePr?: boolean;
+
+    @IsOptional()
+    @IsBoolean()
+    eligibilityIsIscaMember?: boolean;
+
+    @IsOptional()
+    @IsBoolean()
+    eligibilityWantsMembership?: boolean;
+
+    @IsOptional()
+    @IsString()
+    eligibilityType?: string;
+
+    @IsOptional()
+    @IsObject()
+    eligibilitySnapshot?: Record<string, unknown>;
 
     @IsEnum(UserRole)
     @IsOptional()

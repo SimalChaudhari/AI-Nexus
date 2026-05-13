@@ -15,7 +15,12 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
-import { verifyNricImages } from 'src/auth/context/jwt';
+import {
+  sendStudentVerificationPin as sendStudentVerificationPinRequest,
+  verifyStudentEligibility as verifyStudentEligibilityRequest,
+  verifyNricImages,
+  verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
+} from 'src/auth/context/jwt';
 
 // ----------------------------------------------------------------------
 
@@ -514,9 +519,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const [nricAiFailureReason, setNricAiFailureReason] = useState('');
   const [nricAiFailureMode, setNricAiFailureMode] = useState('default');
   const [nricSignupAccessToken, setNricSignupAccessToken] = useState('');
-  const [studentDemoPin, setStudentDemoPin] = useState('');
+  const [studentVerificationToken, setStudentVerificationToken] = useState('');
   const [studentPinInput, setStudentPinInput] = useState('');
   const [studentPinError, setStudentPinError] = useState('');
+  const [studentPinSending, setStudentPinSending] = useState(false);
+  const [studentPinVerifying, setStudentPinVerifying] = useState(false);
+  const [studentEligibilityChecking, setStudentEligibilityChecking] = useState(false);
+  const [studentEligibilityAssessment, setStudentEligibilityAssessment] = useState(null);
 
   const resetNricCheckState = () => {
     setNricFrontImage(null);
@@ -530,9 +539,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const resetStudentVerificationState = () => {
-    setStudentDemoPin('');
+    setStudentVerificationToken('');
     setStudentPinInput('');
     setStudentPinError('');
+    setStudentPinSending(false);
+    setStudentPinVerifying(false);
+    setStudentEligibilityChecking(false);
+    setStudentEligibilityAssessment(null);
   };
 
   useEffect(() => {
@@ -831,7 +844,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       ...prev,
       eligibilityType: value,
       eligibilityRequirementsAcknowledged: true,
-      eligibilityVerified: true,
+      eligibilityVerified: value === 'student' ? null : true,
       retryDecision: '',
       studentMembershipOptIn: null,
       scaqInterested: null,
@@ -1267,45 +1280,62 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setFlowState((prev) => ({
       ...prev,
       [field]: value,
-      studentEmailPinSent: field === 'studentSchoolEmail' ? false : prev.studentEmailPinSent,
+      eligibilityVerified: null,
+      studentEmailPinSent: false,
       studentEmailPinVerified: false,
       studentVerificationFailed: false,
       studentFailureAcknowledged: false,
     }));
-    if (field === 'studentSchoolEmail') {
-      setStudentDemoPin('');
-      setStudentPinInput('');
-    }
-    setStudentPinError('');
-  };
-
-  const sendStudentVerificationPin = () => {
-    if (!flowState.studentSchoolName?.trim() || !flowState.studentGraduationDate || !flowState.studentSchoolEmail?.trim()) {
-      setStudentPinError('Please fill school name, graduation date, and school email first.');
-      return;
-    }
-    const email = flowState.studentSchoolEmail.trim().toLowerCase();
-    if (!email.endsWith('.edu')) {
-      setStudentPinError('School email must end with .edu');
-      return;
-    }
-    const pin = Math.floor(100000 + Math.random() * 900000).toString();
-    setStudentDemoPin(pin);
+    setStudentVerificationToken('');
     setStudentPinInput('');
     setStudentPinError('');
-    setFlowState((prev) => ({
-      ...prev,
-      studentEmailPinSent: true,
-      studentEmailPinVerified: false,
-      studentVerificationFailed: false,
-      studentFailureAcknowledged: false,
-    }));
+    setStudentEligibilityAssessment(null);
+  };
+
+  const sendStudentVerificationPin = async () => {
+    try {
+      setStudentPinSending(true);
+      setStudentPinError('');
+      setStudentEligibilityAssessment(null);
+
+      const response = await sendStudentVerificationPinRequest({
+        schoolName: flowState.studentSchoolName,
+        graduationDate: flowState.studentGraduationDate,
+        schoolEmail: flowState.studentSchoolEmail,
+      });
+
+      setStudentVerificationToken(response?.verificationToken || '');
+      setStudentPinInput('');
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityVerified: null,
+        studentEmailPinSent: true,
+        studentEmailPinVerified: false,
+        studentVerificationFailed: false,
+        studentFailureAcknowledged: false,
+      }));
+    } catch (error) {
+      setStudentVerificationToken('');
+      setStudentEligibilityAssessment(null);
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityVerified: null,
+        studentEmailPinSent: false,
+        studentEmailPinVerified: false,
+        studentVerificationFailed: false,
+        studentFailureAcknowledged: false,
+      }));
+      setStudentPinError(error?.message || 'Failed to send verification PIN. Please try again.');
+    } finally {
+      setStudentPinSending(false);
+    }
   };
 
   const applyStudentDummyData = () => {
     resetStudentVerificationState();
     setFlowState((prev) => ({
       ...prev,
+      eligibilityVerified: null,
       studentSchoolName: 'Nanyang Technological University',
       studentGraduationDate: '2027-05-31',
       studentSchoolEmail: 'student.demo@ntu.edu',
@@ -1316,32 +1346,86 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     }));
   };
 
-  const verifyStudentPin = () => {
-    if (!flowState.studentEmailPinSent) {
+  const verifyStudentPin = async () => {
+    if (!flowState.studentEmailPinSent || !studentVerificationToken) {
       setStudentPinError('Please send verification PIN first.');
       return;
     }
-    if (studentPinInput.trim() !== studentDemoPin) {
-      setStudentPinError('Invalid PIN. Please check and try again.');
+
+    try {
+      setStudentPinVerifying(true);
+      setStudentPinError('');
+      setStudentEligibilityAssessment(null);
+
+      await verifyStudentVerificationPinRequest({
+        verificationToken: studentVerificationToken,
+        pin: studentPinInput,
+        schoolEmail: flowState.studentSchoolEmail,
+      });
+
+      setFlowState((prev) => ({
+        ...prev,
+        studentEmailPinVerified: true,
+        eligibilityVerified: null,
+        studentVerificationFailed: false,
+        studentFailureAcknowledged: false,
+      }));
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
       setFlowState((prev) => ({
         ...prev,
         studentEmailPinVerified: false,
-        studentVerificationFailed: true,
+        studentVerificationFailed:
+          message.includes('expired')
+          || message.includes('too many')
+          || message.includes('changed')
+          || message.includes('request a new'),
         studentFailureAcknowledged: false,
       }));
-      return;
+      setStudentPinError(error?.message || 'Failed to verify PIN. Please try again.');
+    } finally {
+      setStudentPinVerifying(false);
     }
-    setStudentPinError('');
-    setFlowState((prev) => ({
-      ...prev,
-      studentEmailPinVerified: true,
-      studentVerificationFailed: false,
-      studentFailureAcknowledged: false,
-    }));
   };
 
   const continueAfterStudentVerificationFailure = () => {
     setFlowState((prev) => ({ ...prev, studentFailureAcknowledged: true }));
+  };
+
+  const runStudentAiEligibilityVerification = async () => {
+    if (!flowState.studentEmailPinVerified) return;
+
+    try {
+      setStudentEligibilityChecking(true);
+      setStudentPinError('');
+
+      const assessment = await verifyStudentEligibilityRequest({
+        schoolName: flowState.studentSchoolName,
+        graduationDate: flowState.studentGraduationDate,
+        schoolEmail: flowState.studentSchoolEmail,
+      });
+
+      setStudentEligibilityAssessment(assessment || null);
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityVerified: assessment?.verified === true,
+        studentVerificationFailed: assessment?.verified !== true,
+        studentFailureAcknowledged: false,
+        studentMembershipOptIn: assessment?.verified === true ? prev.studentMembershipOptIn : null,
+      }));
+    } catch (error) {
+      setStudentEligibilityAssessment(null);
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityVerified: false,
+        studentVerificationFailed: true,
+        studentFailureAcknowledged: false,
+        studentMembershipOptIn: null,
+      }));
+      setStudentPinError(error?.message || 'Failed to verify student eligibility. Please try again.');
+    } finally {
+      setStudentEligibilityChecking(false);
+    }
   };
 
   const selectScaqInterested = (value) => {
@@ -1624,7 +1708,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const ELIGIBILITY_REQUIREMENTS = {
-    student: ['School name', 'Graduation date', 'School email ending with .edu (verification pin required)'],
+    student: ['School name', 'Graduation date', 'School email ending with .edu or @yopmail.com (verification PIN required)'],
     recognition: ['Passport/ID copy', 'Professional full transcript', 'Signed character references form (2 referees)', 'Letter of good standing (within 3 months)'],
     enhanced: ['Passport/ID copy', 'ACCA certificate', 'ACCA transcript', 'Letter of good standing', 'Signed character references form', 'Resume/CV'],
     cima: ['Passport/ID copy', 'Professional qualification certificate and transcript', 'Letter of good standing (within 3 months)'],
@@ -1874,6 +1958,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       resetStudentVerificationState();
       setFlowState((prev) => ({
         ...prev,
+        eligibilityVerified: null,
         studentMembershipOptIn: null,
         studentFeePaymentCompleted: false,
         studentMembershipApplicationAgreed: false,
@@ -3323,7 +3408,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 </Stack>
                 <Stack spacing={0.75}>
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                    School email address (.edu)
+                    School email address (.edu or @yopmail.com)
                   </Typography>
                   <TextField
                     size="small"
@@ -3334,8 +3419,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                   />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                  <Button variant="outlined" onClick={sendStudentVerificationPin} startIcon={<Iconify icon="solar:letter-bold" width={16} />}>
-                    Send verification PIN
+                  <Button
+                    variant="outlined"
+                    onClick={sendStudentVerificationPin}
+                    startIcon={<Iconify icon="solar:letter-bold" width={16} />}
+                    disabled={studentPinSending}
+                  >
+                    {studentPinSending ? 'Sending PIN...' : 'Send verification PIN'}
                   </Button>
                 </Stack>
               </Stack>
@@ -3350,25 +3440,45 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                   bgcolor: alpha(theme.palette.info.main, 0.05),
                 })}
               >
-                <Stack spacing={1}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                    Email PIN verification
-                  </Typography>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    label="Enter verification PIN"
-                    value={studentPinInput}
-                    onChange={(event) => setStudentPinInput(event.target.value)}
-                  />
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                    <Button variant="outlined" onClick={verifyStudentPin}>
-                      Verify PIN
+                <Stack spacing={1.25}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                      Verify Email PIN
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Enter the 6-digit PIN sent to your school email address.
+                    </Typography>
+                  </Box>
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Verification PIN
+                    </Typography>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="Enter 6-digit PIN"
+                      value={studentPinInput}
+                      onChange={(event) => setStudentPinInput(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputProps={{
+                        inputMode: 'numeric',
+                        maxLength: 6,
+                      }}
+                    />
+                  </Stack>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    sx={{ justifyContent: 'flex-end', alignItems: { sm: 'flex-end' } }}
+                  >
+                    <Button
+                      variant="contained"
+                      onClick={verifyStudentPin}
+                      disabled={studentPinVerifying}
+                      sx={{ minWidth: { sm: 132 } }}
+                    >
+                      {studentPinVerifying ? 'Verifying...' : 'Verify PIN'}
                     </Button>
                   </Stack>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Demo PIN (frontend only): <strong>{studentDemoPin}</strong>
-                  </Typography>
                 </Stack>
               </Box>
             )}
@@ -3398,8 +3508,24 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                     Verification failed
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Student verification failed. Click continue to check other eligibility options.
+                    {studentEligibilityAssessment?.score >= 0
+                      ? `Student eligibility verification did not pass. ATS score: ${studentEligibilityAssessment.score}/100.`
+                      : 'Student eligibility verification failed. Click continue to check other eligibility options.'}
                   </Typography>
+                  {!!studentEligibilityAssessment?.status && (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'text.secondary' }}>
+                      Status: {String(studentEligibilityAssessment.status).replace('_', ' ')}
+                    </Typography>
+                  )}
+                  {!!studentEligibilityAssessment?.reasons?.length && (
+                    <Stack spacing={0.5} sx={{ mt: 0.75 }}>
+                      {studentEligibilityAssessment.reasons.map((reason) => (
+                        <Typography key={reason} variant="caption" sx={{ color: 'text.secondary' }}>
+                          • {reason}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  )}
                   <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 1 }}>
                     <Button size="small" variant="contained" color="inherit" onClick={continueAfterStudentVerificationFailure}>
                       Continue
@@ -3428,13 +3554,90 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                     Student email verification successful
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Verification is complete. You can now proceed with the student membership decision.
+                    Email verification is complete. Next, run the AI eligibility check.
                   </Typography>
                 </Box>
               </Box>
             )}
 
-            {flowState.studentEmailPinVerified && (
+            {flowState.studentEmailPinVerified && flowState.eligibilityVerified !== true && (
+              <Box>
+                <Divider sx={{ mb: 1.25 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                  Verify eligibility with AI tool
+                </Typography>
+                {studentEligibilityChecking && <LinearProgress sx={{ mb: 1.25, borderRadius: 999 }} />}
+                {!!studentEligibilityAssessment && !flowState.studentVerificationFailed && (
+                  <Box
+                    sx={(theme) => ({
+                      mb: 1.25,
+                      px: 1.25,
+                      py: 1,
+                      borderRadius: 1.5,
+                      border: `1px solid ${alpha(theme.palette.info.main, 0.35)}`,
+                      bgcolor: alpha(theme.palette.info.main, 0.08),
+                    })}
+                  >
+                    <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: 'text.primary' }}>
+                      Latest ATS result: {studentEligibilityAssessment.score}/100
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
+                      Status: {String(studentEligibilityAssessment.status || '').replace('_', ' ')}
+                    </Typography>
+                    {!!studentEligibilityAssessment?.reasons?.length && (
+                      <Stack spacing={0.5} sx={{ mt: 0.75 }}>
+                        {studentEligibilityAssessment.reasons.map((reason) => (
+                          <Typography key={reason} variant="caption" sx={{ color: 'text.secondary' }}>
+                            • {reason}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                )}
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                  <Button variant="outlined" onClick={runStudentAiEligibilityVerification} disabled={studentEligibilityChecking}>
+                    {studentEligibilityChecking ? 'Checking...' : 'Run AI eligibility check'}
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+
+            {flowState.studentEmailPinVerified && flowState.eligibilityVerified === true && (
+              <Box
+                sx={(theme) => ({
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 1,
+                  px: 1.25,
+                  py: 1,
+                  borderRadius: 1.5,
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.35)}`,
+                  bgcolor: alpha(theme.palette.success.main, 0.08),
+                })}
+              >
+                <Iconify icon="solar:verified-check-bold" width={18} style={{ marginTop: 2 }} />
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark', lineHeight: 1.35 }}>
+                    AI eligibility verification successful
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    Eligibility is verified. ATS score: {studentEligibilityAssessment?.score ?? 0}/100. You can now proceed with the student membership decision.
+                  </Typography>
+                  {!!studentEligibilityAssessment?.reasons?.length && (
+                    <Stack spacing={0.5} sx={{ mt: 0.75 }}>
+                      {studentEligibilityAssessment.reasons.map((reason) => (
+                        <Typography key={reason} variant="caption" sx={{ color: 'text.secondary' }}>
+                          • {reason}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
+              </Box>
+            )}
+
+            {flowState.studentEmailPinVerified && flowState.eligibilityVerified === true && (
               <Box>
                 <Divider sx={{ mb: 1.25 }} />
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>

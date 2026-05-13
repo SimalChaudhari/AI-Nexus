@@ -31,6 +31,26 @@ import { AuthSignUpSchema } from 'src/validations/user.validation';
 import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp } from 'src/auth/context/jwt';
 import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
 
+function buildEligibilityDataFromFlow(flow, membershipOutcome) {
+  if (!flow || typeof flow !== 'object' || Array.isArray(flow)) {
+    return null;
+  }
+
+  const eligibilityType = typeof flow.eligibilityType === 'string' ? flow.eligibilityType.trim() : '';
+
+  return {
+    isSingaporePr: typeof flow.isSingaporePr === 'boolean' ? flow.isSingaporePr : undefined,
+    isIscaMember: typeof flow.isIscaMember === 'boolean' ? flow.isIscaMember : undefined,
+    wantsIscaMembership:
+      typeof flow.wantsIscaMembership === 'boolean' ? flow.wantsIscaMembership : undefined,
+    eligibilityType: eligibilityType || undefined,
+    snapshot: {
+      ...flow,
+      membershipOutcome: membershipOutcome || '',
+    },
+  };
+}
+
 export function SimpleSignUpView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,6 +68,7 @@ export function SimpleSignUpView() {
   const [verifiedSignupLoading, setVerifiedSignupLoading] = useState(false);
   const [verifiedSignupAccessError, setVerifiedSignupAccessError] = useState('');
   const [verifiedSignupPrefill, setVerifiedSignupPrefill] = useState(null);
+  const [eligibilityData, setEligibilityData] = useState(null);
   const membershipOutcome = searchParams.get('membershipOutcome');
   const returnTo = searchParams.get('returnTo') || '';
   const paymentState = searchParams.get('payment') || '';
@@ -58,6 +79,7 @@ export function SimpleSignUpView() {
   const isMembershipFeeFlow = isPaidMembershipFlow || isVerifiedNricSignupFlow;
   const signupAccessToken = searchParams.get('signupAccessToken') || '';
   const membershipDraftFormStorageKey = 'membershipSignupDraftForm';
+  const membershipEligibilityStorageKey = 'membershipEligibilityFlow';
   const pendingMembershipSessionKey = 'pending_membership_session_id';
   const pendingMembershipRefKey = 'pending_membership_ref';
   const trimPaymentLogValue = (value, keep = 18) => {
@@ -205,6 +227,25 @@ export function SimpleSignUpView() {
   }, [isVerifiedNricSignupFlow, reset, signupAccessToken]);
 
   useEffect(() => {
+    if (!isMembershipFeeFlow) {
+      setEligibilityData(null);
+      return;
+    }
+
+    setEligibilityData(null);
+
+    try {
+      const stored = sessionStorage.getItem(membershipEligibilityStorageKey);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (parsed?.membershipOutcome !== membershipOutcome || !parsed?.flow) return;
+      setEligibilityData(buildEligibilityDataFromFlow(parsed.flow, parsed.membershipOutcome));
+    } catch {
+      // Ignore invalid cached eligibility payloads.
+    }
+  }, [isMembershipFeeFlow, membershipEligibilityStorageKey, membershipOutcome]);
+
+  useEffect(() => {
     if (!isPaidMembershipFlow) return;
 
     try {
@@ -212,6 +253,9 @@ export function SimpleSignUpView() {
       if (!stored) return;
       const parsed = JSON.parse(stored);
       if (parsed?.membershipOutcome !== membershipOutcome || !parsed?.values) return;
+      if (parsed?.eligibility) {
+        setEligibilityData(parsed.eligibility);
+      }
 
       reset({
         username: parsed.values.username || '',
@@ -296,6 +340,7 @@ export function SimpleSignUpView() {
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('membershipDraftUserId');
           sessionStorage.removeItem(membershipDraftFormStorageKey);
+          sessionStorage.removeItem(membershipEligibilityStorageKey);
           sessionStorage.removeItem(pendingMembershipSessionKey);
           sessionStorage.removeItem(pendingMembershipRefKey);
         }
@@ -331,6 +376,7 @@ export function SimpleSignUpView() {
     getValues,
     isMembershipFeeFlow,
     membershipDraftFormStorageKey,
+    membershipEligibilityStorageKey,
     normalizedPaymentRef,
     normalizedPaymentSessionId,
     paymentState,
@@ -395,7 +441,12 @@ export function SimpleSignUpView() {
         firstName: data.firstName,
         lastName: data.lastName,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
+        eligibilityData,
       });
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(membershipEligibilityStorageKey);
+      }
 
       // Redirect to verify page after successful registration
       const verifySearch = new URLSearchParams({ email: data.email }).toString();
@@ -430,6 +481,7 @@ export function SimpleSignUpView() {
         lastName: data.lastName,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         draftUserId: cachedDraftUserId || undefined,
+        eligibilityData,
       });
 
       if (typeof window !== 'undefined') {
@@ -437,6 +489,7 @@ export function SimpleSignUpView() {
           membershipDraftFormStorageKey,
           JSON.stringify({
             membershipOutcome,
+            eligibility: eligibilityData,
             values: {
               username: data.username,
               firstName: data.firstName,

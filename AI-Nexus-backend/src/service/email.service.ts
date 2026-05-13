@@ -5,6 +5,7 @@ import {
     buildCredentialsBodyHtml,
     buildForumReplyBodyHtml,
     buildOrderReceiptBodyHtml,
+    escapeHtml,
 } from './email-template.util';
 
 @Injectable()
@@ -85,6 +86,50 @@ export class EmailService {
         } catch (error) {
             console.error('Error sending reset password email:', error);
             throw new Error('Failed to send reset password email');
+        }
+    }
+
+    async sendStudentVerificationPinEmail(email: string, pin: string, schoolName: string): Promise<void> {
+        const safePin = escapeHtml(String(pin || '').trim());
+        const bodyHtml = `
+            <div style="margin-top:18px; background:#ffffff; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden;">
+                <div style="background:#D8E4F3; color:#1C4270; padding:10px 14px; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                    Student Verification PIN
+                </div>
+                <div style="padding:18px 14px;">
+                    <p style="margin:0 0 12px; color:#475569; font-size:14px; line-height:1.6;">
+                        Use the following verification PIN in the AI Nexus membership eligibility dialog to continue your student verification.
+                    </p>
+                    <div style="display:inline-block; background:#fff6f5; border:1px solid #f3c2bf; color:#E32B24; padding:10px 14px; border-radius:10px; font-family:Consolas, 'Courier New', monospace; font-size:22px; font-weight:700; letter-spacing:0.18em;">
+                        ${safePin}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'Your Student Verification PIN',
+            greetingName: schoolName || 'Student',
+            intro: 'A student membership verification request was started for your school email address.',
+            bodyHtml,
+            note: 'This PIN expires in 10 minutes. Do not share it with anyone.',
+            footer: 'AI Nexus student verification',
+        });
+
+        const mailOptions = {
+            from: process.env.SMTP_USER,
+            to: email,
+            subject: 'Your AI Nexus student verification PIN',
+            text: `Hello ${schoolName || 'Student'},\n\nYour AI Nexus student verification PIN is: ${pin}\n\nThis PIN expires in 10 minutes.\n`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Student verification PIN email sent to ${email}`);
+        } catch (error) {
+            console.error('Error sending student verification PIN email:', error);
+            throw new Error('Failed to send student verification PIN email');
         }
     }
 

@@ -145,4 +145,34 @@ export class AuthController {
   async getVerifiedSignupAccess(@Body('token') token: string) {
     return this.authService.getVerifiedSignupAccess(token);
   }
+
+  @Post('student-verification/send-pin')
+  @ApiOperation({ summary: 'Send a student verification PIN to the provided school email' })
+  async sendStudentVerificationPin(
+    @Body('schoolName') schoolName: string,
+    @Body('graduationDate') graduationDate: string,
+    @Body('schoolEmail') schoolEmail: string,
+  ) {
+    return this.authService.sendStudentVerificationPin({ schoolName, graduationDate, schoolEmail });
+  }
+
+  @Post('student-verification/verify-pin')
+  @ApiOperation({ summary: 'Verify the student verification PIN entered in the membership modal' })
+  async verifyStudentVerificationPin(
+    @Body('verificationToken') verificationToken: string,
+    @Body('pin') pin: string,
+    @Body('schoolEmail') schoolEmail?: string,
+  ) {
+    return this.authService.verifyStudentVerificationPin({ verificationToken, pin, schoolEmail });
+  }
+
+  @Post('student-verification/eligibility-check')
+  @ApiOperation({ summary: 'Run AI eligibility scoring for student membership information' })
+  async verifyStudentEligibilityWithAi(
+    @Body('schoolName') schoolName: string,
+    @Body('graduationDate') graduationDate: string,
+    @Body('schoolEmail') schoolEmail: string,
+  ) {
+    return this.authService.verifyStudentEligibilityWithAi({ schoolName, graduationDate, schoolEmail });
+  }
 }

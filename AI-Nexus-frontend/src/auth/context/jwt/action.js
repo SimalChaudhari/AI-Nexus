@@ -52,7 +52,7 @@ export const signInWithPassword = async ({ email, username, password }) => {
 /** **************************************
  * Sign up with backend API
  *************************************** */
-export const signUp = async ({ email, password, firstName, lastName, username, signupAccessToken }) => {
+export const signUp = async ({ email, password, firstName, lastName, username, signupAccessToken, eligibilityData }) => {
   try {
     const params = {
       username: username || email.split('@')[0], // Use email prefix as username if not provided
@@ -61,6 +61,12 @@ export const signUp = async ({ email, password, firstName, lastName, username, s
       email,
       password,
       signupAccessToken: signupAccessToken || undefined,
+      eligibilityIsSingaporePr: typeof eligibilityData?.isSingaporePr === 'boolean' ? eligibilityData.isSingaporePr : undefined,
+      eligibilityIsIscaMember: typeof eligibilityData?.isIscaMember === 'boolean' ? eligibilityData.isIscaMember : undefined,
+      eligibilityWantsMembership:
+        typeof eligibilityData?.wantsIscaMembership === 'boolean' ? eligibilityData.wantsIscaMembership : undefined,
+      eligibilityType: eligibilityData?.eligibilityType || undefined,
+      eligibilitySnapshot: eligibilityData?.snapshot || undefined,
     };
     const res = await axios.post('/auth/register', params);
     const { user, message } = res.data;
@@ -95,6 +101,7 @@ export const saveMembershipSignupDraft = async ({
   username,
   signupAccessToken,
   draftUserId,
+  eligibilityData,
 }) => {
   try {
     const params = {
@@ -105,6 +112,12 @@ export const saveMembershipSignupDraft = async ({
       password,
       signupAccessToken: signupAccessToken || undefined,
       draftUserId: draftUserId || undefined,
+      eligibilityIsSingaporePr: typeof eligibilityData?.isSingaporePr === 'boolean' ? eligibilityData.isSingaporePr : undefined,
+      eligibilityIsIscaMember: typeof eligibilityData?.isIscaMember === 'boolean' ? eligibilityData.isIscaMember : undefined,
+      eligibilityWantsMembership:
+        typeof eligibilityData?.wantsIscaMembership === 'boolean' ? eligibilityData.wantsIscaMembership : undefined,
+      eligibilityType: eligibilityData?.eligibilityType || undefined,
+      eligibilitySnapshot: eligibilityData?.snapshot || undefined,
     };
     const res = await axios.post('/auth/membership-signup-draft', params);
     const nextDraftUserId = res?.data?.draftUserId || res?.data?.user?.id || '';
@@ -243,6 +256,66 @@ export const verifyNricImages = async ({ frontImage, backImage }) => {
       error?.response?.data?.message ||
       error?.message ||
       (typeof error === 'string' ? error : 'NRIC verification failed. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Send student verification PIN
+ *************************************** */
+export const sendStudentVerificationPin = async ({ schoolName, graduationDate, schoolEmail }) => {
+  try {
+    const res = await axios.post('/auth/student-verification/send-pin', {
+      schoolName,
+      graduationDate,
+      schoolEmail,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to send verification PIN. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Verify student verification PIN
+ *************************************** */
+export const verifyStudentVerificationPin = async ({ verificationToken, pin, schoolEmail }) => {
+  try {
+    const res = await axios.post('/auth/student-verification/verify-pin', {
+      verificationToken,
+      pin,
+      schoolEmail,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to verify PIN. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Run student AI eligibility check
+ *************************************** */
+export const verifyStudentEligibility = async ({ schoolName, graduationDate, schoolEmail }) => {
+  try {
+    const res = await axios.post('/auth/student-verification/eligibility-check', {
+      schoolName,
+      graduationDate,
+      schoolEmail,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to verify student eligibility. Please try again.');
     throw new Error(errorMessage);
   }
 };

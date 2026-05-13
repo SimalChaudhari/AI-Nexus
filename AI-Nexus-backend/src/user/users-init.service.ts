@@ -62,6 +62,12 @@ export class UsersInitService implements OnModuleInit {
             "spPrStatusVerified" boolean NOT NULL DEFAULT false,
             "nricVerificationSource" varchar,
             "spPrStatusVerifiedAt" TIMESTAMP,
+            "eligibilityIsSingaporePr" boolean,
+            "eligibilityIsIscaMember" boolean,
+            "eligibilityWantsMembership" boolean,
+            "eligibilityType" varchar,
+            "eligibilitySnapshot" jsonb,
+            "eligibilityCheckedAt" TIMESTAMP,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_users" PRIMARY KEY ("id")
@@ -205,6 +211,30 @@ export class UsersInitService implements OnModuleInit {
       await queryRunner.query(`
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "spPrStatusVerifiedAt" TIMESTAMP
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "eligibilityIsSingaporePr" boolean
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "eligibilityIsIscaMember" boolean
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "eligibilityWantsMembership" boolean
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "eligibilityType" varchar
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "eligibilitySnapshot" jsonb
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "eligibilityCheckedAt" TIMESTAMP
       `);
     } catch (error) {
       console.error(
