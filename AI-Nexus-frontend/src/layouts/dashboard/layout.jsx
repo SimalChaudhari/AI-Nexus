@@ -5,6 +5,7 @@ import { useTheme } from '@mui/material/styles';
 import { iconButtonClasses } from '@mui/material/IconButton';
 
 import { useBoolean } from 'src/hooks/use-boolean';
+import { useAuthContext } from 'src/auth/hooks';
 
 import { allLangs } from 'src/locales';
 import { _contacts, _notifications } from 'src/_mock';
@@ -12,6 +13,8 @@ import { varAlpha, stylesMode } from 'src/theme/styles';
 
 import { bulletColor } from 'src/components/nav-section';
 import { useSettingsContext } from 'src/components/settings';
+
+import { paths } from 'src/routes/paths';
 
 import { Main } from './main';
 import { NavMobile } from './nav-mobile';
@@ -30,6 +33,8 @@ import { navData as dashboardNavData } from '../config-nav-dashboard';
 export function DashboardLayout({ sx, children, data }) {
   const theme = useTheme();
 
+  const { user } = useAuthContext();
+
   const mobileNavOpen = useBoolean();
 
   const settings = useSettingsContext();
@@ -39,6 +44,12 @@ export function DashboardLayout({ sx, children, data }) {
   const layoutQuery = 'lg';
 
   const navData = data?.nav ?? dashboardNavData;
+
+  const accountNav = useMemo(() => {
+    const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
+    if (!isAdmin) return _account;
+    return _account.filter((item) => item.href !== paths.profile.persona);
+  }, [user?.role]);
 
   const isNavMini = settings.navLayout === 'mini';
 
@@ -67,7 +78,7 @@ export function DashboardLayout({ sx, children, data }) {
             data={{
               nav: navData,
               langs: allLangs,
-              account: _account,
+              account: accountNav,
               contacts: _contacts,
               workspaces: _workspaces,
               notifications: _notifications,
