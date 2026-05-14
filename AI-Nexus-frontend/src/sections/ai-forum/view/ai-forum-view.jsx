@@ -19,12 +19,13 @@ import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { InfinitePagination } from 'src/components/infinite-pagination';
 import { ConfirmDialog } from 'src/components/custom-dialog';
+import { Editor } from 'src/components/editor';
 import { AiForumItem } from '../ai-forum-item';
 import { aiForumService } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
 import { useAuthContext } from 'src/auth/hooks';
 import { useAiForumListSocket } from 'src/hooks/use-ai-forum-list-socket';
-import { htmlToPlainText } from 'src/utils/html-plain-text';
+import { htmlToPlainText, isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { fDateTimePersonal } from 'src/utils/format-time';
 
 // ----------------------------------------------------------------------
@@ -204,20 +205,33 @@ export function AiForumView() {
     if (!submittingCreate) setCreateOpen(false);
   };
 
+  const handleEditorMediaUpload = useCallback(async (file) => {
+    try {
+      return await aiForumService.uploadPostMedia(file);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Media upload failed');
+      return '';
+    }
+  }, []);
+
   const handleCreateSubmit = async () => {
     if (!createTitle.trim()) {
       toast.error('Please enter a title');
       return;
     }
-    if (!createDescription.trim()) {
+    if (isEffectivelyEmptyHtml(createDescription)) {
       toast.error('Please enter a description');
+      return;
+    }
+    if (createDescription.length > 50000) {
+      toast.error('Description is too long');
       return;
     }
     try {
       setSubmittingCreate(true);
       const result = await aiForumService.createPost({
         title: createTitle.trim(),
-        description: createDescription.trim(),
+        description: createDescription,
       });
       const newAiForumPost = result?.post ?? result;
       if (newAiForumPost) {
@@ -278,12 +292,20 @@ export function AiForumView() {
   };
 
   const handleEditSubmit = async () => {
-    if (!editAiForumPost?.id || !editTitle.trim() || !editDescription.trim()) return;
+    if (!editAiForumPost?.id || !editTitle.trim()) return;
+    if (isEffectivelyEmptyHtml(editDescription)) {
+      toast.error('Please enter a description');
+      return;
+    }
+    if (editDescription.length > 50000) {
+      toast.error('Description is too long');
+      return;
+    }
     try {
       setSubmittingEdit(true);
       const updated = await aiForumService.updatePost(editAiForumPost.id, {
         title: editTitle.trim(),
-        description: editDescription.trim(),
+        description: editDescription,
       });
       const post = updated?.post ?? updated;
       if (post) {
@@ -499,7 +521,7 @@ export function AiForumView() {
 
         {/* Create post drawer */}
         <Drawer anchor="right" open={createOpen} onClose={handleCreateClose}>
-          <Stack sx={{ width: { xs: '100vw', sm: 480 }, height: '100%' }}>
+          <Stack sx={{ width: { xs: '100vw', sm: 560 }, height: '100%' }}>
             <Box
               sx={{
                 px: 3,
@@ -513,11 +535,11 @@ export function AiForumView() {
                 <Typography variant="h6">Create post</Typography>
               </Stack>
               <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                Share a clear title and enough detail so others can help quickly.
+                Use the toolbar for formatting, links, and images (same editor as admin posts).
               </Typography>
             </Box>
             <Divider />
-            <Stack spacing={2} sx={{ px: 3, py: 2, flex: 1 }}>
+            <Stack spacing={2} sx={{ px: 3, py: 2, flex: 1, overflow: 'auto', minHeight: 0 }}>
               <Typography variant="subtitle2">Post title</Typography>
               <TextField
                 value={createTitle}
@@ -529,18 +551,22 @@ export function AiForumView() {
                 inputProps={{ maxLength: 120 }}
                 helperText={`${createTitle.length}/120`}
               />
-              <Typography variant="subtitle2">Post details</Typography>
-              <TextField
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="Add more details..."
-                fullWidth
-                required
-                multiline
-                minRows={6}
-                inputProps={{ maxLength: 2000 }}
-                helperText={`${createDescription.length}/2000`}
-              />
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Post details
+                </Typography>
+                <Editor
+                  value={createDescription}
+                  onChange={setCreateDescription}
+                  onUploadImage={handleEditorMediaUpload}
+                  fullItem={false}
+                  placeholder="Add more details, images, or links…"
+                  sx={{ maxHeight: 380 }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                  {createDescription.length}/50000 characters (HTML)
+                </Typography>
+              </Box>
             </Stack>
             <Divider />
             <Stack direction="row" spacing={1.5} justifyContent="flex-end" sx={{ px: 3, py: 2 }}>
@@ -550,7 +576,12 @@ export function AiForumView() {
               <Button
                 variant="contained"
                 onClick={handleCreateSubmit}
-                disabled={submittingCreate || !createTitle.trim() || !createDescription.trim()}
+                disabled={
+                  submittingCreate ||
+                  !createTitle.trim() ||
+                  isEffectivelyEmptyHtml(createDescription) ||
+                  createDescription.length > 50000
+                }
                 startIcon={submittingCreate ? <CircularProgress size={18} /> : null}
               >
                 {submittingCreate ? 'Creating...' : 'Create'}
@@ -561,7 +592,7 @@ export function AiForumView() {
 
         {/* Edit post drawer */}
         <Drawer anchor="right" open={Boolean(editAiForumPost)} onClose={handleEditClose}>
-          <Stack sx={{ width: { xs: '100vw', sm: 480 }, height: '100%' }}>
+          <Stack sx={{ width: { xs: '100vw', sm: 560 }, height: '100%' }}>
             <Box
               sx={{
                 px: 3,
@@ -575,11 +606,11 @@ export function AiForumView() {
                 <Typography variant="h6">Edit post</Typography>
               </Stack>
               <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                Update your title or description and save changes.
+                Use the toolbar for formatting, links, and images.
               </Typography>
             </Box>
             <Divider />
-            <Stack spacing={2} sx={{ px: 3, py: 2, flex: 1 }}>
+            <Stack spacing={2} sx={{ px: 3, py: 2, flex: 1, overflow: 'auto', minHeight: 0 }}>
               <Typography variant="subtitle2">Post title</Typography>
               <TextField
                 value={editTitle}
@@ -591,18 +622,22 @@ export function AiForumView() {
                 inputProps={{ maxLength: 120 }}
                 helperText={`${editTitle.length}/120`}
               />
-              <Typography variant="subtitle2">Post details</Typography>
-              <TextField
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Add more details..."
-                fullWidth
-                required
-                multiline
-                minRows={6}
-                inputProps={{ maxLength: 2000 }}
-                helperText={`${editDescription.length}/2000`}
-              />
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Post details
+                </Typography>
+                <Editor
+                  value={editDescription}
+                  onChange={setEditDescription}
+                  onUploadImage={handleEditorMediaUpload}
+                  fullItem={false}
+                  placeholder="Add more details, images, or links…"
+                  sx={{ maxHeight: 380 }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                  {editDescription.length}/50000 characters (HTML)
+                </Typography>
+              </Box>
             </Stack>
             <Divider />
             <Stack direction="row" spacing={1.5} justifyContent="flex-end" sx={{ px: 3, py: 2 }}>
@@ -612,7 +647,12 @@ export function AiForumView() {
               <Button
                 variant="contained"
                 onClick={handleEditSubmit}
-                disabled={submittingEdit || !editTitle.trim() || !editDescription.trim()}
+                disabled={
+                  submittingEdit ||
+                  !editTitle.trim() ||
+                  isEffectivelyEmptyHtml(editDescription) ||
+                  editDescription.length > 50000
+                }
                 startIcon={submittingEdit ? <CircularProgress size={18} /> : null}
               >
                 {submittingEdit ? 'Updating...' : 'Update'}
@@ -683,8 +723,8 @@ export function AiForumView() {
               )}
             </Box>
 
-            {/* Filter Buttons */}
-            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+            {/* Filter + bulk select (own posts) */}
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
               {[
                 { value: 'all', label: 'All', icon: 'solar:list-bold-duotone' },
                 { value: 'pinned', label: 'Pinned', icon: 'solar:pin-bold' },
@@ -705,17 +745,26 @@ export function AiForumView() {
                   {filter.label}
                 </Button>
               ))}
+              {user && ownVisiblePostIds.length > 0 && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="inherit"
+                  onClick={handleSelectAllOwnVisible}
+                  sx={{
+                    ml: { xs: 0, sm: 0.5 },
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    borderStyle: 'dashed',
+                  }}
+                >
+                  {ownVisiblePostIds.every((id) => selectedOwnPostIds.includes(id))
+                    ? 'Unselect all'
+                    : 'Select all'}
+                </Button>
+              )}
             </Stack>
           </Stack>
-          {user && ownVisiblePostIds.length > 0 && (
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.25 }}>
-              <Button size="small" onClick={handleSelectAllOwnVisible}>
-                {ownVisiblePostIds.every((id) => selectedOwnPostIds.includes(id))
-                  ? 'Unselect all'
-                  : 'Select all'}
-              </Button>
-            </Stack>
-          )}
         </Card>
 
         {selectedCount > 0 && (
@@ -770,49 +819,28 @@ export function AiForumView() {
           </Card>
         )}
 
-        {/* Posts list */}
-        <Card sx={{ overflowX: 'hidden' }}>
-          {/* Header Row */}
-          <Box
-            sx={{
-              display: { xs: 'none', md: 'flex' },
-              alignItems: 'center',
-              gap: 2,
-              py: 2,
-              px: 3,
-              bgcolor: alpha(theme.palette.grey[500], 0.04),
-              borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ flex: 1, color: 'text.secondary' }}>
-              Topic
-            </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{ minWidth: 70, textAlign: 'center', color: 'text.secondary' }}
-            >
-              Replies
-            </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{ minWidth: 80, textAlign: 'center', color: 'text.secondary' }}
-            >
-              Views
-            </Typography>
-          </Box>
-
+        {/* Posts — flat rows, dividers between items */}
+        <Box
+          sx={{
+            width: 1,
+            overflow: 'hidden',
+            borderRadius: 1,
+            border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+            bgcolor: 'background.paper',
+          }}
+        >
           {showRefreshingState && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={28} />
             </Box>
           )}
 
-          {/* Post rows */}
           {sortedAiForumPosts.length === 0 ? (
             <Box
               sx={{
                 textAlign: 'center',
                 py: 10,
+                px: 2,
                 color: 'text.secondary',
               }}
             >
@@ -828,7 +856,7 @@ export function AiForumView() {
             </Box>
           ) : (
             <>
-              {displayedAiForumPosts.map((post) => (
+              {displayedAiForumPosts.map((post, index) => (
                 <Box key={post.id} sx={{ display: 'flex', alignItems: 'stretch', minWidth: 0 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <AiForumItem
@@ -839,13 +867,14 @@ export function AiForumView() {
                       selectable={Boolean(user && post.userId === user.id)}
                       selected={selectedOwnPostIds.includes(post.id)}
                       onToggleSelect={() => toggleOwnPostSelection(post.id)}
+                      showBottomDivider={index < displayedAiForumPosts.length - 1}
                     />
                   </Box>
                 </Box>
               ))}
             </>
           )}
-        </Card>
+        </Box>
 
         <InfinitePagination
           hasMore={hasMore}

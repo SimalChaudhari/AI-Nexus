@@ -362,7 +362,7 @@ export function AiForumDetailView() {
           Back to AI Forum
         </Button>
 
-        <Card>
+        <Card sx={{ overflow: 'visible' }}>
           <Box sx={{ p: { xs: 3, md: 4 } }}>
             <Typography
               variant="h3"
@@ -439,7 +439,7 @@ export function AiForumDetailView() {
             <Divider />
           </Box>
 
-          <Box sx={{ p: { xs: 3, md: 4 } }}>
+          <Box sx={{ p: { xs: 3, md: 4 }, overflow: 'visible', minWidth: 0 }}>
             {linkedWorkflowId ? (
               <Button
                 component={RouterLink}
@@ -459,6 +459,18 @@ export function AiForumDetailView() {
                   fontSize: '1rem',
                   lineHeight: 1.8,
                   color: 'text.primary',
+                  overflow: 'visible',
+                  '& img': {
+                    maxWidth: '100%',
+                    height: 'auto',
+                    maxHeight: 'min(560px, 78vh)',
+                    objectFit: 'contain',
+                    verticalAlign: 'middle',
+                    borderRadius: 1.5,
+                  },
+                  '& figure': {
+                    maxWidth: '100%',
+                  },
                 }}
               />
             ) : (

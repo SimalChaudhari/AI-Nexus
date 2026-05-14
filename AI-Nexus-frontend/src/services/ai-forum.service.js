@@ -1,8 +1,22 @@
 import axios from 'src/utils/axios';
+import { CONFIG } from 'src/config-global';
 import {
   buildPaginationParams,
   mapPaginatedResponse,
 } from 'src/utils/pagination-service';
+
+function getServerOrigin() {
+  const base = String(CONFIG.site.serverUrl || '').trim();
+  return base.replace(/\/api\/?$/, '');
+}
+
+function resolveUploadUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('/uploads/')) return `${getServerOrigin()}${value}`;
+  return value;
+}
 
 // Transform backend post data to frontend format (exported for socket payloads / admin list)
 export const transformAiForumPost = (post) => {
@@ -224,6 +238,20 @@ export const aiForumService = {
       return response.data;
     } catch (error) {
       console.error('Error toggling pin post:', error);
+      throw error;
+    }
+  },
+
+  async uploadPostMedia(file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post('/posts/upload-media', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return resolveUploadUrl(response.data?.url || '');
+    } catch (error) {
+      console.error('Error uploading post media:', error);
       throw error;
     }
   },

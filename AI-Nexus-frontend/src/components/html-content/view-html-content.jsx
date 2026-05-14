@@ -11,9 +11,11 @@ export function ViewHtmlContent({ html, sx, className }) {
     return null;
   }
 
+  const rootClass = ['view-html-content', className].filter(Boolean).join(' ');
+
   return (
     <Box
-      className={className}
+      className={rootClass}
       sx={{
         // Base rich-text typography used across admin/public detail pages.
         typography: 'body2',
@@ -23,22 +25,32 @@ export function ViewHtmlContent({ html, sx, className }) {
         '&::after': { content: '""', display: 'block', clear: 'both' },
         // Keep paragraph rhythm compact to match editor output.
         '& p': { mb: 0.5, '&:last-child': { mb: 0 } },
-        // Explicit list styles are required because global.css resets <ul>.
+        // global.css sets ul { list-style-type: none; padding: 0 } — restore real markers.
         '& ul': {
-          pl: 1.5,
-          my: 0.25,
-          listStyleType: 'disc',
+          pl: '1.5rem !important',
+          my: 0.5,
+          ml: 0,
+          listStyleType: 'disc !important',
           listStylePosition: 'outside',
+          listStyleImage: 'none',
         },
         '& ol': {
-          pl: 1.5,
-          my: 0.25,
-          listStyleType: 'decimal',
+          pl: '1.5rem !important',
+          my: 0.5,
+          ml: 0,
+          listStyleType: 'decimal !important',
           listStylePosition: 'outside',
+          listStyleImage: 'none',
+        },
+        '& ul > li, & ol > li': {
+          display: 'list-item',
         },
         // Tighten list spacing so bullets align with editor preview.
         '& li': { mb: 0, lineHeight: 1.9 },
         '& li > p': { m: 0, display: 'inline' },
+        '& ul li::marker, & ol li::marker': {
+          color: 'text.secondary',
+        },
         '& a': { color: 'primary.main' },
         '& strong, & b': { fontWeight: 700 },
         '& em, & i': { fontStyle: 'italic' },
@@ -67,7 +79,12 @@ export function ViewHtmlContent({ html, sx, className }) {
           border: (theme) => `1px solid ${theme.palette.info.light}`,
           backgroundColor: (theme) => theme.palette.info.lighter || theme.palette.info.light,
         },
-        '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1 },
+        '& img': {
+          maxWidth: '100%',
+          height: 'auto',
+          borderRadius: 1.5,
+          verticalAlign: 'middle',
+        },
         // Preserve CKEditor left/right float behavior for wrapped content.
         '& img[style*="float: left"], & img[style*="float:left"]': {
           margin: '0 12px 8px 0',

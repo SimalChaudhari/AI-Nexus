@@ -1,22 +1,30 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 
 import Stack from '@mui/material/Stack';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Popover from '@mui/material/Popover';
 import Dialog from '@mui/material/Dialog';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
 import LoadingButton from '@mui/lab/LoadingButton';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import { alpha, useTheme } from '@mui/material/styles';
+
+import { Iconify } from 'src/components/iconify';
 
 import { editorClasses } from '../classes';
 import { ToolbarItem } from './toolbar-item';
 
+const WIDTH_OPTIONS = ['25%', '50%', '75%', '100%'];
+
 // ----------------------------------------------------------------------
 
 export function ImageBlock({ editor, onUploadImage }) {
+  const theme = useTheme();
   const [url, setUrl] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -83,6 +91,12 @@ export function ImageBlock({ editor, onUploadImage }) {
   }
 
   const isImageSelected = editor.isActive('image');
+  const imageAttrs = isImageSelected ? editor.getAttributes('image') : {};
+
+  const rawWidthStr = (imageAttrs.width ?? '').toString().trim();
+  const alignKey = (imageAttrs.align ?? 'center').toString().toLowerCase();
+  const isCustomWidth = Boolean(rawWidthStr && !WIDTH_OPTIONS.includes(rawWidthStr));
+
   const setImageWidth = (width) => {
     editor?.chain().focus().updateAttributes('image', { width }).run();
   };
@@ -178,63 +192,236 @@ export function ImageBlock({ editor, onUploadImage }) {
 
       </Popover>
 
-      <Dialog open={manageDialogOpen && isImageSelected} onClose={() => setManageDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage Selected Image</DialogTitle>
-        <DialogContent>
-          <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Image size
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Button size="small" variant="outlined" onClick={() => setImageWidth('25%')}>25%</Button>
-              <Button size="small" variant="outlined" onClick={() => setImageWidth('50%')}>50%</Button>
-              <Button size="small" variant="outlined" onClick={() => setImageWidth('75%')}>75%</Button>
-              <Button size="small" variant="outlined" onClick={() => setImageWidth('100%')}>100%</Button>
-            </Stack>
-
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Position
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Button size="small" variant="outlined" onClick={() => setImageAlign('left')}>Left</Button>
-              <Button size="small" variant="outlined" onClick={() => setImageAlign('center')}>Center</Button>
-              <Button size="small" variant="outlined" onClick={() => setImageAlign('right')}>Right</Button>
-            </Stack>
-
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Quick layout
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => {
-                  setImageAlign('left');
-                  setImageWidth('40%');
-                  editor?.chain().focus().createParagraphNear().focus().run();
+      <Dialog
+        open={manageDialogOpen && isImageSelected}
+        onClose={() => setManageDialogOpen(false)}
+        maxWidth={false}
+        fullWidth={false}
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 2,
+              overflow: 'hidden',
+              width: 'min(100%, 440px)',
+              maxWidth: 'calc(100vw - 24px)',
+            },
+          },
+        }}
+      >
+        <DialogTitle
+          component="div"
+          sx={{
+            pr: 0.5,
+            py: 1.5,
+            px: 2.5,
+            borderBottom: (t) => `1px solid ${t.vars?.palette?.divider ?? t.palette.divider}`,
+            bgcolor: (t) => alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.1 : 0.05),
+          }}
+        >
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 1.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  bgcolor: alpha(theme.palette.primary.main, 0.14),
+                  color: 'primary.main',
                 }}
               >
-                Image left + text right
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => {
-                  setImageAlign('right');
-                  setImageWidth('40%');
-                  editor?.chain().focus().createParagraphNear().focus().run();
-                }}
-              >
-                Image right + text left
-              </Button>
+                <Iconify icon="solar:gallery-bold-duotone" width={24} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="h6" component="div" sx={{ fontWeight: 700, lineHeight: 1.25, fontSize: '1.05rem' }}>
+                  Image settings
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.35, mt: 0.25 }}>
+                  Resize, align, and wrap text beside the image
+                </Typography>
+              </Box>
             </Stack>
+            <IconButton
+              aria-label="Close"
+              edge="end"
+              size="small"
+              onClick={() => setManageDialogOpen(false)}
+              sx={{ color: 'text.secondary' }}
+            >
+              <Iconify icon="mingcute:close-line" width={20} />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 2.5, py: 2.5 }}>
+          <Stack spacing={2}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                Width preset
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ width: 1 }}>
+                {WIDTH_OPTIONS.map((w) => (
+                  <Button
+                    key={w}
+                    fullWidth
+                    size="medium"
+                    variant={rawWidthStr === w ? 'contained' : 'outlined'}
+                    onClick={() => setImageWidth(w)}
+                    aria-pressed={rawWidthStr === w}
+                    aria-label={`Set width to ${w}`}
+                    sx={{
+                      flex: 1,
+                      minWidth: 0,
+                      py: 1.1,
+                      fontWeight: 700,
+                      textTransform: 'none',
+                    }}
+                  >
+                    {w}
+                  </Button>
+                ))}
+              </Stack>
+              {isCustomWidth ? (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, lineHeight: 1.4 }}>
+                  The editor width is custom ({rawWidthStr}). Choose a preset above to normalize.
+                </Typography>
+              ) : null}
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                Alignment
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ width: 1 }}>
+                {[
+                  { value: 'left', label: 'Left', icon: 'ic:round-format-align-left' },
+                  { value: 'center', label: 'Center', icon: 'ic:round-format-align-center' },
+                  { value: 'right', label: 'Right', icon: 'ic:round-format-align-right' },
+                ].map(({ value, label, icon }) => (
+                  <Button
+                    key={value}
+                    fullWidth
+                    size="medium"
+                    variant={alignKey === value ? 'contained' : 'outlined'}
+                    onClick={() => setImageAlign(value)}
+                    aria-pressed={alignKey === value}
+                    aria-label={`Align ${label}`}
+                    sx={{
+                      flex: 1,
+                      minWidth: 0,
+                      py: 1.25,
+                      flexDirection: 'column',
+                      gap: 0.5,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Iconify icon={icon} width={22} />
+                    <Typography component="span" variant="caption" sx={{ fontWeight: 700, lineHeight: 1, display: 'block' }}>
+                      {label}
+                    </Typography>
+                  </Button>
+                ))}
+              </Stack>
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                Text beside image
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25, lineHeight: 1.45 }}>
+                Sets width to 40% and opens a new paragraph for copy next to the image.
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ width: 1 }}>
+                <Button
+                  fullWidth
+                  size="medium"
+                  variant="outlined"
+                  color="inherit"
+                  onClick={() => {
+                    setImageAlign('left');
+                    setImageWidth('40%');
+                    editor?.chain().focus().createParagraphNear().focus().run();
+                  }}
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    py: 1.25,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    flexDirection: 'column',
+                    gap: 0.75,
+                  }}
+                >
+                  <Iconify icon="solar:sidebar-minimalistic-bold" width={22} />
+                  <Typography component="span" variant="caption" sx={{ fontWeight: 700, textAlign: 'center', lineHeight: 1.25, display: 'block' }}>
+                    Image left, text right
+                  </Typography>
+                </Button>
+                <Button
+                  fullWidth
+                  size="medium"
+                  variant="outlined"
+                  color="inherit"
+                  onClick={() => {
+                    setImageAlign('right');
+                    setImageWidth('40%');
+                    editor?.chain().focus().createParagraphNear().focus().run();
+                  }}
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    py: 1.25,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    flexDirection: 'column',
+                    gap: 0.75,
+                  }}
+                >
+                  <Iconify icon="solar:sidebar-minimalistic-bold" width={22} sx={{ transform: 'scaleX(-1)' }} />
+                  <Typography component="span" variant="caption" sx={{ fontWeight: 700, textAlign: 'center', lineHeight: 1.25, display: 'block' }}>
+                    Image right, text left
+                  </Typography>
+                </Button>
+              </Stack>
+            </Box>
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button color="error" onClick={removeImage}>
-            Remove image
-          </Button>
-          <Button onClick={() => setManageDialogOpen(false)}>Done</Button>
+
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 2,
+            gap: 1.5,
+            borderTop: (t) => `1px solid ${t.vars?.palette?.divider ?? t.palette.divider}`,
+            bgcolor: (t) => alpha(t.palette.grey[500], t.palette.mode === 'dark' ? 0.06 : 0.03),
+          }}
+        >
+          <Stack direction="row" spacing={1.5} sx={{ width: 1 }}>
+            <Button
+              color="error"
+              variant="outlined"
+              size="medium"
+              fullWidth
+              startIcon={<Iconify icon="solar:trash-bin-trash-bold" width={18} />}
+              onClick={removeImage}
+              sx={{ flex: 1, textTransform: 'none', fontWeight: 700, py: 1 }}
+            >
+              Remove image
+            </Button>
+            <Button
+              variant="contained"
+              size="medium"
+              fullWidth
+              onClick={() => setManageDialogOpen(false)}
+              sx={{ flex: 1, textTransform: 'none', fontWeight: 700, py: 1 }}
+            >
+              Done
+            </Button>
+          </Stack>
         </DialogActions>
       </Dialog>
     </>

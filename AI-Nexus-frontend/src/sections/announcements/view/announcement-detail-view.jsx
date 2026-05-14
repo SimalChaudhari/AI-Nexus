@@ -26,7 +26,7 @@ import { formatViewCount } from 'src/utils/format-view-count';
 import { fDateTimePersonal } from 'src/utils/format-time';
 import { useAnnouncementCommentsSocket } from '../../../hooks/use-announcement-comments-socket';
 import { useAnnouncementsListSocket } from 'src/hooks/use-announcements-list-socket';
-import { ViewHtmlContent } from 'src/components/html-content';
+import { RichTextContent } from 'src/components/html-content';
 
 // ----------------------------------------------------------------------
 
@@ -425,7 +425,7 @@ export function AnnouncementDetailView() {
           Back to Announcements
         </Button>
 
-        <Card>
+        <Card sx={{ overflow: 'visible' }}>
           {/* Header */}
           <Box sx={{ p: { xs: 3, md: 4 } }}>
             {/* Title */}
@@ -490,15 +490,27 @@ export function AnnouncementDetailView() {
           </Box>
 
           {/* Content */}
-          <Box sx={{ p: { xs: 3, md: 4 } }}>
+          <Box sx={{ p: { xs: 3, md: 4 }, overflow: 'visible', minWidth: 0 }}>
             {announcement.description || announcement.content ? (
-              <ViewHtmlContent
+              <RichTextContent
                 html={announcement.description || announcement.content}
                 sx={{
                   typography: 'body1',
                   fontSize: '1rem',
                   lineHeight: 1.8,
                   color: 'text.primary',
+                  overflow: 'visible',
+                  '& img': {
+                    maxWidth: '100%',
+                    height: 'auto',
+                    maxHeight: 'min(560px, 78vh)',
+                    objectFit: 'contain',
+                    verticalAlign: 'middle',
+                    borderRadius: 1.5,
+                  },
+                  '& figure': {
+                    maxWidth: '100%',
+                  },
                 }}
               />
             ) : (
@@ -531,7 +543,7 @@ export function AnnouncementDetailView() {
               <QuickLinksCommentList
                 commentTree={buildAnnouncementCommentTree(comments)}
                 announcementId={id}
-                linkBase={`${paths.announcements}/${id}`}
+                linkBase={paths.announcement.details(id)}
                 formatRelativeTime={formatPersonalDateTime}
                 getCommentAuthorName={getCommentAuthorName}
                 expanded={quickLinksExpanded}

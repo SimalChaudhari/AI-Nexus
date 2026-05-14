@@ -60,6 +60,19 @@ ul {
   padding: 0;
   list-style-type: none;
 }
+
+/* Rich HTML from TipTap / forum / announcements — not app nav lists */
+.view-html-content ul,
+.view-html-content ol {
+  list-style-type: revert;
+  padding-left: 1.5rem;
+}
+.view-html-content ul {
+  list-style-type: disc;
+}
+.view-html-content ol {
+  list-style-type: decimal;
+}
 input[type='number'] {
   -moz-appearance: textfield;
   appearance: none;

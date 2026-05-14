@@ -13,6 +13,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { PaginationService } from '../common/pagination/pagination.service';
 import { EmailService } from '../service/email.service';
+import { LocalStorageModule } from '../service/local-storage.module';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { EmailService } from '../service/email.service';
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
+        LocalStorageModule,
     ],
     providers: [
         AiForumService,

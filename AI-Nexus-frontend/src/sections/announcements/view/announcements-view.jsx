@@ -328,7 +328,7 @@ export function AnnouncementsView() {
                 <Iconify icon="solar:magnifer-linear" width={20} />
               </Box>
               <InputBase
-                placeholder="Search announcements..."
+                placeholder="Search announcements…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 sx={{
@@ -381,35 +381,15 @@ export function AnnouncementsView() {
           </Stack>
         </Card>
 
-        <Card>
-          <Box
-            sx={{
-              display: { xs: 'none', md: 'flex' },
-              alignItems: 'center',
-              gap: 2,
-              py: 2,
-              px: 3,
-              bgcolor: alpha(theme.palette.grey[500], 0.04),
-              borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ flex: 1, color: 'text.secondary' }}>
-              Topic
-            </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{ minWidth: 70, textAlign: 'center', color: 'text.secondary' }}
-            >
-              Replies
-            </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{ minWidth: 80, textAlign: 'center', color: 'text.secondary' }}
-            >
-              Views
-            </Typography>
-          </Box>
-
+        <Box
+          sx={{
+            width: 1,
+            overflow: 'hidden',
+            borderRadius: 1,
+            border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+            bgcolor: 'background.paper',
+          }}
+        >
           {showRefreshingState && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={28} />
@@ -421,6 +401,7 @@ export function AnnouncementsView() {
               sx={{
                 textAlign: 'center',
                 py: 10,
+                px: 2,
                 color: 'text.secondary',
               }}
             >
@@ -436,16 +417,20 @@ export function AnnouncementsView() {
             </Box>
           ) : (
             <>
-              {displayedAnnouncements.map((announcement) => (
-                <AnnouncementItem
-                  key={announcement.id}
-                  announcement={announcement}
-                  onPinToggle={handlePinToggle}
-                />
+              {displayedAnnouncements.map((announcement, index) => (
+                <Box key={announcement.id} sx={{ display: 'flex', alignItems: 'stretch', minWidth: 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <AnnouncementItem
+                      announcement={announcement}
+                      onPinToggle={handlePinToggle}
+                      showBottomDivider={index < displayedAnnouncements.length - 1}
+                    />
+                  </Box>
+                </Box>
               ))}
             </>
           )}
-        </Card>
+        </Box>
 
         <InfinitePagination
           hasMore={hasMore}

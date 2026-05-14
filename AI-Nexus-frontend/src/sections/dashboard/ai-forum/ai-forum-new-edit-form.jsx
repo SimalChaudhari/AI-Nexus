@@ -23,6 +23,7 @@ import { Iconify } from 'src/components/iconify';
 import { toast } from 'src/components/snackbar';
 import { Form, Field } from 'src/components/hook-form';
 import { createAiForumPost, updateAiForumPost } from 'src/store/slices/aiForumSlice';
+import { aiForumService } from 'src/services/ai-forum.service';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 // ----------------------------------------------------------------------
@@ -75,6 +76,15 @@ export function AiForumNewEditForm({ currentAiForumPost, onCancel }) {
       return;
     }
     router.push(paths.admin.aiForum.list);
+  };
+
+  const handleEditorMediaUpload = async (file) => {
+    try {
+      return await aiForumService.uploadPostMedia(file);
+    } catch (error) {
+      toast.error(error?.message || 'Media upload failed');
+      return '';
+    }
   };
 
   const onSubmit = handleSubmit(async (data) => {
@@ -136,8 +146,8 @@ export function AiForumNewEditForm({ currentAiForumPost, onCancel }) {
             <Divider sx={{ mx: 3, my: 2 }} />
             <Stack spacing={3} sx={{ p: 3, pt: 0 }}>
               <Alert severity="info" icon={<Iconify icon="solar:info-circle-bold" width={22} />}>
-                Use the toolbar for <strong>bold</strong>, <strong>italic</strong>, lists, and links. The body is saved
-                as HTML.
+                Use the toolbar for <strong>bold</strong>, <strong>italic</strong>, lists, links, and images. The body is
+                saved as HTML.
               </Alert>
 
               <Field.Text name="title" label="Title" placeholder="e.g. How do I reset my progress?" />
@@ -150,6 +160,7 @@ export function AiForumNewEditForm({ currentAiForumPost, onCancel }) {
                   name="description"
                   placeholder="Describe your post in detail…"
                   fullItem={false}
+                  onUploadImage={handleEditorMediaUpload}
                 />
               </Box>
             </Stack>

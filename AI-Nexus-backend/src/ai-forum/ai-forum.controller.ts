@@ -1,6 +1,9 @@
 import {
     Controller,
+    FileTypeValidator,
     HttpStatus,
+    MaxFileSizeValidator,
+    ParseFilePipe,
     Param,
     Get,
     Query,
@@ -9,9 +12,13 @@ import {
     Put,
     Body,
     Res,
+    UploadedFile,
     UseGuards,
     Req,
+    UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { UserRole } from '../user/users.entity';
 import { Response, Request } from 'express';
 import { AiForumService } from './ai-forum.service';
@@ -27,8 +34,9 @@ import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PaginationService } from '../common/pagination/pagination.service';
+import { LocalStorageService } from '../service/local-storage.service';
 
 @ApiTags('AiForumPosts')
 @Controller('posts')
@@ -36,7 +44,47 @@ export class AiForumController {
     constructor(
         private readonly postService: AiForumService,
         private readonly paginationService: PaginationService,
+        private readonly localStorageService: LocalStorageService,
     ) {}
+
+    @Post('upload-media')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiConsumes('multipart/form-data')
+    @ApiOperation({ summary: 'Upload post editor media (images/documents)' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: { type: 'string', format: 'binary' },
+            },
+        },
+    })
+    @UseInterceptors(
+        FileInterceptor('file', {
+            storage: memoryStorage(),
+            limits: { fileSize: 50 * 1024 * 1024 },
+        }),
+    )
+    async uploadPostEditorMedia(
+        @UploadedFile(
+            new ParseFilePipe({
+                fileIsRequired: true,
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }),
+                    new FileTypeValidator({
+                        fileType:
+                            /^(image\/(jpeg|png|gif|webp|svg\+xml)|application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/i,
+                    }),
+                ],
+            }),
+        )
+        file: Express.Multer.File,
+        @Res() response: Response,
+    ) {
+        const url = await this.localStorageService.saveFile(file, 'ai-forum');
+        return response.status(HttpStatus.OK).json({ url });
+    }
 
     @Get()
     @UseGuards(OptionalJwtAuthGuard)

@@ -70,9 +70,10 @@ export class AiForumService {
                     });
                     return new Set(pinnedAiForumPosts.map((pinnedAiForumPost) => pinnedAiForumPost.postId));
                 },
-                orderByColumn: 'title',
-                orderByDirection: 'ASC',
-                orderByCaseInsensitive: true,
+                /** Newest first so page 1 includes recent posts (title A–Z hid new posts on later pages). */
+                orderByColumn: 'createdAt',
+                orderByDirection: 'DESC',
+                orderByCaseInsensitive: false,
                 prioritizePinnedInAllResults: true,
             });
         }
