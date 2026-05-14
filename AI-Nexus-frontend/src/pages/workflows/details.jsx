@@ -14,6 +14,7 @@ import { useTheme } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { encodeFlowDataForHash } from 'src/utils/encode-flowise-preview-hash';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -26,15 +27,6 @@ import { workflowService } from 'src/services/workflow.service';
 import { flowiseTemplateService } from 'src/services/flowise-template.service';
 
 const metadata = { title: `AI Resource Details | ${CONFIG.site.name}` };
-
-const encodeFlowDataForHash = (value) => {
-  try {
-    return btoa(encodeURIComponent(JSON.stringify(value)));
-  } catch {
-    return '';
-  }
-};
-
 
 const normalizeHtml = (value) => {
   if (!value) return '';

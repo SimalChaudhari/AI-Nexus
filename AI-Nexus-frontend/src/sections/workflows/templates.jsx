@@ -12,8 +12,13 @@ import Button from '@mui/material/Button';
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { WorkflowFlowiseCardIframe } from 'src/components/workflow-flowise-card-iframe/workflow-flowise-card-iframe';
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
+import {
+  shouldRenderWorkflowMiniPreview,
+  WorkflowFlowMiniPreview,
+} from 'src/components/workflow-flow-mini-preview/workflow-flow-mini-preview';
 import { GradientButton } from 'src/components/custom-button';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
@@ -284,20 +289,24 @@ export function Templates() {
       <Box sx={{ mb: { xs: 6, md: 8 } }}>
         <Stack
           direction="row"
-          alignItems="center"
+          alignItems="flex-start"
           justifyContent="space-between"
           sx={{ mb: { xs: 3, md: 4 }, gap: 2, flexWrap: 'wrap' }}
         >
-          <Typography
-            variant="h5"
-            sx={{
-              fontWeight: 'bold',
-              flex: '1 1 auto',
-              minWidth: 0,
-            }}
-          >
-            AI resource templates
-          </Typography>
+          <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 'bold',
+              }}
+            >
+              AI resource templates
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.75, maxWidth: 720 }}>
+              Flowise templates load a live mini-canvas (iframe) when the card scrolls into view; others use images or a
+              sketch. Open a template for the full editor.
+            </Typography>
+          </Box>
           <Button
             variant="contained"
             component="a"
@@ -311,6 +320,7 @@ export function Templates() {
               minWidth: { sm: 180 },
               flex: '0 0 auto',
               ml: 'auto',
+              alignSelf: { xs: 'stretch', sm: 'center' },
               borderRadius: 2,
               px: { xs: 2, sm: 2.5 },
               py: 1.1,
@@ -323,7 +333,18 @@ export function Templates() {
           </Button>
         </Stack>
         <Grid container spacing={{ xs: 3, md: 4 }}>
-          {templatesToRender.map((template) => (
+          {templatesToRender.map((template) => {
+            const flowiseBase = resolveFlowisePublicBaseUrl();
+            const useFlowiseIframe =
+              Boolean(flowiseBase) &&
+              template.source === 'flowise' &&
+              (template.flowData?.nodes?.length || 0) > 0;
+            const showMiniDiagram =
+              !useFlowiseIframe && shouldRenderWorkflowMiniPreview(template.image, template.flowData);
+            const flowNodes = template.flowData?.nodes;
+            const flowEdges = template.flowData?.edges;
+
+            return (
             <Grid key={template.id} xs={12} sm={6} lg={4}>
               <Card
                 sx={{
@@ -348,10 +369,16 @@ export function Templates() {
                     maxHeight: { xs: 230, md: 260 },
                   }}
                 >
-                  {template.image ? (
+                  {useFlowiseIframe ? (
+                    <WorkflowFlowiseCardIframe flowData={template.flowData} title={template.title} />
+                  ) : showMiniDiagram ? (
+                    <WorkflowFlowMiniPreview nodes={flowNodes} edges={flowEdges} />
+                  ) : template.image ? (
                     <Image
                       alt={template.title}
                       src={template.image}
+                      visibleByDefault
+                      disabledEffect
                       sx={{
                         position: 'absolute',
                         inset: 0,
@@ -391,13 +418,15 @@ export function Templates() {
                     sx={{
                       position: 'absolute',
                       inset: 0,
-                      background: template.image
-                        ? 'linear-gradient(to top, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.03) 45%, rgba(0,0,0,0) 70%)'
-                        : 'linear-gradient(to top, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.04) 45%, rgba(0,0,0,0) 70%)',
+                      zIndex: 1,
+                      background:
+                        template.image || showMiniDiagram || useFlowiseIframe
+                          ? 'linear-gradient(to top, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.03) 45%, rgba(0,0,0,0) 70%)'
+                          : 'linear-gradient(to top, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.04) 45%, rgba(0,0,0,0) 70%)',
                       pointerEvents: 'none',
                     }}
                   />
-                  <Box sx={{ position: 'absolute', top: 16, right: 16 }}>
+                  <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 2 }}>
                     <Chip
                       label={template.source === 'flowise' ? template.label?.title || 'Flowise Template' : template.label?.title || template.label?.name || 'Uncategorized'}
                       size="small"
@@ -499,7 +528,8 @@ export function Templates() {
                 </Box>
               </Card>
             </Grid>
-          ))}
+            );
+          })}
         </Grid>
       </Box>
     </Box>
