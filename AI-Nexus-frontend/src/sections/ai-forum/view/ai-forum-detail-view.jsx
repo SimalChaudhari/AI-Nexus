@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
-import Avatar from '@mui/material/Avatar';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import CircularProgress from 'src/components/loading/circular-progress';
@@ -22,6 +20,8 @@ import { paths } from 'src/routes/paths';
 import { aiForumService, buildAiForumCommentTree } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
 import { RichTextContent } from 'src/components/html-content';
+import { Editor } from 'src/components/editor';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { useAuthContext } from 'src/auth/hooks';
 import { formatViewCount } from 'src/utils/format-view-count';
 import { fDateTimePersonal } from 'src/utils/format-time';
@@ -58,6 +58,7 @@ export function AiForumDetailView() {
   const [submittingReply, setSubmittingReply] = useState(false);
   const [error, setError] = useState(null);
   const [commentText, setCommentText] = useState('');
+  const [commentEditorKey, setCommentEditorKey] = useState(0);
   const [quickLinksExpanded, setQuickLinksExpanded] = useState(() => new Set());
   const workflowMatch = (post?.description || '').match(/workflow\s*:\s*([0-9a-fA-F-]{36})/i);
   const linkedWorkflowId = workflowMatch?.[1] || null;
@@ -148,9 +149,22 @@ export function AiForumDetailView() {
     },
   });
 
+  const handleCommentMediaUpload = useCallback(async (file) => {
+    try {
+      return await aiForumService.uploadPostMedia(file);
+    } catch (uploadErr) {
+      toast.error(uploadErr?.response?.data?.message || uploadErr?.message || 'Media upload failed');
+      return '';
+    }
+  }, []);
+
   const handleSubmitComment = async () => {
-    if (!commentText.trim()) {
+    if (isEffectivelyEmptyHtml(commentText)) {
       toast.error('Please enter a comment');
+      return;
+    }
+    if (commentText.length > 50000) {
+      toast.error('Comment is too long');
       return;
     }
     if (!user) {
@@ -166,6 +180,7 @@ export function AiForumDetailView() {
         return [newComment, ...prev];
       });
       setCommentText('');
+      setCommentEditorKey((k) => k + 1);
       toast.success('Comment added successfully');
     } catch (err) {
       toast.error(err?.response?.data?.message || err?.message || 'Failed to add comment');
@@ -176,7 +191,7 @@ export function AiForumDetailView() {
 
   const handleEditComment = (comment) => {
     setEditingCommentId(comment.id);
-    setEditCommentText(comment.content);
+    setEditCommentText(comment.content ?? '');
   };
 
   const handleCancelEdit = () => {
@@ -185,8 +200,12 @@ export function AiForumDetailView() {
   };
 
   const handleUpdateComment = async (commentId) => {
-    if (!editCommentText.trim()) {
+    if (isEffectivelyEmptyHtml(editCommentText)) {
       toast.error('Please enter a comment');
+      return;
+    }
+    if (editCommentText.length > 50000) {
+      toast.error('Comment is too long');
       return;
     }
 
@@ -223,7 +242,15 @@ export function AiForumDetailView() {
   };
 
   const handleReplySubmit = async () => {
-    if (!replyText.trim() || !replyingToCommentId || !user) return;
+    if (!replyingToCommentId || !user) return;
+    if (isEffectivelyEmptyHtml(replyText)) {
+      toast.error('Please enter a reply');
+      return;
+    }
+    if (replyText.length > 50000) {
+      toast.error('Reply is too long');
+      return;
+    }
 
     try {
       setSubmittingReply(true);
@@ -309,9 +336,7 @@ export function AiForumDetailView() {
     }
   };
 
-  const formatRelativeTime = (date) => {
-    return fDateTimePersonal(date) || 'Just now';
-  };
+  const formatRelativeTime = (date) => fDateTimePersonal(date) || 'Just now';
 
   if (loading) {
     return (
@@ -531,6 +556,8 @@ export function AiForumDetailView() {
                 updatingComment={updatingComment}
                 onDeleteComment={handleDeleteCommentClick}
                 deletingComment={deletingComment}
+                richText
+                onUploadCommentImage={handleCommentMediaUpload}
               />
             )}
 
@@ -539,19 +566,25 @@ export function AiForumDetailView() {
             {user ? (
               <Box>
                 <Stack spacing={2}>
-                  <TextField
-                    multiline
-                    rows={4}
-                    placeholder="Write a comment..."
+                  <Editor
+                    key={commentEditorKey}
                     value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    fullWidth
-                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+                    onChange={setCommentText}
+                    onUploadImage={handleCommentMediaUpload}
+                    fullItem={false}
+                    placeholder="Write a comment…"
+                    sx={{ maxHeight: 320 }}
                   />
+                  <Typography variant="caption" color="text.secondary">
+                    {commentText.length}/50000 characters (HTML)
+                  </Typography>
                   <Stack direction="row" spacing={2} justifyContent="flex-end">
                     <Button
                       variant="outlined"
-                      onClick={() => setCommentText('')}
+                      onClick={() => {
+                        setCommentText('');
+                        setCommentEditorKey((k) => k + 1);
+                      }}
                       disabled={submittingComment}
                     >
                       Clear
@@ -559,7 +592,11 @@ export function AiForumDetailView() {
                     <Button
                       variant="contained"
                       onClick={handleSubmitComment}
-                      disabled={submittingComment || !commentText.trim()}
+                      disabled={
+                        submittingComment ||
+                        isEffectivelyEmptyHtml(commentText) ||
+                        commentText.length > 50000
+                      }
                       startIcon={submittingComment ? <CircularProgress size={16} /> : null}
                     >
                       {submittingComment ? 'Posting...' : 'Post Comment'}

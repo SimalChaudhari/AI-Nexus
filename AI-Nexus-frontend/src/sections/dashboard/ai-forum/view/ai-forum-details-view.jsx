@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -20,6 +20,7 @@ import { fDateTime, fDateTimePersonal } from 'src/utils/format-time';
 import { aiForumService, buildAiForumCommentTree } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
 import { ViewHtmlContent } from 'src/components/html-content';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { useAuthContext } from 'src/auth/hooks';
 import { useAiForumCommentsSocket } from '../../../../hooks/use-ai-forum-comments-socket';
 
@@ -74,6 +75,15 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
     },
   });
 
+  const handleCommentMediaUpload = useCallback(async (file) => {
+    try {
+      return await aiForumService.uploadPostMedia(file);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Media upload failed');
+      return '';
+    }
+  }, []);
+
   const handleDeleteCommentClick = (commentId) => setDeleteCommentId(commentId);
   const handleCloseDeleteConfirm = () => setDeleteCommentId(null);
 
@@ -110,7 +120,7 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
 
   const handleEditComment = (comment) => {
     setEditingCommentId(comment.id);
-    setEditCommentText(comment.content || '');
+    setEditCommentText(comment.content ?? '');
   };
 
   const handleCancelEdit = () => {
@@ -119,7 +129,14 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
   };
 
   const handleUpdateComment = async (commentId) => {
-    if (!editCommentText.trim()) return;
+    if (isEffectivelyEmptyHtml(editCommentText)) {
+      toast.error('Please enter a comment');
+      return;
+    }
+    if (editCommentText.length > 50000) {
+      toast.error('Comment is too long');
+      return;
+    }
     try {
       setUpdatingComment(commentId);
       const updated = await aiForumService.updateComment(commentId, { content: editCommentText.trim() });
@@ -288,6 +305,8 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
                 updatingComment={updatingComment}
                 onDeleteComment={handleDeleteCommentClick}
                 deletingComment={deletingCommentId}
+                richText
+                onUploadCommentImage={handleCommentMediaUpload}
               />
             )}
 

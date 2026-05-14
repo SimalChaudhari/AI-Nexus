@@ -12,6 +12,9 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Iconify } from 'src/components/iconify';
 import { RouterLink } from 'src/routes/components';
 import { paths } from 'src/routes/paths';
+import { Editor } from 'src/components/editor';
+import { RichTextContent } from 'src/components/html-content';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 // ----------------------------------------------------------------------
 // Comment-style list: avatar, name, time, like + reply + edit/delete, content.
@@ -50,6 +53,10 @@ export function QuickLinksCommentList({
   showEditDeleteForAll = false,
   /** When true, like and reply are disabled (e.g. admin panel - admin cannot like or reply) */
   disableLikeAndReply = false,
+  /** When true, reply/edit use the TipTap editor (AI forum); comment bodies render as HTML */
+  richText = false,
+  /** Upload handler for editor image toolbar (same contract as post editor) */
+  onUploadCommentImage,
 }) {
   const theme = useTheme();
 
@@ -238,16 +245,34 @@ export function QuickLinksCommentList({
                   <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
                     Replying to {authorName}
                   </Typography>
-                  <TextField
-                    multiline
-                    rows={2}
-                    placeholder="Write a reply..."
-                    value={replyText}
-                    onChange={(e) => onReplyTextChange?.(e.target.value)}
-                    fullWidth
-                    onClick={(e) => e.stopPropagation()}
-                    sx={{ mb: 1, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
-                  />
+                  {richText ? (
+                    <Box
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      sx={{ mb: 1 }}
+                    >
+                      <Editor
+                        key={`reply-${replyingToCommentId}`}
+                        value={replyText || ''}
+                        onChange={onReplyTextChange}
+                        onUploadImage={onUploadCommentImage}
+                        fullItem={false}
+                        placeholder="Write a reply…"
+                        sx={{ maxHeight: 260 }}
+                      />
+                    </Box>
+                  ) : (
+                    <TextField
+                      multiline
+                      rows={2}
+                      placeholder="Write a reply..."
+                      value={replyText}
+                      onChange={(e) => onReplyTextChange?.(e.target.value)}
+                      fullWidth
+                      onClick={(e) => e.stopPropagation()}
+                      sx={{ mb: 1, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+                    />
+                  )}
                   <Stack direction="row" spacing={1}>
                     <Button
                       size="small"
@@ -269,7 +294,10 @@ export function QuickLinksCommentList({
                         e.stopPropagation();
                         onSubmitReply?.();
                       }}
-                      disabled={submittingReply || !replyText?.trim()}
+                      disabled={
+                        submittingReply ||
+                        (richText ? isEffectivelyEmptyHtml(replyText) : !replyText?.trim())
+                      }
                       startIcon={submittingReply ? <CircularProgress size={14} /> : null}
                     >
                       {submittingReply ? 'Posting...' : 'Reply'}
@@ -279,15 +307,33 @@ export function QuickLinksCommentList({
               )}
               {isEditing && (
                 <Box sx={{ mt: 2 }}>
-                  <TextField
-                    multiline
-                    rows={3}
-                    value={editCommentText}
-                    onChange={(e) => onEditCommentTextChange?.(e.target.value)}
-                    fullWidth
-                    onClick={(e) => e.stopPropagation()}
-                    sx={{ mb: 2, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
-                  />
+                  {richText ? (
+                    <Box
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      sx={{ mb: 2 }}
+                    >
+                      <Editor
+                        key={`edit-${editingCommentId}`}
+                        value={editCommentText || ''}
+                        onChange={onEditCommentTextChange}
+                        onUploadImage={onUploadCommentImage}
+                        fullItem={false}
+                        placeholder="Edit comment…"
+                        sx={{ maxHeight: 280 }}
+                      />
+                    </Box>
+                  ) : (
+                    <TextField
+                      multiline
+                      rows={3}
+                      value={editCommentText}
+                      onChange={(e) => onEditCommentTextChange?.(e.target.value)}
+                      fullWidth
+                      onClick={(e) => e.stopPropagation()}
+                      sx={{ mb: 2, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+                    />
+                  )}
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     <Button
                       size="small"
@@ -309,7 +355,12 @@ export function QuickLinksCommentList({
                         e.stopPropagation();
                         onUpdateComment?.(comment.id);
                       }}
-                      disabled={updatingComment === comment.id || !editCommentText?.trim()}
+                      disabled={
+                        updatingComment === comment.id ||
+                        (richText
+                          ? isEffectivelyEmptyHtml(editCommentText)
+                          : !editCommentText?.trim())
+                      }
                       startIcon={updatingComment === comment.id ? <CircularProgress size={14} /> : null}
                     >
                       {updatingComment === comment.id ? 'Updating...' : 'Update'}
@@ -317,14 +368,42 @@ export function QuickLinksCommentList({
                   </Stack>
                 </Box>
               )}
-              {!isReplying && !isEditing && (
-                <Typography
-                  variant="body2"
-                  sx={{ color: 'text.primary', whiteSpace: 'pre-line', lineHeight: 1.6 }}
-                >
-                  {(comment.content || '').trim() || '—'}
-                </Typography>
-              )}
+              {!isReplying && !isEditing &&
+                (richText ? (
+                  (comment.content || '').trim() ? (
+                    <Box
+                      onClick={(e) => e.stopPropagation()}
+                      sx={{
+                        typography: 'body2',
+                        lineHeight: 1.65,
+                        color: 'text.primary',
+                        overflow: 'visible',
+                        '& img': {
+                          maxWidth: '100%',
+                          height: 'auto',
+                          maxHeight: 'min(400px, 70vh)',
+                          objectFit: 'contain',
+                          verticalAlign: 'middle',
+                          borderRadius: 1,
+                        },
+                        '& figure': { maxWidth: '100%' },
+                      }}
+                    >
+                      <RichTextContent html={(comment.content || '').trim()} />
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.disabled', lineHeight: 1.6 }}>
+                      —
+                    </Typography>
+                  )
+                ) : (
+                  <Typography
+                    variant="body2"
+                    sx={{ color: 'text.primary', whiteSpace: 'pre-line', lineHeight: 1.6 }}
+                  >
+                    {(comment.content || '').trim() || '—'}
+                  </Typography>
+                ))}
             </Box>
           </Stack>
         </Box>
