@@ -2,6 +2,7 @@ import Alert from '@mui/material/Alert';
 import { useTheme } from '@mui/material/styles';
 
 import { usePathname } from 'src/routes/hooks';
+import { paths } from 'src/routes/paths';
 
 import { useBoolean } from 'src/hooks/use-boolean';
 import { useSettingsContext } from 'src/components/settings';
@@ -28,6 +29,9 @@ export function MainLayout({ sx, data, children }) {
   const settings = useSettingsContext();
 
   const homePage = pathname === '/';
+
+  const hideChatbotOnAiForum =
+    pathname === paths.aiForum.root || pathname.startsWith(`${paths.aiForum.root}/`);
 
   const layoutQuery = 'md';
 
@@ -96,7 +100,7 @@ export function MainLayout({ sx, data, children }) {
         sx={sx}
       >
         <Main>{children}</Main>
-        <ChatbotWidget title="AI Nexus Chatbot" provider="openrouter" />
+        {!hideChatbotOnAiForum && <ChatbotWidget title="AI Nexus Chatbot" provider="openrouter" />}
       </LayoutSection>
     </>
   );
