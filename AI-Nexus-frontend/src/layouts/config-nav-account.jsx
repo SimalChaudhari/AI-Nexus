@@ -17,6 +17,11 @@ export const _account = [
     icon: <Iconify icon="solar:diploma-verified-bold-duotone" />,
   },
   {
+    label: 'Persona',
+    href: paths.profile.persona,
+    icon: <Iconify icon="solar:user-speak-rounded-bold-duotone" />,
+  },
+  {
     label: 'Profile',
     href: paths.profile.root, // Common profile page for both User and Admin
     icon: (

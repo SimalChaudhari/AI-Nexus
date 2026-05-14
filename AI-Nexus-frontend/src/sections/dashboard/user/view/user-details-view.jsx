@@ -73,6 +73,7 @@ export function UserDetailsView({ user, loading, error }) {
         { label: 'Last Name', value: user.lastname || '-' },
         { label: 'Username', value: user.username || '-' },
         { label: 'Email', value: user.email || '-' },
+        { label: 'Contact number', value: user.contactNumber || user.phoneNumber || '—' },
       ],
     },
     {

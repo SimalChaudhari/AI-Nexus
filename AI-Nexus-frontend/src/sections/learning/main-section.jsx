@@ -9,6 +9,7 @@ import { MyFavorites } from './my-favorites';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useAuthContext } from 'src/auth/hooks';
 import { LearningProfileSetupDialog } from './components/learning-profile-setup-dialog';
+import { isLearningProfileIncomplete } from './components/learning-profile-editor';
 
 // ----------------------------------------------------------------------
 
@@ -23,11 +24,7 @@ export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: se
   const shouldOpenProfileDialog = useMemo(() => {
     if (!authenticated) return false;
     if (profileSetupCompleted) return false;
-    const missingExperience = !String(user?.aiExperienceLevel || '').trim();
-    const missingGoals = !Array.isArray(user?.aiLearningGoals) || user.aiLearningGoals.length === 0;
-    const missingAreas = !Array.isArray(user?.aiUseAreas) || user.aiUseAreas.length === 0;
-    const missingRole = !String(user?.financeRole || user?.persona || '').trim();
-    return missingExperience || missingGoals || missingAreas || missingRole;
+    return isLearningProfileIncomplete(user);
   }, [authenticated, user, profileSetupCompleted]);
 
   useEffect(() => {

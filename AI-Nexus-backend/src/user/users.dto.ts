@@ -1,5 +1,16 @@
 //users.dto.ts
-import { IsOptional, IsNotEmpty, IsString, IsEmail, IsEnum, IsBoolean, IsArray, Matches, IsObject } from 'class-validator';
+import {
+    IsOptional,
+    IsNotEmpty,
+    IsString,
+    IsEmail,
+    IsEnum,
+    IsBoolean,
+    IsArray,
+    Matches,
+    IsObject,
+    MaxLength,
+} from 'class-validator';
 import { UserRole, UserStatus } from './users.entity';
 
 // For registration - all fields required
@@ -51,6 +62,11 @@ export class UserDto {
     @IsOptional()
     @IsString()
     avatarUrl?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(48)
+    contactNumber?: string;
 
     /** Optional for admin-created users — backend generates a temporary password and emails it if omitted. */
     @IsOptional()
@@ -140,6 +156,11 @@ export class UpdateUserDto {
     @IsOptional()
     @IsString()
     avatarUrl?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(48)
+    contactNumber?: string;
 
     @IsOptional()
     @IsString()

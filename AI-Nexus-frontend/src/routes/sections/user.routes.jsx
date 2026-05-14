@@ -17,6 +17,7 @@ const UserProfilePage = lazy(() => import('src/pages/user/profile'));
 
 // Common Profile Page (works for both User and Admin)
 const CommonProfilePage = lazy(() => import('src/pages/profile'));
+const PersonaSettingsPage = lazy(() => import('src/pages/profile/persona'));
 
 // Dashboard User Pages (legacy routes)
 const UserProfileOwnPage = lazy(() => import('src/pages/dashboard/user/profile-own'));
@@ -68,6 +69,7 @@ export const userRoutes = [
     element: CONFIG.auth.skip ? <>{layoutContent}</> : <AuthGuard>{layoutContent}</AuthGuard>,
     children: [
       { element: <CommonProfilePage />, index: true },
+      { path: 'persona', element: <PersonaSettingsPage /> },
     ],
   },
   // Root level user profile route: /user/profile (for regular users)

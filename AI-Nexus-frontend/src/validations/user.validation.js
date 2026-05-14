@@ -1,4 +1,5 @@
 import { z as zod } from 'zod';
+import { isValidPhoneNumber } from 'react-phone-number-input';
 
 // ----------------------------------------------------------------------
 
@@ -12,6 +13,15 @@ const avatarFieldSchema = zod
       typeof val === 'string',
     { message: 'Please upload a valid image file' }
   );
+
+export const optionalPhoneSchema = zod
+  .string()
+  .optional()
+  .refine((val) => !val || String(val).trim() === '' || isValidPhoneNumber(String(val).trim()), {
+    message: 'Please enter a valid phone number or leave blank',
+  });
+
+// ----------------------------------------------------------------------
 
 const blockedEmailDomains = [
   'example.com',
@@ -56,6 +66,7 @@ export const AuthSignUpSchema = zod.object({
   firstName: zod.string().min(1, { message: 'First name is required!' }),
   lastName: zod.string().min(1, { message: 'Last name is required!' }),
   email: emailSchema,
+  contactNumber: optionalPhoneSchema,
   password: zod
     .string()
     .min(1, { message: 'Password is required!' })
@@ -92,6 +103,8 @@ export const NewUserSchema = zod.object({
   email: emailSchema,
 
   avatar: avatarFieldSchema,
+
+  contactNumber: optionalPhoneSchema,
 
   status: zod
     .string()
@@ -143,13 +156,7 @@ export const UpdateUserSchema = zod.object({
 
   avatar: avatarFieldSchema,
 
-  phoneNumber: zod
-    .string()
-    .optional()
-    .refine(
-      (val) => !val || val === '' || /^[0-9]{10}$/.test(val),
-      { message: 'Mobile number must be exactly 10 digits!' }
-    ),
+  contactNumber: optionalPhoneSchema,
 
   status: zod
     .string()
@@ -190,6 +197,8 @@ export const ProfileSchema = zod.object({
   email: emailSchema,
 
   avatar: avatarFieldSchema,
+
+  contactNumber: optionalPhoneSchema,
 });
 
 // ----------------------------------------------------------------------

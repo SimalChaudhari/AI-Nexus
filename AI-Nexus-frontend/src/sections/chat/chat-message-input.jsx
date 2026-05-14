@@ -41,7 +41,7 @@ export function ChatMessageInput({
       name: `${user?.displayName}`,
       lastActivity: today(),
       avatarUrl: `${user?.photoURL}`,
-      phoneNumber: `${user?.phoneNumber}`,
+      phoneNumber: `${user?.contactNumber ?? user?.phoneNumber ?? ''}`,
       status: 'online',
     }),
     [user]

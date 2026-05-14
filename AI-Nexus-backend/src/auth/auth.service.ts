@@ -692,6 +692,7 @@ export class AuthService {
         existingDraft.firstname = userDto.firstname;
         existingDraft.lastname = userDto.lastname;
         existingDraft.email = userDto.email;
+        existingDraft.contactNumber = userDto.contactNumber?.trim() || null;
         existingDraft.persona = userDto.persona?.trim() || existingDraft.persona || null;
         existingDraft.password = hashedPassword;
         existingDraft.authProvider = AuthProvider.LOCAL;
@@ -709,6 +710,7 @@ export class AuthService {
           firstname: userDto.firstname,
           lastname: userDto.lastname,
           email: userDto.email,
+          contactNumber: userDto.contactNumber?.trim() || null,
           persona: userDto.persona?.trim() || null,
           password: hashedPassword,
           authProvider: AuthProvider.LOCAL,
@@ -1986,6 +1988,7 @@ export class AuthService {
         firstName: user.firstname || '',
         lastName: user.lastname || '',
         email: user.email || '',
+        contactNumber: user.contactNumber || '',
         address: user.nricExtractedAddress || '',
         dateOfBirth: user.nricExtractedDateOfBirth || '',
         nationality: user.nricExtractedNationality || '',
@@ -2296,6 +2299,7 @@ export class AuthService {
         verifiedSignupUser.firstname = userDto.firstname;
         verifiedSignupUser.lastname = userDto.lastname;
         verifiedSignupUser.email = userDto.email;
+        verifiedSignupUser.contactNumber = userDto.contactNumber?.trim() || null;
         verifiedSignupUser.persona = userDto.persona?.trim() || verifiedSignupUser.persona || null;
         verifiedSignupUser.password = hashedPassword;
         verifiedSignupUser.authProvider = AuthProvider.LOCAL;
@@ -2316,6 +2320,7 @@ export class AuthService {
           firstname: userDto.firstname,
           lastname: userDto.lastname,
           email: userDto.email,
+          contactNumber: userDto.contactNumber?.trim() || null,
           persona: userDto.persona?.trim() || null,
           password: hashedPassword,
           authProvider: AuthProvider.LOCAL,

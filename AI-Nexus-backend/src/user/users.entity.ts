@@ -67,6 +67,10 @@ export class UserEntity {
     @Column({ nullable: true, type: 'varchar' })
     avatarUrl?: string | null;
 
+    /** E.164 or formatted contact number (mobile / phone) */
+    @Column({ nullable: true, type: 'varchar', length: 48 })
+    contactNumber?: string | null;
+
     @Column({ type: 'boolean', default: false })
     isVerified!: boolean;
 

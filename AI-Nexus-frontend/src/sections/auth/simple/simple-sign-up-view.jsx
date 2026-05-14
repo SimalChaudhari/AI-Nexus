@@ -155,6 +155,7 @@ export function SimpleSignUpView() {
     firstName: '',
     lastName: '',
     email: '',
+    contactNumber: '',
     password: '',
   };
 
@@ -206,6 +207,7 @@ export function SimpleSignUpView() {
           firstName: prefill.firstName || '',
           lastName: prefill.lastName || '',
           email: prefill.email || '',
+          contactNumber: prefill.contactNumber || '',
           password: '',
         });
       })
@@ -262,6 +264,7 @@ export function SimpleSignUpView() {
         firstName: parsed.values.firstName || '',
         lastName: parsed.values.lastName || '',
         email: parsed.values.email || '',
+        contactNumber: parsed.values.contactNumber || '',
         password: parsed.values.password || '',
       });
     } catch {
@@ -440,6 +443,7 @@ export function SimpleSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        contactNumber: data.contactNumber,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         eligibilityData,
       });
@@ -479,6 +483,7 @@ export function SimpleSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        contactNumber: data.contactNumber,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         draftUserId: cachedDraftUserId || undefined,
         eligibilityData,
@@ -495,6 +500,7 @@ export function SimpleSignUpView() {
               firstName: data.firstName,
               lastName: data.lastName,
               email: data.email,
+              contactNumber: data.contactNumber,
               password: data.password,
             },
           })
@@ -700,6 +706,8 @@ export function SimpleSignUpView() {
           ),
         }}
       />
+
+      <Field.Phone name="contactNumber" label="Contact number (optional)" />
 
       <Field.Text
         name="password"

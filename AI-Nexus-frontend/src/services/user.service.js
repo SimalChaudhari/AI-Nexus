@@ -42,7 +42,7 @@ const transformUser = (user) => {
     id: user._id || user.id,
     name: fullName,
     email: user.email || '',
-    phoneNumber: user.phoneNumber || user.mobile || '',
+    contactNumber: user.contactNumber || user.phoneNumber || user.mobile || '',
     company: user.company || '-',
     role: user.role || 'User',
     status: capitalizeStatus(user.status) || 'Active',

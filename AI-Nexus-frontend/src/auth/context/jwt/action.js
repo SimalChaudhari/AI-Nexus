@@ -15,6 +15,7 @@ const normalizeUserForSession = (user) => {
     lastname: user.lastname ?? user.lastName ?? '',
     isVerified: user.isVerified ?? user.isVerify ?? false,
     avatarUrl: resolveAssetUrl(user.avatarUrl ?? user.photoURL ?? ''),
+    contactNumber: user.contactNumber ?? user.phoneNumber ?? '',
   };
 };
 
@@ -52,8 +53,19 @@ export const signInWithPassword = async ({ email, username, password }) => {
 /** **************************************
  * Sign up with backend API
  *************************************** */
-export const signUp = async ({ email, password, firstName, lastName, username, signupAccessToken, eligibilityData }) => {
+export const signUp = async ({
+  email,
+  password,
+  firstName,
+  lastName,
+  username,
+  contactNumber,
+  signupAccessToken,
+  eligibilityData,
+}) => {
   try {
+    const trimmedContact =
+      typeof contactNumber === 'string' && contactNumber.trim() ? contactNumber.trim() : undefined;
     const params = {
       username: username || email.split('@')[0], // Use email prefix as username if not provided
       firstname: firstName,
@@ -67,6 +79,7 @@ export const signUp = async ({ email, password, firstName, lastName, username, s
         typeof eligibilityData?.wantsIscaMembership === 'boolean' ? eligibilityData.wantsIscaMembership : undefined,
       eligibilityType: eligibilityData?.eligibilityType || undefined,
       eligibilitySnapshot: eligibilityData?.snapshot || undefined,
+      ...(trimmedContact ? { contactNumber: trimmedContact } : {}),
     };
     const res = await axios.post('/auth/register', params);
     const { user, message } = res.data;
@@ -99,11 +112,14 @@ export const saveMembershipSignupDraft = async ({
   firstName,
   lastName,
   username,
+  contactNumber,
   signupAccessToken,
   draftUserId,
   eligibilityData,
 }) => {
   try {
+    const trimmedContact =
+      typeof contactNumber === 'string' && contactNumber.trim() ? contactNumber.trim() : undefined;
     const params = {
       username: username || email.split('@')[0],
       firstname: firstName,
@@ -118,6 +134,7 @@ export const saveMembershipSignupDraft = async ({
         typeof eligibilityData?.wantsIscaMembership === 'boolean' ? eligibilityData.wantsIscaMembership : undefined,
       eligibilityType: eligibilityData?.eligibilityType || undefined,
       eligibilitySnapshot: eligibilityData?.snapshot || undefined,
+      ...(trimmedContact ? { contactNumber: trimmedContact } : {}),
     };
     const res = await axios.post('/auth/membership-signup-draft', params);
     const nextDraftUserId = res?.data?.draftUserId || res?.data?.user?.id || '';

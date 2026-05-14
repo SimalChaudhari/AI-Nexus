@@ -74,7 +74,8 @@ export class UserService {
                     qb.where('user.firstname ILIKE :search', { search: `%${normalized.search}%` })
                         .orWhere('user.lastname ILIKE :search', { search: `%${normalized.search}%` })
                         .orWhere('user.username ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.email ILIKE :search', { search: `%${normalized.search}%` });
+                        .orWhere('user.email ILIKE :search', { search: `%${normalized.search}%` })
+                        .orWhere('user.contactNumber ILIKE :search', { search: `%${normalized.search}%` });
                 }),
             );
         }
@@ -171,6 +172,7 @@ export class UserService {
             aiUseAreas: normalizeStringArray(createUserDto.aiUseAreas),
             financeRole: createUserDto.financeRole?.trim() || null,
             avatarUrl: createUserDto.avatarUrl?.trim() || null,
+            contactNumber: createUserDto.contactNumber?.trim() || null,
             password: passwordHash,
             authProvider: AuthProvider.LOCAL,
             role: createUserDto.role || UserRole.User,
@@ -272,6 +274,10 @@ export class UserService {
             if (updateUserDto.persona === undefined) {
                 user.persona = updateUserDto.financeRole?.trim() || null;
             }
+        }
+        if (updateUserDto.contactNumber !== undefined) {
+            const trimmed = updateUserDto.contactNumber?.trim();
+            user.contactNumber = trimmed ? trimmed : null;
         }
         if (updateUserDto.password) {
             // Hash new password

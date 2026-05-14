@@ -12,7 +12,8 @@ export const USER_LIST_STATUS_OPTIONS = [{ value: 'all', label: 'All' }, ...USER
 
 export const USER_LIST_TABLE_HEAD = [
   { id: 'name', label: 'Name' },
-  { id: 'username', label: 'Username', width: 180 },
+  { id: 'username', label: 'Username', width: 160 },
+  { id: 'contactNumber', label: 'Contact', width: 140 },
   // { id: 'company', label: 'Company', width: 220 },
   { id: 'authProvider', label: 'Auth provider', width: 140 },
   { id: 'createdAt', label: 'Created', width: 120 },

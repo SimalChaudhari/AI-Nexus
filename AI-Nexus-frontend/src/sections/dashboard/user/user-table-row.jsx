@@ -76,6 +76,10 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
 
         <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.username}</TableCell>
 
+        <TableCell sx={{ whiteSpace: 'nowrap', typography: 'body2', color: 'text.secondary' }}>
+          {row.contactNumber || row.phoneNumber || '—'}
+        </TableCell>
+
         {/* <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.company}</TableCell> */}
 
         <TableCell sx={{ whiteSpace: 'nowrap' }}>

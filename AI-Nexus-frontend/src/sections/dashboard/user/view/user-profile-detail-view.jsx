@@ -50,7 +50,7 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
     role: currentAuthUser.role || fetchedUser?.role || 'User',
     isVerified: currentAuthUser.isVerified || fetchedUser?.isVerified || false,
     avatarUrl: currentAuthUser.avatarUrl || fetchedUser?.avatarUrl || null,
-    phoneNumber: currentAuthUser.phoneNumber || fetchedUser?.phoneNumber,
+    contactNumber: currentAuthUser.contactNumber || currentAuthUser.phoneNumber || fetchedUser?.contactNumber || fetchedUser?.phoneNumber,
     company: currentAuthUser.company || fetchedUser?.company,
     name: [currentAuthUser.firstname, currentAuthUser.lastname].filter(Boolean).join(' ') || currentAuthUser.name || fetchedUser?.name,
   } : fetchedUser;

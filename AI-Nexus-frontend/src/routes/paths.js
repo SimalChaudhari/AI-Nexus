@@ -232,6 +232,8 @@ export const paths = {
   // COMMON PROFILE (works for both User and Admin)
   profile: {
     root: '/profile',
+    /** Learning persona & preferences (same editor as onboarding, dismissible) */
+    persona: '/profile/persona',
   },
   // ADMIN
   admin: {

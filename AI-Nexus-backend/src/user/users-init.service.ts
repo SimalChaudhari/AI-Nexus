@@ -236,6 +236,24 @@ export class UsersInitService implements OnModuleInit {
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "eligibilityCheckedAt" TIMESTAMP
       `);
+      await queryRunner.query(`
+        DO $REN$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phoneNumber'
+          ) AND NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'contactNumber'
+          ) THEN
+            ALTER TABLE "users" RENAME COLUMN "phoneNumber" TO "contactNumber";
+          END IF;
+        END $REN$
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "contactNumber" varchar(48)
+      `);
     } catch (error) {
       console.error(
         '❌ Error ensuring users profile columns:',

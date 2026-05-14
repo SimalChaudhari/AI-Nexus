@@ -18,6 +18,7 @@ export function useMockedUser() {
     displayName: 'Jaydon Frankie',
     email: 'info@alovate.io',
     photoURL: _mock.image.avatar(24),
+    contactNumber: _mock.phoneNumber(1),
     phoneNumber: _mock.phoneNumber(1),
     country: _mock.countryNames(1),
     address: '90210 Broadway Blvd',

@@ -19,6 +19,7 @@ import { useBoolean } from 'src/hooks/use-boolean';
 
 import { Iconify } from 'src/components/iconify';
 import { Form, Field } from 'src/components/hook-form';
+import { optionalPhoneSchema } from 'src/validations/user.validation';
 
 import { signUp } from 'src/auth/context/jwt/action';
 import { useAuthContext } from 'src/auth/hooks';
@@ -37,6 +38,7 @@ export const SignUpSchema = zod.object({
     .string()
     .min(1, { message: 'Email is required!' })
     .email({ message: 'Email must be a valid email address!' }),
+  contactNumber: optionalPhoneSchema,
   password: zod
     .string()
     .min(1, { message: 'Password is required!' })
@@ -59,6 +61,7 @@ export function JwtSignUpView() {
     firstName: '',
     lastName: '',
     email: '',
+    contactNumber: '',
     password: '',
   };
 
@@ -80,6 +83,7 @@ export function JwtSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        contactNumber: data.contactNumber,
       });
       await checkUserSession?.();
 
@@ -121,6 +125,8 @@ export function JwtSignUpView() {
       </Stack>
 
       <Field.Text name="email" label="Email address" InputLabelProps={{ shrink: true }} />
+
+      <Field.Phone name="contactNumber" label="Contact number (optional)" />
 
       <Field.Text
         name="password"

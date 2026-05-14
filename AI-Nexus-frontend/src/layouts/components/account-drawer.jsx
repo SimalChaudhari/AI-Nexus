@@ -59,7 +59,7 @@ export function AccountDrawer({ data = [], sx, ...other }) {
         router.push(path);
       }
     },
-    [handleCloseDrawer, router, user]
+    [handleCloseDrawer, router]
   );
 
   const renderAvatar = (

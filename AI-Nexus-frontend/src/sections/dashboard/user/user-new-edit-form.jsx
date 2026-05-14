@@ -58,6 +58,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
       firstname: currentUser?.firstname || '',
       lastname: currentUser?.lastname || '',
       email: currentUser?.email || '',
+      contactNumber: currentUser?.contactNumber || currentUser?.phoneNumber || '',
       avatar: currentUser?.avatarUrl || null,
     };
     if (isProfileEdit) {
@@ -116,6 +117,8 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           firstname: data.firstname?.trim(),
           lastname: data.lastname?.trim(),
           email: data.email?.trim().toLowerCase(),
+          contactNumber:
+            typeof data.contactNumber === 'string' && data.contactNumber.trim() ? data.contactNumber.trim() : null,
           avatar: data.avatar,
         };
 
@@ -202,7 +205,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
         <Card sx={{ ...cardSx, p: { xs: 2.5, md: 4 } }}>
           <CardHeader
             title="Profile details"
-            subheader="Update your name, username, email, and profile image."
+            subheader="Update your name, username, email, contact number, and profile image."
             sx={{ p: 0, mb: 3 }}
           />
           <Divider sx={{ mb: 4 }} />
@@ -245,6 +248,9 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               <Field.Text name="lastname" label="Last name" />
               <Field.Text name="username" label="Username" />
               <Field.Text name="email" label="Email" type="email" />
+              <Box sx={{ gridColumn: { xs: 'span 1', sm: '1 / -1' } }}>
+                <Field.Phone name="contactNumber" label="Contact number" />
+              </Box>
             </Box>
           </Stack>
 
@@ -322,6 +328,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                 </Box>
                 <Stack spacing={3}>
                   <Field.Text name="email" label="Email address" type="email" />
+                  <Field.Phone name="contactNumber" label="Contact number" />
                   <Field.Text
                     name="password"
                     label="Password (optional)"
@@ -441,6 +448,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               </Box>
               <Stack spacing={3}>
                 <Field.Text name="email" label="Email address" type="email" />
+                <Field.Phone name="contactNumber" label="Contact number" />
                 <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
                   {STATUS_OPTIONS.map((opt) => (
                     <MenuItem key={opt.value} value={opt.value}>
