@@ -45,6 +45,11 @@ const toPlainDescription = (value) => {
     .trim();
 };
 
+const isTemplateCreatedByUser = (createdBy) => {
+  const name = String(createdBy ?? '').trim();
+  return Boolean(name) && name.toLowerCase() !== 'unknown user';
+};
+
 // ----------------------------------------------------------------------
 
 export function Templates() {
@@ -501,9 +506,11 @@ export function Templates() {
                   >
                     {toPlainDescription(template.description) || 'No description available'}
                   </Typography>
-                  {template.createdBy && (
+                  {!template.isFallback && (
                     <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1 }}>
-                      Created by: {template.createdBy}
+                      {isTemplateCreatedByUser(template.createdBy)
+                        ? `Created by: ${String(template.createdBy).trim()}`
+                        : 'System-generated template'}
                     </Typography>
                   )}
                   {template.tags && template.tags.length > 0 && (
@@ -527,14 +534,6 @@ export function Templates() {
                     spacing={2}
                     sx={{ mb: 2, fontSize: '0.875rem', color: 'text.secondary' }}
                   >
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <Iconify icon="solar:play-bold-duotone" width={16} />
-                      <Typography variant="caption">{template.tags?.length || 0} tags</Typography>
-                    </Stack>
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <Iconify icon="solar:settings-bold-duotone" width={16} />
-                      <Typography variant="caption">Configured</Typography>
-                    </Stack>
                   </Stack>
                   <Stack direction="row" spacing={1}>
                     <GradientButton
