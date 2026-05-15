@@ -4,14 +4,37 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
-import { DashboardContent } from 'src/layouts/dashboard';
+import promptsTabIcon from 'src/assets/ai/chat.webp';
 
 import { Templates } from './templates';
 import { MyWorkflows } from './my-workflows';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
+import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
+
+// ----------------------------------------------------------------------
+
+const WORKFLOW_MAIN_TABS = [
+  {
+    id: 'templates',
+    label: 'Templates',
+    icon: 'solar:widget-5-bold-duotone',
+    imageSrc: null,
+  },
+  {
+    id: 'resources',
+    label: 'Prompts',
+    icon: 'simple-icons:openai',
+    imageSrc: null,
+  },
+  {
+    id: 'tools',
+    label: 'Tools',
+    icon: 'solar:settings-minimalistic-bold-duotone',
+    imageSrc: null,
+  },
+];
 
 // ----------------------------------------------------------------------
 
@@ -35,49 +58,72 @@ export function WorkflowMainSection() {
     }
   }, [tabFromQuery, activeTab]);
 
-  useEffect(() => {
-    if (resolveTab(tabFromQuery) !== 'resources') return;
-    const next = new URLSearchParams(searchParams);
-    const raw = next.get('provider') || next.get('cproivder');
-    const typo = next.get('cproivder');
-    if (typo && PROMPT_PROVIDER_IDS.has(typo)) {
-      next.set('provider', typo);
-      next.delete('cproivder');
-      setSearchParams(next, { replace: true });
-      return;
-    }
-    if (!raw || !PROMPT_PROVIDER_IDS.has(raw)) {
-      next.set('provider', 'chatgpt');
-      next.delete('cproivder');
-      setSearchParams(next, { replace: true });
-    }
-  }, [tabFromQuery, searchParams, setSearchParams]);
-
-  /** Provider is only used on the Prompts tab; strip it for Templates / Tools (incl. shared URLs). */
-  useEffect(() => {
-    if (resolveTab(tabFromQuery) === 'resources') return;
-    if (!searchParams.has('provider') && !searchParams.has('cproivder')) return;
-    const next = new URLSearchParams(searchParams);
-    next.delete('provider');
-    next.delete('cproivder');
-    setSearchParams(next, { replace: true });
-  }, [tabFromQuery, searchParams, setSearchParams]);
-
+  /** URL updates only on tab click — avoids breaking navigation after refresh on this page. */
   const handleTabChange = (nextTab) => {
     setActiveTab(nextTab);
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('tab', nextTab);
-    if (nextTab === 'resources') {
-      const raw = nextParams.get('provider') || nextParams.get('cproivder');
-      if (!raw || !PROMPT_PROVIDER_IDS.has(raw)) {
-        nextParams.set('provider', 'chatgpt');
-      }
-      nextParams.delete('cproivder');
-    } else {
-      nextParams.delete('provider');
-      nextParams.delete('cproivder');
-    }
-    setSearchParams(nextParams);
+    setSearchParams(
+      (prev) => {
+        const nextParams = new URLSearchParams(prev);
+        nextParams.set('tab', nextTab);
+        if (nextTab === 'resources') {
+          const typo = nextParams.get('cproivder');
+          if (typo && PROMPT_PROVIDER_IDS.has(typo)) {
+            nextParams.set('provider', typo);
+          } else {
+            const raw = nextParams.get('provider') || nextParams.get('cproivder');
+            if (!raw || !PROMPT_PROVIDER_IDS.has(raw)) {
+              nextParams.set('provider', 'chatgpt');
+            }
+          }
+          nextParams.delete('cproivder');
+        } else {
+          nextParams.delete('provider');
+          nextParams.delete('cproivder');
+        }
+        return nextParams;
+      },
+      { replace: true }
+    );
+  };
+
+  const getTabButtonSx = (tabId) => {
+    const isActive = activeTab === tabId;
+    return {
+      flex: { xs: 1, sm: 'none' },
+      px: { xs: 2.5, sm: 5 },
+      py: 1.5,
+      borderRadius: { xs: 2, sm: '50px' },
+      fontWeight: 500,
+      fontSize: { xs: '0.875rem', sm: '1rem' },
+      textTransform: 'none',
+      gap: { xs: 0.75, sm: 1 },
+      '& .MuiButton-startIcon': {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        ml: 0,
+        mr: { xs: 0.5, sm: 0.75 },
+      },
+      ...(isActive
+        ? {
+            bgcolor: 'primary.main',
+            color: 'common.white',
+            boxShadow: theme.customShadows.z8,
+            '&:hover': {
+              bgcolor: 'primary.dark',
+              cursor: 'not-allowed',
+            },
+          }
+        : {
+            color: 'text.secondary',
+            border: `2px solid ${theme.palette.grey[300]}`,
+            '&:hover': {
+              bgcolor: 'grey.50',
+              color: 'text.primary',
+              borderColor: theme.palette.grey[400],
+            },
+          }),
+    };
   };
 
   const toolsComingSoon = (
@@ -124,108 +170,28 @@ export function WorkflowMainSection() {
             width: { xs: '100%', sm: 'auto' },
           }}
         >
-          <Button
-            onClick={() => handleTabChange('templates')}
-            variant={activeTab === 'templates' ? 'contained' : 'outlined'}
-            sx={{
-              flex: { xs: 1, sm: 'none' },
-              px: { xs: 4, sm: 6 },
-              py: 1.5,
-              borderRadius: { xs: 2, sm: '50px' },
-              fontWeight: 500,
-              fontSize: { xs: '0.875rem', sm: '1rem' },
-              textTransform: 'none',
-              ...(activeTab === 'templates'
-                ? {
-                    bgcolor: 'primary.main',
-                    color: 'common.white',
-                    boxShadow: theme.customShadows.z8,
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                      cursor: 'not-allowed',
-                    },
-                  }
-                : {
-                    color: 'text.secondary',
-                    border: `2px solid ${theme.palette.grey[300]}`,
-                    '&:hover': {
-                      bgcolor: 'grey.50',
-                      color: 'text.primary',
-                      borderColor: theme.palette.grey[400],
-                    },
-                  }),
-            }}
-          >
-            Templates
-          </Button>
-          <Button
-            onClick={() => handleTabChange('resources')}
-            variant={activeTab === 'resources' ? 'contained' : 'outlined'}
-            sx={{
-              flex: { xs: 1, sm: 'none' },
-              px: { xs: 4, sm: 6 },
-              py: 1.5,
-              borderRadius: { xs: 2, sm: '50px' },
-              fontWeight: 500,
-              fontSize: { xs: '0.875rem', sm: '1rem' },
-              textTransform: 'none',
-              ...(activeTab === 'resources'
-                ? {
-                    bgcolor: 'primary.main',
-                    color: 'common.white',
-                    boxShadow: theme.customShadows.z8,
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                      cursor: 'not-allowed',
-                    },
-                  }
-                : {
-                    color: 'text.secondary',
-                    border: `2px solid ${theme.palette.grey[300]}`,
-                    '&:hover': {
-                      bgcolor: 'grey.50',
-                      color: 'text.primary',
-                      borderColor: theme.palette.grey[400],
-                    },
-                  }),
-            }}
-          >
-            Prompts
-          </Button>
-          <Button
-            onClick={() => handleTabChange('tools')}
-            variant={activeTab === 'tools' ? 'contained' : 'outlined'}
-            sx={{
-              flex: { xs: 1, sm: 'none' },
-              px: { xs: 4, sm: 6 },
-              py: 1.5,
-              borderRadius: { xs: 2, sm: '50px' },
-              fontWeight: 500,
-              fontSize: { xs: '0.875rem', sm: '1rem' },
-              textTransform: 'none',
-              ...(activeTab === 'tools'
-                ? {
-                    bgcolor: 'primary.main',
-                    color: 'common.white',
-                    boxShadow: theme.customShadows.z8,
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                      cursor: 'not-allowed',
-                    },
-                  }
-                : {
-                    color: 'text.secondary',
-                    border: `2px solid ${theme.palette.grey[300]}`,
-                    '&:hover': {
-                      bgcolor: 'grey.50',
-                      color: 'text.primary',
-                      borderColor: theme.palette.grey[400],
-                    },
-                  }),
-            }}
-          >
-            Tools
-          </Button>
+          {WORKFLOW_MAIN_TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <Button
+                key={tab.id}
+                aria-label={tab.label}
+                onClick={() => handleTabChange(tab.id)}
+                variant={isActive ? 'contained' : 'outlined'}
+                startIcon={
+                  <WorkflowMainTabIcon
+                    imageSrc={tab.imageSrc}
+                    iconifyIcon={tab.icon}
+                    active={isActive}
+                    width={{ xs: 20, sm: 24 }}
+                  />
+                }
+                sx={getTabButtonSx(tab.id)}
+              >
+                {tab.label}
+              </Button>
+            );
+          })}
         </Box>
       </Box>
 

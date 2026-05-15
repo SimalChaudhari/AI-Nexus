@@ -190,6 +190,7 @@ export function MyWorkflows() {
                 return (
                   <Button
                     key={level.id}
+                    aria-label={level.title}
                     onClick={() => {
                       setActiveProvider(level.id);
                       const next = new URLSearchParams(searchParams);
@@ -198,19 +199,44 @@ export function MyWorkflows() {
                       setSearchParams(next, { replace: true });
                     }}
                     startIcon={
-                      <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                        <ProviderPromptIcon providerId={level.id} iconifyIcon={level.icon} width={18} />
+                      <Box
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: { xs: 28, sm: 36 },
+                          height: { xs: 28, sm: 36 },
+                          flexShrink: 0,
+                          '@media (max-width: 374px)': {
+                            width: 32,
+                            height: 32,
+                          },
+                        }}
+                      >
+                        <ProviderPromptIcon
+                          providerId={level.id}
+                          imageSrc={level.imageSrc}
+                          iconifyIcon={level.icon}
+                          width={{ xs: 26, sm: 34 }}
+                          sx={{
+                            '@media (max-width: 374px)': {
+                              width: 30,
+                              height: 30,
+                            },
+                          }}
+                        />
                       </Box>
                     }
                     variant={isActive ? 'contained' : 'outlined'}
                     sx={{
                       textTransform: 'none',
                       fontWeight: 700,
-                      minHeight: 40,
-                      px: { xs: 0.5, sm: 1.75 },
+                      minHeight: { xs: 52, sm: 48 },
+                      py: { xs: 0.75, sm: 0.5 },
+                      px: { xs: 1, sm: 2 },
                       width: { xs: '100%', sm: 'auto' },
                       minWidth: 0,
-                      fontSize: { xs: '0.72rem', sm: '0.875rem' },
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
                       lineHeight: 1.2,
                       whiteSpace: 'nowrap',
                       borderRadius: 999,
@@ -219,9 +245,31 @@ export function MyWorkflows() {
                       color: isActive ? tabTheme.accentStrong : 'text.secondary',
                       transition: 'all 0.2s ease',
                       '& .MuiButton-startIcon': {
-                        display: { xs: 'none', sm: 'inline-flex' },
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         ml: 0,
-                        mr: 0.75,
+                        mr: { xs: 0.5, sm: 1 },
+                        width: { xs: 28, sm: 36 },
+                        minWidth: { xs: 28, sm: 36 },
+                      },
+                      '& .provider-tab-label': {
+                        display: 'inline',
+                      },
+                      '@media (max-width: 374px)': {
+                        minHeight: 48,
+                        px: 0.5,
+                        justifyContent: 'center',
+                        '& .provider-tab-label': {
+                          display: 'none',
+                        },
+                        '& .MuiButton-startIcon': {
+                          margin: 0,
+                          mr: '0 !important',
+                          ml: '0 !important',
+                          width: 32,
+                          minWidth: 32,
+                        },
                       },
                       '&:hover': {
                         bgcolor: tabTheme.accentSofter,
@@ -230,7 +278,9 @@ export function MyWorkflows() {
                       boxShadow: isActive ? `0 0 0 1px ${tabTheme.accentSoft}` : 'none',
                     }}
                   >
-                    {level.title}
+                    <Box component="span" className="provider-tab-label">
+                      {level.title}
+                    </Box>
                   </Button>
                 );
               })}
@@ -251,9 +301,9 @@ export function MyWorkflows() {
           <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.25 }}>
             <ProviderPromptIcon
               providerId={selectedProvider?.id || 'chatgpt'}
+              imageSrc={selectedProvider?.imageSrc}
               iconifyIcon={selectedProvider?.icon}
-              width={20}
-              sx={{ color: selectedProviderTheme.accent }}
+              width={{ xs: 32, sm: 40 }}
             />
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1.25rem' } }}>
               {`${selectedProvider?.title || 'ChatGPT'} Categories (${totalCategoriesForProvider})`}

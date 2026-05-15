@@ -19,7 +19,11 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { Iconify } from 'src/components/iconify';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { getProviderPromptDetail, PROMPT_PROVIDER_IDS } from 'src/sections/workflows/data/prompt-providers';
+import {
+  getProviderPromptDetail,
+  PROMPT_PROVIDER_IDS,
+  PROMPT_PROVIDERS,
+} from 'src/sections/workflows/data/prompt-providers';
 import { getProviderPromptTheme } from 'src/sections/workflows/provider-prompt-theme';
 import { ProviderPromptIcon } from 'src/sections/workflows/provider-prompt-icon';
 import { toast } from 'src/components/snackbar';
@@ -319,21 +323,22 @@ export default function PromptDetailsPage() {
             >
               <Box
                 sx={{
-                  width: 56,
-                  height: 56,
+                  width: { xs: 64, sm: 72 },
+                  height: { xs: 64, sm: 72 },
                   borderRadius: 2,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   bgcolor: 'background.paper',
                   boxShadow: (theme) => theme.customShadows.z8,
+                  p: 1,
                 }}
               >
                 <ProviderPromptIcon
                   providerId={provider}
+                  imageSrc={PROMPT_PROVIDERS.find((p) => p.id === provider)?.imageSrc}
                   iconifyIcon={config?.toolIcon}
-                  width={34}
-                  sx={{ color: brand.accent }}
+                  width={{ xs: 48, sm: 56 }}
                 />
               </Box>
               <Box sx={{ flex: 1 }}>
