@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
@@ -48,6 +49,12 @@ const toPlainDescription = (value) => {
 const isTemplateCreatedByUser = (createdBy) => {
   const name = String(createdBy ?? '').trim();
   return Boolean(name) && name.toLowerCase() !== 'unknown user';
+};
+
+/** Keeps long words / emails from overflowing on narrow phones */
+const mobileWordWrap = {
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
 };
 
 // ----------------------------------------------------------------------
@@ -142,20 +149,32 @@ export function Templates() {
       {/* Why use AI resources */}
       <Card
         sx={{
-          background: 'linear-gradient(to right, #eff6ff, #faf5ff)',
           borderRadius: { xs: 2, md: 3 },
           p: { xs: 4, md: 6 },
           mb: { xs: 4, md: 6 },
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.24 : 0.12)}`,
+          background: (theme) =>
+            `linear-gradient(125deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.1)} 0%, ${alpha(
+              theme.palette.secondary.main,
+              theme.palette.mode === 'dark' ? 0.18 : 0.06
+            )} 48%, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.14 : 0.04)} 100%)`,
+          boxShadow: (theme) =>
+            theme.palette.mode === 'dark'
+              ? `0 8px 32px ${alpha(theme.palette.common.black, 0.35)}`
+              : `0 8px 32px ${alpha(theme.palette.secondary.main, 0.08)}`,
         }}
       >
         <Typography
           variant="h5"
           sx={{
-            fontSize: { xs: '1.25rem', md: '1.5rem' },
+            fontSize: { xs: 'clamp(1.05rem, 4vw + 0.35rem, 1.25rem)', md: '1.5rem' },
             fontWeight: 'bold',
             mb: { xs: 3, md: 4 },
             textAlign: 'center',
-            color: 'text.primary',
+            color: (theme) => theme.palette.secondary.main,
+            lineHeight: { xs: 1.35, md: 1.3 },
+            px: { xs: 0.5, sm: 0 },
+            ...mobileWordWrap,
           }}
         >
           Why use AI resources?
@@ -167,28 +186,32 @@ export function Templates() {
                 sx={{
                   width: { xs: 48, md: 64 },
                   height: { xs: 48, md: 64 },
-                  bgcolor: '#dbeafe',
+                  bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.24 : 0.14),
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   mx: 'auto',
                   mb: { xs: 2, md: 3 },
+                  border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
                 }}
               >
                 <Iconify
                   icon="solar:clock-circle-bold-duotone"
                   width={{ xs: 20, md: 24 }}
-                  sx={{ color: '#2563eb' }}
+                  sx={{ color: 'primary.main' }}
                 />
               </Box>
               <Typography
                 variant="h6"
                 sx={{
-                  fontSize: { xs: '1rem', md: '1.125rem' },
+                  fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
                   fontWeight: 600,
                   mb: 1.5,
+                  lineHeight: 1.35,
                   color: 'text.primary',
+                  px: { xs: 0.5, sm: 0 },
+                  ...mobileWordWrap,
                 }}
               >
                 Save 80% Time
@@ -196,8 +219,11 @@ export function Templates() {
               <Typography
                 variant="body2"
                 sx={{
-                  fontSize: { xs: '0.875rem', md: '1rem' },
+                  fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
+                  lineHeight: 1.55,
                   color: 'text.secondary',
+                  px: { xs: 0.5, sm: 0 },
+                  ...mobileWordWrap,
                 }}
               >
                 Automate repetitive tasks and focus on what matters most - building meaningful
@@ -211,28 +237,32 @@ export function Templates() {
                 sx={{
                   width: { xs: 48, md: 64 },
                   height: { xs: 48, md: 64 },
-                  bgcolor: '#dcfce7',
+                  bgcolor: (theme) => alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.28 : 0.12),
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   mx: 'auto',
                   mb: { xs: 2, md: 3 },
+                  border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.35)}`,
                 }}
               >
                 <Iconify
                   icon="solar:users-group-rounded-bold-duotone"
                   width={{ xs: 20, md: 24 }}
-                  sx={{ color: '#16a34a' }}
+                  sx={{ color: 'secondary.main' }}
                 />
               </Box>
               <Typography
                 variant="h6"
                 sx={{
-                  fontSize: { xs: '1rem', md: '1.125rem' },
+                  fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
                   fontWeight: 600,
                   mb: 1.5,
+                  lineHeight: 1.35,
                   color: 'text.primary',
+                  px: { xs: 0.5, sm: 0 },
+                  ...mobileWordWrap,
                 }}
               >
                 Better Engagement
@@ -240,8 +270,11 @@ export function Templates() {
               <Typography
                 variant="body2"
                 sx={{
-                  fontSize: { xs: '0.875rem', md: '1rem' },
+                  fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
+                  lineHeight: 1.55,
                   color: 'text.secondary',
+                  px: { xs: 0.5, sm: 0 },
+                  ...mobileWordWrap,
                 }}
               >
                 Deliver personalized experiences that keep members active and engaged in your
@@ -255,28 +288,36 @@ export function Templates() {
                 sx={{
                   width: { xs: 48, md: 64 },
                   height: { xs: 48, md: 64 },
-                  bgcolor: '#f3e8ff',
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.1)} 0%, ${alpha(
+                      theme.palette.secondary.main,
+                      theme.palette.mode === 'dark' ? 0.2 : 0.1
+                    )} 100%)`,
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   mx: 'auto',
                   mb: { xs: 2, md: 3 },
+                  border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.32)}`,
                 }}
               >
                 <Iconify
                   icon="solar:chart-2-bold-duotone"
                   width={{ xs: 20, md: 24 }}
-                  sx={{ color: '#9333ea' }}
+                  sx={{ color: 'primary.main' }}
                 />
               </Box>
               <Typography
                 variant="h6"
                 sx={{
-                  fontSize: { xs: '1rem', md: '1.125rem' },
+                  fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
                   fontWeight: 600,
                   mb: 1.5,
+                  lineHeight: 1.35,
                   color: 'text.primary',
+                  px: { xs: 0.5, sm: 0 },
+                  ...mobileWordWrap,
                 }}
               >
                 Scale Effortlessly
@@ -284,8 +325,11 @@ export function Templates() {
               <Typography
                 variant="body2"
                 sx={{
-                  fontSize: { xs: '0.875rem', md: '1rem' },
+                  fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
+                  lineHeight: 1.55,
                   color: 'text.secondary',
+                  px: { xs: 0.5, sm: 0 },
+                  ...mobileWordWrap,
                 }}
               >
                 Handle thousands of members with the same personal touch as your first ten members.
@@ -298,21 +342,48 @@ export function Templates() {
       {/* AI resource templates grid */}
       <Box sx={{ mb: { xs: 6, md: 8 } }}>
         <Stack
-          direction="row"
-          alignItems="flex-start"
+          direction={{ xs: 'column', sm: 'row' }}
+          alignItems={{ xs: 'stretch', sm: 'flex-start' }}
           justifyContent="space-between"
-          sx={{ mb: { xs: 3, md: 4 }, gap: 2, flexWrap: 'wrap' }}
+          sx={{ mb: { xs: 3, md: 4 }, gap: { xs: 2, sm: 2 } }}
         >
-          <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
+          <Box sx={{ flex: '1 1 auto', minWidth: 0, maxWidth: '100%' }}>
             <Typography
               variant="h5"
               sx={{
-                fontWeight: 'bold',
+                fontWeight: 800,
+                color: 'text.primary',
+                letterSpacing: '-0.02em',
+                fontSize: { xs: 'clamp(1.125rem, 5vw + 0.25rem, 1.5rem)', sm: '1.5rem' },
+                lineHeight: { xs: 1.25, sm: 1.2 },
+                ...mobileWordWrap,
               }}
             >
               AI resource templates
             </Typography>
-            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.75, maxWidth: 720 }}>
+            <Box
+              sx={{
+                mt: 1,
+                mb: 0.25,
+                width: 48,
+                height: 3,
+                borderRadius: 1,
+                background: (theme) =>
+                  `linear-gradient(90deg, ${theme.palette.primary.main}, ${alpha(theme.palette.secondary.main, 0.85)})`,
+              }}
+            />
+            <Typography
+              variant="caption"
+              sx={{
+                display: 'block',
+                color: 'text.secondary',
+                mt: 0.75,
+                maxWidth: 720,
+                fontSize: { xs: 'clamp(0.6875rem, 2.4vw + 0.42rem, 0.8125rem)', sm: '0.75rem' },
+                lineHeight: { xs: 1.55, sm: 1.5 },
+                ...mobileWordWrap,
+              }}
+            >
               Flowise templates load a live mini-canvas (iframe) when the card scrolls into view; others use images or a
               sketch. Open a template for the full editor.
             </Typography>
@@ -325,18 +396,30 @@ export function Templates() {
             onClick={handleCreateWorkflow}
             size="large"
             sx={{
-              whiteSpace: 'nowrap',
+              whiteSpace: { xs: 'normal', sm: 'nowrap' },
               width: 'auto',
               minWidth: { sm: 180 },
-              flex: '0 0 auto',
-              ml: 'auto',
+              flex: { xs: '1 1 100%', sm: '0 0 auto' },
+              ml: { xs: 0, sm: 'auto' },
               alignSelf: { xs: 'stretch', sm: 'center' },
               borderRadius: 2,
-              px: { xs: 2, sm: 2.5 },
-              py: 1.1,
+              px: { xs: 1.75, sm: 2.5 },
+              py: { xs: 1, sm: 1.1 },
               textTransform: 'none',
               fontWeight: 700,
+              fontSize: { xs: 'clamp(0.8125rem, 2.5vw + 0.45rem, 0.9375rem)', sm: '0.9375rem' },
+              lineHeight: 1.25,
+              textAlign: 'center',
+              background: (theme) =>
+                `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+              color: (theme) => theme.palette.primary.contrastText,
               boxShadow: (theme) => theme.customShadows?.z8 || theme.shadows[8],
+              '&:hover': {
+                background: (theme) =>
+                  `linear-gradient(90deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`,
+                color: (theme) => theme.palette.primary.contrastText,
+                boxShadow: (theme) => theme.customShadows?.z12 || theme.shadows[12],
+              },
             }}
           >
             Create Workflow
@@ -357,13 +440,23 @@ export function Templates() {
               bgcolor: 'background.neutral',
             }}
           >
-            <CircularProgress size={36} thickness={4} />
-            <Typography variant="body2" color="text.secondary" textAlign="center">
+            <CircularProgress size={36} thickness={4} color="primary" />
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              textAlign="center"
+              sx={{
+                px: { xs: 1, sm: 2 },
+                fontSize: { xs: 'clamp(0.8125rem, 2.6vw + 0.45rem, 0.875rem)', sm: '0.875rem' },
+                lineHeight: 1.55,
+                ...mobileWordWrap,
+              }}
+            >
               Loading templates from Flowise…
             </Typography>
           </Box>
         ) : (
-        <Grid container spacing={{ xs: 3, md: 4 }}>
+        <Grid container spacing={{ xs: 2, sm: 2.5, lg: 2 }}>
           {templatesToRender.map((template) => {
             const flowiseBase = resolveFlowisePublicBaseUrl();
             const useFlowiseIframe =
@@ -376,7 +469,7 @@ export function Templates() {
             const flowEdges = template.flowData?.edges;
 
             return (
-            <Grid key={template.id} xs={12} sm={6} lg={4}>
+            <Grid key={template.id} xs={12} sm={6} lg={3}>
               <Card
                 sx={{
                   height: '100%',
@@ -384,10 +477,13 @@ export function Templates() {
                   flexDirection: 'column',
                   borderRadius: 2,
                   overflow: 'hidden',
-                  transition: 'all 0.3s',
+                  border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.28 : 0.14)}`,
+                  bgcolor: 'background.paper',
+                  transition: 'all 0.3s ease',
                   '&:hover': {
                     boxShadow: (theme) => theme.customShadows.z16,
                     transform: 'translateY(-4px)',
+                    borderColor: (theme) => alpha(theme.palette.primary.main, 0.45),
                   },
                 }}
               >
@@ -395,9 +491,9 @@ export function Templates() {
                   sx={{
                     position: 'relative',
                     width: '100%',
-                    aspectRatio: { xs: '16 / 10', sm: '16 / 9' },
-                    minHeight: { xs: 180, sm: 200 },
-                    maxHeight: { xs: 230, md: 260 },
+                    aspectRatio: { xs: '16 / 10', sm: '16 / 9', lg: '5 / 3' },
+                    minHeight: { xs: 160, sm: 176, lg: 140 },
+                    maxHeight: { xs: 200, sm: 220, lg: 168 },
                   }}
                 >
                   {useFlowiseIframe ? (
@@ -432,7 +528,7 @@ export function Templates() {
                       sx={{
                         position: 'absolute',
                         inset: 0,
-                        bgcolor: 'grey.200',
+                        bgcolor: (theme) => alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.2 : 0.06),
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -441,7 +537,7 @@ export function Templates() {
                       <Iconify
                         icon="solar:workflow-bold-duotone"
                         width={{ xs: 52, md: 64 }}
-                        sx={{ color: 'grey.400' }}
+                        sx={{ color: 'primary.main', opacity: 0.85 }}
                       />
                     </Box>
                   )}
@@ -457,37 +553,73 @@ export function Templates() {
                       pointerEvents: 'none',
                     }}
                   />
-                  <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 2 }}>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: { xs: 12, lg: 10 },
+                      right: { xs: 12, lg: 10 },
+                      left: { xs: 12, lg: 'auto' },
+                      zIndex: 2,
+                      display: 'flex',
+                      justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                      maxWidth: { xs: '100%', lg: 'min(85%, 280px)' },
+                    }}
+                  >
                     <Chip
                       label={template.source === 'flowise' ? template.label?.title || 'Flowise Template' : template.label?.title || template.label?.name || 'Uncategorized'}
                       size="small"
-                      sx={{
-                        bgcolor: 'rgba(0, 0, 0, 0.62)',
-                        color: 'common.white',
-                        backdropFilter: 'blur(2px)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                      }}
+                      sx={(theme) => ({
+                        maxWidth: '100%',
+                        height: 'auto',
+                        minHeight: 24,
+                        bgcolor: alpha(theme.palette.secondary.dark, theme.palette.mode === 'dark' ? 0.92 : 0.88),
+                        color: 'primary.contrastText',
+                        fontWeight: 600,
+                        backdropFilter: 'blur(6px)',
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                        '& .MuiChip-label': {
+                          whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                          overflow: 'hidden',
+                          display: '-webkit-box',
+                          WebkitBoxOrient: 'vertical',
+                          WebkitLineClamp: { xs: 2, sm: 1 },
+                          lineHeight: 1.25,
+                          py: 0.25,
+                          fontSize: { xs: 'clamp(0.625rem, 1.8vw + 0.42rem, 0.6875rem)', sm: '0.75rem' },
+                          ...mobileWordWrap,
+                        },
+                      })}
                     />
                   </Box>
                 </Box>
                 <Box
                   sx={{
-                    p: { xs: 2, md: 3 },
+                    p: { xs: 1.75, sm: 2, lg: 1.75 },
                     flexGrow: 1,
                     display: 'flex',
                     flexDirection: 'column',
+                    borderTop: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.12)}`,
+                    background: (theme) =>
+                      `linear-gradient(180deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.06 : 0.02)} 0%, transparent 72%)`,
                   }}
                 >
                   <Typography
                     variant="h6"
                     sx={{
                       fontWeight: 600,
-                      mb: 1.5,
-                      lineHeight: 1.4,
+                      mb: { xs: 1.25, lg: 1 },
+                      lineHeight: 1.35,
+                      fontSize: {
+                        xs: 'clamp(0.9375rem, 3.2vw + 0.55rem, 1.0625rem)',
+                        sm: '1.0625rem',
+                        lg: '0.9375rem',
+                      },
                       display: '-webkit-box',
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
+                      color: 'secondary.main',
+                      ...mobileWordWrap,
                     }}
                   >
                     {template.title}
@@ -496,50 +628,56 @@ export function Templates() {
                     variant="body2"
                     sx={{
                       color: 'text.secondary',
-                      mb: 2,
+                      mb: { xs: 1.5, lg: 1 },
+                      fontSize: {
+                        xs: 'clamp(0.78125rem, 2.4vw + 0.5rem, 0.875rem)',
+                        sm: '0.875rem',
+                        lg: '0.8125rem',
+                      },
+                      lineHeight: 1.45,
                       display: '-webkit-box',
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
                       flexGrow: 1,
+                      ...mobileWordWrap,
                     }}
                   >
                     {toPlainDescription(template.description) || 'No description available'}
                   </Typography>
                   {!template.isFallback && (
-                    <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'text.secondary',
+                        mb: { xs: 1, lg: 0.75 },
+                        fontSize: {
+                          xs: 'clamp(0.65625rem, 2vw + 0.42rem, 0.75rem)',
+                          sm: '0.75rem',
+                          lg: '0.7rem',
+                        },
+                        lineHeight: 1.45,
+                        ...mobileWordWrap,
+                      }}
+                    >
                       {isTemplateCreatedByUser(template.createdBy)
                         ? `Created by: ${String(template.createdBy).trim()}`
                         : 'System-generated template'}
                     </Typography>
                   )}
-                  {template.tags && template.tags.length > 0 && (
-                    <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>
-                      {template.tags.slice(0, 3).map((tag, index) => (
-                        <Chip
-                          key={index}
-                          label={typeof tag === 'string' ? tag : tag.title}
-                          size="small"
-                          sx={{
-                            bgcolor: 'grey.100',
-                            color: 'text.secondary',
-                            fontSize: '0.75rem',
-                          }}
-                        />
-                      ))}
-                    </Stack>
-                  )}
-                  <Stack
-                    direction="row"
-                    spacing={2}
-                    sx={{ mb: 2, fontSize: '0.875rem', color: 'text.secondary' }}
-                  >
-                  </Stack>
                   <Stack direction="row" spacing={1}>
                     <GradientButton
                       size="small"
                       onClick={template.isFallback ? handleCreateWorkflow : () => handleOpenTemplate(template)}
-                      sx={{ flex: 1 }}
+                      sx={{
+                        flex: 1,
+                        fontSize: { xs: 'clamp(0.6875rem, 2.2vw + 0.42rem, 0.8125rem)', sm: '0.875rem' },
+                        px: { xs: 1.25, sm: 2 },
+                        py: { xs: 0.65, sm: 1 },
+                        whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                        lineHeight: { xs: 1.25, sm: 1.2 },
+                        minHeight: { xs: 36, sm: 'auto' },
+                      }}
                     >
                       {template.isFallback
                         ? 'Create Workflow'

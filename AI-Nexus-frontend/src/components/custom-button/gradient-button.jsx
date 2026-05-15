@@ -56,6 +56,9 @@ export function GradientButton({
     icon
   );
 
+  const brandGradient = `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`;
+  const brandGradientHover = `linear-gradient(45deg, ${theme.palette.primary.dark}, ${theme.palette.secondary.dark})`;
+
   return (
     <Button
       type={type}
@@ -70,15 +73,16 @@ export function GradientButton({
         fontWeight: 500,
         borderRadius: 1.25, // 5px equivalent
         whiteSpace: 'nowrap',
-        background: 'linear-gradient(45deg, #56c7da, #fcd60b)',
-        color: 'common.white',
+        background: brandGradient,
+        color: (t) => t.palette.primary.contrastText,
         boxShadow: 'none',
         position: 'relative',
         zIndex: 1,
         overflow: 'hidden',
         transition: 'all 0.2s ease',
         '&:hover': {
-          color: '#ffffff',
+          background: brandGradientHover,
+          color: (t) => t.palette.primary.contrastText,
           boxShadow: theme.customShadows.z8,
         },
         '&:active': {
@@ -88,9 +92,9 @@ export function GradientButton({
           opacity: 0.6,
           cursor: 'not-allowed',
           transform: 'none',
-          background: 'linear-gradient(45deg, #56c7da, #fcd60b)',
+          background: brandGradient,
           '&:hover': {
-            background: 'linear-gradient(45deg, #56c7da, #fcd60b)',
+            background: brandGradient,
           },
         },
         ...sizeStyles[mappedSize],
