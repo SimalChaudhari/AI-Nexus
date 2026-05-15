@@ -121,13 +121,18 @@ export default function PromptDetailsPage() {
     return colorValue;
   };
 
+  const staticProvider = useMemo(
+    () => PROMPT_PROVIDERS.find((entry) => entry.id === provider) || PROMPT_PROVIDERS[0],
+    [provider]
+  );
+
   const brand = useMemo(
     () =>
       getProviderPromptTheme(provider, {
-        color: resolveProviderColor(config?.color),
-        bgColor: resolveProviderColor(config?.bgColor),
+        color: staticProvider.color || resolveProviderColor(config?.color),
+        bgColor: staticProvider.bgColor || resolveProviderColor(config?.bgColor),
       }),
-    [provider, config?.color, config?.bgColor]
+    [provider, staticProvider, config?.color, config?.bgColor]
   );
   const metadata = { title: `${config?.title || 'Prompts'} | ${CONFIG.site.name}` };
 
@@ -138,12 +143,8 @@ export default function PromptDetailsPage() {
     if (PROMPT_PROVIDER_IDS.has(p)) {
       params.set('provider', p);
     }
-    const cat = selectedCategoryFromQuery.trim();
-    if (cat) {
-      params.set('category', cat);
-    }
     return `${paths.workflows}?${params.toString()}`;
-  }, [provider, selectedCategoryFromQuery]);
+  }, [provider]);
 
   useEffect(() => {
     let mounted = true;

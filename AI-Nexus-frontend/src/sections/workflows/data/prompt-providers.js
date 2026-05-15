@@ -10,14 +10,19 @@ export const PROMPT_PROVIDER_ICONS = {
   gemini: geminiIcon,
 };
 
+/** Brand palettes: accent `color`, soft surfaces `lightColor*`, CTA `bgColor*`. */
 export const PROMPT_PROVIDERS = [
   {
     id: 'chatgpt',
     title: 'ChatGPT',
     imageSrc: chatgptIcon,
     icon: 'simple-icons:openai',
-    color: '#10a37f',
-    bgColor: 'linear-gradient(90deg, #10a37f 0%, #2dd4bf 100%)',
+    color: '#159981',
+    lightColor: '#e8faf7',
+    lightColorHover: '#d4f5f0',
+    buttonBorder: '#5eead4',
+    bgColor: 'linear-gradient(90deg, #159981 0%, #30D2B4 100%)',
+    bgColorHover: 'linear-gradient(90deg, #128070 0%, #28b9a0 100%)',
   },
   {
     id: 'claude',
@@ -25,15 +30,23 @@ export const PROMPT_PROVIDERS = [
     imageSrc: claudeIcon,
     icon: 'simple-icons:anthropic',
     color: '#d97706',
-    bgColor: 'linear-gradient(90deg, #d97706 0%, #f59e0b 100%)',
+    lightColor: '#fffbeb',
+    lightColorHover: '#fef3c7',
+    buttonBorder: '#fcd34d',
+    bgColor: 'linear-gradient(90deg, #ea580c 0%, #f59e0b 100%)',
+    bgColorHover: 'linear-gradient(90deg, #c2410c 0%, #d97706 100%)',
   },
   {
     id: 'gemini',
     title: 'Gemini',
     imageSrc: geminiIcon,
     icon: 'simple-icons:googlegemini',
-    color: '#2563eb',
-    bgColor: 'linear-gradient(90deg, #2563eb 0%, #8b5cf6 100%)',
+    color: '#7B61FF',
+    lightColor: '#F0F4FF',
+    lightColorHover: '#E8EDFF',
+    buttonBorder: '#C4B5FD',
+    bgColor: 'linear-gradient(90deg, #7B61FF 0%, #9B7BFF 100%)',
+    bgColorHover: 'linear-gradient(90deg, #6B51EF 0%, #8B6BEF 100%)',
   },
 ];
 
