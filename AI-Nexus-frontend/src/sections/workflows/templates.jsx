@@ -8,6 +8,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
@@ -51,6 +52,7 @@ export function Templates() {
   const router = useRouter();
   const { workflows } = useSelector((state) => state.workflows);
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
+  const [flowiseTemplatesLoading, setFlowiseTemplatesLoading] = useState(true);
   const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
   const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
   const fallbackTemplate = {
@@ -69,6 +71,7 @@ export function Templates() {
 
   useEffect(() => {
     let mounted = true;
+    setFlowiseTemplatesLoading(true);
     (async () => {
       try {
         const items = await flowiseTemplateService.getFlowiseTemplates();
@@ -82,6 +85,10 @@ export function Templates() {
       } catch (error) {
         if (mounted) {
           setFlowiseTemplates([]);
+        }
+      } finally {
+        if (mounted) {
+          setFlowiseTemplatesLoading(false);
         }
       }
     })();
@@ -120,7 +127,10 @@ export function Templates() {
     const bPreviewRank = b?.isPreviewOnly ? 1 : 0;
     return aPreviewRank - bPreviewRank;
   });
-  const templatesToRender = templates.length > 0 ? templates : [fallbackTemplate];
+  const hasWorkflowTemplates = (workflows || []).length > 0;
+  const showFlowiseServerWait = flowiseTemplatesLoading && !hasWorkflowTemplates;
+  const templatesToRender =
+    templates.length > 0 ? templates : showFlowiseServerWait ? [] : [fallbackTemplate];
 
   return (
     <Box>
@@ -327,6 +337,27 @@ export function Templates() {
             Create Workflow
           </Button>
         </Stack>
+        {showFlowiseServerWait ? (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              py: { xs: 8, md: 10 },
+              px: 2,
+              minHeight: 240,
+              borderRadius: 2,
+              bgcolor: 'background.neutral',
+            }}
+          >
+            <CircularProgress size={36} thickness={4} />
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Loading templates from Flowise…
+            </Typography>
+          </Box>
+        ) : (
         <Grid container spacing={{ xs: 3, md: 4 }}>
           {templatesToRender.map((template) => {
             const flowiseBase = resolveFlowisePublicBaseUrl();
@@ -526,6 +557,7 @@ export function Templates() {
             );
           })}
         </Grid>
+        )}
       </Box>
     </Box>
   );
