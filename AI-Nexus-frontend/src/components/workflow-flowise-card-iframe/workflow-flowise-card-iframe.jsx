@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
 
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { encodeFlowDataForHash } from 'src/utils/encode-flowise-preview-hash';
@@ -109,23 +108,6 @@ export function WorkflowFlowiseCardIframe({ flowData, title = 'Flow preview' }) 
           }}
           onLoad={handleIframeLoad}
         />
-      ) : null}
-
-      {mountIframe && !frameReady ? (
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: 'rgba(255,255,255,0.4)',
-            pointerEvents: 'none',
-          }}
-        >
-          <CircularProgress size={28} thickness={4} />
-        </Box>
       ) : null}
     </Box>
   );

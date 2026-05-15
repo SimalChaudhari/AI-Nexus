@@ -20,7 +20,6 @@ import {
   WorkflowFlowMiniPreview,
 } from 'src/components/workflow-flow-mini-preview/workflow-flow-mini-preview';
 import { GradientButton } from 'src/components/custom-button';
-import { LoadingScreen } from 'src/components/loading-screen';
 import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
 import { getCookie } from 'src/utils/cookie';
 import { fetchWorkflows } from 'src/store/slices/workflowSlice';
@@ -50,7 +49,7 @@ const toPlainDescription = (value) => {
 export function Templates() {
   const dispatch = useDispatch();
   const router = useRouter();
-  const { workflows, loading } = useSelector((state) => state.workflows);
+  const { workflows } = useSelector((state) => state.workflows);
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
   const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
   const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
@@ -115,10 +114,6 @@ export function Templates() {
     },
     [flowiseEntryUrl, flowiseUrl]
   );
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
 
   const templates = [...(workflows || []), ...(flowiseTemplates || [])].sort((a, b) => {
     const aPreviewRank = a?.isPreviewOnly ? 1 : 0;
