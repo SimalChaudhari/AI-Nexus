@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
@@ -26,6 +26,7 @@ import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
 import { getCookie } from 'src/utils/cookie';
 import { fetchWorkflows } from 'src/store/slices/workflowSlice';
 import { flowiseTemplateService } from 'src/services/flowise-template.service';
+import { appSettingsService } from 'src/services/app-settings.service';
 
 // ----------------------------------------------------------------------
 
@@ -57,6 +58,36 @@ const mobileWordWrap = {
   wordBreak: 'break-word',
 };
 
+const DEFAULT_PITCH_INTRO = {
+  heading: 'Why use AI resources?',
+  features: [
+    {
+      iconUrl: '',
+      title: 'Save 80% Time',
+      description:
+        'Automate repetitive tasks and focus on what matters most - building meaningful connections.',
+    },
+    {
+      iconUrl: '',
+      title: 'Better Engagement',
+      description:
+        'Deliver personalized experiences that keep members active and engaged in your community.',
+    },
+    {
+      iconUrl: '',
+      title: 'Scale Effortlessly',
+      description:
+        'Handle thousands of members with the same personal touch as your first ten members.',
+    },
+  ],
+};
+
+const PITCH_FALLBACK_ICONS = [
+  'solar:clock-circle-bold-duotone',
+  'solar:users-group-rounded-bold-duotone',
+  'solar:chart-2-bold-duotone',
+];
+
 // ----------------------------------------------------------------------
 
 export function Templates() {
@@ -65,6 +96,7 @@ export function Templates() {
   const { workflows } = useSelector((state) => state.workflows);
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
   const [flowiseTemplatesLoading, setFlowiseTemplatesLoading] = useState(true);
+  const [pitchIntro, setPitchIntro] = useState(null);
   const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
   const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
   const fallbackTemplate = {
@@ -109,6 +141,41 @@ export function Templates() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const settings = await appSettingsService.getPublic();
+        if (mounted) {
+          setPitchIntro(settings?.workflowTemplatesPitchContent ?? null);
+        }
+      } catch {
+        if (mounted) setPitchIntro(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const effectivePitchIntro = useMemo(() => {
+    const def = DEFAULT_PITCH_INTRO;
+    const remote = pitchIntro && typeof pitchIntro === 'object' ? pitchIntro : null;
+    if (!remote) return def;
+    const rows = Array.isArray(remote.features) ? remote.features : [];
+    return {
+      heading: String(remote.heading || '').trim() || def.heading,
+      features: [0, 1, 2].map((i) => {
+        const row = rows[i] && typeof rows[i] === 'object' ? rows[i] : {};
+        return {
+          iconUrl: String(row.iconUrl || '').trim(),
+          title: String(row.title || '').trim() || def.features[i].title,
+          description: String(row.description || '').trim() || def.features[i].description,
+        };
+      }),
+    };
+  }, [pitchIntro]);
 
   const handleOpenTemplate = useCallback(
     (template) => {
@@ -177,165 +244,97 @@ export function Templates() {
             ...mobileWordWrap,
           }}
         >
-          Why use AI resources?
+          {effectivePitchIntro.heading}
         </Typography>
         <Grid container spacing={{ xs: 3, md: 4 }}>
-          <Grid xs={12} md={4}>
-            <Box sx={{ textAlign: 'center' }}>
-              <Box
-                sx={{
-                  width: { xs: 48, md: 64 },
-                  height: { xs: 48, md: 64 },
-                  bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.24 : 0.14),
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: { xs: 2, md: 3 },
-                  border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
-                }}
-              >
-                <Iconify
-                  icon="solar:clock-circle-bold-duotone"
-                  width={{ xs: 20, md: 24 }}
-                  sx={{ color: 'primary.main' }}
-                />
-              </Box>
-              <Typography
-                variant="h6"
-                sx={{
-                  fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
-                  fontWeight: 600,
-                  mb: 1.5,
-                  lineHeight: 1.35,
-                  color: 'text.primary',
-                  px: { xs: 0.5, sm: 0 },
-                  ...mobileWordWrap,
-                }}
-              >
-                Save 80% Time
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
-                  lineHeight: 1.55,
-                  color: 'text.secondary',
-                  px: { xs: 0.5, sm: 0 },
-                  ...mobileWordWrap,
-                }}
-              >
-                Automate repetitive tasks and focus on what matters most - building meaningful
-                connections.
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid xs={12} md={4}>
-            <Box sx={{ textAlign: 'center' }}>
-              <Box
-                sx={{
-                  width: { xs: 48, md: 64 },
-                  height: { xs: 48, md: 64 },
-                  bgcolor: (theme) => alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.28 : 0.12),
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: { xs: 2, md: 3 },
-                  border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.35)}`,
-                }}
-              >
-                <Iconify
-                  icon="solar:users-group-rounded-bold-duotone"
-                  width={{ xs: 20, md: 24 }}
-                  sx={{ color: 'secondary.main' }}
-                />
-              </Box>
-              <Typography
-                variant="h6"
-                sx={{
-                  fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
-                  fontWeight: 600,
-                  mb: 1.5,
-                  lineHeight: 1.35,
-                  color: 'text.primary',
-                  px: { xs: 0.5, sm: 0 },
-                  ...mobileWordWrap,
-                }}
-              >
-                Better Engagement
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
-                  lineHeight: 1.55,
-                  color: 'text.secondary',
-                  px: { xs: 0.5, sm: 0 },
-                  ...mobileWordWrap,
-                }}
-              >
-                Deliver personalized experiences that keep members active and engaged in your
-                community.
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid xs={12} md={4}>
-            <Box sx={{ textAlign: 'center' }}>
-              <Box
-                sx={{
-                  width: { xs: 48, md: 64 },
-                  height: { xs: 48, md: 64 },
-                  background: (theme) =>
-                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.1)} 0%, ${alpha(
-                      theme.palette.secondary.main,
-                      theme.palette.mode === 'dark' ? 0.2 : 0.1
-                    )} 100%)`,
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: { xs: 2, md: 3 },
-                  border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.32)}`,
-                }}
-              >
-                <Iconify
-                  icon="solar:chart-2-bold-duotone"
-                  width={{ xs: 20, md: 24 }}
-                  sx={{ color: 'primary.main' }}
-                />
-              </Box>
-              <Typography
-                variant="h6"
-                sx={{
-                  fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
-                  fontWeight: 600,
-                  mb: 1.5,
-                  lineHeight: 1.35,
-                  color: 'text.primary',
-                  px: { xs: 0.5, sm: 0 },
-                  ...mobileWordWrap,
-                }}
-              >
-                Scale Effortlessly
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
-                  lineHeight: 1.55,
-                  color: 'text.secondary',
-                  px: { xs: 0.5, sm: 0 },
-                  ...mobileWordWrap,
-                }}
-              >
-                Handle thousands of members with the same personal touch as your first ten members.
-              </Typography>
-            </Box>
-          </Grid>
+          {effectivePitchIntro.features.map((feature, index) => {
+            const circleSx =
+              index === 0
+                ? {
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.24 : 0.14),
+                    border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+                  }
+                : index === 1
+                  ? {
+                      bgcolor: (theme) =>
+                        alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.28 : 0.12),
+                      border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.35)}`,
+                    }
+                  : {
+                      background: (theme) =>
+                        `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.1)} 0%, ${alpha(
+                          theme.palette.secondary.main,
+                          theme.palette.mode === 'dark' ? 0.2 : 0.1
+                        )} 100%)`,
+                      border: (theme) => `1px solid ${alpha(theme.palette.secondary.main, 0.32)}`,
+                    };
+
+            return (
+              <Grid key={index} xs={12} md={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box
+                    sx={{
+                      width: { xs: 48, md: 64 },
+                      height: { xs: 48, md: 64 },
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mx: 'auto',
+                      mb: { xs: 2, md: 3 },
+                      ...circleSx,
+                    }}
+                  >
+                    {feature.iconUrl ? (
+                      <Box
+                        component="img"
+                        src={feature.iconUrl}
+                        alt=""
+                        sx={{
+                          width: { xs: 22, md: 28 },
+                          height: { xs: 22, md: 28 },
+                          objectFit: 'contain',
+                          display: 'block',
+                        }}
+                      />
+                    ) : (
+                      <Iconify
+                        icon={PITCH_FALLBACK_ICONS[index]}
+                        width={{ xs: 20, md: 24 }}
+                        sx={{ color: index === 1 ? 'secondary.main' : 'primary.main' }}
+                      />
+                    )}
+                  </Box>
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontSize: { xs: 'clamp(0.9375rem, 2.5vw + 0.55rem, 1rem)', md: '1.125rem' },
+                      fontWeight: 600,
+                      mb: 1.5,
+                      lineHeight: 1.35,
+                      color: 'text.primary',
+                      px: { xs: 0.5, sm: 0 },
+                      ...mobileWordWrap,
+                    }}
+                  >
+                    {feature.title}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: { xs: 'clamp(0.8125rem, 2.8vw + 0.45rem, 0.9375rem)', md: '1rem' },
+                      lineHeight: 1.55,
+                      color: 'text.secondary',
+                      px: { xs: 0.5, sm: 0 },
+                      ...mobileWordWrap,
+                    }}
+                  >
+                    {feature.description}
+                  </Typography>
+                </Box>
+              </Grid>
+            );
+          })}
         </Grid>
       </Card>
 

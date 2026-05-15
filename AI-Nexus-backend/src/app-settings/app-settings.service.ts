@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { AppSettingsEntity } from './app-settings.entity';
+import { AppSettingsEntity, WorkflowTemplatesPitchContent } from './app-settings.entity';
 import { LocalStorageService } from '../service/local-storage.service';
 import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
@@ -77,6 +77,7 @@ export class AppSettingsService {
   private homeCardsColumnChecked = false;
   private homeJoinColumnChecked = false;
   private contactHeroColumnsChecked = false;
+  private workflowTemplatesPitchColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -117,10 +118,19 @@ export class AppSettingsService {
     this.contactHeroColumnsChecked = true;
   }
 
+  private async ensureWorkflowTemplatesPitchColumn(): Promise<void> {
+    if (this.workflowTemplatesPitchColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "workflowTemplatesPitchContent" jsonb'
+    );
+    this.workflowTemplatesPitchColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
     await this.ensureContactHeroColumns();
+    await this.ensureWorkflowTemplatesPitchColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -350,6 +360,44 @@ export class AppSettingsService {
     return Number.isFinite(n) ? n : null;
   }
 
+  /** Accepts stored `/uploads/...` or absolute URL from client; returns `/uploads/...` or ''. */
+  private toStoredUploadPath(value: unknown): string {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw) return '';
+    const idx = raw.indexOf('/uploads/');
+    const path = idx >= 0 ? raw.slice(idx) : raw;
+    if (!path.startsWith('/uploads/')) return '';
+    if (path.includes('..')) return '';
+    return path.length > 500 ? path.slice(0, 500) : path;
+  }
+
+  private sanitizeWorkflowTemplatesPitchContent(
+    input: unknown,
+    existing: WorkflowTemplatesPitchContent | null | undefined
+  ): WorkflowTemplatesPitchContent {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    return {
+      heading: this.cleanText(source.heading, 120) || this.cleanText(existing?.heading, 120),
+      features: [0, 1, 2].map((i) => {
+        const row =
+          Array.isArray(source.features) && source.features[i] && typeof source.features[i] === 'object'
+            ? (source.features[i] as any)
+            : {};
+        const prevRow =
+          Array.isArray(existing?.features) && existing?.features[i] && typeof existing.features[i] === 'object'
+            ? (existing.features[i] as any)
+            : {};
+        const fromInput = this.toStoredUploadPath(row?.iconUrl);
+        const iconUrl = fromInput || this.toStoredUploadPath(prevRow?.iconUrl);
+        return {
+          iconUrl,
+          title: this.cleanText(row?.title, 120),
+          description: this.cleanText(row?.description, 600),
+        };
+      }),
+    };
+  }
+
   private sanitizeContactHeroContent(input: unknown): ContactHeroContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const contacts = Array.isArray(source.contacts) ? source.contacts : [];
@@ -429,6 +477,83 @@ export class AppSettingsService {
     };
   }
 
+  async updateWorkflowTemplatesPitchContent(
+    payload: WorkflowTemplatesPitchContent
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.workflowTemplatesPitchContent = this.sanitizeWorkflowTemplatesPitchContent(
+      payload,
+      settings.workflowTemplatesPitchContent
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Workflow templates intro content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadWorkflowTemplatesPitchIcon(
+    slot: number,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    if (![0, 1, 2].includes(slot)) {
+      throw new BadRequestException('Icon slot must be 0, 1, or 2');
+    }
+    const settings = await this.getSettings();
+    const folder = `workflow-templates-pitch/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, { fileName: 'icon' });
+
+    const existing = settings.workflowTemplatesPitchContent || {};
+    const features = Array.isArray(existing.features) ? [...existing.features] : [];
+    while (features.length < 3) {
+      features.push({ iconUrl: '', title: '', description: '' });
+    }
+    const prevRow = features[slot] && typeof features[slot] === 'object' ? (features[slot] as any) : {};
+    features[slot] = {
+      ...prevRow,
+      iconUrl: relativeUrl,
+    };
+
+    settings.workflowTemplatesPitchContent = this.sanitizeWorkflowTemplatesPitchContent(
+      { heading: existing.heading, features },
+      existing
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Workflow templates intro icon updated successfully',
+      settings: saved,
+    };
+  }
+
+  async removeWorkflowTemplatesPitchIcon(slot: number): Promise<{ message: string; settings: AppSettingsEntity }> {
+    if (![0, 1, 2].includes(slot)) {
+      throw new BadRequestException('Icon slot must be 0, 1, or 2');
+    }
+    const settings = await this.getSettings();
+    const folder = `workflow-templates-pitch/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+
+    const existing = settings.workflowTemplatesPitchContent || {};
+    const features = Array.isArray(existing.features) ? [...existing.features] : [];
+    while (features.length < 3) {
+      features.push({ iconUrl: '', title: '', description: '' });
+    }
+    const prevRow = features[slot] && typeof features[slot] === 'object' ? { ...(features[slot] as any) } : {};
+    prevRow.iconUrl = '';
+    features[slot] = prevRow;
+
+    settings.workflowTemplatesPitchContent = this.sanitizeWorkflowTemplatesPitchContent(
+      { heading: existing.heading, features },
+      existing
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Workflow templates intro icon removed successfully',
+      settings: saved,
+    };
+  }
+
   async getPublicSettings(): Promise<{
     logoUrl: string | null;
     homeHeroImageUrl: string | null;
@@ -438,6 +563,7 @@ export class AppSettingsService {
     contactHeroImageUrl: string | null;
     courseDefaultImageUrl: string | null;
     contactHeroContent: ContactHeroContentPayload | null;
+    workflowTemplatesPitchContent: WorkflowTemplatesPitchContent | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -453,6 +579,10 @@ export class AppSettingsService {
       contactHeroImageUrl: settings.contactHeroImageUrl ?? null,
       courseDefaultImageUrl: settings.courseDefaultImageUrl ?? null,
       contactHeroContent: settings.contactHeroContent ?? null,
+      workflowTemplatesPitchContent: this.sanitizeWorkflowTemplatesPitchContent(
+        settings.workflowTemplatesPitchContent || {},
+        settings.workflowTemplatesPitchContent
+      ),
       totalCourseEnrollments,
     };
   }

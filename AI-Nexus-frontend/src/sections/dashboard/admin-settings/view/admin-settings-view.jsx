@@ -17,6 +17,7 @@ import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import LoadingButton from '@mui/lab/LoadingButton';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import { alpha } from '@mui/material/styles';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { toast } from 'src/components/snackbar';
@@ -25,6 +26,14 @@ import { Editor } from 'src/components/editor';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 
 import { paths } from 'src/routes/paths';
+
+import settingsTabSiteLogo from 'src/assets/settings/camera.png';
+import settingsTabHero from 'src/assets/settings/hero.png';
+import settingsTabHomeCards from 'src/assets/settings/home.png';
+import settingsTabJoin from 'src/assets/settings/join.png';
+import settingsTabContact from 'src/assets/settings/contact.png';
+import settingsTabCourse from 'src/assets/settings/course.png';
+import settingsTabHeader from 'src/assets/settings/header.png';
 
 import { useSettingsContext } from 'src/components/settings';
 import { appSettingsService } from 'src/services/app-settings.service';
@@ -55,6 +64,37 @@ const CONTACT_FIELD_META = [
   { key: 'whatsapp', label: 'WhatsApp', defaultIcon: 'ri:whatsapp-fill', color: 'success' },
   { key: 'website', label: 'Website', defaultIcon: 'mdi:web', color: 'warning' },
 ];
+
+const DEFAULT_WORKFLOW_TEMPLATES_PITCH = {
+  heading: 'Why use AI resources?',
+  features: [
+    {
+      iconUrl: '',
+      title: 'Save 80% Time',
+      description:
+        'Automate repetitive tasks and focus on what matters most - building meaningful connections.',
+    },
+    {
+      iconUrl: '',
+      title: 'Better Engagement',
+      description:
+        'Deliver personalized experiences that keep members active and engaged in your community.',
+    },
+    {
+      iconUrl: '',
+      title: 'Scale Effortlessly',
+      description:
+        'Handle thousands of members with the same personal touch as your first ten members.',
+    },
+  ],
+};
+
+const toStoredUploadPath = (url) => {
+  if (!url) return '';
+  const s = String(url).trim();
+  const idx = s.indexOf('/uploads/');
+  return idx >= 0 ? s.slice(idx) : s;
+};
 
 const parseContactDetailFields = (detailsHtml = '') => {
   const normalizedText = String(detailsHtml || '')
@@ -142,6 +182,12 @@ export function AdminSettingsView() {
   const [courseDefaultImageLoading, setCourseDefaultImageLoading] = useState(true);
   const [courseDefaultImageSubmitting, setCourseDefaultImageSubmitting] = useState(false);
   const [contactHeroContentSubmitting, setContactHeroContentSubmitting] = useState(false);
+  const [workflowPitch, setWorkflowPitch] = useState(() => ({
+    heading: DEFAULT_WORKFLOW_TEMPLATES_PITCH.heading,
+    features: DEFAULT_WORKFLOW_TEMPLATES_PITCH.features.map((f) => ({ ...f })),
+  }));
+  const [workflowPitchSubmitting, setWorkflowPitchSubmitting] = useState(false);
+  const [workflowPitchIconSlotLoading, setWorkflowPitchIconSlotLoading] = useState(null);
   const emptyHeroStatsRow = () => ({ value: '', label: '', icon: '' });
   const emptyHeroEventSlot = () => ({ startDateLabel: '', startDate: '', startTimeLabel: '', startTime: '' });
   const [emojiPickerStatIndex, setEmojiPickerStatIndex] = useState(null);
@@ -227,6 +273,95 @@ export function AdminSettingsView() {
 
   const handleToggle = (field) => {
     settings.onUpdateField(field, !settings[field]);
+  };
+
+  const applyWorkflowPitchFromSettings = useCallback((appSettings) => {
+    const rp = appSettings?.workflowTemplatesPitchContent;
+    if (rp && typeof rp === 'object') {
+      const feats = Array.isArray(rp.features) ? rp.features : [];
+      setWorkflowPitch({
+        heading: String(rp.heading || '').trim() || DEFAULT_WORKFLOW_TEMPLATES_PITCH.heading,
+        features: [0, 1, 2].map((i) => {
+          const row = feats[i] && typeof feats[i] === 'object' ? feats[i] : {};
+          return {
+            iconUrl: String(row.iconUrl || '').trim(),
+            title: String(row.title || '').trim() || DEFAULT_WORKFLOW_TEMPLATES_PITCH.features[i].title,
+            description:
+              String(row.description || '').trim() || DEFAULT_WORKFLOW_TEMPLATES_PITCH.features[i].description,
+          };
+        }),
+      });
+    } else {
+      setWorkflowPitch({
+        heading: DEFAULT_WORKFLOW_TEMPLATES_PITCH.heading,
+        features: DEFAULT_WORKFLOW_TEMPLATES_PITCH.features.map((f) => ({ ...f })),
+      });
+    }
+  }, []);
+
+  const updateWorkflowPitchHeading = (value) => {
+    setWorkflowPitch((prev) => ({ ...prev, heading: value }));
+  };
+
+  const updateWorkflowPitchFeature = (index, field, value) => {
+    setWorkflowPitch((prev) => {
+      const features = [...(prev.features || [])];
+      while (features.length <= index) features.push({ iconUrl: '', title: '', description: '' });
+      features[index] = { ...features[index], [field]: value };
+      return { ...prev, features };
+    });
+  };
+
+  const handleSaveWorkflowPitchContent = async () => {
+    try {
+      setWorkflowPitchSubmitting(true);
+      const payload = {
+        heading: workflowPitch.heading || '',
+        features: [0, 1, 2].map((i) => {
+          const row = workflowPitch.features?.[i] || {};
+          return {
+            title: row.title || '',
+            description: row.description || '',
+            iconUrl: toStoredUploadPath(row.iconUrl),
+          };
+        }),
+      };
+      const updated = await appSettingsService.updateWorkflowTemplatesPitchContent(payload);
+      applyWorkflowPitchFromSettings(updated);
+      toast.success('Workflow templates intro updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to save workflow templates intro');
+    } finally {
+      setWorkflowPitchSubmitting(false);
+    }
+  };
+
+  const handleDropWorkflowPitchIcon = async (slot, acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (!file) return;
+    try {
+      setWorkflowPitchIconSlotLoading(slot);
+      const updated = await appSettingsService.uploadWorkflowTemplatesPitchIcon(slot, file);
+      applyWorkflowPitchFromSettings(updated);
+      toast.success(`Column ${slot + 1} icon updated`);
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload icon');
+    } finally {
+      setWorkflowPitchIconSlotLoading(null);
+    }
+  };
+
+  const handleRemoveWorkflowPitchIcon = async (slot) => {
+    try {
+      setWorkflowPitchIconSlotLoading(slot);
+      const updated = await appSettingsService.removeWorkflowTemplatesPitchIcon(slot);
+      applyWorkflowPitchFromSettings(updated);
+      toast.success(`Column ${slot + 1} icon removed`);
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove icon');
+    } finally {
+      setWorkflowPitchIconSlotLoading(null);
+    }
   };
 
   const loadSettings = useCallback(async () => {
@@ -334,6 +469,8 @@ export function AdminSettingsView() {
         ).trim(),
         contacts: normalizedContacts,
       });
+
+      applyWorkflowPitchFromSettings(appSettings);
     } catch (error) {
       toast.error(error?.message || 'Failed to load site settings');
     } finally {
@@ -342,7 +479,7 @@ export function AdminSettingsView() {
       setContactHeroLoading(false);
       setCourseDefaultImageLoading(false);
     }
-  }, []);
+  }, [applyWorkflowPitchFromSettings]);
 
   useEffect(() => {
     loadSettings();
@@ -927,55 +1064,71 @@ export function AdminSettingsView() {
     {
       key: 'logo',
       badge: 'L',
-      icon: 'solar:camera-bold-duotone',
+      iconSrc: settingsTabSiteLogo,
       title: 'Site Logo',
       description: 'Manage public header logo image.',
     },
     {
       key: 'hero',
       badge: 'H',
-      icon: 'solar:gallery-wide-bold-duotone',
+      iconSrc: settingsTabHero,
       title: 'Hero',
       description: 'Manage hero background and content together.',
     },
     {
       key: 'cards',
       badge: 'C',
-      icon: 'solar:widget-6-bold-duotone',
+      iconSrc: settingsTabHomeCards,
       title: 'Home Cards',
       description: 'Manage second home section heading and cards.',
     },
     {
       key: 'join',
       badge: 'J',
-      icon: 'solar:hand-heart-bold-duotone',
+      iconSrc: settingsTabJoin,
       title: 'Join Section',
       description: 'Manage call-to-action join section content.',
     },
     {
       key: 'contact',
       badge: 'CT',
-      icon: 'solar:phone-calling-rounded-bold-duotone',
+      iconSrc: settingsTabContact,
       title: 'Contact Hero',
       description: 'Manage contact page banner, heading, and map points.',
     },
     {
       key: 'course-image',
       badge: 'CI',
-      icon: 'solar:album-bold-duotone',
+      iconSrc: settingsTabCourse,
       title: 'Course Image',
       description: 'Manage default fallback image for course cards.',
     },
     {
+      key: 'workflow-templates-pitch',
+      badge: 'AI',
+      icon: 'solar:clipboard-list-bold-duotone',
+      title: 'Workflows intro',
+      description: 'Edit the “Why use AI resources?” strip on the workflow templates page.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
-      icon: 'solar:eye-bold-duotone',
+      iconSrc: settingsTabHeader,
       title: 'Header Visibility',
       description: 'Toggle top bar icons visibility.',
     },
   ];
 
-  const validSectionKeys = ['logo', 'hero', 'cards', 'join', 'contact', 'course-image', 'header-visibility'];
+  const validSectionKeys = [
+    'logo',
+    'hero',
+    'cards',
+    'join',
+    'contact',
+    'course-image',
+    'workflow-templates-pitch',
+    'header-visibility',
+  ];
 
   useEffect(() => {
     if (!section) {
@@ -1527,6 +1680,83 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const renderWorkflowTemplatesPitchSettings = (
+    <Card sx={{ p: 3 }}>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Workflow templates intro
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Controls the gradient card above the template grid (heading + three columns). Upload optional icons for
+            each column; if omitted, the page uses default icons.
+          </Typography>
+        </Box>
+
+        <TextField
+          fullWidth
+          label="Section heading"
+          value={workflowPitch.heading}
+          onChange={(e) => updateWorkflowPitchHeading(e.target.value)}
+        />
+
+        <Grid container spacing={3}>
+          {[0, 1, 2].map((slot) => {
+            const row = workflowPitch.features?.[slot] || { iconUrl: '', title: '', description: '' };
+            return (
+              <Grid key={slot} item xs={12} md={4}>
+                <Stack spacing={2}>
+                  <Typography variant="subtitle2">Column {slot + 1}</Typography>
+                  <Upload
+                    value={row.iconUrl || null}
+                    onDrop={(acceptedFiles) => handleDropWorkflowPitchIcon(slot, acceptedFiles)}
+                    onDelete={row.iconUrl ? () => handleRemoveWorkflowPitchIcon(slot) : undefined}
+                    disabled={workflowPitchIconSlotLoading === slot}
+                    sx={{
+                      '& > .MuiBox-root:first-of-type': {
+                        minHeight: 140,
+                        p: 2,
+                      },
+                    }}
+                    accept={{
+                      'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
+                    }}
+                    maxSize={5 * 1024 * 1024}
+                    helperText="Optional. Square-ish icons work best. Max 5 MB."
+                  />
+                  <TextField
+                    fullWidth
+                    label="Title"
+                    value={row.title}
+                    onChange={(e) => updateWorkflowPitchFeature(slot, 'title', e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={3}
+                    label="Description"
+                    value={row.description}
+                    onChange={(e) => updateWorkflowPitchFeature(slot, 'description', e.target.value)}
+                  />
+                </Stack>
+              </Grid>
+            );
+          })}
+        </Grid>
+
+        <Box>
+          <LoadingButton
+            variant="contained"
+            loading={workflowPitchSubmitting}
+            onClick={handleSaveWorkflowPitchContent}
+          >
+            Save intro copy
+          </LoadingButton>
+        </Box>
+      </Stack>
+    </Card>
+  );
+
   const renderCourseDefaultImageSettings = (
     <Card sx={{ p: 3 }}>
       <Stack spacing={2.5}>
@@ -1584,7 +1814,21 @@ export function AdminSettingsView() {
   const activeSectionItem = sectionCards.find((item) => item.key === activeSection);
 
   const renderSectionSwitcher = (
-    <Card sx={{ p: { xs: 1, sm: 1.5 } }}>
+    <Card
+      sx={(theme) => ({
+        p: { xs: 1, sm: 1.5 },
+        overflow: 'hidden',
+        border: `1px solid ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.28 : 0.14)}`,
+        background: `linear-gradient(125deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.08)} 0%, ${alpha(
+          theme.palette.secondary.main,
+          theme.palette.mode === 'dark' ? 0.16 : 0.06
+        )} 48%, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.04)} 100%)`,
+        boxShadow:
+          theme.palette.mode === 'dark'
+            ? `0 6px 28px ${alpha(theme.palette.common.black, 0.28)}`
+            : `0 6px 28px ${alpha(theme.palette.secondary.main, 0.1)}`,
+      })}
+    >
       <Tabs
         value={activeSection}
         onChange={(_, value) => navigate(paths.admin.settingsSection(value))}
@@ -1599,23 +1843,25 @@ export function AdminSettingsView() {
             background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
           },
           '& .MuiTab-root': {
-            minHeight: 48,
+            minHeight: 56,
             textTransform: 'none',
             fontWeight: 600,
             px: 1.5,
             borderRadius: 1.5,
-            color: 'text.secondary',
+            color: 'secondary.main',
             transition: 'all 0.2s ease',
-            '& .MuiSvgIcon-root, & svg': { opacity: 0.8 },
+            '& .MuiSvgIcon-root, & svg': { opacity: 0.85, width: 24, height: 24 },
+            '& .MuiTab-iconWrapper img': { opacity: 0.85 },
             '&:hover': {
               color: 'primary.main',
-              bgcolor: 'action.hover',
+              bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.55),
             },
           },
           '& .MuiTab-root.Mui-selected': {
             color: 'primary.main',
-            bgcolor: theme.palette.mode === 'dark' ? 'rgba(227,43,36,0.18)' : 'rgba(227,43,36,0.10)',
+            bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.14),
             '& .MuiSvgIcon-root, & svg': { opacity: 1 },
+            '& .MuiTab-iconWrapper img': { opacity: 1 },
           },
         })}
       >
@@ -1623,7 +1869,26 @@ export function AdminSettingsView() {
           <Tab
             key={sectionItem.key}
             value={sectionItem.key}
-            icon={<Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={18} />}
+            icon={
+              sectionItem.iconSrc ? (
+                <Box
+                  component="img"
+                  src={sectionItem.iconSrc}
+                  alt=""
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    maxWidth: 28,
+                    maxHeight: 28,
+                    objectFit: 'contain',
+                    display: 'block',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : (
+                <Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={24} />
+              )
+            }
             iconPosition="start"
             label={sectionItem.title}
           />
@@ -1631,7 +1896,14 @@ export function AdminSettingsView() {
       </Tabs>
 
       {activeSectionItem ? (
-        <Typography variant="body2" sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.5, color: 'text.secondary' }}>
+        <Typography
+          variant="body2"
+          sx={(theme) => ({
+            px: { xs: 1.5, sm: 2 },
+            pt: 1.5,
+            color: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.72) : 'secondary.dark',
+          })}
+        >
           {activeSectionItem.description}
         </Typography>
       ) : null}
@@ -1662,6 +1934,7 @@ export function AdminSettingsView() {
         {activeSection === 'join' && renderHomeJoinSettings}
         {activeSection === 'contact' && renderContactHeroSettings}
         {activeSection === 'course-image' && renderCourseDefaultImageSettings}
+        {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

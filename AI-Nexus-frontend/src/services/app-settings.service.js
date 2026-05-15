@@ -14,6 +14,20 @@ function transformSettings(settings) {
   const sourceCards = settings?.homeCardsContent;
   const sourceJoin = settings?.homeJoinContent;
   const sourceContactHero = settings?.contactHeroContent;
+  const sourcePitch = settings?.workflowTemplatesPitchContent;
+  const normalizedPitchFeatures = [0, 1, 2].map((i) => {
+    const rows = Array.isArray(sourcePitch?.features) ? sourcePitch.features : [];
+    const f = rows[i] && typeof rows[i] === 'object' ? rows[i] : {};
+    return {
+      iconUrl: normalizeAssetUrl(f?.iconUrl || ''),
+      title: f?.title != null ? String(f.title) : '',
+      description: f?.description != null ? String(f.description) : '',
+    };
+  });
+  const hasPitchContent =
+    Boolean(String(sourcePitch?.heading || '').trim()) ||
+    normalizedPitchFeatures.some((row) => row.title || row.description || row.iconUrl);
+
   const normalizedStats = Array.isArray(sourceContent?.stats)
     ? sourceContent.stats.slice(0, 3).map((item) => ({
         value: item?.value ? String(item.value) : '',
@@ -110,6 +124,12 @@ function transformSettings(settings) {
               : [],
           }
         : null,
+    workflowTemplatesPitchContent: hasPitchContent
+      ? {
+          heading: sourcePitch?.heading != null ? String(sourcePitch.heading) : '',
+          features: normalizedPitchFeatures,
+        }
+      : null,
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -214,6 +234,28 @@ export const appSettingsService = {
 
   async updateContactHeroContent(payload) {
     const response = await axios.put('/app-settings/contact-hero-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateWorkflowTemplatesPitchContent(payload) {
+    const response = await axios.put('/app-settings/workflow-templates-pitch-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadWorkflowTemplatesPitchIcon(slot, file) {
+    const formData = new FormData();
+    formData.append('icon', file);
+    const response = await axios.post(`/app-settings/workflow-templates-pitch-icon/${slot}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeWorkflowTemplatesPitchIcon(slot) {
+    const response = await axios.delete(`/app-settings/workflow-templates-pitch-icon/${slot}`);
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

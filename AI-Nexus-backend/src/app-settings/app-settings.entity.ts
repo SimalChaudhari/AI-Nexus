@@ -45,6 +45,11 @@ export type HomeJoinContent = {
   ctaIcon?: string;
 };
 
+export type WorkflowTemplatesPitchContent = {
+  heading?: string;
+  features?: Array<{ iconUrl?: string; title?: string; description?: string }>;
+};
+
 export type ContactHeroContent = {
   headingLine1?: string;
   headingLine2?: string;
@@ -102,6 +107,10 @@ export class AppSettingsEntity {
   /** Public contact hero text and map points managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
   contactHeroContent?: ContactHeroContent | null;
+
+  /** Public copy for the workflows / templates “Why use AI resources?” strip (3 columns). */
+  @Column({ type: 'jsonb', nullable: true })
+  workflowTemplatesPitchContent?: WorkflowTemplatesPitchContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

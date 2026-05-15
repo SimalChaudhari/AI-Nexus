@@ -5,7 +5,9 @@ import {
   Get,
   HttpStatus,
   MaxFileSizeValidator,
+  Param,
   ParseFilePipe,
+  ParseIntPipe,
   Post,
   Put,
   Req,
@@ -298,6 +300,64 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Update contact page hero text and map content' })
   async updateContactHeroContent(@Res() response: Response, @Body() payload: any) {
     const result = await this.appSettingsService.updateContactHeroContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('workflow-templates-pitch-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update workflows / templates page “Why use AI resources?” intro copy' })
+  async updateWorkflowTemplatesPitchContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateWorkflowTemplatesPitchContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('workflow-templates-pitch-icon/:slot')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload intro column icon (slot 0, 1, or 2) for workflows templates page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        icon: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('icon', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadWorkflowTemplatesPitchIcon(
+    @Res() response: Response,
+    @Param('slot', ParseIntPipe) slot: number,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadWorkflowTemplatesPitchIcon(slot, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('workflow-templates-pitch-icon/:slot')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove intro column icon (slot 0, 1, or 2) for workflows templates page' })
+  async removeWorkflowTemplatesPitchIcon(@Res() response: Response, @Param('slot', ParseIntPipe) slot: number) {
+    const result = await this.appSettingsService.removeWorkflowTemplatesPitchIcon(slot);
     return response.status(HttpStatus.OK).json(result);
   }
 }
