@@ -72,7 +72,7 @@ export default function WorkflowDetailsPublicPage() {
   }, [id, isFlowiseTemplate]);
 
   useEffect(() => {
-    if (!workflow?.isPreviewOnly || !workflow?.flowData) return;
+    if (!isFlowiseTemplate || !workflow?.flowData) return;
     const frame = previewFrameRef.current;
     if (!frame || !frame.contentWindow) return;
     try {
@@ -86,7 +86,7 @@ export default function WorkflowDetailsPublicPage() {
     } catch {
       // no-op
     }
-  }, [workflow]);
+  }, [workflow, isFlowiseTemplate]);
 
   useEffect(() => {
     setPreviewLoading(Boolean(isFlowiseTemplate));
@@ -151,11 +151,14 @@ export default function WorkflowDetailsPublicPage() {
     window.open(`${flowiseBase}${editorPath}`, '_blank', 'noopener,noreferrer');
   };
   const previewOnlyPath = '/embed/marketplace-preview';
-  const previewHashPayload = workflow?.isPreviewOnly && workflow?.flowData ? encodeFlowDataForHash(workflow.flowData) : '';
+  // Same hash embed as listing cards: any Flowise row with parsed nodes/edges can use /embed/marketplace-preview.
+  // isPreviewOnly is only for "open in editor" (template vs saved id); it must not block the live canvas here.
+  const previewHashPayload =
+    isFlowiseTemplate && workflow?.flowData ? encodeFlowDataForHash(workflow.flowData) : '';
   // Only no-auth embed routes may run inside an iframe. /embed/agentflow/:id uses RequireAuth and
   // triggers token-bridge redirects that fail across origins (and show chrome-error when TLS/port mismatches).
   const flowiseIframePreviewUrl =
-    flowiseBase && workflow?.isPreviewOnly && previewHashPayload
+    flowiseBase && previewHashPayload
       ? `${flowiseBase}${previewOnlyPath}#flowData=${encodeURIComponent(previewHashPayload)}`
       : '';
 
@@ -304,7 +307,7 @@ export default function WorkflowDetailsPublicPage() {
                               style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
                               onLoad={() => {
                                 setPreviewLoading(false);
-                                if (!workflow?.isPreviewOnly || !workflow?.flowData) return;
+                                if (!workflow?.flowData) return;
                                 try {
                                   previewFrameRef.current?.contentWindow?.postMessage(
                                     {
