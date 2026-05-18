@@ -9,6 +9,7 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { getOAuthAuthUrl } from 'src/auth/context/jwt';
+import { POST_OAUTH_RETURN_TO_KEY, setScaqSsoVerificationPending } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -21,7 +22,21 @@ export default function OAuthStartPage() {
 
     const run = async () => {
       try {
-        const { authUrl } = await getOAuthAuthUrl();
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('membershipOutcome') === 'scaq-sso-verify') {
+          setScaqSsoVerificationPending();
+        }
+        const returnTo = params.get('returnTo');
+        if (returnTo) {
+          try {
+            sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, decodeURIComponent(returnTo));
+          } catch {
+            sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, returnTo);
+          }
+        }
+
+        const scaqVerify = params.get('membershipOutcome') === 'scaq-sso-verify';
+        const { authUrl } = await getOAuthAuthUrl({ scaqVerify });
         if (cancelled) return;
         if (authUrl && (authUrl.startsWith('http://') || authUrl.startsWith('https://'))) {
           window.location.href = authUrl;

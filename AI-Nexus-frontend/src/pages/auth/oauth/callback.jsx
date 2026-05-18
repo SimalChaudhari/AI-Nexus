@@ -15,9 +15,71 @@ import {
   setSession,
   jwtDecode,
   exchangeOAuthCode,
+  promoteSalesforceAssociateMember,
+  signOut,
 } from 'src/auth/context/jwt';
+import {
+  mergeSalesforceFromExchangeUser,
+  mergeSalesforceFromOAuthCallbackSearchParams,
+  clearMembershipEligibilitySessionStorage,
+  persistPaidSignupPrefillAfterScaqReject,
+  resolveScaqPostLoginDecision,
+  readSalesforceFlagsFromCallbackParams,
+  readSalesforceFlagsFromSessionUser,
+  isScaqMembershipSsoFlow,
+  POST_OAUTH_RETURN_TO_KEY,
+} from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
+
+function resolvePostLoginPath(searchParams) {
+  const fromQuery = searchParams.get('returnTo');
+  if (fromQuery) {
+    try {
+      return decodeURIComponent(fromQuery);
+    } catch {
+      return fromQuery;
+    }
+  }
+  try {
+    const stored = sessionStorage.getItem(POST_OAUTH_RETURN_TO_KEY);
+    if (stored) {
+      sessionStorage.removeItem(POST_OAUTH_RETURN_TO_KEY);
+      return stored;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile = {}) {
+  persistPaidSignupPrefillAfterScaqReject(profile);
+
+  let returnTo = '';
+  try {
+    returnTo = sessionStorage.getItem(POST_OAUTH_RETURN_TO_KEY) || '';
+  } catch {
+    // ignore
+  }
+
+  try {
+    await signOut();
+  } catch {
+    setSession(null);
+    try {
+      sessionStorage.removeItem('user');
+    } catch {
+      // ignore
+    }
+  }
+  await checkUserSession?.();
+  clearMembershipEligibilitySessionStorage();
+
+  const params = new URLSearchParams({ membershipOutcome: 'paid-signup' });
+  if (returnTo) params.set('returnTo', returnTo);
+  router.replace(`${paths.auth.simple.signUp}?${params.toString()}`);
+}
 
 export default function OAuthCallbackPage() {
   const router = useRouter();
@@ -39,13 +101,93 @@ export default function OAuthCallbackPage() {
         return;
       }
 
+      const scaqFlow = isScaqMembershipSsoFlow(searchParams);
+      const scaqProfileOnly = searchParams.get('scaqProfileOnly') === 'true';
+
       try {
+        if (scaqProfileOnly) {
+          const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+          await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+            email: searchParams.get('email'),
+            firstName: searchParams.get('firstName'),
+            lastName: searchParams.get('lastName'),
+            salesforce: {
+              isSCAQCandidate: sf.isSCAQCandidate,
+              isAssociateMember: sf.isAssociateMember,
+              accountId: sf.accountId,
+              accountType: sf.accountType,
+              memberClass: sf.memberClass,
+            },
+          });
+          return;
+        }
+
         if (code) {
-          await exchangeOAuthCode({
+          const exchangeResult = await exchangeOAuthCode({
             code,
             state: searchParams.get('state') || undefined,
           });
+
+          if (exchangeResult.scaqProfileOnly) {
+            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+              email: exchangeResult.email,
+              firstName: exchangeResult.firstName,
+              lastName: exchangeResult.lastName,
+              salesforce: exchangeResult.salesforce,
+            });
+            return;
+          }
+
+          const { user } = exchangeResult;
+          const sf = readSalesforceFlagsFromSessionUser(user);
+          const decision = resolveScaqPostLoginDecision(
+            sf.isSCAQCandidate,
+            sf.isAssociateMember,
+            searchParams
+          );
+
+          if (decision === 'reject-paid-signup') {
+            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+              email: user?.email,
+              firstName: user?.firstname,
+              lastName: user?.lastname,
+              username: user?.username,
+              salesforce: user?.salesforce,
+            });
+            return;
+          }
+
+          if (scaqFlow) {
+            mergeSalesforceFromExchangeUser(user);
+          }
+
+          if (decision === 'promote-associate') {
+            await promoteSalesforceAssociateMember();
+          }
         } else if (accessToken) {
+          const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+          const decision = resolveScaqPostLoginDecision(
+            sf.isSCAQCandidate,
+            sf.isAssociateMember,
+            searchParams
+          );
+
+          if (decision === 'reject-paid-signup') {
+            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+              email: searchParams.get('email'),
+              firstName: searchParams.get('firstName'),
+              lastName: searchParams.get('lastName'),
+              salesforce: {
+                isSCAQCandidate: sf.isSCAQCandidate,
+                isAssociateMember: sf.isAssociateMember,
+                accountId: sf.accountId,
+                accountType: sf.accountType,
+                memberClass: sf.memberClass,
+              },
+            });
+            return;
+          }
+
           setSession(accessToken);
           const userId = searchParams.get('userId');
           const email = searchParams.get('email');
@@ -59,14 +201,31 @@ export default function OAuthCallbackPage() {
           } catch {
             // use default role if decode fails
           }
-          const user = {
-            id: userId,
-            email,
-            firstname: firstName,
-            lastname: lastName,
-            role,
-          };
-          sessionStorage.setItem('user', JSON.stringify(user));
+          sessionStorage.setItem(
+            'user',
+            JSON.stringify({
+              id: userId,
+              email,
+              firstname: firstName,
+              lastname: lastName,
+              role,
+              salesforce: {
+                isSCAQCandidate: sf.isSCAQCandidate,
+                isAssociateMember: sf.isAssociateMember,
+                accountId: sf.accountId,
+                accountType: sf.accountType,
+                memberClass: sf.memberClass,
+              },
+            })
+          );
+
+          if (scaqFlow) {
+            mergeSalesforceFromOAuthCallbackSearchParams(searchParams);
+          }
+
+          if (decision === 'promote-associate') {
+            await promoteSalesforceAssociateMember();
+          }
         } else {
           setError('Missing access token or code.');
           setLoading(false);
@@ -84,8 +243,15 @@ export default function OAuthCallbackPage() {
             // use default role if parse fails
           }
         }
+
+        const nextPath = resolvePostLoginPath(searchParams);
+
+        clearMembershipEligibilitySessionStorage();
+
         if (userRole === 'admin') {
           router.replace(`${paths.admin.root}/dashboard`);
+        } else if (nextPath) {
+          router.replace(nextPath);
         } else {
           router.replace('/home');
         }

@@ -28,12 +28,20 @@ export class OAuthAuthController {
 
   @Get('auth-url')
   @ApiOperation({ summary: 'Generate OAuth authorization URL' })
-  async getAuthUrl() {
-    const { authUrl } = this.oauthAuthService.generateAuthUrl();
+  @ApiQuery({
+    name: 'scaqVerify',
+    required: false,
+    description: 'When true, SCAQ verify-only: non-candidates are not persisted to the database',
+  })
+  async getAuthUrl(@Query('scaqVerify') scaqVerify?: string) {
+    const verify =
+      scaqVerify === '1' || scaqVerify === 'true' || scaqVerify === 'yes';
+    const { authUrl, state } = this.oauthAuthService.generateAuthUrl({ scaqVerify: verify });
     return {
       success: true,
       message: 'OK',
       authUrl,
+      state,
     };
   }
 
@@ -41,15 +49,37 @@ export class OAuthAuthController {
   @ApiOperation({ summary: 'Exchange OAuth authorization code for application token' })
   @ApiBody({ type: OAuthExchangeDto })
   async exchange(@Body() dto: OAuthExchangeDto) {
+    const { scaqVerify } = this.oauthAuthService.parseOAuthState(dto.state);
     const tokens = await this.oauthAuthService.exchangeCodeForToken(dto.code);
     const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
     const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
-    const result = await this.oauthAuthService.processOAuthAuthentication(
+    const resolution = await this.oauthAuthService.resolveOAuthCallback(
       userInfo,
       tokens.access_token,
+      { scaqVerify },
       syncFn,
     );
-    const { user, accessToken, isNewUser } = result;
+
+    if (resolution.mode === 'profile-only') {
+      const { profile } = resolution;
+      return {
+        success: true,
+        scaqProfileOnly: true,
+        message: 'SCAQ verification complete',
+        email: profile.email,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        salesforce: {
+          accountId: profile.salesforceAccountId,
+          accountType: profile.salesforceAccountType,
+          memberClass: profile.salesforceMemberClass,
+          isSCAQCandidate: profile.isSCAQCandidate,
+          isAssociateMember: profile.isAssociateMember,
+        },
+      };
+    }
+
+    const { user, accessToken, isNewUser } = resolution.result;
     return {
       success: true,
       message: 'Authentication successful',
@@ -62,6 +92,15 @@ export class OAuthAuthController {
         role: user.role,
         authProvider: user.authProvider,
         socialId: user.socialId,
+        salesforce: {
+          accountId: user.salesforceAccountId,
+          accountType: user.salesforceAccountType,
+          memberClass: user.salesforceMemberClass,
+          username: user.salesforceUsername,
+          isSCAQCandidate: user.isSCAQCandidate,
+          isAssociateMember: user.isAssociateMember,
+          syncedAt: user.salesforceSyncedAt,
+        },
       },
       accessToken,
       isNewUser,
@@ -81,6 +120,8 @@ export class OAuthAuthController {
   ) {
     const scheme = this.oauthAuthService.deepLinkScheme;
 
+
+
     if (error) {
       const redirectUrl = this.oauthAuthService.createPostOAuthRedirectUrl({
         error: error,
@@ -98,15 +139,27 @@ export class OAuthAuthController {
     }
 
     try {
+      const { scaqVerify } = this.oauthAuthService.parseOAuthState(state);
       const tokens = await this.oauthAuthService.exchangeCodeForToken(code);
       const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
       const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
-      const result = await this.oauthAuthService.processOAuthAuthentication(
+      const resolution = await this.oauthAuthService.resolveOAuthCallback(
         userInfo,
         tokens.access_token,
+        { scaqVerify },
         syncFn,
       );
-      const { user, accessToken, isNewUser } = result;
+
+      if (resolution.mode === 'profile-only') {
+        const { profile } = resolution;
+        const redirectUrl = this.oauthAuthService.createPostOAuthRedirectUrl(
+          this.oauthAuthService.profileOnlyRedirectParams(profile),
+        );
+        return this.sendRedirectHtml(res, redirectUrl);
+      }
+
+      const { user, accessToken, isNewUser } = resolution.result;
+    
       const redirectUrl = this.oauthAuthService.createPostOAuthRedirectUrl({
         success: 'true',
         message: 'Logged in successfully',
@@ -116,9 +169,15 @@ export class OAuthAuthController {
         email: user.email || '',
         firstName: user.firstname,
         lastName: user.lastname,
+        salesforceAccountId: user.salesforceAccountId || '',
+        salesforceAccountType: user.salesforceAccountType || '',
+        salesforceMemberClass: user.salesforceMemberClass || '',
+        isSCAQCandidate: user.isSCAQCandidate === null ? '' : String(user.isSCAQCandidate),
+        isAssociateMember: user.isAssociateMember === null ? '' : String(user.isAssociateMember),
       });
       return this.sendRedirectHtml(res, redirectUrl);
     } catch (err) {
+      
       const message =
         err instanceof UnauthorizedException ? err.message : 'Authentication failed. Please try again.';
       const redirectUrl = this.oauthAuthService.createPostOAuthRedirectUrl({
@@ -138,6 +197,27 @@ export class OAuthAuthController {
     res.send(
       `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${metaUrl}"></head><body><p>Redirecting...</p><script>window.location.href="${jsUrl}";</script><a href="${linkUrl}">Click here if not redirected</a></body></html>`,
     );
+  }
+
+  @Post('promote-associate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Promote Salesforce account to Associate member (SCAQ opt-in flow)' })
+  async promoteAssociate(@Req() req: Request) {
+    const userId = (req as any).user?.id;
+    if (!userId) throw new UnauthorizedException('User not found');
+    const result = await this.oauthAuthService.promoteUserToAssociateMember(userId);
+    return {
+      success: result.success,
+      message: result.message,
+      salesforce: {
+        accountId: result.user.salesforceAccountId,
+        accountType: result.user.salesforceAccountType,
+        memberClass: result.user.salesforceMemberClass,
+        isSCAQCandidate: result.user.isSCAQCandidate,
+        isAssociateMember: result.user.isAssociateMember,
+      },
+    };
   }
 
   @Post('sync')

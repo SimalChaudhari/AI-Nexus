@@ -69,6 +69,7 @@ export function SimpleSignUpView() {
   const [verifiedSignupAccessError, setVerifiedSignupAccessError] = useState('');
   const [verifiedSignupPrefill, setVerifiedSignupPrefill] = useState(null);
   const [eligibilityData, setEligibilityData] = useState(null);
+  const [scaqSsoPrefillNotice, setScaqSsoPrefillNotice] = useState(false);
   const membershipOutcome = searchParams.get('membershipOutcome');
   const returnTo = searchParams.get('returnTo') || '';
   const paymentState = searchParams.get('payment') || '';
@@ -248,15 +249,25 @@ export function SimpleSignUpView() {
   }, [isMembershipFeeFlow, membershipEligibilityStorageKey, membershipOutcome]);
 
   useEffect(() => {
-    if (!isPaidMembershipFlow) return;
+    if (!isPaidMembershipFlow) {
+      setScaqSsoPrefillNotice(false);
+      return;
+    }
 
     try {
       const stored = sessionStorage.getItem(membershipDraftFormStorageKey);
       if (!stored) return;
       const parsed = JSON.parse(stored);
       if (parsed?.membershipOutcome !== membershipOutcome || !parsed?.values) return;
-      if (parsed?.eligibility) {
+
+      if (parsed?.flow) {
+        setEligibilityData(buildEligibilityDataFromFlow(parsed.flow, membershipOutcome));
+      } else if (parsed?.eligibility) {
         setEligibilityData(parsed.eligibility);
+      }
+
+      if (parsed?.prefillSource === 'scaq-sso-rejected') {
+        setScaqSsoPrefillNotice(true);
       }
 
       reset({
@@ -265,7 +276,7 @@ export function SimpleSignUpView() {
         lastName: parsed.values.lastName || '',
         email: parsed.values.email || '',
         contactNumber: parsed.values.contactNumber || '',
-        password: parsed.values.password || '',
+        password: '',
       });
     } catch {
       // Ignore invalid cached draft payloads.
@@ -774,6 +785,12 @@ export function SimpleSignUpView() {
 
   const renderMembershipPanel = isMembershipFeeFlow ? (
     <Stack spacing={1.5} sx={{ position: { md: 'sticky' }, top: { md: 24 } }}>
+      {scaqSsoPrefillNotice && (
+        <Alert severity="info" sx={{ borderRadius: 1.5 }}>
+          You signed in with Salesforce, but you are not registered as an SCAQ candidate. Your name and email are
+          pre-filled below. Complete paid signup (SGD 900 excluding GST) to continue.
+        </Alert>
+      )}
       <Box
         sx={(theme) => ({
           width: 1,

@@ -360,8 +360,10 @@ export const verifyExperiencedResume = async ({ resume }) => {
 /** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
-export const getOAuthAuthUrl = async () => {
-  const res = await axios.get('/auth/oauth/auth-url');
+export const getOAuthAuthUrl = async ({ scaqVerify = false } = {}) => {
+  const res = await axios.get('/auth/oauth/auth-url', {
+    params: scaqVerify ? { scaqVerify: '1' } : undefined,
+  });
   const { authUrl, state } = res.data || {};
   if (!authUrl) throw new Error('Failed to get SSO login URL.');
   return { authUrl, state };
@@ -373,12 +375,37 @@ export const getOAuthAuthUrl = async () => {
 export const exchangeOAuthCode = async ({ code, state }) => {
   const res = await axios.post('/auth/oauth/exchange', { code, state });
   const data = res.data || {};
+  if (data.scaqProfileOnly) {
+    return {
+      scaqProfileOnly: true,
+      email: data.email,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      salesforce: data.salesforce,
+    };
+  }
   if (!data.accessToken) throw new Error(data.message || 'SSO login failed.');
   const { user, accessToken, isNewUser } = data;
   const normalizedUser = normalizeUserForSession(user);
   if (normalizedUser) sessionStorage.setItem('user', JSON.stringify(normalizedUser));
   setSession(accessToken);
   return { user: normalizedUser, accessToken, isNewUser };
+};
+
+/** **************************************
+ * SCAQ flow: promote Salesforce account to Associate after SSO
+ *************************************** */
+export const promoteSalesforceAssociateMember = async () => {
+  try {
+    const res = await axios.post('/auth/oauth/promote-associate');
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to update Associate member status in Salesforce.');
+    throw new Error(errorMessage);
+  }
 };
 
 /** **************************************

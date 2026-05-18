@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 import { paths } from 'src/routes/paths';
-import { useRouter, useSearchParams } from 'src/routes/hooks';
+import { useRouter, useSearchParams, usePathname } from 'src/routes/hooks';
 
 import { CONFIG } from 'src/config-global';
 
@@ -15,6 +15,7 @@ export function GuestGuard({ children }) {
   const router = useRouter();
 
   const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   const { loading, authenticated, user } = useAuthContext();
 
@@ -28,6 +29,12 @@ export function GuestGuard({ children }) {
     if (authenticated) {
       const returnTo = searchParams.get('returnTo');
       const userRole = (user?.role || 'user').toLowerCase();
+
+      // Let the OAuth callback page finish merging session + redirect (avoids racing to /home).
+      if (pathname?.includes('/auth/oauth/callback')) {
+        setIsChecking(false);
+        return;
+      }
 
       // Only for user role: navigate back to the previous route (e.g. checkout) after login
       if (userRole !== 'admin' && returnTo) {
@@ -48,7 +55,7 @@ export function GuestGuard({ children }) {
   useEffect(() => {
     checkPermissions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, loading]);
+  }, [authenticated, loading, pathname]);
 
   if (isChecking) {
     return <SplashScreen />;

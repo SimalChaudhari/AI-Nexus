@@ -31,6 +31,12 @@ import { Divider } from '@mui/material';
 import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
 import { LearningBundlePill, LearningBundleRibbon } from './components/course-bundle-badge';
 import { MembershipSignupDialog } from './components/membership-signup-dialog';
+import {
+  buildScaqAssociateOptInOAuthStartUrl,
+  clearMembershipEligibilityDraftOnModalClose,
+  clearMembershipEligibilitySessionStorage,
+  POST_OAUTH_RETURN_TO_KEY,
+} from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -1669,21 +1675,52 @@ export function AllCourses({ refreshSignal = 0 }) {
 
       <MembershipSignupDialog
         open={membershipSignupOpen}
-        onClose={() => setMembershipSignupOpen(false)}
+        onClose={() => {
+          clearMembershipEligibilityDraftOnModalClose();
+          setMembershipSignupOpen(false);
+        }}
         onContinue={(payload) => {
           setMembershipSignupOpen(false);
           const outcome = payload?.result?.outcome || '';
           const actionTarget = payload?.result?.actionTarget || '';
           const signupAccessToken = payload?.signupAccessToken || '';
-          if (actionTarget === 'signUp' && payload?.flow) {
+          const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
+
+          if (actionTarget === 'scaq-salesforce-auto' && payload?.flow) {
+            const returnPath = `${location.pathname}${location.search || ''}`;
+            navigate(
+              buildScaqAssociateOptInOAuthStartUrl(payload.flow, returnPath, paths.auth.oauth.start)
+            );
+            return;
+          }
+
+          if ((actionTarget === 'signUp' || isScaqCandidateFlow) && payload?.flow) {
             sessionStorage.setItem(
               'membershipEligibilityFlow',
               JSON.stringify({
                 membershipOutcome: outcome,
                 flow: payload.flow,
+                savedAt: new Date().toISOString(),
               })
             );
           }
+
+          if (actionTarget === 'salesforce') {
+            try {
+              sessionStorage.setItem(
+                POST_OAUTH_RETURN_TO_KEY,
+                `${location.pathname}${location.search || ''}`
+              );
+            } catch {
+              // ignore
+            }
+          }
+
+          if (isScaqCandidateFlow && authenticated) {
+            navigate(`${location.pathname}${location.search || ''}`);
+            return;
+          }
+
           const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
           const membershipOutcome = encodeURIComponent(outcome);
           const targetPath = actionTarget === 'signUp'

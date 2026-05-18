@@ -1,5 +1,5 @@
 // src/auth/oauth-auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DeepPartial } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -22,6 +22,19 @@ export interface IdPUserInfo {
   [key: string]: unknown;
 }
 
+/** Custom Salesforce Apex REST payload from /services/apexrest/userinfonexus. */
+export interface SalesforceNexusUserInfo {
+  username?: string;
+  memberClass?: string;
+  lastName?: string;
+  firstName?: string;
+  accountType?: string;
+  accountID?: string;
+  isSCAQCandidate?: boolean;
+  isAssociateMember?: boolean;
+  [key: string]: unknown;
+}
+
 export interface OAuthTokens {
   access_token: string;
   refresh_token?: string; // IdP may send it; we do not use it
@@ -34,6 +47,22 @@ export interface ProcessOAuthResult {
   accessToken: string;
   isNewUser: boolean;
 }
+
+/** Salesforce profile returned without persisting a user (SCAQ verify-only reject path). */
+export interface OAuthProfileOnlyResult {
+  email: string;
+  firstName: string;
+  lastName: string;
+  isSCAQCandidate: boolean | null;
+  isAssociateMember: boolean | null;
+  salesforceAccountId: string;
+  salesforceAccountType: string;
+  salesforceMemberClass: string;
+}
+
+export type OAuthCallbackResolution =
+  | { mode: 'profile-only'; profile: OAuthProfileOnlyResult }
+  | { mode: 'full-login'; result: ProcessOAuthResult };
 
 @Injectable()
 export class OAuthAuthService {
@@ -81,6 +110,35 @@ export class OAuthAuthService {
     return p.startsWith('/') ? p : `/${p}`;
   }
 
+  /**
+   * Path to the Salesforce custom Apex REST that returns member class,
+   * SCAQ candidate status, associate status etc.
+   * Defaults to /services/apexrest/userinfonexus on the configured IdP instance.
+   */
+  private get userinfoNexusPath(): string {
+    const p = process.env.OAUTH_USERINFO_NEXUS_PATH || '/services/apexrest/userinfonexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  /** Full URL of the Salesforce nexus user info endpoint (instance + path). */
+  get userinfoNexusUrl(): string {
+    const fullUrl = process.env.OAUTH_USERINFO_NEXUS_URL?.trim();
+    if (fullUrl) return fullUrl;
+    return `${this.baseUrl}${this.userinfoNexusPath}`;
+  }
+
+  /** Apex REST path to promote a Salesforce account to Associate member (SCAQ flow). */
+  private get promoteAssociatePath(): string {
+    const p = process.env.OAUTH_PROMOTE_ASSOCIATE_PATH || '/services/apexrest/promoteassociatenexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get promoteAssociateUrl(): string {
+    const fullUrl = process.env.OAUTH_PROMOTE_ASSOCIATE_URL?.trim();
+    if (fullUrl) return fullUrl;
+    return `${this.baseUrl}${this.promoteAssociatePath}`;
+  }
+
   get deepLinkScheme(): string {
     return process.env.MOBILE_DEEP_LINK_SCHEME || 'yourapp://auth';
   }
@@ -109,19 +167,113 @@ export class OAuthAuthService {
     return this.createMobileRedirectUrl(params);
   }
 
+  /** Encode OAuth state (returned by IdP on callback). */
+  buildOAuthState(options?: { scaqVerify?: boolean }): string {
+    return Buffer.from(
+      JSON.stringify({ scaqVerify: Boolean(options?.scaqVerify), ts: Date.now() }),
+    ).toString('base64url');
+  }
+
+  /** Decode OAuth state from the IdP callback. */
+  parseOAuthState(state?: string): { scaqVerify: boolean } {
+    if (!state?.trim()) return { scaqVerify: false };
+    try {
+      const json = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as {
+        scaqVerify?: boolean | number | string;
+      };
+      const flag = json.scaqVerify;
+      return {
+        scaqVerify: flag === true || flag === 1 || flag === '1',
+      };
+    } catch {
+      return {
+        scaqVerify: state === 'scaq_verify' || state.includes('scaq_verify'),
+      };
+    }
+  }
+
   /** Build authorization URL for IdP. */
-  generateAuthUrl(): { authUrl: string } {
+  generateAuthUrl(options?: { scaqVerify?: boolean }): { authUrl: string; state: string } {
     const base = this.baseUrl;
     const path = this.authPath;
     const clientId = this.clientId;
     const redirectUri = this.redirectUri;
+    const state = this.buildOAuthState({ scaqVerify: options?.scaqVerify });
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'code',
       redirect_uri: redirectUri,
+      state,
     });
     const authUrl = `${base}${path}?${params.toString()}`;
-    return { authUrl };
+    return { authUrl, state };
+  }
+
+  /**
+   * SCAQ membership verify: fetch Salesforce nexus info first.
+   * Non-candidates get profile-only (no DB write); confirmed candidates proceed to full login.
+   */
+  async resolveOAuthCallback(
+    idpUserInfo: IdPUserInfo,
+    idpAccessToken: string,
+    options: { scaqVerify: boolean },
+    syncFn?: (userId: string) => Promise<unknown>,
+  ): Promise<OAuthCallbackResolution> {
+    const email = normalizeEmail(idpUserInfo.email || idpUserInfo.sub || '');
+    if (!email) {
+      throw new UnauthorizedException('Identity provider did not return an email.');
+    }
+
+    const idpFirstName =
+      idpUserInfo.given_name || idpUserInfo.first_name || (typeof idpUserInfo.name === 'string' ? idpUserInfo.name : '') || '';
+    const idpLastName = idpUserInfo.family_name || idpUserInfo.last_name || '';
+
+    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+    const isSCAQCandidate =
+      typeof nexusInfo?.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : null;
+    const isAssociateMember =
+      typeof nexusInfo?.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : null;
+
+    if (options.scaqVerify && isSCAQCandidate !== true) {
+      console.log('[SSO Login] SCAQ verify-only: not a confirmed candidate — skipping DB persist', {
+        email,
+        isSCAQCandidate,
+        isAssociateMember,
+      });
+      return {
+        mode: 'profile-only',
+        profile: {
+          email,
+          firstName: nexusInfo?.firstName || idpFirstName || '',
+          lastName: nexusInfo?.lastName || idpLastName || '',
+          isSCAQCandidate,
+          isAssociateMember,
+          salesforceAccountId: nexusInfo?.accountID || '',
+          salesforceAccountType: nexusInfo?.accountType || '',
+          salesforceMemberClass: nexusInfo?.memberClass || '',
+        },
+      };
+    }
+
+    const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn);
+    return { mode: 'full-login', result };
+  }
+
+  /** Map profile-only OAuth result to SPA redirect query params (no access token). */
+  profileOnlyRedirectParams(profile: OAuthProfileOnlyResult): Record<string, string> {
+    return {
+      success: 'true',
+      scaqProfileOnly: 'true',
+      message: 'SCAQ verification complete',
+      email: profile.email,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      salesforceAccountId: profile.salesforceAccountId,
+      salesforceAccountType: profile.salesforceAccountType,
+      salesforceMemberClass: profile.salesforceMemberClass,
+      isSCAQCandidate: profile.isSCAQCandidate === null ? '' : String(profile.isSCAQCandidate),
+      isAssociateMember: profile.isAssociateMember === null ? '' : String(profile.isAssociateMember),
+    };
   }
 
   /** Exchange authorization code for IdP tokens. */
@@ -182,14 +334,72 @@ export class OAuthAuthService {
     }
   }
 
+  /**
+   * Call the Salesforce custom Apex REST userinfonexus endpoint using the IdP
+   * access token as a Bearer token, and return the parsed payload.
+   *
+   * Sample response:
+   * {
+   *   "username": "gdbho0fnm1c@rovqen.sbs",
+   *   "memberClass": "Non member",
+   *   "lastName": "Doe",
+   *   "isSCAQCandidate": false,
+   *   "isAssociateMember": false,
+   *   "firstName": "John",
+   *   "accountType": "Non member",
+   *   "accountID": "001fV000009XewGQAS"
+   * }
+   *
+   * Returns null on failure so callers can treat this as best-effort enrichment.
+   */
+  async fetchSalesforceNexusUserInfo(accessToken: string): Promise<SalesforceNexusUserInfo | null> {
+    const url = this.userinfoNexusUrl;
+    if (!url || !accessToken) {
+      console.warn('[SSO Login] Skipping nexus user info fetch — missing URL or access token.', {
+        hasUrl: Boolean(url),
+        hasToken: Boolean(accessToken),
+      });
+      return null;
+    }
+    try {
+      console.log('[SSO Login] Fetching Salesforce nexus user info from', url);
+      const res = await axios.get<SalesforceNexusUserInfo>(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+      console.log('[SSO Login] Nexus user info response status:', res.status);
+      console.log('[SSO Login] Nexus user info payload:', res.data);
+      return res.data || null;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[SSO Login] Nexus user info fetch failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+          url,
+        });
+      } else {
+        console.error('[SSO Login] Nexus user info fetch failed (unknown error):', err);
+      }
+      return null;
+    }
+  }
+
   /** Create or update user from IdP data and issue our access token only (no refresh token). */
   async processOAuthAuthentication(
     idpUserInfo: IdPUserInfo,
     idpAccessToken: string,
     syncFn?: (userId: string) => Promise<unknown>,
   ): Promise<ProcessOAuthResult> {
+    console.log('[SSO Login] Raw IdP userinfo received:', idpUserInfo);
+    console.log('[SSO Login] IdP access token (masked):', this.maskToken(idpAccessToken));
+
     const email = normalizeEmail(idpUserInfo.email || idpUserInfo.sub || '');
     if (!email) {
+      console.warn('[SSO Login] IdP did not return an email. Userinfo keys:', Object.keys(idpUserInfo || {}));
       throw new UnauthorizedException('Identity provider did not return an email.');
     }
     const socialId = idpUserInfo.user_id || idpUserInfo.sub || '';
@@ -198,6 +408,15 @@ export class OAuthAuthService {
 
     let user = await this.userRepository.findOne({ where: { email } });
     const isNewUser = !user;
+
+    console.log('[SSO Login] Resolved identity:', {
+      email,
+      socialId,
+      firstName,
+      lastName,
+      isNewUser,
+      existingUserId: user?.id || null,
+    });
 
     if (!user) {
       const username = await this.generateUniqueUsername(email, firstName, lastName);
@@ -215,6 +434,7 @@ export class OAuthAuthService {
         status: UserStatus.Active,
       };
       user = this.userRepository.create(newUserPartial);
+      console.log('[SSO Login] Creating NEW user for SSO email:', email, 'username:', username);
     } else {
       user.authProvider = AuthProvider.OAUTH;
       user.socialId = socialId || user.socialId || null;
@@ -222,6 +442,44 @@ export class OAuthAuthService {
       user.isVerified = true;
       if (firstName) user.firstname = firstName;
       if (lastName) user.lastname = lastName;
+      console.log('[SSO Login] Updating EXISTING user via SSO:', { id: user.id, email });
+    }
+
+    // Best-effort: hit Salesforce custom Apex REST nexus user info using the
+    // IdP access token as a Bearer token. Persist the SCAQ/Associate/account
+    // flags onto the user so the eligibility flow can verify them automatically.
+    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+    if (nexusInfo && typeof nexusInfo === 'object') {
+      const previous = {
+        accountId: user.salesforceAccountId,
+        accountType: user.salesforceAccountType,
+        isSCAQCandidate: user.isSCAQCandidate,
+        isAssociateMember: user.isAssociateMember,
+      };
+      user.salesforceUsername = nexusInfo.username ?? user.salesforceUsername ?? null;
+      user.salesforceMemberClass = nexusInfo.memberClass ?? user.salesforceMemberClass ?? null;
+      user.salesforceAccountType = nexusInfo.accountType ?? user.salesforceAccountType ?? null;
+      user.salesforceAccountId = nexusInfo.accountID ?? user.salesforceAccountId ?? null;
+      user.isSCAQCandidate =
+        typeof nexusInfo.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : user.isSCAQCandidate ?? null;
+      user.isAssociateMember =
+        typeof nexusInfo.isAssociateMember === 'boolean'
+          ? nexusInfo.isAssociateMember
+          : user.isAssociateMember ?? null;
+      user.salesforceUserInfoRaw = nexusInfo as Record<string, unknown>;
+      user.salesforceSyncedAt = new Date();
+      console.log('[SSO Login] Salesforce nexus flags applied to user:', {
+        before: previous,
+        after: {
+          accountId: user.salesforceAccountId,
+          accountType: user.salesforceAccountType,
+          memberClass: user.salesforceMemberClass,
+          isSCAQCandidate: user.isSCAQCandidate,
+          isAssociateMember: user.isAssociateMember,
+        },
+      });
+    } else {
+      console.warn('[SSO Login] No Salesforce nexus user info available — SCAQ/Associate flags NOT updated.');
     }
 
     const payload = { id: user.id, email: user.email, role: user.role, type: 'access' };
@@ -232,15 +490,48 @@ export class OAuthAuthService {
 
     await this.userRepository.save(user);
 
+    console.log('[SSO Login] User persisted after SSO login:', {
+      id: user.id,
+      username: user.username,
+      firstname: user.firstname,
+      lastname: user.lastname,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      authProvider: user.authProvider,
+      socialId: user.socialId,
+      isVerified: user.isVerified,
+      isNewUser,
+      salesforce: {
+        accountId: user.salesforceAccountId,
+        accountType: user.salesforceAccountType,
+        memberClass: user.salesforceMemberClass,
+        username: user.salesforceUsername,
+        isSCAQCandidate: user.isSCAQCandidate,
+        isAssociateMember: user.isAssociateMember,
+        syncedAt: user.salesforceSyncedAt,
+      },
+      issuedAccessToken: this.maskToken(accessToken),
+    });
+
     if (syncFn) {
       try {
         await syncFn(user.id);
+        console.log('[SSO Login] SSO sync completed for user:', user.id);
       } catch (syncErr) {
         console.error('SSO sync failed (non-fatal):', syncErr);
       }
     }
 
     return { user, accessToken, isNewUser };
+  }
+
+  /** Mask a token for safe logging (keep first 6 and last 4 chars only). */
+  private maskToken(token: string | null | undefined): string {
+    const value = String(token || '');
+    if (!value) return '<empty>';
+    if (value.length <= 12) return `${value.slice(0, 2)}...${value.slice(-2)}`;
+    return `${value.slice(0, 6)}...${value.slice(-4)} (len=${value.length})`;
   }
 
   private async generateUniqueUsername(email: string, first: string, last: string): Promise<string> {
@@ -287,5 +578,87 @@ export class OAuthAuthService {
   /** Load user by id (for logout/sync). */
   async getUserById(id: string): Promise<UserEntity | null> {
     return this.userRepository.findOne({ where: { id } });
+  }
+
+  /**
+   * Promote the user's Salesforce account to Associate member (SCAQ opt-in flow).
+   * Uses the stored IdP access token and account id from the nexus userinfo sync.
+   */
+  async promoteUserToAssociateMember(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    user: UserEntity;
+    salesforce: SalesforceNexusUserInfo | null;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new BadRequestException('User not found.');
+    }
+    if (!user.socialAccessToken) {
+      throw new BadRequestException('Salesforce session expired. Please sign in with SSO again.');
+    }
+    const accountId = user.salesforceAccountId?.trim();
+    if (!accountId) {
+      throw new BadRequestException('Salesforce account id is missing. Please sign in with SSO again.');
+    }
+
+    const url = this.promoteAssociateUrl;
+    console.log('[SSO Login] Promoting Salesforce account to Associate:', { userId, accountId, url });
+    try {
+      await axios.post(
+        url,
+        { accountID: accountId },
+        {
+          headers: {
+            Authorization: `Bearer ${user.socialAccessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 20000,
+        },
+      );
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[SSO Login] Promote associate failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const desc =
+          (err.response?.data as { message?: string; error_description?: string })?.message
+          || (err.response?.data as { error_description?: string })?.error_description
+          || err.message;
+        throw new BadRequestException(desc || 'Failed to update Associate member status in Salesforce.');
+      }
+      throw err;
+    }
+
+    const nexusInfo = await this.fetchSalesforceNexusUserInfo(user.socialAccessToken);
+    if (nexusInfo) {
+      user.salesforceUsername = nexusInfo.username ?? user.salesforceUsername ?? null;
+      user.salesforceMemberClass = nexusInfo.memberClass ?? user.salesforceMemberClass ?? null;
+      user.salesforceAccountType = nexusInfo.accountType ?? user.salesforceAccountType ?? null;
+      user.salesforceAccountId = nexusInfo.accountID ?? user.salesforceAccountId ?? null;
+      user.isSCAQCandidate =
+        typeof nexusInfo.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : user.isSCAQCandidate;
+      user.isAssociateMember =
+        typeof nexusInfo.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : true;
+      user.salesforceUserInfoRaw = nexusInfo as Record<string, unknown>;
+      user.salesforceSyncedAt = new Date();
+      await this.userRepository.save(user);
+    }
+
+    console.log('[SSO Login] Associate promotion complete:', {
+      userId,
+      isAssociateMember: user.isAssociateMember,
+      accountType: user.salesforceAccountType,
+    });
+
+    return {
+      success: true,
+      message: 'Associate member status updated in Salesforce.',
+      user,
+      salesforce: nexusInfo,
+    };
   }
 }

@@ -282,6 +282,16 @@ function getOutcome(state) {
       actionTarget: 'salesforce',
     };
   }
+  if (state.eligibilityVerified === true && state.eligibilityType === 'scaq-candidate' && state.scaqCandidateVerified === false) {
+    return {
+      outcome: 'scaq-candidate-not-confirmed',
+      title: 'SCAQ candidate not confirmed',
+      summary:
+        'Your Salesforce profile does not show you as an SCAQ Programme candidate. Choose another eligibility path or continue without this membership route.',
+      ctaLabel: 'Continue',
+      actionTarget: 'signIn',
+    };
+  }
   if (state.eligibilityVerified === true && state.eligibilityType === 'scaq-candidate' && state.scaqCandidateVerified === true) {
     if (state.associateMemberAlready === false) {
       return {
@@ -565,6 +575,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       resetNricCheckState();
       resetStudentVerificationState();
       resetExperiencedResumeLocalState();
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem('membershipEligibilityFlow');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const storedFlow = parsed?.flow;
+      if (!storedFlow || typeof storedFlow !== 'object') return;
+      setFlowState((prev) => ({ ...INITIAL_STATE, ...storedFlow }));
+    } catch {
+      // ignore invalid draft
     }
   }, [open]);
 
@@ -1504,12 +1525,29 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       }));
       return;
     }
-    setFlowState((prev) => ({
-      ...prev,
-      scaqAssociateOptIn: true,
-      scaqCandidateVerified: null,
-      associateMemberAlready: null,
-    }));
+    setFlowState((prev) => {
+      const next = {
+        ...prev,
+        scaqAssociateOptIn: true,
+        scaqCandidateVerified: null,
+        associateMemberAlready: null,
+        eligibilityRequirementsAcknowledged: true,
+        eligibilityVerified: true,
+      };
+      queueMicrotask(() => {
+        onContinue?.({
+          flow: next,
+          result: {
+            outcome: 'scaq-sso-verify',
+            actionTarget: 'scaq-salesforce-auto',
+            title: 'Sign in with Salesforce',
+            summary: 'Verify your SCAQ candidate and Associate member status with Salesforce.',
+            ctaLabel: 'Continue to Salesforce',
+          },
+        });
+      });
+      return next;
+    });
   };
 
   const selectAssociateMemberAlready = (value) => {
@@ -3329,6 +3367,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               Opt in to be Associate member for free?
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Choosing Yes will sign you in with your Salesforce account to verify SCAQ candidate status automatically.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={() => selectScaqAssociateOptIn(true)}>

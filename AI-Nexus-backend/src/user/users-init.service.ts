@@ -68,6 +68,14 @@ export class UsersInitService implements OnModuleInit {
             "eligibilityType" varchar,
             "eligibilitySnapshot" jsonb,
             "eligibilityCheckedAt" TIMESTAMP,
+            "salesforceAccountId" varchar,
+            "salesforceAccountType" varchar,
+            "salesforceMemberClass" varchar,
+            "salesforceUsername" varchar,
+            "isSCAQCandidate" boolean,
+            "isAssociateMember" boolean,
+            "salesforceUserInfoRaw" jsonb,
+            "salesforceSyncedAt" TIMESTAMP,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_users" PRIMARY KEY ("id")
@@ -253,6 +261,38 @@ export class UsersInitService implements OnModuleInit {
       await queryRunner.query(`
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "contactNumber" varchar(48)
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "salesforceAccountId" varchar
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "salesforceAccountType" varchar
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "salesforceMemberClass" varchar
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "salesforceUsername" varchar
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "isSCAQCandidate" boolean
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "isAssociateMember" boolean
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "salesforceUserInfoRaw" jsonb
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "salesforceSyncedAt" TIMESTAMP
       `);
     } catch (error) {
       console.error(

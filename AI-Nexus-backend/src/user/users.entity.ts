@@ -178,6 +178,38 @@ export class UserEntity {
     @Column({ nullable: true, type: 'timestamp' })
     eligibilityCheckedAt!: Date | null;
 
+    /** Salesforce Account record Id returned by /services/apexrest/userinfonexus */
+    @Column({ type: 'varchar', nullable: true })
+    salesforceAccountId!: string | null;
+
+    /** Salesforce account type, e.g. "Non member", "Associate", "Member" */
+    @Column({ type: 'varchar', nullable: true })
+    salesforceAccountType!: string | null;
+
+    /** Salesforce member class label from the nexus user info endpoint */
+    @Column({ type: 'varchar', nullable: true })
+    salesforceMemberClass!: string | null;
+
+    /** Username/email returned by the Salesforce nexus endpoint (may differ from local username) */
+    @Column({ type: 'varchar', nullable: true })
+    salesforceUsername!: string | null;
+
+    /** True when Salesforce confirms the user is an existing SCAQ Programme candidate */
+    @Column({ type: 'boolean', nullable: true })
+    isSCAQCandidate!: boolean | null;
+
+    /** True when Salesforce confirms the user is already an Associate member */
+    @Column({ type: 'boolean', nullable: true })
+    isAssociateMember!: boolean | null;
+
+    /** Raw payload from the Salesforce nexus user info endpoint (audit/debug) */
+    @Column({ type: 'jsonb', nullable: true })
+    salesforceUserInfoRaw!: Record<string, unknown> | null;
+
+    /** Last time we synced Salesforce nexus user info for this user */
+    @Column({ nullable: true, type: 'timestamp' })
+    salesforceSyncedAt!: Date | null;
+
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;
 
