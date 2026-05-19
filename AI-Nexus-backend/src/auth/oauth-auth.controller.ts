@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { OAuthAuthService } from './oauth-auth.service';
-import { OAuthExchangeDto } from './oauth-auth.dto';
+import {
+  CreateSalesforceNexusUserDto,
+  OAuthExchangeDto,
+  SetSalesforceNexusPasswordDto,
+} from './oauth-auth.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { SsoSyncService } from './sso-sync.service';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
@@ -197,6 +201,39 @@ export class OAuthAuthController {
     res.send(
       `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${metaUrl}"></head><body><p>Redirecting...</p><script>window.location.href="${jsUrl}";</script><a href="${linkUrl}">Click here if not redirected</a></body></html>`,
     );
+  }
+
+  @Post('create-nexus-user')
+  @ApiOperation({ summary: 'Create Salesforce membership account via Apex REST (pre-SSO signup)' })
+  @ApiBody({ type: CreateSalesforceNexusUserDto })
+  async createNexusUser(@Body() dto: CreateSalesforceNexusUserDto) {
+    const salesforce = await this.oauthAuthService.createSalesforceNexusUser({
+      salutation: dto.salutation,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+      name_as_per_id: dto.name_as_per_id,
+      email: dto.email,
+    });
+    return {
+      success: true,
+      message: 'Salesforce membership account created successfully.',
+      salesforce,
+    };
+  }
+
+  @Post('set-nexus-password')
+  @ApiOperation({ summary: 'Set Salesforce login password via Apex REST (after createuserfornexus)' })
+  @ApiBody({ type: SetSalesforceNexusPasswordDto })
+  async setNexusPassword(@Body() dto: SetSalesforceNexusPasswordDto) {
+    const salesforce = await this.oauthAuthService.setSalesforceNexusPassword({
+      username: dto.username,
+      password: dto.password,
+    });
+    return {
+      success: true,
+      message: 'Salesforce password set successfully. You can now sign in.',
+      salesforce,
+    };
   }
 
   @Post('promote-associate')

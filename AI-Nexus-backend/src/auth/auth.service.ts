@@ -13,7 +13,7 @@ import { UserDto, LoginDto, ResendVerificationDto } from '../user/users.dto';
 import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from './../user/users.entity';
 import { UserRole, UserStatus, AuthProvider } from './../user/users.entity';
-import { validateEmail } from './../utils/auth.utils';
+import { normalizeEmail, validateEmail } from './../utils/auth.utils';
 import { verifyEmailAddress } from './../utils/email-verification.util';
 import { EmailService } from './../service/email.service';
 import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from '../user/users.dto';
@@ -737,6 +737,140 @@ export class AuthService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Persist student (and other) membership eligibility after Salesforce account + password setup.
+   * No local password — user signs in via Salesforce SSO next.
+   */
+  async saveSalesforceMembershipRecord(dto: {
+    email: string;
+    firstname: string;
+    lastname: string;
+    salesforceUsername: string;
+    salutation?: string;
+    nameAsPerId?: string;
+    draftUserId?: string;
+    membershipOutcome?: string;
+    eligibilityIsSingaporePr?: boolean;
+    eligibilityIsIscaMember?: boolean;
+    eligibilityWantsMembership?: boolean;
+    eligibilityType?: string;
+    eligibilitySnapshot?: Record<string, unknown>;
+  }): Promise<{ message: string; userId: string; user: UserEntity }> {
+    const email = normalizeEmail(dto.email);
+    if (!email) {
+      throw new BadRequestException('A valid email is required.');
+    }
+
+    const emailVerification = await verifyEmailAddress(email);
+    if (!emailVerification.isValid) {
+      throw new BadRequestException(
+        emailVerification.reason || 'Please provide a valid real email address.',
+      );
+    }
+
+    const firstname = dto.firstname?.trim() || 'User';
+    const lastname = dto.lastname?.trim() || email.split('@')[0];
+    const salesforceUsername = dto.salesforceUsername?.trim();
+    if (!salesforceUsername) {
+      throw new BadRequestException('Salesforce username is required.');
+    }
+
+    const draftUserId = String(dto.draftUserId || '').trim();
+    let user: UserEntity | null = null;
+
+    if (draftUserId) {
+      user = await this.userRepository.findOne({ where: { id: draftUserId } });
+      if (user && !user.isDraft) {
+        throw new BadRequestException('This membership record is already completed. Please sign in.');
+      }
+    }
+
+    if (!user) {
+      user = await this.userRepository.findOne({ where: { email } });
+    }
+
+    if (user && !user.isDraft && user.authProvider === AuthProvider.LOCAL && user.password) {
+      throw new BadRequestException('Email already registered with a local account. Please sign in.');
+    }
+
+    const snapshot = this.sanitizeEligibilitySnapshot({
+      ...(dto.eligibilitySnapshot || {}),
+      membershipOutcome: dto.membershipOutcome || dto.eligibilitySnapshot?.membershipOutcome || '',
+      salesforceUsername,
+      salutation: dto.salutation || null,
+      nameAsPerId: dto.nameAsPerId || null,
+      salesforceMembershipCompletedAt: new Date().toISOString(),
+      studentMembershipOptIn:
+        dto.eligibilitySnapshot?.studentMembershipOptIn ?? dto.eligibilityType === 'student',
+    });
+
+    const trackingDto = {
+      username: '',
+      firstname,
+      lastname,
+      email,
+      password: '',
+      eligibilityIsSingaporePr: dto.eligibilityIsSingaporePr,
+      eligibilityIsIscaMember: dto.eligibilityIsIscaMember,
+      eligibilityWantsMembership: dto.eligibilityWantsMembership,
+      eligibilityType: dto.eligibilityType || 'student',
+      eligibilitySnapshot: snapshot || undefined,
+    } as UserDto;
+
+    if (user) {
+      const username = user.username || (await this.buildDraftUsername(firstname, lastname));
+      if (!username) {
+        throw new BadRequestException('Could not generate a valid username.');
+      }
+      user.username = username;
+      user.firstname = firstname;
+      user.lastname = lastname;
+      user.email = email;
+      user.authProvider = AuthProvider.OAUTH;
+      user.password = null;
+      user.isDraft = true;
+      user.isVerified = false;
+      user.salesforceUsername = salesforceUsername;
+      user.salesforceSyncedAt = new Date();
+      this.applyEligibilityTracking(user, trackingDto);
+    } else {
+      const username = await this.buildDraftUsername(firstname, lastname);
+      if (!username) {
+        throw new BadRequestException('Could not generate a valid username.');
+      }
+      user = this.userRepository.create({
+        username,
+        firstname,
+        lastname,
+        email,
+        password: null,
+        authProvider: AuthProvider.OAUTH,
+        role: UserRole.User,
+        status: UserStatus.Active,
+        isVerified: false,
+        isDraft: true,
+        salesforceUsername,
+        salesforceSyncedAt: new Date(),
+      });
+      this.applyEligibilityTracking(user, trackingDto);
+    }
+
+    await this.userRepository.save(user);
+
+    console.log('[Membership] Salesforce membership record saved:', {
+      userId: user.id,
+      email: user.email,
+      eligibilityType: user.eligibilityType,
+      salesforceUsername: user.salesforceUsername,
+    });
+
+    return {
+      message: 'Membership record saved successfully.',
+      userId: user.id,
+      user,
+    };
   }
 
   async resolveMembershipSignupDraftForPayment(draftUserId?: string, signupAccessToken?: string) {
@@ -1615,13 +1749,27 @@ export class AuthService {
       throw new BadRequestException('Could not send verification PIN right now. Please try again in a moment.');
     }
 
-    return {
+    const response: {
+      sent: boolean;
+      verificationToken: string;
+      schoolEmail: string;
+      expiresAt: string;
+      message: string;
+      debugPin?: string;
+    } = {
       sent: true,
       verificationToken,
       schoolEmail,
       expiresAt: new Date(expiresAt).toISOString(),
       message: 'Verification PIN sent successfully.',
     };
+
+    // Temporary: expose PIN in API for UI testing when STUDENT_VERIFICATION_LOG_PIN=true (remove in production).
+    if (this.shouldLogStudentVerificationPin()) {
+      response.debugPin = pin;
+    }
+
+    return response;
   }
 
   async verifyStudentVerificationPin(params: {

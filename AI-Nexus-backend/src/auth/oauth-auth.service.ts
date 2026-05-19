@@ -139,6 +139,56 @@ export class OAuthAuthService {
     return `${this.baseUrl}${this.promoteAssociatePath}`;
   }
 
+  /** Apex REST path to create a Nexus user in Salesforce (membership signup flow). */
+  private get createNexusUserPath(): string {
+    const p = process.env.OAUTH_CREATE_USER_PATH || '/services/apexrest/createuserfornexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  /** Salesforce API host for Apex REST (often *.sandbox.my.salesforce.com, not the Experience site). */
+  private get integrationApiBaseUrl(): string {
+    const url =
+      process.env.OAUTH_INTEGRATION_INSTANCE_URL?.trim()
+      || process.env.OAUTH_SALESFORCE_API_URL?.trim()
+      || '';
+    if (url) return url.replace(/\/$/, '');
+    return this.baseUrl;
+  }
+
+  get createNexusUserUrl(): string {
+    const fullUrl = process.env.OAUTH_CREATE_USER_URL?.trim();
+    if (fullUrl) return fullUrl;
+    return `${this.integrationApiBaseUrl}${this.createNexusUserPath}`;
+  }
+
+  private get setNexusPasswordPath(): string {
+    const p = process.env.OAUTH_SET_PASSWORD_PATH || '/services/apexrest/setpasswordfornexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get setNexusPasswordUrl(): string {
+    const fullUrl = process.env.OAUTH_SET_PASSWORD_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.setNexusPasswordPath}`;
+    return `${this.integrationApiBaseUrl}${this.setNexusPasswordPath}`;
+  }
+
+  /** Token endpoint for integration (password grant); defaults to OAUTH_INSTANCE_URL + path. */
+  private get integrationTokenUrl(): string {
+    const explicit = process.env.OAUTH_INTEGRATION_TOKEN_URL?.trim();
+    if (explicit) return explicit;
+    return `${this.baseUrl}${this.tokenPath}`;
+  }
+
+  private get integrationClientId(): string {
+    return process.env.OAUTH_INTEGRATION_CLIENT_ID?.trim() || this.clientId;
+  }
+
+  private get integrationClientSecret(): string {
+    return process.env.OAUTH_INTEGRATION_CLIENT_SECRET?.trim() || this.clientSecret;
+  }
+
   get deepLinkScheme(): string {
     return process.env.MOBILE_DEEP_LINK_SCHEME || 'yourapp://auth';
   }
@@ -274,6 +324,231 @@ export class OAuthAuthService {
       isSCAQCandidate: profile.isSCAQCandidate === null ? '' : String(profile.isSCAQCandidate),
       isAssociateMember: profile.isAssociateMember === null ? '' : String(profile.isAssociateMember),
     };
+  }
+
+  /** Integration OAuth settings from env (password grant / client credentials). */
+  private get integrationGrantType(): string {
+    return (
+      process.env.OAUTH_INTEGRATION_GRANT_TYPE?.trim()
+      || process.env.OAUTH_GRANT_TYPE?.trim()
+      || ''
+    ).toLowerCase();
+  }
+
+  private get integrationUsername(): string {
+    return (
+      process.env.OAUTH_INTEGRATION_USERNAME?.trim()
+      || process.env.OAUTH_USERNAME?.trim()
+      || ''
+    );
+  }
+
+  private get integrationPassword(): string {
+    const password =
+      process.env.OAUTH_INTEGRATION_PASSWORD?.trim()
+      || process.env.OAUTH_PASSWORD?.trim()
+      || '';
+    const securityToken =
+      process.env.OAUTH_INTEGRATION_SECURITY_TOKEN?.trim()
+      || process.env.OAUTH_SECURITY_TOKEN?.trim()
+      || '';
+    return securityToken ? `${password}${securityToken}` : password;
+  }
+
+  private buildIntegrationTokenRequestBody(): { grantType: string; body: URLSearchParams } {
+    const grantType = this.integrationGrantType;
+    const username = this.integrationUsername;
+    const password = this.integrationPassword;
+
+    const usePasswordGrant =
+      grantType === 'password' || (!grantType && Boolean(username && password));
+
+    if (usePasswordGrant) {
+      if (!username || !password) {
+        throw new BadRequestException(
+          'OAUTH_INTEGRATION_USERNAME and OAUTH_INTEGRATION_PASSWORD (or OAUTH_USERNAME / OAUTH_PASSWORD) are required for password grant.',
+        );
+      }
+      return {
+        grantType: 'password',
+        body: new URLSearchParams({
+          grant_type: 'password',
+          client_id: this.integrationClientId,
+          client_secret: this.integrationClientSecret,
+          username,
+          password,
+        }),
+      };
+    }
+
+    if (grantType && grantType !== 'client_credentials') {
+      throw new BadRequestException(
+        `Unsupported OAUTH_INTEGRATION_GRANT_TYPE="${grantType}". Use "password" or "client_credentials", and set matching credentials in backend .env.`,
+      );
+    }
+
+    console.warn(
+      '[Salesforce] Using client_credentials — set OAUTH_INTEGRATION_GRANT_TYPE=password plus '
+        + 'OAUTH_INTEGRATION_USERNAME and OAUTH_INTEGRATION_PASSWORD in AI-Nexus-backend/.env (not frontend .env).',
+    );
+
+    return {
+      grantType: 'client_credentials',
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: this.integrationClientId,
+        client_secret: this.integrationClientSecret,
+      }),
+    };
+  }
+
+  /**
+   * Server-to-server access token for Salesforce Apex REST (create user, etc.).
+   * Priority: OAUTH_INTEGRATION_ACCESS_TOKEN → password grant (env user/pass) → client_credentials.
+   */
+  async getIntegrationAccessToken(): Promise<string> {
+    const staticToken = process.env.OAUTH_INTEGRATION_ACCESS_TOKEN?.trim();
+    if (staticToken) {
+      console.log('[Salesforce] Using OAUTH_INTEGRATION_ACCESS_TOKEN from environment.');
+      return staticToken;
+    }
+
+    const url = this.integrationTokenUrl;
+    const { grantType, body } = this.buildIntegrationTokenRequestBody();
+    console.log('[Salesforce] Requesting integration access token via', grantType, 'at', url);
+
+    try {
+      const res = await axios.post<{ access_token?: string }>(url, body.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15000,
+      });
+      const token = res.data?.access_token;
+      if (!token) {
+        throw new UnauthorizedException('Salesforce integration token response did not include access_token.');
+      }
+      console.log('[Salesforce] Integration access token obtained via', grantType);
+      return token;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error(`[Salesforce] ${grantType} token failed:`, {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const desc =
+          (err.response?.data as { error_description?: string })?.error_description
+          || (err.response?.data as { message?: string })?.message
+          || err.message;
+        throw new BadRequestException(
+          desc
+            || `Failed to obtain Salesforce integration token (${grantType}). Check OAUTH_* integration settings in backend .env.`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /** Create a Salesforce user via Apex REST createuserfornexus (pre-SSO membership signup). */
+  async createSalesforceNexusUser(payload: {
+    salutation: string;
+    first_name: string;
+    last_name: string;
+    name_as_per_id: string;
+    email: string;
+  }): Promise<Record<string, unknown>> {
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      throw new BadRequestException('A valid email address is required.');
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.createNexusUserUrl;
+    const body = {
+      salutation: payload.salutation.trim(),
+      first_name: payload.first_name.trim(),
+      last_name: payload.last_name.trim(),
+      name_as_per_id: payload.name_as_per_id.trim(),
+      email,
+    };
+
+    console.log('[Salesforce] Creating Nexus user via Apex REST:', {
+      url,
+      email: body.email,
+      salutation: body.salutation,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      console.log('[Salesforce] createuserfornexus response status:', res.status);
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] createuserfornexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as { message?: string; error?: string; error_description?: string };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
+      }
+      throw err;
+    }
+  }
+
+  /** Set login password for a Nexus user via Apex REST setpasswordfornexus (after account creation). */
+  async setSalesforceNexusPassword(payload: {
+    username: string;
+    password: string;
+  }): Promise<Record<string, unknown>> {
+    const username = payload.username?.trim();
+    const password = payload.password;
+    if (!username) {
+      throw new BadRequestException('Salesforce username is required.');
+    }
+    if (!password || password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters.');
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.setNexusPasswordUrl;
+    const body = { username, password };
+
+    console.log('[Salesforce] Setting Nexus user password via Apex REST:', { url, username });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      console.log('[Salesforce] setpasswordfornexus response status:', res.status);
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] setpasswordfornexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as { message?: string; error?: string; error_description?: string };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(desc || 'Failed to set Salesforce password.');
+      }
+      throw err;
+    }
   }
 
   /** Exchange authorization code for IdP tokens. */

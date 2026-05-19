@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { SaveSalesforceMembershipRecordDto } from './save-salesforce-membership-record.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -34,6 +35,23 @@ export class AuthController {
     const result = await this.authService.register(userDto);
     return response.status(HttpStatus.OK).json({
       message: result.message,
+      user: result.user,
+    });
+  }
+
+  @Post('salesforce-membership-record')
+  @ApiOperation({
+    summary: 'Save student/membership eligibility to database after Salesforce account setup',
+  })
+  @ApiBody({ type: SaveSalesforceMembershipRecordDto })
+  async saveSalesforceMembershipRecord(
+    @Res() response: Response,
+    @Body() dto: SaveSalesforceMembershipRecordDto,
+  ) {
+    const result = await this.authService.saveSalesforceMembershipRecord(dto);
+    return response.status(HttpStatus.OK).json({
+      message: result.message,
+      userId: result.userId,
       user: result.user,
     });
   }

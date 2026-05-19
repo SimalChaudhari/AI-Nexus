@@ -12,6 +12,7 @@ import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import LinearProgress from '@mui/material/LinearProgress';
+import Alert from '@mui/material/Alert';
 import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
@@ -22,6 +23,11 @@ import {
   verifyNricImages,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
 } from 'src/auth/context/jwt';
+import {
+  SalesforceMembershipCreateStep,
+  isSalesforceMembershipCreateOutcomeKey,
+  shouldUseSalesforceMembershipCreateStep,
+} from './salesforce-membership-create-step';
 
 // ----------------------------------------------------------------------
 
@@ -101,6 +107,7 @@ const INITIAL_STATE = {
   otherPortalVerificationStatus: null,
   otherPortalVerificationAcknowledged: false,
   otherAiEligibility: null,
+  salesforceMembershipAccountCreated: false,
 };
 
 function getFlowStep(state) {
@@ -241,6 +248,9 @@ function getFlowStep(state) {
   }
   if (state.eligibilityType === 'scaq-candidate' && state.scaqAssociateOptIn === false) {
     return 'retry-eligibility';
+  }
+  if (shouldUseSalesforceMembershipCreateStep(state)) {
+    return 'salesforce-membership-create';
   }
   return 'result';
 }
@@ -402,10 +412,19 @@ function getRequirementLabel(state, step) {
     'direct-degree-check': 'Direct entry degree recognition check',
     'scaq-candidate-verify': 'SCAQ candidate verification',
     'associate-member-check': 'Associate member status check',
+    'salesforce-membership-create': 'Salesforce membership registration',
     result: 'Review and continue',
   };
 
   return labelsByStep[step] || 'Required before course access';
+}
+
+function pushMembershipFinalStep(steps, state) {
+  if (shouldUseSalesforceMembershipCreateStep(state)) {
+    steps.push('salesforce-membership-create');
+  } else {
+    steps.push('result');
+  }
 }
 
 function getProgressMeta(state, step) {
@@ -447,15 +466,15 @@ function getProgressMeta(state, step) {
             steps.push('student-membership-agreement', 'student-membership-check');
             if (state.studentMembershipOptIn === false) steps.push('student-fee-payment');
             if (state.studentMembershipOptIn !== null && (state.studentMembershipOptIn === true || state.studentFeePaymentCompleted)) {
-              steps.push('result');
+              pushMembershipFinalStep(steps, state);
             }
           } else if (state.eligibilityType === 'direct-degree') {
             steps.push('direct-degree-check');
-            if (state.directDegreeRecognised !== null) steps.push('result');
+            if (state.directDegreeRecognised !== null) pushMembershipFinalStep(steps, state);
           } else if (state.eligibilityType === 'experienced') {
             steps.push('experienced-membership-agreement', 'experienced-documents');
             if (state.experiencedResumeUploaded && state.experiencedVerificationStatus === true && state.experiencedVerificationAcknowledged) {
-              steps.push('result');
+              pushMembershipFinalStep(steps, state);
             }
             if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) {
               steps.push('retry-eligibility');
@@ -471,7 +490,7 @@ function getProgressMeta(state, step) {
               steps.push('retry-eligibility');
             }
             if (state.charteredVerificationStatus === true && state.charteredVerificationAcknowledged) {
-              steps.push('result');
+              pushMembershipFinalStep(steps, state);
             }
           } else if (state.eligibilityType === 'other') {
             steps.push('other-cima-check');
@@ -502,9 +521,11 @@ function getProgressMeta(state, step) {
               }
             }
             if (state.otherPortalVerificationStatus === false && state.otherPortalVerificationAcknowledged) steps.push('retry-eligibility');
-            if (state.otherPortalVerificationStatus === true && state.otherPortalVerificationAcknowledged) steps.push('result');
+            if (state.otherPortalVerificationStatus === true && state.otherPortalVerificationAcknowledged) {
+              pushMembershipFinalStep(steps, state);
+            }
           } else {
-            steps.push('result');
+            pushMembershipFinalStep(steps, state);
           }
         }
       }
@@ -533,6 +554,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const [studentVerificationToken, setStudentVerificationToken] = useState('');
   const [studentPinInput, setStudentPinInput] = useState('');
   const [studentPinError, setStudentPinError] = useState('');
+  const [studentPinDisplay, setStudentPinDisplay] = useState('');
   const [studentPinSending, setStudentPinSending] = useState(false);
   const [studentPinVerifying, setStudentPinVerifying] = useState(false);
   const [studentEligibilityChecking, setStudentEligibilityChecking] = useState(false);
@@ -540,7 +562,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const [experiencedResumeVerifying, setExperiencedResumeVerifying] = useState(false);
   const [experiencedResumeVerificationError, setExperiencedResumeVerificationError] = useState('');
   const [experiencedResumeAssessment, setExperiencedResumeAssessment] = useState(null);
-
   const resetExperiencedResumeLocalState = () => {
     setExperiencedResumeVerifying(false);
     setExperiencedResumeVerificationError('');
@@ -562,6 +583,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setStudentVerificationToken('');
     setStudentPinInput('');
     setStudentPinError('');
+    setStudentPinDisplay('');
     setStudentPinSending(false);
     setStudentPinVerifying(false);
     setStudentEligibilityChecking(false);
@@ -594,6 +616,19 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const requirementLabel = getRequirementLabel(flowState, step);
   const { currentStep, totalSteps } = getProgressMeta(flowState, step);
   const progressValue = Math.round((currentStep / totalSteps) * 100);
+  const isSalesforceCreateOutcome = isSalesforceMembershipCreateOutcomeKey(result?.outcome);
+  const salesforceAccountReady =
+    flowState.salesforceMembershipAccountCreated && isSalesforceCreateOutcome;
+
+  const markSalesforceMembershipAccountCreated = () => {
+    setFlowState((prev) => ({ ...prev, salesforceMembershipAccountCreated: true }));
+  };
+
+  const handleResultAction = () => {
+    onContinue?.({ flow: flowState, result });
+  };
+
+  const resultCtaLabel = salesforceAccountReady ? 'Login with Salesforce' : result.ctaLabel;
 
   const selectResidency = (value) => {
     resetNricCheckState();
@@ -1346,6 +1381,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     try {
       setStudentPinSending(true);
       setStudentPinError('');
+      setStudentPinDisplay('');
       setStudentEligibilityAssessment(null);
 
       const response = await sendStudentVerificationPinRequest({
@@ -1355,6 +1391,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       });
 
       setStudentVerificationToken(response?.verificationToken || '');
+      setStudentPinDisplay(String(response?.debugPin || '').trim());
       setStudentPinInput('');
       setFlowState((prev) => ({
         ...prev,
@@ -1375,6 +1412,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         studentVerificationFailed: false,
         studentFailureAcknowledged: false,
       }));
+      setStudentPinDisplay('');
       setStudentPinError(error?.message || 'Failed to send verification PIN. Please try again.');
     } finally {
       setStudentPinSending(false);
@@ -3502,6 +3540,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               </Stack>
             </Box>
 
+            {flowState.studentEmailPinSent && !!studentPinDisplay && (
+              <Alert severity="info" sx={{ py: 0.75 }}>
+                <Typography variant="caption" component="div" sx={{ color: 'text.secondary' }}>
+                  Dev only — OTP sent (remove before production):
+                </Typography>
+                <Typography
+                  variant="h5"
+                  sx={{ fontWeight: 800, letterSpacing: 6, mt: 0.5, fontFamily: 'monospace' }}
+                >
+                  {studentPinDisplay}
+                </Typography>
+              </Alert>
+            )}
+
             {flowState.studentEmailPinSent && (
               <Box
                 sx={(theme) => ({
@@ -3908,19 +3960,43 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             </Stack>
           </Stack>
         )}
+        {step === 'salesforce-membership-create' && (
+          <SalesforceMembershipCreateStep
+            title={result.title}
+            summary={result.summary}
+            defaultEmail={flowState.studentSchoolEmail}
+            flowState={flowState}
+            membershipOutcome={result.outcome}
+            draftUserId={
+              typeof window !== 'undefined'
+                ? sessionStorage.getItem('membershipDraftUserId') || ''
+                : ''
+            }
+            onAccountCreated={markSalesforceMembershipAccountCreated}
+          />
+        )}
         {step === 'result' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              {result.outcome === 'sp-pr-verified-login' && (
+              {(result.outcome === 'sp-pr-verified-login' || salesforceAccountReady) && (
                 <Iconify icon="solar:verified-check-bold" width={20} style={{ color: '#16a34a' }} />
               )}
               {result.title}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
-              {result.summary}
+              {salesforceAccountReady
+                ? 'Your Salesforce membership account has been created. Sign in with Salesforce to access the platform.'
+                : result.summary}
             </Typography>
+            {salesforceAccountReady && (
+              <Typography variant="body2" color="success.dark" sx={{ fontWeight: 600 }}>
+                Account created successfully.
+              </Typography>
+            )}
             <Divider />
-            <Typography variant="caption" color="text.secondary">Review complete. Continue to authentication.</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Review complete. Continue to authentication.
+            </Typography>
           </Stack>
         )}
       </DialogContent>
@@ -3930,12 +4006,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             variant="contained"
             color="primary"
             size="large"
-            onClick={() => onContinue?.({ flow: flowState, result })}
+            onClick={handleResultAction}
             autoFocus
             sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700, minWidth: 210 }}
           >
             <Stack direction="row" alignItems="center" justifyContent="center" component="span" sx={{ width: 1 }}>
-              {result.ctaLabel}
+              {resultCtaLabel}
               <Iconify icon="solar:arrow-right-bold" width={20} sx={{ ml: 1 }} />
             </Stack>
           </Button>

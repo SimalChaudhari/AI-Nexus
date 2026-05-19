@@ -393,6 +393,58 @@ export const exchangeOAuthCode = async ({ code, state }) => {
 };
 
 /** **************************************
+ * Membership flow: create Salesforce account before SSO login
+ *************************************** */
+export const createSalesforceNexusUser = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/create-nexus-user', payload);
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to create Salesforce membership account.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Membership flow: set Salesforce password after account creation
+ *************************************** */
+export const setSalesforceNexusPassword = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/set-nexus-password', payload);
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to set Salesforce password.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Save student/membership record to DB after Salesforce setup
+ *************************************** */
+export const saveSalesforceMembershipRecord = async (payload) => {
+  try {
+    const res = await axios.post('/auth/salesforce-membership-record', payload);
+    const userId = res?.data?.userId || res?.data?.user?.id || '';
+    if (userId) {
+      sessionStorage.setItem('membershipDraftUserId', userId);
+    }
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to save membership record.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * SCAQ flow: promote Salesforce account to Associate after SSO
  *************************************** */
 export const promoteSalesforceAssociateMember = async () => {
