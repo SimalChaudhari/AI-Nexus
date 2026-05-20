@@ -29,17 +29,12 @@ export function HomeView() {
 
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
         <HomeCardsSection />
-
         {/* <HomeCounterSection /> */}
-
         {/* <HomeCommunitiesSection /> */}
         <HomeJoinSection />
         <ContactSection />
-
         <HomeProgrammeFeesSection />
-
         <HomeFaqsSection />
-
       </Stack>
     </>
   );

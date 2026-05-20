@@ -893,18 +893,53 @@ export class OAuthAuthService {
     return data as SalesforceMemberClassUpdateResult;
   }
 
+  private hasNonEmptyScaqSfdcId(result: SalesforceMemberClassUpdateResult): boolean {
+    const id = result.scaqSfdcId != null ? String(result.scaqSfdcId).trim() : '';
+    return id.length > 0;
+  }
+
   /**
-   * SCAQ: member class was updated when scaqSfdcId is present and updatedMemberClass is Associate.
+   * Apex may return success:false with null fields when the account is already Associate
+   * (e.g. "Current value: Associate") — no scaqSfdcId in that body; treat separately below.
+   */
+  private messageIndicatesAccountAlreadyAssociate(message: string): boolean {
+    const m = message.toLowerCase();
+    if (!m) return false;
+    // Example: "... Current value: Associate. "
+    if (m.includes('current value: associate')) return true;
+    if (m.includes('current value is associate')) return true;
+    if (/\bcurrent\s+value\s*[:=]\s*["']?associate["']?\b/i.test(message)) return true;
+    return false;
+  }
+
+  /**
+   * SCAQ memberclassupdate: by product rule, promotion succeeds when Apex returns **both**
+   * `updatedMemberClass === "Associate"` and a non-empty `scaqSfdcId`.
+   * Fallback: Apex sometimes omits those when the account is already Associate (see message).
    */
   private isAssociateConfirmedByMemberClassUpdate(
     result: SalesforceMemberClassUpdateResult,
   ): boolean {
-    const scaqSfdcId = result.scaqSfdcId != null ? String(result.scaqSfdcId).trim() : '';
-    if (!scaqSfdcId) {
-      return false;
-    }
     const updated = (result.updatedMemberClass != null ? String(result.updatedMemberClass) : '').trim();
-    return updated.toLowerCase() === 'associate';
+    const previous = (result.previousMemberClass != null ? String(result.previousMemberClass) : '').trim();
+
+    const isUpdatedAssociate = updated.toLowerCase() === 'associate';
+
+    if (isUpdatedAssociate && this.hasNonEmptyScaqSfdcId(result)) {
+      return true;
+    }
+
+    // Already Associate: Apex may not resend scaqSfdcId / updatedMemberClass.
+    if (previous.toLowerCase() === 'associate') {
+      return true;
+    }
+
+    const message = result.message != null ? String(result.message) : '';
+    if (this.messageIndicatesAccountAlreadyAssociate(message)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -992,19 +1027,23 @@ export class OAuthAuthService {
 
     const isAssociate = this.isAssociateConfirmedByMemberClassUpdate(updateResult);
     const updatedClass =
-      updateResult.updatedMemberClass != null ? String(updateResult.updatedMemberClass) : undefined;
+      updateResult.updatedMemberClass != null ? String(updateResult.updatedMemberClass).trim() : '';
+    const resolvedMemberClass =
+      updatedClass !== ''
+        ? updatedClass
+        : isAssociate
+          ? 'Associate'
+          : user.salesforceMemberClass ?? undefined;
+
     const salesforcePayload: SalesforceNexusUserInfo = {
       accountID: updateResult.accountId || accountId,
-      memberClass: updatedClass ?? user.salesforceMemberClass ?? undefined,
+      memberClass: resolvedMemberClass,
       isSCAQCandidate: user.isSCAQCandidate ?? true,
       isAssociateMember: isAssociate,
     };
 
     user.salesforceAccountId = salesforcePayload.accountID ?? user.salesforceAccountId;
-    user.salesforceMemberClass =
-      updateResult.updatedMemberClass != null
-        ? String(updateResult.updatedMemberClass)
-        : user.salesforceMemberClass;
+    user.salesforceMemberClass = resolvedMemberClass ?? user.salesforceMemberClass;
     user.isAssociateMember = isAssociate;
     user.salesforceUserInfoRaw = {
       ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
@@ -1018,7 +1057,7 @@ export class OAuthAuthService {
     if (!isAssociate) {
       const apiMessage =
         (updateResult.message && String(updateResult.message).trim())
-        || 'Member class was not updated to Associate in Salesforce.';
+        || 'Salesforce did not return both updatedMemberClass "Associate" and a scaqSfdcId; member class was not confirmed.';
       console.warn('[SSO Login] memberclassupdate did not confirm Associate:', {
         userId,
         accountId,

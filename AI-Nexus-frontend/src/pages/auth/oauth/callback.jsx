@@ -28,6 +28,8 @@ import {
   resolveScaqPostLoginDecision,
   readSalesforceFlagsFromCallbackParams,
   readSalesforceFlagsFromSessionUser,
+  readScaqFlagsFromOAuthCallback,
+  shouldScaqRejectToPaidSignup,
   isScaqMembershipSsoFlow,
   POST_OAUTH_RETURN_TO_KEY,
 } from 'src/utils/membership-eligibility-sso';
@@ -278,12 +280,35 @@ export default function OAuthCallbackPage() {
           router.replace('/home');
         }
       } catch (err) {
-        if (isScaqMembershipSsoFlow(searchParams)) {
-          await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-            email: searchParams.get('email'),
-            firstName: searchParams.get('firstName'),
-            lastName: searchParams.get('lastName'),
-          });
+        const scaqFlowOnError = isScaqMembershipSsoFlow(searchParams);
+        if (scaqFlowOnError) {
+          const sfOnError = readScaqFlagsFromOAuthCallback(searchParams);
+          if (shouldScaqRejectToPaidSignup(sfOnError.isSCAQCandidate)) {
+            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+              email: searchParams.get('email'),
+              firstName: searchParams.get('firstName'),
+              lastName: searchParams.get('lastName'),
+              salesforce: sfOnError,
+            });
+            return;
+          }
+          try {
+            await signOut();
+          } catch {
+            setSession(null);
+            try {
+              sessionStorage.removeItem('user');
+            } catch {
+              // ignore
+            }
+          }
+          await checkUserSession?.();
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'SCAQ verification could not be completed. Please try again or contact support.'
+          );
+          setLoading(false);
           return;
         }
         setError(err instanceof Error ? err.message : 'SSO sign-in failed.');

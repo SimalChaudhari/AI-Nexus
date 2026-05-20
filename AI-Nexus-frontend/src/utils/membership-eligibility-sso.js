@@ -221,6 +221,29 @@ export function mergeSalesforceFlagsIntoSessionUser(salesforce) {
   }
 }
 
+/**
+ * Read SCAQ flags from OAuth callback URL and/or session user (after SSO).
+ * @param {URLSearchParams} searchParams
+ */
+export function readScaqFlagsFromOAuthCallback(searchParams) {
+  const fromQuery = readSalesforceFlagsFromCallbackParams(searchParams);
+  if (fromQuery.isSCAQCandidate !== null || fromQuery.isAssociateMember !== null) {
+    return fromQuery;
+  }
+  try {
+    const raw = sessionStorage.getItem('user');
+    if (!raw) return fromQuery;
+    return readSalesforceFlagsFromSessionUser(JSON.parse(raw));
+  } catch {
+    return fromQuery;
+  }
+}
+
+/** Paid signup only when Salesforce did not confirm SCAQ candidate. */
+export function shouldScaqRejectToPaidSignup(isSCAQCandidate) {
+  return isSCAQCandidate !== true;
+}
+
 export function readSalesforceFlagsFromSessionUser(user) {
   const nested = user?.salesforce;
   if (!nested || typeof nested !== 'object') {
