@@ -48,6 +48,12 @@ import { HomeCardItem } from './components/home-card-item';
 import { HexColorToolDrawer } from './components/hex-color-tool-drawer';
 import { IconPickerDrawer } from './components/icon-picker-drawer';
 import { HomeJoinSettingsCard } from './components/home-join-settings-card';
+import { FaqSettingsCard } from './components/faq-settings-card';
+import { FeesSettingsCard } from './components/fees-settings-card';
+import {
+  DEFAULT_PROGRAMME_FEES_CONTENT,
+  normalizeProgrammeFeesContent,
+} from 'src/sections/home/programme-fees-defaults';
 
 const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
 const CONTACT_ICON_KEY_BY_FIELD = {
@@ -193,9 +199,17 @@ export function AdminSettingsView() {
   const [emojiPickerStatIndex, setEmojiPickerStatIndex] = useState(null);
   const [visibleStatsCount, setVisibleStatsCount] = useState(0);
   const [cardsContentSubmitting, setCardsContentSubmitting] = useState(false);
+  const [faqContentSubmitting, setFaqContentSubmitting] = useState(false);
+  const [feesContentSubmitting, setFeesContentSubmitting] = useState(false);
+  const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
   const HOME_CARDS_MAX = 12;
+  const FAQ_ITEMS_MAX = 50;
+  const DEFAULT_FAQ_CONTENT = {
+    pageHeading: 'Frequently asked questions',
+    items: [],
+  };
   const DEFAULT_JOIN_CONTENT = {
     heading: 'Ready to Join the AI Revolution?',
     subtitle:
@@ -248,6 +262,10 @@ export function AdminSettingsView() {
     ],
   });
   const [joinContent, setJoinContent] = useState(DEFAULT_JOIN_CONTENT);
+  const [faqContent, setFaqContent] = useState(DEFAULT_FAQ_CONTENT);
+  const [feesContent, setFeesContent] = useState(() =>
+    normalizeProgrammeFeesContent(DEFAULT_PROGRAMME_FEES_CONTENT)
+  );
   const emptyContactRow = () => ({
     details: '',
     address: '',
@@ -424,6 +442,21 @@ export function AdminSettingsView() {
         ).trim(),
         cards: normalizedCards,
       });
+      const remoteFaq = appSettings.faqContent || {};
+      const remoteFaqRows = Array.isArray(remoteFaq?.items) ? remoteFaq.items : [];
+      const normalizedFaqItems = remoteFaqRows.slice(0, FAQ_ITEMS_MAX).map((item) => ({
+        question: String(item?.question || '').trim(),
+        answer: String(item?.answer || '').trim(),
+      }));
+      setFaqContent({
+        pageHeading: String(remoteFaq?.pageHeading || DEFAULT_FAQ_CONTENT.pageHeading).trim(),
+        items: normalizedFaqItems,
+      });
+      setFeesContent(
+        normalizeProgrammeFeesContent(
+          appSettings.programmeFeesContent || DEFAULT_PROGRAMME_FEES_CONTENT
+        )
+      );
       const remoteJoin = appSettings.homeJoinContent || {};
       setJoinContent({
         heading: String(remoteJoin?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
@@ -918,6 +951,83 @@ export function AdminSettingsView() {
     }
   };
 
+  const applyFaqFromSettings = (appSettings) => {
+    const remoteFaq = appSettings?.faqContent || {};
+    const remoteFaqRows = Array.isArray(remoteFaq?.items) ? remoteFaq.items : [];
+    setFaqContent({
+      pageHeading: String(remoteFaq?.pageHeading || DEFAULT_FAQ_CONTENT.pageHeading).trim(),
+      items: remoteFaqRows
+        .slice(0, FAQ_ITEMS_MAX)
+        .map((item) => ({
+          question: String(item?.question || '').trim(),
+          answer: String(item?.answer || '').trim(),
+        })),
+    });
+  };
+
+  const applyFeesFromSettings = (appSettings) => {
+    setFeesContent(
+      normalizeProgrammeFeesContent(
+        appSettings?.programmeFeesContent || DEFAULT_PROGRAMME_FEES_CONTENT
+      )
+    );
+  };
+
+  const handleSaveFeesContent = async (contentOverride) => {
+    const source = contentOverride || feesContent;
+    try {
+      setFeesContentSubmitting(true);
+      const payload = {
+        heading: source?.heading || '',
+        tiers: (source?.tiers || []).slice(0, PROGRAMME_FEES_TIERS_MAX).map((tier) => ({
+          title: tier?.title || '',
+          description: tier?.description || '',
+          linkLabel: tier?.linkLabel || '',
+          linkHref: tier?.linkHref || '',
+          price: tier?.price || '',
+          priceNote: tier?.priceNote || '',
+          priceVariant: tier?.priceVariant === 'default' ? 'default' : 'primary',
+        })),
+        fundingPartnersHeading: source?.fundingPartnersHeading || '',
+        fundingPartnersBody: source?.fundingPartnersBody || '',
+        agency: {
+          logoUrl: source?.agency?.logoUrl || '',
+          name: source?.agency?.name || '',
+          tagline: source?.agency?.tagline || '',
+        },
+      };
+      const updated = await appSettingsService.updateProgrammeFeesContent(payload);
+      applyFeesFromSettings(updated);
+      toast.success('Programme fees updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update programme fees');
+      throw error;
+    } finally {
+      setFeesContentSubmitting(false);
+    }
+  };
+
+  const handleSaveFaqContent = async (contentOverride) => {
+    const source = contentOverride || faqContent;
+    try {
+      setFaqContentSubmitting(true);
+      const payload = {
+        pageHeading: source?.pageHeading || '',
+        items: (source?.items || []).slice(0, FAQ_ITEMS_MAX).map((item) => ({
+          question: item?.question || '',
+          answer: item?.answer || '',
+        })),
+      };
+      const updated = await appSettingsService.updateFaqContent(payload);
+      applyFaqFromSettings(updated);
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update FAQ content');
+      throw error;
+    } finally {
+      setFaqContentSubmitting(false);
+    }
+  };
+
   const handleSaveHomeJoinContent = async () => {
     try {
       setJoinContentSubmitting(true);
@@ -1111,6 +1221,20 @@ export function AdminSettingsView() {
       description: 'Edit the “Why use AI resources?” strip on the workflow templates page.',
     },
     {
+      key: 'programme-fees',
+      badge: 'F',
+      icon: 'solar:wallet-money-bold-duotone',
+      title: 'Programme Fees',
+      description: 'Configure programme fee tiers and funding information on the home page.',
+    },
+    {
+      key: 'faq',
+      badge: 'FAQ',
+      icon: 'solar:question-circle-bold-duotone',
+      title: 'FAQs Page',
+      description: 'Configure FAQs shown on the home page and the public /faqs page.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       iconSrc: settingsTabHeader,
@@ -1127,6 +1251,8 @@ export function AdminSettingsView() {
     'contact',
     'course-image',
     'workflow-templates-pitch',
+    'programme-fees',
+    'faq',
     'header-visibility',
   ];
 
@@ -1461,6 +1587,26 @@ export function AdminSettingsView() {
         />
       </Stack>
     </Card>
+  );
+
+  const renderProgrammeFeesSettings = (
+    <FeesSettingsCard
+      feesContent={feesContent}
+      setFeesContent={setFeesContent}
+      feesContentSubmitting={feesContentSubmitting}
+      onSave={handleSaveFeesContent}
+      maxTiers={PROGRAMME_FEES_TIERS_MAX}
+    />
+  );
+
+  const renderFaqSettings = (
+    <FaqSettingsCard
+      faqContent={faqContent}
+      setFaqContent={setFaqContent}
+      faqContentSubmitting={faqContentSubmitting}
+      onSave={handleSaveFaqContent}
+      maxItems={FAQ_ITEMS_MAX}
+    />
   );
 
   const renderHomeJoinSettings = (
@@ -1816,7 +1962,7 @@ export function AdminSettingsView() {
   const renderSectionSwitcher = (
     <Card
       sx={(theme) => ({
-        p: { xs: 1, sm: 1.5 },
+        p: { xs: 0.75, sm: 1 },
         overflow: 'hidden',
         border: `1px solid ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.28 : 0.14)}`,
         background: `linear-gradient(125deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.08)} 0%, ${alpha(
@@ -1836,30 +1982,44 @@ export function AdminSettingsView() {
         scrollButtons="auto"
         allowScrollButtonsMobile
         sx={(theme) => ({
-          px: { xs: 0.5, sm: 1 },
+          minHeight: 44,
+          '& .MuiTabs-flexContainer': {
+            gap: 0.5,
+          },
+          '& .MuiTabs-scrollButtons': {
+            width: 32,
+          },
           '& .MuiTabs-indicator': {
-            height: 4,
+            height: 3,
             borderRadius: 99,
             background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
           },
           '& .MuiTab-root': {
-            minHeight: 56,
+            flex: '0 0 auto',
+            minHeight: 44,
+            minWidth: 'unset',
             textTransform: 'none',
             fontWeight: 600,
-            px: 1.5,
-            borderRadius: 1.5,
-            color: 'secondary.main',
-            transition: 'all 0.2s ease',
-            '& .MuiSvgIcon-root, & svg': { opacity: 0.85, width: 24, height: 24 },
-            '& .MuiTab-iconWrapper img': { opacity: 0.85 },
+            fontSize: '0.8125rem',
+            px: 1,
+            py: 0.75,
+            borderRadius: 1,
+            color: 'text.secondary',
+            transition: 'background-color 0.2s ease, color 0.2s ease',
+            '& .MuiTab-iconWrapper': {
+              marginRight: 0.5,
+              marginBottom: '0 !important',
+            },
+            '& .MuiSvgIcon-root, & svg': { opacity: 0.88, width: 20, height: 20 },
+            '& .MuiTab-iconWrapper img': { opacity: 0.88, width: 22, height: 22 },
             '&:hover': {
               color: 'primary.main',
-              bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.55),
+              bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.5),
             },
           },
           '& .MuiTab-root.Mui-selected': {
             color: 'primary.main',
-            bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.14),
+            bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.12),
             '& .MuiSvgIcon-root, & svg': { opacity: 1 },
             '& .MuiTab-iconWrapper img': { opacity: 1 },
           },
@@ -1876,17 +2036,17 @@ export function AdminSettingsView() {
                   src={sectionItem.iconSrc}
                   alt=""
                   sx={{
-                    width: 28,
-                    height: 28,
-                    maxWidth: 28,
-                    maxHeight: 28,
+                    width: 22,
+                    height: 22,
+                    maxWidth: 22,
+                    maxHeight: 22,
                     objectFit: 'contain',
                     display: 'block',
                     flexShrink: 0,
                   }}
                 />
               ) : (
-                <Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={24} />
+                <Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={20} />
               )
             }
             iconPosition="start"
@@ -1897,11 +2057,14 @@ export function AdminSettingsView() {
 
       {activeSectionItem ? (
         <Typography
-          variant="body2"
+          variant="caption"
           sx={(theme) => ({
-            px: { xs: 1.5, sm: 2 },
-            pt: 1.5,
-            color: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.72) : 'secondary.dark',
+            display: 'block',
+            px: { xs: 1, sm: 1.25 },
+            pt: 0.75,
+            pb: 0.25,
+            lineHeight: 1.45,
+            color: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.68) : 'text.secondary',
           })}
         >
           {activeSectionItem.description}
@@ -1921,7 +2084,7 @@ export function AdminSettingsView() {
         sx={{ mb: { xs: 3, md: 5 } }}
       />
 
-      <Stack spacing={3}>
+      <Stack spacing={2}>
         {renderSectionSwitcher}
         {activeSection === 'logo' && renderLogoSettings}
         {activeSection === 'hero' && (
@@ -1935,6 +2098,8 @@ export function AdminSettingsView() {
         {activeSection === 'contact' && renderContactHeroSettings}
         {activeSection === 'course-image' && renderCourseDefaultImageSettings}
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
+        {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
+        {activeSection === 'faq' && renderFaqSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

@@ -44,6 +44,31 @@ type HomeJoinContentPayload = {
   ctaIcon?: string;
 };
 
+type FaqContentPayload = {
+  pageHeading?: string;
+  items?: Array<{ question?: string; answer?: string }>;
+};
+
+type ProgrammeFeesContentPayload = {
+  heading?: string;
+  tiers?: Array<{
+    title?: string;
+    description?: string;
+    linkLabel?: string;
+    linkHref?: string;
+    price?: string;
+    priceNote?: string;
+    priceVariant?: 'primary' | 'default' | '';
+  }>;
+  fundingPartnersHeading?: string;
+  fundingPartnersBody?: string;
+  agency?: {
+    logoUrl?: string;
+    name?: string;
+    tagline?: string;
+  };
+};
+
 type ContactHeroContentPayload = {
   headingLine1?: string;
   headingLine2?: string;
@@ -71,6 +96,12 @@ const HERO_CTA_LABEL_MAX_LENGTH = 32;
 const HOME_JOIN_HEADING_MAX_LENGTH = 100;
 const HOME_JOIN_CTA_LABEL_MAX_LENGTH = 40;
 const CONTACT_HEADING_LINE_MAX_LENGTH = 80;
+const FAQ_PAGE_HEADING_MAX_LENGTH = 120;
+const FAQ_QUESTION_MAX_LENGTH = 240;
+const FAQ_ITEMS_MAX = 50;
+const PROGRAMME_FEES_HEADING_MAX = 120;
+const PROGRAMME_FEES_TIER_TITLE_MAX = 240;
+const PROGRAMME_FEES_TIERS_MAX = 8;
 
 @Injectable()
 export class AppSettingsService {
@@ -78,6 +109,8 @@ export class AppSettingsService {
   private homeJoinColumnChecked = false;
   private contactHeroColumnsChecked = false;
   private workflowTemplatesPitchColumnChecked = false;
+  private faqColumnChecked = false;
+  private programmeFeesColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -126,11 +159,29 @@ export class AppSettingsService {
     this.workflowTemplatesPitchColumnChecked = true;
   }
 
+  private async ensureFaqColumn(): Promise<void> {
+    if (this.faqColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "faqContent" jsonb'
+    );
+    this.faqColumnChecked = true;
+  }
+
+  private async ensureProgrammeFeesColumn(): Promise<void> {
+    if (this.programmeFeesColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "programmeFeesContent" jsonb'
+    );
+    this.programmeFeesColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
     await this.ensureContactHeroColumns();
     await this.ensureWorkflowTemplatesPitchColumn();
+    await this.ensureFaqColumn();
+    await this.ensureProgrammeFeesColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -398,6 +449,61 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizePriceVariant(value: unknown): 'primary' | 'default' {
+    const v = typeof value === 'string' ? value.trim() : '';
+    return v === 'default' ? 'default' : 'primary';
+  }
+
+  private sanitizeProgrammeFeesContent(
+    input: unknown,
+    existing?: ProgrammeFeesContentPayload | null
+  ): ProgrammeFeesContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawTiers = Array.isArray(source.tiers) ? source.tiers : [];
+    const prevAgency =
+      existing?.agency && typeof existing.agency === 'object' ? existing.agency : {};
+    const nextAgency =
+      source.agency && typeof source.agency === 'object' ? (source.agency as any) : {};
+    const agencyInPayload = source.agency && typeof source.agency === 'object';
+    const rawLogoInput = agencyInPayload ? nextAgency.logoUrl : undefined;
+    const logoUrl =
+      agencyInPayload && rawLogoInput !== undefined && rawLogoInput !== null
+        ? this.toStoredUploadPath(rawLogoInput)
+        : this.toStoredUploadPath(prevAgency?.logoUrl);
+
+    return {
+      heading: this.cleanText(source.heading, PROGRAMME_FEES_HEADING_MAX),
+      tiers: rawTiers.slice(0, PROGRAMME_FEES_TIERS_MAX).map((tier: any) => ({
+        title: this.cleanText(tier?.title, PROGRAMME_FEES_TIER_TITLE_MAX),
+        description: this.cleanText(tier?.description),
+        linkLabel: this.cleanText(tier?.linkLabel, 120),
+        linkHref: this.cleanText(tier?.linkHref, 500),
+        price: this.cleanText(tier?.price, 40),
+        priceNote: this.cleanText(tier?.priceNote, 200),
+        priceVariant: this.sanitizePriceVariant(tier?.priceVariant),
+      })),
+      fundingPartnersHeading: this.cleanText(source.fundingPartnersHeading, 80) || 'Funding Partners',
+      fundingPartnersBody: this.cleanText(source.fundingPartnersBody),
+      agency: {
+        logoUrl,
+        name: this.cleanText(nextAgency?.name ?? prevAgency?.name, 200),
+        tagline: this.cleanText(nextAgency?.tagline ?? prevAgency?.tagline, 200),
+      },
+    };
+  }
+
+  private sanitizeFaqContent(input: unknown): FaqContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawItems = Array.isArray(source.items) ? source.items : [];
+    return {
+      pageHeading: this.cleanText(source.pageHeading, FAQ_PAGE_HEADING_MAX_LENGTH),
+      items: rawItems.slice(0, FAQ_ITEMS_MAX).map((item: any) => ({
+        question: this.cleanText(item?.question, FAQ_QUESTION_MAX_LENGTH),
+        answer: this.cleanText(item?.answer),
+      })),
+    };
+  }
+
   private sanitizeContactHeroContent(input: unknown): ContactHeroContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const contacts = Array.isArray(source.contacts) ? source.contacts : [];
@@ -461,6 +567,83 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Home join content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async getFaqContent(): Promise<FaqContentPayload | null> {
+    const settings = await this.getSettings();
+    return settings.faqContent ? this.sanitizeFaqContent(settings.faqContent) : null;
+  }
+
+  async updateFaqContent(
+    payload: FaqContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.faqContent = this.sanitizeFaqContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'FAQ content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async getProgrammeFeesContent(): Promise<ProgrammeFeesContentPayload | null> {
+    const settings = await this.getSettings();
+    return settings.programmeFeesContent
+      ? this.sanitizeProgrammeFeesContent(settings.programmeFeesContent, settings.programmeFeesContent)
+      : null;
+  }
+
+  async updateProgrammeFeesContent(
+    payload: ProgrammeFeesContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.programmeFeesContent = this.sanitizeProgrammeFeesContent(
+      payload,
+      settings.programmeFeesContent
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Programme fees content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadProgrammeFeesAgencyLogo(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('programme-fees-agency');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'programme-fees-agency', {
+      fileName: 'agency-logo',
+    });
+    const existing = settings.programmeFeesContent || {};
+    const agency = existing.agency && typeof existing.agency === 'object' ? { ...existing.agency } : {};
+    settings.programmeFeesContent = this.sanitizeProgrammeFeesContent(
+      { ...existing, agency: { ...agency, logoUrl: relativeUrl } },
+      existing
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Agency logo uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeProgrammeFeesAgencyLogo(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('programme-fees-agency');
+    const existing = settings.programmeFeesContent || {};
+    const agency = existing.agency && typeof existing.agency === 'object' ? { ...existing.agency } : {};
+    agency.logoUrl = '';
+    settings.programmeFeesContent = this.sanitizeProgrammeFeesContent(
+      { ...existing, agency },
+      existing
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Agency logo removed successfully',
       settings: saved,
     };
   }
@@ -564,6 +747,8 @@ export class AppSettingsService {
     courseDefaultImageUrl: string | null;
     contactHeroContent: ContactHeroContentPayload | null;
     workflowTemplatesPitchContent: WorkflowTemplatesPitchContent | null;
+    faqContent: FaqContentPayload | null;
+    programmeFeesContent: ProgrammeFeesContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -583,6 +768,15 @@ export class AppSettingsService {
         settings.workflowTemplatesPitchContent || {},
         settings.workflowTemplatesPitchContent
       ),
+      faqContent: settings.faqContent
+        ? this.sanitizeFaqContent(settings.faqContent)
+        : null,
+      programmeFeesContent: settings.programmeFeesContent
+        ? this.sanitizeProgrammeFeesContent(
+            settings.programmeFeesContent,
+            settings.programmeFeesContent
+          )
+        : null,
       totalCourseEnrollments,
     };
   }

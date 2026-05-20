@@ -303,6 +303,87 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Get('faq-content')
+  @ApiOperation({ summary: 'Get public FAQs page content' })
+  async getFaqContent(@Res() response: Response) {
+    const faqContent = await this.appSettingsService.getFaqContent();
+    return response.status(HttpStatus.OK).json({ data: faqContent });
+  }
+
+  @Put('faq-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update public FAQs page content' })
+  async updateFaqContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateFaqContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Get('programme-fees-content')
+  @ApiOperation({ summary: 'Get programme fees & funding content' })
+  async getProgrammeFeesContent(@Res() response: Response) {
+    const data = await this.appSettingsService.getProgrammeFeesContent();
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('programme-fees-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update programme fees & funding content' })
+  async updateProgrammeFeesContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateProgrammeFeesContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('programme-fees-agency-logo')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload supporting agency logo for programme fees section' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadProgrammeFeesAgencyLogo(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadProgrammeFeesAgencyLogo(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('programme-fees-agency-logo')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove supporting agency logo for programme fees section' })
+  async removeProgrammeFeesAgencyLogo(@Res() response: Response) {
+    const result = await this.appSettingsService.removeProgrammeFeesAgencyLogo();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('workflow-templates-pitch-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

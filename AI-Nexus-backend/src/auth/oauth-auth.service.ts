@@ -22,6 +22,17 @@ export interface IdPUserInfo {
   [key: string]: unknown;
 }
 
+/** Response from POST /services/apexrest/memberclassupdate?accountId=... */
+export interface SalesforceMemberClassUpdateResult {
+  updatedMemberClass?: string | null;
+  success?: boolean;
+  scaqSfdcId?: string | null;
+  previousMemberClass?: string | null;
+  message?: string;
+  accountId?: string;
+  [key: string]: unknown;
+}
+
 /** Custom Salesforce Apex REST payload from /services/apexrest/userinfonexus. */
 export interface SalesforceNexusUserInfo {
   username?: string;
@@ -874,21 +885,41 @@ export class OAuthAuthService {
     return this.userRepository.findOne({ where: { id } });
   }
 
+  /** Parse memberclassupdate Apex REST JSON body. */
+  private parseMemberClassUpdateResponse(data: unknown): SalesforceMemberClassUpdateResult {
+    if (!data || typeof data !== 'object') {
+      return {};
+    }
+    return data as SalesforceMemberClassUpdateResult;
+  }
+
   /**
-   * SCAQ flow: call memberclassupdate for accountId, re-fetch nexus info, require isAssociateMember === true.
+   * SCAQ: member class was updated when scaqSfdcId is present and updatedMemberClass is Associate.
+   */
+  private isAssociateConfirmedByMemberClassUpdate(
+    result: SalesforceMemberClassUpdateResult,
+  ): boolean {
+    const scaqSfdcId = result.scaqSfdcId != null ? String(result.scaqSfdcId).trim() : '';
+    if (!scaqSfdcId) {
+      return false;
+    }
+    const updated = (result.updatedMemberClass != null ? String(result.updatedMemberClass) : '').trim();
+    return updated.toLowerCase() === 'associate';
+  }
+
+  /**
+   * SCAQ flow: call memberclassupdate (admin token), use response only — no userinfonexus re-fetch.
    */
   async promoteUserToAssociateMember(userId: string): Promise<{
     success: boolean;
     message: string;
-    user: UserEntity; 
+    user: UserEntity;
     salesforce: SalesforceNexusUserInfo | null;
+    memberClassUpdate?: SalesforceMemberClassUpdateResult;
   }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new BadRequestException('User not found.');
-    }
-    if (!user.socialAccessToken) {
-      throw new BadRequestException('Salesforce session expired. Please sign in with SSO again.');
     }
     const accountId = user.salesforceAccountId?.trim();
     if (!accountId) {
@@ -905,7 +936,12 @@ export class OAuthAuthService {
         success: true,
         message: 'Already an Associate member.',
         user,
-        salesforce: (user.salesforceUserInfoRaw as SalesforceNexusUserInfo) || null,
+        salesforce: {
+          accountID: accountId,
+          memberClass: user.salesforceMemberClass ?? undefined,
+          isSCAQCandidate: user.isSCAQCandidate ?? true,
+          isAssociateMember: true,
+        },
       };
     }
 
@@ -917,8 +953,10 @@ export class OAuthAuthService {
       url,
       token: this.maskToken(integrationAccessToken),
     });
+
+    let updateResult: SalesforceMemberClassUpdateResult = {};
     try {
-      await axios.post(url, {}, {
+      const res = await axios.post<SalesforceMemberClassUpdateResult>(url, {}, {
         headers: {
           Authorization: `Bearer ${integrationAccessToken}`,
           'Content-Type': 'application/json',
@@ -926,61 +964,86 @@ export class OAuthAuthService {
         },
         timeout: 20000,
       });
+      updateResult = this.parseMemberClassUpdateResponse(res.data);
+      console.log('[SSO Login] memberclassupdate response:', updateResult);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        console.error('[SSO Login] memberclassupdate failed:', {
-          status: err.response?.status,
-          data: err.response?.data,
-          message: err.message,
-          url,
-        });
-        const desc =
-          (err.response?.data as { message?: string; error_description?: string })?.message
-          || (err.response?.data as { error_description?: string })?.error_description
-          || err.message;
-        throw new BadRequestException(desc || 'Failed to update member class in Salesforce.');
+        const body = err.response?.data;
+        if (body && typeof body === 'object') {
+          updateResult = this.parseMemberClassUpdateResponse(body);
+          console.log('[SSO Login] memberclassupdate error body:', updateResult);
+        } else {
+          console.error('[SSO Login] memberclassupdate failed:', {
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+            url,
+          });
+          const desc =
+            (err.response?.data as { message?: string; error_description?: string })?.message
+            || (err.response?.data as { error_description?: string })?.error_description
+            || err.message;
+          throw new BadRequestException(desc || 'Failed to update member class in Salesforce.');
+        }
+      } else {
+        throw err;
       }
-      throw err;
     }
 
-    const nexusInfo = await this.fetchSalesforceNexusUserInfo(user.socialAccessToken);
-    if (nexusInfo) {
-      user.salesforceUsername = nexusInfo.username ?? user.salesforceUsername ?? null;
-      user.salesforceMemberClass = nexusInfo.memberClass ?? user.salesforceMemberClass ?? null;
-      user.salesforceAccountType = nexusInfo.accountType ?? user.salesforceAccountType ?? null;
-      user.salesforceAccountId = nexusInfo.accountID ?? user.salesforceAccountId ?? null;
-      user.isSCAQCandidate =
-        typeof nexusInfo.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : user.isSCAQCandidate;
-      user.isAssociateMember =
-        typeof nexusInfo.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : user.isAssociateMember;
-      user.salesforceUserInfoRaw = nexusInfo as Record<string, unknown>;
-      user.salesforceSyncedAt = new Date();
-      await this.userRepository.save(user);
-    }
+    const isAssociate = this.isAssociateConfirmedByMemberClassUpdate(updateResult);
+    const updatedClass =
+      updateResult.updatedMemberClass != null ? String(updateResult.updatedMemberClass) : undefined;
+    const salesforcePayload: SalesforceNexusUserInfo = {
+      accountID: updateResult.accountId || accountId,
+      memberClass: updatedClass ?? user.salesforceMemberClass ?? undefined,
+      isSCAQCandidate: user.isSCAQCandidate ?? true,
+      isAssociateMember: isAssociate,
+    };
 
-    if (user.isAssociateMember !== true) {
-      console.warn('[SSO Login] memberclassupdate completed but isAssociateMember is not true:', {
+    user.salesforceAccountId = salesforcePayload.accountID ?? user.salesforceAccountId;
+    user.salesforceMemberClass =
+      updateResult.updatedMemberClass != null
+        ? String(updateResult.updatedMemberClass)
+        : user.salesforceMemberClass;
+    user.isAssociateMember = isAssociate;
+    user.salesforceUserInfoRaw = {
+      ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+        ? user.salesforceUserInfoRaw
+        : {}),
+      memberClassUpdate: updateResult as Record<string, unknown>,
+    };
+    user.salesforceSyncedAt = new Date();
+    await this.userRepository.save(user);
+
+    if (!isAssociate) {
+      const apiMessage =
+        (updateResult.message && String(updateResult.message).trim())
+        || 'Member class was not updated to Associate in Salesforce.';
+      console.warn('[SSO Login] memberclassupdate did not confirm Associate:', {
         userId,
         accountId,
-        isAssociateMember: user.isAssociateMember,
+        scaqSfdcId: updateResult.scaqSfdcId,
+        updatedMemberClass: updateResult.updatedMemberClass,
+        success: updateResult.success,
       });
-      throw new BadRequestException(
-        'Associate member status was not confirmed in Salesforce after update. Please contact support or try again.',
-      );
+      throw new BadRequestException(apiMessage);
     }
 
-    console.log('[SSO Login] SCAQ Associate verified after memberclassupdate:', {
+    console.log('[SSO Login] SCAQ Associate confirmed from memberclassupdate response:', {
       userId,
       accountId,
-      isAssociateMember: user.isAssociateMember,
-      memberClass: user.salesforceMemberClass,
+      scaqSfdcId: updateResult.scaqSfdcId,
+      updatedMemberClass: updateResult.updatedMemberClass,
     });
 
     return {
       success: true,
-      message: 'Associate member status confirmed in Salesforce.',
+      message:
+        (updateResult.message && String(updateResult.message).trim())
+        || 'Associate member status confirmed in Salesforce.',
       user,
-      salesforce: nexusInfo,
+      salesforce: salesforcePayload,
+      memberClassUpdate: updateResult,
     };
   }
 }

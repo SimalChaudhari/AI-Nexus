@@ -9,6 +9,8 @@ import { HomeCardsSection } from '../home-cards-section';
 import { HomeCounterSection } from '../home-counter-section';
 import { HomeCommunitiesSection } from '../home-communities-section';
 import { HomeJoinSection } from '../home-join-section';
+import { HomeProgrammeFeesSection } from '../home-programme-fees-section';
+import { HomeFaqsSection } from '../home-faqs-section';
 
 // ----------------------------------------------------------------------
 
@@ -31,10 +33,13 @@ export function HomeView() {
         {/* <HomeCounterSection /> */}
 
         {/* <HomeCommunitiesSection /> */}
-
         <HomeJoinSection />
-
         <ContactSection />
+
+        <HomeProgrammeFeesSection />
+
+        <HomeFaqsSection />
+
       </Stack>
     </>
   );

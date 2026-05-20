@@ -9,12 +9,54 @@ function normalizeAssetUrl(url) {
   return `${ASSET_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
+function transformProgrammeFeesContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawTiers = Array.isArray(source.tiers) ? source.tiers : [];
+  return {
+    heading: source.heading != null ? String(source.heading) : '',
+    tiers: rawTiers.slice(0, 8).map((tier) => ({
+      title: tier?.title != null ? String(tier.title) : '',
+      description: tier?.description != null ? String(tier.description) : '',
+      linkLabel: tier?.linkLabel != null ? String(tier.linkLabel) : '',
+      linkHref: tier?.linkHref != null ? String(tier.linkHref) : '',
+      price: tier?.price != null ? String(tier.price) : '',
+      priceNote: tier?.priceNote != null ? String(tier.priceNote) : '',
+      priceVariant: tier?.priceVariant === 'default' ? 'default' : 'primary',
+    })),
+    fundingPartnersHeading:
+      source.fundingPartnersHeading != null ? String(source.fundingPartnersHeading) : '',
+    fundingPartnersBody: source.fundingPartnersBody != null ? String(source.fundingPartnersBody) : '',
+    agency: {
+      logoUrl: normalizeAssetUrl(source?.agency?.logoUrl || ''),
+      name: source?.agency?.name != null ? String(source.agency.name) : '',
+      tagline: source?.agency?.tagline != null ? String(source.agency.tagline) : '',
+    },
+  };
+}
+
+function transformFaqContent(sourceFaq) {
+  if (!sourceFaq || typeof sourceFaq !== 'object') {
+    return null;
+  }
+  return {
+    pageHeading: sourceFaq?.pageHeading != null ? String(sourceFaq.pageHeading) : '',
+    items: Array.isArray(sourceFaq?.items)
+      ? sourceFaq.items.slice(0, 50).map((item) => ({
+          question: item?.question != null ? String(item.question) : '',
+          answer: item?.answer != null ? String(item.answer) : '',
+        }))
+      : [],
+  };
+}
+
 function transformSettings(settings) {
   const sourceContent = settings?.homeHeroContent;
   const sourceCards = settings?.homeCardsContent;
   const sourceJoin = settings?.homeJoinContent;
   const sourceContactHero = settings?.contactHeroContent;
   const sourcePitch = settings?.workflowTemplatesPitchContent;
+  const sourceFaq = settings?.faqContent;
+  const sourceFees = settings?.programmeFeesContent;
   const normalizedPitchFeatures = [0, 1, 2].map((i) => {
     const rows = Array.isArray(sourcePitch?.features) ? sourcePitch.features : [];
     const f = rows[i] && typeof rows[i] === 'object' ? rows[i] : {};
@@ -130,6 +172,8 @@ function transformSettings(settings) {
           features: normalizedPitchFeatures,
         }
       : null,
+    faqContent: transformFaqContent(sourceFaq),
+    programmeFeesContent: transformProgrammeFeesContent(sourceFees),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -234,6 +278,46 @@ export const appSettingsService = {
 
   async updateContactHeroContent(payload) {
     const response = await axios.put('/app-settings/contact-hero-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async getFaqContent() {
+    const response = await axios.get('/app-settings/faq-content');
+    const data = response.data?.data ?? response.data ?? null;
+    return transformFaqContent(data);
+  },
+
+  async updateFaqContent(payload) {
+    const response = await axios.put('/app-settings/faq-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async getProgrammeFeesContent() {
+    const response = await axios.get('/app-settings/programme-fees-content');
+    const data = response.data?.data ?? response.data ?? null;
+    return transformProgrammeFeesContent(data);
+  },
+
+  async updateProgrammeFeesContent(payload) {
+    const response = await axios.put('/app-settings/programme-fees-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadProgrammeFeesAgencyLogo(file) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await axios.post('/app-settings/programme-fees-agency-logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeProgrammeFeesAgencyLogo() {
+    const response = await axios.delete('/app-settings/programme-fees-agency-logo');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

@@ -50,6 +50,31 @@ export type WorkflowTemplatesPitchContent = {
   features?: Array<{ iconUrl?: string; title?: string; description?: string }>;
 };
 
+export type FaqContent = {
+  pageHeading?: string;
+  items?: Array<{ question?: string; answer?: string }>;
+};
+
+export type ProgrammeFeesContent = {
+  heading?: string;
+  tiers?: Array<{
+    title?: string;
+    description?: string;
+    linkLabel?: string;
+    linkHref?: string;
+    price?: string;
+    priceNote?: string;
+    priceVariant?: 'primary' | 'default' | '';
+  }>;
+  fundingPartnersHeading?: string;
+  fundingPartnersBody?: string;
+  agency?: {
+    logoUrl?: string;
+    name?: string;
+    tagline?: string;
+  };
+};
+
 export type ContactHeroContent = {
   headingLine1?: string;
   headingLine2?: string;
@@ -111,6 +136,14 @@ export class AppSettingsEntity {
   /** Public copy for the workflows / templates “Why use AI resources?” strip (3 columns). */
   @Column({ type: 'jsonb', nullable: true })
   workflowTemplatesPitchContent?: WorkflowTemplatesPitchContent | null;
+
+  /** Public FAQs page content managed from admin panel. */
+  @Column({ type: 'jsonb', nullable: true })
+  faqContent?: FaqContent | null;
+
+  /** Programme fees & funding block (home page + public). */
+  @Column({ type: 'jsonb', nullable: true })
+  programmeFeesContent?: ProgrammeFeesContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })
