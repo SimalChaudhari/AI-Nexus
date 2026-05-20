@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { LlmService } from '../llm/llm.service';
 import { LlmProvider } from '../llm/llm.types';
 import { ChatbotMessageDto } from './chatbot.dto';
+import {
+    CHATBOT_ERROR_MESSAGE,
+    CHATBOT_MAX_TOKENS,
+    CHATBOT_SYSTEM_PROMPT,
+} from '../ai-prompts/chatbot-content';
 
 @Injectable()
 export class ChatbotService {
@@ -33,11 +38,11 @@ export class ChatbotService {
                 messages: [
                     {
                         role: 'system',
-                        content:
-                            'You are the official AI Nexus website assistant. Communicate in a professional, confident, and clear tone. Keep responses concise, practical, and easy to understand for both technical and non-technical users. For technical questions, structure the answer in this order: (1) Backend and APIs, (2) Frontend/UI, (3) AI integration. Always end with actionable next steps and highlight key risks or dependencies. If details are missing, state assumptions clearly and ask focused follow-up questions instead of giving vague answers.',
+                        content: CHATBOT_SYSTEM_PROMPT,
                     },
                     { role: 'user', content: String(dto.message || '') },
                 ],
+                maxTokens: CHATBOT_MAX_TOKENS,
             });
 
             return {
@@ -47,7 +52,7 @@ export class ChatbotService {
             };
         } catch (error) {
             return {
-                reply: error instanceof Error ? error.message : 'Chatbot request failed.',
+                reply: error instanceof Error ? error.message : CHATBOT_ERROR_MESSAGE,
                 provider: this.llmService.getActiveProvider(),
                 timestamp: new Date().toISOString(),
             };

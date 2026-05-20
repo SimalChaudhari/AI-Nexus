@@ -28,6 +28,18 @@ import {
 } from './utils/singapore-nric-fin.util';
 import { LlmService } from '../llm/llm.service';
 import { LlmProvider } from '../llm/llm.types';
+import {
+  EXPERIENCED_MEMBERSHIP_PATHWAY_RULE,
+  EXPERIENCED_MEMBERSHIP_SYSTEM_PROMPT,
+  STUDENT_MEMBERSHIP_PATHWAY_RULE,
+  STUDENT_MEMBERSHIP_SYSTEM_PROMPT,
+} from '../ai-prompts/membership-prompts';
+import {
+  buildNricSingleImageUserPrompt,
+  NRIC_PAIR_IMAGE_SYSTEM_PROMPT,
+  NRIC_PAIR_IMAGE_USER_PROMPT,
+  NRIC_SINGLE_IMAGE_SYSTEM_PROMPT,
+} from '../ai-prompts/nric-prompts';
 
 interface ExtractedSingaporeIdentifier {
   identifier: string;
@@ -291,8 +303,7 @@ export class AuthService {
         messages: [
           {
             role: 'system',
-            content:
-              'You are an ATS-style eligibility reviewer for student membership screening. Evaluate only the provided fields. Return strict JSON only with keys: score, status, reasons, confidence. "score" must be 0-100. "status" must be one of eligible, manual_review, ineligible. "reasons" must be an array of 1-5 short strings. "confidence" must be 0-1. Be conservative with temporary inboxes and inconsistent graduation dates. Do not add markdown.',
+            content: STUDENT_MEMBERSHIP_SYSTEM_PROMPT,
           },
           {
             role: 'user',
@@ -300,7 +311,7 @@ export class AuthService {
               schoolName: input.schoolName,
               graduationDate: input.graduationDate,
               schoolEmail: input.schoolEmail,
-              rule: 'Current tertiary student evidence only.',
+              rule: STUDENT_MEMBERSHIP_PATHWAY_RULE,
             }),
           },
         ],
@@ -1373,16 +1384,14 @@ export class AuthService {
         messages: [
           {
             role: 'system',
-            content:
-              'You extract Singapore NRIC/FIN identifiers and visible profile fields from identity document images. Return strict JSON only with keys: identifier, candidates, fullName, dateOfBirth, nationality, sex, address, confidence, reason. "identifier" must be the single best full Singapore NRIC or FIN candidate in the format prefix letter + 7 digits + checksum letter. "candidates" must be an array of up to 5 plausible full candidates ordered best-first. "fullName", "dateOfBirth", "nationality", "sex", and "address" must be strings, or empty strings if not visible. Valid prefixes are S, T, F, G, M. If nothing is visible, return {"identifier":"","candidates":[],"fullName":"","dateOfBirth":"","nationality":"","sex":"","address":"","confidence":0,"reason":"not found"}. Do not add markdown.',
+            content: NRIC_SINGLE_IMAGE_SYSTEM_PROMPT,
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text:
-                  `This is the NRIC ${side} image. Extract the best Singapore NRIC/FIN candidate and visible profile fields from this single identity image. Return strict JSON only.`,
+                text: buildNricSingleImageUserPrompt(side),
               },
               {
                 type: 'image_url',
@@ -1445,16 +1454,14 @@ export class AuthService {
         messages: [
           {
             role: 'system',
-            content:
-              'You verify whether two uploaded images are the front and back of the same Singapore NRIC/FIN document. Return strict JSON only with keys: identifier, candidates, fullName, dateOfBirth, nationality, sex, address, confidence, reason. "identifier" must be the single shared best full Singapore NRIC or FIN candidate visible across the two images in the format prefix letter + 7 digits + checksum letter. "candidates" must be an array of up to 5 plausible shared full candidates ordered best-first. Use both images together. If you cannot confirm a shared document identifier, return {"identifier":"","candidates":[],"fullName":"","dateOfBirth":"","nationality":"","sex":"","address":"","confidence":0,"reason":"not found"}. Do not add markdown.',
+            content: NRIC_PAIR_IMAGE_SYSTEM_PROMPT,
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text:
-                  'These are the front and back images of one Singapore NRIC/FIN document. Read both images together, extract the shared NRIC/FIN identifier, and return strict JSON only.',
+                text: NRIC_PAIR_IMAGE_USER_PROMPT,
               },
               {
                 type: 'image_url',
@@ -1945,14 +1952,12 @@ export class AuthService {
         messages: [
           {
             role: 'system',
-            content:
-              'You are an ATS-style eligibility reviewer. The applicant must show at least 5 years of relevant managerial or senior professional experience in accounting, audit, or finance-related roles. Evaluate ONLY the resume text excerpt. Return strict JSON only with keys: score, status, reasons, confidence. "score" must be 0-100. "status" must be one of eligible, manual_review, ineligible. "reasons" must be an array of 1-5 short strings. "confidence" must be 0-1. Be conservative when evidence is weak. Do not add markdown.',
+            content: EXPERIENCED_MEMBERSHIP_SYSTEM_PROMPT,
           },
           {
             role: 'user',
             content: JSON.stringify({
-              pathwayRule:
-                'Minimum 5 years relevant managerial experience in accounting and finance related roles.',
+              pathwayRule: EXPERIENCED_MEMBERSHIP_PATHWAY_RULE,
               resumeTextExcerpt: excerpt,
             }),
           },

@@ -11,7 +11,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
-import CircularProgress from '@mui/material/CircularProgress';
 
 import { Iconify } from 'src/components/iconify';
 import { useAuthContext } from 'src/auth/hooks';
@@ -112,17 +111,19 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
   const handleSend = async () => {
     if (!hasInput || loading) return;
     const userMessage = text.trim();
+    const assistantId = `a-${Date.now()}`;
     setText('');
     setLoading(true);
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage, id: `u-${Date.now()}` }]);
+    setTypingMessageId(assistantId);
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content: userMessage, id: `u-${Date.now()}` },
+      { role: 'assistant', content: '', id: assistantId },
+    ]);
 
     try {
       const result = await chatbotService.sendMessage({ message: userMessage });
       const reply = result?.reply || 'No response received from chatbot.';
-      const assistantId = `a-${Date.now()}`;
-      setTypingMessageId(assistantId);
-
-      setMessages((prev) => [...prev, { role: 'assistant', content: '', id: assistantId }]);
 
       if (typingIntervalRef.current) {
         clearInterval(typingIntervalRef.current);
@@ -155,14 +156,13 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
         }
       }, 14);
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `Chatbot failed: ${error?.message || 'Unknown error'}`,
-          id: `e-${Date.now()}`,
-        },
-      ]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: `Chatbot failed: ${error?.message || 'Unknown error'}` }
+            : msg
+        )
+      );
       setTypingMessageId(null);
       setLoading(false);
     }

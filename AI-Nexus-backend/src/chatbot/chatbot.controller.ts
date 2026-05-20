@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatbotMessageDto } from './chatbot.dto';
 import { ChatbotService } from './chatbot.service';
+import { CHATBOT_REPLY_MESSAGE, CHATBOT_STATUS_MESSAGE } from '../ai-prompts/chatbot-content';
 
 @ApiTags('Chatbot')
 @Controller('chatbot')
@@ -13,7 +14,7 @@ export class ChatbotController {
     @ApiOperation({ summary: 'Show active AI provider configuration (no secrets)' })
     getStatus(@Res() response: Response) {
         return response.status(HttpStatus.OK).json({
-            message: 'Chatbot AI status',
+            message: CHATBOT_STATUS_MESSAGE,
             data: this.chatbotService.getStatus(),
         });
     }
@@ -27,7 +28,7 @@ export class ChatbotController {
     ) {
         const result = await this.chatbotService.sendMessage(dto);
         return response.status(HttpStatus.OK).json({
-            message: 'Chatbot reply generated',
+            message: CHATBOT_REPLY_MESSAGE,
             data: result,
         });
     }
