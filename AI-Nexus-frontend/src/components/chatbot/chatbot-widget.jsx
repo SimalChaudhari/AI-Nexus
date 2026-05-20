@@ -23,7 +23,9 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
   const [hiddenByOverlay, setHiddenByOverlay] = useState(false);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [typingMessageId, setTypingMessageId] = useState(null);
   const messagesRef = useRef(null);
+  const typingIntervalRef = useRef(null);
   const [siteLogoUrl, setSiteLogoUrl] = useState(() => {
     if (typeof window === 'undefined') {
       return '';
@@ -78,6 +80,16 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
     messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   }, [messages, loading, open]);
 
+  useEffect(
+    () => () => {
+      if (typingIntervalRef.current) {
+        clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleVisibilityToggle = (event) => {
@@ -107,10 +119,41 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
     try {
       const result = await chatbotService.sendMessage({ message: userMessage });
       const reply = result?.reply || 'No response received from chatbot.';
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: reply, id: `a-${Date.now()}` },
-      ]);
+      const assistantId = `a-${Date.now()}`;
+      setTypingMessageId(assistantId);
+
+      setMessages((prev) => [...prev, { role: 'assistant', content: '', id: assistantId }]);
+
+      if (typingIntervalRef.current) {
+        clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+      }
+
+      const chars = Array.from(reply);
+      if (!chars.length) {
+        setTypingMessageId(null);
+        setLoading(false);
+        return;
+      }
+
+      let index = 0;
+      typingIntervalRef.current = setInterval(() => {
+        index += 1;
+        const partial = chars.slice(0, index).join('');
+
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === assistantId ? { ...msg, content: partial } : msg))
+        );
+
+        if (index >= chars.length) {
+          if (typingIntervalRef.current) {
+            clearInterval(typingIntervalRef.current);
+            typingIntervalRef.current = null;
+          }
+          setTypingMessageId(null);
+          setLoading(false);
+        }
+      }, 14);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -120,7 +163,7 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
           id: `e-${Date.now()}`,
         },
       ]);
-    } finally {
+      setTypingMessageId(null);
       setLoading(false);
     }
   };
@@ -301,51 +344,11 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
                     sx={{ color: msg.role === 'user' ? '#fff' : '#1f2937' }}
                   >
                     {msg.content}
+                    {loading && msg.id === typingMessageId ? '...' : ''}
                   </Typography>
                 </Box>
               </Box>
             ))}
-            {loading && (
-              <Box
-                sx={{
-                  alignSelf: 'flex-start',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 0.75,
-                  maxWidth: '72%',
-                }}
-              >
-                <Box
-                  sx={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    mt: 0.35,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: 'secondary.main',
-                    color: 'common.white',
-                  }}
-                >
-                  <Iconify icon="mdi:robot-happy-outline" width={16} />
-                </Box>
-                <Box
-                  sx={{
-                    px: 1.2,
-                    py: 0.95,
-                    borderRadius: 2,
-                    bgcolor: 'common.white',
-                    border: (theme) => `1px solid ${theme.palette.divider}`,
-                  }}
-                >
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                    AI Nexus is typing...
-                  </Typography>
-                </Box>
-              </Box>
-            )}
           </Stack>
 
           <Divider />
@@ -394,7 +397,7 @@ export function ChatbotWidget({ title = 'AI Assistant' }) {
                 },
               }}
             >
-              {loading ? <CircularProgress color="inherit" size={18} /> : 'Send'}
+              Send
             </Button>
           </Stack>
         </Paper>
