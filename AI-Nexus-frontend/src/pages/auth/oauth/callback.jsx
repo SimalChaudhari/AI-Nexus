@@ -21,6 +21,8 @@ import {
 import {
   mergeSalesforceFromExchangeUser,
   mergeSalesforceFromOAuthCallbackSearchParams,
+  mergeSalesforceFlagsIntoSessionUser,
+  mergeSalesforceIntoMembershipEligibilityDraft,
   clearMembershipEligibilitySessionStorage,
   persistPaidSignupPrefillAfterScaqReject,
   resolveScaqPostLoginDecision,
@@ -79,6 +81,30 @@ async function rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profi
   const params = new URLSearchParams({ membershipOutcome: 'paid-signup' });
   if (returnTo) params.set('returnTo', returnTo);
   router.replace(`${paths.auth.simple.signUp}?${params.toString()}`);
+}
+
+async function runScaqPromoteAssociateIfNeeded(decision, scaqFlow) {
+  if (decision !== 'promote-associate') return;
+
+  const promoteResult = await promoteSalesforceAssociateMember();
+  const sf = promoteResult?.salesforce;
+
+  if (sf?.isAssociateMember !== true) {
+    throw new Error(
+      'Associate member status was not confirmed in Salesforce after member class update.'
+    );
+  }
+
+  if (scaqFlow && sf) {
+    mergeSalesforceFlagsIntoSessionUser(sf);
+    mergeSalesforceIntoMembershipEligibilityDraft({
+      isSCAQCandidate: sf.isSCAQCandidate,
+      isAssociateMember: sf.isAssociateMember,
+      accountId: sf.accountId,
+      accountType: sf.accountType,
+      memberClass: sf.memberClass,
+    });
+  }
 }
 
 export default function OAuthCallbackPage() {
@@ -161,9 +187,7 @@ export default function OAuthCallbackPage() {
             mergeSalesforceFromExchangeUser(user);
           }
 
-          if (decision === 'promote-associate') {
-            await promoteSalesforceAssociateMember();
-          }
+          await runScaqPromoteAssociateIfNeeded(decision, scaqFlow);
         } else if (accessToken) {
           const sf = readSalesforceFlagsFromCallbackParams(searchParams);
           const decision = resolveScaqPostLoginDecision(
@@ -223,9 +247,7 @@ export default function OAuthCallbackPage() {
             mergeSalesforceFromOAuthCallbackSearchParams(searchParams);
           }
 
-          if (decision === 'promote-associate') {
-            await promoteSalesforceAssociateMember();
-          }
+          await runScaqPromoteAssociateIfNeeded(decision, scaqFlow);
         } else {
           setError('Missing access token or code.');
           setLoading(false);
@@ -256,6 +278,14 @@ export default function OAuthCallbackPage() {
           router.replace('/home');
         }
       } catch (err) {
+        if (isScaqMembershipSsoFlow(searchParams)) {
+          await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+            email: searchParams.get('email'),
+            firstName: searchParams.get('firstName'),
+            lastName: searchParams.get('lastName'),
+          });
+          return;
+        }
         setError(err instanceof Error ? err.message : 'SSO sign-in failed.');
       } finally {
         setLoading(false);

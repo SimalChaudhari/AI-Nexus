@@ -17,7 +17,7 @@ import { Iconify } from 'src/components/iconify';
 import { useAuthContext } from 'src/auth/hooks';
 import { chatbotService } from 'src/services/chatbot.service';
 
-export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
+export function ChatbotWidget({ title = 'AI Assistant' }) {
   const { user } = useAuthContext();
   const [open, setOpen] = useState(false);
   const [hiddenByOverlay, setHiddenByOverlay] = useState(false);
@@ -105,7 +105,7 @@ export function ChatbotWidget({ title = 'AI Assistant', provider = 'mock' }) {
     setMessages((prev) => [...prev, { role: 'user', content: userMessage, id: `u-${Date.now()}` }]);
 
     try {
-      const result = await chatbotService.sendMessage({ message: userMessage, provider });
+      const result = await chatbotService.sendMessage({ message: userMessage });
       const reply = result?.reply || 'No response received from chatbot.';
       setMessages((prev) => [
         ...prev,

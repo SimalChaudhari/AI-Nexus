@@ -139,6 +139,25 @@ export class OAuthAuthService {
     return `${this.baseUrl}${this.promoteAssociatePath}`;
   }
 
+  /** SCAQ: update member class via memberclassupdate (accountId query param). */
+  private get memberClassUpdatePath(): string {
+    const p = process.env.OAUTH_MEMBER_CLASS_UPDATE_PATH || '/services/apexrest/memberclassupdate';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  private get memberClassUpdateBaseUrl(): string {
+    const fullUrl = process.env.OAUTH_MEMBER_CLASS_UPDATE_URL?.trim();
+    if (fullUrl) return fullUrl.split('?')[0].replace(/\/$/, '');
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.memberClassUpdatePath}`;
+    return `${this.baseUrl}${this.memberClassUpdatePath}`;
+  }
+
+  buildMemberClassUpdateUrl(accountId: string): string {
+    const params = new URLSearchParams({ accountId });
+    return `${this.memberClassUpdateBaseUrl}?${params.toString()}`;
+  }
+
   /** Apex REST path to create a Nexus user in Salesforce (membership signup flow). */
   private get createNexusUserPath(): string {
     const p = process.env.OAUTH_CREATE_USER_PATH || '/services/apexrest/createuserfornexus';
@@ -856,13 +875,12 @@ export class OAuthAuthService {
   }
 
   /**
-   * Promote the user's Salesforce account to Associate member (SCAQ opt-in flow).
-   * Uses the stored IdP access token and account id from the nexus userinfo sync.
+   * SCAQ flow: call memberclassupdate for accountId, re-fetch nexus info, require isAssociateMember === true.
    */
   async promoteUserToAssociateMember(userId: string): Promise<{
     success: boolean;
     message: string;
-    user: UserEntity;
+    user: UserEntity; 
     salesforce: SalesforceNexusUserInfo | null;
   }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
@@ -877,33 +895,50 @@ export class OAuthAuthService {
       throw new BadRequestException('Salesforce account id is missing. Please sign in with SSO again.');
     }
 
-    const url = this.promoteAssociateUrl;
-    console.log('[SSO Login] Promoting Salesforce account to Associate:', { userId, accountId, url });
+    if (user.isSCAQCandidate !== true) {
+      throw new BadRequestException('Salesforce profile is not confirmed as an SCAQ Programme candidate.');
+    }
+
+    if (user.isAssociateMember === true) {
+      console.log('[SSO Login] User already Associate member — skipping memberclassupdate:', { userId, accountId });
+      return {
+        success: true,
+        message: 'Already an Associate member.',
+        user,
+        salesforce: (user.salesforceUserInfoRaw as SalesforceNexusUserInfo) || null,
+      };
+    }
+
+    const integrationAccessToken = await this.getIntegrationAccessToken();
+    const url = this.buildMemberClassUpdateUrl(accountId);
+    console.log('[SSO Login] SCAQ member class update (integration/admin token):', {
+      userId,
+      accountId,
+      url,
+      token: this.maskToken(integrationAccessToken),
+    });
     try {
-      await axios.post(
-        url,
-        { accountID: accountId },
-        {
-          headers: {
-            Authorization: `Bearer ${user.socialAccessToken}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 20000,
+      await axios.post(url, {}, {
+        headers: {
+          Authorization: `Bearer ${integrationAccessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-      );
+        timeout: 20000,
+      });
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        console.error('[SSO Login] Promote associate failed:', {
+        console.error('[SSO Login] memberclassupdate failed:', {
           status: err.response?.status,
           data: err.response?.data,
           message: err.message,
+          url,
         });
         const desc =
           (err.response?.data as { message?: string; error_description?: string })?.message
           || (err.response?.data as { error_description?: string })?.error_description
           || err.message;
-        throw new BadRequestException(desc || 'Failed to update Associate member status in Salesforce.');
+        throw new BadRequestException(desc || 'Failed to update member class in Salesforce.');
       }
       throw err;
     }
@@ -917,21 +952,33 @@ export class OAuthAuthService {
       user.isSCAQCandidate =
         typeof nexusInfo.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : user.isSCAQCandidate;
       user.isAssociateMember =
-        typeof nexusInfo.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : true;
+        typeof nexusInfo.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : user.isAssociateMember;
       user.salesforceUserInfoRaw = nexusInfo as Record<string, unknown>;
       user.salesforceSyncedAt = new Date();
       await this.userRepository.save(user);
     }
 
-    console.log('[SSO Login] Associate promotion complete:', {
+    if (user.isAssociateMember !== true) {
+      console.warn('[SSO Login] memberclassupdate completed but isAssociateMember is not true:', {
+        userId,
+        accountId,
+        isAssociateMember: user.isAssociateMember,
+      });
+      throw new BadRequestException(
+        'Associate member status was not confirmed in Salesforce after update. Please contact support or try again.',
+      );
+    }
+
+    console.log('[SSO Login] SCAQ Associate verified after memberclassupdate:', {
       userId,
+      accountId,
       isAssociateMember: user.isAssociateMember,
-      accountType: user.salesforceAccountType,
+      memberClass: user.salesforceMemberClass,
     });
 
     return {
       success: true,
-      message: 'Associate member status updated in Salesforce.',
+      message: 'Associate member status confirmed in Salesforce.',
       user,
       salesforce: nexusInfo,
     };

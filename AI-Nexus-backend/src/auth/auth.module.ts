@@ -4,12 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
-import * as dotenv from 'dotenv';
 import { UserEntity } from './../user/users.entity';
 import { EmailService } from './../service/email.service';
 import { SsoModule } from './sso.module';
-
-dotenv.config();
+import { LlmModule } from '../llm/llm.module';
 
 @Module({
   imports: [
@@ -19,6 +17,7 @@ dotenv.config();
       signOptions: {},
     }),
     SsoModule,
+    LlmModule,
   ],
   providers: [AuthService, EmailService],
   controllers: [AuthController],

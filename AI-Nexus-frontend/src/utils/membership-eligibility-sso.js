@@ -201,6 +201,26 @@ export function buildScaqAssociateOptInOAuthStartUrl(flow, returnPath, oauthStar
   return `${oauthStartPath}?returnTo=${returnTo}&membershipOutcome=${encodeURIComponent('scaq-sso-verify')}`;
 }
 
+/**
+ * After promote-associate API, merge refreshed Salesforce flags into session user.
+ * @param {Record<string, unknown>} salesforce
+ */
+export function mergeSalesforceFlagsIntoSessionUser(salesforce) {
+  if (!salesforce || typeof salesforce !== 'object') return;
+  try {
+    const raw = sessionStorage.getItem('user');
+    if (!raw) return;
+    const user = JSON.parse(raw);
+    user.salesforce = {
+      ...(user.salesforce && typeof user.salesforce === 'object' ? user.salesforce : {}),
+      ...salesforce,
+    };
+    sessionStorage.setItem('user', JSON.stringify(user));
+  } catch {
+    // ignore
+  }
+}
+
 export function readSalesforceFlagsFromSessionUser(user) {
   const nested = user?.salesforce;
   if (!nested || typeof nested !== 'object') {

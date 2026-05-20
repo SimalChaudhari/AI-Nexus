@@ -26,6 +26,8 @@ import {
   validateSingaporeNricFin,
   normalizeSingaporeNricFin,
 } from './utils/singapore-nric-fin.util';
+import { LlmService } from '../llm/llm.service';
+import { LlmProvider } from '../llm/llm.types';
 
 interface ExtractedSingaporeIdentifier {
   identifier: string;
@@ -69,7 +71,7 @@ interface StudentEligibilityAssessment {
   status: 'eligible' | 'manual_review' | 'ineligible';
   reasons: string[];
   confidence: number | null;
-  source: 'openrouter' | 'heuristic';
+  source: LlmProvider | 'heuristic';
 }
 
 @Injectable()
@@ -83,6 +85,7 @@ export class AuthService {
     private readonly JwtService: JwtService, // Inject JwtService
     private readonly emailService: EmailService,
     private readonly oauthAuthService: OAuthAuthService,
+    private readonly llmService: LlmService,
   ) { }
 
   private normalizeUsername(username: string): string {
@@ -152,7 +155,7 @@ export class AuthService {
   }
 
   private getStudentAiMaxTokens(): number {
-    const configured = Number(process.env.OPENROUTER_STUDENT_MAX_TOKENS ?? '300');
+    const configured = Number(process.env.AI_STUDENT_MAX_TOKENS ?? process.env.OPENROUTER_STUDENT_MAX_TOKENS ?? '300');
     if (!Number.isFinite(configured)) return 300;
     return Math.min(1024, Math.max(128, Math.round(configured)));
   }
@@ -225,7 +228,10 @@ export class AuthService {
     };
   }
 
-  private parseStudentEligibilityAiResponse(rawResponse: string): StudentEligibilityAssessment {
+  private parseStudentEligibilityAiResponse(
+    rawResponse: string,
+    source: LlmProvider = this.llmService.getActiveProvider(),
+  ): StudentEligibilityAssessment {
     const trimmed = String(rawResponse || '').trim();
     const withoutFence = trimmed.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
     const firstBrace = withoutFence.indexOf('{');
@@ -264,7 +270,7 @@ export class AuthService {
       status,
       reasons,
       confidence: Number.isFinite(parsedConfidence) ? parsedConfidence : null,
-      source: 'openrouter',
+      source,
     };
   }
 
@@ -273,28 +279,15 @@ export class AuthService {
     graduationDate: string;
     schoolEmail: string;
   }): Promise<StudentEligibilityAssessment> {
-    const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
-    if (!apiKey) {
-      throw new BadRequestException('OpenRouter is not configured. Please set OPENROUTER_API_KEY.');
+    if (!this.llmService.isConfigured()) {
+      throw new BadRequestException(this.llmService.getConfigurationErrorMessage());
     }
 
-    const baseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').trim().replace(/\/$/, '');
-    const model = String(process.env.OPENROUTER_STUDENT_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini').trim();
-    const appName = String(process.env.OPENROUTER_APP_NAME || 'AI Nexus').trim();
-    const appUrl = String(process.env.OPENROUTER_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': appUrl,
-        'X-Title': appName,
-      },
-      body: JSON.stringify({
-        model,
+    try {
+      const result = await this.llmService.chat({
+        useCase: 'student',
         temperature: 0,
-        max_tokens: this.getStudentAiMaxTokens(),
+        maxTokens: this.getStudentAiMaxTokens(),
         messages: [
           {
             role: 'system',
@@ -311,19 +304,13 @@ export class AuthService {
             }),
           },
         ],
-      }),
-    });
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new BadRequestException(
-        this.getOpenRouterFriendlyErrorMessage(response.status, errorText, 'single'),
-      );
+      return this.parseStudentEligibilityAiResponse(result.text, result.provider);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI eligibility check failed.';
+      throw new BadRequestException(message);
     }
-
-    const data = await response.json();
-    const rawText = this.getOpenRouterMessageText(data?.choices?.[0]?.message?.content);
-    return this.parseStudentEligibilityAiResponse(rawText);
   }
 
   private getNricDataKey(): Buffer {
@@ -386,7 +373,7 @@ export class AuthService {
   }
 
   private getNricOpenRouterMaxTokens(): number {
-    const configured = Number(process.env.OPENROUTER_NRIC_MAX_TOKENS ?? '400');
+    const configured = Number(process.env.AI_NRIC_MAX_TOKENS ?? process.env.OPENROUTER_NRIC_MAX_TOKENS ?? '400');
     if (!Number.isFinite(configured)) return 400;
     return Math.min(2048, Math.max(128, Math.round(configured)));
   }
@@ -1032,26 +1019,6 @@ export class AuthService {
   }
 
   /**
-   * Flattens OpenRouter message content into plain text.
-   */
-  private getOpenRouterMessageText(content: unknown): string {
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-      return content
-        .map((part) => {
-          if (typeof part === 'string') return part;
-          if (part && typeof part === 'object' && 'text' in part) {
-            return String((part as { text?: unknown }).text || '');
-          }
-          return '';
-        })
-        .join('\n')
-        .trim();
-    }
-    return '';
-  }
-
-  /**
    * Normalizes extracted OCR fields into clean strings safe for storage and API responses.
    */
   private sanitizeExtractedTextField(value: unknown, separator = ' '): string {
@@ -1243,35 +1210,6 @@ export class AuthService {
     return (populatedFields * 1000) + confidence;
   }
 
-  private getOpenRouterFriendlyErrorMessage(status: number, errorText: string, context: 'single' | 'pair'): string {
-    const rawMessage = String(errorText || '').trim();
-    const normalized = rawMessage.toLowerCase();
-    const extractionLabel = context === 'pair' ? 'document pair extraction' : 'document extraction';
-
-    if (
-      status === 402
-      || normalized.includes('requires more credits')
-      || normalized.includes('insufficient credits')
-      || normalized.includes('fewer max_tokens')
-    ) {
-      return 'Automatic NRIC verification is temporarily unavailable because the document OCR service has insufficient credits. Please try again later.';
-    }
-
-    if (status === 429 || normalized.includes('rate limit')) {
-      return 'Automatic NRIC verification is temporarily busy. Please wait a moment and try again.';
-    }
-
-    if (status >= 500) {
-      return 'Automatic NRIC verification is temporarily unavailable. Please try again later.';
-    }
-
-    if (normalized.includes('api key') || normalized.includes('not configured')) {
-      return 'Automatic NRIC verification is not configured correctly right now. Please contact support.';
-    }
-
-    return `Automatic NRIC verification failed during ${extractionLabel}. Please try again later.`;
-  }
-
   private pickPreferredExtractedResult(
     first: ExtractedSingaporeIdentifier,
     second: ExtractedSingaporeIdentifier,
@@ -1411,7 +1349,7 @@ export class AuthService {
   }
 
   /**
-   * Uses the configured OpenRouter model to OCR a single uploaded NRIC image and extract a candidate NRIC/FIN.
+   * Uses the configured AI provider to OCR a single uploaded NRIC image and extract a candidate NRIC/FIN.
    */
   private async extractSingaporeIdentifierFromImageWithOpenRouter(
     image: Express.Multer.File,
@@ -1423,29 +1361,15 @@ export class AuthService {
       );
     }
 
-    const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
-    if (!apiKey) {
-      throw new BadRequestException('OpenRouter is not configured. Please set OPENROUTER_API_KEY.');
+    if (!this.llmService.isConfigured()) {
+      throw new BadRequestException(this.llmService.getConfigurationErrorMessage());
     }
 
-    const baseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').trim().replace(/\/$/, '');
-    const model = String(process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini').trim();
-    const appName = String(process.env.OPENROUTER_APP_NAME || 'AI Nexus').trim();
-    const appUrl = String(process.env.OPENROUTER_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
-    const maxTokens = this.getNricOpenRouterMaxTokens();
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': appUrl,
-        'X-Title': appName,
-      },
-      body: JSON.stringify({
-        model,
+    try {
+      const result = await this.llmService.chat({
+        useCase: 'nric',
         temperature: 0,
-        max_tokens: maxTokens,
+        maxTokens: this.getNricOpenRouterMaxTokens(),
         messages: [
           {
             role: 'system',
@@ -1467,33 +1391,36 @@ export class AuthService {
             ],
           },
         ],
-      }),
-    });
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+      const extracted = this.parseOpenRouterNricResponse(result.text);
+
+      if (!extracted.identifier) {
+        throw new BadRequestException(`Could not extract a Singapore NRIC/FIN from the uploaded NRIC ${side} image.`);
+      }
+
+      return extracted;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      const status = Number((error as Error & { status?: number })?.status || 0);
+      const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(
-        '[NRIC] OpenRouter single-image extraction failed | side=',
+        '[NRIC] AI single-image extraction failed | side=',
         side,
         'status=',
-        response.status,
+        status,
         'error=',
-        String(errorText || 'Unknown error').slice(0, 500),
+        String(message).slice(0, 500),
       );
       throw new BadRequestException(
-        this.getOpenRouterFriendlyErrorMessage(response.status, errorText, 'single'),
+        status > 0
+          ? this.llmService.getFriendlyErrorMessage(status, message, 'single')
+          : message,
       );
     }
-
-    const data = await response.json();
-    const rawText = this.getOpenRouterMessageText(data?.choices?.[0]?.message?.content);
-    const extracted = this.parseOpenRouterNricResponse(rawText);
-
-    if (!extracted.identifier) {
-      throw new BadRequestException(`Could not extract a Singapore NRIC/FIN from the uploaded NRIC ${side} image.`);
-    }
-
-    return extracted;
   }
 
   private async extractSingaporeIdentifierFromImagePairWithOpenRouter(
@@ -1506,29 +1433,15 @@ export class AuthService {
       );
     }
 
-    const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
-    if (!apiKey) {
-      throw new BadRequestException('OpenRouter is not configured. Please set OPENROUTER_API_KEY.');
+    if (!this.llmService.isConfigured()) {
+      throw new BadRequestException(this.llmService.getConfigurationErrorMessage());
     }
 
-    const baseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').trim().replace(/\/$/, '');
-    const model = String(process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini').trim();
-    const appName = String(process.env.OPENROUTER_APP_NAME || 'AI Nexus').trim();
-    const appUrl = String(process.env.OPENROUTER_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
-    const maxTokens = this.getNricOpenRouterMaxTokens();
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': appUrl,
-        'X-Title': appName,
-      },
-      body: JSON.stringify({
-        model,
+    try {
+      const result = await this.llmService.chat({
+        useCase: 'nric',
         temperature: 0,
-        max_tokens: maxTokens,
+        maxTokens: this.getNricOpenRouterMaxTokens(),
         messages: [
           {
             role: 'system',
@@ -1554,26 +1467,24 @@ export class AuthService {
             ],
           },
         ],
-      }),
-    });
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+      return this.parseOpenRouterNricResponse(result.text);
+    } catch (error) {
+      const status = Number((error as Error & { status?: number })?.status || 0);
+      const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(
-        '[NRIC] OpenRouter pair extraction failed | status=',
-        response.status,
+        '[NRIC] AI pair extraction failed | status=',
+        status,
         'error=',
-        String(errorText || 'Unknown error').slice(0, 500),
+        String(message).slice(0, 500),
       );
       throw new BadRequestException(
-        this.getOpenRouterFriendlyErrorMessage(response.status, errorText, 'pair'),
+        status > 0
+          ? this.llmService.getFriendlyErrorMessage(status, message, 'pair')
+          : message,
       );
     }
-
-    const data = await response.json();
-    const rawText = this.getOpenRouterMessageText(data?.choices?.[0]?.message?.content);
-
-    return this.parseOpenRouterNricResponse(rawText);
   }
 
   private async extractSingaporeIdentifierCandidatesWithLocalOcr(
@@ -1858,7 +1769,7 @@ export class AuthService {
   }
 
   private getExperiencedAiMaxTokens(): number {
-    const configured = Number(process.env.OPENROUTER_EXPERIENCED_MAX_TOKENS ?? '400');
+    const configured = Number(process.env.AI_EXPERIENCED_MAX_TOKENS ?? process.env.OPENROUTER_EXPERIENCED_MAX_TOKENS ?? '400');
     if (!Number.isFinite(configured)) return 400;
     return Math.min(1024, Math.max(200, Math.round(configured)));
   }
@@ -2020,32 +1931,17 @@ export class AuthService {
   }
 
   private async assessExperiencedResumeWithOpenRouter(resumeText: string): Promise<StudentEligibilityAssessment> {
-    const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
-    if (!apiKey) {
-      throw new BadRequestException('OpenRouter is not configured. Please set OPENROUTER_API_KEY.');
+    if (!this.llmService.isConfigured()) {
+      throw new BadRequestException(this.llmService.getConfigurationErrorMessage());
     }
-
-    const baseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').trim().replace(/\/$/, '');
-    const model = String(
-      process.env.OPENROUTER_EXPERIENCED_MODEL || process.env.OPENROUTER_STUDENT_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
-    ).trim();
-    const appName = String(process.env.OPENROUTER_APP_NAME || 'AI Nexus').trim();
-    const appUrl = String(process.env.OPENROUTER_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
 
     const excerpt = resumeText.slice(0, 12000);
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': appUrl,
-        'X-Title': appName,
-      },
-      body: JSON.stringify({
-        model,
+    try {
+      const result = await this.llmService.chat({
+        useCase: 'experienced',
         temperature: 0,
-        max_tokens: this.getExperiencedAiMaxTokens(),
+        maxTokens: this.getExperiencedAiMaxTokens(),
         messages: [
           {
             role: 'system',
@@ -2061,20 +1957,14 @@ export class AuthService {
             }),
           },
         ],
-      }),
-    });
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new BadRequestException(
-        this.getOpenRouterFriendlyErrorMessage(response.status, errorText, 'single'),
-      );
+      this.logOpenRouterExperiencedResumeTokenUsage(result.model, excerpt.length, result.usage);
+      return this.parseStudentEligibilityAiResponse(result.text, result.provider);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI resume check failed.';
+      throw new BadRequestException(message);
     }
-
-    const data = await response.json();
-    this.logOpenRouterExperiencedResumeTokenUsage(model, excerpt.length, data?.usage);
-    const rawText = this.getOpenRouterMessageText(data?.choices?.[0]?.message?.content);
-    return this.parseStudentEligibilityAiResponse(rawText);
   }
 
   async verifyExperiencedResume(file: Express.Multer.File | undefined): Promise<StudentEligibilityAssessment> {
@@ -2168,7 +2058,7 @@ export class AuthService {
       await this.extractSingaporeIdentifierFromImageWithOpenRouter(frontImage!, 'front'),
       await this.extractSingaporeIdentifierFromImageWithOpenRouter(backImage!, 'back'),
     );
-    this.logNricVerificationAttempt('openrouter-initial', verificationAttempt);
+    this.logNricVerificationAttempt(`${this.llmService.getActiveProvider()}-initial`, verificationAttempt);
 
     let pairExtracted: ExtractedSingaporeIdentifier | null = null;
 
@@ -2198,7 +2088,7 @@ export class AuthService {
           retryAttempt.backCandidateInputs,
         ),
       );
-      this.logNricVerificationAttempt('openrouter-retry-merged', verificationAttempt);
+      this.logNricVerificationAttempt(`${this.llmService.getActiveProvider()}-retry-merged`, verificationAttempt);
     }
 
     if (
@@ -2229,7 +2119,7 @@ export class AuthService {
             pairCandidateInputs,
           ),
         );
-        this.logNricVerificationAttempt('openrouter-pair-merged', verificationAttempt);
+        this.logNricVerificationAttempt(`${this.llmService.getActiveProvider()}-pair-merged`, verificationAttempt);
       }
     }
 
@@ -2380,7 +2270,7 @@ export class AuthService {
       user.nricExtractedAddress = extracted.profile.address || null;
       user.nricVerificationConfidence = extracted.confidence;
       user.spPrStatusVerified = true;
-      user.nricVerificationSource = 'openrouter';
+      user.nricVerificationSource = this.llmService.getActiveProvider();
       user.spPrStatusVerifiedAt = new Date();
       await this.userRepository.save(user);
     }

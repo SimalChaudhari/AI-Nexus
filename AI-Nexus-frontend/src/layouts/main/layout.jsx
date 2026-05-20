@@ -100,7 +100,7 @@ export function MainLayout({ sx, data, children }) {
         sx={sx}
       >
         <Main>{children}</Main>
-        {!hideChatbotOnAiForum && <ChatbotWidget title="AI Nexus Chatbot" provider="openrouter" />}
+        {!hideChatbotOnAiForum && <ChatbotWidget title="AI Nexus Chatbot" />}
       </LayoutSection>
     </>
   );

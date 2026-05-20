@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -14,6 +14,7 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import LoadingButton from '@mui/lab/LoadingButton';
+import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 import { alpha } from '@mui/material/styles';
 
@@ -80,9 +81,28 @@ export function SimpleSignUpView() {
   const isMembershipFeeFlow = isPaidMembershipFlow || isVerifiedNricSignupFlow;
   const signupAccessToken = searchParams.get('signupAccessToken') || '';
   const membershipDraftFormStorageKey = 'membershipSignupDraftForm';
+  const membershipPaymentConsentKey = 'membershipPaymentConsent';
   const membershipEligibilityStorageKey = 'membershipEligibilityFlow';
   const pendingMembershipSessionKey = 'pending_membership_session_id';
   const pendingMembershipRefKey = 'pending_membership_ref';
+  const persistPaymentConsent = (checked) => {
+    if (typeof window === 'undefined') return;
+
+    sessionStorage.setItem(membershipPaymentConsentKey, checked ? '1' : '0');
+
+    try {
+      const stored = sessionStorage.getItem(membershipDraftFormStorageKey);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored);
+      sessionStorage.setItem(
+        membershipDraftFormStorageKey,
+        JSON.stringify({ ...parsed, paymentConsentChecked: checked })
+      );
+    } catch {
+      // Ignore invalid cached draft payloads.
+    }
+  };
   const trimPaymentLogValue = (value, keep = 18) => {
     const normalized = String(value || '').trim();
     if (!normalized) return '(none)';
@@ -111,6 +131,8 @@ export function SimpleSignUpView() {
     : 'Membership paid plan selected. Base fee is SGD 900 (excluding GST).';
   const membershipSource = isVerifiedNricSignupFlow ? 'membership-verified-signup' : 'membership-paid-signup';
   const membershipBadgeLabel = isVerifiedNricSignupFlow ? 'Discount applied' : 'GST included';
+  const isPaymentReturnProcessing = paymentConfirming;
+  const membershipDraftRestoredRef = useRef(false);
   const normalizedPaymentRef =
     paymentRef || (typeof window !== 'undefined' ? sessionStorage.getItem(pendingMembershipRefKey) || '' : '');
   const normalizedPaymentSessionId =
@@ -195,6 +217,15 @@ export function SimpleSignUpView() {
       };
     }
 
+    // After Stripe return, keep draft form values — do not overwrite with prefill.
+    if (paymentState === 'success') {
+      setVerifiedSignupLoading(false);
+      setVerifiedSignupAccessError('');
+      return () => {
+        active = false;
+      };
+    }
+
     setVerifiedSignupLoading(true);
     setVerifiedSignupAccessError('');
 
@@ -227,7 +258,7 @@ export function SimpleSignUpView() {
     return () => {
       active = false;
     };
-  }, [isVerifiedNricSignupFlow, reset, signupAccessToken]);
+  }, [isVerifiedNricSignupFlow, paymentState, reset, signupAccessToken]);
 
   useEffect(() => {
     if (!isMembershipFeeFlow) {
@@ -249,12 +280,22 @@ export function SimpleSignUpView() {
   }, [isMembershipFeeFlow, membershipEligibilityStorageKey, membershipOutcome]);
 
   useEffect(() => {
-    if (!isPaidMembershipFlow) {
+    if (!isMembershipFeeFlow) {
+      membershipDraftRestoredRef.current = false;
       setScaqSsoPrefillNotice(false);
       return;
     }
 
     try {
+      const storedConsent = sessionStorage.getItem(membershipPaymentConsentKey);
+      if (storedConsent === '1') {
+        setPaymentConsentChecked(true);
+      }
+
+      if (membershipDraftRestoredRef.current) {
+        return;
+      }
+
       const stored = sessionStorage.getItem(membershipDraftFormStorageKey);
       if (!stored) return;
       const parsed = JSON.parse(stored);
@@ -270,18 +311,23 @@ export function SimpleSignUpView() {
         setScaqSsoPrefillNotice(true);
       }
 
+      if (parsed?.paymentConsentChecked) {
+        setPaymentConsentChecked(true);
+      }
+
       reset({
         username: parsed.values.username || '',
         firstName: parsed.values.firstName || '',
         lastName: parsed.values.lastName || '',
         email: parsed.values.email || '',
         contactNumber: parsed.values.contactNumber || '',
-        password: '',
+        password: parsed.values.password || '',
       });
+      membershipDraftRestoredRef.current = true;
     } catch {
       // Ignore invalid cached draft payloads.
     }
-  }, [isPaidMembershipFlow, membershipDraftFormStorageKey, membershipOutcome, reset]);
+  }, [isMembershipFeeFlow, membershipDraftFormStorageKey, membershipOutcome, membershipPaymentConsentKey, reset]);
 
   useEffect(() => {
     if (!isMembershipFeeFlow || paymentState !== 'canceled') return;
@@ -333,10 +379,7 @@ export function SimpleSignUpView() {
     setPaymentConfirming(true);
     setPaymentCompletedState(null);
     setPaymentRedirectCountdown(5);
-    setPaymentNotice({
-      severity: 'info',
-      message: 'Payment received. We are creating your account now...',
-    });
+    setPaymentNotice(null);
     setErrorMsg('');
     console.info('[MembershipPayment] Confirmation started', {
       refId: trimPaymentLogValue(normalizedPaymentRef),
@@ -354,6 +397,7 @@ export function SimpleSignUpView() {
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('membershipDraftUserId');
           sessionStorage.removeItem(membershipDraftFormStorageKey);
+          sessionStorage.removeItem(membershipPaymentConsentKey);
           sessionStorage.removeItem(membershipEligibilityStorageKey);
           sessionStorage.removeItem(pendingMembershipSessionKey);
           sessionStorage.removeItem(pendingMembershipRefKey);
@@ -501,11 +545,13 @@ export function SimpleSignUpView() {
       });
 
       if (typeof window !== 'undefined') {
+        persistPaymentConsent(true);
         sessionStorage.setItem(
           membershipDraftFormStorageKey,
           JSON.stringify({
             membershipOutcome,
             eligibility: eligibilityData,
+            paymentConsentChecked: true,
             values: {
               username: data.username,
               firstName: data.firstName,
@@ -718,7 +764,7 @@ export function SimpleSignUpView() {
         }}
       />
 
-      <Field.Phone name="contactNumber" label="Contact number (optional)" />
+      <Field.Phone name="contactNumber" label="Contact number (optional)" country="SG" />
 
       <Field.Text
         name="password"
@@ -853,7 +899,11 @@ export function SimpleSignUpView() {
               <Checkbox
                 size="small"
                 checked={paymentConsentChecked}
-                onChange={(event) => setPaymentConsentChecked(event.target.checked)}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setPaymentConsentChecked(checked);
+                  persistPaymentConsent(checked);
+                }}
               />
             )}
             label={(
@@ -862,16 +912,25 @@ export function SimpleSignUpView() {
               </Typography>
             )}
           />
-          <LoadingButton
-            size="medium"
-            variant="contained"
-            fullWidth
-            loading={paymentActionLoading || paymentConfirming}
-            disabled={!paymentConsentChecked || verifiedSignupLoading || paymentConfirming}
-            onClick={handleMembershipPayment}
-          >
-            {paymentConfirming ? 'Creating account...' : `Pay SGD ${totalAmount.toFixed(2)}`}
-          </LoadingButton>
+          {isPaymentReturnProcessing ? (
+            <Stack spacing={1.5} alignItems="center" sx={{ py: 1.5 }}>
+              <CircularProgress size={32} />
+              <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'center' }}>
+                Creating your account...
+              </Typography>
+            </Stack>
+          ) : (
+            <LoadingButton
+              size="medium"
+              variant="contained"
+              fullWidth
+              loading={paymentActionLoading}
+              disabled={!paymentConsentChecked || verifiedSignupLoading}
+              onClick={handleMembershipPayment}
+            >
+              {`Pay SGD ${totalAmount.toFixed(2)}`}
+            </LoadingButton>
+          )}
         </Stack>
       </Box>
     </Stack>
@@ -999,14 +1058,14 @@ export function SimpleSignUpView() {
         </Stack>
       )}
 
-      {!paymentCompletedState && isVerifiedNricSignupFlow && !verifiedSignupLoading && !verifiedSignupAccessError && (
+      {!paymentCompletedState && !paymentConfirming && isVerifiedNricSignupFlow && !verifiedSignupLoading && !verifiedSignupAccessError && (
         <Alert severity="success" sx={{ mb: 2 }}>
           NRIC verification confirmed.
           {verifiedSignupPrefill?.address ? ` Verified address: ${verifiedSignupPrefill.address}` : ''}
         </Alert>
       )}
 
-      {!paymentCompletedState && !!paymentNotice && (
+      {!paymentCompletedState && !paymentConfirming && !!paymentNotice && (
         <Alert severity={paymentNotice.severity || 'info'} sx={{ mb: 2 }}>
           {paymentNotice.message}
         </Alert>

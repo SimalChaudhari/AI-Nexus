@@ -1,3 +1,8 @@
+import * as dotenv from 'dotenv';
+
+// .env must override stale Windows/user-level AI_PROVIDER / OPENAI_API_KEY variables.
+dotenv.config({ override: true });
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Request, Response, NextFunction } from 'express';

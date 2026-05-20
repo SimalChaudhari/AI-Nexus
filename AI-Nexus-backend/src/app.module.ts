@@ -22,6 +22,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AppSettingsModule } from './app-settings/app-settings.module';
 import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
+import { LlmModule } from './llm/llm.module';
 
 const resolveTypeOrmPoolMax = (): number => {
   const raw = process.env.TYPEORM_POOL_MAX;
@@ -36,7 +37,8 @@ const resolveTypeOrmPoolMax = (): number => {
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }), // Load environment variables
+    ConfigModule.forRoot({ isGlobal: true }),
+    LlmModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: (() => {
