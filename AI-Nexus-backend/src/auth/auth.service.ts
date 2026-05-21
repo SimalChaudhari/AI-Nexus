@@ -324,59 +324,6 @@ export class AuthService {
     }
   }
 
-  private getNricDataKey(): Buffer {
-    const explicitKey = String(process.env.NRIC_DATA_ENCRYPTION_KEY || '').trim();
-
-    if (explicitKey) {
-      if (/^[a-fA-F0-9]{64}$/.test(explicitKey)) {
-        return Buffer.from(explicitKey, 'hex');
-      }
-
-      try {
-        const base64Key = Buffer.from(explicitKey, 'base64');
-        if (base64Key.length === 32) {
-          return base64Key;
-        }
-      } catch {
-        // Fall through to the validation error below.
-      }
-
-      throw new Error(
-        'NRIC_DATA_ENCRYPTION_KEY must be a 32-byte base64 value or a 64-character hex string.'
-      );
-    }
-
-    const fallbackKey = String(process.env.JWT_SECRET || '').trim();
-    if (process.env.NODE_ENV !== 'production' && fallbackKey) {
-      return crypto.createHash('sha256').update(`nric-dev:${fallbackKey}`).digest();
-    }
-
-    throw new Error('NRIC_DATA_ENCRYPTION_KEY is required for secure NRIC verification.');
-  }
-
-  private encryptNricValue(value: string): string {
-    const normalizedValue = String(value || '').trim();
-    if (!normalizedValue) return '';
-
-    const key = this.getNricDataKey();
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const encrypted = Buffer.concat([cipher.update(normalizedValue, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-
-    return `v1:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
-  }
-
-  private hashCanonicalNricValue(value: string): string {
-    const normalizedValue = normalizeSingaporeNricFin(value);
-    if (!normalizedValue) return '';
-
-    return crypto
-      .createHmac('sha256', this.getNricDataKey())
-      .update(normalizedValue)
-      .digest('hex');
-  }
-
   private getMinimumNricConfidence(): number {
     const configured = Number(process.env.NRIC_MIN_AI_CONFIDENCE ?? '0.85');
     if (!Number.isFinite(configured)) return 0.85;
@@ -656,9 +603,6 @@ export class AuthService {
       if (!verifiedSignupUser.isDraft) {
         throw new BadRequestException('This verified signup link has already been used.');
       }
-      if (!verifiedSignupUser.spPrStatusVerified) {
-        throw new BadRequestException('This verified signup link is not eligible for NRIC signup.');
-      }
       return verifiedSignupUser;
     }
 
@@ -888,10 +832,6 @@ export class AuthService {
 
     if (!user.isDraft) {
       throw new BadRequestException('This membership signup is already completed. Please sign in.');
-    }
-
-    if (user.spPrStatusVerified && !String(signupAccessToken || '').trim()) {
-      throw new BadRequestException('Verified signup access is required before continuing to payment.');
     }
 
     if (!user.username || !user.firstname || !user.lastname || !user.email || !user.password) {
@@ -1592,21 +1532,15 @@ export class AuthService {
   private hasStoredCanonicalNricFin(user: UserEntity | null | undefined, normalizedNricFin: string): boolean {
     if (!user) return false;
 
-    const candidateHash = this.hashCanonicalNricValue(normalizedNricFin);
-    if (user.nricFinCanonicalHash) {
-      return user.nricFinCanonicalHash === candidateHash;
-    }
-
     return String(user.nricFinCanonicalValue || user.nricFinValue || '').trim() === normalizedNricFin;
   }
 
   private async findExistingCompletedUserByNricFin(normalizedNricFin: string, excludeUserId?: string) {
-    const canonicalHash = this.hashCanonicalNricValue(normalizedNricFin);
     const existingUser = await this.userRepository
       .createQueryBuilder('usr')
       .where(
-        '(usr."nricFinCanonicalHash" = :canonicalHash OR usr."nricFinCanonicalValue" = :normalizedNricFin OR (usr."nricFinCanonicalValue" IS NULL AND usr."nricFinValue" = :normalizedNricFin))',
-        { canonicalHash, normalizedNricFin }
+        '(usr."nricFinCanonicalValue" = :normalizedNricFin OR (usr."nricFinCanonicalValue" IS NULL AND usr."nricFinValue" = :normalizedNricFin))',
+        { normalizedNricFin }
       )
       .getOne();
 
@@ -1618,19 +1552,17 @@ export class AuthService {
   }
 
   private async findExistingVerifiedDraftByNricFin(normalizedNricFin: string, excludeUserId?: string) {
-    const canonicalHash = this.hashCanonicalNricValue(normalizedNricFin);
     const existingUser = await this.userRepository
       .createQueryBuilder('usr')
       .where(
-        '(usr."nricFinCanonicalHash" = :canonicalHash OR usr."nricFinCanonicalValue" = :normalizedNricFin OR (usr."nricFinCanonicalValue" IS NULL AND usr."nricFinValue" = :normalizedNricFin))',
-        { canonicalHash, normalizedNricFin }
+        '(usr."nricFinCanonicalValue" = :normalizedNricFin OR (usr."nricFinCanonicalValue" IS NULL AND usr."nricFinValue" = :normalizedNricFin))',
+        { normalizedNricFin }
       )
       .getOne();
 
     if (!existingUser) return null;
     if (excludeUserId && existingUser.id === excludeUserId) return null;
     if (!existingUser.isDraft) return null;
-    if (!existingUser.spPrStatusVerified) return null;
 
     return existingUser;
   }
@@ -2013,14 +1945,10 @@ export class AuthService {
   async getVerifiedSignupAccess(token: string) {
     const user = await this.resolveUserByVerifiedSignupAccessToken(token);
 
-    if (!user.isDraft && user.spPrStatusVerified) {
+    if (!user.isDraft) {
       throw new UnauthorizedException(
         'You have already completed signup with this verified document. Please sign in with your credentials.',
       );
-    }
-
-    if (!user.isDraft || !user.spPrStatusVerified) {
-      throw new UnauthorizedException('Verified signup access is no longer available.');
     }
 
     return {
@@ -2032,16 +1960,13 @@ export class AuthService {
         lastName: user.lastname || '',
         email: user.email || '',
         contactNumber: user.contactNumber || '',
-        address: user.nricExtractedAddress || '',
-        dateOfBirth: user.nricExtractedDateOfBirth || '',
-        nationality: user.nricExtractedNationality || '',
       },
     };
   }
 
   /**
    * Validates uploaded NRIC images, extracts the Singapore NRIC/FIN via OpenRouter vision,
-   * validates the extracted identifier checksum, and stores a masked verification result on the user when available.
+   * and returns verification JSON without persisting NRIC fields at this stage.
    */
   async verifyNricImages(
     frontImage?: Express.Multer.File,
@@ -2234,56 +2159,6 @@ export class AuthService {
       );
     }
 
-    const existingVerifiedDraft = await this.findExistingVerifiedDraftByNricFin(
-      validation.normalized,
-      currentResolvedUser?.id,
-    );
-
-    const resolvedUserForVerification = existingVerifiedDraft
-      ? { user: existingVerifiedDraft, createdAsDraft: false }
-      : await this.resolveOrCreateUserForNricVerification(
-          extracted,
-          userId,
-          authorizationHeader,
-        );
-
-    const { user, createdAsDraft } = resolvedUserForVerification;
-
-    if (user) {
-      const draftName = this.buildDraftName(extracted.profile.fullName);
-      if (user.isDraft) {
-        user.firstname = draftName.firstname || user.firstname;
-        user.lastname = draftName.lastname || user.lastname;
-
-        if (!user.username) {
-          user.username = await this.buildDraftUsername(user.firstname, user.lastname);
-        }
-      }
-
-      user.nricFinType = validation.documentType;
-      user.nricFinSeries = validation.prefix;
-      user.nricFinValue = null;
-      user.nricFinMasked = maskSingaporeNricFin(exactIdentifier);
-      user.nricFinCanonicalValue = null;
-      user.nricFinCanonicalMasked = validation.masked;
-      user.nricFinValueEncrypted = this.encryptNricValue(exactIdentifier);
-      user.nricFinCanonicalHash = this.hashCanonicalNricValue(validation.normalized);
-      user.nricExtractedFullName = extracted.profile.fullName || null;
-      user.nricExtractedDateOfBirth = extracted.profile.dateOfBirth || null;
-      user.nricExtractedNationality = extracted.profile.nationality || null;
-      user.nricExtractedSex = extracted.profile.sex || null;
-      user.nricExtractedAddress = extracted.profile.address || null;
-      user.nricVerificationConfidence = extracted.confidence;
-      user.spPrStatusVerified = true;
-      user.nricVerificationSource = this.llmService.getActiveProvider();
-      user.spPrStatusVerifiedAt = new Date();
-      await this.userRepository.save(user);
-    }
-
-    const verifiedSignupAccess = user
-      ? await this.issueVerifiedSignupAccessToken(user)
-      : { signupAccessToken: '', signupAccessTokenExpiresAt: null as Date | null };
-
     const verificationResponse = {
       verified: true,
       message: 'NRIC/FIN extracted and validated successfully.',
@@ -2296,12 +2171,12 @@ export class AuthService {
         reason: extracted.reason,
         profile: extracted.profile,
       },
-      storedOnUser: Boolean(user),
-      userId: user?.id || null,
-      storedAsDraft: Boolean(user?.isDraft),
-      draftUserCreated: createdAsDraft,
-      signupAccessToken: verifiedSignupAccess.signupAccessToken || null,
-      signupAccessTokenExpiresAt: verifiedSignupAccess.signupAccessTokenExpiresAt || null,
+      storedOnUser: false,
+      userId: currentResolvedUser?.id || null,
+      storedAsDraft: false,
+      draftUserCreated: false,
+      signupAccessToken: null,
+      signupAccessTokenExpiresAt: null,
       checks: {
         frontImage: front,
         backImage: back,
@@ -2322,10 +2197,6 @@ export class AuthService {
       if (verifiedSignupUser && !verifiedSignupUser.isDraft) {
         throw new BadRequestException('This verified signup link has already been used.');
       }
-      if (verifiedSignupUser && !verifiedSignupUser.spPrStatusVerified) {
-        throw new BadRequestException('This verified signup link is not eligible for NRIC signup.');
-      }
-
       const { normalizedUsername, hashedPassword } = await this.validateSignupInput(
         userDto,
         verifiedSignupUser?.id

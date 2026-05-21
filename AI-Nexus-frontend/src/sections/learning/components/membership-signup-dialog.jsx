@@ -551,6 +551,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   const [nricAiFailureReason, setNricAiFailureReason] = useState('');
   const [nricAiFailureMode, setNricAiFailureMode] = useState('default');
   const [nricSignupAccessToken, setNricSignupAccessToken] = useState('');
+  const [nricVerifiedJson, setNricVerifiedJson] = useState(null);
   const [studentVerificationToken, setStudentVerificationToken] = useState('');
   const [studentPinInput, setStudentPinInput] = useState('');
   const [studentPinError, setStudentPinError] = useState('');
@@ -577,6 +578,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setNricAiFailureReason('');
     setNricAiFailureMode('default');
     setNricSignupAccessToken('');
+    setNricVerifiedJson(null);
   };
 
   const resetStudentVerificationState = () => {
@@ -703,15 +705,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const continueAfterNricAiVerified = () => {
-    if (!nricSignupAccessToken) {
-      setNricAiError('Verified signup access could not be created. Please run the verification again.');
-      setNricAiFailureReason('Secure signup token was not generated for this verified NRIC check.');
-      return;
-    }
-
     onContinue?.({
       flow: flowState,
-      signupAccessToken: nricSignupAccessToken,
+      signupAccessToken: nricSignupAccessToken || undefined,
       result: {
         outcome: 'verified-nric-signup',
         title: 'Verified signup route',
@@ -860,6 +856,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setNricAiFailureReason('');
     setNricAiFailureMode('default');
     setNricSignupAccessToken('');
+    setNricVerifiedJson(null);
   };
 
   const runNricAiCheck = async () => {
@@ -874,6 +871,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setNricAiFailureMode('default');
     setNricAiChecking(true);
     setNricAiVerified(false);
+    setNricVerifiedJson(null);
     try {
       const response = await verifyNricImages({
         frontImage: nricFrontImage,
@@ -886,14 +884,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         setNricAiFailureMode(failureState.mode);
         return;
       }
-      if (!response?.signupAccessToken) {
-        const failureState = getNricFailureState('Verified signup access token was not created.');
-        setNricAiError(failureState.summary);
-        setNricAiFailureReason(failureState.reason);
-        setNricAiFailureMode(failureState.mode);
-        return;
-      }
-      setNricSignupAccessToken(response.signupAccessToken);
+      setNricSignupAccessToken(response?.signupAccessToken || '');
+      setNricVerifiedJson(response);
       setNricAiVerified(true);
     } catch (error) {
       const failureState = getNricFailureState(error?.message);
@@ -2433,16 +2425,42 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 >
                   {nricAiVerified ? 'AI check completed' : nricAiChecking ? 'AI checking...' : 'Run AI NRIC check'}
                 </Button>
-                {nricAiVerified ? (
-                  <Button variant="contained" onClick={continueAfterNricAiVerified}>
-                    Continue to sign up
-                  </Button>
-                ) : nricAiFailureMode !== 'sign-in-only' ? (
+                {nricAiVerified ? null : nricAiFailureMode !== 'sign-in-only' ? (
                   <Button variant="contained" color="inherit" onClick={continueAfterNricOtherOptions}>
                     Continue with other options
                   </Button>
                 ) : null}
               </Stack>
+
+              {nricAiVerified && nricVerifiedJson && (
+                <Box
+                  sx={(theme) => ({
+                    p: 1.5,
+                    borderRadius: 1.5,
+                    border: `1px solid ${alpha(theme.palette.info.main, 0.35)}`,
+                    bgcolor: alpha(theme.palette.info.main, 0.08),
+                  })}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    Verified JSON data
+                  </Typography>
+                  <Box
+                    component="pre"
+                    sx={{
+                      m: 0,
+                      p: 1.25,
+                      overflowX: 'auto',
+                      borderRadius: 1,
+                      bgcolor: 'grey.900',
+                      color: 'grey.100',
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {JSON.stringify(nricVerifiedJson, null, 2)}
+                  </Box>
+                </Box>
+              )}
 
               {!!nricAiError && (
                 <Box

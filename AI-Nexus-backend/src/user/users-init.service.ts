@@ -48,20 +48,7 @@ export class UsersInitService implements OnModuleInit {
             "nricFinType" varchar,
             "nricFinSeries" varchar,
             "nricFinValue" varchar,
-            "nricFinMasked" varchar,
             "nricFinCanonicalValue" varchar,
-            "nricFinCanonicalMasked" varchar,
-            "nricFinValueEncrypted" text,
-            "nricFinCanonicalHash" varchar,
-            "nricExtractedFullName" varchar,
-            "nricExtractedDateOfBirth" varchar,
-            "nricExtractedNationality" varchar,
-            "nricExtractedSex" varchar,
-            "nricExtractedAddress" text,
-            "nricVerificationConfidence" double precision,
-            "spPrStatusVerified" boolean NOT NULL DEFAULT false,
-            "nricVerificationSource" varchar,
-            "spPrStatusVerifiedAt" TIMESTAMP,
             "eligibilityIsSingaporePr" boolean,
             "eligibilityIsIscaMember" boolean,
             "eligibilityWantsMembership" boolean,
@@ -166,59 +153,46 @@ export class UsersInitService implements OnModuleInit {
       `);
       await queryRunner.query(`
         ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricFinMasked" varchar
-      `);
-      await queryRunner.query(`
-        ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "nricFinCanonicalValue" varchar
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricFinCanonicalMasked" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricFinMasked"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricFinValueEncrypted" text
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricFinCanonicalMasked"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricFinCanonicalHash" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricFinValueEncrypted"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricExtractedFullName" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricFinCanonicalHash"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricExtractedDateOfBirth" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricExtractedFullName"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricExtractedNationality" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricExtractedDateOfBirth"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricExtractedSex" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricExtractedNationality"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricExtractedAddress" text
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricExtractedSex"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricVerificationConfidence" double precision
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricExtractedAddress"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "spPrStatusVerified" boolean NOT NULL DEFAULT false
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricVerificationConfidence"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "nricVerificationSource" varchar
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "spPrStatusVerified"
       `);
       await queryRunner.query(`
-        ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "spPrStatusVerifiedAt" TIMESTAMP
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "nricVerificationSource"
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users" DROP COLUMN IF EXISTS "spPrStatusVerifiedAt"
       `);
       await queryRunner.query(`
         ALTER TABLE "users"
