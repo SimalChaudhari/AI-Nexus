@@ -37,10 +37,9 @@ export function LessonVideoPlayer({
         <Box
           component="video"
           ref={videoRef}
-          // poster={videoPoster}
+          poster={videoPoster || undefined}
           controls
-          controlsList="noseek nodownload noplaybackrate"
-          disablePictureInPicture
+          controlsList="noseek nodownload"
           playsInline
           onLoadedMetadata={onLoadedMetadata}
           onPlay={onPlay}

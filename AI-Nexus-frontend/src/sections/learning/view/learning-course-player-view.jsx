@@ -1506,6 +1506,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       if (window.YT && window.YT.Player) {
         player = new window.YT.Player(container, {
           videoId: embedVideoId,
+          playerVars: {
+            controls: 1,
+            fs: 1,
+            rel: 0,
+            playsinline: 1,
+          },
           events: {
             onReady: () => {
               const resumeMeta = resumeSeekAppliedRef.current;
