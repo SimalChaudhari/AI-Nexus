@@ -33,6 +33,30 @@ function nextTempId() {
   return `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+const SECTION_LEARNING_MATERIAL_ACCEPT = {
+  'application/pdf': ['.pdf'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/vnd.ms-excel': ['.xls'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'application/vnd.ms-powerpoint': ['.ppt'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+  'text/plain': ['.txt'],
+  'text/csv': ['.csv'],
+};
+
+function normalizeEditorHtml(value) {
+  const html = String(value || '').trim();
+  if (!html || html === '<p></p>' || html === '<p><br></p>') return undefined;
+  const plain = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+  if (!plain) return undefined;
+  return html;
+}
+
+function hasDisplayableHtml(value) {
+  return Boolean(normalizeEditorHtml(value));
+}
+
 function getSectionPreviewType(section) {
   if (section?.videoUrl) return 'video';
   if (Array.isArray(section?.images) && section.images.length > 0) return 'images';
@@ -313,7 +337,24 @@ function SectionPreviewDialog({ open, onClose, section }) {
           bgcolor: isVideoPreview ? 'grey.900' : isImagePreview ? 'grey.100' : '#f7f1d8',
         }}
       >
-        <SectionPreviewContent section={section} />
+        <Stack spacing={2}>
+          <SectionPreviewContent section={section} />
+          {hasDisplayableHtml(section?.description) ? (
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 1.5,
+                border: '1px solid #dfd5a8',
+                bgcolor: '#fffdf1',
+              }}
+            >
+              <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700 }}>
+                Description
+              </Typography>
+              <RichTextContent html={section.description} />
+            </Box>
+          ) : null}
+        </Stack>
       </DialogContent>
     </Dialog>
   );
@@ -334,6 +375,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
   const [sectionModuleId, setSectionModuleId] = useState(null);
   const [editingSection, setEditingSection] = useState(null);
   const [sectionTitle, setSectionTitle] = useState('');
+  const [sectionSubtitle, setSectionSubtitle] = useState('');
+  const [sectionLearningMaterials, setSectionLearningMaterials] = useState([]);
   const [sectionVideoUrl, setSectionVideoUrl] = useState('');
   const [sectionWatchMinutes, setSectionWatchMinutes] = useState('');
   const [sectionWatchSeconds, setSectionWatchSeconds] = useState('');
@@ -515,6 +558,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionModuleId(mod.id);
     setEditingSection(null);
     setSectionTitle('');
+    setSectionSubtitle('');
+    setSectionLearningMaterials([]);
     setSectionVideoUrl('');
     setSectionWatchMinutes('');
     setSectionWatchSeconds('');
@@ -532,6 +577,10 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionModuleId(mod.id);
     setEditingSection(section);
     setSectionTitle(section.title || '');
+    setSectionSubtitle(section.subtitle || '');
+    setSectionLearningMaterials(
+      Array.isArray(section.learningMaterials) ? [...section.learningMaterials] : []
+    );
     setSectionVideoUrl(section.videoUrl || '');
     const watchParts = parseWatchtimeParts(section.watchtime || '');
     setSectionWatchMinutes(watchParts.minutes);
@@ -561,6 +610,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionModuleId(null);
     setEditingSection(null);
     setSectionTitle('');
+    setSectionSubtitle('');
+    setSectionLearningMaterials([]);
     setSectionVideoUrl('');
     setSectionWatchMinutes('');
     setSectionWatchSeconds('');
@@ -574,6 +625,14 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setCustomWatchtimeEnabled(false);
   };
 
+  const buildSectionLearningMaterialUrls = async () => {
+    const existingUrls = sectionLearningMaterials.filter((item) => typeof item === 'string');
+    const newFiles = sectionLearningMaterials.filter((item) => item instanceof File);
+    if (!newFiles.length) return existingUrls;
+    const uploadedUrls = await courseService.uploadSectionLearningMaterials(newFiles);
+    return [...existingUrls, ...uploadedUrls];
+  };
+
   const handleSaveModule = async () => {
     const title = (formTitle || '').trim();
     if (!title) {
@@ -583,7 +642,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSaving(true);
     try {
       if (isPendingMode) {
-        const description = formDescription.trim() || undefined;
+        const description = normalizeEditorHtml(formDescription);
         if (editingModule) {
           const next = (pendingModules || []).map((m) =>
             m.id === editingModule.id ? { ...m, title, description } : m
@@ -600,13 +659,13 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
         if (editingModule) {
           await courseService.updateCourseModule(editingModule.id, {
             title,
-            description: formDescription.trim() || undefined,
+            description: normalizeEditorHtml(formDescription),
           });
           toast.success('Module updated');
         } else {
           await courseService.createCourseModule(courseId, {
             title,
-            description: formDescription.trim() || undefined,
+            description: normalizeEditorHtml(formDescription),
           });
           toast.success('Module added');
         }
@@ -733,11 +792,20 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     if (!sectionModuleId) return;
     setSectionSaving(true);
     try {
+      const learningMaterials = isPendingMode
+        ? sectionLearningMaterials
+        : await buildSectionLearningMaterialUrls();
+
       const payload = {
         title,
-        description: sectionDescription.trim() || undefined,
+        subtitle: sectionSubtitle.trim() || undefined,
+        description: normalizeEditorHtml(sectionDescription),
         videoUrl: sectionMediaType === 'video' ? (sectionVideoUrl.trim() || undefined) : undefined,
         content: sectionMediaType === 'content' ? (sectionContent.trim() || undefined) : undefined,
+        learningMaterials:
+          Array.isArray(learningMaterials) && learningMaterials.length > 0
+            ? learningMaterials
+            : undefined,
       };
       if (sectionMediaType === 'video' && sectionVideoFile instanceof File) {
         payload.videoUrl = await courseService.uploadSectionVideo(sectionVideoFile);
@@ -1070,22 +1138,28 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
 
                               <ListItemText
                                 primary={`${secIndex + 1}. ${sec.title}`}
-                                secondary={
+                                secondary={[
+                                  sec.subtitle ? sec.subtitle : null,
                                   sec.videoUrl
                                     ? [
                                         'Video section',
                                         sec.durationTime && `duration ${sec.durationTime}`,
                                       ]
                                         .filter(Boolean)
-                                        .join(' • ')
+                                        .join(' ')
                                     : Array.isArray(sec.images) && sec.images.length > 0
                                       ? `Image section • ${sec.images.length} image(s)`
                                       : Array.isArray(sec.attachments) && sec.attachments.length > 0
                                         ? `Files section • ${sec.attachments.length} file(s)`
-                                      : sec.content
-                                        ? 'Text content section'
-                                        : 'No media'
-                                }
+                                        : sec.content
+                                          ? 'Text content section'
+                                          : 'No media',
+                                  Array.isArray(sec.learningMaterials) && sec.learningMaterials.length > 0
+                                    ? `${sec.learningMaterials.length} learning material(s)`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
                                 sx={{ my: 0 }}
                               />
                             </Stack>
@@ -1148,15 +1222,27 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
               placeholder="e.g. Introduction, Detecting Financial Deception"
               fullWidth
             />
-            <TextField
-              label="Description (optional)"
-              value={formDescription}
-              onChange={(e) => setFormDescription(e.target.value)}
-              placeholder="Short notes"
-              multiline
-              rows={3}
-              fullWidth
-            />
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Description (optional)
+              </Typography>
+              <Editor
+                value={formDescription}
+                onChange={setFormDescription}
+                placeholder="Module notes for learners..."
+                editable
+                onUploadImage={handleSectionContentMediaUpload}
+                slotProps={{
+                  wrap: {
+                    sx: {
+                      minHeight: 160,
+                      borderRadius: 1,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                    },
+                  },
+                }}
+              />
+            </Box>
           </Stack>
 
           <Stack
@@ -1207,6 +1293,34 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
               placeholder="e.g. Occupational Fraud and Common Fraud Schemes"
               fullWidth
             />
+            <TextField
+              label="Subtitle (optional)"
+              value={sectionSubtitle}
+              onChange={(e) => setSectionSubtitle(e.target.value)}
+              placeholder="Short line under the section title"
+              fullWidth
+            />
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Learning materials (optional)
+              </Typography>
+              <Upload
+                multiple
+                value={sectionLearningMaterials}
+                showViewButton
+                onDrop={(acceptedFiles) => {
+                  if (acceptedFiles?.length) {
+                    setSectionLearningMaterials((prev) => [...prev, ...acceptedFiles]);
+                  }
+                }}
+                onRemove={(item) =>
+                  setSectionLearningMaterials((prev) => prev.filter((i) => i !== item))
+                }
+                accept={SECTION_LEARNING_MATERIAL_ACCEPT}
+                maxSize={52428800}
+                helperText="PDF, Word, Excel, PowerPoint, CSV, or TXT — uploaded when you save (max 50MB each)"
+              />
+            </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
                 Section media — choose one
@@ -1505,15 +1619,27 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                 />
               </Box>
             )}
-            <TextField
-              label="Description (optional)"
-              value={sectionDescription}
-              onChange={(e) => setSectionDescription(e.target.value)}
-              placeholder="Short notes for this section"
-              multiline
-              rows={3}
-              fullWidth
-            />
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Description (optional)
+              </Typography>
+              <Editor
+                value={sectionDescription}
+                onChange={setSectionDescription}
+                placeholder="Lesson notes shown to learners..."
+                editable
+                onUploadImage={handleSectionContentMediaUpload}
+                slotProps={{
+                  wrap: {
+                    sx: {
+                      minHeight: 180,
+                      borderRadius: 1,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                    },
+                  },
+                }}
+              />
+            </Box>
           </Stack>
 
           <Stack

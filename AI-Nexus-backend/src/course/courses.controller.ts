@@ -131,6 +131,7 @@ const toOptionalNumber = (value: unknown): number | undefined => {
 
 type RawCourseSectionPayload = {
     title?: unknown;
+    subtitle?: unknown;
     videoUrl?: unknown;
     description?: unknown;
     content?: unknown;
@@ -138,6 +139,7 @@ type RawCourseSectionPayload = {
     durationTime?: unknown;
     images?: unknown;
     attachments?: unknown;
+    learningMaterials?: unknown;
     sortOrder?: unknown;
 };
 
@@ -1279,6 +1281,51 @@ export class CourseController {
         });
     }
 
+    @Post('modules/sections/upload-learning-materials')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiConsumes('multipart/form-data')
+    @ApiOperation({ summary: 'Upload section learning materials (PDF, Word, Excel, PowerPoint, etc.)' })
+    @UseInterceptors(
+        FilesInterceptor('files', 20, {
+            storage: memoryStorage(),
+            limits: { fileSize: IMAGE_LIMIT_BYTES },
+            fileFilter: (_req, file, cb) => {
+                const name = String(file.originalname || '').toLowerCase();
+                const allowedExt = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt)$/i.test(name);
+                const allowedMime =
+                    /^application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-excel|vnd\.ms-powerpoint)$/i.test(
+                        file.mimetype,
+                    ) ||
+                    /^text\/(plain|csv)$/i.test(file.mimetype);
+                cb(null, Boolean(allowedExt || allowedMime));
+            },
+        }),
+    )
+    async uploadSectionLearningMaterials(
+        @UploadedFiles() files: Express.Multer.File[],
+        @Res() response: Response,
+    ) {
+        if (!files?.length) {
+            return response.status(HttpStatus.BAD_REQUEST).json({
+                message: 'No files uploaded',
+            });
+        }
+
+        const urls = await Promise.all(
+            files.map((file) => {
+                const original = String(file.originalname || 'document').trim();
+                const ext = original.includes('.') ? original.slice(original.lastIndexOf('.')) : '';
+                const base = ext ? original.slice(0, -ext.length) : original;
+                return this.localStorageService.saveFile(file, 'course-section-learning', {
+                    fileName: `${Date.now()}-${base}`,
+                });
+            }),
+        );
+        return response.status(HttpStatus.OK).json({ data: { urls } });
+    }
+
     @Post('modules/sections/upload-images')
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)
@@ -1570,6 +1617,8 @@ export class CourseController {
                                         : `Section ${sectionIndex + 1}`;
                                 await this.courseModuleSectionService.create(createdModule.id, {
                                     title: sectionTitle,
+                                    subtitle:
+                                        typeof sec?.subtitle === 'string' ? sec.subtitle : undefined,
                                     videoUrl:
                                         typeof sec?.videoUrl === 'string'
                                             ? sec.videoUrl
@@ -1590,6 +1639,7 @@ export class CourseController {
                                             : undefined,
                                     images: normalizeStringArray(sec?.images),
                                     attachments: normalizeStringArray(sec?.attachments),
+                                    learningMaterials: normalizeStringArray(sec?.learningMaterials),
                                     sortOrder: toOptionalNumber(sec?.sortOrder),
                                 });
                                 createdSectionsCount += 1;

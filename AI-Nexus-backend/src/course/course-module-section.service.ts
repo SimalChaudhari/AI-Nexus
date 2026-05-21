@@ -55,6 +55,12 @@ function extractUploadPath(url?: string | null): string | null {
   return url.slice(idx);
 }
 
+function normalizeLearningMaterials(value?: string[] | null): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const urls = value.map((url) => String(url || '').trim()).filter(Boolean);
+  return urls.length > 0 ? urls : undefined;
+}
+
 @Injectable()
 export class CourseModuleSectionService {
   constructor(
@@ -92,6 +98,16 @@ export class CourseModuleSectionService {
         }),
       );
     }
+    if (Array.isArray(section.learningMaterials)) {
+      await Promise.all(
+        section.learningMaterials.map((url) => {
+          const path = extractUploadPath(url);
+          return path
+            ? this.localStorageService.deleteFileByUrl(path).catch(() => undefined)
+            : Promise.resolve();
+        }),
+      );
+    }
   }
 
   async findByModuleId(moduleId: string): Promise<CourseModuleSectionEntity[]> {
@@ -116,6 +132,7 @@ export class CourseModuleSectionService {
     const section = this.sectionRepository.create({
       moduleId,
       title: dto.title,
+      subtitle: dto.subtitle?.trim() || undefined,
       videoUrl: dto.videoUrl,
       description: dto.description,
       content: dto.content,
@@ -123,6 +140,7 @@ export class CourseModuleSectionService {
       durationTime: normalizeWatchtime(dto.durationTime),
       images: dto.images,
       attachments: dto.attachments,
+      learningMaterials: normalizeLearningMaterials(dto.learningMaterials),
       sortOrder,
     });
     return this.sectionRepository.save(section);
@@ -137,8 +155,12 @@ export class CourseModuleSectionService {
     const prevVideoUrl = section.videoUrl;
     const prevImages = Array.isArray(section.images) ? [...section.images] : [];
     const prevAttachments = Array.isArray(section.attachments) ? [...section.attachments] : [];
+    const prevLearningMaterials = Array.isArray(section.learningMaterials)
+      ? [...section.learningMaterials]
+      : [];
 
     if (dto.title !== undefined) section.title = dto.title;
+    if (dto.subtitle !== undefined) section.subtitle = dto.subtitle?.trim() || undefined;
     if (dto.videoUrl !== undefined) section.videoUrl = dto.videoUrl;
     if (dto.description !== undefined) section.description = dto.description;
     if (dto.content !== undefined) section.content = dto.content;
@@ -151,11 +173,17 @@ export class CourseModuleSectionService {
     }
     if (dto.images !== undefined) section.images = dto.images;
     if (dto.attachments !== undefined) section.attachments = dto.attachments;
+    if (dto.learningMaterials !== undefined) {
+      section.learningMaterials = normalizeLearningMaterials(dto.learningMaterials);
+    }
     if (dto.sortOrder !== undefined) section.sortOrder = dto.sortOrder;
 
     // Clean up media files that are no longer referenced
     const nextImages = Array.isArray(section.images) ? section.images : [];
     const nextAttachments = Array.isArray(section.attachments) ? section.attachments : [];
+    const nextLearningMaterials = Array.isArray(section.learningMaterials)
+      ? section.learningMaterials
+      : [];
 
     if (prevVideoUrl && prevVideoUrl !== section.videoUrl) {
       const path = extractUploadPath(prevVideoUrl);
@@ -166,6 +194,9 @@ export class CourseModuleSectionService {
 
     const removedImages = prevImages.filter((url) => !nextImages.includes(url));
     const removedAttachments = prevAttachments.filter((url) => !nextAttachments.includes(url));
+    const removedLearningMaterials = prevLearningMaterials.filter(
+      (url) => !nextLearningMaterials.includes(url),
+    );
 
     await Promise.all([
       ...removedImages.map((url) => {
@@ -175,6 +206,12 @@ export class CourseModuleSectionService {
           : Promise.resolve();
       }),
       ...removedAttachments.map((url) => {
+        const path = extractUploadPath(url);
+        return path
+          ? this.localStorageService.deleteFileByUrl(path).catch(() => undefined)
+          : Promise.resolve();
+      }),
+      ...removedLearningMaterials.map((url) => {
         const path = extractUploadPath(url);
         return path
           ? this.localStorageService.deleteFileByUrl(path).catch(() => undefined)

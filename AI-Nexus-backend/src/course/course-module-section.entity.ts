@@ -21,6 +21,9 @@ export class CourseModuleSectionEntity {
   title!: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
+  subtitle?: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
   videoUrl?: string;
 
   @Column({ type: 'text', nullable: true })
@@ -41,6 +44,9 @@ export class CourseModuleSectionEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   attachments?: string[];
+
+  @Column({ type: 'jsonb', nullable: true })
+  learningMaterials?: string[];
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;

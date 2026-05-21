@@ -33,26 +33,28 @@ export default function LearningCoursePlayerPage() {
       <Helmet>
         <title>{course ? `${course.title} | ${metadata.title}` : metadata.title}</title>
       </Helmet>
-      {/* Fill space below main site header; top bar stays put; player scrolls inside columns only. */}
+      {/* Top bar fixed; lesson area grows with content (notes/materials are not forced to viewport height). */}
       <Box
         sx={{
           display: 'flex',
           flexDirection: 'column',
           width: 1,
           flex: '1 1 auto',
-          minHeight: 0,
-          height: {
+          minHeight: {
             xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
             md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
           },
-          maxHeight: {
-            xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
-            md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
-          },
-          overflow: 'hidden',
+          overflow: 'visible',
         }}
       >
-        <Box sx={{ flexShrink: 0 }}>
+        <Box
+          sx={{
+            flexShrink: 0,
+            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+            bgcolor: 'background.paper',
+            boxShadow: (theme) => `0 1px 0 ${theme.palette.divider}`,
+          }}
+        >
           <LearningTopBar
             activeTab="courses"
             setActiveTab={handleLearningTabChange}
@@ -62,9 +64,8 @@ export default function LearningCoursePlayerPage() {
         </Box>
         <Box
           sx={{
-            flex: 1,
-            minHeight: 0,
-            overflow: 'hidden',
+            flex: '0 0 auto',
+            overflow: 'visible',
             display: 'flex',
             flexDirection: 'column',
           }}

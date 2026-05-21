@@ -26,6 +26,7 @@ import { RouterLink } from 'src/routes/components';
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-document-viewer';
+import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
 import { LessonImageViewer } from 'src/sections/learning/components/lesson-image-viewer';
 import { LessonTextViewer } from 'src/sections/learning/components/lesson-text-viewer';
@@ -44,10 +45,17 @@ import {
 } from 'src/config/constants';
 import { toast } from 'src/components/snackbar';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { RichTextContent } from 'src/components/html-content';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
 
-// ----------------------------------------------------------------------
+import courseLessonNotesIcon from 'src/assets/course/notes.png';
+import courseLearningMaterialsIcon from 'src/assets/course/material.png';
+import {
+  playerFluidType,
+  playerLessonNotesSx,
+  playerTabIconSx,
+} from 'src/sections/learning/utils/player-responsive-type';
 
 const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
@@ -412,6 +420,7 @@ const getCourseModulesFromApi = (apiModules) => {
     lessons: (m.sections || []).map((s, i) => ({
       id: s.id,
       title: s.title || `Section ${i + 1}`,
+      subtitle: s.subtitle || null,
       duration: s.durationTime || '—',
       videoUrl: s.videoUrl || null,
       description: s.description || null,
@@ -420,6 +429,7 @@ const getCourseModulesFromApi = (apiModules) => {
       durationTime: s.durationTime || null,
       images: Array.isArray(s.images) ? s.images : [],
       attachments: Array.isArray(s.attachments) ? s.attachments : [],
+      learningMaterials: Array.isArray(s.learningMaterials) ? s.learningMaterials : [],
       sectionProgress: s.sectionProgress || null,
       isLocked: s.sectionProgress?.isLocked === true,
       isWatched: s.sectionProgress?.isWatched === true,
@@ -484,6 +494,13 @@ const getMockModules = (courseTitle) => [
   { id: 'sec-3', title: 'Feedback', lessons: [] },
 ];
 
+function hasDisplayableHtml(value) {
+  const html = String(value || '').trim();
+  if (!html || html === '<p></p>' || html === '<p><br></p>') return false;
+  const plain = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+  return plain.length > 0;
+}
+
 const FEEDBACK_LESSON_ID = '__feedback__';
 const FEEDBACK_SECTION_ID = 'section-feedback';
 /** Pseudo lesson id: `${MODULE_PRACTICE_PREFIX}${courseModuleUuid}` — main area shows module assessment flow. */
@@ -518,6 +535,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const [activeLessonId, setActiveLessonId] = useState('');
   const [viewedSectionIds, setViewedSectionIds] = useState([]);
   const [sectionImageIndex, setSectionImageIndex] = useState(0);
+  const [lessonDetailTab, setLessonDetailTab] = useState(0);
   const [courseRating, setCourseRating] = useState(0);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
@@ -1060,6 +1078,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     }
     setAutoNextCountdown(0);
     setSectionImageIndex(0);
+    setLessonDetailTab(0);
     nativeVideoProgressRef.current = {
       watchedSeconds: 0,
       pendingDeltaSeconds: 0,
@@ -2032,6 +2051,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     : 0;
   const hasAttachments =
     Array.isArray(activeLesson?.attachments) && activeLesson.attachments.length > 0;
+  const hasLearningMaterials =
+    Array.isArray(activeLesson?.learningMaterials) && activeLesson.learningMaterials.length > 0;
+  const activeLessonSubtitle = String(activeLesson?.subtitle || '').trim();
 
   const lessonLockOverlay =
     activeLesson && activeLessonGateBlocked ? (
@@ -2082,36 +2104,46 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     : null;
 
   const sidebarAccent = theme.palette.primary.main;
-  const sidebarMutedBorder = alpha(theme.palette.grey[500], 0.2);
+  const sidebarMutedBorder = alpha(theme.palette.grey[500], 0.16);
+  const playerElevatedShadow = `0 8px 32px ${alpha(theme.palette.common.black, 0.07)}`;
+  const playerCardBorder = `1px solid ${alpha(theme.palette.grey[500], 0.14)}`;
+  const playerCardSx = {
+    bgcolor: 'background.paper',
+    border: playerCardBorder,
+    borderRadius: 2.5,
+    boxShadow: playerElevatedShadow,
+    overflow: 'hidden',
+  };
 
   const courseSidebar = (
     <Box
       sx={{
         width: 1,
+        flex: 1,
+        minHeight: '100%',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
       <Box
         sx={{
-          flex: '1 1 auto',
+          flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          minHeight: 0,
-          bgcolor: alpha(theme.palette.grey[500], 0.06),
-          backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.04)} 0%, transparent 48%)`,
+          minHeight: '100%',
+          width: 1,
         }}
       >
         {/* Progress — structured summary panel */}
         {totalLessons > 0 && (
-          <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
+          <Box sx={{ px: 2.5, pt: 2, pb: 1.5 }}>
             <Box
               sx={{
-                p: 2,
-                borderRadius: 1.5,
+                p: 2.25,
+                borderRadius: 2.5,
                 bgcolor: 'background.paper',
-                border: `1px solid ${sidebarMutedBorder}`,
-                boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.06)}`,
+                border: playerCardBorder,
+                boxShadow: playerElevatedShadow,
               }}
             >
               <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5} sx={{ mb: 1.5 }}>
@@ -2174,19 +2206,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         <Box
           onClick={() => setCourseContentExpanded((prev) => !prev)}
           sx={{
-            mx: 2,
-            mb: courseContentExpanded ? 1 : 0,
+            mx: 2.5,
+            mb: courseContentExpanded ? 1.25 : 0,
             px: 2,
             py: 1.75,
-            borderRadius: 1.5,
+            borderRadius: 2.5,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 1.5,
             bgcolor: 'background.paper',
-            border: `1px solid ${sidebarMutedBorder}`,
-            boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
+            border: playerCardBorder,
+            boxShadow: playerElevatedShadow,
             transition: theme.transitions.create(['background-color', 'box-shadow'], {
               duration: theme.transitions.duration.shorter,
             }),
@@ -2263,13 +2295,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 disableGutters
                 elevation={0}
                 sx={{
-                  mx: 2,
-                  mb: 1.25,
-                  borderRadius: 2,
+                  mx: 2.5,
+                  mb: 1.5,
+                  borderRadius: 2.5,
                   overflow: 'hidden',
                   bgcolor: 'background.paper',
-                  border: `1px solid ${sidebarMutedBorder}`,
-                  boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.05)}`,
+                  border: playerCardBorder,
+                  boxShadow: playerElevatedShadow,
                   '&:before': { display: 'none' },
                   ...(sectionHasActiveLesson && {
                     borderColor: alpha(sidebarAccent, 0.35),
@@ -2728,14 +2760,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         disableGutters
         elevation={0}
         sx={{
-          mx: 2,
-          mb: 2,
+          mx: 2.5,
+          mb: 2.5,
           mt: 0.5,
-          borderRadius: 2,
+          borderRadius: 2.5,
           overflow: 'hidden',
           bgcolor: 'background.paper',
-          border: `1px solid ${sidebarMutedBorder}`,
-          boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.05)}`,
+          border: playerCardBorder,
+          boxShadow: playerElevatedShadow,
           '&:before': { display: 'none' },
           ...(progressPercent < 100 && { opacity: 0.92 }),
         }}
@@ -3010,38 +3042,33 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     <DashboardContent
       disablePadding
       sx={{
-        flex: '1 1 0%',
-        minHeight: 0,
+        flex: '0 0 auto',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
+        overflow: 'visible',
         bgcolor: 'grey.50',
-        maxHeight: {
-          xs: 'none',
-          md: 'calc(100dvh - var(--layout-header-desktop-height) - var(--layout-dashboard-content-pt) - var(--layout-dashboard-content-pb))',
-        },
+        backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.04)} 0%, ${theme.palette.grey[50]} 280px)`,
       }}
     >
     <Box
       sx={{
-        flex: '1 1 0%',
-        minHeight: 0,
-        bgcolor: 'grey.50',
+        flex: '0 0 auto',
+        bgcolor: 'transparent',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
+        overflow: 'visible',
       }}
     >
       <Stack
         direction={{ xs: 'column', md: 'row' }}
+        alignItems="stretch"
         sx={{
-          flex: '1 1 0%',
-          minHeight: 0,
-          overflow: 'hidden',
-          alignItems: { xs: 'stretch', md: 'stretch' },
+          flex: '1 1 auto',
+          width: '100%',
+          overflow: 'visible',
         }}
       >
-        {/* Left: scrollable course outline (many modules / sections). */}
+        {/* Left: full column height (matches main content); scroll when outline is long */}
         <Box
           sx={{
             display: { xs: 'none', md: 'flex' },
@@ -3049,29 +3076,38 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             width: { md: 384, lg: 420 },
             flex: { md: '0 0 auto' },
             flexShrink: 0,
-            minHeight: 0,
-            maxHeight: { md: '100%' },
-            alignSelf: { md: 'stretch' },
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            bgcolor: 'transparent',
-            borderRight: `1px solid ${theme.palette.divider}`,
-            scrollbarGutter: 'stable',
-            scrollbarWidth: 'thin',
-            scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
-            WebkitOverflowScrolling: 'touch',
-            '&::-webkit-scrollbar': { width: 8 },
-            '&::-webkit-scrollbar-thumb': {
-              borderRadius: 8,
-              backgroundColor: alpha(theme.palette.grey[500], 0.45),
-            },
-            '&::-webkit-scrollbar-track': {
-              backgroundColor: alpha(theme.palette.grey[500], 0.08),
-            },
-            overscrollBehavior: 'contain',
+            alignSelf: 'stretch',
+            minHeight: '100%',
+            bgcolor: 'background.paper',
+            backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, ${alpha(theme.palette.grey[500], 0.04)} 100%)`,
+            borderRight: playerCardBorder,
+            overflow: 'hidden',
           }}
         >
-          {courseSidebar}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              width: 1,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              scrollbarGutter: 'stable',
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
+              WebkitOverflowScrolling: 'touch',
+              '&::-webkit-scrollbar': { width: 8 },
+              '&::-webkit-scrollbar-thumb': {
+                borderRadius: 8,
+                backgroundColor: alpha(theme.palette.grey[500], 0.45),
+              },
+              '&::-webkit-scrollbar-track': {
+                backgroundColor: alpha(theme.palette.grey[500], 0.08),
+              },
+              overscrollBehavior: 'contain',
+            }}
+          >
+            {courseSidebar}
+          </Box>
         </Box>
 
         {/* Mobile drawer sidebar */}
@@ -3120,39 +3156,37 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
         <Box
           sx={{
-            flex: '1 1 0%',
+            flex: '1 1 auto',
             minWidth: 0,
-            minHeight: 0,
+            width: { xs: '100%', md: 0 },
+            flexGrow: { md: 1 },
             order: { xs: 1, md: 2 },
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            WebkitOverflowScrolling: 'touch',
-            p: { xs: 2, md: 3 },
-            scrollbarGutter: 'stable',
-            scrollbarWidth: 'thin',
-            scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
-            '&::-webkit-scrollbar': { width: 8 },
-            '&::-webkit-scrollbar-thumb': {
-              borderRadius: 8,
-              backgroundColor: alpha(theme.palette.grey[500], 0.45),
-            },
-            '&::-webkit-scrollbar-track': {
-              backgroundColor: alpha(theme.palette.grey[500], 0.08),
-            },
-            overscrollBehavior: 'contain',
+            overflow: 'visible',
+            p: { xs: 2, sm: 3, md: 4 },
+            pb: { xs: 3, md: 5 },
           }}
         >
-          <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 1.5 }}>
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 2 }}>
             <Button
-              size="small"
-              variant="outlined"
-              startIcon={<Iconify icon="solar:filter-bold" width={18} />}
+              size="medium"
+              variant="contained"
+              color="inherit"
+              startIcon={<Iconify icon="solar:sidebar-minimalistic-bold" width={18} />}
               onClick={() => setSidebarOpen(true)}
-              sx={{ fontWeight: 600 }}
+              sx={{
+                fontWeight: 700,
+                borderRadius: 2,
+                bgcolor: 'background.paper',
+                color: 'text.primary',
+                border: playerCardBorder,
+                boxShadow: playerElevatedShadow,
+                '&:hover': { bgcolor: 'grey.100' },
+              }}
             >
               Course content
             </Button>
           </Box>
+
           {activeLessonId === FEEDBACK_LESSON_ID ? null : modulePracticeModuleId && course?.id ? (
             playerLoading || modules.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -3197,16 +3231,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               </Box>
             )
           ) : !activeLesson ? (
-            <Box
-              sx={{
-                // borderRadius: 2,
-                overflow: 'hidden',
-                bgcolor: 'background.paper',
-                boxShadow: theme.customShadows.z8,
-                width: '100%',
-                border: `1px solid ${theme.palette.divider}`,
-              }}
-            >
+            <Box sx={{ ...playerCardSx, width: '100%' }}>
               <Box sx={{ position: 'relative', aspectRatio: '16/9', bgcolor: 'grey.900' }}>
                 <Box
                   component="img"
@@ -3543,12 +3568,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           ) : (
             <Box
               sx={{
+                ...playerCardSx,
                 px: 3,
-                // borderRadius: 2,
-                bgcolor: 'background.paper',
-                boxShadow: theme.customShadows.z4,
                 textAlign: 'center',
-                border: `1px dashed ${theme.palette.divider}`,
+                borderStyle: 'dashed',
                 height: LESSON_FRAME_HEIGHT,
                 display: 'flex',
                 alignItems: 'center',
@@ -3574,6 +3597,26 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Box>
           )}
 
+          {activeLesson &&
+          activeLessonId !== FEEDBACK_LESSON_ID &&
+          !modulePracticeModuleId &&
+          activeLessonSubtitle ? (
+            <Box sx={{ mt: 2 }}>
+              <Typography
+                variant="body1"
+                sx={{
+                  fontWeight: 700,
+                  color: 'text.primary',
+                  lineHeight: 1.5,
+                  maxWidth: 900,
+                  fontSize: playerFluidType.subtitle,
+                }}
+              >
+                {activeLessonSubtitle}
+              </Typography>
+            </Box>
+          ) : null}
+
           {activeLesson && isActiveModuleCompleted && hasNextModule && (
             <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
               <Button
@@ -3589,62 +3632,158 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
           {/* Global Previous / Next lesson navigation */}
           {activeLesson && flatLessons.length > 1 && (
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              spacing={2}
-              sx={{ mt: 2 }}
+            <Box
+              sx={{
+                mt: 2.5,
+                p: 2,
+                borderRadius: 2.5,
+                bgcolor: 'background.paper',
+                border: playerCardBorder,
+                boxShadow: playerElevatedShadow,
+              }}
             >
-              <Button
-                variant="outlined"
-                startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
-                onClick={goToPrevLesson}
-                disabled={!prevLesson}
-                sx={{ minWidth: 120 }}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={2}
               >
-                Previous
-              </Button>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {currentIndex >= 0 ? `${currentIndex + 1} / ${flatLessons.length}` : ''}
-              </Typography>
-              <LoadingButton
-                variant="contained"
-                endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
-                onClick={goToNextLesson}
-                loading={nextLoading}
-                disabled={!canGoNextLesson}
-                sx={{ minWidth: 120 }}
-              >
-                Next
-              </LoadingButton>
-            </Stack>
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
+                  onClick={goToPrevLesson}
+                  disabled={!prevLesson}
+                  sx={{
+                    minWidth: { xs: 96, sm: 128 },
+                    borderRadius: 1.5,
+                    fontWeight: 600,
+                    fontSize: playerFluidType.body,
+                  }}
+                >
+                  Previous
+                </Button>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    fontWeight: 700,
+                    fontSize: playerFluidType.caption,
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: alpha(theme.palette.grey[500], 0.08),
+                  }}
+                >
+                  {currentIndex >= 0 ? `${currentIndex + 1} / ${flatLessons.length}` : ''}
+                </Typography>
+                <LoadingButton
+                  variant="contained"
+                  color="primary"
+                  endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
+                  onClick={goToNextLesson}
+                  loading={nextLoading}
+                  disabled={!canGoNextLesson}
+                  sx={{
+                    minWidth: { xs: 96, sm: 128 },
+                    borderRadius: 1.5,
+                    fontWeight: 600,
+                    fontSize: playerFluidType.body,
+                  }}
+                >
+                  Next
+                </LoadingButton>
+              </Stack>
+            </Box>
           )}
 
-          {/* Lesson notes — tab format */}
-          {activeLesson && (
-            <Box sx={{ mt: 2 }}>
+          {/* Lesson notes & learning materials */}
+          {activeLesson && activeLessonId !== FEEDBACK_LESSON_ID && !modulePracticeModuleId ? (
+            <Box
+              sx={{
+                mt: 2,
+                width: '100%',
+                bgcolor: 'background.paper',
+                border: `1px solid ${theme.palette.divider}`,
+                overflow: 'hidden',
+              }}
+            >
               <Tabs
-                value={0}
+                value={hasLearningMaterials && lessonDetailTab === 1 ? 1 : 0}
+                onChange={(_, value) => setLessonDetailTab(value)}
                 sx={{
-                  px: 0,
-                  minHeight: 44,
+                  px: { xs: 2, md: 2.5 },
+                  minHeight: 48,
                   borderBottom: `1px solid ${theme.palette.divider}`,
-                  '& .MuiTab-root': { minHeight: 44, typography: 'body2', fontWeight: 600 },
+                  '& .MuiTabs-flexContainer': { gap: { xs: 2, sm: 3 } },
+                  '& .MuiTab-root': {
+                    minHeight: 48,
+                    minWidth: { xs: 128, sm: 168 },
+                    px: { xs: 2, sm: 2.5 },
+                    py: 1.25,
+                    gap: 1,
+                    fontSize: playerFluidType.tab,
+                    fontWeight: 600,
+                    textTransform: 'none',
+                    color: 'secondary.main',
+                    '& .MuiTab-iconWrapper': { marginRight: 0.75 },
+                  },
+                  '& .MuiTab-root.Mui-selected': {
+                    color: 'primary.main',
+                    fontWeight: 700,
+                  },
                   '& .MuiTabs-indicator': { height: 3, borderRadius: '3px 3px 0 0' },
                 }}
               >
                 <Tab
                   label="Lesson notes"
-                  icon={<Iconify icon="solar:document-text-bold" width={18} />}
+                  color={
+                    hasLearningMaterials && lessonDetailTab === 1 ? 'secondary' : 'primary'
+                  }
+                  icon={
+                    <Box
+                      component="img"
+                      src={courseLessonNotesIcon}
+                      alt=""
+                      sx={playerTabIconSx}
+                    />
+                  }
                   iconPosition="start"
                 />
+                {hasLearningMaterials ? (
+                  <Tab
+                    label="Learning materials"
+                    color={lessonDetailTab === 1 ? 'primary' : 'secondary'}
+                    icon={
+                      <Box
+                        component="img"
+                        src={courseLearningMaterialsIcon}
+                        alt=""
+                        sx={playerTabIconSx}
+                      />
+                    }
+                    iconPosition="start"
+                  />
+                ) : null}
               </Tabs>
-              <Box sx={{ pt: 2 }}>
-                <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.7 }}>
-                  {activeLesson?.description
-                    ? activeLesson.description
-                    : activeLesson && course?.description
+              <Box sx={{ px: { xs: 2, md: 2.5 }, pt: 2, pb: { xs: 2, md: 2.5 } }}>
+                {lessonDetailTab === 1 && hasLearningMaterials ? (
+                  <LessonLearningMaterialsPanel
+                    key={`materials-${activeLessonId}`}
+                    materials={activeLesson.learningMaterials}
+                  />
+                ) : hasDisplayableHtml(activeLesson?.description) ? (
+                  <RichTextContent html={activeLesson.description} sx={playerLessonNotesSx} />
+                ) : (
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'text.secondary',
+                      lineHeight: 1.7,
+                      fontSize: playerFluidType.body,
+                    }}
+                  >
+                    {activeLesson && course?.description
                       ? (() => {
                           const paras = htmlToPlainText(course.description || '')
                             .split(/\n\n+/)
@@ -3653,15 +3792,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             .flatMap((m) => m.lessons || [])
                             .findIndex((l) => l.id === activeLesson.id);
                           const text = paras[idx] || paras[0];
-                          return text || `Notes for "${activeLesson.title}" can be added here.`;
+                          return (
+                            text || `Notes for "${activeLesson.title}" can be added here.`
+                          );
                         })()
-                      : activeLesson
-                        ? `Notes for "${activeLesson.title}" can be added here. Participants can take notes during the lesson.`
-                        : 'Select a lesson to view or add notes.'}
-                </Typography>
+                      : `Notes for "${activeLesson.title}" can be added here.`}
+                  </Typography>
+                )}
               </Box>
             </Box>
-          )}
+          ) : null}
         </Box>
       </Stack>
     </Box>

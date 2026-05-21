@@ -22,6 +22,7 @@ export class CourseModuleSectionInitService implements OnModuleInit {
             "moduleId" uuid NOT NULL,
             "sortOrder" int NOT NULL DEFAULT 0,
             "title" varchar(255) NOT NULL,
+            "subtitle" varchar(500),
             "videoUrl" varchar(500),
             "description" text,
             "content" text,
@@ -29,6 +30,7 @@ export class CourseModuleSectionInitService implements OnModuleInit {
             "durationTime" varchar(50),
             "images" jsonb,
             "attachments" jsonb,
+            "learningMaterials" jsonb,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_course_module_sections" PRIMARY KEY ("id"),
@@ -69,6 +71,19 @@ export class CourseModuleSectionInitService implements OnModuleInit {
         } catch (durErr) {
           if (durErr instanceof Error && !durErr.message?.includes('already exists')) {
             throw durErr;
+          }
+        }
+        const sectionColumnAdds = [
+          `ALTER TABLE "course_module_sections" ADD COLUMN "subtitle" varchar(500)`,
+          `ALTER TABLE "course_module_sections" ADD COLUMN "learningMaterials" jsonb`,
+        ];
+        for (const sql of sectionColumnAdds) {
+          try {
+            await queryRunner.query(sql);
+          } catch (alterErr) {
+            if (alterErr instanceof Error && !alterErr.message?.includes('already exists')) {
+              throw alterErr;
+            }
           }
         }
       }

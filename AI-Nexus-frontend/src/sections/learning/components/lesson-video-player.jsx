@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box';
+import { alpha } from '@mui/material/styles';
 
 export function LessonVideoPlayer({
   embedUrl,
@@ -25,8 +26,9 @@ export function LessonVideoPlayer({
         bgcolor: 'grey.900',
         width: '100%',
         height: frameHeight,
-        boxShadow: (theme) => theme.customShadows.z8,
-        border: (theme) => `1px solid ${theme.palette.divider}`,
+        borderRadius: 0,
+        boxShadow: (theme) => `0 12px 40px ${alpha(theme.palette.common.black, 0.14)}`,
+        border: (theme) => `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
       }}
     >
       {embedUrl ? (

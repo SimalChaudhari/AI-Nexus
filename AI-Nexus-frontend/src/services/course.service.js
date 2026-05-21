@@ -12,6 +12,28 @@ const isUuid = (value) =>
   );
 const normalizeId = (entity) => entity?.id || entity?._id || '';
 
+const transformSection = (s) => ({
+  id: normalizeId(s),
+  moduleId: s.moduleId || s.module_id || '',
+  sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
+  title: s.title || '',
+  subtitle: s.subtitle || '',
+  videoUrl: s.videoUrl || '',
+  description: s.description || '',
+  content: s.content || '',
+  watchtime: s.watchtime || '',
+  durationTime: s.durationTime || '',
+  images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
+  attachments: Array.isArray(s.attachments)
+    ? s.attachments.map((url) => resolveAssetUrl(url))
+    : [],
+  learningMaterials: Array.isArray(s.learningMaterials)
+    ? s.learningMaterials.map((url) => resolveAssetUrl(url))
+    : [],
+  sectionProgress:
+    s.sectionProgress && typeof s.sectionProgress === 'object' ? s.sectionProgress : null,
+});
+
 // Transform backend course data to frontend format
 const transformSpeakers = (speakers) => {
   if (!Array.isArray(speakers)) return [];
@@ -215,23 +237,7 @@ export const courseService = {
         sortOrder: m.sortOrder != null ? Number(m.sortOrder) : 0,
         title: m.title || '',
         description: m.description || '',
-        sections: (m.sections || []).map((s) => ({
-          id: normalizeId(s),
-          moduleId: s.moduleId || s.module_id || '',
-          sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
-          title: s.title || '',
-          videoUrl: s.videoUrl || '',
-          description: s.description || '',
-          content: s.content || '',
-          watchtime: s.watchtime || '',
-          durationTime: s.durationTime || '',
-          images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
-          attachments: Array.isArray(s.attachments)
-            ? s.attachments.map((url) => resolveAssetUrl(url))
-            : [],
-          sectionProgress:
-            s.sectionProgress && typeof s.sectionProgress === 'object' ? s.sectionProgress : null,
-        })),
+        sections: (m.sections || []).map((s) => transformSection(s)),
       }));
 
       return {
@@ -352,9 +358,22 @@ export const courseService = {
           if (sections.length > 0) {
             await sections.reduce(
               (secPromise, sec) =>
-                secPromise.then(() =>
-                  this.createModuleSection(courseId, created.id, {
+                secPromise.then(async () => {
+                  const pendingFiles = (sec.learningMaterials || []).filter(
+                    (item) => item instanceof File
+                  );
+                  const existingUrls = (sec.learningMaterials || []).filter(
+                    (item) => typeof item === 'string'
+                  );
+                  let learningMaterials = existingUrls;
+                  if (pendingFiles.length > 0) {
+                    const uploaded = await this.uploadSectionLearningMaterials(pendingFiles);
+                    learningMaterials = [...existingUrls, ...uploaded];
+                  }
+
+                  return this.createModuleSection(courseId, created.id, {
                     title: sec.title || 'Untitled section',
+                    subtitle: sec.subtitle,
                     videoUrl: sec.videoUrl,
                     description: sec.description,
                     content: sec.content,
@@ -362,9 +381,11 @@ export const courseService = {
                     durationTime: sec.durationTime,
                     images: sec.images,
                     attachments: sec.attachments,
+                    learningMaterials:
+                      learningMaterials.length > 0 ? learningMaterials : undefined,
                     sortOrder: sec.sortOrder,
-                  })
-                ),
+                  });
+                }),
               Promise.resolve()
             );
           }
@@ -545,23 +566,7 @@ export const courseService = {
         sortOrder: m.sortOrder != null ? Number(m.sortOrder) : 0,
         title: m.title || '',
         description: m.description || '',
-        sections: (m.sections || []).map((s) => ({
-          id: normalizeId(s),
-          moduleId: s.moduleId || s.module_id || '',
-          sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
-          title: s.title || '',
-          videoUrl: s.videoUrl || '',
-          description: s.description || '',
-          content: s.content || '',
-          watchtime: s.watchtime || '',
-          durationTime: s.durationTime || '',
-          images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
-          attachments: Array.isArray(s.attachments)
-            ? s.attachments.map((url) => resolveAssetUrl(url))
-            : [],
-          sectionProgress:
-            s.sectionProgress && typeof s.sectionProgress === 'object' ? s.sectionProgress : null,
-        })),
+        sections: (m.sections || []).map((s) => transformSection(s)),
       }));
     } catch (error) {
       console.error('Error fetching course modules with sections:', error);
@@ -701,21 +706,7 @@ export const courseService = {
     try {
       const response = await axios.get(`/courses/${courseId}/modules/${moduleId}/sections`);
       const list = response.data?.data || response.data || [];
-      return list.map((s) => ({
-        id: normalizeId(s),
-        moduleId: s.moduleId || s.module_id || '',
-        sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
-        title: s.title || '',
-        videoUrl: s.videoUrl || '',
-        description: s.description || '',
-        content: s.content || '',
-        watchtime: s.watchtime || '',
-        durationTime: s.durationTime || '',
-        images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
-        attachments: Array.isArray(s.attachments)
-          ? s.attachments.map((url) => resolveAssetUrl(url))
-          : [],
-      }));
+      return list.map((s) => transformSection(s));
     } catch (error) {
       console.error('Error fetching module sections:', error);
       throw error;
@@ -770,10 +761,24 @@ export const courseService = {
     return urls.map((url) => resolveAssetUrl(url));
   },
 
+  async uploadSectionLearningMaterials(files) {
+    if (!files?.length) return [];
+    const formData = new FormData();
+    Array.from(files).forEach((file) => {
+      formData.append('files', file);
+    });
+    const response = await axios.post('/courses/modules/sections/upload-learning-materials', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const urls = response.data?.data?.urls || response.data?.urls || [];
+    return urls.map((url) => resolveAssetUrl(url));
+  },
+
   async createModuleSection(courseId, moduleId, data) {
     try {
       const response = await axios.post(`/courses/${courseId}/modules/${moduleId}/sections`, {
         title: data.title,
+        subtitle: data.subtitle || undefined,
         videoUrl: data.videoUrl || undefined,
         description: data.description || undefined,
         content: data.content || undefined,
@@ -784,24 +789,14 @@ export const courseService = {
           Array.isArray(data.attachments) && data.attachments.length > 0
             ? data.attachments
             : undefined,
+        learningMaterials:
+          Array.isArray(data.learningMaterials) && data.learningMaterials.length > 0
+            ? data.learningMaterials
+            : undefined,
         sortOrder: data.sortOrder,
       });
       const s = response.data?.data || response.data;
-      return {
-        id: s.id,
-        moduleId: s.moduleId,
-        sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
-        title: s.title || '',
-        videoUrl: s.videoUrl || '',
-        description: s.description || '',
-        content: s.content || '',
-        watchtime: s.watchtime || '',
-        durationTime: s.durationTime || '',
-        images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
-        attachments: Array.isArray(s.attachments)
-          ? s.attachments.map((url) => resolveAssetUrl(url))
-          : [],
-      };
+      return transformSection(s);
     } catch (error) {
       console.error('Error creating module section:', error);
       throw error;
@@ -812,6 +807,7 @@ export const courseService = {
     try {
       const response = await axios.put(`/courses/modules/sections/${id}`, {
         title: data.title,
+        subtitle: data.subtitle !== undefined ? data.subtitle : undefined,
         videoUrl: data.videoUrl !== undefined ? data.videoUrl : undefined,
         description: data.description !== undefined ? data.description : undefined,
         content: data.content !== undefined ? data.content : undefined,
@@ -819,24 +815,12 @@ export const courseService = {
         durationTime: data.durationTime !== undefined ? data.durationTime : null,
         images: data.images !== undefined ? data.images : undefined,
         attachments: data.attachments !== undefined ? data.attachments : undefined,
+        learningMaterials:
+          data.learningMaterials !== undefined ? data.learningMaterials : undefined,
         sortOrder: data.sortOrder,
       });
       const s = response.data?.data || response.data;
-      return {
-        id: s.id,
-        moduleId: s.moduleId,
-        sortOrder: s.sortOrder != null ? Number(s.sortOrder) : 0,
-        title: s.title || '',
-        videoUrl: s.videoUrl || '',
-        description: s.description || '',
-        content: s.content || '',
-        watchtime: s.watchtime || '',
-        durationTime: s.durationTime || '',
-        images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
-        attachments: Array.isArray(s.attachments)
-          ? s.attachments.map((url) => resolveAssetUrl(url))
-          : [],
-      };
+      return transformSection(s);
     } catch (error) {
       console.error('Error updating module section:', error);
       throw error;

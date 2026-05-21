@@ -1,0 +1,75 @@
+// Fluid font sizes for course player — scales smoothly between mobile and desktop.
+
+export const playerFluidType = {
+  body: {
+    xs: 'clamp(0.8125rem, 0.72rem + 0.35vw, 0.9375rem)',
+    md: '0.9375rem',
+  },
+  caption: {
+    xs: 'clamp(0.6875rem, 0.62rem + 0.28vw, 0.75rem)',
+    md: '0.75rem',
+  },
+  label: {
+    xs: 'clamp(0.875rem, 0.8rem + 0.4vw, 1rem)',
+    md: '1rem',
+  },
+  overline: {
+    xs: 'clamp(0.625rem, 0.58rem + 0.22vw, 0.6875rem)',
+    md: '0.6875rem',
+  },
+  tab: {
+    xs: 'clamp(0.8125rem, 0.74rem + 0.32vw, 0.875rem)',
+    md: '0.875rem',
+  },
+  subtitle: {
+    xs: 'clamp(1rem, 0.9rem + 0.5vw, 1.125rem)',
+    md: '1.125rem',
+  },
+};
+
+export const playerLessonNotesSx = {
+  fontSize: playerFluidType.body,
+  color: 'text.secondary',
+  lineHeight: 1.75,
+  '& p, & li, & td, & th': {
+    fontSize: 'inherit',
+    lineHeight: 'inherit',
+  },
+  '& p': { mb: 1.25 },
+  '& ul, & ol': { mb: 1.25, pl: { xs: 2, sm: 2.5 } },
+  '& h1': {
+    fontSize: { xs: 'clamp(1.375rem, 1.15rem + 1vw, 1.75rem)', md: '1.75rem' },
+    color: 'text.primary',
+    fontWeight: 700,
+    mt: 1.5,
+    mb: 1,
+    lineHeight: 1.3,
+  },
+  '& h2': {
+    fontSize: { xs: 'clamp(1.25rem, 1.05rem + 0.85vw, 1.5rem)', md: '1.5rem' },
+    color: 'text.primary',
+    fontWeight: 700,
+    mt: 1.5,
+    mb: 1,
+    lineHeight: 1.35,
+  },
+  '& h3, & h4': {
+    fontSize: { xs: 'clamp(1.0625rem, 0.95rem + 0.55vw, 1.25rem)', md: '1.25rem' },
+    color: 'text.primary',
+    fontWeight: 700,
+    mt: 1.25,
+    mb: 0.75,
+    lineHeight: 1.4,
+  },
+  '& a': { color: 'primary.main', fontWeight: 600, fontSize: 'inherit' },
+};
+
+export const playerTabIconSx = {
+  width: { xs: 20, sm: 22 },
+  height: { xs: 20, sm: 22 },
+  maxWidth: { xs: 20, sm: 22 },
+  maxHeight: { xs: 20, sm: 22 },
+  objectFit: 'contain',
+  display: 'block',
+  flexShrink: 0,
+};
