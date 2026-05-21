@@ -5,10 +5,14 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 
+import { DashboardContent } from 'src/layouts/dashboard';
+
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
+
+import { formatNullableBoolean } from 'src/utils/format-boolean';
 
 // ----------------------------------------------------------------------
 
@@ -92,6 +96,8 @@ export function UserDetailsView({ user, loading, error }) {
             />
           ),
         },
+        { label: 'SCAQ candidate', value: formatNullableBoolean(user.isSCAQCandidate) },
+        { label: 'Associate member', value: formatNullableBoolean(user.isAssociateMember) },
       ],
     },
   ];

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
@@ -90,6 +91,10 @@ export function shouldUseSalesforceMembershipCreateStep(state) {
   if (state.isIscaMember === true) return false;
   if (state.isSingaporePr === true && state.spPrVerified === true) return false;
 
+  if (state.eligibilityType === 'recognition') {
+    return state.salesforceAccountChoice === 'create';
+  }
+
   if (
     state.eligibilityVerified === true
     && state.eligibilityType === 'student'
@@ -124,6 +129,7 @@ export function SalesforceMembershipCreateStep({
   membershipOutcome = '',
   draftUserId = '',
   onAccountCreated,
+  onLoginWithSalesforce,
 }) {
   const [phase, setPhase] = useState('register');
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
@@ -239,14 +245,34 @@ export function SalesforceMembershipCreateStep({
   return (
     <Stack spacing={2}>
       <Box>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
-          {phase === 'set-password' ? 'Set your Salesforce password' : title || 'Create membership account'}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.65 }}>
-          {phase === 'set-password'
-            ? 'Your membership account was created. Choose a password for Salesforce login, then continue to sign in.'
-            : summary}
-        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          justifyContent="space-between"
+          spacing={1}
+        >
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+              {phase === 'set-password' ? 'Set your Salesforce password' : title || 'Create membership account'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.65 }}>
+              {phase === 'set-password'
+                ? 'Your membership account was created. Choose a password for Salesforce login, then continue to sign in.'
+                : summary}
+            </Typography>
+          </Box>
+          {phase === 'register' && onLoginWithSalesforce && (
+            <Button
+              variant="outlined"
+              color="inherit"
+              onClick={onLoginWithSalesforce}
+              disabled={submitting}
+              sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            >
+              Login with Salesforce
+            </Button>
+          )}
+        </Stack>
       </Box>
 
       {phase === 'register' && (

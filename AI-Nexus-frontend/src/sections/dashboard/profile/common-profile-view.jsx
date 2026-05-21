@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'src/routes/hooks';
 import { useAuthContext } from 'src/auth/hooks';
 
@@ -23,6 +23,8 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { MainContent } from 'src/layouts/main';
 
 import { fDate } from 'src/utils/format-time';
+import { formatNullableBoolean } from 'src/utils/format-boolean';
+import { syncApiUserToSession } from 'src/auth/utils/normalize-user-session';
 import { useGetUserProfile, useGetAdminProfile } from 'src/actions/user';
 import { UserNewEditForm } from '../user/user-new-edit-form';
 
@@ -42,11 +44,19 @@ export function CommonProfileView() {
   const ContentWrapper = isAdmin ? DashboardContent : MainContent;
   const contentShellProps = { maxWidth: false, sx: { width: 1, maxWidth: 'none' } };
 
-  const shouldFetchProfile = !currentAuthUser;
-  const userProfileHook = useGetUserProfile(shouldFetchProfile);
-  const adminProfileHook = useGetAdminProfile(shouldFetchProfile);
+  const userProfileHook = useGetUserProfile(!isAdmin);
+  const adminProfileHook = useGetAdminProfile(isAdmin);
 
-  const { user: fetchedUser, userLoading, userError, refresh: refreshUser } = isAdmin ? adminProfileHook : userProfileHook;
+  const { user: fetchedUser, userLoading, userError, refresh: refreshUser } = isAdmin
+    ? adminProfileHook
+    : userProfileHook;
+
+  useEffect(() => {
+    if (!fetchedUser?.id) return;
+    syncApiUserToSession(fetchedUser);
+    checkUserSession?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when API user id changes only
+  }, [fetchedUser?.id]);
 
   if (userError && (userError?.message?.includes('403') || userError?.message?.includes('Forbidden') || userError?.response?.status === 403)) {
     return (
@@ -68,49 +78,17 @@ export function CommonProfileView() {
     );
   }
 
-  const user = currentAuthUser
-    ? {
-        id: currentAuthUser.id || currentAuthUser._id,
-        username: currentAuthUser.username || fetchedUser?.username,
-        firstname: currentAuthUser.firstname || fetchedUser?.firstname,
-        lastname: currentAuthUser.lastname || fetchedUser?.lastname,
-        email: currentAuthUser.email || fetchedUser?.email,
-        status: currentAuthUser.status || fetchedUser?.status || 'Active',
-        role: currentAuthUser.role || fetchedUser?.role || userRole,
-        isVerified: currentAuthUser.isVerified || fetchedUser?.isVerified || false,
-        avatarUrl: currentAuthUser.avatarUrl || fetchedUser?.avatarUrl || null,
-        contactNumber: currentAuthUser.contactNumber || currentAuthUser.phoneNumber || fetchedUser?.contactNumber || fetchedUser?.phoneNumber,
-        company: currentAuthUser.company || fetchedUser?.company,
-        name:
-          [currentAuthUser.firstname, currentAuthUser.lastname].filter(Boolean).join(' ') ||
-          currentAuthUser.name ||
-          fetchedUser?.name,
-        createdAt: currentAuthUser.createdAt || fetchedUser?.createdAt,
-      }
-    : fetchedUser;
+  const user = fetchedUser;
 
   const handleEditSuccess = async (updatedUser) => {
     setIsEditMode(false);
 
-    if (refreshUser) {
-      refreshUser();
+    if (updatedUser) {
+      syncApiUserToSession(updatedUser);
     }
 
-    if (updatedUser) {
-      const userStr = sessionStorage.getItem('user');
-      if (userStr) {
-        try {
-          const currentUser = JSON.parse(userStr);
-          const updatedUserData = {
-            ...currentUser,
-            ...updatedUser,
-            status: updatedUser.status ? updatedUser.status.charAt(0).toUpperCase() + updatedUser.status.slice(1) : currentUser.status,
-          };
-          sessionStorage.setItem('user', JSON.stringify(updatedUserData));
-        } catch (error) {
-          console.error('Error updating user in sessionStorage:', error);
-        }
-      }
+    if (refreshUser) {
+      refreshUser();
     }
 
     if (checkUserSession) {
@@ -371,6 +349,28 @@ export function CommonProfileView() {
                         </Stack>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {user.contactNumber || user.phoneNumber || '—'}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                      <Iconify icon="solar:diploma-verified-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 0.25 }}>
+                          SCAQ candidate
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {formatNullableBoolean(user.isSCAQCandidate)}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                      <Iconify icon="solar:users-group-rounded-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 0.25 }}>
+                          Associate member
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {formatNullableBoolean(user.isAssociateMember)}
                         </Typography>
                       </Box>
                     </Stack>

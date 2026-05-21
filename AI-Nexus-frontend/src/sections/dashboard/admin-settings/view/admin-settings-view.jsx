@@ -50,10 +50,15 @@ import { IconPickerDrawer } from './components/icon-picker-drawer';
 import { HomeJoinSettingsCard } from './components/home-join-settings-card';
 import { FaqSettingsCard } from './components/faq-settings-card';
 import { FeesSettingsCard } from './components/fees-settings-card';
+import { CurriculumSettingsCard } from './components/curriculum-settings-card';
 import {
   DEFAULT_PROGRAMME_FEES_CONTENT,
   normalizeProgrammeFeesContent,
 } from 'src/sections/home/programme-fees-defaults';
+import {
+  DEFAULT_CURRICULUM_CONTENT,
+  normalizeCurriculumContent,
+} from 'src/sections/home/curriculum-defaults';
 
 const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
 const CONTACT_ICON_KEY_BY_FIELD = {
@@ -201,6 +206,7 @@ export function AdminSettingsView() {
   const [cardsContentSubmitting, setCardsContentSubmitting] = useState(false);
   const [faqContentSubmitting, setFaqContentSubmitting] = useState(false);
   const [feesContentSubmitting, setFeesContentSubmitting] = useState(false);
+  const [curriculumContentSubmitting, setCurriculumContentSubmitting] = useState(false);
   const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
@@ -265,6 +271,9 @@ export function AdminSettingsView() {
   const [faqContent, setFaqContent] = useState(DEFAULT_FAQ_CONTENT);
   const [feesContent, setFeesContent] = useState(() =>
     normalizeProgrammeFeesContent(DEFAULT_PROGRAMME_FEES_CONTENT)
+  );
+  const [curriculumContent, setCurriculumContent] = useState(() =>
+    normalizeCurriculumContent(DEFAULT_CURRICULUM_CONTENT)
   );
   const emptyContactRow = () => ({
     details: '',
@@ -455,6 +464,11 @@ export function AdminSettingsView() {
       setFeesContent(
         normalizeProgrammeFeesContent(
           appSettings.programmeFeesContent || DEFAULT_PROGRAMME_FEES_CONTENT
+        )
+      );
+      setCurriculumContent(
+        normalizeCurriculumContent(
+          appSettings.curriculumContent || DEFAULT_CURRICULUM_CONTENT
         )
       );
       const remoteJoin = appSettings.homeJoinContent || {};
@@ -973,6 +987,37 @@ export function AdminSettingsView() {
     );
   };
 
+  const applyCurriculumFromSettings = (appSettings) => {
+    setCurriculumContent(
+      normalizeCurriculumContent(
+        appSettings?.curriculumContent || DEFAULT_CURRICULUM_CONTENT
+      )
+    );
+  };
+
+  const handleSaveCurriculumContent = async (contentOverride) => {
+    const source = contentOverride || curriculumContent;
+    try {
+      setCurriculumContentSubmitting(true);
+      const payload = {
+        smallTitle: source?.smallTitle || '',
+        subtext: source?.subtext || '',
+        hoursLabel: source?.hoursLabel || '',
+        pacingLabel: source?.pacingLabel || '',
+        courseIds: Array.isArray(source?.courseIds) ? source.courseIds : [],
+      };
+      const { settings: updated, curriculum } = await appSettingsService.updateCurriculumContent(payload);
+      applyCurriculumFromSettings(updated);
+      toast.success('Curriculum updated');
+      return curriculum;
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update curriculum');
+      throw error;
+    } finally {
+      setCurriculumContentSubmitting(false);
+    }
+  };
+
   const handleSaveFeesContent = async (contentOverride) => {
     const source = contentOverride || feesContent;
     try {
@@ -1235,6 +1280,13 @@ export function AdminSettingsView() {
       description: 'Configure FAQs shown on the home page and the public /faqs page.',
     },
     {
+      key: 'curriculum',
+      badge: 'CU',
+      icon: 'solar:book-2-bold-duotone',
+      title: 'Curriculum',
+      description: 'Add courses to the home page curriculum — each course’s modules are shown automatically.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       iconSrc: settingsTabHeader,
@@ -1253,6 +1305,7 @@ export function AdminSettingsView() {
     'workflow-templates-pitch',
     'programme-fees',
     'faq',
+    'curriculum',
     'header-visibility',
   ];
 
@@ -1606,6 +1659,16 @@ export function AdminSettingsView() {
       faqContentSubmitting={faqContentSubmitting}
       onSave={handleSaveFaqContent}
       maxItems={FAQ_ITEMS_MAX}
+    />
+  );
+
+  const renderCurriculumSettings = (
+    <CurriculumSettingsCard
+      curriculumContent={curriculumContent}
+      setCurriculumContent={setCurriculumContent}
+      curriculumContentSubmitting={curriculumContentSubmitting}
+      onSave={handleSaveCurriculumContent}
+      maxCourses={20}
     />
   );
 
@@ -2100,6 +2163,7 @@ export function AdminSettingsView() {
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
         {activeSection === 'faq' && renderFaqSettings}
+        {activeSection === 'curriculum' && renderCurriculumSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

@@ -34,6 +34,57 @@ function transformProgrammeFeesContent(source) {
   };
 }
 
+function transformCurriculumStored(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+  const rawIds = Array.isArray(source.courseIds)
+    ? source.courseIds
+    : source.courseId
+      ? [source.courseId]
+      : [];
+  return {
+    smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
+    subtext: source.subtext != null ? String(source.subtext) : '',
+    hoursLabel: source.hoursLabel != null ? String(source.hoursLabel) : '',
+    pacingLabel: source.pacingLabel != null ? String(source.pacingLabel) : '',
+    courseIds: rawIds.slice(0, 20).map((id) => String(id || '')).filter(Boolean),
+  };
+}
+
+function transformCurriculumContent(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+  const rawModules = Array.isArray(source.modules) ? source.modules : [];
+  const rawCourses = Array.isArray(source.courses) ? source.courses : [];
+  const rawIds = Array.isArray(source.courseIds)
+    ? source.courseIds
+    : source.courseId
+      ? [source.courseId]
+      : [];
+  return {
+    smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
+    subtext: source.subtext != null ? String(source.subtext) : '',
+    hoursLabel: source.hoursLabel != null ? String(source.hoursLabel) : '',
+    pacingLabel: source.pacingLabel != null ? String(source.pacingLabel) : '',
+    courseIds: rawIds.map((id) => String(id || '')).filter(Boolean),
+    courses: rawCourses.map((course) => ({
+      id: course?.id != null ? String(course.id) : '',
+      title: course?.title != null ? String(course.title) : '',
+      modulesCount: Number(course?.modulesCount) || 0,
+    })),
+    headline: source.headline != null ? String(source.headline) : '',
+    moduleCount: Number(source.moduleCount) || 0,
+    modules: rawModules.map((row, index) => ({
+      index: Number.isFinite(row?.index) ? Number(row.index) : index,
+      title: row?.title != null ? String(row.title) : '',
+      description: row?.description != null ? String(row.description) : '',
+      courseId: row?.courseId != null ? String(row.courseId) : '',
+    })),
+  };
+}
+
 function transformFaqContent(sourceFaq) {
   if (!sourceFaq || typeof sourceFaq !== 'object') {
     return null;
@@ -57,6 +108,7 @@ function transformSettings(settings) {
   const sourcePitch = settings?.workflowTemplatesPitchContent;
   const sourceFaq = settings?.faqContent;
   const sourceFees = settings?.programmeFeesContent;
+  const sourceCurriculum = settings?.curriculumContent;
   const normalizedPitchFeatures = [0, 1, 2].map((i) => {
     const rows = Array.isArray(sourcePitch?.features) ? sourcePitch.features : [];
     const f = rows[i] && typeof rows[i] === 'object' ? rows[i] : {};
@@ -174,6 +226,7 @@ function transformSettings(settings) {
       : null,
     faqContent: transformFaqContent(sourceFaq),
     programmeFeesContent: transformProgrammeFeesContent(sourceFees),
+    curriculumContent: transformCurriculumStored(sourceCurriculum),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -292,6 +345,23 @@ export const appSettingsService = {
     const response = await axios.put('/app-settings/faq-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
+  },
+
+  async getCurriculumContent() {
+    const response = await axios.get('/app-settings/curriculum-content');
+    const data = response.data?.data ?? response.data ?? null;
+    return transformCurriculumContent(data);
+  },
+
+  async updateCurriculumContent(payload) {
+    const response = await axios.put('/app-settings/curriculum-content', payload || {});
+    const body = response.data || {};
+    const settings = body.settings || body.data || body;
+    const curriculum = transformCurriculumContent(body.curriculum);
+    return {
+      settings: transformSettings(settings),
+      curriculum,
+    };
   },
 
   async getProgrammeFeesContent() {

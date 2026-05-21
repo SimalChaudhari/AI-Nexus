@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'src/routes/hooks';
 import { useAuthContext } from 'src/auth/hooks';
 
@@ -20,7 +20,9 @@ import { LoadingScreen } from 'src/components/loading-screen';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import { DashboardContent } from 'src/layouts/dashboard';
 
+import { syncApiUserToSession } from 'src/auth/utils/normalize-user-session';
 import { useGetUser, useGetUserProfile } from 'src/actions/user';
+import { formatNullableBoolean } from 'src/utils/format-boolean';
 import { UserNewEditForm } from '../user-new-edit-form';
 
 // ----------------------------------------------------------------------
@@ -30,30 +32,21 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
   const { user: currentAuthUser, checkUserSession } = useAuthContext();
   const { id } = useParams();
 
-  // If it's own profile, use profile endpoint, otherwise use provided id
-  const userId = isOwnProfile ? (currentAuthUser?.id || currentAuthUser?._id) : id;
+  const userId = isOwnProfile ? '' : id;
 
-  // Fetch user data - use profile endpoint for own profile, regular endpoint for others
-  const profileHook = useGetUserProfile();
+  const profileHook = useGetUserProfile(isOwnProfile);
   const userHook = useGetUser(userId);
 
   const { user: fetchedUser, userLoading, userError, refresh: refreshUser } = isOwnProfile ? profileHook : userHook;
 
-  // For own profile, prefer auth user data if available, otherwise use fetched
-  const user = isOwnProfile && currentAuthUser ? {
-    id: currentAuthUser.id || currentAuthUser._id,
-    username: currentAuthUser.username || fetchedUser?.username,
-    firstname: currentAuthUser.firstname || fetchedUser?.firstname,
-    lastname: currentAuthUser.lastname || fetchedUser?.lastname,
-    email: currentAuthUser.email || fetchedUser?.email,
-    status: currentAuthUser.status || fetchedUser?.status || 'Active',
-    role: currentAuthUser.role || fetchedUser?.role || 'User',
-    isVerified: currentAuthUser.isVerified || fetchedUser?.isVerified || false,
-    avatarUrl: currentAuthUser.avatarUrl || fetchedUser?.avatarUrl || null,
-    contactNumber: currentAuthUser.contactNumber || currentAuthUser.phoneNumber || fetchedUser?.contactNumber || fetchedUser?.phoneNumber,
-    company: currentAuthUser.company || fetchedUser?.company,
-    name: [currentAuthUser.firstname, currentAuthUser.lastname].filter(Boolean).join(' ') || currentAuthUser.name || fetchedUser?.name,
-  } : fetchedUser;
+  const user = fetchedUser;
+
+  useEffect(() => {
+    if (!isOwnProfile || !fetchedUser?.id) return;
+    syncApiUserToSession(fetchedUser);
+    checkUserSession?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when API user id changes only
+  }, [isOwnProfile, fetchedUser?.id]);
 
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -66,28 +59,8 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
       refreshUser();
     }
 
-    // If it's own profile, also update auth context and session storage
-    if (isOwnProfile) {
-      // Update session storage with new user data
-      if (updatedUser) {
-        const userStr = sessionStorage.getItem('user');
-        if (userStr) {
-          try {
-            const currentUser = JSON.parse(userStr);
-            const updatedUserData = {
-              ...currentUser,
-              ...updatedUser,
-              // Ensure status is capitalized for display
-              status: updatedUser.status ? updatedUser.status.charAt(0).toUpperCase() + updatedUser.status.slice(1) : currentUser.status,
-            };
-            sessionStorage.setItem('user', JSON.stringify(updatedUserData));
-          } catch (error) {
-            console.error('Error updating user in sessionStorage:', error);
-          }
-        }
-      }
-
-      // Refresh auth context
+    if (isOwnProfile && updatedUser) {
+      syncApiUserToSession(updatedUser);
       if (checkUserSession) {
         await checkUserSession();
       }
@@ -237,6 +210,22 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
                     year: 'numeric',
                   })
                 : '-'}
+            </Typography>
+          </Grid>
+          <Grid xs={12} sm={6}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              SCAQ candidate
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+              {formatNullableBoolean(user.isSCAQCandidate)}
+            </Typography>
+          </Grid>
+          <Grid xs={12} sm={6}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Associate member
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+              {formatNullableBoolean(user.isAssociateMember)}
             </Typography>
           </Grid>
         </Grid>

@@ -10,6 +10,7 @@ import { HomeCounterSection } from '../home-counter-section';
 import { HomeCommunitiesSection } from '../home-communities-section';
 import { HomeJoinSection } from '../home-join-section';
 import { HomeProgrammeFeesSection } from '../home-programme-fees-section';
+import { HomeCurriculumSection } from '../home-curriculum-section';
 import { HomeFaqsSection } from '../home-faqs-section';
 
 // ----------------------------------------------------------------------
@@ -33,6 +34,7 @@ export function HomeView() {
         {/* <HomeCommunitiesSection /> */}
         <HomeJoinSection />
         <ContactSection />
+        <HomeCurriculumSection />
         <HomeProgrammeFeesSection />
         <HomeFaqsSection />
       </Stack>

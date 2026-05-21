@@ -2,22 +2,8 @@ import { deleteCookie } from 'src/utils/cookie';
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
-import { resolveAssetUrl } from 'src/utils/asset-url';
-
 import { setSession } from './utils';
-
-const normalizeUserForSession = (user) => {
-  if (!user || typeof user !== 'object') return user;
-
-  return {
-    ...user,
-    firstname: user.firstname ?? user.firstName ?? '',
-    lastname: user.lastname ?? user.lastName ?? '',
-    isVerified: user.isVerified ?? user.isVerify ?? false,
-    avatarUrl: resolveAssetUrl(user.avatarUrl ?? user.photoURL ?? ''),
-    contactNumber: user.contactNumber ?? user.phoneNumber ?? '',
-  };
-};
+import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 
 /** **************************************
  * Sign in with backend API (supports email or username)

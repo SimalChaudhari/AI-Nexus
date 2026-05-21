@@ -63,6 +63,8 @@ const transformUser = (user) => {
     isVerified: user.isVerified || false,
     authProvider: user.authProvider || 'LOCAL',
     createdAt: user.createdAt || null,
+    isSCAQCandidate: user.isSCAQCandidate ?? null,
+    isAssociateMember: user.isAssociateMember ?? null,
   };
 };
 

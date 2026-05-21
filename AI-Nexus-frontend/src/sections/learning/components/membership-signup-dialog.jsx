@@ -108,6 +108,7 @@ const INITIAL_STATE = {
   otherPortalVerificationAcknowledged: false,
   otherAiEligibility: null,
   salesforceMembershipAccountCreated: false,
+  salesforceAccountChoice: '',
 };
 
 function getFlowStep(state) {
@@ -120,25 +121,10 @@ function getFlowStep(state) {
   if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) return 'membership-choice';
   if (state.wantsIscaMembership === false) return 'result';
   if (!state.eligibilityType) return 'eligibility';
-  if (state.eligibilityType === 'recognition' && !state.charteredAccountantPathway) {
-    return 'chartered-accountant-pathway';
-  }
-  if (state.eligibilityType === 'recognition' && !state.charteredMembershipApplicationAgreed) {
-    if (state.charteredMembershipApplicationDeclined) return 'retry-eligibility';
-    return 'chartered-membership-agreement';
-  }
-  if (state.eligibilityType === 'recognition' && !state.charteredDocumentsSubmitted) {
-    if (!state.charteredDocumentsIntroCompleted) return 'chartered-documents';
-    return 'chartered-documents-upload';
-  }
-  if (state.eligibilityType === 'recognition' && state.charteredVerificationStatus === null) {
-    return 'chartered-documents-upload';
-  }
-  if (state.eligibilityType === 'recognition' && !state.charteredVerificationAcknowledged) {
-    return 'chartered-documents-upload';
-  }
-  if (state.eligibilityType === 'recognition' && state.charteredVerificationStatus === false && state.charteredVerificationAcknowledged) {
-    return 'retry-eligibility';
+  if (state.eligibilityType === 'recognition') {
+    if (!state.salesforceAccountChoice) return 'salesforce-account-choice';
+    if (!state.salesforceMembershipAccountCreated) return 'salesforce-membership-create';
+    return 'result';
   }
   if (state.eligibilityType === 'other' && state.otherCimaQualified === null) {
     return 'other-cima-check';
@@ -412,6 +398,7 @@ function getRequirementLabel(state, step) {
     'direct-degree-check': 'Direct entry degree recognition check',
     'scaq-candidate-verify': 'SCAQ candidate verification',
     'associate-member-check': 'Associate member status check',
+    'salesforce-account-choice': 'Create or login Salesforce account',
     'salesforce-membership-create': 'Salesforce membership registration',
     result: 'Review and continue',
   };
@@ -480,17 +467,12 @@ function getProgressMeta(state, step) {
               steps.push('retry-eligibility');
             }
           } else if (state.eligibilityType === 'recognition') {
-            steps.push(
-              'chartered-accountant-pathway',
-              'chartered-membership-agreement',
-              'chartered-documents',
-              'chartered-documents-upload'
-            );
-            if (state.charteredVerificationStatus === false && state.charteredVerificationAcknowledged) {
-              steps.push('retry-eligibility');
-            }
-            if (state.charteredVerificationStatus === true && state.charteredVerificationAcknowledged) {
-              pushMembershipFinalStep(steps, state);
+            if (!state.salesforceAccountChoice) {
+              steps.push('salesforce-account-choice');
+            } else if (!state.salesforceMembershipAccountCreated) {
+              steps.push('salesforce-membership-create');
+            } else {
+              steps.push('result');
             }
           } else if (state.eligibilityType === 'other') {
             steps.push('other-cima-check');
@@ -628,6 +610,25 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
 
   const handleResultAction = () => {
     onContinue?.({ flow: flowState, result });
+  };
+
+  const handleSalesforceLogin = () => {
+    onContinue?.({
+      flow: flowState,
+      result: {
+        ...result,
+        actionTarget: 'salesforce',
+        ctaLabel: 'Login with Salesforce',
+      },
+    });
+  };
+
+  const selectSalesforceAccountChoice = (choice) => {
+    if (choice === 'login') {
+      handleSalesforceLogin();
+      return;
+    }
+    setFlowState((prev) => ({ ...prev, salesforceAccountChoice: 'create' }));
   };
 
   const resultCtaLabel = salesforceAccountReady ? 'Login with Salesforce' : result.ctaLabel;
@@ -960,6 +961,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       otherPortalVerificationStatus: null,
       otherPortalVerificationAcknowledged: false,
       otherAiEligibility: null,
+      salesforceAccountChoice: '',
+      salesforceMembershipAccountCreated: false,
     }));
   };
 
@@ -2101,6 +2104,23 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         experiencedVerificationAcknowledged: false,
         experiencedFailureAcknowledged: false,
         eligibilityVerified: null,
+      }));
+      return;
+    }
+    if (step === 'salesforce-membership-create') {
+      setFlowState((prev) => ({
+        ...prev,
+        salesforceAccountChoice: '',
+        salesforceMembershipAccountCreated: false,
+      }));
+      return;
+    }
+    if (step === 'salesforce-account-choice') {
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityType: '',
+        eligibilityVerified: null,
+        salesforceAccountChoice: '',
       }));
       return;
     }
@@ -3978,6 +3998,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             </Stack>
           </Stack>
         )}
+        {step === 'salesforce-account-choice' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Salesforce membership account
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+              Create a new ISCA Salesforce membership account, or sign in if you already have one.
+            </Typography>
+          </Stack>
+        )}
         {step === 'salesforce-membership-create' && (
           <SalesforceMembershipCreateStep
             title={result.title}
@@ -3991,6 +4021,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
                 : ''
             }
             onAccountCreated={markSalesforceMembershipAccountCreated}
+            onLoginWithSalesforce={handleSalesforceLogin}
           />
         )}
         {step === 'result' && (
@@ -4019,6 +4050,28 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, pt: 1, justifyContent: 'flex-end', gap: 1 }}>
+        {step === 'salesforce-account-choice' && (
+          <>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              onClick={() => selectSalesforceAccountChoice('create')}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              Create Salesforce account
+            </Button>
+            <Button
+              variant="outlined"
+              color="inherit"
+              size="large"
+              onClick={() => selectSalesforceAccountChoice('login')}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+            >
+              Login with Salesforce
+            </Button>
+          </>
+        )}
         {step === 'result' && (
           <Button
             variant="contained"

@@ -55,6 +55,14 @@ export type FaqContent = {
   items?: Array<{ question?: string; answer?: string }>;
 };
 
+export type CurriculumContent = {
+  smallTitle?: string;
+  subtext?: string;
+  hoursLabel?: string;
+  pacingLabel?: string;
+  courseIds?: string[];
+};
+
 export type ProgrammeFeesContent = {
   heading?: string;
   tiers?: Array<{
@@ -144,6 +152,10 @@ export class AppSettingsEntity {
   /** Programme fees & funding block (home page + public). */
   @Column({ type: 'jsonb', nullable: true })
   programmeFeesContent?: ProgrammeFeesContent | null;
+
+  /** Home page curriculum block (course modules list). */
+  @Column({ type: 'jsonb', nullable: true })
+  curriculumContent?: CurriculumContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

@@ -320,6 +320,23 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Get('curriculum-content')
+  @ApiOperation({ summary: 'Get public home page curriculum content with course modules' })
+  async getCurriculumContent(@Res() response: Response) {
+    const data = await this.appSettingsService.getCurriculumContent();
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('curriculum-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update public home page curriculum content' })
+  async updateCurriculumContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateCurriculumContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Get('programme-fees-content')
   @ApiOperation({ summary: 'Get programme fees & funding content' })
   async getProgrammeFeesContent(@Res() response: Response) {

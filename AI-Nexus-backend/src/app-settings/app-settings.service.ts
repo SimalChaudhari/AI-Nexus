@@ -6,6 +6,7 @@ import { AppSettingsEntity, WorkflowTemplatesPitchContent } from './app-settings
 import { LocalStorageService } from '../service/local-storage.service';
 import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
+import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 
 type HomeHeroContentPayload = {
@@ -47,6 +48,39 @@ type HomeJoinContentPayload = {
 type FaqContentPayload = {
   pageHeading?: string;
   items?: Array<{ question?: string; answer?: string }>;
+};
+
+type CurriculumContentPayload = {
+  smallTitle?: string;
+  subtext?: string;
+  hoursLabel?: string;
+  pacingLabel?: string;
+  courseIds?: string[];
+};
+
+type CurriculumCoursePayload = {
+  id: string;
+  title: string;
+  modulesCount: number;
+};
+
+type CurriculumModulePayload = {
+  index: number;
+  title: string;
+  description: string;
+  courseId?: string;
+};
+
+type CurriculumPublicPayload = {
+  smallTitle?: string;
+  subtext?: string;
+  hoursLabel?: string;
+  pacingLabel?: string;
+  courseIds: string[];
+  courses: CurriculumCoursePayload[];
+  headline: string;
+  moduleCount: number;
+  modules: CurriculumModulePayload[];
 };
 
 type ProgrammeFeesContentPayload = {
@@ -102,6 +136,10 @@ const FAQ_ITEMS_MAX = 50;
 const PROGRAMME_FEES_HEADING_MAX = 120;
 const PROGRAMME_FEES_TIER_TITLE_MAX = 240;
 const PROGRAMME_FEES_TIERS_MAX = 8;
+const CURRICULUM_SMALL_TITLE_MAX = 120;
+const CURRICULUM_SUBTEXT_MAX = 400;
+const CURRICULUM_LABEL_MAX = 80;
+const CURRICULUM_COURSES_MAX = 20;
 
 @Injectable()
 export class AppSettingsService {
@@ -111,6 +149,7 @@ export class AppSettingsService {
   private workflowTemplatesPitchColumnChecked = false;
   private faqColumnChecked = false;
   private programmeFeesColumnChecked = false;
+  private curriculumColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -119,6 +158,8 @@ export class AppSettingsService {
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(CourseEntity)
     private readonly courseRepository: Repository<CourseEntity>,
+    @InjectRepository(CourseModuleEntity)
+    private readonly courseModuleRepository: Repository<CourseModuleEntity>,
     @InjectRepository(CourseEnrollmentEntity)
     private readonly courseEnrollmentRepository: Repository<CourseEnrollmentEntity>,
     private readonly localStorageService: LocalStorageService
@@ -175,6 +216,14 @@ export class AppSettingsService {
     this.programmeFeesColumnChecked = true;
   }
 
+  private async ensureCurriculumColumn(): Promise<void> {
+    if (this.curriculumColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "curriculumContent" jsonb'
+    );
+    this.curriculumColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
@@ -182,6 +231,7 @@ export class AppSettingsService {
     await this.ensureWorkflowTemplatesPitchColumn();
     await this.ensureFaqColumn();
     await this.ensureProgrammeFeesColumn();
+    await this.ensureCurriculumColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -492,6 +542,110 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizeCurriculumContent(input: unknown): CurriculumContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawIds = Array.isArray(source.courseIds) ? source.courseIds : [];
+    const legacyCourseId = this.cleanText(source.courseId, 64);
+    const seen = new Set<string>();
+    const courseIds: string[] = [];
+
+    const pushId = (value: string) => {
+      const id = this.cleanText(value, 64);
+      if (!/^[0-9a-f-]{36}$/i.test(id) || seen.has(id)) return;
+      seen.add(id);
+      courseIds.push(id);
+    };
+
+    rawIds.forEach((id: unknown) => pushId(String(id || '')));
+    if (!courseIds.length && /^[0-9a-f-]{36}$/i.test(legacyCourseId)) {
+      pushId(legacyCourseId);
+    }
+
+    return {
+      smallTitle: this.cleanText(source.smallTitle, CURRICULUM_SMALL_TITLE_MAX),
+      subtext: this.cleanText(source.subtext, CURRICULUM_SUBTEXT_MAX),
+      hoursLabel: this.cleanText(source.hoursLabel, CURRICULUM_LABEL_MAX),
+      pacingLabel: this.cleanText(source.pacingLabel, CURRICULUM_LABEL_MAX),
+      courseIds: courseIds.slice(0, CURRICULUM_COURSES_MAX),
+    };
+  }
+
+  private buildCurriculumHeadline(
+    moduleCount: number,
+    content: CurriculumContentPayload
+  ): string {
+    const parts: string[] = [];
+    parts.push(`${moduleCount} module${moduleCount === 1 ? '' : 's'}`);
+    if (content.hoursLabel) parts.push(content.hoursLabel);
+    if (content.pacingLabel) parts.push(content.pacingLabel);
+    return parts.join(' · ');
+  }
+
+  private async resolveCurriculumFromCourses(courseIds: string[]): Promise<{
+    courses: CurriculumCoursePayload[];
+    modules: CurriculumModulePayload[];
+  }> {
+    const courses: CurriculumCoursePayload[] = [];
+    const modules: CurriculumModulePayload[] = [];
+    let index = 0;
+
+    for (const courseId of courseIds) {
+      const course = await this.courseRepository.findOne({
+        where: { id: courseId, isBundle: false },
+      });
+      if (!course) continue;
+
+      const courseTitle = String(course.title || '').trim();
+      if (!courseTitle) continue;
+
+      const moduleRows = await this.courseModuleRepository.find({
+        where: { courseId: course.id },
+        order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      });
+
+      courses.push({
+        id: course.id,
+        title: courseTitle,
+        modulesCount: moduleRows.length,
+      });
+
+      moduleRows.forEach((row) => {
+        const title = String(row.title || '').trim();
+        if (!title) return;
+        modules.push({
+          index,
+          courseId: course.id,
+          title,
+          description: String(row.description || '').trim(),
+        });
+        index += 1;
+      });
+    }
+
+    return { courses, modules };
+  }
+
+  private async buildCurriculumPublicPayload(
+    content?: CurriculumContentPayload | null
+  ): Promise<CurriculumPublicPayload> {
+    const sanitized = this.sanitizeCurriculumContent(content || {});
+    const courseIds = sanitized.courseIds || [];
+    const { courses, modules } = await this.resolveCurriculumFromCourses(courseIds);
+    const moduleCount = modules.length;
+
+    return {
+      smallTitle: sanitized.smallTitle,
+      subtext: sanitized.subtext,
+      hoursLabel: sanitized.hoursLabel,
+      pacingLabel: sanitized.pacingLabel,
+      courseIds,
+      courses,
+      moduleCount,
+      modules,
+      headline: this.buildCurriculumHeadline(moduleCount, sanitized),
+    };
+  }
+
   private sanitizeFaqContent(input: unknown): FaqContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const rawItems = Array.isArray(source.items) ? source.items : [];
@@ -585,6 +739,29 @@ export class AppSettingsService {
     return {
       message: 'FAQ content updated successfully',
       settings: saved,
+    };
+  }
+
+  async getCurriculumContent(): Promise<CurriculumPublicPayload> {
+    const settings = await this.getSettings();
+    return this.buildCurriculumPublicPayload(settings.curriculumContent);
+  }
+
+  async updateCurriculumContent(
+    payload: CurriculumContentPayload
+  ): Promise<{
+    message: string;
+    settings: AppSettingsEntity;
+    curriculum: CurriculumPublicPayload;
+  }> {
+    const settings = await this.getSettings();
+    settings.curriculumContent = this.sanitizeCurriculumContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    const curriculum = await this.buildCurriculumPublicPayload(saved.curriculumContent);
+    return {
+      message: 'Curriculum content updated successfully',
+      settings: saved,
+      curriculum,
     };
   }
 
@@ -749,6 +926,7 @@ export class AppSettingsService {
     workflowTemplatesPitchContent: WorkflowTemplatesPitchContent | null;
     faqContent: FaqContentPayload | null;
     programmeFeesContent: ProgrammeFeesContentPayload | null;
+    curriculumContent: CurriculumContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -776,6 +954,9 @@ export class AppSettingsService {
             settings.programmeFeesContent,
             settings.programmeFeesContent
           )
+        : null,
+      curriculumContent: settings.curriculumContent
+        ? this.sanitizeCurriculumContent(settings.curriculumContent)
         : null,
       totalCourseEnrollments,
     };
