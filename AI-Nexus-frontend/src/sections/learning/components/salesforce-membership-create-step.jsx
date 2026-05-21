@@ -269,7 +269,7 @@ export function SalesforceMembershipCreateStep({
               disabled={submitting}
               sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
             >
-              Login with Salesforce
+              Login with Eservices
             </Button>
           )}
         </Stack>
@@ -478,7 +478,7 @@ export function SalesforceMembershipCreateStep({
 
       <Typography variant="caption" color="text.secondary">
         {phase === 'set-password'
-          ? 'After setting your password, use Login with Salesforce on the next screen.'
+          ? 'After setting your password, use Login with Eservices on the next screen.'
           : 'Next you will set your Salesforce login password, then sign in to the platform.'}
       </Typography>
     </Stack>

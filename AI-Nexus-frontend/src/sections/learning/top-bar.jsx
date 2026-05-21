@@ -100,6 +100,35 @@ export function LearningTopBar({
                 All Courses
               </Button>
               <Button
+                onClick={() => setActiveTab('my-courses')}
+                variant={activeTab === 'my-courses' ? 'contained' : 'text'}
+                color={activeTab === 'my-courses' ? 'primary' : 'secondary'}
+                sx={{
+                  minWidth: 0,
+                  flexShrink: 0,
+                  px: { xs: 1.5, md: 2 },
+                  py: { xs: 0.625, md: 0.75 },
+                  borderRadius: 999,
+                  textTransform: 'none',
+                  fontSize: { xs: theme.typography.pxToRem(13), md: theme.typography.pxToRem(14) },
+                  ...(activeTab !== 'my-courses' && {
+                    color: 'common.black',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.common.black, 0.08),
+                    },
+                  }),
+                  ...(activeTab === 'my-courses' && {
+                    bgcolor: 'common.white',
+                    color: 'common.black',
+                    '&:hover': {
+                      bgcolor: 'grey.100',
+                    },
+                  }),
+                }}
+              >
+                My Courses
+              </Button>
+              <Button
                 onClick={() => setActiveTab('progress')}
                 variant={activeTab === 'progress' ? 'contained' : 'text'}
                 color={activeTab === 'progress' ? 'primary' : 'secondary'}

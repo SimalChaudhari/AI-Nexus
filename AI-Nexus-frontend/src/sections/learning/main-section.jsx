@@ -43,6 +43,9 @@ export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: se
       {/* All Courses View */}
       {activeTab === 'courses' && <AllCourses refreshSignal={coursesRefreshSignal} />}
 
+      {/* Purchased / enrolled courses only */}
+      {activeTab === 'my-courses' && <AllCourses refreshSignal={coursesRefreshSignal} enrolledOnly />}
+
       {/* My Progress View */}
       {activeTab === 'progress' && <MyProgress onNavigateToCertificates={() => setActiveTab('certificates')} />}
 

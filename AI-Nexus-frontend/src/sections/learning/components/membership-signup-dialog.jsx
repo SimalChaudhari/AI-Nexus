@@ -247,7 +247,7 @@ function getOutcome(state) {
       outcome: 'isca-login',
       title: 'ISCA member route',
       summary: 'Sign in with your Salesforce-linked member account.',
-      ctaLabel: 'Login with Salesforce',
+      ctaLabel: 'Login with Eservices',
       actionTarget: 'salesforce',
     };
   }
@@ -294,7 +294,7 @@ function getOutcome(state) {
         outcome: 'update-associate-and-login',
         title: 'Associate status update',
         summary: 'Update Salesforce membership status to Associate, then login to platform.',
-        ctaLabel: 'Login with Salesforce',
+        ctaLabel: 'Login with Eservices',
         actionTarget: 'salesforce',
       };
     }
@@ -302,7 +302,7 @@ function getOutcome(state) {
       outcome: 'associate-login',
       title: 'Associate member login',
       summary: 'Login to platform using Salesforce account.',
-      ctaLabel: 'Login with Salesforce',
+      ctaLabel: 'Login with Eservices',
       actionTarget: 'salesforce',
     };
   }
@@ -618,7 +618,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       result: {
         ...result,
         actionTarget: 'salesforce',
-        ctaLabel: 'Login with Salesforce',
+        ctaLabel: 'Login with Eservices',
       },
     });
   };
@@ -631,7 +631,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setFlowState((prev) => ({ ...prev, salesforceAccountChoice: 'create' }));
   };
 
-  const resultCtaLabel = salesforceAccountReady ? 'Login with Salesforce' : result.ctaLabel;
+  const resultCtaLabel = salesforceAccountReady ? 'Login with Eservices' : result.ctaLabel;
 
   const selectResidency = (value) => {
     resetNricCheckState();
@@ -2309,7 +2309,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         {step === 'membership-choice' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Apply for ISCA membership to access the platform for free?
+              Apply for ISCA Membership Now!
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -4068,7 +4068,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               onClick={() => selectSalesforceAccountChoice('login')}
               sx={{ textTransform: 'none', fontWeight: 600 }}
             >
-              Login with Salesforce
+              Login with Eservices
             </Button>
           </>
         )}

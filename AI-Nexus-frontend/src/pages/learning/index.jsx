@@ -9,7 +9,7 @@ import { LearningTopBar, LearningMainSection } from 'src/sections/learning';
 // ----------------------------------------------------------------------
 
 const metadata = { title: `Learning | ${CONFIG.site.name}` };
-const VALID_TABS = new Set(['courses', 'progress', 'favorites', 'certificates']);
+const VALID_TABS = new Set(['courses', 'my-courses', 'progress', 'favorites', 'certificates']);
 
 export default function LearningPage() {
   const [searchParams, setSearchParams] = useSearchParams();

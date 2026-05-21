@@ -31,6 +31,7 @@ import { Divider } from '@mui/material';
 import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
 import { LearningBundlePill, LearningBundleRibbon } from './components/course-bundle-badge';
 import { MembershipSignupDialog } from './components/membership-signup-dialog';
+import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import {
   buildScaqAssociateOptInOAuthStartUrl,
   clearMembershipEligibilityDraftOnModalClose,
@@ -87,7 +88,7 @@ const getCourseProgressStatus = (status, courseProgress) => {
 
 const shouldShowTitleTooltip = (title) => String(title || '').trim().length > 42;
 
-export function AllCourses({ refreshSignal = 0 }) {
+export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
   const theme = useTheme();
   // const isDesktop = useMediaQuery(theme.breakpoints.up('md')); // filters UI disabled
   const navigate = useNavigate();
@@ -244,6 +245,10 @@ export function AllCourses({ refreshSignal = 0 }) {
       }
       */
 
+      if (enrolledOnly && authenticated) {
+        params.isEnrolled = true;
+      }
+
       try {
         const groupedPayload = await courseService.getGroupedCourses(params);
         const groupedResponse = groupedPayload?.groups || [];
@@ -342,7 +347,7 @@ export function AllCourses({ refreshSignal = 0 }) {
         }
       }
     },
-    [debouncedSearchQuery, resolveGroupKey]
+    [authenticated, debouncedSearchQuery, enrolledOnly, resolveGroupKey]
   );
 
   const handleGroupPageChange = useCallback(
@@ -371,7 +376,7 @@ export function AllCourses({ refreshSignal = 0 }) {
       setFavorites(new Set());
     }
 
-    const filterSignature = `all|${authenticated ? 'auth' : 'guest'}|${debouncedSearchQuery}`;
+    const filterSignature = `${enrolledOnly ? 'my-courses' : 'all'}|${authenticated ? 'auth' : 'guest'}|${debouncedSearchQuery}`;
 
     if (querySignatureRef.current !== filterSignature) {
       querySignatureRef.current = filterSignature;
@@ -387,7 +392,7 @@ export function AllCourses({ refreshSignal = 0 }) {
     }
 
     fetchCoursesPage();
-  }, [authenticated, debouncedSearchQuery, fetchCoursesPage, refreshSignal]);
+  }, [authenticated, debouncedSearchQuery, enrolledOnly, fetchCoursesPage, refreshSignal]);
 
   useEffect(() => {
     let active = true;
@@ -458,12 +463,18 @@ export function AllCourses({ refreshSignal = 0 }) {
   }, []);
   const groupedCourses = useMemo(
     () =>
-      (groupedResult || []).map((group) => ({
-        level: group.groupName,
-        groupKey: resolveGroupKey(group),
-        items: group.items || [],
-        pagination: group.pagination || DEFAULT_PAGINATION,
-      })),
+      (groupedResult || [])
+        .map((group) => ({
+          level: group.groupName,
+          groupKey: resolveGroupKey(group),
+          items: group.items || [],
+          pagination: group.pagination || DEFAULT_PAGINATION,
+        }))
+        .filter((group) => {
+          const total = Number(group.pagination?.totalItems ?? 0);
+          const itemCount = (group.items || []).length;
+          return total > 0 && itemCount > 0;
+        }),
     [groupedResult, resolveGroupKey]
   );
   const recommendedResultsCount = groupedCourses
@@ -550,6 +561,10 @@ export function AllCourses({ refreshSignal = 0 }) {
     }
   };
 
+  if (enrolledOnly && !authenticated) {
+    return <LearningGuestSignInPrompt variant="myCourses" />;
+  }
+
   if (loading && courses.length === 0) {
     return <LoadingScreen />;
   }
@@ -583,14 +598,24 @@ export function AllCourses({ refreshSignal = 0 }) {
           >
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', flex: 1 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                {totalCount === 0 ? 'No results' : `${totalCount} total results`}
+                {enrolledOnly
+                  ? totalCount === 0
+                    ? 'No purchased courses yet'
+                    : `${totalCount} purchased course${totalCount === 1 ? '' : 's'}`
+                  : totalCount === 0
+                    ? 'No results'
+                    : `${totalCount} total results`}
               </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Recommended: {recommendedResultsCount}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Category groups: {levelResultsCount}
-              </Typography>
+              {!enrolledOnly ? (
+                <>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    Recommended: {recommendedResultsCount}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    Category groups: {levelResultsCount}
+                  </Typography>
+                </>
+              ) : null}
             </Stack>
 
             <Stack

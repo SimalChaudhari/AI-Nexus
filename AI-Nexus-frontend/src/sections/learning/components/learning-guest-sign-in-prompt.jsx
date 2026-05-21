@@ -21,6 +21,11 @@ export const learningGuestSignInPresets = {
     title: 'Sign in to view favorites',
     subtitle: 'Save courses and lessons to your account and open them quickly anytime.',
   },
+  myCourses: {
+    heroIcon: 'solar:notebook-bookmark-bold',
+    title: 'Sign in to view your courses',
+    subtitle: 'Courses you have purchased or enrolled in appear here after you sign in.',
+  },
   certificates: {
     heroIcon: 'solar:medal-ribbons-star-bold',
     title: 'Sign in to view certificates',
