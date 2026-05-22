@@ -782,7 +782,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           ))}
         </MembershipFormTextField>
       </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
+      <Grid item xs={12} sm={6} md={4} lg={2}>
         <MembershipFormTextField
           label="Nationality"
           required
@@ -793,7 +793,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           placeholder="Enter nationality"
         />
       </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
+      <Grid item xs={12} sm={6} md={4} lg={2}>
         <MembershipFormTextField
           label="Citizenship"
           size={fieldSize}
@@ -803,7 +803,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           placeholder="Enter citizenship"
         />
       </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
+      <Grid item xs={12} sm={6} md={4} lg={2}>
         <MembershipFormTextField
           label="ID type"
           size={fieldSize}
@@ -813,28 +813,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           placeholder="e.g. Pink NRIC"
         />
       </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
-        <MembershipFormTextField
-          label="Personal email"
-          type="email"
-          size={fieldSize}
-          fullWidth
-          required
-          value={draft.personal.personalEmail}
-          onChange={(e) => updateSection('personal', 'personalEmail', e.target.value)}
-        />
-      </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
-        <MembershipFormTextField
-          label="Alternate email"
-          type="email"
-          size={fieldSize}
-          fullWidth
-          value={draft.personal.alternateEmailAddress}
-          onChange={(e) => updateSection('personal', 'alternateEmailAddress', e.target.value)}
-        />
-      </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
+      <Grid item xs={12} sm={6} md={6} lg={3}>
         <MembershipFormPhoneField
           label="Mobile number"
           size={fieldSize}
@@ -847,7 +826,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           onNumberChange={(e) => updateSection('personal', 'telMobile', e.target.value)}
         />
       </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
+      <Grid item xs={12} sm={6} md={6} lg={3}>
         <MembershipFormPhoneField
           label="Other number"
           size={fieldSize}
@@ -860,7 +839,18 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           onNumberChange={(e) => updateSection('personal', 'otherNumber', e.target.value)}
         />
       </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={3}>
+      <Grid item xs={12} sm={6} md={4} lg={4}>
+        <MembershipFormTextField
+          label="Personal email"
+          type="email"
+          size={fieldSize}
+          fullWidth
+          required
+          value={draft.personal.personalEmail}
+          onChange={(e) => updateSection('personal', 'personalEmail', e.target.value)}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} md={4} lg={4}>
         <MembershipFormTextField
           label="Email friendly name"
           size={fieldSize}
@@ -868,6 +858,16 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           value={draft.personal.emailFriendlyName}
           onChange={(e) => updateSection('personal', 'emailFriendlyName', e.target.value)}
           placeholder="Display name for correspondence"
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} md={4} lg={4}>
+        <MembershipFormTextField
+          label="Alternate email"
+          type="email"
+          size={fieldSize}
+          fullWidth
+          value={draft.personal.alternateEmailAddress}
+          onChange={(e) => updateSection('personal', 'alternateEmailAddress', e.target.value)}
         />
       </Grid>
 

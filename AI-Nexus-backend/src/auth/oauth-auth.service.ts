@@ -6,6 +6,10 @@ import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
 import { UserEntity, AuthProvider, UserRole, UserStatus } from '../user/users.entity';
 import { normalizeEmail } from '../utils/auth.utils';
+import {
+  buildOAuthApplicationApiUrl,
+  type OAuthApplicationApiRouteKey,
+} from '../config/oauth-application-api.config';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -204,128 +208,43 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.setNexusPasswordPath}`;
   }
 
-  private get applicationCreatePath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_CREATE_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createApplicationNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+  private resolveApplicationApiUrl(route: OAuthApplicationApiRouteKey): string {
+    return buildOAuthApplicationApiUrl(route, {
+      siteBaseUrl: process.env.OAUTH_INSTANCE_URL?.trim(),
+      integrationBaseUrl: this.integrationApiBaseUrl,
+    });
   }
 
   get applicationCreateUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_CREATE_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationCreatePath}`;
-    return `${this.integrationApiBaseUrl}${this.applicationCreatePath}`;
-  }
-
-  private get applicationPersonalDetailsPath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_PERSONAL_DETAILS_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createApplicationPersonalDetailsNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('create');
   }
 
   get applicationPersonalDetailsUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_PERSONAL_DETAILS_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationPersonalDetailsPath}`;
-    return `${this.integrationApiBaseUrl}${this.applicationPersonalDetailsPath}`;
-  }
-
-  private get applicationEmploymentDetailsPath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_EMPLOYMENT_DETAILS_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createEmploymentDetailsNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('personalDetails');
   }
 
   get applicationEmploymentDetailsUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_EMPLOYMENT_DETAILS_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationEmploymentDetailsPath}`;
-    return `${this.integrationApiBaseUrl}${this.applicationEmploymentDetailsPath}`;
-  }
-
-  private get applicationAcademicQualificationPath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_ACADEMIC_QUALIFICATION_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createAcademicQualificationNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('employmentDetails');
   }
 
   get applicationAcademicQualificationUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_ACADEMIC_QUALIFICATION_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationAcademicQualificationPath}`;
-    return `${this.integrationApiBaseUrl}${this.applicationAcademicQualificationPath}`;
-  }
-
-  private get applicationProfessionalQualificationPath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_PROFESSIONAL_QUALIFICATION_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createProfessionalQualificationNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('academicQualification');
   }
 
   get applicationProfessionalQualificationUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_PROFESSIONAL_QUALIFICATION_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationProfessionalQualificationPath}`;
-    return `${this.integrationApiBaseUrl}${this.applicationProfessionalQualificationPath}`;
-  }
-
-  private get applicationAtoPath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_ATO_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createATONexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('professionalQualification');
   }
 
   get applicationAtoUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_ATO_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationAtoPath}`;
-    return `${this.integrationApiBaseUrl}${this.applicationAtoPath}`;
-  }
-
-  private get applicationCharacterReferencePath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_CHARACTER_REFERENCE_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createCharacterReferenceNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('ato');
   }
 
   get applicationCharacterReferenceUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_CHARACTER_REFERENCE_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) {
-      return `${siteBase.replace(/\/$/, '')}${this.applicationCharacterReferencePath}`;
-    }
-    return `${this.integrationApiBaseUrl}${this.applicationCharacterReferencePath}`;
-  }
-
-  private get applicationDeclarationPath(): string {
-    const p =
-      process.env.OAUTH_APPLICATION_DECLARATION_PATH
-      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createDeclarationNexus';
-    return p.startsWith('/') ? p : `/${p}`;
+    return this.resolveApplicationApiUrl('characterReference');
   }
 
   get applicationDeclarationUrl(): string {
-    const fullUrl = process.env.OAUTH_APPLICATION_DECLARATION_URL?.trim();
-    if (fullUrl) return fullUrl;
-    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
-    if (siteBase) {
-      return `${siteBase.replace(/\/$/, '')}${this.applicationDeclarationPath}`;
-    }
-    return `${this.integrationApiBaseUrl}${this.applicationDeclarationPath}`;
+    return this.resolveApplicationApiUrl('declaration');
   }
 
   /** Token endpoint for integration (password grant); defaults to OAUTH_INSTANCE_URL + path. */
