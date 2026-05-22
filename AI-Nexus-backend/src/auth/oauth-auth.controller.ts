@@ -178,6 +178,9 @@ export class OAuthAuthController {
         salesforceMemberClass: user.salesforceMemberClass || '',
         isSCAQCandidate: user.isSCAQCandidate === null ? '' : String(user.isSCAQCandidate),
         isAssociateMember: user.isAssociateMember === null ? '' : String(user.isAssociateMember),
+        ...(user.socialAccessToken
+          ? { socialAccessToken: user.socialAccessToken }
+          : {}),
       });
       return this.sendRedirectHtml(res, redirectUrl);
     } catch (err) {

@@ -23,13 +23,30 @@ import {
   verifyNricImages,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
 } from 'src/auth/context/jwt';
+import { paths } from 'src/routes/paths';
+import {
+  readMembershipSalesforceSession,
+  buildMembershipApplicationOAuthStartUrl,
+  buildMembershipSalesforceCreateUrl,
+  openRecognitionMembershipApplicationPage,
+  isMembershipApplicationPending,
+  MEMBERSHIP_SALESFORCE_SESSION_READY,
+  MEMBERSHIP_SALESFORCE_SESSION_KEY,
+  setMembershipApplicationPending,
+  clearMembershipApplicationPending,
+  saveMembershipApplicationCourseReturn,
+} from 'src/utils/membership-salesforce-session';
+import { POST_OAUTH_RETURN_TO_KEY } from 'src/utils/membership-eligibility-sso';
 import {
   SalesforceMembershipCreateStep,
   isSalesforceMembershipCreateOutcomeKey,
   shouldUseSalesforceMembershipCreateStep,
 } from './salesforce-membership-create-step';
-
 // ----------------------------------------------------------------------
+
+function isRecognitionMembershipFlow(state) {
+  return state?.eligibilityType === 'recognition' || isMembershipApplicationPending();
+}
 
 const ELIGIBILITY_OPTIONS = [
   { value: 'scaq-candidate', label: 'An existing candidate of SCAQ Programme' },
@@ -109,6 +126,8 @@ const INITIAL_STATE = {
   otherAiEligibility: null,
   salesforceMembershipAccountCreated: false,
   salesforceAccountChoice: '',
+  salesforceSessionReady: false,
+  membershipApplicationCompleted: false,
 };
 
 function getFlowStep(state) {
@@ -122,9 +141,8 @@ function getFlowStep(state) {
   if (state.wantsIscaMembership === false) return 'result';
   if (!state.eligibilityType) return 'eligibility';
   if (state.eligibilityType === 'recognition') {
-    if (!state.salesforceAccountChoice) return 'salesforce-account-choice';
-    if (!state.salesforceMembershipAccountCreated) return 'salesforce-membership-create';
-    return 'result';
+    // Application form lives on /auth/membership/application (full page), not in this modal.
+    return 'salesforce-account-choice';
   }
   if (state.eligibilityType === 'other' && state.otherCimaQualified === null) {
     return 'other-cima-check';
@@ -400,6 +418,7 @@ function getRequirementLabel(state, step) {
     'associate-member-check': 'Associate member status check',
     'salesforce-account-choice': 'Create or login Salesforce account',
     'salesforce-membership-create': 'Salesforce membership registration',
+    'membership-application': 'Membership application form',
     result: 'Review and continue',
   };
 
@@ -467,13 +486,7 @@ function getProgressMeta(state, step) {
               steps.push('retry-eligibility');
             }
           } else if (state.eligibilityType === 'recognition') {
-            if (!state.salesforceAccountChoice) {
-              steps.push('salesforce-account-choice');
-            } else if (!state.salesforceMembershipAccountCreated) {
-              steps.push('salesforce-membership-create');
-            } else {
-              steps.push('result');
-            }
+            steps.push('salesforce-account-choice');
           } else if (state.eligibilityType === 'other') {
             steps.push('other-cima-check');
             if (state.otherCimaQualified === true) {
@@ -574,6 +587,53 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setStudentEligibilityAssessment(null);
   };
 
+  const applySalesforceSessionFromStorage = () => {
+    const session = readMembershipSalesforceSession();
+    if (!session?.accountId) return;
+
+    setFlowState((prev) => {
+      const next = {
+        ...prev,
+        salesforceSessionReady: true,
+        salesforceMembershipAccountCreated: true,
+        salesforceAccountChoice: prev.salesforceAccountChoice || 'create',
+      };
+
+      if (isRecognitionMembershipFlow(prev)) {
+        openRecognitionMembershipApplicationPage(paths.auth.membership.application);
+      }
+
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    applySalesforceSessionFromStorage();
+
+    const onStorage = (event) => {
+      if (event.key === MEMBERSHIP_SALESFORCE_SESSION_KEY) {
+        applySalesforceSessionFromStorage();
+      }
+    };
+
+    const onMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === MEMBERSHIP_SALESFORCE_SESSION_READY) {
+        applySalesforceSessionFromStorage();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('message', onMessage);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('message', onMessage);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) {
       setFlowState(INITIAL_STATE);
@@ -613,6 +673,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const handleSalesforceLogin = () => {
+    clearMembershipApplicationPending();
     onContinue?.({
       flow: flowState,
       result: {
@@ -623,7 +684,44 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     });
   };
 
+  const openSalesforceMembershipTab = (choice) => {
+    const courseReturn =
+      typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search || ''}`
+        : paths.learning;
+
+    try {
+      sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
+      saveMembershipApplicationCourseReturn(courseReturn);
+      setMembershipApplicationPending();
+    } catch {
+      // ignore
+    }
+
+    const url =
+      choice === 'create'
+        ? buildMembershipSalesforceCreateUrl(paths.auth.membership.salesforceCreate)
+        : buildMembershipApplicationOAuthStartUrl(
+            paths.auth.oauth.start,
+            paths.auth.membership.salesforceBridge
+          );
+
+    setFlowState((prev) => ({
+      ...prev,
+      salesforceAccountChoice: choice === 'create' ? 'create' : 'login',
+    }));
+
+    const popup = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      window.location.href = url;
+    }
+  };
+
   const selectSalesforceAccountChoice = (choice) => {
+    if (flowState.eligibilityType === 'recognition') {
+      openSalesforceMembershipTab(choice);
+      return;
+    }
     if (choice === 'login') {
       handleSalesforceLogin();
       return;
@@ -632,6 +730,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const resultCtaLabel = salesforceAccountReady ? 'Login with Eservices' : result.ctaLabel;
+
+  const openMembershipApplicationPage = () => {
+    openRecognitionMembershipApplicationPage(paths.auth.membership.application);
+  };
 
   const selectResidency = (value) => {
     resetNricCheckState();
@@ -2115,12 +2217,23 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       }));
       return;
     }
+    if (step === 'membership-application') {
+      setFlowState((prev) => ({
+        ...prev,
+        salesforceSessionReady: false,
+        salesforceAccountChoice: '',
+        salesforceMembershipAccountCreated: false,
+        membershipApplicationCompleted: false,
+      }));
+      return;
+    }
     if (step === 'salesforce-account-choice') {
       setFlowState((prev) => ({
         ...prev,
         eligibilityType: '',
         eligibilityVerified: null,
         salesforceAccountChoice: '',
+        salesforceSessionReady: false,
       }));
       return;
     }
@@ -4005,7 +4118,22 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
               Create a new ISCA Salesforce membership account, or sign in if you already have one.
+              {flowState.eligibilityType === 'recognition'
+                ? ' Create account or login opens in a separate page (not in this window). After sign-in, the full membership application form opens in another tab.'
+                : ''}
             </Typography>
+            {flowState.salesforceAccountChoice && !flowState.salesforceSessionReady && (
+              <Alert severity="info">
+                Complete Salesforce {flowState.salesforceAccountChoice === 'create' ? 'registration' : 'login'} in
+                the other tab, then this screen will update automatically.
+              </Alert>
+            )}
+            {flowState.salesforceSessionReady && (
+              <Alert severity="success">
+                Salesforce account linked. Complete your application on the membership application
+                page (opened in another tab). Use the button below if you do not see it.
+              </Alert>
+            )}
           </Stack>
         )}
         {step === 'salesforce-membership-create' && (
@@ -4050,7 +4178,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, pt: 1, justifyContent: 'flex-end', gap: 1 }}>
-        {step === 'salesforce-account-choice' && (
+        {step === 'salesforce-account-choice' && !flowState.salesforceSessionReady && (
           <>
             <Button
               variant="contained"
@@ -4071,6 +4199,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               Login with Eservices
             </Button>
           </>
+        )}
+        {step === 'salesforce-account-choice' && flowState.salesforceSessionReady && (
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={openMembershipApplicationPage}
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            Open membership application
+          </Button>
         )}
         {step === 'result' && (
           <Button

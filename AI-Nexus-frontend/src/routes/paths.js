@@ -117,6 +117,11 @@ export const paths = {
       start: `${ROOTS.AUTH}/oauth/start`,
       callback: `${ROOTS.AUTH}/oauth/callback`,
     },
+    membership: {
+      salesforceCreate: `${ROOTS.AUTH}/membership/salesforce-create`,
+      salesforceBridge: `${ROOTS.AUTH}/membership/salesforce-bridge`,
+      application: `${ROOTS.AUTH}/membership/application`,
+    },
   },
   authDemo: {
     split: {

@@ -45,6 +45,7 @@ import {
   clearMembershipEligibilitySessionStorage,
   POST_OAUTH_RETURN_TO_KEY,
 } from 'src/utils/membership-eligibility-sso';
+import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
 
 // ----------------------------------------------------------------------
 
@@ -1557,10 +1558,11 @@ console.log('',);
 
           if (actionTarget === 'salesforce') {
             try {
-              sessionStorage.setItem(
-                POST_OAUTH_RETURN_TO_KEY,
-                `${location.pathname}${location.search || ''}`
-              );
+              const courseReturn = `${location.pathname}${location.search || ''}`;
+              sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
+              if (payload?.flow?.eligibilityType !== 'recognition') {
+                clearMembershipApplicationPending();
+              }
             } catch {
               // ignore
             }

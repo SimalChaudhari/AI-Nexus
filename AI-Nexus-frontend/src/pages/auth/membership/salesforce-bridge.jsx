@@ -1,0 +1,84 @@
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+import Alert from '@mui/material/Alert';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+
+import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
+import {
+  persistMembershipSalesforceSession,
+  notifyMembershipSalesforceSessionReady,
+  isRecognitionMembershipApplicationFlow,
+} from 'src/utils/membership-salesforce-session';
+
+// ----------------------------------------------------------------------
+
+/**
+ * Receives OAuth redirect (returnTo target), stores Salesforce accountId + social token,
+ * then notifies the opener tab and closes.
+ */
+export default function MembershipSalesforceBridgePage() {
+  const router = useRouter();
+  const [searchParams] = useSearchParams();
+  const [message, setMessage] = useState('Saving your Salesforce session…');
+
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const errorParam = searchParams.get('error');
+
+    if (errorParam || success === 'false') {
+      setMessage(searchParams.get('error') || 'Salesforce sign-in failed. You can close this tab and try again.');
+      return;
+    }
+
+    const accountId = (searchParams.get('salesforceAccountId') || '').trim();
+    const socialToken = (searchParams.get('socialAccessToken') || '').trim();
+    const pendingPlatformAccessToken = (searchParams.get('accessToken') || '').trim();
+    const isRecognitionApplication = isRecognitionMembershipApplicationFlow(searchParams);
+
+    if (!accountId) {
+      setMessage('Salesforce account ID was not returned. Close this tab and try signing in again.');
+      return;
+    }
+
+    persistMembershipSalesforceSession({
+      accountId,
+      socialToken,
+      ...(isRecognitionApplication && pendingPlatformAccessToken
+        ? { pendingPlatformAccessToken }
+        : {}),
+    });
+
+    if (isRecognitionApplication) {
+      setMessage('Salesforce account linked. Opening membership application…');
+      router.replace(paths.auth.membership.application);
+      return undefined;
+    }
+
+    notifyMembershipSalesforceSessionReady();
+    setMessage('Salesforce account linked. Returning to your application…');
+    const timer = window.setTimeout(() => {
+      if (window.opener && !window.opener.closed) {
+        window.close();
+      }
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [searchParams, router]);
+
+  return (
+    <Stack alignItems="center" justifyContent="center" spacing={2} sx={{ minHeight: '60vh', p: 3 }}>
+      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+        Salesforce membership
+      </Typography>
+      <Alert severity={searchParams.get('error') || searchParams.get('success') === 'false' ? 'error' : 'success'} sx={{ maxWidth: 480 }}>
+        {message}
+      </Alert>
+      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420, textAlign: 'center' }}>
+        If this tab does not close automatically, return to the membership window and continue.
+      </Typography>
+    </Stack>
+  );
+}

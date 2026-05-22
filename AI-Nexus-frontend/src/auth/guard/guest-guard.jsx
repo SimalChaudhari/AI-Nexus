@@ -7,6 +7,8 @@ import { CONFIG } from 'src/config-global';
 
 import { SplashScreen } from 'src/components/loading-screen';
 
+import { isMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
+
 import { useAuthContext } from '../hooks';
 
 // ----------------------------------------------------------------------
@@ -32,6 +34,17 @@ export function GuestGuard({ children }) {
 
       // Let the OAuth callback page finish merging session + redirect (avoids racing to /home).
       if (pathname?.includes('/auth/oauth/callback')) {
+        setIsChecking(false);
+        return;
+      }
+
+      // Recognition membership tab: stay on application form; do not redirect to /home.
+      if (
+        pathname?.includes('/auth/membership/application')
+        || pathname?.includes('/auth/membership/salesforce-bridge')
+        || pathname?.includes('/auth/membership/salesforce-create')
+        || isMembershipApplicationPending()
+      ) {
         setIsChecking(false);
         return;
       }

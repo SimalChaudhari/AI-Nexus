@@ -21,7 +21,10 @@ const MuiSelect = {
   /** **************************************
    * DEFAULT PROPS
    *************************************** */
-  defaultProps: { IconComponent: ArrowDownIcon },
+  defaultProps: {
+    IconComponent: ArrowDownIcon,
+    MenuProps: { disableScrollLock: true },
+  },
 
   /** **************************************
    * STYLE

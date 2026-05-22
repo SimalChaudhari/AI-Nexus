@@ -33,8 +33,29 @@ import {
   isScaqMembershipSsoFlow,
   POST_OAUTH_RETURN_TO_KEY,
 } from 'src/utils/membership-eligibility-sso';
+import {
+  isRecognitionMembershipApplicationFlow,
+  persistMembershipSalesforceSession,
+  clearMembershipApplicationPending,
+} from 'src/utils/membership-salesforce-session';
 
 // ----------------------------------------------------------------------
+
+/** Recognition pathway: save Salesforce credentials only; stay on application tab (no website login yet). */
+function finishRecognitionApplicationTab(router, searchParams, payload) {
+  const fromQuery = readSalesforceFlagsFromCallbackParams(searchParams);
+  const accountId = (payload?.accountId || fromQuery.accountId || '').trim();
+  if (!accountId) return false;
+
+  persistMembershipSalesforceSession({
+    accountId,
+    socialToken: String(payload?.socialToken || searchParams.get('socialAccessToken') || '').trim(),
+    pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
+  });
+
+  router.replace(paths.auth.membership.application);
+  return true;
+}
 
 function resolvePostLoginPath(searchParams) {
   const fromQuery = searchParams.get('returnTo');
@@ -130,6 +151,7 @@ export default function OAuthCallbackPage() {
       }
 
       const scaqFlow = isScaqMembershipSsoFlow(searchParams);
+      const recognitionApplicationFlow = isRecognitionMembershipApplicationFlow(searchParams);
       const scaqProfileOnly = searchParams.get('scaqProfileOnly') === 'true';
 
       try {
@@ -168,6 +190,16 @@ export default function OAuthCallbackPage() {
 
           const { user } = exchangeResult;
           const sf = readSalesforceFlagsFromSessionUser(user);
+
+          if (recognitionApplicationFlow) {
+            finishRecognitionApplicationTab(router, searchParams, {
+              accountId: sf.accountId,
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken: exchangeResult.accessToken || '',
+            });
+            return;
+          }
+
           const decision = resolveScaqPostLoginDecision(
             sf.isSCAQCandidate,
             sf.isAssociateMember,
@@ -191,6 +223,16 @@ export default function OAuthCallbackPage() {
 
           await runScaqPromoteAssociateIfNeeded(decision, scaqFlow);
         } else if (accessToken) {
+          if (recognitionApplicationFlow) {
+            const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+            finishRecognitionApplicationTab(router, searchParams, {
+              accountId: sf.accountId,
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken: accessToken,
+            });
+            return;
+          }
+
           const sf = readSalesforceFlagsFromCallbackParams(searchParams);
           const decision = resolveScaqPostLoginDecision(
             sf.isSCAQCandidate,
@@ -270,6 +312,7 @@ export default function OAuthCallbackPage() {
 
         const nextPath = resolvePostLoginPath(searchParams);
 
+        clearMembershipApplicationPending();
         clearMembershipEligibilitySessionStorage();
 
         if (userRole === 'admin') {

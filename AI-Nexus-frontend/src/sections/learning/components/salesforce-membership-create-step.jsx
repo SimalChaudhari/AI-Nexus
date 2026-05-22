@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
@@ -12,7 +13,8 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import InputAdornment from '@mui/material/InputAdornment';
 import LoadingButton from '@mui/lab/LoadingButton';
-import { alpha } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
+import { INPUT_LABEL_ABOVE, MEMBERSHIP_SELECT_MENU_PROPS } from 'src/utils/membership-form-ui';
 
 import { useBoolean } from 'src/hooks/use-boolean';
 import { Iconify } from 'src/components/iconify';
@@ -91,8 +93,9 @@ export function shouldUseSalesforceMembershipCreateStep(state) {
   if (state.isIscaMember === true) return false;
   if (state.isSingaporePr === true && state.spPrVerified === true) return false;
 
+  // Recognition path: create account on /auth/membership/salesforce-create (never in modal).
   if (state.eligibilityType === 'recognition') {
-    return state.salesforceAccountChoice === 'create';
+    return false;
   }
 
   if (
@@ -128,9 +131,14 @@ export function SalesforceMembershipCreateStep({
   flowState = null,
   membershipOutcome = '',
   draftUserId = '',
+  fullPage = false,
+  hideLoginButton = false,
+  onPhaseChange,
   onAccountCreated,
+  onPasswordSetComplete,
   onLoginWithSalesforce,
 }) {
+  const theme = useTheme();
   const [phase, setPhase] = useState('register');
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
   const [passwordForm, setPasswordForm] = useState({ username: '', password: '', confirmPassword: '' });
@@ -145,6 +153,10 @@ export function SalesforceMembershipCreateStep({
       setRegisterForm((prev) => ({ ...prev, email }));
     }
   }, [defaultEmail]);
+
+  useEffect(() => {
+    onPhaseChange?.(phase === 'register' ? 0 : 1);
+  }, [phase, onPhaseChange]);
 
   const updateRegisterField = (field) => (event) => {
     setRegisterForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -211,21 +223,28 @@ export function SalesforceMembershipCreateStep({
         membershipOutcome,
         username.trim()
       );
-      await saveSalesforceMembershipRecord({
-        email: registerForm.email.trim(),
-        firstname: registerForm.firstName.trim(),
-        lastname: registerForm.lastName.trim(),
-        salutation: registerForm.salutation,
-        nameAsPerId: registerForm.nameAsPerId.trim(),
-        salesforceUsername: username.trim(),
-        draftUserId: draftUserId || undefined,
-        membershipOutcome: membershipOutcome || undefined,
-        eligibilityIsSingaporePr: eligibility.isSingaporePr,
-        eligibilityIsIscaMember: eligibility.isIscaMember,
-        eligibilityWantsMembership: eligibility.wantsIscaMembership,
-        eligibilityType: eligibility.eligibilityType,
-        eligibilitySnapshot: eligibility.snapshot,
-      });
+      if (flowState) {
+        await saveSalesforceMembershipRecord({
+          email: registerForm.email.trim(),
+          firstname: registerForm.firstName.trim(),
+          lastname: registerForm.lastName.trim(),
+          salutation: registerForm.salutation,
+          nameAsPerId: registerForm.nameAsPerId.trim(),
+          salesforceUsername: username.trim(),
+          draftUserId: draftUserId || undefined,
+          membershipOutcome: membershipOutcome || undefined,
+          eligibilityIsSingaporePr: eligibility.isSingaporePr,
+          eligibilityIsIscaMember: eligibility.isIscaMember,
+          eligibilityWantsMembership: eligibility.wantsIscaMembership,
+          eligibilityType: eligibility.eligibilityType,
+          eligibilitySnapshot: eligibility.snapshot,
+        });
+      }
+
+      if (onPasswordSetComplete) {
+        onPasswordSetComplete();
+        return;
+      }
 
       onAccountCreated?.();
     } catch (err) {
@@ -235,137 +254,302 @@ export function SalesforceMembershipCreateStep({
     }
   };
 
-  const paperSx = (theme) => ({
-    p: 2.5,
-    borderRadius: 2,
-    borderColor: alpha(theme.palette.primary.main, 0.28),
-    bgcolor: alpha(theme.palette.primary.main, 0.04),
-  });
+  const fieldSize = fullPage ? 'medium' : 'small';
+
+  const { primary, secondary } = theme.palette;
+
+  const paperSx = fullPage
+    ? {
+        p: { xs: 2.5, md: 3.5 },
+        borderRadius: 2.5,
+        bgcolor: 'background.paper',
+        border: `1px solid ${alpha(primary.main, 0.14)}`,
+        boxShadow: `0 12px 40px ${alpha(primary.main, 0.1)}`,
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 4,
+          background: `linear-gradient(90deg, ${primary.main} 0%, ${secondary.main} 100%)`,
+        },
+      }
+    : {
+        p: 2.5,
+        borderRadius: 2,
+        borderColor: alpha(theme.palette.primary.main, 0.28),
+        bgcolor: alpha(theme.palette.primary.main, 0.04),
+      };
+
+  const sectionIntro = (
+    <Stack direction="row" alignItems="flex-start" spacing={2} sx={{ mb: 3, pt: fullPage ? 1 : 0 }}>
+      <Box
+        sx={{
+          width: 52,
+          height: 52,
+          borderRadius: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          background:
+            phase === 'set-password'
+              ? `linear-gradient(135deg, ${alpha(primary.main, 0.15)} 0%, ${alpha(secondary.main, 0.12)} 100%)`
+              : alpha(theme.palette.info.main, 0.1),
+          border: `1px solid ${alpha(phase === 'set-password' ? primary.main : theme.palette.info.main, 0.22)}`,
+        }}
+      >
+        <Iconify
+          icon={phase === 'set-password' ? 'solar:lock-password-bold' : 'mdi:salesforce'}
+          width={28}
+          sx={{ color: phase === 'set-password' ? 'primary.main' : 'info.main' }}
+        />
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography
+          variant={fullPage ? 'h5' : 'subtitle1'}
+          sx={{ fontWeight: 800, lineHeight: 1.3 }}
+        >
+          {phase === 'set-password' ? (
+            <>
+              <Box component="span" sx={{ color: secondary.main }}>
+                Step 2 —{' '}
+              </Box>
+              <Box component="span" sx={{ color: secondary.main }}>
+                Set your login password
+              </Box>
+            </>
+          ) : fullPage ? (
+            <>
+              <Box component="span" sx={{ color: secondary.main }}>
+                Step 1 —{' '}
+              </Box>
+              <Box component="span" sx={{ color: secondary.main }}>
+                Account details
+              </Box>
+            </>
+          ) : (
+            title || 'Create membership account'
+          )}
+        </Typography>
+        <Typography
+          variant="body2"
+          sx={{ mt: 0.75, lineHeight: 1.65, color: alpha(primary.dark, 0.7) }}
+        >
+          {phase === 'set-password'
+            ? 'Your membership account was created. Set your password, then you will sign in with Eservices to open the application form.'
+            : fullPage ? (
+              <>
+                Enter your details exactly as they appear on your ID. Fields marked with{' '}
+                <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                  *
+                </Box>{' '}
+                are required.
+              </>
+            ) : (
+              summary
+            )}
+        </Typography>
+      </Box>
+    </Stack>
+  );
 
   return (
-    <Stack spacing={2}>
-      <Box>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          alignItems={{ xs: 'flex-start', sm: 'center' }}
-          justifyContent="space-between"
-          spacing={1}
+    <Stack spacing={fullPage ? 0 : 2}>
+      {!fullPage && (
+        <Box>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            alignItems={{ xs: 'flex-start', sm: 'center' }}
+            justifyContent="space-between"
+            spacing={1}
+          >
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+                {phase === 'set-password' ? 'Set your Salesforce password' : title || 'Create membership account'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.65 }}>
+                {phase === 'set-password'
+                  ? 'Your membership account was created. Choose a password for Salesforce login, then continue to sign in.'
+                  : summary}
+              </Typography>
+            </Box>
+            {phase === 'register' && onLoginWithSalesforce && !hideLoginButton && (
+              <Button
+                variant="outlined"
+                color="inherit"
+                onClick={onLoginWithSalesforce}
+                disabled={submitting}
+                sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+              >
+                Login with Eservices
+              </Button>
+            )}
+          </Stack>
+        </Box>
+      )}
+
+      {fullPage && (
+        <Box
+          sx={{
+            display: { md: 'none' },
+            mb: 2,
+            px: 1.5,
+            py: 1.25,
+            borderRadius: 1.5,
+            background: `linear-gradient(90deg, ${alpha(primary.main, 0.08)} 0%, ${alpha(secondary.main, 0.06)} 100%)`,
+            border: `1px solid ${alpha(primary.main, 0.14)}`,
+          }}
         >
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
-              {phase === 'set-password' ? 'Set your Salesforce password' : title || 'Create membership account'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.65 }}>
-              {phase === 'set-password'
-                ? 'Your membership account was created. Choose a password for Salesforce login, then continue to sign in.'
-                : summary}
-            </Typography>
-          </Box>
-          {phase === 'register' && onLoginWithSalesforce && (
-            <Button
-              variant="outlined"
-              color="inherit"
-              onClick={onLoginWithSalesforce}
-              disabled={submitting}
-              sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
-            >
-              Login with Eservices
-            </Button>
-          )}
-        </Stack>
-      </Box>
+          <Typography variant="caption" sx={{ fontWeight: 700 }}>
+            <Box component="span" sx={{ color: secondary.main }}>
+              Step {phase === 'register' ? '1' : '2'} of 3
+            </Box>
+            {' — '}
+            <Box component="span" sx={{ color: secondary.main }}>
+              {phase === 'register' ? 'Account details' : 'Set password'}
+            </Box>
+          </Typography>
+        </Box>
+      )}
 
       {phase === 'register' && (
         <Paper component="form" noValidate onSubmit={handleRegisterSubmit} variant="outlined" sx={paperSx}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <Iconify icon="mdi:salesforce" width={22} sx={{ color: 'info.main' }} />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                Step 1 — Account details
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Register your ISCA Salesforce membership account.
-              </Typography>
-            </Box>
-          </Stack>
+          {fullPage ? sectionIntro : (
+            <>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <Iconify icon="mdi:salesforce" width={22} sx={{ color: 'info.main' }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Step 1 —{' '}
+                    </Box>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Account details
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Register your ISCA Salesforce membership account.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Divider sx={{ mb: 2 }} />
+            </>
+          )}
 
-          <Divider sx={{ mb: 2 }} />
-
-          <Stack spacing={1.75}>
-            <TextField
-              select
-              label="Salutation"
-              value={registerForm.salutation}
-              onChange={updateRegisterField('salutation')}
-              fullWidth
-              size="small"
-              disabled={submitting}
-            >
-              {SALUTATION_OPTIONS.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.75}>
+          <Grid container spacing={2.5}>
+            <Grid item xs={12} sm={4} md={3}>
               <TextField
-                label="First Name"
+                select
+                label="Salutation"
+                value={registerForm.salutation}
+                onChange={updateRegisterField('salutation')}
+                fullWidth
+                size={fieldSize}
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                SelectProps={{ MenuProps: MEMBERSHIP_SELECT_MENU_PROPS }}
+              >
+                {SALUTATION_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={8} md={4.5}>
+              <TextField
+                label="First name"
                 value={registerForm.firstName}
                 onChange={updateRegisterField('firstName')}
                 fullWidth
-                size="small"
+                size={fieldSize}
                 required
                 disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
               />
+            </Grid>
+            <Grid item xs={12} sm={12} md={4.5}>
               <TextField
-                label="Last Name"
+                label="Last name"
                 value={registerForm.lastName}
                 onChange={updateRegisterField('lastName')}
                 fullWidth
-                size="small"
+                size={fieldSize}
                 required
                 disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
               />
-            </Stack>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Name as per ID"
+                placeholder="e.g. Tan Zhi Wen"
+                value={registerForm.nameAsPerId}
+                onChange={updateRegisterField('nameAsPerId')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Email address"
+                type="email"
+                value={registerForm.email}
+                onChange={updateRegisterField('email')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                helperText="Used as your Salesforce username if not assigned separately."
+              />
+            </Grid>
+          </Grid>
 
-            <TextField
-              label="Name As Per ID"
-              placeholder="Example: Tan Zhi Wen"
-              value={registerForm.nameAsPerId}
-              onChange={updateRegisterField('nameAsPerId')}
-              fullWidth
-              size="small"
-              required
-              disabled={submitting}
-            />
+          {error && (
+            <Alert severity="error" onClose={() => setError('')} sx={{ mt: 2.5 }}>
+              {error}
+            </Alert>
+          )}
 
-            <TextField
-              label="Email Address"
-              type="email"
-              value={registerForm.email}
-              onChange={updateRegisterField('email')}
-              fullWidth
-              size="small"
-              required
-              disabled={submitting}
-              helperText="Used as your Salesforce username if not assigned separately."
-            />
-
-            {error && (
-              <Alert severity="error" onClose={() => setError('')}>
-                {error}
-              </Alert>
-            )}
-
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            sx={{
+              mt: 3,
+              pt: 2.5,
+              borderTop: `1px solid ${alpha(primary.main, 0.1)}`,
+              justifyContent: 'flex-end',
+              bgcolor: fullPage ? alpha(primary.main, 0.02) : 'transparent',
+              mx: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              mb: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              px: fullPage ? { xs: 2.5, md: 3.5 } : 0,
+              pb: fullPage ? { xs: 2.5, md: 3 } : 0,
+              borderRadius: fullPage ? '0 0 20px 20px' : 0,
+            }}
+          >
             <LoadingButton
               type="submit"
               variant="contained"
+              color="primary"
               size="large"
               loading={submitting}
-              sx={{ alignSelf: { sm: 'flex-end' }, minWidth: { sm: 220 }, textTransform: 'none', fontWeight: 700 }}
+              sx={{
+                minWidth: { sm: 160 },
+                textTransform: 'none',
+                fontWeight: 700,
+                px: 4,
+                boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
+              }}
             >
-              Create Salesforce account
+              Create
             </LoadingButton>
           </Stack>
         </Paper>
@@ -373,114 +557,171 @@ export function SalesforceMembershipCreateStep({
 
       {phase === 'set-password' && (
         <Paper component="form" noValidate onSubmit={handleSetPasswordSubmit} variant="outlined" sx={paperSx}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <Iconify icon="solar:lock-password-bold" width={22} sx={{ color: 'primary.main' }} />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                Step 2 — Login password
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Set the password you will use when signing in with Salesforce.
-              </Typography>
-            </Box>
-          </Stack>
+          {fullPage ? sectionIntro : (
+            <>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <Iconify icon="solar:lock-password-bold" width={22} sx={{ color: 'primary.main' }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Step 2 —{' '}
+                    </Box>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Login password
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Set the password you will use when signing in with Salesforce.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Divider sx={{ mb: 2 }} />
+            </>
+          )}
 
-          <Divider sx={{ mb: 2 }} />
+          <Alert
+            severity="success"
+            icon={<Iconify icon="solar:verified-check-bold" width={22} />}
+            sx={{
+              mb: 3,
+              borderRadius: 2,
+              bgcolor: alpha(theme.palette.success.main, 0.08),
+              border: `1px solid ${alpha(theme.palette.success.main, 0.24)}`,
+              '& .MuiAlert-icon': { color: 'success.main' },
+            }}
+          >
+            Membership account created successfully. Set your password below, then sign in with
+            Eservices.
+          </Alert>
 
-          <Stack spacing={1.75}>
-            <Alert severity="success" sx={{ py: 0.5 }}>
-              Membership account created. Set your password below.
-            </Alert>
-
-            <TextField
-              label="Salesforce Username"
-              value={passwordForm.username}
-              onChange={updatePasswordField('username')}
-              fullWidth
-              size="small"
-              required
-              disabled={submitting}
-              helperText="Usually your email address."
-            />
-
-            <TextField
-              label="Password"
-              type={showPassword.value ? 'text' : 'password'}
-              value={passwordForm.password}
-              onChange={updatePasswordField('password')}
-              fullWidth
-              size="small"
-              required
-              disabled={submitting}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={showPassword.onToggle} edge="end" aria-label="toggle password">
-                      <Iconify icon={showPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <TextField
-              label="Confirm Password"
-              type={showConfirmPassword.value ? 'text' : 'password'}
-              value={passwordForm.confirmPassword}
-              onChange={updatePasswordField('confirmPassword')}
-              fullWidth
-              size="small"
-              required
-              disabled={submitting}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={showConfirmPassword.onToggle} edge="end" aria-label="toggle confirm password">
-                      <Iconify icon={showConfirmPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            {error && (
-              <Alert severity="error" onClose={() => setError('')}>
-                {error}
-              </Alert>
-            )}
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-              <LoadingButton
-                variant="outlined"
-                color="inherit"
+          <Grid container spacing={2.5}>
+            <Grid item xs={12}>
+              <TextField
+                label="Salesforce username"
+                value={passwordForm.username}
+                onChange={updatePasswordField('username')}
+                fullWidth
+                size={fieldSize}
+                required
                 disabled={submitting}
-                onClick={() => {
-                  setError('');
-                  setPhase('register');
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                helperText="Usually your email address."
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Password"
+                type={showPassword.value ? 'text' : 'password'}
+                value={passwordForm.password}
+                onChange={updatePasswordField('password')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                helperText="Minimum 8 characters"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={showPassword.onToggle} edge="end" aria-label="toggle password">
+                        <Iconify icon={showPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
                 }}
-                sx={{ textTransform: 'none', fontWeight: 600 }}
-              >
-                Back
-              </LoadingButton>
-              <LoadingButton
-                type="submit"
-                variant="contained"
-                size="large"
-                loading={submitting}
-                sx={{ minWidth: { sm: 220 }, textTransform: 'none', fontWeight: 700 }}
-              >
-                Set password and continue
-              </LoadingButton>
-            </Stack>
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Confirm password"
+                type={showConfirmPassword.value ? 'text' : 'password'}
+                value={passwordForm.confirmPassword}
+                onChange={updatePasswordField('confirmPassword')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={showConfirmPassword.onToggle}
+                        edge="end"
+                        aria-label="toggle confirm password"
+                      >
+                        <Iconify icon={showConfirmPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+          </Grid>
+
+          {error && (
+            <Alert severity="error" onClose={() => setError('')} sx={{ mt: 2.5 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            sx={{
+              mt: 3,
+              pt: 2.5,
+              borderTop: `1px solid ${alpha(primary.main, 0.1)}`,
+              justifyContent: 'space-between',
+              bgcolor: fullPage ? alpha(secondary.main, 0.04) : 'transparent',
+              mx: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              mb: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              px: fullPage ? { xs: 2.5, md: 3.5 } : 0,
+              pb: fullPage ? { xs: 2.5, md: 3 } : 0,
+              borderRadius: fullPage ? '0 0 20px 20px' : 0,
+            }}
+          >
+            <LoadingButton
+              variant="outlined"
+              color="secondary"
+              disabled={submitting}
+              startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={20} />}
+              onClick={() => {
+                setError('');
+                setPhase('register');
+              }}
+              sx={{ textTransform: 'none', fontWeight: 600, borderWidth: 1.5 }}
+            >
+              Back
+            </LoadingButton>
+            <LoadingButton
+              type="submit"
+              variant="contained"
+              color="primary"
+              size="large"
+              loading={submitting}
+              endIcon={<Iconify icon="eva:arrow-ios-forward-fill" width={20} />}
+              sx={{
+                minWidth: { sm: 280 },
+                textTransform: 'none',
+                fontWeight: 700,
+                px: 3,
+                boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
+              }}
+            >
+              Set password and sign in
+            </LoadingButton>
           </Stack>
         </Paper>
       )}
 
-      <Typography variant="caption" color="text.secondary">
-        {phase === 'set-password'
-          ? 'After setting your password, use Login with Eservices on the next screen.'
-          : 'Next you will set your Salesforce login password, then sign in to the platform.'}
-      </Typography>
+      {!fullPage && (
+        <Typography variant="caption" color="text.secondary">
+          {phase === 'set-password'
+            ? 'After setting your password, use Login with Eservices on the next screen.'
+            : 'Next you will set your Salesforce login password, then sign in to the platform.'}
+        </Typography>
+      )}
     </Stack>
   );
 }

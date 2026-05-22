@@ -204,6 +204,130 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.setNexusPasswordPath}`;
   }
 
+  private get applicationCreatePath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_CREATE_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createApplicationNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationCreateUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_CREATE_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationCreatePath}`;
+    return `${this.integrationApiBaseUrl}${this.applicationCreatePath}`;
+  }
+
+  private get applicationPersonalDetailsPath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_PERSONAL_DETAILS_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createApplicationPersonalDetailsNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationPersonalDetailsUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_PERSONAL_DETAILS_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationPersonalDetailsPath}`;
+    return `${this.integrationApiBaseUrl}${this.applicationPersonalDetailsPath}`;
+  }
+
+  private get applicationEmploymentDetailsPath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_EMPLOYMENT_DETAILS_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createEmploymentDetailsNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationEmploymentDetailsUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_EMPLOYMENT_DETAILS_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationEmploymentDetailsPath}`;
+    return `${this.integrationApiBaseUrl}${this.applicationEmploymentDetailsPath}`;
+  }
+
+  private get applicationAcademicQualificationPath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_ACADEMIC_QUALIFICATION_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createAcademicQualificationNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationAcademicQualificationUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_ACADEMIC_QUALIFICATION_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationAcademicQualificationPath}`;
+    return `${this.integrationApiBaseUrl}${this.applicationAcademicQualificationPath}`;
+  }
+
+  private get applicationProfessionalQualificationPath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_PROFESSIONAL_QUALIFICATION_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createProfessionalQualificationNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationProfessionalQualificationUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_PROFESSIONAL_QUALIFICATION_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationProfessionalQualificationPath}`;
+    return `${this.integrationApiBaseUrl}${this.applicationProfessionalQualificationPath}`;
+  }
+
+  private get applicationAtoPath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_ATO_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createATONexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationAtoUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_ATO_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.applicationAtoPath}`;
+    return `${this.integrationApiBaseUrl}${this.applicationAtoPath}`;
+  }
+
+  private get applicationCharacterReferencePath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_CHARACTER_REFERENCE_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createCharacterReferenceNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationCharacterReferenceUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_CHARACTER_REFERENCE_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) {
+      return `${siteBase.replace(/\/$/, '')}${this.applicationCharacterReferencePath}`;
+    }
+    return `${this.integrationApiBaseUrl}${this.applicationCharacterReferencePath}`;
+  }
+
+  private get applicationDeclarationPath(): string {
+    const p =
+      process.env.OAUTH_APPLICATION_DECLARATION_PATH
+      || '/services/apexrest/mobileAPI/v1/ApplicationAPI/createDeclarationNexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get applicationDeclarationUrl(): string {
+    const fullUrl = process.env.OAUTH_APPLICATION_DECLARATION_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) {
+      return `${siteBase.replace(/\/$/, '')}${this.applicationDeclarationPath}`;
+    }
+    return `${this.integrationApiBaseUrl}${this.applicationDeclarationPath}`;
+  }
+
   /** Token endpoint for integration (password grant); defaults to OAUTH_INSTANCE_URL + path. */
   private get integrationTokenUrl(): string {
     const explicit = process.env.OAUTH_INTEGRATION_TOKEN_URL?.trim();
@@ -579,6 +703,332 @@ export class OAuthAuthService {
       }
       throw err;
     }
+  }
+
+  /**
+   * POST ApplicationAPI/createApplicationNexus — creates application record; returns applicationId.
+   * Must run before Personal and all other application tabs.
+   */
+  async createApplicationNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const token = socialAccessToken?.trim();
+    if (!token) {
+      throw new BadRequestException('Salesforce social access token is required.');
+    }
+
+    const accountId = String(payload.accountId || '').trim();
+    if (!accountId) {
+      throw new BadRequestException('Salesforce accountId is required.');
+    }
+
+    const recordTypeName = String(payload.recordTypeName || '').trim();
+    if (!recordTypeName) {
+      throw new BadRequestException('recordTypeName is required.');
+    }
+
+    const accountingQualification = String(payload.accountingQualification || '').trim();
+    if (!accountingQualification) {
+      throw new BadRequestException('accountingQualification is required.');
+    }
+
+    const url = this.applicationCreateUrl;
+    const body: Record<string, unknown> = {
+      accountId,
+      recordTypeName,
+      accountingQualification,
+    };
+
+    console.log('[Salesforce] createApplicationNexus:', {
+      url,
+      accountId,
+      recordTypeName,
+      accountingQualification,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] createApplicationNexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as {
+          message?: string;
+          error?: string;
+          error_description?: string;
+        };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(desc || 'Failed to create application in Salesforce.');
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * POST ApplicationAPI/createApplicationPersonalDetailsNexus (membership application — Personal tab).
+   * Uses the member's Salesforce SSO access token (not the integration service account).
+   */
+  async createApplicationPersonalDetailsNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const token = socialAccessToken?.trim();
+    if (!token) {
+      throw new BadRequestException('Salesforce social access token is required.');
+    }
+
+    const accountId = String(payload.accountId || '').trim();
+    if (!accountId) {
+      throw new BadRequestException('Salesforce accountId is required.');
+    }
+
+    const url = this.applicationPersonalDetailsUrl;
+    const body: Record<string, unknown> = { ...payload, accountId };
+
+    console.log('[Salesforce] createApplicationPersonalDetailsNexus:', {
+      url,
+      accountId,
+      applicationId: body.applicationId,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] createApplicationPersonalDetailsNexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as {
+          message?: string;
+          error?: string;
+          error_description?: string;
+        };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(
+          desc || 'Failed to submit personal details to Salesforce.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * POST ApplicationAPI/createEmploymentDetailsNexus (membership application — Work Experience tab).
+   */
+  async createApplicationEmploymentDetailsNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const token = socialAccessToken?.trim();
+    if (!token) {
+      throw new BadRequestException('Salesforce social access token is required.');
+    }
+
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+
+    const url = this.applicationEmploymentDetailsUrl;
+    const body: Record<string, unknown> = { ...payload, applicationId };
+
+    const previousWorkExperience = body.previousWorkExperience;
+    console.log('[Salesforce] createEmploymentDetailsNexus:', {
+      url,
+      applicationId,
+      experienceCount: Array.isArray(previousWorkExperience)
+        ? previousWorkExperience.length
+        : 0,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] createEmploymentDetailsNexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as {
+          message?: string;
+          error?: string;
+          error_description?: string;
+        };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(
+          desc || 'Failed to submit employment details to Salesforce.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  private async postSalesforceApplicationApi(
+    url: string,
+    socialAccessToken: string,
+    body: Record<string, unknown>,
+    logLabel: string,
+    errorMessage: string,
+  ): Promise<Record<string, unknown>> {
+    const token = socialAccessToken?.trim();
+    if (!token) {
+      throw new BadRequestException('Salesforce social access token is required.');
+    }
+
+    console.log(`[Salesforce] ${logLabel}:`, { url, applicationId: body.applicationId });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error(`[Salesforce] ${logLabel} failed:`, {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as {
+          message?: string;
+          error?: string;
+          error_description?: string;
+        };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(desc || errorMessage);
+      }
+      throw err;
+    }
+  }
+
+  /** Academic qualification — optional; one record per POST. */
+  async createAcademicQualificationNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationAcademicQualificationUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createAcademicQualificationNexus',
+      'Failed to submit academic qualification to Salesforce.',
+    );
+  }
+
+  /** Professional qualification — one record per POST. */
+  async createProfessionalQualificationNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationProfessionalQualificationUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createProfessionalQualificationNexus',
+      'Failed to submit professional qualification to Salesforce.',
+    );
+  }
+
+  /** Membership of other professional bodies (ATO) — one record per POST. */
+  async createATONexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationAtoUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createATONexus',
+      'Failed to submit professional body membership to Salesforce.',
+    );
+  }
+
+  /** Character references — both referees in one POST. */
+  async createCharacterReferenceNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationCharacterReferenceUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createCharacterReferenceNexus',
+      'Failed to submit character references to Salesforce.',
+    );
+  }
+
+  /** Declaration — single POST. */
+  async createDeclarationNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationDeclarationUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createDeclarationNexus',
+      'Failed to submit declaration to Salesforce.',
+    );
   }
 
   /** Exchange authorization code for IdP tokens. */

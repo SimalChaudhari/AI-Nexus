@@ -277,6 +277,51 @@ const authSupabase = {
  *************************************** */
 const OAuthStartPage = lazy(() => import('src/pages/auth/oauth/start'));
 const OAuthCallbackPage = lazy(() => import('src/pages/auth/oauth/callback'));
+const MembershipSalesforceCreatePage = lazy(() => import('src/pages/auth/membership/salesforce-create'));
+const MembershipSalesforceBridgePage = lazy(() => import('src/pages/auth/membership/salesforce-bridge'));
+const MembershipApplicationPage = lazy(() => import('src/pages/auth/membership/application'));
+
+const authMembershipCentered = {
+  path: 'membership',
+  element: (
+    <AuthCenteredLayout showHeader={false}>
+      <Outlet />
+    </AuthCenteredLayout>
+  ),
+  children: [
+    {
+      path: 'salesforce-bridge',
+      element: (
+        <GuestGuard>
+          <MembershipSalesforceBridgePage />
+        </GuestGuard>
+      ),
+    },
+  ],
+};
+
+const authMembershipApplication = {
+  path: 'membership',
+  element: <Outlet />,
+  children: [
+    {
+      path: 'salesforce-create',
+      element: (
+        <GuestGuard>
+          <MembershipSalesforceCreatePage />
+        </GuestGuard>
+      ),
+    },
+    {
+      path: 'application',
+      element: (
+        <GuestGuard>
+          <MembershipApplicationPage />
+        </GuestGuard>
+      ),
+    },
+  ],
+};
 
 const authOauth = {
   path: 'oauth',
@@ -373,6 +418,6 @@ export const authRoutes = [
         <Outlet />
       </Suspense>
     ),
-    children: [authSimple, authOauth],
+    children: [authSimple, authOauth, authMembershipCentered, authMembershipApplication],
   },
 ];

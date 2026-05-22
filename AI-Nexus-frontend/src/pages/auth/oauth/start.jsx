@@ -10,6 +10,12 @@ import { RouterLink } from 'src/routes/components';
 
 import { getOAuthAuthUrl } from 'src/auth/context/jwt';
 import { POST_OAUTH_RETURN_TO_KEY, setScaqSsoVerificationPending } from 'src/utils/membership-eligibility-sso';
+import {
+  MEMBERSHIP_APPLICATION_OUTCOME,
+  setMembershipApplicationPending,
+  clearMembershipApplicationPending,
+  saveMembershipApplicationCourseReturn,
+} from 'src/utils/membership-salesforce-session';
 
 // ----------------------------------------------------------------------
 
@@ -26,6 +32,21 @@ export default function OAuthStartPage() {
         if (params.get('membershipOutcome') === 'scaq-sso-verify') {
           setScaqSsoVerificationPending();
         }
+        const membershipOutcome = params.get('membershipOutcome') || '';
+        const isRecognitionApplication =
+          membershipOutcome === MEMBERSHIP_APPLICATION_OUTCOME
+          || params.get('eligibilityType') === 'recognition';
+
+        if (isRecognitionApplication) {
+          setMembershipApplicationPending();
+          const existingCourseReturn = sessionStorage.getItem(POST_OAUTH_RETURN_TO_KEY) || '';
+          if (existingCourseReturn && !existingCourseReturn.includes('/salesforce-bridge')) {
+            saveMembershipApplicationCourseReturn(existingCourseReturn);
+          }
+        } else {
+          clearMembershipApplicationPending();
+        }
+
         const returnTo = params.get('returnTo');
         if (returnTo) {
           try {

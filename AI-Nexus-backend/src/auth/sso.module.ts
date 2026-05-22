@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { UserEntity } from '../user/users.entity';
 import { OAuthAuthService } from './oauth-auth.service';
 import { OAuthAuthController } from './oauth-auth.controller';
+import { MembershipApplicationController } from './membership-application.controller';
 import { SsoSyncService } from './sso-sync.service';
 
 @Module({
@@ -16,7 +17,7 @@ import { SsoSyncService } from './sso-sync.service';
     }),
   ],
   providers: [OAuthAuthService, SsoSyncService],
-  controllers: [OAuthAuthController],
+  controllers: [OAuthAuthController, MembershipApplicationController],
   exports: [OAuthAuthService],
 })
 export class SsoModule {}
