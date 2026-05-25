@@ -22,8 +22,7 @@ import {
   WorkflowFlowMiniPreview,
 } from 'src/components/workflow-flow-mini-preview/workflow-flow-mini-preview';
 import { GradientButton } from 'src/components/custom-button';
-import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
-import { getCookie } from 'src/utils/cookie';
+import axios from 'src/utils/axios';
 import { fetchWorkflows } from 'src/store/slices/workflowSlice';
 import { flowiseTemplateService } from 'src/services/flowise-template.service';
 import { appSettingsService } from 'src/services/app-settings.service';
@@ -187,16 +186,20 @@ export function Templates() {
   );
 
   const handleCreateWorkflow = useCallback(
-    (event) => {
+    async (event) => {
       event?.preventDefault?.();
-      const accessToken = sessionStorage.getItem(STORAGE_KEY) || getCookie('access-token');
-      if (!accessToken) {
+      try {
+        const res = await axios.get('/auth/flowise-token', { skipApiLoading: true });
+        const accessToken = res.data?.accessToken;
+        if (!accessToken) {
+          window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        const redirectUrl = `${flowiseEntryUrl}?token=${encodeURIComponent(accessToken)}`;
+        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+      } catch {
         window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
-        return;
       }
-
-      const redirectUrl = `${flowiseEntryUrl}?token=${encodeURIComponent(accessToken)}`;
-      window.open(redirectUrl, '_blank', 'noopener,noreferrer');
     },
     [flowiseEntryUrl, flowiseUrl]
   );

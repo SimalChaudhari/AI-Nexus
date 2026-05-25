@@ -2,10 +2,10 @@ import { useMemo, useEffect, useCallback } from 'react';
 
 import { useSetState } from 'src/hooks/use-set-state';
 
-import { STORAGE_KEY } from './constant';
 import { AuthContext } from '../auth-context';
-import { setSession, isValidToken } from './utils';
-import { getCookie } from 'src/utils/cookie';
+import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
+
+import { fetchCurrentUser, readCachedUser } from './session';
 
 // ----------------------------------------------------------------------
 
@@ -17,26 +17,13 @@ export function AuthProvider({ children }) {
 
   const checkUserSession = useCallback(async () => {
     try {
-      const accessToken = sessionStorage.getItem(STORAGE_KEY) || getCookie('access-token');
-
-      if (accessToken && isValidToken(accessToken)) {
-        setSession(accessToken);
-
-        const userStr = sessionStorage.getItem('user');
-        if (userStr) {
-          try {
-            const user = JSON.parse(userStr);
-            setState({ user: { ...user, accessToken }, loading: false });
-          } catch (parseError) {
-            console.error('Error parsing user from sessionStorage:', parseError);
-            setState({ user: null, loading: false });
-          }
-        } else {
-          setState({ user: null, loading: false });
-        }
-      } else {
-        setState({ user: null, loading: false });
+      const cached = readCachedUser();
+      if (cached) {
+        setState({ user: normalizeUserForSession(cached), loading: false });
       }
+
+      const user = await fetchCurrentUser();
+      setState({ user: user ? normalizeUserForSession(user) : null, loading: false });
     } catch (error) {
       console.error(error);
       setState({ user: null, loading: false });
@@ -47,6 +34,14 @@ export function AuthProvider({ children }) {
     checkUserSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const onSessionExpired = () => {
+      setState({ user: null, loading: false });
+    };
+    window.addEventListener('auth:session-expired', onSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', onSessionExpired);
+  }, [setState]);
 
   // ----------------------------------------------------------------------
 
@@ -59,7 +54,7 @@ export function AuthProvider({ children }) {
       user: state.user
         ? {
             ...state.user,
-            role: state.user?.role ?? 'admin',
+            role: state.user?.role ?? 'User',
           }
         : null,
       checkUserSession,

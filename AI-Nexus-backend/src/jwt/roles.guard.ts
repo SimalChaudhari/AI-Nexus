@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { extractAccessTokenFromRequest } from './jwt-token.extractor';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -13,7 +14,7 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const token = request.headers['authorization']?.split(' ')[1]; // Extract the token
+    const token = extractAccessTokenFromRequest(request);
  
     if (!token) {
       throw new UnauthorizedException('Token not provided');

@@ -7,6 +7,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Request, Response, NextFunction } from 'express';
 import * as express from 'express';
+import cookieParser from 'cookie-parser';
 import * as fs from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
@@ -106,6 +107,8 @@ async function bootstrap() {
     
     // Set global prefix for all routes (except root)
     app.setGlobalPrefix('api');
+
+    app.use(cookieParser());
     
     // Enable CORS — include Flowise browser origin (often different port than main SPA)
     const configuredOrigins = (process.env.FRONTEND_URLS || '')
@@ -258,7 +261,11 @@ async function bootstrap() {
     console.log(`Swagger docs: ${scheme}://${host}:${port}/api/docs`);
 
   } catch (error) {
-    process.exit(1); // Exit the process with failure
+    bootstrapLogger.error(
+      'Failed to start AI-Nexus backend',
+      error instanceof Error ? error.stack : String(error),
+    );
+    process.exit(1);
   }
 }
 bootstrap();

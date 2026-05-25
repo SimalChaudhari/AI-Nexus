@@ -1,4 +1,5 @@
-import { setSession } from 'src/auth/context/jwt';
+import axios from 'src/utils/axios';
+import { fetchCurrentUser } from 'src/auth/context/jwt/session';
 
 // ----------------------------------------------------------------------
 // Salesforce session for membership application (accountId + IdP social token)
@@ -185,6 +186,14 @@ export function buildMembershipApplicationOAuthStartUrl(oauthStartPath, bridgePa
 }
 
 /**
+ * OAuth start URL when SSO succeeded but Salesforce account id is missing.
+ * @param {string} oauthStartPath
+ */
+export function buildMembershipApplicationOAuthRetryUrl(oauthStartPath) {
+  return `${oauthStartPath}?membershipOutcome=${encodeURIComponent(MEMBERSHIP_APPLICATION_OUTCOME)}&eligibilityType=recognition`;
+}
+
+/**
  * @param {string} createPagePath
  */
 /**
@@ -203,13 +212,14 @@ export function mergeApplicationIdIntoSession(applicationId) {
   });
 }
 
-export function applyDeferredPlatformLoginAfterApplication() {
+export async function applyDeferredPlatformLoginAfterApplication() {
   const session = readMembershipSalesforceSession();
   const token = session?.pendingPlatformAccessToken;
   if (!token) return false;
 
   try {
-    setSession(token);
+    await axios.post('/auth/establish-session', { token }, { skipAuthRefresh: true });
+    await fetchCurrentUser();
     return true;
   } catch {
     return false;

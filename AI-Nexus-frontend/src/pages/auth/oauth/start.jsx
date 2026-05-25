@@ -57,7 +57,7 @@ export default function OAuthStartPage() {
         }
 
         const scaqVerify = params.get('membershipOutcome') === 'scaq-sso-verify';
-        const { authUrl } = await getOAuthAuthUrl({ scaqVerify });
+        const { authUrl } = await getOAuthAuthUrl({ scaqVerify, deferredAuth: isRecognitionApplication });
         if (cancelled) return;
         if (authUrl && (authUrl.startsWith('http://') || authUrl.startsWith('https://'))) {
           window.location.href = authUrl;

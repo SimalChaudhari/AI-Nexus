@@ -1,8 +1,7 @@
 import { paths } from 'src/routes/paths';
 
 import axios from 'src/utils/axios';
-
-import { STORAGE_KEY } from './constant';
+import { clearCachedUser, clearLegacyTokenStorage } from './session';
 
 // ----------------------------------------------------------------------
 
@@ -40,13 +39,11 @@ export function isValidToken(accessToken) {
       return false;
     }
 
-    // If token has exp field, check expiration
     if ('exp' in decoded) {
       const currentTime = Date.now() / 1000;
       return decoded.exp > currentTime;
     }
 
-    // If no exp field, token is considered valid (backend will handle expiration)
     return true;
   } catch (error) {
     console.error('Error during token validation:', error);
@@ -56,47 +53,20 @@ export function isValidToken(accessToken) {
 
 // ----------------------------------------------------------------------
 
-export function tokenExpired(exp) {
-  const currentTime = Date.now();
-  const timeLeft = exp * 1000 - currentTime;
-
-  setTimeout(() => {
-    try {
-      alert('Token expired!');
-      sessionStorage.removeItem(STORAGE_KEY);
-      window.location.href = paths.auth.jwt.signIn;
-    } catch (error) {
-      console.error('Error during token expiration:', error);
-      throw error;
-    }
-  }, timeLeft);
-}
-
-// ----------------------------------------------------------------------
-
-export async function setSession(accessToken) {
+/** Legacy helper — session is cookie-based; clears client cache only. */
+export async function setSession() {
   try {
-    if (accessToken) {
-      sessionStorage.setItem(STORAGE_KEY, accessToken);
-
-      axios.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-
-      const decodedToken = jwtDecode(accessToken);
-
-      // If token has exp field, set up expiration handler
-      if (decodedToken && 'exp' in decodedToken) {
-        tokenExpired(decodedToken.exp);
-      } else {
-        // If no exp field, token is still valid but we can't track expiration
-        // This is acceptable for tokens without explicit expiration
-        console.warn('Token does not have expiration field, treating as valid');
-      }
-    } else {
-      sessionStorage.removeItem(STORAGE_KEY);
-      delete axios.defaults.headers.common.Authorization;
-    }
+    delete axios.defaults.headers.common.Authorization;
+    clearLegacyTokenStorage();
   } catch (error) {
     console.error('Error during set session:', error);
     throw error;
   }
+}
+
+/** Clear auth cookies via API and wipe client user cache. */
+export async function clearAuthSession() {
+  clearCachedUser();
+  clearLegacyTokenStorage();
+  delete axios.defaults.headers.common.Authorization;
 }

@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { extractAccessTokenFromRequest } from './jwt-token.extractor';
 
 @Injectable()
 export class OptionalJwtAuthGuard implements CanActivate {
@@ -8,7 +9,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
     canActivate(context: ExecutionContext): boolean {
         const request: Request = context.switchToHttp().getRequest();
-        const token = this.extractTokenFromHeader(request);
+        const token = extractAccessTokenFromRequest(request);
       
         if (token) {
             try {
@@ -20,10 +21,5 @@ export class OptionalJwtAuthGuard implements CanActivate {
         }
 
         return true; // Always allow, this is optional auth
-    }
-
-    private extractTokenFromHeader(request: Request): string | null {
-        const [_, token] = request.headers.authorization?.split(' ') ?? [];
-        return token || null;
     }
 }

@@ -291,37 +291,48 @@ export class OAuthAuthService {
   }
 
   /** Encode OAuth state (returned by IdP on callback). */
-  buildOAuthState(options?: { scaqVerify?: boolean }): string {
+  buildOAuthState(options?: { scaqVerify?: boolean; deferredAuth?: boolean }): string {
     return Buffer.from(
-      JSON.stringify({ scaqVerify: Boolean(options?.scaqVerify), ts: Date.now() }),
+      JSON.stringify({
+        scaqVerify: Boolean(options?.scaqVerify),
+        deferredAuth: Boolean(options?.deferredAuth),
+        ts: Date.now(),
+      }),
     ).toString('base64url');
   }
 
   /** Decode OAuth state from the IdP callback. */
-  parseOAuthState(state?: string): { scaqVerify: boolean } {
-    if (!state?.trim()) return { scaqVerify: false };
+  parseOAuthState(state?: string): { scaqVerify: boolean; deferredAuth: boolean } {
+    if (!state?.trim()) return { scaqVerify: false, deferredAuth: false };
     try {
       const json = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as {
         scaqVerify?: boolean | number | string;
+        deferredAuth?: boolean | number | string;
       };
       const flag = json.scaqVerify;
+      const deferred = json.deferredAuth;
       return {
         scaqVerify: flag === true || flag === 1 || flag === '1',
+        deferredAuth: deferred === true || deferred === 1 || deferred === '1',
       };
     } catch {
       return {
         scaqVerify: state === 'scaq_verify' || state.includes('scaq_verify'),
+        deferredAuth: state.includes('deferred_auth'),
       };
     }
   }
 
   /** Build authorization URL for IdP. */
-  generateAuthUrl(options?: { scaqVerify?: boolean }): { authUrl: string; state: string } {
+  generateAuthUrl(options?: { scaqVerify?: boolean; deferredAuth?: boolean }): { authUrl: string; state: string } {
     const base = this.baseUrl;
     const path = this.authPath;
     const clientId = this.clientId;
     const redirectUri = this.redirectUri;
-    const state = this.buildOAuthState({ scaqVerify: options?.scaqVerify });
+    const state = this.buildOAuthState({
+      scaqVerify: options?.scaqVerify,
+      deferredAuth: options?.deferredAuth,
+    });
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'code',

@@ -2,9 +2,24 @@ import { resolveAssetUrl } from 'src/utils/asset-url';
 
 // ----------------------------------------------------------------------
 
+function buildDisplayName(user) {
+  const explicit = typeof user.displayName === 'string' ? user.displayName.trim() : '';
+  if (explicit) return explicit;
+
+  const fullName = [user.firstname ?? user.firstName, user.lastname ?? user.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  if (fullName) return fullName;
+
+  return user.username || user.email || '';
+}
+
 /** Normalize API/profile user shape for sessionStorage and auth context. */
 export function normalizeUserForSession(user) {
   if (!user || typeof user !== 'object') return user;
+
+  const avatarUrl = resolveAssetUrl(user.avatarUrl ?? user.photoURL ?? '');
 
   return {
     ...user,
@@ -12,8 +27,10 @@ export function normalizeUserForSession(user) {
     _id: user._id || user.id,
     firstname: user.firstname ?? user.firstName ?? '',
     lastname: user.lastname ?? user.lastName ?? '',
+    displayName: buildDisplayName(user),
     isVerified: user.isVerified ?? user.isVerify ?? false,
-    avatarUrl: resolveAssetUrl(user.avatarUrl ?? user.photoURL ?? ''),
+    avatarUrl,
+    photoURL: avatarUrl,
     contactNumber: user.contactNumber ?? user.phoneNumber ?? '',
     isSCAQCandidate: user.isSCAQCandidate ?? null,
     isAssociateMember: user.isAssociateMember ?? null,

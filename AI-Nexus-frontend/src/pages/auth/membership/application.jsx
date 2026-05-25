@@ -37,8 +37,8 @@ export default function MembershipApplicationPage() {
     router.replace(paths.auth.oauth.start);
   }, [router, session?.accountId]);
 
-  const handleAllTabsSubmitted = () => {
-    applyDeferredPlatformLoginAfterApplication();
+  const handleAllTabsSubmitted = async () => {
+    await applyDeferredPlatformLoginAfterApplication();
     clearMembershipApplicationPending();
     const courseReturn = readMembershipApplicationCourseReturn();
     clearMembershipApplicationCourseReturn();

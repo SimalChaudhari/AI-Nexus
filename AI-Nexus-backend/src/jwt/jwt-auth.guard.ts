@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { extractAccessTokenFromRequest } from './jwt-token.extractor';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -8,7 +9,7 @@ export class JwtAuthGuard implements CanActivate {
 
     canActivate(context: ExecutionContext): boolean {
         const request: Request = context.switchToHttp().getRequest();
-        const token = this.extractTokenFromHeader(request);
+        const token = extractAccessTokenFromRequest(request);
       
         if (!token) throw new UnauthorizedException('Token is required for authentication');
 
@@ -19,10 +20,5 @@ export class JwtAuthGuard implements CanActivate {
         } catch {
             throw new UnauthorizedException('Invalid or expired token');
         }
-    }
-
-    private extractTokenFromHeader(request: Request): string | null {
-        const [_, token] = request.headers.authorization?.split(' ') ?? [];
-        return token || null;
     }
 }

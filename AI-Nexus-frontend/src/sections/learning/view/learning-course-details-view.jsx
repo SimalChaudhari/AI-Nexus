@@ -1523,7 +1523,6 @@ console.log('',);
           </Box>
         </Stack>
       </Drawer>
-<h1>Membership Signup Dialog</h1>
       <MembershipSignupDialog
         open={membershipSignupOpen}
         onClose={() => {

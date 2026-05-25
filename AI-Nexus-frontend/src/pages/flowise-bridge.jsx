@@ -1,48 +1,62 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
+import axios from 'src/utils/axios';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { redirectFlowiseAuthFromBridge, redirectTopOrSameTab } from 'src/utils/flowise-embed-nav';
-import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
 import { paths } from 'src/routes/paths';
-import { getCookie } from 'src/utils/cookie';
 
 import { CenteredCircularLoader } from 'src/components/loading/centered-circular-loader';
 
 // ----------------------------------------------------------------------
 
 export default function FlowiseBridgePage() {
+  const [error, setError] = useState('');
+
   useEffect(() => {
-    const flowiseBase = resolveFlowisePublicBaseUrl();
-    const fromSession = sessionStorage.getItem(STORAGE_KEY);
-    const fromLocal = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('jwt_access_token');
-    const fromCookie =
-      getCookie('access-token') || getCookie(STORAGE_KEY) || getCookie('jwt_access_token') || getCookie('token');
-    const accessToken = fromSession || fromLocal || fromCookie;
+    const run = async () => {
+      const flowiseBase = resolveFlowisePublicBaseUrl();
+      if (!flowiseBase) {
+        redirectTopOrSameTab('/home');
+        return;
+      }
 
-    if (!flowiseBase) {
-      redirectTopOrSameTab('/home');
-      return;
-    }
+      try {
+        const res = await axios.get('/auth/flowise-token', {
+          skipApiLoading: true,
+          skipAuthRefresh: true,
+        });
+        const accessToken = res.data?.accessToken;
+        if (!accessToken) {
+          redirectTopOrSameTab(
+            `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.flowiseBridge)}`
+          );
+          return;
+        }
 
-    if (!accessToken) {
-      // No AI Nexus token yet: go to sign-in then come back.
-      redirectTopOrSameTab(
-        `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.flowiseBridge)}`
-      );
-      return;
-    }
+        const target = `${flowiseBase}/api/v1/auth/external-login?token=${encodeURIComponent(accessToken)}`;
+        redirectFlowiseAuthFromBridge(target);
+      } catch {
+        redirectTopOrSameTab(
+          `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.flowiseBridge)}`
+        );
+      }
+    };
 
-    // Keep canonical storage key in sessionStorage for all callers.
-    if (!fromSession) {
-      sessionStorage.setItem(STORAGE_KEY, accessToken);
-    }
-
-    const target = `${flowiseBase}/api/v1/auth/external-login?token=${encodeURIComponent(accessToken)}`;
-    redirectFlowiseAuthFromBridge(target);
+    run();
   }, []);
+
+  if (error) {
+    return (
+      <Box sx={{ py: 8, textAlign: 'center' }}>
+        <Typography variant="body2" color="error">
+          {error}
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ py: 8 }}>
@@ -53,4 +67,3 @@ export default function FlowiseBridgePage() {
     </Box>
   );
 }
-

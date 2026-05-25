@@ -12,12 +12,12 @@ import { RouterLink } from 'src/routes/components';
 
 import { useAuthContext } from 'src/auth/hooks';
 import {
-  setSession,
-  jwtDecode,
+  clearAuthSession,
   exchangeOAuthCode,
   promoteSalesforceAssociateMember,
   signOut,
 } from 'src/auth/context/jwt';
+import { writeCachedUser } from 'src/auth/context/jwt/session';
 import {
   mergeSalesforceFromExchangeUser,
   mergeSalesforceFromOAuthCallbackSearchParams,
@@ -91,12 +91,7 @@ async function rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profi
   try {
     await signOut();
   } catch {
-    setSession(null);
-    try {
-      sessionStorage.removeItem('user');
-    } catch {
-      // ignore
-    }
+    await clearAuthSession();
   }
   await checkUserSession?.();
   clearMembershipEligibilitySessionStorage();
@@ -104,6 +99,28 @@ async function rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profi
   const params = new URLSearchParams({ membershipOutcome: 'paid-signup' });
   if (returnTo) params.set('returnTo', returnTo);
   router.replace(`${paths.auth.simple.signUp}?${params.toString()}`);
+}
+
+/**
+ * Non-SCAQ SSO: recognition path → application tab; all other SSO → paid signup (SGD 900).
+ * @returns {boolean} true when navigation was handled.
+ */
+async function handleNonScaqCandidateAfterSso(
+  router,
+  checkUserSession,
+  searchParams,
+  { isSCAQCandidate, recognitionApplicationFlow, profile = {}, payload = {} }
+) {
+  if (!shouldScaqRejectToPaidSignup(isSCAQCandidate)) {
+    return false;
+  }
+
+  if (recognitionApplicationFlow) {
+    return finishRecognitionApplicationTab(router, searchParams, payload);
+  }
+
+  await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile);
+  return true;
 }
 
 async function runScaqPromoteAssociateIfNeeded(decision, scaqFlow) {
@@ -191,12 +208,28 @@ export default function OAuthCallbackPage() {
           const { user } = exchangeResult;
           const sf = readSalesforceFlagsFromSessionUser(user);
 
-          if (recognitionApplicationFlow) {
-            finishRecognitionApplicationTab(router, searchParams, {
-              accountId: sf.accountId,
-              socialToken: searchParams.get('socialAccessToken') || '',
-              pendingPlatformAccessToken: exchangeResult.accessToken || '',
-            });
+          const handledNonScaq = await handleNonScaqCandidateAfterSso(
+            router,
+            checkUserSession,
+            searchParams,
+            {
+              isSCAQCandidate: sf.isSCAQCandidate,
+              recognitionApplicationFlow,
+              profile: {
+                email: user?.email,
+                firstName: user?.firstname,
+                lastName: user?.lastname,
+                username: user?.username,
+                salesforce: user?.salesforce,
+              },
+              payload: {
+                accountId: sf.accountId,
+                socialToken: searchParams.get('socialAccessToken') || '',
+                pendingPlatformAccessToken: exchangeResult.accessToken || '',
+              },
+            }
+          );
+          if (handledNonScaq) {
             return;
           }
 
@@ -205,87 +238,68 @@ export default function OAuthCallbackPage() {
             sf.isAssociateMember,
             searchParams
           );
-
-          if (decision === 'reject-paid-signup') {
-            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-              email: user?.email,
-              firstName: user?.firstname,
-              lastName: user?.lastname,
-              username: user?.username,
-              salesforce: user?.salesforce,
-            });
-            return;
-          }
 
           if (scaqFlow) {
             mergeSalesforceFromExchangeUser(user);
           }
 
           await runScaqPromoteAssociateIfNeeded(decision, scaqFlow);
-        } else if (accessToken) {
-          if (recognitionApplicationFlow) {
-            const sf = readSalesforceFlagsFromCallbackParams(searchParams);
-            finishRecognitionApplicationTab(router, searchParams, {
-              accountId: sf.accountId,
-              socialToken: searchParams.get('socialAccessToken') || '',
-              pendingPlatformAccessToken: accessToken,
-            });
+        } else if (success === 'true' || accessToken) {
+          const pendingToken =
+            searchParams.get('pendingPlatformAccessToken') || accessToken || '';
+
+          const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+
+          const handledNonScaq = await handleNonScaqCandidateAfterSso(
+            router,
+            checkUserSession,
+            searchParams,
+            {
+              isSCAQCandidate: sf.isSCAQCandidate,
+              recognitionApplicationFlow,
+              profile: {
+                email: searchParams.get('email'),
+                firstName: searchParams.get('firstName'),
+                lastName: searchParams.get('lastName'),
+                salesforce: {
+                  isSCAQCandidate: sf.isSCAQCandidate,
+                  isAssociateMember: sf.isAssociateMember,
+                  accountId: sf.accountId,
+                  accountType: sf.accountType,
+                  memberClass: sf.memberClass,
+                },
+              },
+              payload: {
+                accountId: sf.accountId,
+                socialToken: searchParams.get('socialAccessToken') || '',
+                pendingPlatformAccessToken: pendingToken,
+              },
+            }
+          );
+          if (handledNonScaq) {
             return;
           }
 
-          const sf = readSalesforceFlagsFromCallbackParams(searchParams);
           const decision = resolveScaqPostLoginDecision(
             sf.isSCAQCandidate,
             sf.isAssociateMember,
             searchParams
           );
 
-          if (decision === 'reject-paid-signup') {
-            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-              email: searchParams.get('email'),
-              firstName: searchParams.get('firstName'),
-              lastName: searchParams.get('lastName'),
-              salesforce: {
-                isSCAQCandidate: sf.isSCAQCandidate,
-                isAssociateMember: sf.isAssociateMember,
-                accountId: sf.accountId,
-                accountType: sf.accountType,
-                memberClass: sf.memberClass,
-              },
-            });
-            return;
-          }
-
-          setSession(accessToken);
-          const userId = searchParams.get('userId');
-          const email = searchParams.get('email');
-          const firstName = searchParams.get('firstName');
-          const lastName = searchParams.get('lastName');
-          let role = 'User';
-          try {
-            const decoded = jwtDecode(accessToken);
-            const { role: decodedRole } = decoded || {};
-            if (decodedRole) role = decodedRole;
-          } catch {
-            // use default role if decode fails
-          }
-          sessionStorage.setItem(
-            'user',
-            JSON.stringify({
-              id: userId,
-              email,
-              firstname: firstName,
-              lastname: lastName,
-              role,
-              salesforce: {
-                isSCAQCandidate: sf.isSCAQCandidate,
-                isAssociateMember: sf.isAssociateMember,
-                accountId: sf.accountId,
-                accountType: sf.accountType,
-                memberClass: sf.memberClass,
-              },
-            })
-          );
+          writeCachedUser({
+            id: searchParams.get('userId'),
+            email: searchParams.get('email'),
+            firstname: searchParams.get('firstName'),
+            lastname: searchParams.get('lastName'),
+            role: 'User',
+            salesforce: {
+              isSCAQCandidate: sf.isSCAQCandidate,
+              isAssociateMember: sf.isAssociateMember,
+              accountId: sf.accountId,
+              accountType: sf.accountType,
+              memberClass: sf.memberClass,
+            },
+          });
 
           if (scaqFlow) {
             mergeSalesforceFromOAuthCallbackSearchParams(searchParams);
@@ -293,21 +307,34 @@ export default function OAuthCallbackPage() {
 
           await runScaqPromoteAssociateIfNeeded(decision, scaqFlow);
         } else {
-          setError('Missing access token or code.');
+          setError('Missing OAuth success flag or authorization code.');
           setLoading(false);
           return;
         }
 
         await checkUserSession?.();
+
+        let sfAfterLogin = readSalesforceFlagsFromCallbackParams(searchParams);
         const userStr = sessionStorage.getItem('user');
         let userRole = 'User';
         if (userStr) {
           try {
             const u = JSON.parse(userStr);
             userRole = (u?.role || 'User').toLowerCase();
+            sfAfterLogin = readSalesforceFlagsFromSessionUser(u);
           } catch {
             // use default role if parse fails
           }
+        }
+
+        if (shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate)) {
+          await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+            email: searchParams.get('email'),
+            firstName: searchParams.get('firstName'),
+            lastName: searchParams.get('lastName'),
+            salesforce: sfAfterLogin,
+          });
+          return;
         }
 
         const nextPath = resolvePostLoginPath(searchParams);
@@ -338,12 +365,7 @@ export default function OAuthCallbackPage() {
           try {
             await signOut();
           } catch {
-            setSession(null);
-            try {
-              sessionStorage.removeItem('user');
-            } catch {
-              // ignore
-            }
+            await clearAuthSession();
           }
           await checkUserSession?.();
           setError(

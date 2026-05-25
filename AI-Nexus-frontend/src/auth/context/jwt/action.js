@@ -1,8 +1,8 @@
-import { deleteCookie } from 'src/utils/cookie';
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
-import { setSession } from './utils';
+import { clearAuthSession } from './utils';
+import { writeCachedUser } from './session';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 
 /** **************************************
@@ -14,19 +14,14 @@ export const signInWithPassword = async ({ email, username, password }) => {
     const identifier = email || username;
     const params = { identifier, password };
     const res = await axios.post('/auth/login', params);
-    const { access_token, user } = res.data;
+    const { user } = res.data;
 
-    if (!access_token) {
+    if (!user) {
       throw new Error('Please check your email/username and password');
     }
 
-    // Store user data in sessionStorage
-    if (user) {
-      sessionStorage.setItem('user', JSON.stringify(normalizeUserForSession(user)));
-    }
-
-    setSession(access_token);
-    return { access_token, user };
+    const normalizedUser = writeCachedUser(user);
+    return { user: normalizedUser };
   } catch (error) {
     const errorMessage =
       error?.response?.data?.message ||
@@ -346,9 +341,12 @@ export const verifyExperiencedResume = async ({ resume }) => {
 /** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
-export const getOAuthAuthUrl = async ({ scaqVerify = false } = {}) => {
+export const getOAuthAuthUrl = async ({ scaqVerify = false, deferredAuth = false } = {}) => {
   const res = await axios.get('/auth/oauth/auth-url', {
-    params: scaqVerify ? { scaqVerify: '1' } : undefined,
+    params: {
+      ...(scaqVerify ? { scaqVerify: '1' } : {}),
+      ...(deferredAuth ? { deferredAuth: '1' } : {}),
+    },
   });
   const { authUrl, state } = res.data || {};
   if (!authUrl) throw new Error('Failed to get SSO login URL.');
@@ -370,11 +368,15 @@ export const exchangeOAuthCode = async ({ code, state }) => {
       salesforce: data.salesforce,
     };
   }
-  if (!data.accessToken) throw new Error(data.message || 'SSO login failed.');
   const { user, accessToken, isNewUser } = data;
   const normalizedUser = normalizeUserForSession(user);
-  if (normalizedUser) sessionStorage.setItem('user', JSON.stringify(normalizedUser));
-  setSession(accessToken);
+  // Deferred membership: token only, no cookies — do not cache as logged-in yet.
+  if (normalizedUser && !accessToken) {
+    writeCachedUser(normalizedUser);
+  }
+  if (!normalizedUser && !data.scaqProfileOnly) {
+    throw new Error(data.message || 'SSO login failed.');
+  }
   return { user: normalizedUser, accessToken, isNewUser };
 };
 
@@ -480,22 +482,13 @@ export const signOut = async () => {
   };
 
   try {
-    const accessToken = sessionStorage.getItem('jwt_access_token');
-    if (accessToken) {
-      try {
-        await axios.post('/auth/logout', {}, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-      } catch (err) {
-        console.warn('Backend logout failed (non-fatal):', err);
-      }
+    try {
+      await axios.post('/auth/logout', {}, { skipAuthRefresh: true, skipApiLoading: true });
+    } catch (err) {
+      console.warn('Backend logout failed (non-fatal):', err);
     }
     await triggerFlowiseLogout();
-    await setSession(null);
-    localStorage.removeItem('jwt_access_token');
-    localStorage.removeItem('access-token');
-    sessionStorage.removeItem('user');
-    deleteCookie('access-token');
+    await clearAuthSession();
   } catch (error) {
     console.error('Error during sign out:', error);
     throw error;

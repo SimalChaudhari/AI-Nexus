@@ -1,6 +1,5 @@
 import axios from 'src/utils/axios';
 import { resolveAssetUrl } from 'src/utils/asset-url';
-import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
 import {
   buildPaginationParams,
   mapPaginatedResponse,
@@ -686,14 +685,13 @@ export const courseService = {
     try {
       if (!isUuid(sectionId)) return;
       const baseURL = axios?.defaults?.baseURL || '';
-      const token = sessionStorage.getItem(STORAGE_KEY);
-      if (!baseURL || !token || !courseId || !sectionId) return;
+      if (!baseURL || !courseId || !sectionId) return;
       fetch(`${baseURL}/courses/${courseId}/sections/${sectionId}/progress`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify(payload || {}),
         keepalive: true,
       }).catch(() => {});

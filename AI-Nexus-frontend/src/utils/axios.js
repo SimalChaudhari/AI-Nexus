@@ -1,15 +1,13 @@
 import axios from 'axios';
 
 import { CONFIG } from 'src/config-global';
-import { STORAGE_KEY } from 'src/auth/context/jwt/constant';
-import { apiLoading } from 'src/utils/api-loading';
+import { attachAuthAxiosInterceptors } from 'src/auth/context/jwt/axios-interceptors';
 
 // ----------------------------------------------------------------------
 // GET deduplication: same GET (non-auth) in flight = one network call (user panel only)
 
 const AUTH_PATH_PATTERN = /\/api\/auth\//;
 const inFlightGet = new Map();
-let lastUnauthorizedRedirectAt = 0;
 
 function getDedupKey(url, params) {
   const paramStr = params && typeof params === 'object' && Object.keys(params).length
@@ -23,14 +21,14 @@ function isAuthUrl(url) {
   return AUTH_PATH_PATTERN.test(url);
 }
 
-function isAuthRoute(pathname) {
-  if (typeof pathname !== 'string') return false;
-  return pathname.startsWith('/auth');
-}
-
 // ----------------------------------------------------------------------
 
-const axiosInstance = axios.create({ baseURL: CONFIG.site.serverUrl });
+const axiosInstance = axios.create({
+  baseURL: CONFIG.site.serverUrl,
+  withCredentials: true,
+});
+
+attachAuthAxiosInterceptors(axiosInstance);
 
 const originalGet = axiosInstance.get.bind(axiosInstance);
 
@@ -60,107 +58,6 @@ axiosInstance.get = function deduplicatedGet(url, config = {}) {
   return promise;
 };
 
-// Request interceptor to add JWT token and track loading.
-// GET requests are ignored by default, but can opt-in via `trackApiLoading: true`.
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = sessionStorage.getItem(STORAGE_KEY);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    const method = (config.method || 'get').toLowerCase();
-    const isMutation = method !== 'get';
-    const shouldTrackLoading = (isMutation || config.trackApiLoading === true) && config.skipApiLoading !== true;
-    if (shouldTrackLoading) {
-      apiLoading.increment();
-    }
-    return config;
-  },
-  (error) => {
-    apiLoading.decrement();
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor for error handling and loading tracking
-axiosInstance.interceptors.response.use(
-  (response) => {
-    const method = (response.config?.method || 'get').toLowerCase();
-    const shouldTrackLoading =
-      (method !== 'get' || response.config?.trackApiLoading === true) &&
-      response.config?.skipApiLoading !== true;
-    if (shouldTrackLoading) {
-      apiLoading.decrement();
-    }
-    return response;
-  },
-  (error) => {
-    const method = (error.config?.method || 'get').toLowerCase();
-    const shouldTrackLoading =
-      (method !== 'get' || error.config?.trackApiLoading === true) &&
-      error.config?.skipApiLoading !== true;
-    if (shouldTrackLoading) {
-      apiLoading.decrement();
-    }
-    // Handle connection refused errors
-    if (error.code === 'ECONNREFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED')) {
-      const connectionError = new Error('Unable to connect to server. Please make sure the backend server is running on http://localhost:3000');
-      connectionError.code = 'ECONNREFUSED';
-      return Promise.reject(connectionError);
-    }
-
-    // Handle network errors
-    if (error.message === 'Network Error' || !error.response) {
-      const networkError = new Error('Network error. Please check your internet connection and ensure the server is running.');
-      networkError.code = 'NETWORK_ERROR';
-      return Promise.reject(networkError);
-    }
-
-    // On 401 Unauthorized, redirect to login with returnTo so user can come back after signing in
-    if (error.response?.status === 401) {
-      const isAuthRequest = /\/auth\/|\/sign-in|\/login/.test(error.config?.url || '');
-      if (!isAuthRequest && typeof window !== 'undefined') {
-        const hasSessionToken = Boolean(sessionStorage.getItem(STORAGE_KEY));
-        // If token exists but API still returns 401, avoid global hard redirect loops.
-        // Let the calling screen handle this case gracefully.
-        if (hasSessionToken) {
-          return Promise.reject(error);
-        }
-
-        const currentPath = window.location.pathname || '';
-        // Prevent refresh/redirect loops while already on auth pages.
-        if (isAuthRoute(currentPath)) {
-          return Promise.reject(error);
-        }
-        // Throttle repeated redirects triggered by multiple failing requests.
-        const now = Date.now();
-        if (now - lastUnauthorizedRedirectAt < 1500) {
-          return Promise.reject(error);
-        }
-        lastUnauthorizedRedirectAt = now;
-
-        const returnTo = encodeURIComponent(currentPath + window.location.search);
-        const base = (CONFIG.site.basePath || '').replace(/\/$/, '');
-        window.location.replace(`${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`);
-        return Promise.reject(error);
-      }
-    }
-
-    // Handle other errors: prefer message from API body (e.g. NestJS { message, error, statusCode })
-    const data = error.response?.data;
-    let message = error.message || 'Something went wrong!';
-    if (data) {
-      const { message: dataMessage } = data;
-      if (typeof dataMessage === 'string') message = dataMessage;
-      else if (typeof data === 'string') message = data;
-      else if (data instanceof Error) message = dataMessage;
-      else if (typeof data === 'object') message = dataMessage ?? JSON.stringify(data);
-    }
-    const finalError = error instanceof Error && error.message === message ? error : new Error(message);
-    return Promise.reject(finalError);
-  }
-);
-
 export default axiosInstance;
 
 // ----------------------------------------------------------------------
@@ -183,10 +80,11 @@ export const fetcher = async (args) => {
 export const endpoints = {
   auth: {
     me: '/api/auth/me',
+    refresh: '/api/auth/refresh',
     signIn: '/api/auth/sign-in',
     signUp: '/api/auth/sign-up',
     google: {
-      redirect: '/api/auth/google/redirect'
-    }
+      redirect: '/api/auth/google/redirect',
+    },
   },
 };

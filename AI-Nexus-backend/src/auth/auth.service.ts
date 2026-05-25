@@ -2273,7 +2273,7 @@ export class AuthService {
   }
 
   // Login user with email/username and password
-  async login(loginDto: LoginDto): Promise<{ message: string, access_token: string; user: Partial<UserEntity> }> {
+  async login(loginDto: LoginDto): Promise<{ message: string; user: Partial<UserEntity> }> {
     try {
       // Support both 'identifier' (from frontend) and 'email' (from Postman)
       const identifier = (loginDto.identifier || loginDto.email || '').trim();
@@ -2343,23 +2343,13 @@ export class AuthService {
         throw new UnauthorizedException('Invalid email/username or password');
       }
 
-      const payload = { 
-        email: user.email, 
-        id: user.id, 
-        role: user.role, 
-        username: user.username,
-        firstname: user.firstname,
-        lastname: user.lastname,
-      };
-
       // Exclude sensitive fields from the returned user
       const { password, ...userWithoutPassword } = user;
 
       return {
         message: 'User Logged in successfully',
         user: userWithoutPassword,
-        access_token: this.JwtService.sign(payload)
-      }
+      };
     } catch (error: any) {
       if (error instanceof NotFoundException || error instanceof UnauthorizedException || error instanceof BadRequestException) {
         throw error;
@@ -2585,6 +2575,17 @@ export class AuthService {
       }
       throw new BadRequestException('Failed to resend verification email.', error.message);
     }
+  }
+
+  /** Return sanitized user profile for /auth/me. */
+  async getUserProfile(userId: string): Promise<Partial<UserEntity>> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const { password, verificationToken, resetToken, socialAccessToken, signupAccessTokenHash, ...safe } =
+      user;
+    return safe;
   }
 
   /** SSO-aware logout: revoke IdP token if OAUTH, clear social and refresh tokens. */

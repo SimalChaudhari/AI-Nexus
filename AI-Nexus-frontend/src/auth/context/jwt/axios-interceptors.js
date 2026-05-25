@@ -1,0 +1,151 @@
+import { CONFIG } from 'src/config-global';
+import { apiLoading } from 'src/utils/api-loading';
+import { forceLogout, readCachedUser } from './session';
+
+// ----------------------------------------------------------------------
+
+const REFRESH_PATH = '/auth/refresh';
+const AUTH_EXEMPT_PATH =
+  /\/auth\/(login|register|refresh|logout|forgot|reset|verify|health|oauth|me|establish-session)/;
+
+let refreshPromise = null;
+let lastUnauthorizedRedirectAt = 0;
+
+function isAuthRoute(pathname) {
+  if (typeof pathname !== 'string') return false;
+  return pathname.startsWith('/auth');
+}
+
+async function refreshAuthSession(axiosInstance) {
+  if (!refreshPromise) {
+    refreshPromise = axiosInstance
+      .post(REFRESH_PATH, {}, { skipAuthRefresh: true, skipApiLoading: true })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+function shouldTrackApiLoading(config, method) {
+  const isMutation = method !== 'get';
+  return (isMutation || config?.trackApiLoading === true) && config?.skipApiLoading !== true;
+}
+
+// ----------------------------------------------------------------------
+
+/** Register request + response interceptors for cookie auth, refresh, and logout. */
+export function attachAuthAxiosInterceptors(axiosInstance) {
+  // Request interceptor — HttpOnly cookies carry the access token.
+  axiosInstance.interceptors.request.use(
+    (config) => {
+      const method = (config.method || 'get').toLowerCase();
+      if (shouldTrackApiLoading(config, method)) {
+        apiLoading.increment();
+      }
+      return config;
+    },
+    (error) => {
+      apiLoading.decrement();
+      return Promise.reject(error);
+    }
+  );
+
+  // Response interceptor
+  axiosInstance.interceptors.response.use(
+    (response) => {
+      const method = (response.config?.method || 'get').toLowerCase();
+      if (shouldTrackApiLoading(response.config, method)) {
+        apiLoading.decrement();
+      }
+      return response;
+    },
+    async (error) => {
+      const method = (error.config?.method || 'get').toLowerCase();
+      if (shouldTrackApiLoading(error.config, method)) {
+        apiLoading.decrement();
+      }
+
+      if (error.code === 'ECONNREFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED')) {
+        const serverHint = (CONFIG.site.serverUrl || 'http://localhost:5000/api').replace(/\/$/, '');
+        const connectionError = new Error(
+          `Unable to connect to server. Please make sure the backend server is running (${serverHint})`
+        );
+        connectionError.code = 'ECONNREFUSED';
+        return Promise.reject(connectionError);
+      }
+
+      if (error.message === 'Network Error' || !error.response) {
+        const networkError = new Error(
+          'Network error. Please check your internet connection and ensure the server is running.'
+        );
+        networkError.code = 'NETWORK_ERROR';
+        return Promise.reject(networkError);
+      }
+
+      const originalConfig = error.config;
+      const isRefreshRequest =
+        typeof originalConfig?.url === 'string' && originalConfig.url.includes(REFRESH_PATH);
+
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
+        const requestUrl = originalConfig?.url || error.config?.url || '';
+        const isAuthRequest = AUTH_EXEMPT_PATH.test(requestUrl);
+        const hadSession = Boolean(readCachedUser());
+
+        const shouldTryRefresh =
+          originalConfig &&
+          !originalConfig._authRetry &&
+          !originalConfig.skipAuthRefresh &&
+          !isRefreshRequest &&
+          !isAuthRequest;
+
+        if (shouldTryRefresh) {
+          originalConfig._authRetry = true;
+          try {
+            await refreshAuthSession(axiosInstance);
+            return axiosInstance(originalConfig);
+          } catch {
+            if (hadSession) {
+              const now = Date.now();
+              if (now - lastUnauthorizedRedirectAt >= 1500) {
+                lastUnauthorizedRedirectAt = now;
+                await forceLogout({ redirect: !isAuthRoute(window.location.pathname || '') });
+              }
+            }
+            return Promise.reject(error);
+          }
+        }
+
+        const shouldForceLogout =
+          hadSession &&
+          !isAuthRequest &&
+          (isRefreshRequest || originalConfig?._authRetry);
+
+        if (shouldForceLogout) {
+          const currentPath = window.location.pathname || '';
+          if (!isAuthRoute(currentPath)) {
+            const now = Date.now();
+            if (now - lastUnauthorizedRedirectAt >= 1500) {
+              lastUnauthorizedRedirectAt = now;
+              await forceLogout({ redirect: true });
+            }
+          }
+          return Promise.reject(error);
+        }
+      }
+
+      const data = error.response?.data;
+      let message = error.message || 'Something went wrong!';
+      if (data) {
+        const { message: dataMessage } = data;
+        if (typeof dataMessage === 'string') message = dataMessage;
+        else if (typeof data === 'string') message = data;
+        else if (data instanceof Error) message = dataMessage;
+        else if (typeof data === 'object') message = dataMessage ?? JSON.stringify(data);
+      }
+      const finalError =
+        error instanceof Error && error.message === message ? error : new Error(message);
+      return Promise.reject(finalError);
+    }
+  );
+}

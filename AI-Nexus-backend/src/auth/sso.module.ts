@@ -7,16 +7,18 @@ import { OAuthAuthService } from './oauth-auth.service';
 import { OAuthAuthController } from './oauth-auth.controller';
 import { MembershipApplicationController } from './membership-application.controller';
 import { SsoSyncService } from './sso-sync.service';
+import { RefreshTokenEntity } from './entities/refresh-token.entity';
+import { AuthTokenService } from './auth-token.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity]),
+    TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {},
     }),
   ],
-  providers: [OAuthAuthService, SsoSyncService],
+  providers: [OAuthAuthService, SsoSyncService, AuthTokenService],
   controllers: [OAuthAuthController, MembershipApplicationController],
   exports: [OAuthAuthService],
 })

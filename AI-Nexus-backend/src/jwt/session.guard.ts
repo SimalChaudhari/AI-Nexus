@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from './../user/users.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { extractAccessTokenFromRequest } from './jwt-token.extractor';
 
 @Injectable()
 export class SessionGuard implements CanActivate {
@@ -14,11 +15,9 @@ export class SessionGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
+    const token = extractAccessTokenFromRequest(request);
 
-    if (!authHeader) throw new UnauthorizedException('No token provided');
-
-    const token = authHeader.split(' ')[1];
+    if (!token) throw new UnauthorizedException('No token provided');
     try {
       const decoded = this.jwtService.verify(token, { secret: process.env.JWT_SECRET });
       const user = await this.userRepository.findOne({

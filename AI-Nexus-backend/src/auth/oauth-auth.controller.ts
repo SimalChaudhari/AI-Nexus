@@ -21,6 +21,7 @@ import {
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { SsoSyncService } from './sso-sync.service';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { AuthTokenService } from './auth-token.service';
 
 @ApiTags('OAuth')
 @Controller('auth/oauth')
@@ -28,6 +29,7 @@ export class OAuthAuthController {
   constructor(
     private readonly oauthAuthService: OAuthAuthService,
     private readonly ssoSyncService: SsoSyncService,
+    private readonly authTokenService: AuthTokenService,
   ) {}
 
   @Get('auth-url')
@@ -37,10 +39,18 @@ export class OAuthAuthController {
     required: false,
     description: 'When true, SCAQ verify-only: non-candidates are not persisted to the database',
   })
-  async getAuthUrl(@Query('scaqVerify') scaqVerify?: string) {
+  async getAuthUrl(
+    @Query('scaqVerify') scaqVerify?: string,
+    @Query('deferredAuth') deferredAuth?: string,
+  ) {
     const verify =
       scaqVerify === '1' || scaqVerify === 'true' || scaqVerify === 'yes';
-    const { authUrl, state } = this.oauthAuthService.generateAuthUrl({ scaqVerify: verify });
+    const deferred =
+      deferredAuth === '1' || deferredAuth === 'true' || deferredAuth === 'yes';
+    const { authUrl, state } = this.oauthAuthService.generateAuthUrl({
+      scaqVerify: verify,
+      deferredAuth: deferred,
+    });
     return {
       success: true,
       message: 'OK',
@@ -52,8 +62,12 @@ export class OAuthAuthController {
   @Post('exchange')
   @ApiOperation({ summary: 'Exchange OAuth authorization code for application token' })
   @ApiBody({ type: OAuthExchangeDto })
-  async exchange(@Body() dto: OAuthExchangeDto) {
-    const { scaqVerify } = this.oauthAuthService.parseOAuthState(dto.state);
+  async exchange(
+    @Body() dto: OAuthExchangeDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { scaqVerify, deferredAuth } = this.oauthAuthService.parseOAuthState(dto.state);
     const tokens = await this.oauthAuthService.exchangeCodeForToken(dto.code);
     const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
     const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
@@ -83,7 +97,14 @@ export class OAuthAuthController {
       };
     }
 
-    const { user, accessToken, isNewUser } = resolution.result;
+    const { user, isNewUser } = resolution.result;
+    const needsPaidSignup = user.isSCAQCandidate !== true;
+    const useDeferredAuth = deferredAuth || needsPaidSignup;
+    const { accessToken: platformAccessToken } = await this.authTokenService.issueTokenPair(user, res, {
+      deferredAuth: useDeferredAuth,
+      req,
+    });
+
     return {
       success: true,
       message: 'Authentication successful',
@@ -106,7 +127,8 @@ export class OAuthAuthController {
           syncedAt: user.salesforceSyncedAt,
         },
       },
-      accessToken,
+      ...(useDeferredAuth ? { accessToken: platformAccessToken } : {}),
+      requiresPaidSignup: needsPaidSignup,
       isNewUser,
     };
   }
@@ -143,7 +165,7 @@ export class OAuthAuthController {
     }
 
     try {
-      const { scaqVerify } = this.oauthAuthService.parseOAuthState(state);
+      const { scaqVerify, deferredAuth } = this.oauthAuthService.parseOAuthState(state);
       const tokens = await this.oauthAuthService.exchangeCodeForToken(code);
       const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
       const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
@@ -162,12 +184,16 @@ export class OAuthAuthController {
         return this.sendRedirectHtml(res, redirectUrl);
       }
 
-      const { user, accessToken, isNewUser } = resolution.result;
-    
-      const redirectUrl = this.oauthAuthService.createPostOAuthRedirectUrl({
+      const { user, isNewUser } = resolution.result;
+      const needsPaidSignup = user.isSCAQCandidate !== true;
+      const useDeferredAuth = deferredAuth || needsPaidSignup;
+      const { accessToken: platformAccessToken } = await this.authTokenService.issueTokenPair(user, res, {
+        deferredAuth: useDeferredAuth,
+      });
+
+      const redirectParams: Record<string, string> = {
         success: 'true',
         message: 'Logged in successfully',
-        accessToken,
         isNewUser: String(isNewUser),
         userId: user.id,
         email: user.email || '',
@@ -178,10 +204,17 @@ export class OAuthAuthController {
         salesforceMemberClass: user.salesforceMemberClass || '',
         isSCAQCandidate: user.isSCAQCandidate === null ? '' : String(user.isSCAQCandidate),
         isAssociateMember: user.isAssociateMember === null ? '' : String(user.isAssociateMember),
+        requiresPaidSignup: needsPaidSignup ? 'true' : 'false',
         ...(user.socialAccessToken
           ? { socialAccessToken: user.socialAccessToken }
           : {}),
-      });
+      };
+
+      if (useDeferredAuth) {
+        redirectParams.pendingPlatformAccessToken = platformAccessToken;
+      }
+
+      const redirectUrl = this.oauthAuthService.createPostOAuthRedirectUrl(redirectParams);
       return this.sendRedirectHtml(res, redirectUrl);
     } catch (err) {
       

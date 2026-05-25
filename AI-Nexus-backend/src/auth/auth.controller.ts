@@ -1,5 +1,5 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles, UploadedFile, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, LoginDto, ResendVerificationDto } from '../user/users.dto';
 import { Response, Request } from 'express';
@@ -8,11 +8,15 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nes
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { SaveSalesforceMembershipRecordDto } from './save-salesforce-membership-record.dto';
+import { AuthTokenService } from './auth-token.service';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly authTokenService: AuthTokenService,
+  ) {}
 
   @Get('health')
   @ApiOperation({ summary: 'Check authentication service health' })
@@ -72,10 +76,76 @@ export class AuthController {
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Authenticate user and return access token' })
+  @ApiOperation({ summary: 'Authenticate user and set HttpOnly auth cookies' })
   @ApiBody({ type: LoginDto })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(loginDto);
+    await this.authTokenService.issueTokenPair(result.user as any, res, { req });
+    return {
+      message: result.message,
+      user: result.user,
+    };
+  }
+
+  @Post('refresh')
+  @ApiOperation({ summary: 'Rotate refresh token and issue a new access token cookie' })
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const raw = this.authTokenService.readRefreshTokenFromRequest(req);
+    if (!raw) {
+      throw new UnauthorizedException('Refresh token required');
+    }
+    const { user } = await this.authTokenService.refreshSession(raw, res, req);
+    return { message: 'Session refreshed', user };
+  }
+
+  @Post('establish-session')
+  @ApiOperation({
+    summary: 'Set HttpOnly cookies from a valid access JWT (deferred membership login)',
+  })
+  async establishSession(
+    @Body() body: { token?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const token = body?.token?.trim();
+    if (!token) {
+      throw new UnauthorizedException('Token is required');
+    }
+    const { id } = this.authTokenService.verifyAccessToken(token);
+    const user = await this.authService.getUserProfile(id);
+    await this.authTokenService.issueTokenPair(user as any, res, { req });
+    return { message: 'Session established', user };
+  }
+
+  @Get('flowise-token')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Short-lived token for Flowise external-login bridge' })
+  async flowiseToken(@Req() req: Request) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const user = await this.authService.getUserProfile(userId);
+    const accessToken = this.authTokenService.signAccessToken(user as any);
+    return { accessToken };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Return the currently authenticated user' })
+  async me(@Req() req: Request) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const user = await this.authService.getUserProfile(userId);
+    return { user };
   }
 
   @Post('forgot-password')
@@ -110,8 +180,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Logout the current user session' })
-  async logout(@Req() req: Request) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const userId = (req as any).user?.id;
+    const rawRefresh = this.authTokenService.readRefreshTokenFromRequest(req);
+    await this.authTokenService.revokeRefreshToken(rawRefresh ?? undefined);
+    if (userId) {
+      await this.authTokenService.revokeAllUserRefreshTokens(userId);
+    }
+    this.authTokenService.clearAuthCookies(res);
     if (!userId) {
       return { message: 'Logged out successfully' };
     }
