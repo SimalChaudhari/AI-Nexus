@@ -308,35 +308,71 @@ export function HomeCeoLaunchSection() {
                 ) : null}
 
                 {stats.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {stats.map((stat, index) => (
-                      <Grid key={`ceo-stat-${index}`} xs={12} sm={4} md={12} lg={4}>
-                        <Stack spacing={0.5}>
-                          <Typography
-                            sx={{
-                              m: 0,
-                              fontWeight: 800,
-                              fontSize: { xs: '1.75rem', md: '2rem' },
-                              lineHeight: 1.1,
-                              color: 'primary.main',
-                            }}
-                          >
-                            {String(stat.value || '').trim()}
-                          </Typography>
-                          <Typography
-                            sx={{
-                              m: 0,
-                              fontSize: { xs: '0.8rem', md: '0.875rem' },
-                              lineHeight: 1.45,
-                              color: alpha(theme.palette.common.white, 0.62),
-                            }}
-                          >
-                            {String(stat.label || '').trim()}
-                          </Typography>
-                        </Stack>
-                      </Grid>
-                    ))}
-                  </Grid>
+                  <Stack
+                    direction="row"
+                    alignItems="flex-start"
+                    sx={{
+                      width: 1,
+                      flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                      gap: { xs: 2, sm: 2.5, md: 3 },
+                    }}
+                  >
+                    {stats.map((stat, index) => {
+                      const value = String(stat.value || '').trim();
+                      const label = String(stat.label || '').trim();
+                      if (!value && !label) return null;
+
+                      return (
+                        <Box
+                          key={`ceo-stat-${index}`}
+                          sx={{
+                            flex: '1 1 0',
+                            minWidth: 0,
+                            display: 'flex',
+                            alignItems: 'stretch',
+                            ...(index > 0
+                              ? {
+                                  pl: { xs: 0, sm: 2.5, md: 3 },
+                                  borderLeft: {
+                                    xs: 'none',
+                                    sm: `1px solid ${alpha(theme.palette.common.white, 0.12)}`,
+                                  },
+                                }
+                              : {}),
+                          }}
+                        >
+                          <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+                            {value ? (
+                              <Typography
+                                sx={{
+                                  m: 0,
+                                  fontWeight: 800,
+                                  fontSize: { xs: '1.2rem', sm: '1.25rem', md: '1.35rem' },
+                                  lineHeight: 1.1,
+                                  color: 'primary.main',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {value}
+                              </Typography>
+                            ) : null}
+                            {label ? (
+                              <Typography
+                                sx={{
+                                  m: 0,
+                                  fontSize: { xs: '0.68rem', sm: '0.72rem', md: '0.75rem' },
+                                  lineHeight: 1.35,
+                                  color: alpha(theme.palette.common.white, 0.62),
+                                }}
+                              >
+                                {label}
+                              </Typography>
+                            ) : null}
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
                 ) : null}
 
                 {playTarget ? (
