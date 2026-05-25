@@ -26,7 +26,12 @@ export function AuthProvider({ children }) {
       setState({ user: user ? normalizeUserForSession(user) : null, loading: false });
     } catch (error) {
       console.error(error);
-      setState({ user: null, loading: false });
+      // Keep cached session on transient errors (e.g. backend briefly unavailable on refresh).
+      const cached = readCachedUser();
+      setState({
+        user: cached ? normalizeUserForSession(cached) : null,
+        loading: false,
+      });
     }
   }, [setState]);
 

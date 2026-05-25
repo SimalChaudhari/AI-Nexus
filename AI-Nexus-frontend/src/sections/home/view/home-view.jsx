@@ -11,6 +11,8 @@ import { HomeCommunitiesSection } from '../home-communities-section';
 import { HomeJoinSection } from '../home-join-section';
 import { HomeProgrammeFeesSection } from '../home-programme-fees-section';
 import { HomeCurriculumSection } from '../home-curriculum-section';
+import { HomeTestimonialsSection } from '../home-testimonials-section';
+import { HomeEmployeeSection } from '../home-employee-section';
 import { HomeFaqsSection } from '../home-faqs-section';
 
 // ----------------------------------------------------------------------
@@ -33,9 +35,12 @@ export function HomeView() {
         {/* <HomeCounterSection /> */}
         {/* <HomeCommunitiesSection /> */}
         <HomeJoinSection />
-        <ContactSection />
         <HomeCurriculumSection />
         <HomeProgrammeFeesSection />
+        <HomeTestimonialsSection />
+        <HomeEmployeeSection />
+        <ContactSection />
+
         <HomeFaqsSection />
       </Stack>
     </>

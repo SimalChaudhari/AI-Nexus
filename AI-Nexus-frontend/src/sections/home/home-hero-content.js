@@ -54,3 +54,4 @@ export function buildHomeHeroData(appSettings = {}) {
     backgroundImageUrl: appSettings?.homeHeroImageUrl?.trim() || '',
   };
 }
+

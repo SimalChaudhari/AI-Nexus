@@ -12,6 +12,9 @@ import { Upload } from 'src/components/upload';
  * Keeps all hero background upload UI in one reusable component.
  */
 export function HeroImageCard({
+  title = 'Home hero background',
+  description = 'Upload a custom background image for the public home hero.',
+  saveLabel = 'Save hero image',
   heroFile,
   heroUrl,
   heroLoading,
@@ -26,10 +29,10 @@ export function HeroImageCard({
       <Stack spacing={2.5}>
         <Box>
           <Typography variant="h6" sx={{ mb: 1 }}>
-            Home hero background
+            {title}
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Upload a custom background image for the public home hero.
+            {description}
           </Typography>
         </Box>
 
@@ -53,7 +56,7 @@ export function HeroImageCard({
 
         <Stack direction="row" spacing={1.5}>
           <LoadingButton variant="contained" loading={heroSubmitting} onClick={onSave} disabled={!heroFile}>
-            Save hero image
+            {saveLabel}
           </LoadingButton>
 
           <Button

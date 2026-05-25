@@ -354,6 +354,181 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Put('home-testimonials-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page testimonials section content' })
+  async updateHomeTestimonialsContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeTestimonialsContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-employer-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page employer section content' })
+  async updateHomeEmployerContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeEmployerContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-employer-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload hero image for employer section on home page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeEmployerHero(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeEmployerHeroImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-employer-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove hero image for employer section on home page' })
+  async removeHomeEmployerHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removeHomeEmployerHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-employee-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page employee / learners section content' })
+  async updateHomeEmployeeContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeEmployeeContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-employee-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload hero image for employee section on home page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeEmployeeHero(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeEmployeeHeroImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-employee-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove hero image for employee section on home page' })
+  async removeHomeEmployeeHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removeHomeEmployeeHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-employee-partner-logo/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload partner logo for employee section (by index)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeEmployeePartnerLogo(
+    @Res() response: Response,
+    @Param('index', ParseIntPipe) index: number,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeEmployeePartnerLogo(index, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-employee-partner-logo/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove partner logo for employee section (by index)' })
+  async removeHomeEmployeePartnerLogo(
+    @Res() response: Response,
+    @Param('index', ParseIntPipe) index: number
+  ) {
+    const result = await this.appSettingsService.removeHomeEmployeePartnerLogo(index);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Post('programme-fees-agency-logo')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

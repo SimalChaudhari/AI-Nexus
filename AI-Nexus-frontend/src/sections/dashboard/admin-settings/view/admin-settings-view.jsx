@@ -4,8 +4,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import Button from '@mui/material/Button';
@@ -51,10 +49,22 @@ import { HomeJoinSettingsCard } from './components/home-join-settings-card';
 import { FaqSettingsCard } from './components/faq-settings-card';
 import { FeesSettingsCard } from './components/fees-settings-card';
 import { CurriculumSettingsCard } from './components/curriculum-settings-card';
+import { TestimonialsSettingsCard } from './components/testimonials-settings-card';
+import { EmployerSettingsCard } from './components/employer-settings-card';
 import {
   DEFAULT_PROGRAMME_FEES_CONTENT,
   normalizeProgrammeFeesContent,
 } from 'src/sections/home/programme-fees-defaults';
+import {
+  DUMMY_TESTIMONIALS_CONTENT,
+  resolveTestimonialsContent,
+  normalizeTestimonialsContent,
+} from 'src/sections/home/testimonials-defaults';
+import {
+  DUMMY_EMPLOYER_CONTENT,
+  resolveEmployerContent,
+  normalizeEmployerContent,
+} from 'src/sections/home/employer-defaults';
 import {
   DEFAULT_CURRICULUM_CONTENT,
   normalizeCurriculumContent,
@@ -207,6 +217,16 @@ export function AdminSettingsView() {
   const [faqContentSubmitting, setFaqContentSubmitting] = useState(false);
   const [feesContentSubmitting, setFeesContentSubmitting] = useState(false);
   const [curriculumContentSubmitting, setCurriculumContentSubmitting] = useState(false);
+  const [testimonialsContent, setTestimonialsContent] = useState(() =>
+    normalizeTestimonialsContent(DUMMY_TESTIMONIALS_CONTENT)
+  );
+  const [testimonialsContentSubmitting, setTestimonialsContentSubmitting] = useState(false);
+  const [employerContent, setEmployerContent] = useState(() =>
+    normalizeEmployerContent(DUMMY_EMPLOYER_CONTENT)
+  );
+  const [employerContentSubmitting, setEmployerContentSubmitting] = useState(false);
+  const [employerHeroFile, setEmployerHeroFile] = useState(null);
+  const [employerHeroSubmitting, setEmployerHeroSubmitting] = useState(false);
   const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
@@ -471,6 +491,8 @@ export function AdminSettingsView() {
           appSettings.curriculumContent || DEFAULT_CURRICULUM_CONTENT
         )
       );
+      setTestimonialsContent(resolveTestimonialsContent(appSettings.homeTestimonialsContent));
+      setEmployerContent(resolveEmployerContent(appSettings.homeEmployerContent));
       const remoteJoin = appSettings.homeJoinContent || {};
       setJoinContent({
         heading: String(remoteJoin?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
@@ -1018,6 +1040,77 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleSaveTestimonialsContent = async () => {
+    try {
+      setTestimonialsContentSubmitting(true);
+      const updated = await appSettingsService.updateHomeTestimonialsContent(testimonialsContent);
+      setTestimonialsContent(resolveTestimonialsContent(updated?.homeTestimonialsContent));
+      toast.success('Testimonials section updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update testimonials section');
+    } finally {
+      setTestimonialsContentSubmitting(false);
+    }
+  };
+
+  const handleSaveEmployerContent = async () => {
+    try {
+      setEmployerContentSubmitting(true);
+      const updated = await appSettingsService.updateHomeEmployerContent(employerContent);
+      setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
+      toast.success('Employer section updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update employer section');
+    } finally {
+      setEmployerContentSubmitting(false);
+    }
+  };
+
+  const handleDropEmployerHero = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) setEmployerHeroFile(file);
+  }, []);
+
+  const handleClearEmployerHeroSelection = () => {
+    setEmployerHeroFile(null);
+  };
+
+  const handleUploadEmployerHero = async () => {
+    if (!employerHeroFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+    try {
+      setEmployerHeroSubmitting(true);
+      const updated = await appSettingsService.uploadHomeEmployerHero(employerHeroFile);
+      setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
+      setEmployerHeroFile(null);
+      toast.success('Employer section image updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload employer image');
+    } finally {
+      setEmployerHeroSubmitting(false);
+    }
+  };
+
+  const handleRemoveEmployerHero = async () => {
+    if (employerHeroFile) {
+      setEmployerHeroFile(null);
+      return;
+    }
+    if (!String(employerContent?.heroImageUrl || '').trim()) return;
+    try {
+      setEmployerHeroSubmitting(true);
+      const updated = await appSettingsService.removeHomeEmployerHero();
+      setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
+      toast.success('Employer section image removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove employer image');
+    } finally {
+      setEmployerHeroSubmitting(false);
+    }
+  };
+
   const handleSaveFeesContent = async (contentOverride) => {
     const source = contentOverride || feesContent;
     try {
@@ -1273,6 +1366,20 @@ export function AdminSettingsView() {
       description: 'Configure programme fee tiers and funding information on the home page.',
     },
     {
+      key: 'testimonials',
+      badge: 'T',
+      icon: 'solar:chat-round-like-bold-duotone',
+      title: 'Testimonials',
+      description: 'Learner testimonials and industry quotes on the home page.',
+    },
+    {
+      key: 'employer',
+      badge: 'E',
+      icon: 'solar:buildings-2-bold-duotone',
+      title: 'Employer',
+      description: 'Home learners / employer block — hero image, copy, benefits, and CTAs.',
+    },
+    {
       key: 'faq',
       badge: 'FAQ',
       icon: 'solar:question-circle-bold-duotone',
@@ -1304,6 +1411,8 @@ export function AdminSettingsView() {
     'course-image',
     'workflow-templates-pitch',
     'programme-fees',
+    'testimonials',
+    'employer',
     'faq',
     'curriculum',
     'header-visibility',
@@ -1316,6 +1425,10 @@ export function AdminSettingsView() {
     }
     if (section === 'hero-background' || section === 'hero-content') {
       navigate(paths.admin.settingsSection('hero'), { replace: true });
+      return;
+    }
+    if (section === 'employee') {
+      navigate(paths.admin.settingsSection('employer'), { replace: true });
       return;
     }
     if (!validSectionKeys.includes(section)) {
@@ -1649,6 +1762,33 @@ export function AdminSettingsView() {
       feesContentSubmitting={feesContentSubmitting}
       onSave={handleSaveFeesContent}
       maxTiers={PROGRAMME_FEES_TIERS_MAX}
+    />
+  );
+
+  const renderTestimonialsSettings = (
+    <TestimonialsSettingsCard
+      content={testimonialsContent}
+      setContent={setTestimonialsContent}
+      submitting={testimonialsContentSubmitting}
+      onSave={handleSaveTestimonialsContent}
+    />
+  );
+
+  const renderEmployerSettings = (
+    <EmployerSettingsCard
+      content={employerContent}
+      setContent={setEmployerContent}
+      submitting={employerContentSubmitting}
+      onSave={handleSaveEmployerContent}
+      heroFile={employerHeroFile}
+      heroUrl={employerContent?.heroImageUrl || ''}
+      heroSubmitting={employerHeroSubmitting}
+      onHeroDrop={handleDropEmployerHero}
+      onHeroDelete={handleRemoveEmployerHero}
+      onHeroSave={handleUploadEmployerHero}
+      onHeroClearOrRemove={
+        employerHeroFile ? handleClearEmployerHeroSelection : handleRemoveEmployerHero
+      }
     />
   );
 
@@ -2020,7 +2160,81 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const settingsTabMid = Math.ceil(sectionCards.length / 2);
+  const settingsTabRows = [
+    sectionCards.slice(0, settingsTabMid),
+    sectionCards.slice(settingsTabMid),
+  ];
+
   const activeSectionItem = sectionCards.find((item) => item.key === activeSection);
+
+  const renderSettingsTabIcon = (sectionItem) =>
+    sectionItem.iconSrc ? (
+      <Box
+        component="img"
+        src={sectionItem.iconSrc}
+        alt=""
+        sx={{
+          width: 22,
+          height: 22,
+          maxWidth: 22,
+          maxHeight: 22,
+          objectFit: 'contain',
+          display: 'block',
+          flexShrink: 0,
+        }}
+      />
+    ) : (
+      <Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={20} />
+    );
+
+  const renderSettingsTab = (sectionItem) => {
+    const selected = activeSection === sectionItem.key;
+    return (
+      <Button
+        key={sectionItem.key}
+        color="inherit"
+        onClick={() => navigate(paths.admin.settingsSection(sectionItem.key))}
+        sx={(theme) => ({
+          minHeight: 44,
+          minWidth: 0,
+          px: { xs: 0.75, sm: 1 },
+          py: 0.75,
+          justifyContent: 'flex-start',
+          textTransform: 'none',
+          fontWeight: 600,
+          fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+          borderRadius: 1,
+          color: selected ? 'primary.main' : 'text.secondary',
+          bgcolor: selected
+            ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.12)
+            : 'transparent',
+          borderBottom: `3px solid ${selected ? theme.palette.primary.main : 'transparent'}`,
+          transition: 'background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease',
+          '&:hover': {
+            color: 'primary.main',
+            bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.65),
+          },
+          '& .MuiSvgIcon-root, & svg': { opacity: selected ? 1 : 0.88, flexShrink: 0 },
+          '& img': { opacity: selected ? 1 : 0.88 },
+        })}
+      >
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0, width: 1 }}>
+          {renderSettingsTabIcon(sectionItem)}
+          <Box
+            component="span"
+            sx={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {sectionItem.title}
+          </Box>
+        </Stack>
+      </Button>
+    );
+  };
 
   const renderSectionSwitcher = (
     <Card
@@ -2028,95 +2242,42 @@ export function AdminSettingsView() {
         p: { xs: 0.75, sm: 1 },
         overflow: 'hidden',
         border: `1px solid ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.28 : 0.14)}`,
-        background: `linear-gradient(125deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.08)} 0%, ${alpha(
-          theme.palette.secondary.main,
-          theme.palette.mode === 'dark' ? 0.16 : 0.06
-        )} 48%, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.04)} 100%)`,
+        background: `linear-gradient(125deg, ${theme.palette.common.white} 0%, ${alpha(
+          theme.palette.primary.lighter,
+          theme.palette.mode === 'dark' ? 0.2 : 0.38
+        )} 55%, ${alpha(theme.palette.primary.lighter, theme.palette.mode === 'dark' ? 0.12 : 0.18)} 100%)`,
         boxShadow:
           theme.palette.mode === 'dark'
             ? `0 6px 28px ${alpha(theme.palette.common.black, 0.28)}`
             : `0 6px 28px ${alpha(theme.palette.secondary.main, 0.1)}`,
       })}
     >
-      <Tabs
-        value={activeSection}
-        onChange={(_, value) => navigate(paths.admin.settingsSection(value))}
-        variant="scrollable"
-        scrollButtons="auto"
-        allowScrollButtonsMobile
+      <Stack
+        spacing={0.5}
         sx={(theme) => ({
-          minHeight: 44,
-          '& .MuiTabs-flexContainer': {
-            gap: 0.5,
-          },
-          '& .MuiTabs-scrollButtons': {
-            width: 32,
-          },
-          '& .MuiTabs-indicator': {
-            height: 3,
-            borderRadius: 99,
-            background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-          },
-          '& .MuiTab-root': {
-            flex: '0 0 auto',
-            minHeight: 44,
-            minWidth: 'unset',
-            textTransform: 'none',
-            fontWeight: 600,
-            fontSize: '0.8125rem',
-            px: 1,
-            py: 0.75,
-            borderRadius: 1,
-            color: 'text.secondary',
-            transition: 'background-color 0.2s ease, color 0.2s ease',
-            '& .MuiTab-iconWrapper': {
-              marginRight: 0.5,
-              marginBottom: '0 !important',
-            },
-            '& .MuiSvgIcon-root, & svg': { opacity: 0.88, width: 20, height: 20 },
-            '& .MuiTab-iconWrapper img': { opacity: 0.88, width: 22, height: 22 },
-            '&:hover': {
-              color: 'primary.main',
-              bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.5),
-            },
-          },
-          '& .MuiTab-root.Mui-selected': {
-            color: 'primary.main',
-            bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.12),
-            '& .MuiSvgIcon-root, & svg': { opacity: 1 },
-            '& .MuiTab-iconWrapper img': { opacity: 1 },
+          '& > :not(:last-child)': {
+            pb: 0.5,
+            borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
           },
         })}
       >
-        {sectionCards.map((sectionItem) => (
-          <Tab
-            key={sectionItem.key}
-            value={sectionItem.key}
-            icon={
-              sectionItem.iconSrc ? (
-                <Box
-                  component="img"
-                  src={sectionItem.iconSrc}
-                  alt=""
-                  sx={{
-                    width: 22,
-                    height: 22,
-                    maxWidth: 22,
-                    maxHeight: 22,
-                    objectFit: 'contain',
-                    display: 'block',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={20} />
-              )
-            }
-            iconPosition="start"
-            label={sectionItem.title}
-          />
+        {settingsTabRows.map((row, rowIndex) => (
+          <Box
+            key={`settings-tab-row-${rowIndex}`}
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(2, minmax(0, 1fr))',
+                sm: 'repeat(4, minmax(0, 1fr))',
+                md: 'repeat(7, minmax(0, 1fr))',
+              },
+              gap: 0.5,
+            }}
+          >
+            {row.map((sectionItem) => renderSettingsTab(sectionItem))}
+          </Box>
         ))}
-      </Tabs>
+      </Stack>
 
       {activeSectionItem ? (
         <Typography
@@ -2162,6 +2323,8 @@ export function AdminSettingsView() {
         {activeSection === 'course-image' && renderCourseDefaultImageSettings}
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
+        {activeSection === 'testimonials' && renderTestimonialsSettings}
+        {activeSection === 'employer' && renderEmployerSettings}
         {activeSection === 'faq' && renderFaqSettings}
         {activeSection === 'curriculum' && renderCurriculumSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}

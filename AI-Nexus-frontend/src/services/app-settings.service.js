@@ -85,6 +85,69 @@ function transformCurriculumContent(source) {
   };
 }
 
+function transformTestimonialsContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawTestimonials = Array.isArray(source.testimonials) ? source.testimonials : [];
+  const rawQuotes = Array.isArray(source.industryQuotes) ? source.industryQuotes : [];
+  return {
+    heading: source.heading != null ? String(source.heading) : '',
+    subtitle: source.subtitle != null ? String(source.subtitle) : '',
+    testimonials: rawTestimonials.slice(0, 12).map((row) => ({
+      quote: row?.quote != null ? String(row.quote) : '',
+      name: row?.name != null ? String(row.name) : '',
+      role: row?.role != null ? String(row.role) : '',
+      avatarUrl: normalizeAssetUrl(row?.avatarUrl || ''),
+    })),
+    industryQuotes: rawQuotes.slice(0, 8).map((row) => ({
+      quote: row?.quote != null ? String(row.quote) : '',
+      organisation: row?.organisation != null ? String(row.organisation) : '',
+      logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
+    })),
+  };
+}
+
+function transformEmployerContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+  return {
+    heading: source.heading != null ? String(source.heading) : '',
+    subtitle: source.subtitle != null ? String(source.subtitle) : '',
+    heroImageUrl: normalizeAssetUrl(source.heroImageUrl || ''),
+    benefits: rawBenefits.slice(0, 6).map((row) => ({
+      icon: row?.icon != null ? String(row.icon) : '',
+      title: row?.title != null ? String(row.title) : '',
+      description: row?.description != null ? String(row.description) : '',
+    })),
+    ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
+    ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
+  };
+}
+
+function transformEmployeeContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+  return {
+    eyebrow: source.eyebrow != null ? String(source.eyebrow) : '',
+    heading: source.heading != null ? String(source.heading) : '',
+    headingAccent: source.headingAccent != null ? String(source.headingAccent) : '',
+    subtitle: source.subtitle != null ? String(source.subtitle) : '',
+    heroImageUrl: normalizeAssetUrl(source.heroImageUrl || ''),
+    heroPanelTitle: source.heroPanelTitle != null ? String(source.heroPanelTitle) : '',
+    heroPanelSubtitle: source.heroPanelSubtitle != null ? String(source.heroPanelSubtitle) : '',
+    benefitsLabel: source.benefitsLabel != null ? String(source.benefitsLabel) : '',
+    benefits: rawBenefits.slice(0, 6).map((row) => ({
+      icon: row?.icon != null ? String(row.icon) : '',
+      iconColor: row?.iconColor != null ? String(row.iconColor) : '',
+      title: row?.title != null ? String(row.title) : '',
+      description: row?.description != null ? String(row.description) : '',
+    })),
+    primaryCtaLabel: source.primaryCtaLabel != null ? String(source.primaryCtaLabel) : '',
+    primaryCtaHref: source.primaryCtaHref != null ? String(source.primaryCtaHref) : '',
+    secondaryCtaLabel: source.secondaryCtaLabel != null ? String(source.secondaryCtaLabel) : '',
+    secondaryCtaHref: source.secondaryCtaHref != null ? String(source.secondaryCtaHref) : '',
+  };
+}
+
 function transformFaqContent(sourceFaq) {
   if (!sourceFaq || typeof sourceFaq !== 'object') {
     return null;
@@ -227,6 +290,9 @@ function transformSettings(settings) {
     faqContent: transformFaqContent(sourceFaq),
     programmeFeesContent: transformProgrammeFeesContent(sourceFees),
     curriculumContent: transformCurriculumStored(sourceCurriculum),
+    homeTestimonialsContent: transformTestimonialsContent(settings?.homeTestimonialsContent),
+    homeEmployerContent: transformEmployerContent(settings?.homeEmployerContent),
+    homeEmployeeContent: transformEmployeeContent(settings?.homeEmployeeContent),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -372,6 +438,56 @@ export const appSettingsService = {
 
   async updateProgrammeFeesContent(payload) {
     const response = await axios.put('/app-settings/programme-fees-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeTestimonialsContent(payload) {
+    const response = await axios.put('/app-settings/home-testimonials-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeEmployerContent(payload) {
+    const response = await axios.put('/app-settings/home-employer-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeEmployerHero(file) {
+    const formData = new FormData();
+    formData.append('hero', file);
+    const response = await axios.post('/app-settings/home-employer-hero', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeEmployerHero() {
+    const response = await axios.delete('/app-settings/home-employer-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeEmployeeContent(payload) {
+    const response = await axios.put('/app-settings/home-employee-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeEmployeeHero(file) {
+    const formData = new FormData();
+    formData.append('hero', file);
+    const response = await axios.post('/app-settings/home-employee-hero', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeEmployeeHero() {
+    const response = await axios.delete('/app-settings/home-employee-hero');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

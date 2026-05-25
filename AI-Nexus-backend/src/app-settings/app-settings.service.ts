@@ -103,6 +103,55 @@ type ProgrammeFeesContentPayload = {
   };
 };
 
+type HomeTestimonialsContentPayload = {
+  heading?: string;
+  subtitle?: string;
+  testimonials?: Array<{
+    quote?: string;
+    name?: string;
+    role?: string;
+    avatarUrl?: string;
+  }>;
+  industryQuotes?: Array<{
+    quote?: string;
+    organisation?: string;
+    logoUrl?: string;
+  }>;
+};
+
+type HomeEmployerContentPayload = {
+  heading?: string;
+  subtitle?: string;
+  heroImageUrl?: string;
+  benefits?: Array<{ icon?: string; title?: string; description?: string }>;
+  ctaLabel?: string;
+  ctaHref?: string;
+};
+
+type HomeEmployeeContentPayload = {
+  eyebrow?: string;
+  heading?: string;
+  headingAccent?: string;
+  subtitle?: string;
+  heroImageUrl?: string;
+  heroPanelTitle?: string;
+  heroPanelSubtitle?: string;
+  benefitsLabel?: string;
+  benefits?: Array<{
+    icon?: string;
+    iconColor?: string;
+    title?: string;
+    description?: string;
+  }>;
+  primaryCtaLabel?: string;
+  primaryCtaHref?: string;
+  secondaryCtaLabel?: string;
+  secondaryCtaHref?: string;
+  trustedLabel?: string;
+  logos?: Array<{ name?: string; logoUrl?: string }>;
+  stats?: Array<{ icon?: string; value?: string; label?: string }>;
+};
+
 type ContactHeroContentPayload = {
   headingLine1?: string;
   headingLine2?: string;
@@ -140,6 +189,12 @@ const CURRICULUM_SMALL_TITLE_MAX = 120;
 const CURRICULUM_SUBTEXT_MAX = 400;
 const CURRICULUM_LABEL_MAX = 80;
 const CURRICULUM_COURSES_MAX = 20;
+const TESTIMONIALS_MAX = 12;
+const INDUSTRY_QUOTES_MAX = 8;
+const EMPLOYER_BENEFITS_MAX = 6;
+const EMPLOYEE_BENEFITS_MAX = 6;
+const EMPLOYEE_LOGOS_MAX = 12;
+const EMPLOYEE_STATS_MAX = 6;
 
 @Injectable()
 export class AppSettingsService {
@@ -150,6 +205,9 @@ export class AppSettingsService {
   private faqColumnChecked = false;
   private programmeFeesColumnChecked = false;
   private curriculumColumnChecked = false;
+  private homeTestimonialsColumnChecked = false;
+  private homeEmployerColumnChecked = false;
+  private homeEmployeeColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -224,6 +282,30 @@ export class AppSettingsService {
     this.curriculumColumnChecked = true;
   }
 
+  private async ensureHomeTestimonialsColumn(): Promise<void> {
+    if (this.homeTestimonialsColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeTestimonialsContent" jsonb'
+    );
+    this.homeTestimonialsColumnChecked = true;
+  }
+
+  private async ensureHomeEmployerColumn(): Promise<void> {
+    if (this.homeEmployerColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeEmployerContent" jsonb'
+    );
+    this.homeEmployerColumnChecked = true;
+  }
+
+  private async ensureHomeEmployeeColumn(): Promise<void> {
+    if (this.homeEmployeeColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeEmployeeContent" jsonb'
+    );
+    this.homeEmployeeColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
@@ -232,6 +314,9 @@ export class AppSettingsService {
     await this.ensureFaqColumn();
     await this.ensureProgrammeFeesColumn();
     await this.ensureCurriculumColumn();
+    await this.ensureHomeTestimonialsColumn();
+    await this.ensureHomeEmployerColumn();
+    await this.ensureHomeEmployeeColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -646,6 +731,91 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizeHomeTestimonialsContent(input: unknown): HomeTestimonialsContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawTestimonials = Array.isArray(source.testimonials) ? source.testimonials : [];
+    const rawQuotes = Array.isArray(source.industryQuotes) ? source.industryQuotes : [];
+    return {
+      heading: this.cleanText(source.heading, 120),
+      subtitle: this.cleanText(source.subtitle),
+      testimonials: rawTestimonials.slice(0, TESTIMONIALS_MAX).map((row: any) => ({
+        quote: this.cleanText(row?.quote),
+        name: this.cleanText(row?.name, 120),
+        role: this.cleanText(row?.role, 160),
+        avatarUrl:
+          this.toStoredUploadPath(row?.avatarUrl) || this.cleanText(row?.avatarUrl, 500),
+      })),
+      industryQuotes: rawQuotes.slice(0, INDUSTRY_QUOTES_MAX).map((row: any) => ({
+        quote: this.cleanText(row?.quote),
+        organisation: this.cleanText(row?.organisation, 160),
+        logoUrl: this.toStoredUploadPath(row?.logoUrl) || this.cleanText(row?.logoUrl, 500),
+      })),
+    };
+  }
+
+  private sanitizeHomeEmployerContent(input: unknown): HomeEmployerContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+    return {
+      heading: this.cleanText(source.heading, 120),
+      subtitle: this.cleanText(source.subtitle),
+      heroImageUrl:
+        this.toStoredUploadPath(source.heroImageUrl) || this.cleanText(source.heroImageUrl, 500),
+      benefits: rawBenefits.slice(0, EMPLOYER_BENEFITS_MAX).map((row: any) => ({
+        icon: this.cleanText(row?.icon, 120),
+        title: this.cleanText(row?.title, 120),
+        description: this.cleanText(row?.description),
+      })),
+      ctaLabel: this.cleanText(source.ctaLabel, 80),
+      ctaHref: this.cleanText(source.ctaHref, 500),
+    };
+  }
+
+  private sanitizeIconColor(value: unknown): string {
+    const raw = this.cleanText(value, 32);
+    if (!raw) return '';
+    if (/^#[0-9A-Fa-f]{3,8}$/.test(raw)) return raw;
+    return '';
+  }
+
+  private sanitizeHomeEmployeeContent(input: unknown): HomeEmployeeContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+    const rawLogos = Array.isArray(source.logos) ? source.logos : [];
+    const rawStats = Array.isArray(source.stats) ? source.stats : [];
+    return {
+      eyebrow: this.cleanText(source.eyebrow, 120),
+      heading: this.cleanText(source.heading, 160),
+      headingAccent: this.cleanText(source.headingAccent, 80),
+      subtitle: this.cleanText(source.subtitle),
+      heroImageUrl:
+        this.toStoredUploadPath(source.heroImageUrl) || this.cleanText(source.heroImageUrl, 500),
+      heroPanelTitle: this.cleanText(source.heroPanelTitle, 120),
+      heroPanelSubtitle: this.cleanText(source.heroPanelSubtitle, 200),
+      benefitsLabel: this.cleanText(source.benefitsLabel, 120),
+      benefits: rawBenefits.slice(0, EMPLOYEE_BENEFITS_MAX).map((row: any) => ({
+        icon: this.cleanText(row?.icon, 120),
+        iconColor: this.sanitizeIconColor(row?.iconColor),
+        title: this.cleanText(row?.title, 120),
+        description: this.cleanText(row?.description),
+      })),
+      primaryCtaLabel: this.cleanText(source.primaryCtaLabel, 80),
+      primaryCtaHref: this.cleanText(source.primaryCtaHref, 500),
+      secondaryCtaLabel: this.cleanText(source.secondaryCtaLabel, 80),
+      secondaryCtaHref: this.cleanText(source.secondaryCtaHref, 500),
+      trustedLabel: this.cleanText(source.trustedLabel, 120),
+      logos: rawLogos.slice(0, EMPLOYEE_LOGOS_MAX).map((row: any) => ({
+        name: this.cleanText(row?.name, 120),
+        logoUrl: this.toStoredUploadPath(row?.logoUrl) || this.cleanText(row?.logoUrl, 500),
+      })),
+      stats: rawStats.slice(0, EMPLOYEE_STATS_MAX).map((row: any) => ({
+        icon: this.cleanText(row?.icon, 120),
+        value: this.cleanText(row?.value, 40),
+        label: this.cleanText(row?.label, 120),
+      })),
+    };
+  }
+
   private sanitizeFaqContent(input: unknown): FaqContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const rawItems = Array.isArray(source.items) ? source.items : [];
@@ -783,6 +953,158 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Programme fees content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeTestimonialsContent(
+    payload: HomeTestimonialsContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeTestimonialsContent = this.sanitizeHomeTestimonialsContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home testimonials content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeEmployerContent(
+    payload: HomeEmployerContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeEmployerContent = this.sanitizeHomeEmployerContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home employer content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeEmployerHeroImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-employer-hero');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-employer-hero', {
+      fileName: 'hero',
+    });
+    const existing = this.sanitizeHomeEmployerContent(settings.homeEmployerContent || {});
+    settings.homeEmployerContent = this.sanitizeHomeEmployerContent({
+      ...existing,
+      heroImageUrl: relativeUrl,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Employer section hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeEmployerHeroImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-employer-hero');
+    const existing = this.sanitizeHomeEmployerContent(settings.homeEmployerContent || {});
+    settings.homeEmployerContent = this.sanitizeHomeEmployerContent({
+      ...existing,
+      heroImageUrl: '',
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Employer section hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeEmployeeContent(
+    payload: HomeEmployeeContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeEmployeeContent = this.sanitizeHomeEmployeeContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home employee content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeEmployeeHeroImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-employee-hero');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-employee-hero', {
+      fileName: 'hero',
+    });
+    const existing = this.sanitizeHomeEmployeeContent(settings.homeEmployeeContent || {});
+    settings.homeEmployeeContent = this.sanitizeHomeEmployeeContent({
+      ...existing,
+      heroImageUrl: relativeUrl,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Employee section hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeEmployeeHeroImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-employee-hero');
+    const existing = this.sanitizeHomeEmployeeContent(settings.homeEmployeeContent || {});
+    settings.homeEmployeeContent = this.sanitizeHomeEmployeeContent({
+      ...existing,
+      heroImageUrl: '',
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Employee section hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeEmployeePartnerLogo(
+    index: number,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), EMPLOYEE_LOGOS_MAX - 1));
+    const folder = `home-employee-logos/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'logo',
+    });
+    const existing = this.sanitizeHomeEmployeeContent(settings.homeEmployeeContent || {});
+    const logos = [...(existing.logos || [])];
+    while (logos.length <= slot) {
+      logos.push({ name: '', logoUrl: '' });
+    }
+    logos[slot] = { ...logos[slot], logoUrl: relativeUrl };
+    settings.homeEmployeeContent = this.sanitizeHomeEmployeeContent({ ...existing, logos });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner logo uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeEmployeePartnerLogo(
+    index: number
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), EMPLOYEE_LOGOS_MAX - 1));
+    const folder = `home-employee-logos/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const existing = this.sanitizeHomeEmployeeContent(settings.homeEmployeeContent || {});
+    const logos = [...(existing.logos || [])];
+    while (logos.length <= slot) {
+      logos.push({ name: '', logoUrl: '' });
+    }
+    logos[slot] = { ...logos[slot], logoUrl: '' };
+    settings.homeEmployeeContent = this.sanitizeHomeEmployeeContent({ ...existing, logos });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner logo removed successfully',
       settings: saved,
     };
   }
@@ -927,6 +1249,9 @@ export class AppSettingsService {
     faqContent: FaqContentPayload | null;
     programmeFeesContent: ProgrammeFeesContentPayload | null;
     curriculumContent: CurriculumContentPayload | null;
+    homeTestimonialsContent: HomeTestimonialsContentPayload | null;
+    homeEmployerContent: HomeEmployerContentPayload | null;
+    homeEmployeeContent: HomeEmployeeContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -957,6 +1282,15 @@ export class AppSettingsService {
         : null,
       curriculumContent: settings.curriculumContent
         ? this.sanitizeCurriculumContent(settings.curriculumContent)
+        : null,
+      homeTestimonialsContent: settings.homeTestimonialsContent
+        ? this.sanitizeHomeTestimonialsContent(settings.homeTestimonialsContent)
+        : null,
+      homeEmployerContent: settings.homeEmployerContent
+        ? this.sanitizeHomeEmployerContent(settings.homeEmployerContent)
+        : null,
+      homeEmployeeContent: settings.homeEmployeeContent
+        ? this.sanitizeHomeEmployeeContent(settings.homeEmployeeContent)
         : null,
       totalCourseEnrollments,
     };

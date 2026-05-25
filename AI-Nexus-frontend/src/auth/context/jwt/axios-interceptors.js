@@ -5,8 +5,9 @@ import { forceLogout, readCachedUser } from './session';
 // ----------------------------------------------------------------------
 
 const REFRESH_PATH = '/auth/refresh';
+/** Auth routes that must not trigger access-token refresh (bootstrap /auth/me is not listed). */
 const AUTH_EXEMPT_PATH =
-  /\/auth\/(login|register|refresh|logout|forgot|reset|verify|health|oauth|me|establish-session)/;
+  /\/auth\/(login|register|refresh|logout|forgot|reset|verify|health|oauth|establish-session)/;
 
 let refreshPromise = null;
 let lastUnauthorizedRedirectAt = 0;

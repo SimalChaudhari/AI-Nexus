@@ -83,6 +83,55 @@ export type ProgrammeFeesContent = {
   };
 };
 
+export type HomeTestimonialsContent = {
+  heading?: string;
+  subtitle?: string;
+  testimonials?: Array<{
+    quote?: string;
+    name?: string;
+    role?: string;
+    avatarUrl?: string;
+  }>;
+  industryQuotes?: Array<{
+    quote?: string;
+    organisation?: string;
+    logoUrl?: string;
+  }>;
+};
+
+export type HomeEmployerContent = {
+  heading?: string;
+  subtitle?: string;
+  heroImageUrl?: string;
+  benefits?: Array<{ icon?: string; title?: string; description?: string }>;
+  ctaLabel?: string;
+  ctaHref?: string;
+};
+
+export type HomeEmployeeContent = {
+  eyebrow?: string;
+  heading?: string;
+  headingAccent?: string;
+  subtitle?: string;
+  heroImageUrl?: string;
+  heroPanelTitle?: string;
+  heroPanelSubtitle?: string;
+  benefitsLabel?: string;
+  benefits?: Array<{
+    icon?: string;
+    iconColor?: string;
+    title?: string;
+    description?: string;
+  }>;
+  primaryCtaLabel?: string;
+  primaryCtaHref?: string;
+  secondaryCtaLabel?: string;
+  secondaryCtaHref?: string;
+  trustedLabel?: string;
+  logos?: Array<{ name?: string; logoUrl?: string }>;
+  stats?: Array<{ icon?: string; value?: string; label?: string }>;
+};
+
 export type ContactHeroContent = {
   headingLine1?: string;
   headingLine2?: string;
@@ -156,6 +205,18 @@ export class AppSettingsEntity {
   /** Home page curriculum block (course modules list). */
   @Column({ type: 'jsonb', nullable: true })
   curriculumContent?: CurriculumContent | null;
+
+  /** Home page testimonials and industry quotes section. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeTestimonialsContent?: HomeTestimonialsContent | null;
+
+  /** Home page employer section. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeEmployerContent?: HomeEmployerContent | null;
+
+  /** Home page employee / learners section (dark band with benefits & partner logos). */
+  @Column({ type: 'jsonb', nullable: true })
+  homeEmployeeContent?: HomeEmployeeContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

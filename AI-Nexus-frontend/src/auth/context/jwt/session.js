@@ -32,7 +32,7 @@ export function clearCachedUser() {
 /** Fetch current user from API (HttpOnly access cookie is sent automatically). */
 export async function fetchCurrentUser() {
   try {
-    const res = await axios.get('/auth/me', { skipApiLoading: true, skipAuthRefresh: true });
+    const res = await axios.get('/auth/me', { skipApiLoading: true });
     const user = res.data?.user;
     if (user) {
       return writeCachedUser(user);
