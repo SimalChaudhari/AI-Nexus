@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -107,16 +108,54 @@ type HomeTestimonialsContentPayload = {
   heading?: string;
   subtitle?: string;
   testimonials?: Array<{
+    id?: string;
     quote?: string;
     name?: string;
     role?: string;
     avatarUrl?: string;
+    rating?: number;
   }>;
   industryQuotes?: Array<{
+    id?: string;
     quote?: string;
     organisation?: string;
     logoUrl?: string;
   }>;
+};
+
+type HomeProgrammeStructureContentPayload = {
+  eyebrow?: string;
+  heading?: string;
+  phases?: Array<{
+    id?: string;
+    label?: string;
+    title?: string;
+    description?: string;
+  }>;
+};
+
+type HomeFundingEligibilityContentPayload = {
+  eyebrow?: string;
+  heading?: string;
+  items?: Array<{
+    id?: string;
+    icon?: string;
+    title?: string;
+    description?: string;
+  }>;
+};
+
+type HomeCeoLaunchContentPayload = {
+  eyebrow?: string;
+  heading?: string;
+  subtitle?: string;
+  posterImageUrl?: string;
+  videoUrl?: string;
+  videoFileUrl?: string;
+  quote?: string;
+  stats?: Array<{ value?: string; label?: string }>;
+  ctaLabel?: string;
+  ctaHref?: string;
 };
 
 type HomeEmployerContentPayload = {
@@ -191,6 +230,21 @@ const CURRICULUM_LABEL_MAX = 80;
 const CURRICULUM_COURSES_MAX = 20;
 const TESTIMONIALS_MAX = 12;
 const INDUSTRY_QUOTES_MAX = 8;
+const PROGRAMME_STRUCTURE_EYEBROW_MAX = 80;
+const PROGRAMME_STRUCTURE_HEADING_MAX = 160;
+const PROGRAMME_STRUCTURE_PHASE_LABEL_MAX = 40;
+const PROGRAMME_STRUCTURE_PHASE_TITLE_MAX = 120;
+const PROGRAMME_STRUCTURE_PHASES_MAX = 8;
+const FUNDING_ELIGIBILITY_EYEBROW_MAX = 80;
+const FUNDING_ELIGIBILITY_HEADING_MAX = 160;
+const FUNDING_ELIGIBILITY_CARD_TITLE_MAX = 120;
+const FUNDING_ELIGIBILITY_ICON_MAX = 120;
+const FUNDING_ELIGIBILITY_ITEMS_MAX = 6;
+const CEO_LAUNCH_EYEBROW_MAX = 80;
+const CEO_LAUNCH_HEADING_MAX = 160;
+const CEO_LAUNCH_STATS_MAX = 4;
+const CEO_LAUNCH_STAT_VALUE_MAX = 40;
+const CEO_LAUNCH_STAT_LABEL_MAX = 120;
 const EMPLOYER_BENEFITS_MAX = 6;
 const EMPLOYEE_BENEFITS_MAX = 6;
 const EMPLOYEE_LOGOS_MAX = 12;
@@ -208,6 +262,9 @@ export class AppSettingsService {
   private homeTestimonialsColumnChecked = false;
   private homeEmployerColumnChecked = false;
   private homeEmployeeColumnChecked = false;
+  private homeProgrammeStructureColumnChecked = false;
+  private homeFundingEligibilityColumnChecked = false;
+  private homeCeoLaunchColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -306,6 +363,30 @@ export class AppSettingsService {
     this.homeEmployeeColumnChecked = true;
   }
 
+  private async ensureHomeProgrammeStructureColumn(): Promise<void> {
+    if (this.homeProgrammeStructureColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeProgrammeStructureContent" jsonb'
+    );
+    this.homeProgrammeStructureColumnChecked = true;
+  }
+
+  private async ensureHomeFundingEligibilityColumn(): Promise<void> {
+    if (this.homeFundingEligibilityColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeFundingEligibilityContent" jsonb'
+    );
+    this.homeFundingEligibilityColumnChecked = true;
+  }
+
+  private async ensureHomeCeoLaunchColumn(): Promise<void> {
+    if (this.homeCeoLaunchColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeCeoLaunchContent" jsonb'
+    );
+    this.homeCeoLaunchColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
@@ -317,6 +398,9 @@ export class AppSettingsService {
     await this.ensureHomeTestimonialsColumn();
     await this.ensureHomeEmployerColumn();
     await this.ensureHomeEmployeeColumn();
+    await this.ensureHomeProgrammeStructureColumn();
+    await this.ensureHomeFundingEligibilityColumn();
+    await this.ensureHomeCeoLaunchColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -731,6 +815,22 @@ export class AppSettingsService {
     };
   }
 
+  private isTestimonialsItemId(value: unknown): boolean {
+    const id = this.cleanText(String(value ?? ''), 64);
+    return /^[0-9a-f-]{36}$/i.test(id);
+  }
+
+  private ensureTestimonialsItemId(value: unknown): string {
+    return this.isTestimonialsItemId(value) ? this.cleanText(String(value), 64) : randomUUID();
+  }
+
+  private requireTestimonialsItemId(value: unknown, label: string): string {
+    if (!this.isTestimonialsItemId(value)) {
+      throw new BadRequestException(`Invalid ${label} id`);
+    }
+    return this.cleanText(String(value), 64);
+  }
+
   private sanitizeHomeTestimonialsContent(input: unknown): HomeTestimonialsContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const rawTestimonials = Array.isArray(source.testimonials) ? source.testimonials : [];
@@ -738,18 +838,100 @@ export class AppSettingsService {
     return {
       heading: this.cleanText(source.heading, 120),
       subtitle: this.cleanText(source.subtitle),
-      testimonials: rawTestimonials.slice(0, TESTIMONIALS_MAX).map((row: any) => ({
-        quote: this.cleanText(row?.quote),
-        name: this.cleanText(row?.name, 120),
-        role: this.cleanText(row?.role, 160),
-        avatarUrl:
-          this.toStoredUploadPath(row?.avatarUrl) || this.cleanText(row?.avatarUrl, 500),
-      })),
+      testimonials: rawTestimonials.slice(0, TESTIMONIALS_MAX).map((row: any) => {
+        const ratingRaw = Number(row?.rating);
+        const rating =
+          Number.isFinite(ratingRaw) && ratingRaw > 0
+            ? Math.min(5, Math.max(1, ratingRaw))
+            : 5;
+        return {
+          id: this.ensureTestimonialsItemId(row?.id),
+          quote: this.cleanText(row?.quote),
+          name: this.cleanText(row?.name, 120),
+          role: this.cleanText(row?.role, 160),
+          avatarUrl:
+            this.toStoredUploadPath(row?.avatarUrl) || this.cleanText(row?.avatarUrl, 500),
+          rating,
+        };
+      }),
       industryQuotes: rawQuotes.slice(0, INDUSTRY_QUOTES_MAX).map((row: any) => ({
+        id: this.ensureTestimonialsItemId(row?.id),
         quote: this.cleanText(row?.quote),
         organisation: this.cleanText(row?.organisation, 160),
         logoUrl: this.toStoredUploadPath(row?.logoUrl) || this.cleanText(row?.logoUrl, 500),
       })),
+    };
+  }
+
+  private sanitizeHomeProgrammeStructureContent(
+    input: unknown
+  ): HomeProgrammeStructureContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawPhases = Array.isArray(source.phases) ? source.phases : [];
+    return {
+      eyebrow: this.cleanText(source.eyebrow, PROGRAMME_STRUCTURE_EYEBROW_MAX),
+      heading: this.cleanText(source.heading, PROGRAMME_STRUCTURE_HEADING_MAX),
+      phases: rawPhases.slice(0, PROGRAMME_STRUCTURE_PHASES_MAX).map((row: any, index: number) => {
+        const labelRaw = this.cleanText(row?.label, PROGRAMME_STRUCTURE_PHASE_LABEL_MAX);
+        return {
+          id: this.ensureTestimonialsItemId(row?.id),
+          label: labelRaw || `Phase ${index + 1}`,
+          title: this.cleanText(row?.title, PROGRAMME_STRUCTURE_PHASE_TITLE_MAX),
+          description: this.cleanText(row?.description),
+        };
+      }),
+    };
+  }
+
+  private sanitizeFundingEligibilityCard(row: any) {
+    return {
+      id: this.ensureTestimonialsItemId(row?.id),
+      icon: this.cleanText(row?.icon, FUNDING_ELIGIBILITY_ICON_MAX) || 'solar:flag-bold-duotone',
+      title: this.cleanText(row?.title, FUNDING_ELIGIBILITY_CARD_TITLE_MAX),
+      description: this.cleanText(row?.description),
+    };
+  }
+
+  private sanitizeHomeFundingEligibilityContent(
+    input: unknown
+  ): HomeFundingEligibilityContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawItems = Array.isArray(source.items)
+      ? source.items
+      : [
+          ...(Array.isArray(source.topRow) ? source.topRow : []),
+          ...(Array.isArray(source.bottomRow) ? source.bottomRow : []),
+        ];
+    return {
+      eyebrow: this.cleanText(source.eyebrow, FUNDING_ELIGIBILITY_EYEBROW_MAX),
+      heading: this.cleanText(source.heading, FUNDING_ELIGIBILITY_HEADING_MAX),
+      items: rawItems.slice(0, FUNDING_ELIGIBILITY_ITEMS_MAX).map((row: any) =>
+        this.sanitizeFundingEligibilityCard(row)
+      ),
+    };
+  }
+
+  private sanitizeHomeCeoLaunchContent(input: unknown): HomeCeoLaunchContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawStats = Array.isArray(source.stats) ? source.stats : [];
+    return {
+      eyebrow: this.cleanText(source.eyebrow, CEO_LAUNCH_EYEBROW_MAX),
+      heading: this.cleanText(source.heading, CEO_LAUNCH_HEADING_MAX),
+      subtitle: this.cleanText(source.subtitle),
+      posterImageUrl:
+        this.toStoredUploadPath(source.posterImageUrl) ||
+        this.cleanText(source.posterImageUrl, 500),
+      videoUrl: this.cleanText(source.videoUrl, 500),
+      videoFileUrl:
+        this.toStoredUploadPath(source.videoFileUrl) ||
+        this.cleanText(source.videoFileUrl, 500),
+      quote: this.cleanText(source.quote),
+      stats: rawStats.slice(0, CEO_LAUNCH_STATS_MAX).map((row: any) => ({
+        value: this.cleanText(row?.value, CEO_LAUNCH_STAT_VALUE_MAX),
+        label: this.cleanText(row?.label, CEO_LAUNCH_STAT_LABEL_MAX),
+      })),
+      ctaLabel: this.cleanText(source.ctaLabel, 80),
+      ctaHref: this.cleanText(source.ctaHref, 500),
     };
   }
 
@@ -965,6 +1147,235 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Home testimonials content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeTestimonialsAvatar(
+    itemId: string,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const id = this.requireTestimonialsItemId(itemId, 'testimonial');
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeTestimonialsContent(settings.homeTestimonialsContent || {});
+    const testimonials = [...(existing.testimonials || [])];
+    const index = testimonials.findIndex((row) => row.id === id);
+    if (index < 0) {
+      throw new NotFoundException('Testimonial not found');
+    }
+    const folder = `home-testimonials-avatars/${id}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'avatar',
+    });
+    testimonials[index] = { ...testimonials[index], avatarUrl: relativeUrl };
+    settings.homeTestimonialsContent = this.sanitizeHomeTestimonialsContent({
+      ...existing,
+      testimonials,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Testimonial avatar uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeTestimonialsAvatar(
+    itemId: string
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const id = this.requireTestimonialsItemId(itemId, 'testimonial');
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeTestimonialsContent(settings.homeTestimonialsContent || {});
+    const testimonials = [...(existing.testimonials || [])];
+    const index = testimonials.findIndex((row) => row.id === id);
+    if (index < 0) {
+      throw new NotFoundException('Testimonial not found');
+    }
+    const folder = `home-testimonials-avatars/${id}`;
+    await this.localStorageService.clearFolder(folder);
+    testimonials[index] = { ...testimonials[index], avatarUrl: '' };
+    settings.homeTestimonialsContent = this.sanitizeHomeTestimonialsContent({
+      ...existing,
+      testimonials,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Testimonial avatar removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeTestimonialsIndustryLogo(
+    itemId: string,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const id = this.requireTestimonialsItemId(itemId, 'industry quote');
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeTestimonialsContent(settings.homeTestimonialsContent || {});
+    const industryQuotes = [...(existing.industryQuotes || [])];
+    const index = industryQuotes.findIndex((row) => row.id === id);
+    if (index < 0) {
+      throw new NotFoundException('Industry quote not found');
+    }
+    const folder = `home-testimonials-industry-logos/${id}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'logo',
+    });
+    industryQuotes[index] = { ...industryQuotes[index], logoUrl: relativeUrl };
+    settings.homeTestimonialsContent = this.sanitizeHomeTestimonialsContent({
+      ...existing,
+      industryQuotes,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Industry quote logo uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeTestimonialsIndustryLogo(
+    itemId: string
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const id = this.requireTestimonialsItemId(itemId, 'industry quote');
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeTestimonialsContent(settings.homeTestimonialsContent || {});
+    const industryQuotes = [...(existing.industryQuotes || [])];
+    const index = industryQuotes.findIndex((row) => row.id === id);
+    if (index < 0) {
+      throw new NotFoundException('Industry quote not found');
+    }
+    const folder = `home-testimonials-industry-logos/${id}`;
+    await this.localStorageService.clearFolder(folder);
+    industryQuotes[index] = { ...industryQuotes[index], logoUrl: '' };
+    settings.homeTestimonialsContent = this.sanitizeHomeTestimonialsContent({
+      ...existing,
+      industryQuotes,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Industry quote logo removed successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeProgrammeStructureContent(
+    payload: HomeProgrammeStructureContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeProgrammeStructureContent = this.sanitizeHomeProgrammeStructureContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home programme structure content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeFundingEligibilityContent(
+    payload: HomeFundingEligibilityContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeFundingEligibilityContent = this.sanitizeHomeFundingEligibilityContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home funding & eligibility content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async updateHomeCeoLaunchContent(
+    payload: HomeCeoLaunchContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    const videoUrl = this.cleanText(payload?.videoUrl, 500);
+    const useVideoUrl = Boolean(videoUrl);
+
+    if (useVideoUrl && String(existing.videoFileUrl || '').trim()) {
+      await this.localStorageService.clearFolder('home-ceo-launch-video');
+    }
+
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({
+      ...existing,
+      ...payload,
+      posterImageUrl: payload.posterImageUrl ?? existing.posterImageUrl,
+      videoUrl,
+      videoFileUrl: useVideoUrl ? '' : payload.videoFileUrl ?? existing.videoFileUrl,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home CEO launch content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeCeoLaunchPoster(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-ceo-launch-poster');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-ceo-launch-poster', {
+      fileName: 'poster',
+    });
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({
+      ...existing,
+      posterImageUrl: relativeUrl,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'CEO launch poster uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeCeoLaunchPoster(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-ceo-launch-poster');
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({
+      ...existing,
+      posterImageUrl: '',
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'CEO launch poster removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeCeoLaunchVideo(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-ceo-launch-video');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-ceo-launch-video', {
+      fileName: 'ceo-video',
+    });
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({
+      ...existing,
+      videoFileUrl: relativeUrl,
+      videoUrl: '',
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'CEO launch video uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeCeoLaunchVideo(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-ceo-launch-video');
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({
+      ...existing,
+      videoFileUrl: '',
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'CEO launch video removed successfully',
       settings: saved,
     };
   }
@@ -1252,6 +1663,9 @@ export class AppSettingsService {
     homeTestimonialsContent: HomeTestimonialsContentPayload | null;
     homeEmployerContent: HomeEmployerContentPayload | null;
     homeEmployeeContent: HomeEmployeeContentPayload | null;
+    homeProgrammeStructureContent: HomeProgrammeStructureContentPayload | null;
+    homeFundingEligibilityContent: HomeFundingEligibilityContentPayload | null;
+    homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -1291,6 +1705,15 @@ export class AppSettingsService {
         : null,
       homeEmployeeContent: settings.homeEmployeeContent
         ? this.sanitizeHomeEmployeeContent(settings.homeEmployeeContent)
+        : null,
+      homeProgrammeStructureContent: settings.homeProgrammeStructureContent
+        ? this.sanitizeHomeProgrammeStructureContent(settings.homeProgrammeStructureContent)
+        : null,
+      homeFundingEligibilityContent: settings.homeFundingEligibilityContent
+        ? this.sanitizeHomeFundingEligibilityContent(settings.homeFundingEligibilityContent)
+        : null,
+      homeCeoLaunchContent: settings.homeCeoLaunchContent
+        ? this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent)
         : null,
       totalCourseEnrollments,
     };

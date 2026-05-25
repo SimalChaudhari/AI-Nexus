@@ -16,6 +16,7 @@ export const brandPalette = {
     contrastText: '#FFFFFF',
   },
   secondary: {
+    '100': '#D8E4F3',
     lighter: '#D8E4F3',
     light: '#5C7AA1',
     main: '#1C4270',

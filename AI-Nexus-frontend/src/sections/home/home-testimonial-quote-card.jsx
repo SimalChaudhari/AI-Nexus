@@ -7,7 +7,9 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { RichTextContent } from 'src/components/html-content';
 import { CONFIG } from 'src/config-global';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 // ----------------------------------------------------------------------
 
@@ -50,7 +52,8 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
     noSsr: true,
   });
   const primary = theme.palette.primary.main;
-  const quote = String(item?.quote || '').trim();
+  const quoteHtml = String(item?.quote || '');
+  const hasQuote = !isEffectivelyEmptyHtml(quoteHtml);
   const name = String(item?.name || '').trim();
   const rating = Math.min(5, Math.max(0, Number(item?.rating) || 5));
   const avatarSrc = resolveAssetUrl(item?.avatarUrl) || avatarFallbackUrl(name);
@@ -261,23 +264,32 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
               ”
             </Typography>
 
-            <Typography
-              component="p"
-              className="testimonial-quote-text"
-              sx={{
-                m: 0,
-                color: 'text.primary',
-                fontSize: { xs: '0.875rem', sm: '0.8rem', md: '0.9375rem' },
-                fontWeight: 400,
-                px: { xs: 0.5, md: 1 },
-                lineHeight: { xs: 1.65, md: 1.75 },
-                overflowWrap: 'break-word',
-                wordBreak: 'normal',
-                hyphens: 'auto',
-              }}
-            >
-              {quote}
-            </Typography>
+            {hasQuote ? (
+              <RichTextContent
+                html={quoteHtml}
+                className="testimonial-quote-text"
+                sx={{
+                  typography: 'body1',
+                  fontSize: { xs: '0.875rem', sm: '0.8rem', md: '0.9375rem' },
+                  lineHeight: { xs: 1.65, md: 1.75 },
+                  color: 'text.primary',
+                  textAlign: 'center',
+                  overflow: 'visible',
+                  px: { xs: 0.5, md: 1 },
+                  '& img': {
+                    maxWidth: '100%',
+                    height: 'auto',
+                    maxHeight: 'min(560px, 78vh)',
+                    objectFit: 'contain',
+                    verticalAlign: 'middle',
+                    borderRadius: 1.5,
+                  },
+                  '& figure': {
+                    maxWidth: '100%',
+                  },
+                }}
+              />
+            ) : null}
           </Box>
 
           <Box

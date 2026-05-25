@@ -87,16 +87,54 @@ export type HomeTestimonialsContent = {
   heading?: string;
   subtitle?: string;
   testimonials?: Array<{
+    id?: string;
     quote?: string;
     name?: string;
     role?: string;
     avatarUrl?: string;
+    rating?: number;
   }>;
   industryQuotes?: Array<{
+    id?: string;
     quote?: string;
     organisation?: string;
     logoUrl?: string;
   }>;
+};
+
+export type HomeProgrammeStructureContent = {
+  eyebrow?: string;
+  heading?: string;
+  phases?: Array<{
+    id?: string;
+    label?: string;
+    title?: string;
+    description?: string;
+  }>;
+};
+
+export type HomeFundingEligibilityContent = {
+  eyebrow?: string;
+  heading?: string;
+  items?: Array<{
+    id?: string;
+    icon?: string;
+    title?: string;
+    description?: string;
+  }>;
+};
+
+export type HomeCeoLaunchContent = {
+  eyebrow?: string;
+  heading?: string;
+  subtitle?: string;
+  posterImageUrl?: string;
+  videoUrl?: string;
+  videoFileUrl?: string;
+  quote?: string;
+  stats?: Array<{ value?: string; label?: string }>;
+  ctaLabel?: string;
+  ctaHref?: string;
 };
 
 export type HomeEmployerContent = {
@@ -217,6 +255,18 @@ export class AppSettingsEntity {
   /** Home page employee / learners section (dark band with benefits & partner logos). */
   @Column({ type: 'jsonb', nullable: true })
   homeEmployeeContent?: HomeEmployeeContent | null;
+
+  /** Home page programme structure timeline (learning journey phases). */
+  @Column({ type: 'jsonb', nullable: true })
+  homeProgrammeStructureContent?: HomeProgrammeStructureContent | null;
+
+  /** Home page funding & eligibility card grid. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeFundingEligibilityContent?: HomeFundingEligibilityContent | null;
+
+  /** Home page CEO launch video section. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeCeoLaunchContent?: HomeCeoLaunchContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

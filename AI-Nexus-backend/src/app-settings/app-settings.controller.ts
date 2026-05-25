@@ -42,6 +42,8 @@ const parseEnvPositiveNumber = (value: string | undefined, fallback: number): nu
 
 const LOGO_LIMIT = parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const LOGO_TYPE = /^(image\/)(jpeg|png|gif|webp|svg\+xml)$/;
+const CEO_VIDEO_LIMIT = parseEnvPositiveNumber(process.env.UPLOAD_VIDEO_MAX_MB, 100) * 1024 * 1024;
+const CEO_VIDEO_TYPE = /^(video\/)(mp4|webm|quicktime|x-msvideo|x-matroska)$/;
 
 @ApiTags('App Settings')
 @Controller('app-settings')
@@ -361,6 +363,232 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Update home page testimonials section content' })
   async updateHomeTestimonialsContent(@Res() response: Response, @Body() payload: any) {
     const result = await this.appSettingsService.updateHomeTestimonialsContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-testimonials-avatar/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload avatar for a home testimonials card (by id)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        avatar: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeTestimonialsAvatar(
+    @Res() response: Response,
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeTestimonialsAvatar(id, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-testimonials-avatar/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove avatar for a home testimonials card (by id)' })
+  async removeHomeTestimonialsAvatar(
+    @Res() response: Response,
+    @Param('id') id: string
+  ) {
+    const result = await this.appSettingsService.removeHomeTestimonialsAvatar(id);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-testimonials-industry-logo/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload organisation logo for industry quote (by id)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeTestimonialsIndustryLogo(
+    @Res() response: Response,
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeTestimonialsIndustryLogo(id, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-testimonials-industry-logo/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove organisation logo for industry quote (by id)' })
+  async removeHomeTestimonialsIndustryLogo(
+    @Res() response: Response,
+    @Param('id') id: string
+  ) {
+    const result = await this.appSettingsService.removeHomeTestimonialsIndustryLogo(id);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-programme-structure-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page programme structure timeline content' })
+  async updateHomeProgrammeStructureContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeProgrammeStructureContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-funding-eligibility-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page funding & eligibility section content' })
+  async updateHomeFundingEligibilityContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeFundingEligibilityContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('home-ceo-launch-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page CEO launch video section content' })
+  async updateHomeCeoLaunchContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeCeoLaunchContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-ceo-launch-poster')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload CEO launch video poster image' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        poster: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('poster', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeCeoLaunchPoster(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeCeoLaunchPoster(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-ceo-launch-poster')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove CEO launch video poster image' })
+  async removeHomeCeoLaunchPoster(@Res() response: Response) {
+    const result = await this.appSettingsService.removeHomeCeoLaunchPoster();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-ceo-launch-video')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload CEO launch video file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        video: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('video', {
+      storage: memoryStorage(),
+      limits: { fileSize: CEO_VIDEO_LIMIT },
+    })
+  )
+  async uploadHomeCeoLaunchVideo(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: CEO_VIDEO_LIMIT }),
+          new FileTypeValidator({ fileType: CEO_VIDEO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeCeoLaunchVideo(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-ceo-launch-video')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove uploaded CEO launch video file' })
+  async removeHomeCeoLaunchVideo(@Res() response: Response) {
+    const result = await this.appSettingsService.removeHomeCeoLaunchVideo();
     return response.status(HttpStatus.OK).json(result);
   }
 

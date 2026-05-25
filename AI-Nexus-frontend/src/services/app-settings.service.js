@@ -93,16 +93,78 @@ function transformTestimonialsContent(source) {
     heading: source.heading != null ? String(source.heading) : '',
     subtitle: source.subtitle != null ? String(source.subtitle) : '',
     testimonials: rawTestimonials.slice(0, 12).map((row) => ({
+      id: row?.id != null ? String(row.id) : '',
       quote: row?.quote != null ? String(row.quote) : '',
       name: row?.name != null ? String(row.name) : '',
       role: row?.role != null ? String(row.role) : '',
       avatarUrl: normalizeAssetUrl(row?.avatarUrl || ''),
+      rating: row?.rating != null ? Number(row.rating) : 5,
     })),
     industryQuotes: rawQuotes.slice(0, 8).map((row) => ({
+      id: row?.id != null ? String(row.id) : '',
       quote: row?.quote != null ? String(row.quote) : '',
       organisation: row?.organisation != null ? String(row.organisation) : '',
       logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
     })),
+  };
+}
+
+function transformProgrammeStructureContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawPhases = Array.isArray(source.phases) ? source.phases : [];
+  return {
+    eyebrow: source.eyebrow != null ? String(source.eyebrow) : '',
+    heading: source.heading != null ? String(source.heading) : '',
+    phases: rawPhases.slice(0, 8).map((row, index) => ({
+      id: row?.id != null ? String(row.id) : '',
+      label: String(row?.label ?? '').trim() || `Phase ${index + 1}`,
+      title: row?.title != null ? String(row.title) : '',
+      description: row?.description != null ? String(row.description) : '',
+    })),
+  };
+}
+
+function transformFundingEligibilityCard(row) {
+  return {
+    id: row?.id != null ? String(row.id) : '',
+    icon: row?.icon != null ? String(row.icon) : 'solar:flag-bold-duotone',
+    title: row?.title != null ? String(row.title) : '',
+    description: row?.description != null ? String(row.description) : '',
+  };
+}
+
+function transformCeoLaunchContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawStats = Array.isArray(source.stats) ? source.stats : [];
+  return {
+    eyebrow: source.eyebrow != null ? String(source.eyebrow) : '',
+    heading: source.heading != null ? String(source.heading) : '',
+    subtitle: source.subtitle != null ? String(source.subtitle) : '',
+    posterImageUrl: normalizeAssetUrl(source.posterImageUrl || ''),
+    videoUrl: source.videoUrl != null ? String(source.videoUrl) : '',
+    videoFileUrl: normalizeAssetUrl(source.videoFileUrl || ''),
+    quote: source.quote != null ? String(source.quote) : '',
+    stats: rawStats.slice(0, 4).map((row) => ({
+      value: row?.value != null ? String(row.value) : '',
+      label: row?.label != null ? String(row.label) : '',
+    })),
+    ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
+    ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
+  };
+}
+
+function transformFundingEligibilityContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawItems = Array.isArray(source.items)
+    ? source.items
+    : [
+        ...(Array.isArray(source.topRow) ? source.topRow : []),
+        ...(Array.isArray(source.bottomRow) ? source.bottomRow : []),
+      ];
+  return {
+    eyebrow: source.eyebrow != null ? String(source.eyebrow) : '',
+    heading: source.heading != null ? String(source.heading) : '',
+    items: rawItems.slice(0, 6).map(transformFundingEligibilityCard),
   };
 }
 
@@ -293,6 +355,13 @@ function transformSettings(settings) {
     homeTestimonialsContent: transformTestimonialsContent(settings?.homeTestimonialsContent),
     homeEmployerContent: transformEmployerContent(settings?.homeEmployerContent),
     homeEmployeeContent: transformEmployeeContent(settings?.homeEmployeeContent),
+    homeProgrammeStructureContent: transformProgrammeStructureContent(
+      settings?.homeProgrammeStructureContent
+    ),
+    homeFundingEligibilityContent: transformFundingEligibilityContent(
+      settings?.homeFundingEligibilityContent
+    ),
+    homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -444,6 +513,90 @@ export const appSettingsService = {
 
   async updateHomeTestimonialsContent(payload) {
     const response = await axios.put('/app-settings/home-testimonials-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeTestimonialsAvatar(id, file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await axios.post(`/app-settings/home-testimonials-avatar/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeTestimonialsAvatar(id) {
+    const response = await axios.delete(`/app-settings/home-testimonials-avatar/${id}`);
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeTestimonialsIndustryLogo(id, file) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await axios.post(
+      `/app-settings/home-testimonials-industry-logo/${id}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeTestimonialsIndustryLogo(id) {
+    const response = await axios.delete(`/app-settings/home-testimonials-industry-logo/${id}`);
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeProgrammeStructureContent(payload) {
+    const response = await axios.put('/app-settings/home-programme-structure-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeFundingEligibilityContent(payload) {
+    const response = await axios.put('/app-settings/home-funding-eligibility-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeCeoLaunchContent(payload) {
+    const response = await axios.put('/app-settings/home-ceo-launch-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeCeoLaunchPoster(file) {
+    const formData = new FormData();
+    formData.append('poster', file);
+    const response = await axios.post('/app-settings/home-ceo-launch-poster', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeCeoLaunchPoster() {
+    const response = await axios.delete('/app-settings/home-ceo-launch-poster');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeCeoLaunchVideo(file) {
+    const formData = new FormData();
+    formData.append('video', file);
+    const response = await axios.post('/app-settings/home-ceo-launch-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeCeoLaunchVideo() {
+    const response = await axios.delete('/app-settings/home-ceo-launch-video');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

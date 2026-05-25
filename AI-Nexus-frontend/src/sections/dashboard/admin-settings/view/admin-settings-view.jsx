@@ -51,17 +51,18 @@ import { FeesSettingsCard } from './components/fees-settings-card';
 import { CurriculumSettingsCard } from './components/curriculum-settings-card';
 import { TestimonialsSettingsCard } from './components/testimonials-settings-card';
 import { EmployerSettingsCard } from './components/employer-settings-card';
+import { ProgrammeStructureSettingsCard } from './components/programme-structure-settings-card';
+import { FundingEligibilitySettingsCard } from './components/funding-eligibility-settings-card';
+import { CeoLaunchSettingsCard } from './components/ceo-launch-settings-card';
 import {
   DEFAULT_PROGRAMME_FEES_CONTENT,
   normalizeProgrammeFeesContent,
 } from 'src/sections/home/programme-fees-defaults';
 import {
-  DUMMY_TESTIMONIALS_CONTENT,
   resolveTestimonialsContent,
   normalizeTestimonialsContent,
 } from 'src/sections/home/testimonials-defaults';
 import {
-  DUMMY_EMPLOYER_CONTENT,
   resolveEmployerContent,
   normalizeEmployerContent,
 } from 'src/sections/home/employer-defaults';
@@ -69,6 +70,15 @@ import {
   DEFAULT_CURRICULUM_CONTENT,
   normalizeCurriculumContent,
 } from 'src/sections/home/curriculum-defaults';
+import {
+  resolveProgrammeStructureContent,
+} from 'src/sections/home/programme-structure-defaults';
+import {
+  resolveFundingEligibilityContent,
+} from 'src/sections/home/funding-eligibility-defaults';
+import {
+  resolveCeoLaunchContent,
+} from 'src/sections/home/ceo-launch-defaults';
 
 const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
 const CONTACT_ICON_KEY_BY_FIELD = {
@@ -218,12 +228,26 @@ export function AdminSettingsView() {
   const [feesContentSubmitting, setFeesContentSubmitting] = useState(false);
   const [curriculumContentSubmitting, setCurriculumContentSubmitting] = useState(false);
   const [testimonialsContent, setTestimonialsContent] = useState(() =>
-    normalizeTestimonialsContent(DUMMY_TESTIMONIALS_CONTENT)
+    normalizeTestimonialsContent(null)
   );
   const [testimonialsContentSubmitting, setTestimonialsContentSubmitting] = useState(false);
-  const [employerContent, setEmployerContent] = useState(() =>
-    normalizeEmployerContent(DUMMY_EMPLOYER_CONTENT)
+  const [employerContent, setEmployerContent] = useState(() => normalizeEmployerContent(null));
+  const [programmeStructureContent, setProgrammeStructureContent] = useState(() =>
+    resolveProgrammeStructureContent(null)
   );
+  const [programmeStructureContentSubmitting, setProgrammeStructureContentSubmitting] =
+    useState(false);
+  const [fundingEligibilityContent, setFundingEligibilityContent] = useState(() =>
+    resolveFundingEligibilityContent(null)
+  );
+  const [fundingEligibilityContentSubmitting, setFundingEligibilityContentSubmitting] =
+    useState(false);
+  const [ceoLaunchContent, setCeoLaunchContent] = useState(() => resolveCeoLaunchContent(null));
+  const [ceoLaunchContentSubmitting, setCeoLaunchContentSubmitting] = useState(false);
+  const [ceoLaunchPosterFile, setCeoLaunchPosterFile] = useState(null);
+  const [ceoLaunchPosterSubmitting, setCeoLaunchPosterSubmitting] = useState(false);
+  const [ceoLaunchVideoFile, setCeoLaunchVideoFile] = useState(null);
+  const [ceoLaunchVideoSubmitting, setCeoLaunchVideoSubmitting] = useState(false);
   const [employerContentSubmitting, setEmployerContentSubmitting] = useState(false);
   const [employerHeroFile, setEmployerHeroFile] = useState(null);
   const [employerHeroSubmitting, setEmployerHeroSubmitting] = useState(false);
@@ -492,6 +516,13 @@ export function AdminSettingsView() {
         )
       );
       setTestimonialsContent(resolveTestimonialsContent(appSettings.homeTestimonialsContent));
+      setProgrammeStructureContent(
+        resolveProgrammeStructureContent(appSettings.homeProgrammeStructureContent)
+      );
+      setFundingEligibilityContent(
+        resolveFundingEligibilityContent(appSettings.homeFundingEligibilityContent)
+      );
+      setCeoLaunchContent(resolveCeoLaunchContent(appSettings.homeCeoLaunchContent));
       setEmployerContent(resolveEmployerContent(appSettings.homeEmployerContent));
       const remoteJoin = appSettings.homeJoinContent || {};
       setJoinContent({
@@ -1040,16 +1071,204 @@ export function AdminSettingsView() {
     }
   };
 
-  const handleSaveTestimonialsContent = async () => {
+  const handleSaveTestimonialsContent = async (contentOverride) => {
+    const source = contentOverride || testimonialsContent;
     try {
       setTestimonialsContentSubmitting(true);
-      const updated = await appSettingsService.updateHomeTestimonialsContent(testimonialsContent);
+      const updated = await appSettingsService.updateHomeTestimonialsContent(source);
       setTestimonialsContent(resolveTestimonialsContent(updated?.homeTestimonialsContent));
-      toast.success('Testimonials section updated');
+      if (!contentOverride) {
+        toast.success('Testimonials section updated');
+      }
+      return updated;
     } catch (error) {
       toast.error(error?.message || 'Failed to update testimonials section');
+      throw error;
     } finally {
       setTestimonialsContentSubmitting(false);
+    }
+  };
+
+  const handleSaveProgrammeStructureContent = async (contentOverride) => {
+    const source = contentOverride || programmeStructureContent;
+    try {
+      setProgrammeStructureContentSubmitting(true);
+      const updated = await appSettingsService.updateHomeProgrammeStructureContent(source);
+      setProgrammeStructureContent(
+        resolveProgrammeStructureContent(updated?.homeProgrammeStructureContent)
+      );
+      if (!contentOverride) {
+        toast.success('Programme structure updated');
+      }
+      return updated;
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update programme structure');
+      throw error;
+    } finally {
+      setProgrammeStructureContentSubmitting(false);
+    }
+  };
+
+  const handleSaveFundingEligibilityContent = async (contentOverride) => {
+    const source = contentOverride || fundingEligibilityContent;
+    try {
+      setFundingEligibilityContentSubmitting(true);
+      const updated = await appSettingsService.updateHomeFundingEligibilityContent(source);
+      setFundingEligibilityContent(
+        resolveFundingEligibilityContent(updated?.homeFundingEligibilityContent)
+      );
+      if (!contentOverride) {
+        toast.success('Funding & eligibility updated');
+      }
+      return updated;
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update funding & eligibility');
+      throw error;
+    } finally {
+      setFundingEligibilityContentSubmitting(false);
+    }
+  };
+
+  const handleSaveCeoLaunchContent = async () => {
+    const videoUrl = String(ceoLaunchContent?.videoUrl || '').trim();
+    const hasUpload = Boolean(String(ceoLaunchContent?.videoFileUrl || '').trim());
+    if (videoUrl && hasUpload) {
+      toast.error('Remove the uploaded video or clear the video URL — use only one.');
+      return;
+    }
+    try {
+      setCeoLaunchContentSubmitting(true);
+      const payload = {
+        ...ceoLaunchContent,
+        ...(videoUrl ? { videoFileUrl: '' } : {}),
+      };
+      const updated = await appSettingsService.updateHomeCeoLaunchContent(payload);
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      toast.success('CEO launch section updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update CEO launch section');
+    } finally {
+      setCeoLaunchContentSubmitting(false);
+    }
+  };
+
+  const handleDropCeoLaunchPoster = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) setCeoLaunchPosterFile(file);
+  }, []);
+
+  const handleClearCeoLaunchPosterSelection = () => {
+    setCeoLaunchPosterFile(null);
+  };
+
+  const handleUploadCeoLaunchPoster = async () => {
+    if (!ceoLaunchPosterFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+    try {
+      setCeoLaunchPosterSubmitting(true);
+      const updated = await appSettingsService.uploadHomeCeoLaunchPoster(ceoLaunchPosterFile);
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      setCeoLaunchPosterFile(null);
+      toast.success('CEO launch poster updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload poster');
+    } finally {
+      setCeoLaunchPosterSubmitting(false);
+    }
+  };
+
+  const handleRemoveCeoLaunchPoster = async () => {
+    if (!String(ceoLaunchContent?.posterImageUrl || '').trim()) return;
+    try {
+      setCeoLaunchPosterSubmitting(true);
+      const updated = await appSettingsService.removeHomeCeoLaunchPoster();
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      setCeoLaunchPosterFile(null);
+      toast.success('CEO launch poster removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove poster');
+    } finally {
+      setCeoLaunchPosterSubmitting(false);
+    }
+  };
+
+  const handleSelectCeoLaunchVideo = useCallback((file) => {
+    if (!file) return;
+    setCeoLaunchVideoFile(file);
+    setCeoLaunchContent((prev) => ({ ...prev, videoUrl: '' }));
+  }, []);
+
+  const handleClearCeoLaunchVideoSelection = () => {
+    setCeoLaunchVideoFile(null);
+  };
+
+  const handleRemoveAllCeoLaunchVideo = async () => {
+    const hasUpload = Boolean(String(ceoLaunchContent?.videoFileUrl || '').trim());
+    const hasUrl = Boolean(String(ceoLaunchContent?.videoUrl || '').trim());
+    if (!hasUpload && !hasUrl && !ceoLaunchVideoFile) return;
+
+    setCeoLaunchVideoFile(null);
+
+    try {
+      if (hasUpload) {
+        setCeoLaunchVideoSubmitting(true);
+        const updated = await appSettingsService.removeHomeCeoLaunchVideo();
+        setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      } else if (hasUrl) {
+        setCeoLaunchContentSubmitting(true);
+        const updated = await appSettingsService.updateHomeCeoLaunchContent({
+          ...ceoLaunchContent,
+          videoUrl: '',
+        });
+        setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      } else {
+        setCeoLaunchContent((prev) => ({ ...prev, videoUrl: '' }));
+      }
+      toast.success('CEO launch video removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove video');
+    } finally {
+      setCeoLaunchVideoSubmitting(false);
+      setCeoLaunchContentSubmitting(false);
+    }
+  };
+
+  const handleUploadCeoLaunchVideo = async () => {
+    if (!ceoLaunchVideoFile) {
+      toast.error('Please select a video file first');
+      return;
+    }
+    if (String(ceoLaunchContent?.videoUrl || '').trim()) {
+      toast.error('Clear the video URL first — use only upload or URL, not both.');
+      return;
+    }
+    try {
+      setCeoLaunchVideoSubmitting(true);
+      const updated = await appSettingsService.uploadHomeCeoLaunchVideo(ceoLaunchVideoFile);
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      setCeoLaunchVideoFile(null);
+      toast.success('CEO launch video uploaded');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload video');
+    } finally {
+      setCeoLaunchVideoSubmitting(false);
+    }
+  };
+
+  const handleRemoveCeoLaunchVideo = async () => {
+    if (!String(ceoLaunchContent?.videoFileUrl || '').trim()) return;
+    try {
+      setCeoLaunchVideoSubmitting(true);
+      const updated = await appSettingsService.removeHomeCeoLaunchVideo();
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      setCeoLaunchVideoFile(null);
+      toast.success('CEO launch video removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove video');
+    } finally {
+      setCeoLaunchVideoSubmitting(false);
     }
   };
 
@@ -1366,6 +1585,27 @@ export function AdminSettingsView() {
       description: 'Configure programme fee tiers and funding information on the home page.',
     },
     {
+      key: 'programme-structure',
+      badge: 'PS',
+      icon: 'solar:map-arrow-right-bold-duotone',
+      title: 'Programme Structure',
+      description: 'Learning journey timeline — phases with titles and rich descriptions on the home page.',
+    },
+    {
+      key: 'funding-eligibility',
+      badge: 'FE',
+      icon: 'solar:wallet-money-bold-duotone',
+      title: 'Funding & Eligibility',
+      description: 'Funding & eligibility cards on the home page — icon, title, and description per item.',
+    },
+    {
+      key: 'ceo-launch',
+      badge: 'CEO',
+      icon: 'solar:videocamera-record-bold-duotone',
+      title: 'CEO Launch Video',
+      description: 'Why AI Fluency Matters — video, quote, stats, and play CTA on the home page.',
+    },
+    {
       key: 'testimonials',
       badge: 'T',
       icon: 'solar:chat-round-like-bold-duotone',
@@ -1411,6 +1651,9 @@ export function AdminSettingsView() {
     'course-image',
     'workflow-templates-pitch',
     'programme-fees',
+    'programme-structure',
+    'funding-eligibility',
+    'ceo-launch',
     'testimonials',
     'employer',
     'faq',
@@ -1762,6 +2005,47 @@ export function AdminSettingsView() {
       feesContentSubmitting={feesContentSubmitting}
       onSave={handleSaveFeesContent}
       maxTiers={PROGRAMME_FEES_TIERS_MAX}
+    />
+  );
+
+  const renderProgrammeStructureSettings = (
+    <ProgrammeStructureSettingsCard
+      content={programmeStructureContent}
+      setContent={setProgrammeStructureContent}
+      submitting={programmeStructureContentSubmitting}
+      onSave={handleSaveProgrammeStructureContent}
+    />
+  );
+
+  const renderFundingEligibilitySettings = (
+    <FundingEligibilitySettingsCard
+      content={fundingEligibilityContent}
+      setContent={setFundingEligibilityContent}
+      submitting={fundingEligibilityContentSubmitting}
+      onSave={handleSaveFundingEligibilityContent}
+    />
+  );
+
+  const renderCeoLaunchSettings = (
+    <CeoLaunchSettingsCard
+      content={ceoLaunchContent}
+      setContent={setCeoLaunchContent}
+      submitting={ceoLaunchContentSubmitting}
+      onSave={handleSaveCeoLaunchContent}
+      posterFile={ceoLaunchPosterFile}
+      posterUrl={ceoLaunchContent?.posterImageUrl || ''}
+      posterSubmitting={ceoLaunchPosterSubmitting}
+      onPosterDrop={handleDropCeoLaunchPoster}
+      onPosterDelete={handleClearCeoLaunchPosterSelection}
+      onPosterSave={handleUploadCeoLaunchPoster}
+      onPosterClearOrRemove={handleRemoveCeoLaunchPoster}
+      videoFile={ceoLaunchVideoFile}
+      videoSubmitting={ceoLaunchVideoSubmitting}
+      onVideoFileSelect={handleSelectCeoLaunchVideo}
+      onVideoClearPending={handleClearCeoLaunchVideoSelection}
+      onVideoSave={handleUploadCeoLaunchVideo}
+      onVideoRemoveUploaded={handleRemoveCeoLaunchVideo}
+      onVideoRemoveAll={handleRemoveAllCeoLaunchVideo}
     />
   );
 
@@ -2323,6 +2607,9 @@ export function AdminSettingsView() {
         {activeSection === 'course-image' && renderCourseDefaultImageSettings}
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
+        {activeSection === 'programme-structure' && renderProgrammeStructureSettings}
+        {activeSection === 'funding-eligibility' && renderFundingEligibilitySettings}
+        {activeSection === 'ceo-launch' && renderCeoLaunchSettings}
         {activeSection === 'testimonials' && renderTestimonialsSettings}
         {activeSection === 'employer' && renderEmployerSettings}
         {activeSection === 'faq' && renderFaqSettings}

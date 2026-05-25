@@ -7,7 +7,9 @@ import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme } from '@mui/material/styles';
 
+import { RichTextContent } from 'src/components/html-content';
 import { Iconify } from 'src/components/iconify';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import {
@@ -38,13 +40,6 @@ function splitSectionHeading(heading) {
     lead: words.slice(0, 2).join(' '),
     main: words.slice(2).join(' ').toUpperCase(),
   };
-}
-
-function stripHtml(text) {
-  return String(text || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function StatPill({ icon, label }) {
@@ -136,7 +131,8 @@ export function HomeTestimonialsSection() {
   if (!hasTestimonialsContent(content)) return null;
 
   const { lead, main } = splitSectionHeading(content.heading);
-  const subtitle = stripHtml(content.subtitle);
+  const subtitleHtml = String(content.subtitle || '');
+  const hasSubtitle = !isEffectivelyEmptyHtml(subtitleHtml);
   const snapCount = carousel.dots.scrollSnaps?.length || 0;
   const currentSlide = snapCount > 0 ? carousel.dots.selectedIndex + 1 : 0;
   const showNav = testimonials.length > 1;
@@ -244,14 +240,32 @@ export function HomeTestimonialsSection() {
               </Box>
             )}
 
-            {subtitle ? (
-              <Typography
-                variant="body1"
+            {hasSubtitle ? (
+              <RichTextContent
+                html={subtitleHtml}
                 variants={varFade({ distance: 14 }).inUp}
-                sx={{ color: 'text.secondary', lineHeight: 1.75, maxWidth: 560 }}
-              >
-                {subtitle}
-              </Typography>
+                sx={{
+                  typography: 'body1',
+                  fontSize: '1rem',
+                  lineHeight: 1.8,
+                  color: 'text.secondary',
+                  maxWidth: 560,
+                  textAlign: 'center',
+                  mx: 'auto',
+                  overflow: 'visible',
+                  '& img': {
+                    maxWidth: '100%',
+                    height: 'auto',
+                    maxHeight: 'min(560px, 78vh)',
+                    objectFit: 'contain',
+                    verticalAlign: 'middle',
+                    borderRadius: 1.5,
+                  },
+                  '& figure': {
+                    maxWidth: '100%',
+                  },
+                }}
+              />
             ) : null}
 
             {reviewCount > 0 ? (
@@ -345,7 +359,7 @@ export function HomeTestimonialsSection() {
                   >
                     {testimonials.map((row, index) => (
                       <Box
-                        key={`testimonial-slide-${row.name}-${index}`}
+                        key={row?.id ? `testimonial-slide-${row.id}` : `testimonial-slide-${row.name}-${index}`}
                         sx={{
                           flex: 1,
                           width: '100%',

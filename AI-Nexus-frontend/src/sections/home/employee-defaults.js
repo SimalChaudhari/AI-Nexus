@@ -38,48 +38,6 @@ export const DEFAULT_EMPLOYEE_CONTENT = {
   secondaryCtaHref: '',
 };
 
-export const DUMMY_EMPLOYEE_CONTENT = {
-  eyebrow: 'FOR LEARNERS & PROFESSIONALS',
-  heading: 'Building AI-Ready Skills.',
-  headingAccent: 'Together.',
-  subtitle:
-    '<p>Practical pathways to use AI confidently at work — from everyday tasks to team collaboration, with credentials employers recognise.</p>',
-  heroImageUrl: '',
-  heroPanelTitle: 'AI Workforce Transformation',
-  heroPanelSubtitle: 'Learn. Apply. Grow with your team.',
-  benefitsLabel: 'LEARNER BENEFITS',
-  benefits: [
-    {
-      icon: 'solar:book-bookmark-bold-duotone',
-      iconColor: BENEFIT_ICON_COLORS[0],
-      title: 'Structured learning paths',
-      description: 'Step-by-step modules designed for busy professionals — learn at your pace with clear outcomes.',
-    },
-    {
-      icon: 'solar:chart-2-bold-duotone',
-      iconColor: BENEFIT_ICON_COLORS[1],
-      title: 'Work-ready skills',
-      description: 'Apply AI safely in finance, operations, and customer-facing roles with real workplace scenarios.',
-    },
-    {
-      icon: 'solar:rocket-2-bold-duotone',
-      iconColor: BENEFIT_ICON_COLORS[2],
-      title: 'Career momentum',
-      description: 'Build a portfolio of applied projects and credentials that stand out to hiring managers.',
-    },
-    {
-      icon: 'solar:settings-bold-duotone',
-      iconColor: BENEFIT_ICON_COLORS[3],
-      title: 'Community & support',
-      description: 'Join cohorts, mentor sessions, and peer forums so you are never learning alone.',
-    },
-  ],
-  primaryCtaLabel: 'Explore programmes',
-  primaryCtaHref: '/learning',
-  secondaryCtaLabel: 'Download brochure',
-  secondaryCtaHref: '/contact',
-};
-
 export function normalizeEmployeeContent(source) {
   if (!source || typeof source !== 'object') {
     return { ...DEFAULT_EMPLOYEE_CONTENT, benefits: [] };
@@ -133,17 +91,19 @@ export function mapEmployerToEmployee(employer) {
   const accent = parts.length > 1 ? parts.pop() : '';
   const main = parts.join(' ') || heading;
   return normalizeEmployeeContent({
-    eyebrow: 'FOR LEARNERS & PROFESSIONALS',
-    heading: main.endsWith('.') ? main : `${main}.`,
-    headingAccent: accent ? (accent.endsWith('.') ? accent : `${accent}.`) : 'Together.',
+    eyebrow: '',
+    heading: main.endsWith('.') ? main : main ? `${main}.` : '',
+    headingAccent: accent ? (accent.endsWith('.') ? accent : `${accent}.`) : '',
     subtitle: employer.subtitle,
     heroImageUrl: employer.heroImageUrl,
-    benefitsLabel: 'LEARNER BENEFITS',
+    heroPanelTitle: '',
+    heroPanelSubtitle: '',
+    benefitsLabel: '',
     benefits: (employer.benefits || []).map((row) => ({ ...row, iconColor: undefined })),
     primaryCtaLabel: employer.ctaLabel,
     primaryCtaHref: employer.ctaHref,
-    secondaryCtaLabel: 'Download brochure',
-    secondaryCtaHref: '/contact',
+    secondaryCtaLabel: '',
+    secondaryCtaHref: '',
   });
 }
 
@@ -164,5 +124,5 @@ export function resolveEmployeeContent(employeeSource, employerSource) {
   }
 
   if (employerMapped && hasEmployeeContent(employerMapped)) return employerMapped;
-  return normalizeEmployeeContent(DUMMY_EMPLOYEE_CONTENT);
+  return normalizeEmployeeContent(null);
 }
