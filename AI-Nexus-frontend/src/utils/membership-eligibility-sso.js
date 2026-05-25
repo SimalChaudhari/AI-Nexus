@@ -3,6 +3,9 @@
 // draft stored in sessionStorage so the SCAQ candidate flow can auto-verify.
 // ----------------------------------------------------------------------
 
+import { paths } from 'src/routes/paths';
+import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
+
 export const MEMBERSHIP_ELIGIBILITY_FLOW_KEY = 'membershipEligibilityFlow';
 
 /** Where to send the user after SSO when returnTo was lost on the IdP redirect. */
@@ -429,4 +432,69 @@ export function mergeSalesforceFromOAuthCallbackSearchParams(searchParams) {
     memberClass: memberClass || undefined,
     username: undefined,
   });
+}
+
+/** Send guests to sign-in (membership modal is only opened from home Get Started). */
+export function navigateGuestToSignIn(navigate, returnPath) {
+  const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
+  const returnTo = encodeURIComponent(safeReturnPath);
+  navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`);
+}
+
+/**
+ * Navigate after the membership eligibility dialog completes (home Get Started CTA).
+ */
+export function continueMembershipSignupDialog({ navigate, returnPath, authenticated, payload }) {
+  const outcome = payload?.result?.outcome || '';
+  const actionTarget = payload?.result?.actionTarget || '';
+  const signupAccessToken = payload?.signupAccessToken || '';
+  const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
+  const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
+
+  if (actionTarget === 'scaq-salesforce-auto' && payload?.flow) {
+    navigate(buildScaqAssociateOptInOAuthStartUrl(payload.flow, safeReturnPath, paths.auth.oauth.start));
+    return;
+  }
+
+  if ((actionTarget === 'signUp' || isScaqCandidateFlow) && payload?.flow) {
+    try {
+      sessionStorage.setItem(
+        MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+        JSON.stringify({
+          membershipOutcome: outcome,
+          flow: payload.flow,
+          savedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  if (actionTarget === 'salesforce') {
+    try {
+      sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, safeReturnPath);
+      if (payload?.flow?.eligibilityType !== 'recognition') {
+        clearMembershipApplicationPending();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (isScaqCandidateFlow && authenticated) {
+    navigate(safeReturnPath);
+    return;
+  }
+
+  const returnTo = encodeURIComponent(safeReturnPath);
+  const membershipOutcome = encodeURIComponent(outcome);
+  const targetPath =
+    actionTarget === 'signUp'
+      ? paths.auth.simple.signUp
+      : actionTarget === 'salesforce'
+        ? paths.auth.oauth.start
+        : paths.auth.simple.signIn;
+  const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}`;
+  navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
 }
