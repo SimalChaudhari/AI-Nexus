@@ -78,4 +78,82 @@ export const CONFIG = {
     publicBaseUrl: (import.meta.env.VITE_FLOWISE_URL || '').trim(),
     relativePublicPath: (import.meta.env.VITE_FLOWISE_RELATIVE_PATH || '').trim(),
   },
+  /**
+   * Home “Get Started Now” → pathway step links (specialisation Yes/No + explore).
+   */
+  membership: {
+    homeAssociateEservicesSignupUrl: (
+      import.meta.env.VITE_HOME_ASSOCIATE_ESERVICES_SIGNUP_URL || 'https://www.google.com'
+    ).trim(),
+    homeAssociatePathwayPageUrl: (
+      import.meta.env.VITE_HOME_ASSOCIATE_PATHWAY_PAGE_URL
+      || 'https://isca.org.sg/membership/become-a-member/individual-membership/specialisation-pathways'
+    ).trim(),
+    /** “Read the pathway page” button (home modal). */
+    homeReadPathwayPageUrl: (
+      import.meta.env.VITE_HOME_READ_PATHWAY_PAGE_URL
+      || import.meta.env.VITE_HOME_ASSOCIATE_PATHWAY_PAGE_URL
+      || 'https://isca.org.sg/membership/become-a-member/individual-membership/specialisation-pathways'
+    ).trim(),
+    homeSpecialisationYes: {
+      applicationPortalUrl: (
+        import.meta.env.VITE_HOME_SPEC_YES_APPLICATION_URL
+        || import.meta.env.VITE_HOME_ASSOCIATE_ESERVICES_SIGNUP_URL
+        || 'https://eservices.isca.org.sg'
+      ).trim(),
+      exploreAssociatePathwayUrl: (
+        import.meta.env.VITE_HOME_SPEC_YES_ASSOCIATE_PATHWAY_URL
+        || 'https://isca.org.sg/membership/become-a-member/individual-membership/associate-pathway'
+      ).trim(),
+      readPathwayPageUrl: (
+        import.meta.env.VITE_HOME_SPEC_YES_READ_PATHWAY_URL
+        || import.meta.env.VITE_HOME_READ_PATHWAY_PAGE_URL
+        || 'https://isca.org.sg/membership/become-a-member/individual-membership/specialisation-pathways'
+      ).trim(),
+    },
+    homeSpecialisationNo: {
+      applicationPortalUrl: (
+        import.meta.env.VITE_HOME_SPEC_NO_APPLICATION_URL
+        || import.meta.env.VITE_HOME_ASSOCIATE_ESERVICES_SIGNUP_URL
+        || 'https://eservices.isca.org.sg'
+      ).trim(),
+      explorePbaPathwayUrl: (
+        import.meta.env.VITE_HOME_SPEC_NO_PBA_PATHWAY_URL
+        || 'https://isca.org.sg/membership/become-a-member/individual-membership/professional-business-accountant-pathway'
+      ).trim(),
+      readPathwayPageUrl: (
+        import.meta.env.VITE_HOME_SPEC_NO_READ_PATHWAY_URL
+        || 'https://isca.org.sg/membership/become-a-member/individual-membership/associate-pathway'
+      ).trim(),
+    },
+    homeStudent: {
+      applicationPortalUrl: (
+        import.meta.env.VITE_HOME_STUDENT_ESERVICES_SIGNUP_URL
+        || import.meta.env.VITE_HOME_ASSOCIATE_ESERVICES_SIGNUP_URL
+        || 'https://eservices.isca.org.sg'
+      ).trim(),
+      readPathwayPageUrl: (
+        import.meta.env.VITE_HOME_STUDENT_READ_PATHWAY_URL
+        || 'https://isca.org.sg/membership/StudentMember'
+      ).trim(),
+    },
+    /** Experienced pathway — specialisation No (explore + read use Associate Pathway). */
+    homeExperiencedNo: {
+      applicationPortalUrl: (
+        import.meta.env.VITE_HOME_EXP_NO_APPLICATION_URL
+        || import.meta.env.VITE_HOME_ASSOCIATE_ESERVICES_SIGNUP_URL
+        || 'https://eservices.isca.org.sg'
+      ).trim(),
+      exploreAssociatePathwayUrl: (
+        import.meta.env.VITE_HOME_EXP_NO_ASSOCIATE_PATHWAY_URL
+        || import.meta.env.VITE_HOME_SPEC_YES_ASSOCIATE_PATHWAY_URL
+        || 'https://isca.org.sg/membership/become-a-member/individual-membership/associate-pathway'
+      ).trim(),
+      readPathwayPageUrl: (
+        import.meta.env.VITE_HOME_EXP_NO_READ_PATHWAY_URL
+        || import.meta.env.VITE_HOME_SPEC_NO_READ_PATHWAY_URL
+        || 'https://isca.org.sg/membership/become-a-member/individual-membership/associate-pathway'
+      ).trim(),
+    },
+  },
 };

@@ -14,7 +14,10 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { paths } from 'src/routes/paths';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
-import { MembershipSignupDialog } from 'src/sections/learning/components/membership-signup-dialog';
+import {
+  MembershipSignupDialog,
+  MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
+} from 'src/sections/learning/components/membership-signup-dialog';
 import {
   clearMembershipEligibilityDraftOnModalClose,
   continueMembershipSignupDialog,
@@ -176,6 +179,7 @@ export function HomeJoinSection() {
       </Box>
 
       <MembershipSignupDialog
+        entrySource={MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED}
         open={membershipSignupOpen}
         onClose={() => {
           clearMembershipEligibilityDraftOnModalClose();

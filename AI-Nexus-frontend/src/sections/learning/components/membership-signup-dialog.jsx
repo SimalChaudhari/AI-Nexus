@@ -23,6 +23,7 @@ import {
   verifyNricImages,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
 } from 'src/auth/context/jwt';
+import { CONFIG } from 'src/config-global';
 import { paths } from 'src/routes/paths';
 import {
   readMembershipSalesforceSession,
@@ -42,6 +43,20 @@ import {
   isSalesforceMembershipCreateOutcomeKey,
   shouldUseSalesforceMembershipCreateStep,
 } from './salesforce-membership-create-step';
+import { HomePathwayCard } from './home-pathway-card';
+import {
+  HOME_STUDENT_PATHWAY_CONTENT,
+  getHomePathwayContent,
+  getHomePathwayExploreUrl,
+  getHomePathwayUrls,
+  getHomeStudentPathwayUrls,
+  isHomeSpecialisationPathwayFlow,
+  openHomePathwayExternalUrl,
+} from './home-pathway-content';
+
+/** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
+export const MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED = 'home-get-started';
+
 // ----------------------------------------------------------------------
 
 function isRecognitionMembershipFlow(state) {
@@ -54,6 +69,19 @@ const ELIGIBILITY_OPTIONS = [
   { value: 'experienced', label: 'An individual with minimum 5 years of relevant managerial experience in accounting and finance related roles' },
   { value: 'recognition', label: 'A Chartered Accountant of a different professional body' },
   { value: 'other', label: 'Others' },
+];
+
+const CHARTERED_PATHWAY_OPTIONS = [
+  {
+    value: 'recognition-arrangement',
+    title: 'Recognition Arrangement',
+    subtitle: 'Full members of CA ANZ, CAI, CPA Australia, ICAEW and ICAS',
+  },
+  {
+    value: 'enhanced-pathway',
+    title: 'Enhanced Pathway',
+    subtitle: 'ACCA members and affiliates',
+  },
 ];
 
 const INITIAL_STATE = {
@@ -128,20 +156,87 @@ const INITIAL_STATE = {
   salesforceAccountChoice: '',
   salesforceSessionReady: false,
   membershipApplicationCompleted: false,
+  homePostOptInFlow: false,
+  homeIscaSpecialisationAnswer: null,
+  homeStudentPathwayPending: false,
+  homeGetStartedFlow: false,
 };
 
+function isHomeGetStartedFlow(state) {
+  return Boolean(state?.homeGetStartedFlow);
+}
+
+function getEligibilityOptionsForFlow(state) {
+  if (!isHomeGetStartedFlow(state)) {
+    return ELIGIBILITY_OPTIONS;
+  }
+  return ELIGIBILITY_OPTIONS.filter(
+    (option) => option.value !== 'scaq-candidate' && option.value !== 'other'
+  );
+}
+
+const HOME_ISCA_SPECIALISATION_OPTIONS = [
+  { value: 'yes-experience', label: 'Yes, with the required relevant work experience' },
+  { value: 'no', label: 'No' },
+];
+
 function getFlowStep(state) {
-  if (state.isSingaporePr === null) return 'residency';
+  const home = isHomeGetStartedFlow(state);
+
+  if (!home && state.isSingaporePr === null) return 'residency';
   if (state.isIscaMember === null) return 'member';
   if (state.isIscaMember === true) return 'result';
-  if (state.isSingaporePr === true && !state.nricUploadAcknowledged) return 'nric';
-  if (state.isSingaporePr === true && state.spPrVerified === true) return 'result';
-  if (state.wantsIscaMembership === null) return 'membership-choice';
-  if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) return 'membership-choice';
-  if (state.wantsIscaMembership === false) return 'result';
+
+  if (!home) {
+    if (state.isSingaporePr === true && !state.nricUploadAcknowledged) return 'nric';
+    if (state.isSingaporePr === true && state.spPrVerified === true) return 'result';
+    if (state.wantsIscaMembership === null) return 'membership-choice';
+    if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) {
+      return 'membership-choice';
+    }
+    if (state.wantsIscaMembership === false) return 'result';
+  } else if (!state.eligibilityType) {
+    return 'eligibility';
+  }
+
   if (!state.eligibilityType) return 'eligibility';
+  if (state.eligibilityType === 'recognition' && !state.charteredAccountantPathway) {
+    return 'chartered-accountant-pathway';
+  }
+  if (isHomeSpecialisationPathwayFlow(state)) {
+    if (state.homeIscaSpecialisationAnswer === null) {
+      return 'home-isca-specialisation';
+    }
+    return 'home-associate-pathway';
+  }
+  if (
+    state.eligibilityType === 'recognition'
+    && !state.charteredMembershipApplicationAgreed
+    && !isHomeGetStartedFlow(state)
+  ) {
+    if (state.charteredMembershipApplicationDeclined) return 'retry-eligibility';
+    return 'chartered-membership-agreement';
+  }
+  if (state.eligibilityType === 'recognition' && !state.charteredDocumentsIntroCompleted) {
+    return 'chartered-documents';
+  }
+  if (state.eligibilityType === 'recognition' && !state.charteredDocumentsSubmitted) {
+    return 'chartered-documents-upload';
+  }
+  if (
+    state.eligibilityType === 'recognition'
+    && state.charteredVerificationStatus !== null
+    && !state.charteredVerificationAcknowledged
+  ) {
+    return 'chartered-verification';
+  }
+  if (state.eligibilityType === 'recognition' && state.charteredVerificationStatus !== true) {
+    if (state.charteredVerificationStatus === false && state.charteredVerificationAcknowledged) {
+      return 'retry-eligibility';
+    }
+    return 'chartered-verification';
+  }
   if (state.eligibilityType === 'recognition') {
-    // Application form lives on /auth/membership/application (full page), not in this modal.
     return 'salesforce-account-choice';
   }
   if (state.eligibilityType === 'other' && state.otherCimaQualified === null) {
@@ -213,6 +308,12 @@ function getFlowStep(state) {
   if (state.eligibilityType === 'scaq-candidate' && state.scaqAssociateOptIn === null) {
     return 'scaq-associate-optin';
   }
+  if (isHomeSpecialisationPathwayFlow(state)) {
+    if (state.homeIscaSpecialisationAnswer === null) {
+      return 'home-isca-specialisation';
+    }
+    return 'home-associate-pathway';
+  }
   if (state.eligibilityType === 'direct-degree' && state.directDegreeRecognised === null) {
     return 'direct-degree-check';
   }
@@ -229,7 +330,10 @@ function getFlowStep(state) {
   }
   if (state.eligibilityType === 'student' && state.studentMembershipOptIn === null) {
     if (state.studentMembershipApplicationDeclined) return 'retry-eligibility';
-    if (!state.studentMembershipApplicationAgreed) return 'student-membership-agreement';
+    if (!state.studentMembershipApplicationAgreed && !isHomeGetStartedFlow(state)) {
+      return 'student-membership-agreement';
+    }
+    if (state.homeStudentPathwayPending || isHomeGetStartedFlow(state)) return 'home-student-pathway';
     if (state.studentVerificationFailed && state.studentFailureAcknowledged) return 'retry-eligibility';
     return 'student-membership-check';
   }
@@ -238,7 +342,15 @@ function getFlowStep(state) {
   }
   if (state.eligibilityType === 'experienced' && !state.experiencedMembershipApplicationAgreed) {
     if (state.experiencedMembershipApplicationDeclined) return 'retry-eligibility';
-    return 'experienced-membership-agreement';
+    if (!isHomeGetStartedFlow(state)) return 'experienced-membership-agreement';
+  }
+  if (
+    state.eligibilityType === 'experienced'
+    && isHomeGetStartedFlow(state)
+    && state.homePostOptInFlow
+  ) {
+    if (state.homeIscaSpecialisationAnswer === null) return 'home-isca-specialisation';
+    return 'home-associate-pathway';
   }
   if (state.eligibilityType === 'experienced' && !state.experiencedResumeUploaded) {
     return 'experienced-documents';
@@ -407,6 +519,9 @@ function getRequirementLabel(state, step) {
     'other-cima-documents': 'Associate member (PBA via CIMA) documents',
     'other-scaq-portal': 'Direct to SCAQ portal route',
     'scaq-associate-optin': 'Associate member opt-in for SCAQ candidates',
+    'home-isca-specialisation': 'ISCA specialisation qualification',
+    'home-associate-pathway': 'About this pathway',
+    'home-student-pathway': 'About this pathway',
     'retry-eligibility': 'Choose next step after ineligible result',
     'student-membership-agreement': 'Student membership application agreement',
     'student-membership-check': 'Student membership decision',
@@ -433,7 +548,74 @@ function pushMembershipFinalStep(steps, state) {
   }
 }
 
+function appendHomeEligibilityProgressSteps(steps, state) {
+  if (!state.eligibilityType) return;
+
+  if (state.eligibilityType === 'student') {
+    if (state.homeStudentPathwayPending) {
+      steps.push('home-student-pathway');
+    } else {
+      steps.push('student-membership-agreement');
+      if (state.studentMembershipApplicationAgreed) {
+        steps.push('student-membership-check');
+        if (state.studentMembershipOptIn === false) steps.push('student-fee-payment');
+        if (
+          state.studentMembershipOptIn !== null
+          && (state.studentMembershipOptIn === true || state.studentFeePaymentCompleted)
+        ) {
+          pushMembershipFinalStep(steps, state);
+        }
+      }
+    }
+  } else if (state.eligibilityType === 'experienced') {
+    if (state.homePostOptInFlow) {
+      steps.push('home-isca-specialisation');
+      if (state.homeIscaSpecialisationAnswer !== null) {
+        steps.push('home-associate-pathway');
+      }
+    } else if (state.experiencedMembershipApplicationAgreed) {
+      steps.push('experienced-documents');
+      if (
+        state.experiencedResumeUploaded
+        && state.experiencedVerificationStatus === true
+        && state.experiencedVerificationAcknowledged
+      ) {
+        pushMembershipFinalStep(steps, state);
+      }
+      if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) {
+        steps.push('retry-eligibility');
+      }
+    }
+  } else if (state.eligibilityType === 'recognition') {
+    steps.push('chartered-accountant-pathway');
+    if (state.charteredAccountantPathway && state.homePostOptInFlow) {
+      steps.push('home-isca-specialisation');
+      if (state.homeIscaSpecialisationAnswer !== null) {
+        steps.push('home-associate-pathway');
+      }
+    }
+  }
+}
+
 function getProgressMeta(state, step) {
+  const home = isHomeGetStartedFlow(state);
+
+  if (home) {
+    const steps = ['member'];
+    if (state.isIscaMember === true) {
+      steps.push('result');
+    } else {
+      steps.push('eligibility');
+      appendHomeEligibilityProgressSteps(steps, state);
+    }
+    const uniqueSteps = [...new Set(steps)];
+    const currentIndex = uniqueSteps.indexOf(step);
+    return {
+      currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
+      totalSteps: uniqueSteps.length || 1,
+    };
+  }
+
   const steps = ['residency', 'member'];
 
   if (state.isIscaMember === true) {
@@ -461,7 +643,14 @@ function getProgressMeta(state, step) {
           if (state.eligibilityType === 'scaq-candidate') {
             steps.push('scaq-associate-optin');
             if (state.scaqAssociateOptIn === true) {
-              steps.push('scaq-candidate-verify');
+              if (state.homePostOptInFlow) {
+                steps.push('home-isca-specialisation');
+                if (state.homeIscaSpecialisationAnswer !== null) {
+                  steps.push('home-associate-pathway');
+                }
+              } else {
+                steps.push('scaq-candidate-verify');
+              }
               if (state.scaqCandidateVerified === true) {
                 steps.push('associate-member-check');
                 if (state.associateMemberAlready !== null) steps.push('result');
@@ -469,24 +658,66 @@ function getProgressMeta(state, step) {
               if (state.scaqCandidateVerified === false) steps.push('result');
             }
           } else if (state.eligibilityType === 'student') {
-            steps.push('student-membership-agreement', 'student-membership-check');
-            if (state.studentMembershipOptIn === false) steps.push('student-fee-payment');
-            if (state.studentMembershipOptIn !== null && (state.studentMembershipOptIn === true || state.studentFeePaymentCompleted)) {
-              pushMembershipFinalStep(steps, state);
+            steps.push('student-membership-agreement');
+            if (state.studentMembershipApplicationAgreed) {
+              if (state.homeStudentPathwayPending) {
+                steps.push('home-student-pathway');
+              } else {
+                steps.push('student-membership-check');
+                if (state.studentMembershipOptIn === false) steps.push('student-fee-payment');
+                if (
+                  state.studentMembershipOptIn !== null
+                  && (state.studentMembershipOptIn === true || state.studentFeePaymentCompleted)
+                ) {
+                  pushMembershipFinalStep(steps, state);
+                }
+              }
             }
           } else if (state.eligibilityType === 'direct-degree') {
             steps.push('direct-degree-check');
             if (state.directDegreeRecognised !== null) pushMembershipFinalStep(steps, state);
           } else if (state.eligibilityType === 'experienced') {
-            steps.push('experienced-membership-agreement', 'experienced-documents');
-            if (state.experiencedResumeUploaded && state.experiencedVerificationStatus === true && state.experiencedVerificationAcknowledged) {
-              pushMembershipFinalStep(steps, state);
-            }
-            if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) {
-              steps.push('retry-eligibility');
+            steps.push('experienced-membership-agreement');
+            if (state.experiencedMembershipApplicationAgreed && state.homePostOptInFlow) {
+              steps.push('home-isca-specialisation');
+              if (state.homeIscaSpecialisationAnswer !== null) {
+                steps.push('home-associate-pathway');
+              }
+            } else if (state.experiencedMembershipApplicationAgreed) {
+              steps.push('experienced-documents');
+              if (
+                state.experiencedResumeUploaded
+                && state.experiencedVerificationStatus === true
+                && state.experiencedVerificationAcknowledged
+              ) {
+                pushMembershipFinalStep(steps, state);
+              }
+              if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) {
+                steps.push('retry-eligibility');
+              }
             }
           } else if (state.eligibilityType === 'recognition') {
-            steps.push('salesforce-account-choice');
+            steps.push('chartered-accountant-pathway');
+            if (state.charteredAccountantPathway && state.homePostOptInFlow) {
+              steps.push('home-isca-specialisation');
+              if (state.homeIscaSpecialisationAnswer !== null) {
+                steps.push('home-associate-pathway');
+              }
+            } else if (state.charteredAccountantPathway) {
+              steps.push('chartered-membership-agreement');
+              if (state.charteredMembershipApplicationAgreed) {
+                steps.push('chartered-documents', 'chartered-documents-upload');
+                if (state.charteredVerificationStatus !== null) {
+                  steps.push('chartered-verification');
+                  if (state.charteredVerificationStatus === true && state.charteredVerificationAcknowledged) {
+                    steps.push('salesforce-account-choice');
+                  }
+                  if (state.charteredVerificationStatus === false && state.charteredVerificationAcknowledged) {
+                    steps.push('retry-eligibility');
+                  }
+                }
+              }
+            }
           } else if (state.eligibilityType === 'other') {
             steps.push('other-cima-check');
             if (state.otherCimaQualified === true) {
@@ -535,7 +766,7 @@ function getProgressMeta(state, step) {
   };
 }
 
-export function MembershipSignupDialog({ open, onClose, onContinue }) {
+export function MembershipSignupDialog({ open, onClose, onContinue, entrySource }) {
   const [flowState, setFlowState] = useState(INITIAL_STATE);
   const [charteredUploadedFiles, setCharteredUploadedFiles] = useState({});
   const [nricFrontImage, setNricFrontImage] = useState(null);
@@ -643,17 +874,25 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       resetExperiencedResumeLocalState();
       return;
     }
+
+    const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
+    let nextState = { ...INITIAL_STATE, ...(fromHomeGetStarted ? { homeGetStartedFlow: true } : {}) };
+
     try {
       const raw = sessionStorage.getItem('membershipEligibilityFlow');
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const storedFlow = parsed?.flow;
-      if (!storedFlow || typeof storedFlow !== 'object') return;
-      setFlowState((prev) => ({ ...INITIAL_STATE, ...storedFlow }));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const storedFlow = parsed?.flow;
+        if (storedFlow && typeof storedFlow === 'object') {
+          nextState = { ...INITIAL_STATE, ...storedFlow, ...(fromHomeGetStarted ? { homeGetStartedFlow: true } : {}) };
+        }
+      }
     } catch {
       // ignore invalid draft
     }
-  }, [open]);
+
+    setFlowState(nextState);
+  }, [open, entrySource]);
 
   const step = getFlowStep(flowState);
   const result = getOutcome(flowState);
@@ -763,12 +1002,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
 
   const selectMember = (value) => {
     resetNricCheckState();
+    const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
     setFlowState((prev) => ({
       ...prev,
       isIscaMember: value,
+      ...(fromHomeGetStarted && value === false ? { wantsIscaMembership: true } : {}),
       nricUploadAcknowledged: false,
       spPrVerified: null,
-      wantsIscaMembership: null,
+      ...(fromHomeGetStarted ? {} : { wantsIscaMembership: null }),
       eligibilityType: '',
       eligibilityRequirementsAcknowledged: false,
       eligibilityVerified: null,
@@ -1002,9 +1243,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
 
   const selectEligibilityType = (value) => {
     resetStudentVerificationState();
-    setFlowState((prev) => ({
-      ...prev,
-      eligibilityType: value,
+    setFlowState((prev) => {
+      const home = isHomeGetStartedFlow(prev);
+      return {
+        ...prev,
+        eligibilityType: value,
       eligibilityRequirementsAcknowledged: true,
       eligibilityVerified: value === 'student' || value === 'experienced' ? null : true,
       retryDecision: '',
@@ -1014,8 +1257,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       scaqAssociateOptIn: null,
       scaqCandidateVerified: null,
       associateMemberAlready: null,
+      homePostOptInFlow: home && value === 'experienced',
+      homeIscaSpecialisationAnswer: null,
+      homeStudentPathwayPending: home && value === 'student',
       studentFeePaymentCompleted: false,
-      studentMembershipApplicationAgreed: false,
+      studentMembershipApplicationAgreed: home && value === 'student',
       studentMembershipApplicationDeclined: false,
       studentSchoolName: '',
       studentGraduationDate: '',
@@ -1023,7 +1269,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       studentEmailPinSent: false,
       studentEmailPinVerified: false,
       studentVerificationFailed: false,
-      experiencedMembershipApplicationAgreed: false,
+      experiencedMembershipApplicationAgreed: home && value === 'experienced',
       experiencedMembershipApplicationDeclined: false,
       experiencedResumeUploaded: false,
       experiencedResumeFileName: '',
@@ -1063,9 +1309,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       otherPortalVerificationStatus: null,
       otherPortalVerificationAcknowledged: false,
       otherAiEligibility: null,
-      salesforceAccountChoice: '',
-      salesforceMembershipAccountCreated: false,
-    }));
+        salesforceAccountChoice: '',
+        salesforceMembershipAccountCreated: false,
+      };
+    });
   };
 
   const acknowledgeEligibilityRequirements = () => {
@@ -1220,10 +1467,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const agreeStudentMembershipApplication = () => {
+    const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
     setFlowState((prev) => ({
       ...prev,
       studentMembershipApplicationAgreed: true,
       studentMembershipApplicationDeclined: false,
+      ...(fromHomeGetStarted ? { homeStudentPathwayPending: true } : {}),
     }));
   };
 
@@ -1236,6 +1485,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const agreeExperiencedMembershipApplication = () => {
+    const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
     resetExperiencedResumeLocalState();
     setFlowState((prev) => ({
       ...prev,
@@ -1246,6 +1496,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       experiencedVerificationStatus: null,
       experiencedVerificationAcknowledged: false,
       experiencedFailureAcknowledged: false,
+      ...(fromHomeGetStarted ? { homePostOptInFlow: true, homeIscaSpecialisationAnswer: null } : {}),
     }));
   };
 
@@ -1311,11 +1562,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
   };
 
   const selectCharteredAccountantPathway = (value) => {
+    const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
     if (value === 'others') {
       setFlowState((prev) => ({
         ...prev,
         eligibilityType: 'other',
         charteredAccountantPathway: '',
+        homePostOptInFlow: false,
+        homeIscaSpecialisationAnswer: null,
         charteredMembershipApplicationAgreed: false,
         charteredMembershipApplicationDeclined: false,
         charteredDocumentsIntroCompleted: false,
@@ -1337,6 +1591,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
     setFlowState((prev) => ({
       ...prev,
       charteredAccountantPathway: value,
+      ...(fromHomeGetStarted && ['recognition-arrangement', 'enhanced-pathway'].includes(value)
+        ? { homePostOptInFlow: true, homeIscaSpecialisationAnswer: null }
+        : { homePostOptInFlow: false, homeIscaSpecialisationAnswer: null }),
       charteredMembershipApplicationAgreed: false,
       charteredMembershipApplicationDeclined: false,
       charteredDocumentsIntroCompleted: false,
@@ -1660,6 +1917,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       }));
       return;
     }
+    const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
     setFlowState((prev) => {
       const next = {
         ...prev,
@@ -1669,6 +1927,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         eligibilityRequirementsAcknowledged: true,
         eligibilityVerified: true,
       };
+      if (fromHomeGetStarted) {
+        return { ...next, homePostOptInFlow: true, homeIscaSpecialisationAnswer: null };
+      }
       queueMicrotask(() => {
         onContinue?.({
           flow: next,
@@ -1687,6 +1948,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
 
   const selectAssociateMemberAlready = (value) => {
     setFlowState((prev) => ({ ...prev, associateMemberAlready: value }));
+  };
+
+  const selectHomeIscaSpecialisation = (value) => {
+    setFlowState((prev) => ({ ...prev, homeIscaSpecialisationAnswer: value }));
+  };
+
+  const handleHomePathwayExternalLink = (url) => {
+    openHomePathwayExternalUrl(url);
   };
 
   const selectOtherCimaQualified = (value) => {
@@ -1922,7 +2191,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
 
   const goBack = () => {
     if (step === 'member') {
-      setFlowState(INITIAL_STATE);
+      setFlowState(
+        flowState.homeGetStartedFlow ? { ...INITIAL_STATE, homeGetStartedFlow: true } : INITIAL_STATE
+      );
       return;
     }
     if (step === 'membership-choice') {
@@ -1953,6 +2224,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       return;
     }
     if (step === 'eligibility') {
+      if (flowState.homeGetStartedFlow) {
+        setFlowState((prev) => ({ ...prev, isIscaMember: null, eligibilityType: '' }));
+        return;
+      }
       setFlowState((prev) => ({ ...prev, wantsIscaMembership: null, eligibilityType: '' }));
       return;
     }
@@ -2148,12 +2423,69 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       setFlowState((prev) => ({ ...prev, scaqAssociateOptIn: null, eligibilityVerified: null }));
       return;
     }
+    if (step === 'home-associate-pathway') {
+      setFlowState((prev) => ({ ...prev, homeIscaSpecialisationAnswer: null }));
+      return;
+    }
+    if (step === 'home-isca-specialisation') {
+      setFlowState((prev) => {
+        const base = {
+          ...prev,
+          homePostOptInFlow: false,
+          homeIscaSpecialisationAnswer: null,
+        };
+        if (prev.eligibilityType === 'scaq-candidate') {
+          return { ...base, scaqAssociateOptIn: null, eligibilityVerified: null };
+        }
+        if (prev.eligibilityType === 'experienced') {
+          if (prev.homeGetStartedFlow) {
+            return {
+              ...base,
+              eligibilityType: '',
+              experiencedMembershipApplicationAgreed: false,
+              experiencedMembershipApplicationDeclined: false,
+            };
+          }
+          return {
+            ...base,
+            experiencedMembershipApplicationAgreed: false,
+            experiencedMembershipApplicationDeclined: false,
+          };
+        }
+        if (prev.eligibilityType === 'recognition') {
+          return {
+            ...base,
+            charteredAccountantPathway: '',
+          };
+        }
+        return base;
+      });
+      return;
+    }
     if (step === 'scaq-candidate-verify') {
       setFlowState((prev) => ({ ...prev, scaqCandidateVerified: null, scaqAssociateOptIn: null, eligibilityVerified: true }));
       return;
     }
     if (step === 'associate-member-check') {
       setFlowState((prev) => ({ ...prev, associateMemberAlready: null }));
+      return;
+    }
+    if (step === 'home-student-pathway') {
+      setFlowState((prev) => {
+        if (prev.homeGetStartedFlow) {
+          return {
+            ...prev,
+            eligibilityType: '',
+            homeStudentPathwayPending: false,
+            studentMembershipApplicationAgreed: false,
+          };
+        }
+        return {
+          ...prev,
+          homeStudentPathwayPending: false,
+          studentMembershipApplicationAgreed: false,
+        };
+      });
       return;
     }
     if (step === 'student-membership-check') {
@@ -2300,7 +2632,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
       }}
     >
       <DialogTitle sx={{ px: 3, pt: 2, pb: 1.25 }}>
-        {step !== 'residency' && (
+        {step !== 'residency' && !(flowState.homeGetStartedFlow && step === 'member') && (
           <IconButton
             size="small"
             onClick={goBack}
@@ -2336,13 +2668,24 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
         </Button>
         <Typography
           variant="h6"
-          sx={{ fontWeight: 700, lineHeight: 1.2, pl: step !== 'residency' ? 5 : 0, pr: 5 }}
+          sx={{
+            fontWeight: 700,
+            lineHeight: 1.2,
+            pl: step !== 'residency' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
+            pr: 5,
+          }}
         >
           Membership eligibility check
         </Typography>
         <Typography
           variant="caption"
-          sx={{ mt: 0.75, color: 'text.secondary', display: 'block', pl: step !== 'residency' ? 5 : 0, pr: 5 }}
+          sx={{
+            mt: 0.75,
+            color: 'text.secondary',
+            display: 'block',
+            pl: step !== 'residency' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
+            pr: 5,
+          }}
         >
           Step {currentStep} of {totalSteps}
         </Typography>
@@ -2662,7 +3005,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               Which eligibility option best matches your profile?
             </Typography>
             <Stack spacing={1}>
-              {ELIGIBILITY_OPTIONS.map((option) => (
+              {getEligibilityOptionsForFlow(flowState).map((option) => (
                 <Paper
                   key={option.value}
                   variant="outlined"
@@ -3156,15 +3499,33 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               Choose the pathway that applies to your professional membership.
             </Typography>
             <Stack spacing={1}>
-              <Button variant="outlined" onClick={() => selectCharteredAccountantPathway('recognition-arrangement')}>
-                Recognition Arrangement
-              </Button>
-              <Button variant="outlined" onClick={() => selectCharteredAccountantPathway('enhanced-pathway')}>
-                Enhanced Pathway (ACCA)
-              </Button>
-              <Button variant="outlined" onClick={() => selectCharteredAccountantPathway('others')}>
-                Others
-              </Button>
+              {CHARTERED_PATHWAY_OPTIONS.map((option) => (
+                <Paper
+                  key={option.value}
+                  variant="outlined"
+                  onClick={() => selectCharteredAccountantPathway(option.value)}
+                  sx={(theme) => ({
+                    p: 1.5,
+                    cursor: 'pointer',
+                    borderRadius: 1.5,
+                    borderColor:
+                      flowState.charteredAccountantPathway === option.value
+                        ? theme.palette.text.primary
+                        : theme.palette.divider,
+                    bgcolor:
+                      flowState.charteredAccountantPathway === option.value
+                        ? alpha(theme.palette.text.primary, 0.05)
+                        : 'background.paper',
+                  })}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    {option.title}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {option.subtitle}
+                  </Typography>
+                </Paper>
+              ))}
             </Stack>
           </Stack>
         )}
@@ -3558,7 +3919,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               Opt in to be Associate member for free?
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Choosing Yes will sign you in with your Salesforce account to verify SCAQ candidate status automatically.
+              {entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED
+                ? 'Choosing Yes will ask about your ISCA specialisation qualification, then show pathway details.'
+                : 'Choosing Yes will sign you in with your Salesforce account to verify SCAQ candidate status automatically.'}
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={() => selectScaqAssociateOptIn(true)}>
@@ -3570,6 +3933,75 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             </Stack>
           </Stack>
         )}
+        {step === 'home-isca-specialisation' && (
+          <Stack spacing={2}>
+            <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+              Have you completed an ISCA specialisation qualification?
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Examples include the ISCA Financial Forensic Professional (FFP) qualification.
+            </Typography>
+            <Stack spacing={1.25}>
+              {HOME_ISCA_SPECIALISATION_OPTIONS.map((option) => {
+                const selected = flowState.homeIscaSpecialisationAnswer === option.value;
+                return (
+                  <Paper
+                    key={option.value}
+                    variant="outlined"
+                    onClick={() => selectHomeIscaSpecialisation(option.value)}
+                    sx={(theme) => ({
+                      p: 1.5,
+                      cursor: 'pointer',
+                      borderRadius: 1.5,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 1.25,
+                      borderColor: selected ? theme.palette.text.primary : theme.palette.divider,
+                      bgcolor: selected ? alpha(theme.palette.text.primary, 0.05) : 'background.paper',
+                    })}
+                  >
+                    <Iconify
+                      icon={selected ? 'solar:record-circle-bold' : 'solar:record-bold'}
+                      width={22}
+                      sx={{
+                        mt: 0.15,
+                        color: selected ? 'text.primary' : 'text.disabled',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography variant="body2" sx={{ fontWeight: selected ? 700 : 500, lineHeight: 1.5 }}>
+                      {option.label}
+                    </Typography>
+                  </Paper>
+                );
+              })}
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-associate-pathway' && (() => {
+          const pathwayUrls = getHomePathwayUrls(
+            flowState.eligibilityType,
+            flowState.homeIscaSpecialisationAnswer
+          );
+          return (
+            <HomePathwayCard
+              content={getHomePathwayContent(
+                flowState.eligibilityType,
+                flowState.homeIscaSpecialisationAnswer
+              )}
+              applicationPortalUrl={pathwayUrls.applicationPortal}
+              readPathwayPageUrl={pathwayUrls.readPathwayPage}
+              exploreUrl={pathwayUrls.explore}
+              resolveExploreUrl={(link) =>
+                getHomePathwayExploreUrl(
+                  flowState.eligibilityType,
+                  flowState.homeIscaSpecialisationAnswer,
+                  link?.key || ''
+                )}
+              onOpenLink={handleHomePathwayExternalLink}
+            />
+          );
+        })()}
         {step === 'scaq-candidate-verify' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -3606,7 +4038,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               Student membership information
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Provide information on student membership, benefits, and applicable admission or annual fees.
+              {entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED
+                ? 'Review student membership benefits, then confirm to see your pathway details.'
+                : 'Provide information on student membership, benefits, and applicable admission or annual fees.'}
             </Typography>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Agree to proceed with membership application?
@@ -3621,6 +4055,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
             </Stack>
           </Stack>
         )}
+        {step === 'home-student-pathway' && (() => {
+          const studentPathwayUrls = getHomeStudentPathwayUrls();
+          return (
+            <HomePathwayCard
+              content={HOME_STUDENT_PATHWAY_CONTENT}
+              applicationPortalUrl={studentPathwayUrls.applicationPortal}
+              readPathwayPageUrl={studentPathwayUrls.readPathwayPage}
+              onOpenLink={handleHomePathwayExternalLink}
+            />
+          );
+        })()}
         {step === 'student-membership-check' && (
           <Stack spacing={1.5}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -3950,7 +4395,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue }) {
               Experienced pathway information
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Provide membership details, benefits, and applicable costs before proceeding.
+              {entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED
+                ? 'Review experienced pathway details, then confirm to answer a short qualification question.'
+                : 'Provide membership details, benefits, and applicable costs before proceeding.'}
             </Typography>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Agree to proceed with membership application?

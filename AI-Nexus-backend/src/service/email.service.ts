@@ -13,6 +13,33 @@ export class EmailService {
     private transporter: nodemailer.Transporter;
 
     constructor() {
+
+        //  const host = '192.168.6.4'; //process.env.SMTP_HOST;
+        // const port = 25; //process.env.SMTP_PORT;
+        // const secure = false; //process.env.SMTP_SECURE;
+        // const user = process.env.FROM_EMAIL;
+        // const pass = ""; //process.env.SMTP_PASS;
+
+        // const transportOptions: nodemailer.TransportOptions = {
+        //     host,
+        //     port,
+        //     secure,
+        // } as nodemailer.TransportOptions;
+
+        // if (user && pass) {
+        //     (transportOptions as any).auth = { user, pass };
+        // }
+
+        // this.transporter = nodemailer.createTransport(transportOptions);
+        this.transporter = nodemailer.createTransport({
+            service: 'Gmail', // Use your email service
+            auth: {
+              user: process.env.FROM_EMAIL,
+              pass: process.env.SMTP_PASS,
+            },
+          });
+
+    
         this.transporter = nodemailer.createTransport({
             service: 'Gmail', // Use your email service
             auth: {
