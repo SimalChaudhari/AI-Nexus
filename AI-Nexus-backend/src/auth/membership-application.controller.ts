@@ -14,6 +14,11 @@ import {
   CreateCharacterReferenceDto,
   CreateDeclarationDto,
 } from './membership-application-character-declaration.dto';
+import {
+  GetAvailableDocumentTypesDto,
+  UploadMembershipDocumentDto,
+} from './membership-application-document.dto';
+import { CreateMembershipBillingDto } from './membership-application-billing.dto';
 
 @ApiTags('Membership Application')
 @Controller('auth/membership-application')
@@ -194,6 +199,72 @@ export class MembershipApplicationController {
     return response.status(HttpStatus.OK).json({
       success: true,
       message: 'Declaration submitted successfully.',
+      salesforce,
+    });
+  }
+
+  @Post('available-document-types')
+  @ApiOperation({
+    summary:
+      'Load required/optional document types for an application (getAvailableDocumentTypesNexus)',
+  })
+  @ApiBody({ type: GetAvailableDocumentTypesDto })
+  async getAvailableDocumentTypes(
+    @Res() response: Response,
+    @Body() dto: GetAvailableDocumentTypesDto,
+  ) {
+    const salesforce = await this.oauthAuthService.getAvailableDocumentTypesNexus(
+      dto.socialAccessToken,
+      dto.applicationId,
+    );
+
+    const rawData = salesforce?.data;
+    const documentTypes = Array.isArray(rawData) ? rawData : [];
+
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message:
+        (salesforce?.message as string)
+        || 'Available document types retrieved successfully.',
+      documentTypes,
+      salesforce,
+    });
+  }
+
+  @Post('upload-document')
+  @ApiOperation({ summary: 'Upload one supporting document (uploadDocumentNexus)' })
+  @ApiBody({ type: UploadMembershipDocumentDto })
+  async uploadDocument(
+    @Res() response: Response,
+    @Body() dto: UploadMembershipDocumentDto,
+  ) {
+    const { socialAccessToken, ...rest } = dto;
+    const salesforce = await this.oauthAuthService.uploadDocumentNexus(
+      socialAccessToken,
+      rest as Record<string, unknown>,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Document uploaded successfully.',
+      salesforce,
+    });
+  }
+
+  @Post('billing')
+  @ApiOperation({ summary: 'Submit membership application billing (createBillingNexus)' })
+  @ApiBody({ type: CreateMembershipBillingDto })
+  async createBilling(
+    @Res() response: Response,
+    @Body() dto: CreateMembershipBillingDto,
+  ) {
+    const { socialAccessToken, ...rest } = dto;
+    const salesforce = await this.oauthAuthService.createBillingNexus(
+      socialAccessToken,
+      rest as Record<string, unknown>,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Billing submitted successfully.',
       salesforce,
     });
   }

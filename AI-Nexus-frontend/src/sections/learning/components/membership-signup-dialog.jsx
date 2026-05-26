@@ -30,10 +30,8 @@ import {
   buildMembershipApplicationOAuthStartUrl,
   buildMembershipSalesforceCreateUrl,
   openRecognitionMembershipApplicationPage,
-  isMembershipApplicationPending,
   MEMBERSHIP_SALESFORCE_SESSION_READY,
   MEMBERSHIP_SALESFORCE_SESSION_KEY,
-  setMembershipApplicationPending,
   clearMembershipApplicationPending,
   saveMembershipApplicationCourseReturn,
 } from 'src/utils/membership-salesforce-session';
@@ -60,7 +58,18 @@ export const MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED = 'home-get-started';
 // ----------------------------------------------------------------------
 
 function isRecognitionMembershipFlow(state) {
-  return state?.eligibilityType === 'recognition' || isMembershipApplicationPending();
+  return state?.eligibilityType === 'recognition';
+}
+
+function shouldOpenRecognitionApplicationPage(state) {
+  if (isHomeGetStartedFlow(state)) {
+    return false;
+  }
+  return (
+    state?.eligibilityType === 'recognition'
+    && getFlowStep(state) === 'salesforce-account-choice'
+    && state.salesforceSessionReady
+  );
 }
 
 const ELIGIBILITY_OPTIONS = [
@@ -83,6 +92,19 @@ const CHARTERED_PATHWAY_OPTIONS = [
     subtitle: 'ACCA members and affiliates',
   },
 ];
+
+const CHARTERED_PATHWAY_OPTION_OTHERS = {
+  value: 'others',
+  title: 'Others',
+  subtitle: 'If none of the above pathways apply',
+};
+
+function getCharteredPathwayOptionsForFlow(state) {
+  if (isHomeGetStartedFlow(state)) {
+    return CHARTERED_PATHWAY_OPTIONS;
+  }
+  return [...CHARTERED_PATHWAY_OPTIONS, CHARTERED_PATHWAY_OPTION_OTHERS];
+}
 
 const INITIAL_STATE = {
   isSingaporePr: null,
@@ -166,6 +188,57 @@ function isHomeGetStartedFlow(state) {
   return Boolean(state?.homeGetStartedFlow);
 }
 
+/** Prevent home-page flow flags from affecting course / learning eligibility. */
+function stripHomeOnlyFlowState(flow) {
+  const wasHome =
+    Boolean(flow.homeGetStartedFlow)
+    || Boolean(flow.homeStudentPathwayPending)
+    || Boolean(flow.homePostOptInFlow);
+
+  const next = {
+    ...flow,
+    homeGetStartedFlow: false,
+    homePostOptInFlow: false,
+    homeIscaSpecialisationAnswer: null,
+    homeStudentPathwayPending: false,
+  };
+
+  if (!wasHome) {
+    return next;
+  }
+
+  // Home auto-skips agreement screens — restore course steps when home state leaked in.
+  if (
+    next.eligibilityType === 'student'
+    && next.studentMembershipApplicationAgreed
+    && next.studentMembershipOptIn === null
+  ) {
+    next.studentMembershipApplicationAgreed = false;
+    next.studentMembershipApplicationDeclined = false;
+  }
+  if (
+    next.eligibilityType === 'experienced'
+    && next.experiencedMembershipApplicationAgreed
+    && !next.experiencedResumeUploaded
+  ) {
+    next.experiencedMembershipApplicationAgreed = false;
+    next.experiencedMembershipApplicationDeclined = false;
+  }
+
+  return next;
+}
+
+function resolveFlowStateOnOpen(storedFlow, fromHomeGetStarted) {
+  const merged = {
+    ...INITIAL_STATE,
+    ...(storedFlow && typeof storedFlow === 'object' ? storedFlow : {}),
+  };
+  if (fromHomeGetStarted) {
+    return { ...merged, homeGetStartedFlow: true };
+  }
+  return stripHomeOnlyFlowState(merged);
+}
+
 function getEligibilityOptionsForFlow(state) {
   if (!isHomeGetStartedFlow(state)) {
     return ELIGIBILITY_OPTIONS;
@@ -200,7 +273,11 @@ function getFlowStep(state) {
   }
 
   if (!state.eligibilityType) return 'eligibility';
-  if (state.eligibilityType === 'recognition' && !state.charteredAccountantPathway) {
+  if (
+    state.eligibilityType === 'recognition'
+    && !state.charteredAccountantPathway
+    && isHomeGetStartedFlow(state)
+  ) {
     return 'chartered-accountant-pathway';
   }
   if (isHomeSpecialisationPathwayFlow(state)) {
@@ -209,10 +286,13 @@ function getFlowStep(state) {
     }
     return 'home-associate-pathway';
   }
+  if (state.eligibilityType === 'recognition' && !isHomeGetStartedFlow(state)) {
+    return 'salesforce-account-choice';
+  }
   if (
     state.eligibilityType === 'recognition'
     && !state.charteredMembershipApplicationAgreed
-    && !isHomeGetStartedFlow(state)
+    && isHomeGetStartedFlow(state)
   ) {
     if (state.charteredMembershipApplicationDeclined) return 'retry-eligibility';
     return 'chartered-membership-agreement';
@@ -333,7 +413,7 @@ function getFlowStep(state) {
     if (!state.studentMembershipApplicationAgreed && !isHomeGetStartedFlow(state)) {
       return 'student-membership-agreement';
     }
-    if (state.homeStudentPathwayPending || isHomeGetStartedFlow(state)) return 'home-student-pathway';
+    if (isHomeGetStartedFlow(state)) return 'home-student-pathway';
     if (state.studentVerificationFailed && state.studentFailureAcknowledged) return 'retry-eligibility';
     return 'student-membership-check';
   }
@@ -697,27 +777,7 @@ function getProgressMeta(state, step) {
               }
             }
           } else if (state.eligibilityType === 'recognition') {
-            steps.push('chartered-accountant-pathway');
-            if (state.charteredAccountantPathway && state.homePostOptInFlow) {
-              steps.push('home-isca-specialisation');
-              if (state.homeIscaSpecialisationAnswer !== null) {
-                steps.push('home-associate-pathway');
-              }
-            } else if (state.charteredAccountantPathway) {
-              steps.push('chartered-membership-agreement');
-              if (state.charteredMembershipApplicationAgreed) {
-                steps.push('chartered-documents', 'chartered-documents-upload');
-                if (state.charteredVerificationStatus !== null) {
-                  steps.push('chartered-verification');
-                  if (state.charteredVerificationStatus === true && state.charteredVerificationAcknowledged) {
-                    steps.push('salesforce-account-choice');
-                  }
-                  if (state.charteredVerificationStatus === false && state.charteredVerificationAcknowledged) {
-                    steps.push('retry-eligibility');
-                  }
-                }
-              }
-            }
+            steps.push('salesforce-account-choice');
           } else if (state.eligibilityType === 'other') {
             steps.push('other-cima-check');
             if (state.otherCimaQualified === true) {
@@ -823,6 +883,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     if (!session?.accountId) return;
 
     setFlowState((prev) => {
+      if (isHomeGetStartedFlow(prev)) {
+        return prev;
+      }
+
       const next = {
         ...prev,
         salesforceSessionReady: true,
@@ -830,8 +894,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         salesforceAccountChoice: prev.salesforceAccountChoice || 'create',
       };
 
-      if (isRecognitionMembershipFlow(prev)) {
-        openRecognitionMembershipApplicationPage(paths.auth.membership.application);
+      if (shouldOpenRecognitionApplicationPage(next)) {
+        queueMicrotask(() => {
+          openRecognitionMembershipApplicationPage(paths.auth.membership.application);
+        });
       }
 
       return next;
@@ -839,7 +905,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   };
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED) {
+      return undefined;
+    }
 
     applySalesforceSessionFromStorage();
 
@@ -867,6 +935,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
 
   useEffect(() => {
     if (!open) {
+      clearMembershipApplicationPending();
       setFlowState(INITIAL_STATE);
       setCharteredUploadedFiles({});
       resetNricCheckState();
@@ -876,7 +945,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     }
 
     const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
-    let nextState = { ...INITIAL_STATE, ...(fromHomeGetStarted ? { homeGetStartedFlow: true } : {}) };
+    let nextState = resolveFlowStateOnOpen(null, fromHomeGetStarted);
 
     try {
       const raw = sessionStorage.getItem('membershipEligibilityFlow');
@@ -884,7 +953,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         const parsed = JSON.parse(raw);
         const storedFlow = parsed?.flow;
         if (storedFlow && typeof storedFlow === 'object') {
-          nextState = { ...INITIAL_STATE, ...storedFlow, ...(fromHomeGetStarted ? { homeGetStartedFlow: true } : {}) };
+          nextState = resolveFlowStateOnOpen(storedFlow, fromHomeGetStarted);
         }
       }
     } catch {
@@ -932,7 +1001,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     try {
       sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
       saveMembershipApplicationCourseReturn(courseReturn);
-      setMembershipApplicationPending();
     } catch {
       // ignore
     }
@@ -950,10 +1018,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       salesforceAccountChoice: choice === 'create' ? 'create' : 'login',
     }));
 
-    const popup = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      window.location.href = url;
-    }
+    window.location.assign(url);
   };
 
   const selectSalesforceAccountChoice = (choice) => {
@@ -3490,7 +3555,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             )}
           </Stack>
         )}
-        {step === 'chartered-accountant-pathway' && (
+        {step === 'chartered-accountant-pathway' && flowState.homeGetStartedFlow && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               Select chartered accountant pathway
@@ -3499,7 +3564,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
               Choose the pathway that applies to your professional membership.
             </Typography>
             <Stack spacing={1}>
-              {CHARTERED_PATHWAY_OPTIONS.map((option) => (
+              {getCharteredPathwayOptionsForFlow(flowState).map((option) => (
                 <Paper
                   key={option.value}
                   variant="outlined"
@@ -4565,20 +4630,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
               Create a new ISCA Salesforce membership account, or sign in if you already have one.
-              {flowState.eligibilityType === 'recognition'
-                ? ' Create account or login opens in a separate page (not in this window). After sign-in, the full membership application form opens in another tab.'
-                : ''}
             </Typography>
-            {flowState.salesforceAccountChoice && !flowState.salesforceSessionReady && (
-              <Alert severity="info">
-                Complete Salesforce {flowState.salesforceAccountChoice === 'create' ? 'registration' : 'login'} in
-                the other tab, then this screen will update automatically.
-              </Alert>
-            )}
             {flowState.salesforceSessionReady && (
               <Alert severity="success">
-                Salesforce account linked. Complete your application on the membership application
-                page (opened in another tab). Use the button below if you do not see it.
+                Salesforce account linked. Continue to the membership application using the button below.
               </Alert>
             )}
           </Stack>

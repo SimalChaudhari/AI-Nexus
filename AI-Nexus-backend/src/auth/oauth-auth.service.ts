@@ -247,6 +247,18 @@ export class OAuthAuthService {
     return this.resolveApplicationApiUrl('declaration');
   }
 
+  get applicationAvailableDocumentTypesUrl(): string {
+    return this.resolveApplicationApiUrl('availableDocumentTypes');
+  }
+
+  get applicationUploadDocumentUrl(): string {
+    return this.resolveApplicationApiUrl('uploadDocument');
+  }
+
+  get applicationCreateBillingUrl(): string {
+    return this.resolveApplicationApiUrl('createBilling');
+  }
+
   /** Token endpoint for integration (password grant); defaults to OAUTH_INSTANCE_URL + path. */
   private get integrationTokenUrl(): string {
     const explicit = process.env.OAUTH_INTEGRATION_TOKEN_URL?.trim();
@@ -958,6 +970,136 @@ export class OAuthAuthService {
       { ...payload, applicationId },
       'createDeclarationNexus',
       'Failed to submit declaration to Salesforce.',
+    );
+  }
+
+  /**
+   * GET ApplicationAPI/getAvailableDocumentTypesNexus?applicationId=...
+   * Returns pathway-specific required/optional document types for the application.
+   */
+  async getAvailableDocumentTypesNexus(
+    socialAccessToken: string,
+    applicationId: string,
+  ): Promise<Record<string, unknown>> {
+    const token = socialAccessToken?.trim();
+    if (!token) {
+      throw new BadRequestException('Salesforce social access token is required.');
+    }
+    const appId = applicationId?.trim();
+    if (!appId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+
+    const url = this.applicationAvailableDocumentTypesUrl;
+    console.log('[Salesforce] getAvailableDocumentTypesNexus:', { url, applicationId: appId });
+
+    try {
+      const res = await axios.get<Record<string, unknown>>(url, {
+        params: { applicationId: appId },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true, data: [] };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] getAvailableDocumentTypesNexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const data = err.response?.data as {
+          message?: string;
+          error?: string;
+          error_description?: string;
+        };
+        const desc =
+          data?.message || data?.error_description || data?.error || err.message;
+        throw new BadRequestException(
+          desc || 'Failed to load available document types from Salesforce.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /** POST ApplicationAPI/createBillingNexus — record membership application payment in Salesforce. */
+  async createBillingNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    const accountId = String(payload.accountId || '').trim();
+    if (!accountId) {
+      throw new BadRequestException('accountId is required.');
+    }
+    const paymentMethod = String(payload.paymentMethod || '').trim();
+    if (!paymentMethod) {
+      throw new BadRequestException('paymentMethod is required.');
+    }
+    const wooshPayReferenceNo = String(payload.wooshPayReferenceNo || '').trim();
+    if (!wooshPayReferenceNo) {
+      throw new BadRequestException('wooshPayReferenceNo is required.');
+    }
+
+    const body: Record<string, unknown> = {
+      applicationId,
+      accountId,
+      paymentMethod,
+      wooshPayReferenceNo,
+    };
+
+    return this.postSalesforceApplicationApi(
+      this.applicationCreateBillingUrl,
+      socialAccessToken,
+      body,
+      'createBillingNexus',
+      'Failed to submit billing to Salesforce.',
+    );
+  }
+
+  /** POST ApplicationAPI/uploadDocumentNexus — one file per request (base64 body). */
+  async uploadDocumentNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    const documentType = String(payload.documentType || '').trim();
+    if (!documentType) {
+      throw new BadRequestException('documentType is required.');
+    }
+    const fileName = String(payload.fileName || '').trim();
+    if (!fileName) {
+      throw new BadRequestException('fileName is required.');
+    }
+    const fileContent = String(payload.fileContent || '').trim();
+    if (!fileContent) {
+      throw new BadRequestException('fileContent is required.');
+    }
+
+    const body: Record<string, unknown> = {
+      applicationId,
+      documentType,
+      fileName,
+      fileContent,
+      fileSize: payload.fileSize ?? fileContent.length,
+      otherDetails: String(payload.otherDetails || '').trim(),
+    };
+
+    return this.postSalesforceApplicationApi(
+      this.applicationUploadDocumentUrl,
+      socialAccessToken,
+      body,
+      'uploadDocumentNexus',
+      'Failed to upload document to Salesforce.',
     );
   }
 

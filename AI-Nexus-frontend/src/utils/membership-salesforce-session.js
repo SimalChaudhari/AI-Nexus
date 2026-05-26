@@ -235,11 +235,8 @@ export function buildMembershipSalesforceCreateUrl(createPagePath) {
   return `${createPagePath}?${params.toString()}`;
 }
 
-const MEMBERSHIP_APPLICATION_WINDOW_NAME = 'nexusMembershipApplication';
-
 /**
- * Open the full-page membership application (recognition path).
- * Reuses the same named window so login/create tabs can hand off to one application tab.
+ * Navigate to the full-page membership application (recognition path) in the current tab.
  */
 export function openRecognitionMembershipApplicationPage(applicationPath) {
   if (typeof window === 'undefined' || !applicationPath) return null;
@@ -253,16 +250,6 @@ export function openRecognitionMembershipApplicationPage(applicationPath) {
     return window;
   }
 
-  try {
-    const existing = window.open('', MEMBERSHIP_APPLICATION_WINDOW_NAME);
-    if (existing && !existing.closed) {
-      existing.location.href = url;
-      existing.focus();
-      return existing;
-    }
-  } catch {
-    // ignore
-  }
-
-  return window.open(url, MEMBERSHIP_APPLICATION_WINDOW_NAME, 'noopener,noreferrer');
+  window.location.assign(url);
+  return window;
 }

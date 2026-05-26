@@ -33,7 +33,12 @@ import {
   submitAtoMembership,
   submitCharacterReference,
   submitDeclaration,
+  submitMembershipDocumentUpload,
+  submitMembershipApplicationBilling,
 } from 'src/api/membership-application';
+import { MembershipApplicationDocumentSection } from './membership-application-document-section';
+import { MembershipApplicationBillingSection } from './membership-application-billing-section';
+import { paths } from 'src/routes/paths';
 import { MembershipApplicationCreateSection } from './membership-application-create-section';
 import { MembershipApplicationQualificationSection } from './membership-application-qualification-section';
 import { MembershipApplicationCharacterReferenceSection } from './membership-application-character-reference-section';
@@ -82,6 +87,21 @@ import {
   validateApplicationBeforeSubmit,
 } from 'src/utils/membership-application-create';
 import {
+  EMPTY_DOCUMENT_UPLOAD_FORM,
+  buildDocumentUploadApiPayload,
+  fileToBase64,
+  getDocumentsToUpload,
+  validateDocumentUploadBeforeSubmit,
+} from 'src/utils/membership-application-document';
+import {
+  EMPTY_BILLING_FORM,
+  buildMembershipApplicationCheckoutUrls,
+  buildMembershipBillingApiPayload,
+  clearPendingMembershipApplicationPayment,
+  resolveWooshPayReferenceAfterReturn,
+  validateBillingBeforeSubmit,
+} from 'src/utils/membership-application-billing';
+import {
   DEFAULT_MEMBERSHIP_COUNTRY,
   DEFAULT_MEMBERSHIP_DIAL_CODE,
   getMembershipFormFooterSx,
@@ -100,6 +120,7 @@ const TABS = [
   { id: 'character-reference', label: 'Character Reference', icon: 'solar:users-group-two-rounded-bold' },
   { id: 'declaration', label: 'Declaration', icon: 'solar:document-text-bold' },
   { id: 'document-upload', label: 'Document Upload', icon: 'solar:upload-bold' },
+  { id: 'billing', label: 'Billing', icon: 'solar:wallet-money-bold' },
 ];
 
 const EMPTY_DRAFT = {
@@ -113,12 +134,8 @@ const EMPTY_DRAFT = {
   },
   characterReference: { ...EMPTY_CHARACTER_REFERENCE_FORM },
   declaration: { ...EMPTY_DECLARATION_FORM },
-  documentUpload: {
-    idDocumentName: '',
-    transcriptName: '',
-    characterReferenceFormName: '',
-    otherDocumentName: '',
-  },
+  documentUpload: { ...EMPTY_DOCUMENT_UPLOAD_FORM },
+  billing: { ...EMPTY_BILLING_FORM },
 };
 
 function applyPersonalSingaporeDefaults(personal) {
@@ -194,7 +211,15 @@ function loadDraft() {
         ...parsed.characterReference,
       }),
       declaration: { ...EMPTY_DRAFT.declaration, ...parsed.declaration },
-      documentUpload: { ...EMPTY_DRAFT.documentUpload, ...parsed.documentUpload },
+      documentUpload: {
+        ...EMPTY_DRAFT.documentUpload,
+        ...parsed.documentUpload,
+        entries: {
+          ...EMPTY_DOCUMENT_UPLOAD_FORM.entries,
+          ...(parsed.documentUpload?.entries || {}),
+        },
+      },
+      billing: { ...EMPTY_BILLING_FORM, ...parsed.billing },
       submittedTabs: parsed.submittedTabs || {},
     };
   } catch {
@@ -223,8 +248,16 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   const [submittingTab, setSubmittingTab] = useState('');
   const [tabMessage, setTabMessage] = useState('');
   const [tabMessageSeverity, setTabMessageSeverity] = useState('info');
+  const [documentTypes, setDocumentTypes] = useState([]);
+  const [documentFiles, setDocumentFiles] = useState({});
+  const [paymentReturnNotice, setPaymentReturnNotice] = useState(null);
 
   const currentTabId = TABS[activeTab]?.id || 'personal';
+  const documentsSubmitted = Boolean(draft.submittedTabs['document-upload']);
+  const billingCheckoutUrls = useMemo(
+    () => buildMembershipApplicationCheckoutUrls(paths.auth.membership.application),
+    []
+  );
 
   useEffect(() => {
     const session = readMembershipSalesforceSession();
@@ -256,6 +289,58 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       saveDraft(next);
       return next;
     });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const {
+      sessionId,
+      paymentCanceled,
+      paymentSuccess,
+    } = resolveWooshPayReferenceAfterReturn(window.location.search);
+    const openBilling = new URLSearchParams(window.location.search).get('billing') === '1';
+
+    if (openBilling || paymentSuccess || paymentCanceled) {
+      const billingIndex = TABS.findIndex((t) => t.id === 'billing');
+      if (billingIndex >= 0) setActiveTab(billingIndex);
+    }
+
+    if (paymentCanceled) {
+      setPaymentReturnNotice({
+        severity: 'warning',
+        message: 'Payment was canceled. You can try again when ready.',
+      });
+    } else if (sessionId) {
+      setDraft((prev) => {
+        const next = {
+          ...prev,
+          billing: { ...prev.billing, wooshPayReferenceNo: sessionId },
+        };
+        saveDraft(next);
+        return next;
+      });
+      clearPendingMembershipApplicationPayment();
+      setPaymentReturnNotice({
+        severity: 'success',
+        message: 'Payment completed. Submit billing below to register with ISCA eServices.',
+      });
+    } else if (paymentSuccess) {
+      setPaymentReturnNotice({
+        severity: 'info',
+        message:
+          'Payment may have completed, but the reference was not found. Paste the WooshPay session id from your receipt, or pay again.',
+      });
+    }
+
+    if (openBilling || sessionId || paymentCanceled || paymentSuccess) {
+      const params = new URLSearchParams(window.location.search);
+      ['billing', 'payment', 'session_id', 'sessionId', 'ref', 'applicationId'].forEach((key) => {
+        params.delete(key);
+      });
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
+      window.history.replaceState({}, '', nextUrl);
+    }
   }, []);
 
   const completedCount = useMemo(
@@ -366,9 +451,42 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     });
   };
 
-  const handleFileChange = (field) => (event) => {
-    const file = event.target.files?.[0];
-    updateSection('documentUpload', field, file?.name || '');
+  const handleDocumentFileSelect = (documentType, file) => {
+    if (!file) return;
+    setDocumentFiles((prev) => ({ ...prev, [documentType]: file }));
+    setDraft((prev) => {
+      const entries = {
+        ...(prev.documentUpload?.entries || {}),
+        [documentType]: {
+          ...(prev.documentUpload?.entries?.[documentType] || {}),
+          fileName: file.name,
+        },
+      };
+      const next = {
+        ...prev,
+        documentUpload: { ...prev.documentUpload, entries },
+      };
+      saveDraft(next);
+      return next;
+    });
+  };
+
+  const handleDocumentOtherDetailsChange = (documentType, value) => {
+    setDraft((prev) => {
+      const entries = {
+        ...(prev.documentUpload?.entries || {}),
+        [documentType]: {
+          ...(prev.documentUpload?.entries?.[documentType] || {}),
+          otherDetails: value,
+        },
+      };
+      const next = {
+        ...prev,
+        documentUpload: { ...prev.documentUpload, entries },
+      };
+      saveDraft(next);
+      return next;
+    });
   };
 
   const advanceAfterTabSuccess = (tabId) => {
@@ -582,6 +700,93 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     await submitCharacterReference({ socialAccessToken: session.socialToken, ...body });
   };
 
+  const submitDocumentUploadTab = async () => {
+    const session = readMembershipSalesforceSession();
+    if (!session?.socialToken) {
+      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
+    }
+
+    const applicationId = resolveApplicationId();
+    if (!applicationId) {
+      throw new Error('Application ID is missing. Submit the Application tab first.');
+    }
+
+    const validationError = validateDocumentUploadBeforeSubmit(documentTypes, documentFiles);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const toUpload = getDocumentsToUpload(documentTypes, documentFiles);
+    let uploadedCount = 0;
+
+    for (const type of toUpload) {
+      const file = documentFiles[type.value];
+      const otherDetails = draft.documentUpload?.entries?.[type.value]?.otherDetails || '';
+      const fileContent = await fileToBase64(file);
+      const payload = buildDocumentUploadApiPayload({
+        applicationId,
+        documentType: type.value,
+        file,
+        otherDetails,
+        fileContent,
+      });
+
+      await submitMembershipDocumentUpload({
+        socialAccessToken: session.socialToken,
+        ...payload,
+      });
+      uploadedCount += 1;
+    }
+
+    return uploadedCount;
+  };
+
+  const submitBillingTab = async () => {
+    const session = readMembershipSalesforceSession();
+    if (!session?.socialToken) {
+      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
+    }
+
+    const applicationId = resolveApplicationId();
+    const accountId = session.accountId;
+    if (!applicationId) {
+      throw new Error('Application ID is missing. Submit the Application tab first.');
+    }
+    if (!accountId) {
+      throw new Error('Salesforce account is not linked.');
+    }
+
+    const validationError = validateBillingBeforeSubmit({
+      documentsSubmitted,
+      wooshPayReferenceNo: draft.billing?.wooshPayReferenceNo,
+    });
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const body = buildMembershipBillingApiPayload({
+      applicationId,
+      accountId,
+      wooshPayReferenceNo: draft.billing.wooshPayReferenceNo,
+    });
+
+    await submitMembershipApplicationBilling({
+      socialAccessToken: session.socialToken,
+      ...body,
+    });
+  };
+
+  const handleBillingReferenceChange = (value) => {
+    setDraft((prev) => {
+      const next = {
+        ...prev,
+        billing: { ...prev.billing, wooshPayReferenceNo: value },
+      };
+      saveDraft(next);
+      return next;
+    });
+  };
+
   const submitDeclarationTab = async () => {
     const session = readMembershipSalesforceSession();
     if (!session?.socialToken) {
@@ -647,9 +852,21 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         await submitDeclarationTab();
         setTabMessageSeverity('success');
         setTabMessage('Declaration submitted to Salesforce successfully.');
+      } else if (tabId === 'document-upload') {
+        const count = await submitDocumentUploadTab();
+        setTabMessageSeverity('success');
+        setTabMessage(
+          count === 1
+            ? '1 document uploaded to Salesforce successfully.'
+            : `${count} documents uploaded to Salesforce successfully.`
+        );
+      } else if (tabId === 'billing') {
+        await submitBillingTab();
+        setTabMessageSeverity('success');
+        setTabMessage('Billing submitted to Salesforce successfully.');
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
-        setTabMessage(`${TABS.find((t) => t.id === tabId)?.label || 'Section'} saved. API hookup pending.`);
+        setTabMessage(`${TABS.find((t) => t.id === tabId)?.label || 'Section'} saved.`);
       }
       advanceAfterTabSuccess(tabId);
     } catch (err) {
@@ -1356,64 +1573,28 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   );
 
   const renderDocumentUpload = () => (
-    <Grid container spacing={2}>
-      {[
-        { field: 'idDocumentName', label: 'ID / passport copy', icon: 'solar:card-bold' },
-        { field: 'transcriptName', label: 'Professional transcript', icon: 'solar:document-bold' },
-        {
-          field: 'characterReferenceFormName',
-          label: 'Signed character reference form',
-          icon: 'solar:pen-new-square-bold',
-        },
-        { field: 'otherDocumentName', label: 'Other supporting document', icon: 'solar:folder-with-files-bold' },
-      ].map(({ field, label, icon }) => (
-        <Grid item xs={12} sm={6} key={field}>
-          <Button
-            variant="outlined"
-            component="label"
-            fullWidth
-            sx={{
-              py: 2.5,
-              px: 2,
-              justifyContent: 'flex-start',
-              textTransform: 'none',
-              alignItems: 'flex-start',
-              borderRadius: 2,
-              borderStyle: draft.documentUpload[field] ? 'solid' : 'dashed',
-              borderWidth: 1.5,
-              borderColor: draft.documentUpload[field]
-                ? 'success.main'
-                : alpha(primary.main, 0.28),
-              bgcolor: draft.documentUpload[field]
-                ? alpha(theme.palette.success.main, 0.04)
-                : alpha(primary.main, 0.02),
-              '&:hover': {
-                borderColor: primary.main,
-                bgcolor: alpha(primary.main, 0.06),
-              },
-            }}
-          >
-            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: 1 }}>
-              <Iconify icon={icon} width={28} sx={{ color: 'primary.main', flexShrink: 0 }} />
-              <Box sx={{ textAlign: 'left', minWidth: 0 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  {label}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap>
-                  {draft.documentUpload[field] || 'Click to upload PDF, DOC, or image'}
-                </Typography>
-              </Box>
-            </Stack>
-            <input
-              hidden
-              type="file"
-              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
-              onChange={handleFileChange(field)}
-            />
-          </Button>
-        </Grid>
-      ))}
-    </Grid>
+    <MembershipApplicationDocumentSection
+      applicationId={resolveApplicationId()}
+      documentUpload={draft.documentUpload}
+      documentFiles={documentFiles}
+      onFileSelect={handleDocumentFileSelect}
+      onOtherDetailsChange={handleDocumentOtherDetailsChange}
+      onDocumentTypesLoaded={setDocumentTypes}
+    />
+  );
+
+  const renderBilling = () => (
+    <MembershipApplicationBillingSection
+      applicationId={resolveApplicationId()}
+      accountId={salesforceSession?.accountId || ''}
+      billing={draft.billing}
+      documentsSubmitted={documentsSubmitted}
+      checkoutUrls={billingCheckoutUrls}
+      customerEmail={draft.personal?.email || ''}
+      paymentReturnNotice={paymentReturnNotice}
+      onReferenceChange={handleBillingReferenceChange}
+      onClearPaymentReturnNotice={() => setPaymentReturnNotice(null)}
+    />
   );
 
   const sectionRenderers = {
@@ -1424,6 +1605,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     'character-reference': renderCharacterReference,
     declaration: renderDeclaration,
     'document-upload': renderDocumentUpload,
+    billing: renderBilling,
   };
 
   const tabsSx = getMembershipFormTabsSx(theme, fullPage);

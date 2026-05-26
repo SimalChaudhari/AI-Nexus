@@ -104,6 +104,7 @@ export function clearMembershipEligibilityDraftOnModalClose() {
   try {
     sessionStorage.removeItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
     sessionStorage.removeItem(POST_OAUTH_RETURN_TO_KEY);
+    clearMembershipApplicationPending();
   } catch {
     // ignore
   }

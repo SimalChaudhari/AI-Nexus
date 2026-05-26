@@ -29,7 +29,7 @@ export default function MembershipSalesforceBridgePage() {
     const errorParam = searchParams.get('error');
 
     if (errorParam || success === 'false') {
-      setMessage(searchParams.get('error') || 'Salesforce sign-in failed. You can close this tab and try again.');
+      setMessage(searchParams.get('error') || 'Salesforce sign-in failed. Go back and try again.');
       return;
     }
 
@@ -39,7 +39,7 @@ export default function MembershipSalesforceBridgePage() {
     const isRecognitionApplication = isRecognitionMembershipApplicationFlow(searchParams);
 
     if (!accountId) {
-      setMessage('Salesforce account ID was not returned. Close this tab and try signing in again.');
+      setMessage('Salesforce account ID was not returned. Go back and try signing in again.');
       return;
     }
 
@@ -58,10 +58,17 @@ export default function MembershipSalesforceBridgePage() {
     }
 
     notifyMembershipSalesforceSessionReady();
-    setMessage('Salesforce account linked. Returning to your application…');
+    setMessage('Salesforce account linked. Returning to your course…');
+    const returnTo = (searchParams.get('returnTo') || '').trim();
     const timer = window.setTimeout(() => {
       if (window.opener && !window.opener.closed) {
         window.close();
+        return;
+      }
+      if (returnTo && returnTo.startsWith('/')) {
+        router.replace(returnTo);
+      } else {
+        router.back();
       }
     }, 1200);
 
@@ -77,7 +84,7 @@ export default function MembershipSalesforceBridgePage() {
         {message}
       </Alert>
       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420, textAlign: 'center' }}>
-        If this tab does not close automatically, return to the membership window and continue.
+        If you are not redirected automatically, use your browser back button or return to your course page.
       </Typography>
     </Stack>
   );

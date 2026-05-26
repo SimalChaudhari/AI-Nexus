@@ -373,6 +373,147 @@ export class PaymentController {
     }
   }
 
+  private resolveMembershipApplicationFeePricing() {
+    const baseAmount = Number(process.env.MEMBERSHIP_APPLICATION_FEE_SGD || 900);
+    const safeBase = Number.isFinite(baseAmount) && baseAmount > 0 ? baseAmount : 900;
+    const gstAmount = Number((safeBase * 0.09).toFixed(2));
+    const totalAmount = Number((safeBase + gstAmount).toFixed(2));
+    return {
+      baseAmount: safeBase,
+      gstAmount,
+      totalAmount,
+      totalAmountCents: Math.round(totalAmount * 100),
+      itemName: 'ISCA membership application fee',
+    };
+  }
+
+  @Post('create-membership-application-checkout')
+  @ApiOperation({
+    summary:
+      'Create WooshPay checkout for ISCA membership application billing (returns session id for createBillingNexus)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['applicationId', 'accountId', 'successUrl', 'cancelUrl'],
+      properties: {
+        applicationId: { type: 'string' },
+        accountId: { type: 'string' },
+        successUrl: { type: 'string' },
+        cancelUrl: { type: 'string' },
+        customerEmail: { type: 'string', nullable: true },
+        currency: { type: 'string', nullable: true },
+      },
+    },
+  })
+  async createMembershipApplicationCheckout(
+    @Body()
+    body: {
+      applicationId?: string;
+      accountId?: string;
+      successUrl?: string;
+      cancelUrl?: string;
+      customerEmail?: string;
+      currency?: string;
+    },
+    @Res() res: Response,
+  ) {
+    const applicationId = String(body?.applicationId || '').trim();
+    const accountId = String(body?.accountId || '').trim();
+    const successUrl = String(body?.successUrl || '').trim();
+    const cancelUrl = String(body?.cancelUrl || '').trim();
+    const customerEmail = String(body?.customerEmail || '').trim();
+
+    if (!applicationId || !accountId) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message: 'applicationId and accountId are required.',
+      });
+    }
+
+    if (!successUrl || !cancelUrl) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: 'successUrl and cancelUrl are required' });
+    }
+
+    const successUrlError = this.validateRedirectUrl(successUrl, 'successUrl');
+    if (successUrlError) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: successUrlError });
+    }
+
+    const cancelUrlError = this.validateRedirectUrl(cancelUrl, 'cancelUrl');
+    if (cancelUrlError) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: cancelUrlError });
+    }
+
+    const currency = (body?.currency || 'SGD').toUpperCase();
+    if (currency !== 'SGD') {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message: 'Membership application payments are only supported in SGD.',
+      });
+    }
+
+    const pricing = this.resolveMembershipApplicationFeePricing();
+    const placeholderUserId =
+      process.env.MEMBERSHIP_APPLICATION_PAYMENT_USER_ID?.trim()
+      || '00000000-0000-4000-8000-000000000001';
+
+    const { id: refId } = await this.paymentReferenceService.create({
+      userId: placeholderUserId,
+      courseIds: ['membership-application-billing', applicationId, accountId],
+      items: [
+        {
+          id: 'membership-application-billing',
+          name: pricing.itemName,
+          price: pricing.totalAmount,
+          quantity: 1,
+        },
+      ],
+    });
+
+    const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${refId}&applicationId=${encodeURIComponent(applicationId)}`;
+    const finalCancelUrl =
+      `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}payment=canceled&ref=${refId}`;
+
+    try {
+      const session = await this.wooshPayService.createCheckoutSession({
+        line_items: [
+          {
+            price_data: {
+              currency,
+              unit_amount: pricing.totalAmountCents,
+              product_data: {
+                name: pricing.itemName,
+                description: `Application ${applicationId}`,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: finalSuccessUrl,
+        cancel_url: finalCancelUrl,
+        client_reference_id: refId,
+        ...(customerEmail && { customer_email: customerEmail }),
+        payment_method_types: ['card'],
+      });
+
+      await this.paymentReferenceService.setSessionId(refId, session.id);
+
+      return res.status(HttpStatus.OK).json({
+        url: session.url,
+        sessionId: session.id,
+        refId,
+        wooshPayReferenceNo: session.id,
+      });
+    } catch (err: any) {
+      const userMessage = this.getFriendlyPaymentErrorMessage(
+        err,
+        'Could not start membership application payment.',
+      );
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        message: userMessage,
+      });
+    }
+  }
+
   @Post('confirm-membership-payment')
   @ApiOperation({ summary: 'Confirm membership payment and create the user account from draft' })
   @ApiBody({

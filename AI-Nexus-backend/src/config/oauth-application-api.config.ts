@@ -18,6 +18,9 @@ export const OAUTH_APPLICATION_API_ROUTES = {
   ato: 'createATONexus',
   characterReference: 'createCharacterReferenceNexus',
   declaration: 'createDeclarationNexus',
+  availableDocumentTypes: 'getAvailableDocumentTypesNexus',
+  uploadDocument: 'uploadDocumentNexus',
+  createBilling: 'createBillingNexus',
 } as const;
 
 export type OAuthApplicationApiRouteKey = keyof typeof OAUTH_APPLICATION_API_ROUTES;
@@ -31,6 +34,9 @@ const ROUTE_PATH_ENV: Record<OAuthApplicationApiRouteKey, string> = {
   ato: 'OAUTH_APPLICATION_API_ROUTE_ATO',
   characterReference: 'OAUTH_APPLICATION_API_ROUTE_CHARACTER_REFERENCE',
   declaration: 'OAUTH_APPLICATION_API_ROUTE_DECLARATION',
+  availableDocumentTypes: 'OAUTH_APPLICATION_API_ROUTE_AVAILABLE_DOCUMENT_TYPES',
+  uploadDocument: 'OAUTH_APPLICATION_API_ROUTE_UPLOAD_DOCUMENT',
+  createBilling: 'OAUTH_APPLICATION_API_ROUTE_CREATE_BILLING',
 };
 
 /** @deprecated Legacy full-URL env vars — prefer OAUTH_INSTANCE_URL + routes above. */
@@ -43,6 +49,9 @@ const LEGACY_FULL_URL_ENV: Partial<Record<OAuthApplicationApiRouteKey, string>> 
   ato: 'OAUTH_APPLICATION_ATO_URL',
   characterReference: 'OAUTH_APPLICATION_CHARACTER_REFERENCE_URL',
   declaration: 'OAUTH_APPLICATION_DECLARATION_URL',
+  availableDocumentTypes: 'OAUTH_APPLICATION_AVAILABLE_DOCUMENT_TYPES_URL',
+  uploadDocument: 'OAUTH_APPLICATION_UPLOAD_DOCUMENT_URL',
+  createBilling: 'OAUTH_APPLICATION_CREATE_BILLING_URL',
 };
 
 function normalizeLeadingSlash(path: string): string {

@@ -65,6 +65,29 @@ export async function createMembershipCheckoutSession({
   }
 }
 
+/**
+ * WooshPay checkout for ISCA membership application (recognition application form).
+ * Returns sessionId to pass as wooshPayReferenceNo to createBillingNexus.
+ */
+export async function createMembershipApplicationCheckout({
+  applicationId,
+  accountId,
+  successUrl,
+  cancelUrl,
+  customerEmail,
+  currency = 'sgd',
+}) {
+  const response = await axios.post('/payments/create-membership-application-checkout', {
+    applicationId,
+    accountId,
+    successUrl,
+    cancelUrl,
+    customerEmail,
+    currency,
+  });
+  return response.data;
+}
+
 export async function confirmMembershipPayment({ ref, sessionId }) {
   try {
     console.info('[MembershipPaymentService] Confirm payment request', {

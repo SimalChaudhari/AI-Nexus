@@ -111,20 +111,17 @@ export const HOME_STUDENT_PATHWAY_CONTENT = {
 };
 
 export function isHomeSpecialisationPathwayFlow(state) {
+  if (!state?.homeGetStartedFlow || !state?.homePostOptInFlow) {
+    return false;
+  }
   return (
-    state?.homePostOptInFlow
-    && (
-      (state.eligibilityType === 'scaq-candidate' && state.scaqAssociateOptIn === true)
-      || (
-        state.eligibilityType === 'experienced'
-        && (state.experiencedMembershipApplicationAgreed || state.homeGetStartedFlow)
-      )
-      || (
-        state.eligibilityType === 'recognition'
-        && (
-          state.charteredAccountantPathway === 'recognition-arrangement'
-          || state.charteredAccountantPathway === 'enhanced-pathway'
-        )
+    (state.eligibilityType === 'scaq-candidate' && state.scaqAssociateOptIn === true)
+    || (state.eligibilityType === 'experienced' && state.experiencedMembershipApplicationAgreed)
+    || (
+      state.eligibilityType === 'recognition'
+      && (
+        state.charteredAccountantPathway === 'recognition-arrangement'
+        || state.charteredAccountantPathway === 'enhanced-pathway'
       )
     )
   );
