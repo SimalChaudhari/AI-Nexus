@@ -191,7 +191,8 @@ type HomeCeoLaunchContentPayload = {
   videoUrl?: string;
   videoFileUrl?: string;
   quote?: string;
-  stats?: Array<{ value?: string; label?: string }>;
+  statIconSize?: number;
+  stats?: Array<{ value?: string; label?: string; icon?: string }>;
   ctaLabel?: string;
   ctaHref?: string;
 };
@@ -201,6 +202,7 @@ type HomeEmployerContentPayload = {
   subtitle?: string;
   heroImageUrl?: string;
   benefits?: Array<{ icon?: string; title?: string; description?: string }>;
+  logos?: Array<{ name?: string; logoUrl?: string }>;
   ctaLabel?: string;
   ctaHref?: string;
 };
@@ -292,7 +294,9 @@ const CEO_LAUNCH_HEADING_MAX = 160;
 const CEO_LAUNCH_STATS_MAX = 4;
 const CEO_LAUNCH_STAT_VALUE_MAX = 40;
 const CEO_LAUNCH_STAT_LABEL_MAX = 120;
+const CEO_LAUNCH_STAT_ICON_MAX = 500;
 const EMPLOYER_BENEFITS_MAX = 6;
+const EMPLOYER_LOGOS_MAX = 8;
 const EMPLOYEE_BENEFITS_MAX = 6;
 const EMPLOYEE_LOGOS_MAX = 12;
 const EMPLOYEE_STATS_MAX = 6;
@@ -1076,9 +1080,11 @@ export class AppSettingsService {
         this.toStoredUploadPath(source.videoFileUrl) ||
         this.cleanText(source.videoFileUrl, 500),
       quote: this.cleanText(source.quote),
+      statIconSize: this.sanitizeHeroStatIconSize(source?.statIconSize),
       stats: rawStats.slice(0, CEO_LAUNCH_STATS_MAX).map((row: any) => ({
         value: this.cleanText(row?.value, CEO_LAUNCH_STAT_VALUE_MAX),
         label: this.cleanText(row?.label, CEO_LAUNCH_STAT_LABEL_MAX),
+        icon: this.toStoredUploadPath(row?.icon) || this.cleanText(row?.icon, CEO_LAUNCH_STAT_ICON_MAX),
       })),
       ctaLabel: this.cleanText(source.ctaLabel, 80),
       ctaHref: this.cleanText(source.ctaHref, 500),
@@ -1088,6 +1094,7 @@ export class AppSettingsService {
   private sanitizeHomeEmployerContent(input: unknown): HomeEmployerContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+    const rawLogos = Array.isArray(source.logos) ? source.logos : [];
     return {
       heading: this.cleanText(source.heading, 120),
       subtitle: this.cleanText(source.subtitle),
@@ -1097,6 +1104,10 @@ export class AppSettingsService {
         icon: this.cleanText(row?.icon, 120),
         title: this.cleanText(row?.title, 120),
         description: this.cleanText(row?.description),
+      })),
+      logos: rawLogos.slice(0, EMPLOYER_LOGOS_MAX).map((row: any) => ({
+        name: this.cleanText(row?.name, 120),
+        logoUrl: this.toStoredUploadPath(row?.logoUrl) || this.cleanText(row?.logoUrl, 500),
       })),
       ctaLabel: this.cleanText(source.ctaLabel, 80),
       ctaHref: this.cleanText(source.ctaHref, 500),
@@ -1636,6 +1647,48 @@ export class AppSettingsService {
     };
   }
 
+  async uploadHomeCeoLaunchStatIcon(
+    index: number,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), CEO_LAUNCH_STATS_MAX - 1));
+    const folder = `home-ceo-launch-stat-icons/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'icon',
+    });
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    const stats = [...(existing.stats || [])];
+    while (stats.length <= slot) stats.push({ value: '', label: '', icon: '' });
+    stats[slot] = { ...stats[slot], icon: relativeUrl };
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({ ...existing, stats });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'CEO launch stat icon uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeCeoLaunchStatIcon(
+    index: number
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), CEO_LAUNCH_STATS_MAX - 1));
+    const folder = `home-ceo-launch-stat-icons/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const existing = this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent || {});
+    const stats = [...(existing.stats || [])];
+    while (stats.length <= slot) stats.push({ value: '', label: '', icon: '' });
+    stats[slot] = { ...stats[slot], icon: '' };
+    settings.homeCeoLaunchContent = this.sanitizeHomeCeoLaunchContent({ ...existing, stats });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'CEO launch stat icon removed successfully',
+      settings: saved,
+    };
+  }
+
   async updateHomeEmployerContent(
     payload: HomeEmployerContentPayload
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -1679,6 +1732,48 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Employer section hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeEmployerLogo(
+    index: number,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), EMPLOYER_LOGOS_MAX - 1));
+    const folder = `home-employer-logos/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'logo',
+    });
+    const existing = this.sanitizeHomeEmployerContent(settings.homeEmployerContent || {});
+    const logos = [...(existing.logos || [])];
+    while (logos.length <= slot) logos.push({ name: '', logoUrl: '' });
+    logos[slot] = { ...logos[slot], logoUrl: relativeUrl };
+    settings.homeEmployerContent = this.sanitizeHomeEmployerContent({ ...existing, logos });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Employer logo uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeEmployerLogo(
+    index: number
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), EMPLOYER_LOGOS_MAX - 1));
+    const folder = `home-employer-logos/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const existing = this.sanitizeHomeEmployerContent(settings.homeEmployerContent || {});
+    const logos = [...(existing.logos || [])];
+    while (logos.length <= slot) logos.push({ name: '', logoUrl: '' });
+    logos[slot] = { ...logos[slot], logoUrl: '' };
+    settings.homeEmployerContent = this.sanitizeHomeEmployerContent({ ...existing, logos });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Employer logo removed successfully',
       settings: saved,
     };
   }

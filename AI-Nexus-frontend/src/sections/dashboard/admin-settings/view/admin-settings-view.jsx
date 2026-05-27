@@ -262,9 +262,11 @@ export function AdminSettingsView() {
   const [ceoLaunchPosterSubmitting, setCeoLaunchPosterSubmitting] = useState(false);
   const [ceoLaunchVideoFile, setCeoLaunchVideoFile] = useState(null);
   const [ceoLaunchVideoSubmitting, setCeoLaunchVideoSubmitting] = useState(false);
+  const [ceoLaunchStatIconUploadingIndex, setCeoLaunchStatIconUploadingIndex] = useState(null);
   const [employerContentSubmitting, setEmployerContentSubmitting] = useState(false);
   const [employerHeroFile, setEmployerHeroFile] = useState(null);
   const [employerHeroSubmitting, setEmployerHeroSubmitting] = useState(false);
+  const [employerLogoUploadingIndex, setEmployerLogoUploadingIndex] = useState(null);
   const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
@@ -686,7 +688,8 @@ export function AdminSettingsView() {
 
     try {
       setHeroSubmitting(true);
-      const updatedSettings = await appSettingsService.uploadHomeHero(heroFile);
+      const fileToUpload = await compressImageFileForUpload(heroFile);
+      const updatedSettings = await appSettingsService.uploadHomeHero(fileToUpload);
       setHeroUrl(updatedSettings.homeHeroImageUrl || '');
       setHeroFile(null);
       toast.success('Home hero background updated');
@@ -699,7 +702,14 @@ export function AdminSettingsView() {
         }
       }
     } catch (error) {
-      toast.error(error?.message || 'Failed to upload hero image');
+      const status = error?.response?.status;
+      if (status === 413) {
+        toast.error(
+          'Image is too large for the server upload limit. Try a smaller JPG/PNG (under 1 MB) or ask ops to raise client_max_body_size on the API proxy.'
+        );
+      } else {
+        toast.error(error?.message || 'Failed to upload hero image');
+      }
     } finally {
       setHeroSubmitting(false);
     }
@@ -1405,6 +1415,33 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleUploadCeoLaunchStatIcon = async (index, file) => {
+    if (!file) return;
+    try {
+      setCeoLaunchStatIconUploadingIndex(index);
+      const updated = await appSettingsService.uploadHomeCeoLaunchStatIcon(index, file);
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      toast.success('CEO stat icon uploaded');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload CEO stat icon');
+    } finally {
+      setCeoLaunchStatIconUploadingIndex(null);
+    }
+  };
+
+  const handleRemoveCeoLaunchStatIcon = async (index) => {
+    try {
+      setCeoLaunchStatIconUploadingIndex(index);
+      const updated = await appSettingsService.removeHomeCeoLaunchStatIcon(index);
+      setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
+      toast.success('CEO stat icon removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove CEO stat icon');
+    } finally {
+      setCeoLaunchStatIconUploadingIndex(null);
+    }
+  };
+
   const handleRemoveCeoLaunchVideo = async () => {
     if (!String(ceoLaunchContent?.videoFileUrl || '').trim()) return;
     try {
@@ -1475,6 +1512,33 @@ export function AdminSettingsView() {
       toast.error(error?.message || 'Failed to remove employer image');
     } finally {
       setEmployerHeroSubmitting(false);
+    }
+  };
+
+  const handleUploadEmployerLogo = async (index, file) => {
+    if (!file) return;
+    try {
+      setEmployerLogoUploadingIndex(index);
+      const updated = await appSettingsService.uploadHomeEmployerLogo(index, file);
+      setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
+      toast.success('Employer logo uploaded');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload employer logo');
+    } finally {
+      setEmployerLogoUploadingIndex(null);
+    }
+  };
+
+  const handleRemoveEmployerLogo = async (index) => {
+    try {
+      setEmployerLogoUploadingIndex(index);
+      const updated = await appSettingsService.removeHomeEmployerLogo(index);
+      setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
+      toast.success('Employer logo removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove employer logo');
+    } finally {
+      setEmployerLogoUploadingIndex(null);
     }
   };
 
@@ -2224,6 +2288,9 @@ export function AdminSettingsView() {
       onVideoSave={handleUploadCeoLaunchVideo}
       onVideoRemoveUploaded={handleRemoveCeoLaunchVideo}
       onVideoRemoveAll={handleRemoveAllCeoLaunchVideo}
+      onUploadStatIcon={handleUploadCeoLaunchStatIcon}
+      onRemoveStatIcon={handleRemoveCeoLaunchStatIcon}
+      uploadingStatIconIndex={ceoLaunchStatIconUploadingIndex}
     />
   );
 
@@ -2251,6 +2318,9 @@ export function AdminSettingsView() {
       onHeroClearOrRemove={
         employerHeroFile ? handleClearEmployerHeroSelection : handleRemoveEmployerHero
       }
+      onUploadLogo={handleUploadEmployerLogo}
+      onRemoveLogo={handleRemoveEmployerLogo}
+      uploadingLogoIndex={employerLogoUploadingIndex}
     />
   );
 

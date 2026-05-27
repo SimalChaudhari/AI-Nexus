@@ -3,11 +3,13 @@ export const DEFAULT_EMPLOYER_CONTENT = {
   subtitle: '',
   heroImageUrl: '',
   benefits: [],
+  logos: [],
   ctaLabel: '',
   ctaHref: '',
 };
 
 export const EMPLOYER_BENEFITS_MAX = 6;
+export const EMPLOYER_LOGOS_MAX = 8;
 
 export function normalizeEmployerContent(source) {
   if (!source || typeof source !== 'object') {
@@ -17,6 +19,7 @@ export function normalizeEmployerContent(source) {
     };
   }
   const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+  const rawLogos = Array.isArray(source.logos) ? source.logos : [];
   return {
     heading: source.heading != null ? String(source.heading) : '',
     subtitle: source.subtitle != null ? String(source.subtitle) : '',
@@ -25,6 +28,10 @@ export function normalizeEmployerContent(source) {
       icon: row?.icon != null ? String(row.icon) : '',
       title: row?.title != null ? String(row.title) : '',
       description: row?.description != null ? String(row.description) : '',
+    })),
+    logos: rawLogos.slice(0, EMPLOYER_LOGOS_MAX).map((row) => ({
+      name: row?.name != null ? String(row.name) : '',
+      logoUrl: row?.logoUrl != null ? String(row.logoUrl) : '',
     })),
     ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
     ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
@@ -38,7 +45,9 @@ export function hasEmployerContent(content) {
   if (String(c.subtitle || '').trim()) return true;
   if (String(c.ctaLabel || '').trim() && String(c.ctaHref || '').trim()) return true;
   const benefits = Array.isArray(c.benefits) ? c.benefits : [];
-  return benefits.some((r) => r?.title?.trim() || r?.description?.trim());
+  if (benefits.some((r) => r?.title?.trim() || r?.description?.trim())) return true;
+  const logos = Array.isArray(c.logos) ? c.logos : [];
+  return logos.some((r) => r?.name?.trim() || r?.logoUrl?.trim());
 }
 
 export function isEmployerContentEmpty(source) {

@@ -54,6 +54,7 @@ export function HomeEmployerSection() {
   const benefits = (content.benefits || []).filter(
     (row) => String(row?.title || '').trim() || String(row?.description || '').trim()
   );
+  const logos = (content.logos || []).filter((row) => String(row?.logoUrl || '').trim());
   const showCta = Boolean(content.ctaLabel?.trim() && content.ctaHref?.trim());
   const ctaHref = String(content.ctaHref || '').trim();
 
@@ -204,6 +205,77 @@ export function HomeEmployerSection() {
                 ))}
               </Grid>
             </Card>
+          ) : null}
+
+          {logos.length > 0 ? (
+            <Box variants={varFade({ distance: 24 }).inUp} sx={{ width: '100%' }}>
+              <Card
+                sx={{
+                  width: '100%',
+                  p: { xs: 1.3, sm: 1.6 },
+                  borderRadius: 2,
+                  bgcolor: '#06144D',
+                  border: `1px solid ${alpha('#fff', 0.14)}`,
+                  overflow: 'hidden',
+                }}
+              >
+                <Box
+                  sx={{
+                    overflow: 'hidden',
+                    position: 'relative',
+                    '@keyframes employerLogoScroll': {
+                      from: { transform: 'translateX(0)' },
+                      to: { transform: 'translateX(-50%)' },
+                    },
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={0}
+                    sx={{
+                      width: 'max-content',
+                      minWidth: '100%',
+                      animation: logos.length > 4 ? 'employerLogoScroll 28s linear infinite' : 'none',
+                    }}
+                  >
+                    {[...logos, ...logos].map((row, index) => (
+                      <Stack
+                        key={`employer-logo-marquee-${index}`}
+                        direction="row"
+                        alignItems="center"
+                        justifyContent="center"
+                        sx={{
+                          minWidth: { xs: 120, sm: 150 },
+                          px: { xs: 2, sm: 2.5 },
+                          py: 0.4,
+                          borderRight: `1px solid ${alpha('#fff', 0.18)}`,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            px: 1.2,
+                            py: 0.7,
+                            borderRadius: 1,
+                            bgcolor: alpha('#fff', 0.98),
+                            minWidth: { xs: 84, sm: 96 },
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            src={String(row.logoUrl || '').trim()}
+                            alt={String(row.name || '').trim()}
+                            sx={{ height: { xs: 20, sm: 24 }, maxWidth: 110, objectFit: 'contain' }}
+                          />
+                        </Box>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              </Card>
+            </Box>
           ) : null}
 
           {showCta ? (

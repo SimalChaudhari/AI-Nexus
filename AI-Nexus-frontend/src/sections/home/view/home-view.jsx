@@ -41,13 +41,13 @@ export function HomeView() {
 
       {/* <HomeFundingEligibilitySection /> */}
 
-      {/* <HomeCeoLaunchSection /> */}
+      <HomeCeoLaunchSection />
 
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
         {/* <HomeCounterSection /> */}
         {/* <HomeCommunitiesSection /> */}
-        <HomeJoinSection />
-        <HomeCardsSection />
+        {/* <HomeJoinSection />
+        <HomeCardsSection /> */}
 
         <HomeCurriculumSection />
         <HomeProgrammeFeesSection />

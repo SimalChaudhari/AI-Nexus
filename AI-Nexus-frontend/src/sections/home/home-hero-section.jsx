@@ -70,6 +70,10 @@ function isJoinMovementHref(href) {
   return h === '#join-movement' || h === '#join' || h === '#get-started';
 }
 
+function isEligibilityCtaLabel(label) {
+  return String(label || '').trim().toLowerCase() === 'check eligibility';
+}
+
 function isLikelyImagePath(value) {
   const s = String(value || '').trim();
   if (!s) return false;
@@ -230,11 +234,12 @@ function HeroFullWidthBackdrop({ imageSrc }) {
   );
 }
 
-function HeroCtaButton({ cta, variant = 'primary', onJoinClick }) {
+function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScroll }) {
   const label = String(cta?.label || '').trim();
   const href = String(cta?.href || '').trim();
   const icon = String(cta?.icon || '').trim();
   if (!label) return null;
+  const isEligibilityButton = isEligibilityCtaLabel(label);
 
   const isPrimary = variant === 'primary';
   const iconNode = icon
@@ -294,12 +299,17 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick }) {
         };
 
   const handleClick = (event) => {
+    if (isEligibilityButton) {
+      event.preventDefault();
+      onEligibilityScroll?.(event);
+      return;
+    }
     if (!isJoinMovementHref(href)) return;
     event.preventDefault();
     onJoinClick?.(event);
   };
 
-  if (isJoinMovementHref(href)) {
+  if (isEligibilityButton || isJoinMovementHref(href)) {
     return (
       <Button
         type="button"
@@ -615,6 +625,12 @@ export function HomeHeroSection() {
     navigate('/learning');
   }, [authenticated, navigate]);
 
+  const handleEligibilityScroll = useCallback(() => {
+    const target = document.getElementById('eligibility-membership');
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   return (
     <>
       <Box
@@ -757,6 +773,7 @@ export function HomeHeroSection() {
                         cta={cta}
                         variant={cta.variant === 'primary' ? 'primary' : 'outline'}
                         onJoinClick={handleJoinClick}
+                        onEligibilityScroll={handleEligibilityScroll}
                       />
                     ))}
                   </Box>

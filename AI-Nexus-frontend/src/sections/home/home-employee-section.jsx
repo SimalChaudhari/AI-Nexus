@@ -190,6 +190,7 @@ export function HomeEmployeeSection() {
   const isNarrowBenefitGrid = useMediaQuery(`(max-width:${MOBILE_ONE_CARD_MAX_PX}px)`, { noSsr: true });
 
   const [content, setContent] = useState(() => resolveEmployeeContent(null, null));
+  const [companyLogos, setCompanyLogos] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -200,9 +201,23 @@ export function HomeEmployeeSection() {
         setContent(
           resolveEmployeeContent(settings?.homeEmployeeContent, settings?.homeEmployerContent)
         );
+        const logos = Array.isArray(settings?.homeEmployerContent?.logos)
+          ? settings.homeEmployerContent.logos
+          : [];
+        setCompanyLogos(
+          logos
+            .map((row) => ({
+              name: String(row?.name || '').trim(),
+              logoUrl: resolveAssetUrl(row?.logoUrl),
+            }))
+            .filter((row) => row.logoUrl)
+        );
       })
       .catch(() => {
-        if (active) setContent(resolveEmployeeContent(null, null));
+        if (active) {
+          setContent(resolveEmployeeContent(null, null));
+          setCompanyLogos([]);
+        }
       });
     return () => {
       active = false;
@@ -231,6 +246,7 @@ export function HomeEmployeeSection() {
   };
 
   const heroSectionBg = `linear-gradient(135deg, ${heroBase} 0%, ${alpha(primary.lighter, 0.35)} 55%, ${alpha(primary.lighter, 0.18)} 100%)`;
+  const displayLogos = companyLogos.slice(0, 6);
 
   return (
     <Box component="section" sx={{ position: 'relative', overflow: 'hidden' }}>
@@ -479,10 +495,70 @@ export function HomeEmployeeSection() {
                   </Grid>
                 ))}
               </Grid>
+
+              {displayLogos.length > 0 ? (
+                <Box
+                  sx={{
+                    width: 1,
+                    pt: { xs: 0.75, md: 1 },
+                    pb: { xs: 0.4, md: 0.6 },
+                    overflow: 'hidden',
+                    position: 'relative',
+                    lineHeight: 0,
+                    borderTop: `1px solid ${alpha(primary.main, 0.12)}`,
+                    borderBottom: `1px solid ${alpha(primary.main, 0.12)}`,
+                    '@keyframes employeeLogoScroll': {
+                      from: { transform: 'translateX(0)' },
+                      to: { transform: 'translateX(-50%)' },
+                    },
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={0}
+                    sx={{
+                      width: 'max-content',
+                      minWidth: '100%',
+                      animation: displayLogos.length > 1 ? 'employeeLogoScroll 22s linear infinite' : 'none',
+                    }}
+                  >
+                    {[...displayLogos, ...displayLogos].map((row, index) => (
+                      <Stack
+                        key={`employee-company-logo-${index}`}
+                        direction="row"
+                        alignItems="center"
+                        justifyContent="center"
+                        sx={{
+                          flex: { xs: '1 1 50%', sm: '1 1 33.33%', md: '1 1 16.66%' },
+                          minWidth: { xs: 150, sm: 180, md: 0 },
+                          px: { xs: 1.2, sm: 1.8, md: 2.2 },
+                          py: { xs: 0.5, md: 0.7 },
+                          borderRight: `1px solid ${alpha(primary.main, 0.14)}`,
+                          '&:last-of-type': { borderRight: 'none' },
+                        }}
+                      >
+                        <Box
+                          component="img"
+                          src={row.logoUrl}
+                          alt={row.name}
+                          sx={{
+                            height: { xs: 54, sm: 62, md: 68 },
+                            maxWidth: '100%',
+                            objectFit: 'contain',
+                            display: 'block',
+                          }}
+                        />
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
             </Stack>
           </DashboardContent>
         </Box>
       ) : null}
+
+    
     </Box>
   );
 }

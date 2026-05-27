@@ -155,9 +155,13 @@ function transformCeoLaunchContent(source) {
     videoUrl: source.videoUrl != null ? String(source.videoUrl) : '',
     videoFileUrl: normalizeAssetUrl(source.videoFileUrl || ''),
     quote: source.quote != null ? String(source.quote) : '',
+    statIconSize: Number.isFinite(Number(source?.statIconSize))
+      ? Number(source.statIconSize)
+      : 30,
     stats: rawStats.slice(0, 4).map((row) => ({
       value: row?.value != null ? String(row.value) : '',
       label: row?.label != null ? String(row.label) : '',
+      icon: normalizeMaybeAssetIcon(row?.icon),
     })),
     ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
     ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
@@ -218,6 +222,7 @@ function transformEligibilityMembershipContent(source) {
 function transformEmployerContent(source) {
   if (!source || typeof source !== 'object') return null;
   const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+  const rawLogos = Array.isArray(source.logos) ? source.logos : [];
   return {
     heading: source.heading != null ? String(source.heading) : '',
     subtitle: source.subtitle != null ? String(source.subtitle) : '',
@@ -226,6 +231,10 @@ function transformEmployerContent(source) {
       icon: row?.icon != null ? String(row.icon) : '',
       title: row?.title != null ? String(row.title) : '',
       description: row?.description != null ? String(row.description) : '',
+    })),
+    logos: rawLogos.slice(0, 8).map((row) => ({
+      name: row?.name != null ? String(row.name) : '',
+      logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
     })),
     ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
     ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
@@ -719,6 +728,22 @@ export const appSettingsService = {
     return transformSettings(data);
   },
 
+  async uploadHomeCeoLaunchStatIcon(index, file) {
+    const formData = new FormData();
+    formData.append('icon', file);
+    const response = await axios.post(`/app-settings/home-ceo-launch-stat-icon/${index}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeCeoLaunchStatIcon(index) {
+    const response = await axios.delete(`/app-settings/home-ceo-launch-stat-icon/${index}`);
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
   async updateHomeEmployerContent(payload) {
     const response = await axios.put('/app-settings/home-employer-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
@@ -737,6 +762,22 @@ export const appSettingsService = {
 
   async removeHomeEmployerHero() {
     const response = await axios.delete('/app-settings/home-employer-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeEmployerLogo(index, file) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await axios.post(`/app-settings/home-employer-logo/${index}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeEmployerLogo(index) {
+    const response = await axios.delete(`/app-settings/home-employer-logo/${index}`);
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

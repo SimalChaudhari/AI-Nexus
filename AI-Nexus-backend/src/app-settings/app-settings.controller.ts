@@ -730,6 +730,57 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Post('home-ceo-launch-stat-icon/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload icon image for a CEO launch stat card (slot 0-3)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        icon: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('icon', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeCeoLaunchStatIcon(
+    @Res() response: Response,
+    @Param('index', ParseIntPipe) index: number,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeCeoLaunchStatIcon(index, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-ceo-launch-stat-icon/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove icon image for a CEO launch stat card (slot 0-3)' })
+  async removeHomeCeoLaunchStatIcon(
+    @Res() response: Response,
+    @Param('index', ParseIntPipe) index: number
+  ) {
+    const result = await this.appSettingsService.removeHomeCeoLaunchStatIcon(index);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('home-employer-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
@@ -784,6 +835,57 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Remove hero image for employer section on home page' })
   async removeHomeEmployerHero(@Res() response: Response) {
     const result = await this.appSettingsService.removeHomeEmployerHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-employer-logo/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload logo for employer section company strip (slot 0-7)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeEmployerLogo(
+    @Res() response: Response,
+    @Param('index', ParseIntPipe) index: number,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeEmployerLogo(index, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-employer-logo/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove logo from employer section company strip (slot 0-7)' })
+  async removeHomeEmployerLogo(
+    @Res() response: Response,
+    @Param('index', ParseIntPipe) index: number
+  ) {
+    const result = await this.appSettingsService.removeHomeEmployerLogo(index);
     return response.status(HttpStatus.OK).json(result);
   }
 

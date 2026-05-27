@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
@@ -19,7 +20,7 @@ import { Iconify } from 'src/components/iconify';
 import { categoryIcons } from 'src/_mock/_category-icons';
 import { CONFIG } from 'src/config-global';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
-import { EMPLOYER_BENEFITS_MAX } from 'src/sections/home/employer-defaults';
+import { EMPLOYER_BENEFITS_MAX, EMPLOYER_LOGOS_MAX } from 'src/sections/home/employer-defaults';
 import { HeroImageCard } from './hero-image-card';
 import { IconPickerDrawer } from './icon-picker-drawer';
 
@@ -45,8 +46,12 @@ export function EmployerSettingsCard({
   onHeroDelete,
   onHeroSave,
   onHeroClearOrRemove,
+  onUploadLogo,
+  onRemoveLogo,
+  uploadingLogoIndex = null,
 }) {
   const benefits = Array.isArray(content?.benefits) ? content.benefits : [];
+  const logos = Array.isArray(content?.logos) ? content.logos : [];
   const displayHeroUrl = resolvePreviewUrl(heroUrl || content?.heroImageUrl);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -211,6 +216,96 @@ export function EmployerSettingsCard({
                 fullWidth
                 placeholder="/contact"
               />
+            </Stack>
+
+            <Divider />
+
+            <Stack spacing={1.25}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  Company logos
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  {logos.length} / {EMPLOYER_LOGOS_MAX}
+                </Typography>
+              </Stack>
+              <Grid container spacing={1.25}>
+                {[...Array(EMPLOYER_LOGOS_MAX)].map((_, index) => {
+                  const row = logos[index] || { name: '', logoUrl: '' };
+                  return (
+                    <Grid key={`employer-logo-${index}`} item xs={12} sm={6} md={4} lg={3}>
+                      <Stack
+                        spacing={1}
+                        sx={{
+                          p: 1.2,
+                          borderRadius: 1.5,
+                          border: (theme) => `1px solid ${theme.palette.divider}`,
+                          bgcolor: 'background.neutral',
+                          height: 1,
+                        }}
+                      >
+                        <TextField
+                          size="small"
+                          label={`Logo ${index + 1} name`}
+                          value={row.name || ''}
+                          onChange={(e) =>
+                            setContent((prev) => {
+                              const next = Array.isArray(prev?.logos) ? [...prev.logos] : [];
+                              while (next.length <= index) next.push({ name: '', logoUrl: '' });
+                              next[index] = { ...next[index], name: e.target.value };
+                              return { ...prev, logos: next };
+                            })
+                          }
+                        />
+                        <Box
+                          sx={{
+                            height: 44,
+                            borderRadius: 1,
+                            border: (theme) => `1px dashed ${theme.palette.divider}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bgcolor: 'background.paper',
+                          }}
+                        >
+                          {row.logoUrl ? (
+                            <Box component="img" src={resolvePreviewUrl(row.logoUrl)} alt="" sx={{ height: 28, maxWidth: '100%', objectFit: 'contain' }} />
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                              No logo
+                            </Typography>
+                          )}
+                        </Box>
+                        <Stack direction="row" spacing={1}>
+                          <Button size="small" variant="outlined" component="label" disabled={uploadingLogoIndex === index}>
+                            {uploadingLogoIndex === index ? 'Uploading...' : 'Upload'}
+                            <input
+                              hidden
+                              type="file"
+                              accept="image/*"
+                              onChange={async (event) => {
+                                const file = event.target.files?.[0];
+                                event.target.value = '';
+                                if (!file) return;
+                                await onUploadLogo?.(index, file);
+                              }}
+                            />
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            variant="outlined"
+                            disabled={!String(row.logoUrl || '').trim() || uploadingLogoIndex === index}
+                            onClick={() => onRemoveLogo?.(index)}
+                          >
+                            Remove
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </Grid>
+                  );
+                })}
+              </Grid>
             </Stack>
 
             <Divider />

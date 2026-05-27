@@ -7,7 +7,7 @@ import { HOME_HERO_FALLBACK_IMAGE } from './home-hero-assets';
 export { HOME_HERO_FALLBACK_IMAGE };
 
 export const DEFAULT_HOME_HERO_CONTENT = {
-  badge: 'A NATIONAL INITIATIVE',
+  // badge: 'A NATIONAL INITIATIVE',
   headline: 'AI Fluency for',
   headlineAccent: 'the Future of Business',
   headlineColor: '',

@@ -180,6 +180,7 @@ export type HomeEmployerContent = {
   subtitle?: string;
   heroImageUrl?: string;
   benefits?: Array<{ icon?: string; title?: string; description?: string }>;
+  logos?: Array<{ name?: string; logoUrl?: string }>;
   ctaLabel?: string;
   ctaHref?: string;
 };

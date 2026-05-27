@@ -8,10 +8,11 @@ export const DEFAULT_CEO_LAUNCH_CONTENT = {
   videoFileUrl: '',
   quote:
     'AI fluency will soon become as essential as digital literacy. The organisations that embrace AI today will define tomorrow\'s economy.',
+  statIconSize: 30,
   stats: [
-    { value: '78%', label: 'of companies adopting AI' },
-    { value: '40%+', label: 'productivity gains with AI' },
-    { value: '2026', label: 'the decade of AI fluency' },
+    { value: '78%', label: 'of companies adopting AI', icon: 'solar:chart-square-bold-duotone' },
+    { value: '40%+', label: 'productivity gains with AI', icon: 'solar:users-group-two-rounded-bold-duotone' },
+    { value: '2026', label: 'the decade of AI fluency', icon: 'solar:target-bold-duotone' },
   ],
   ctaLabel: 'Play CEO Message',
   ctaHref: '',
@@ -32,9 +33,13 @@ export function normalizeCeoLaunchContent(source) {
     videoUrl: source.videoUrl != null ? String(source.videoUrl) : '',
     videoFileUrl: source.videoFileUrl != null ? String(source.videoFileUrl) : '',
     quote: source.quote != null ? String(source.quote) : '',
+    statIconSize: Number.isFinite(Number(source.statIconSize))
+      ? Math.max(16, Math.min(56, Math.round(Number(source.statIconSize))))
+      : DEFAULT_CEO_LAUNCH_CONTENT.statIconSize,
     stats: rawStats.slice(0, CEO_LAUNCH_STATS_MAX).map((row) => ({
       value: row?.value != null ? String(row.value) : '',
       label: row?.label != null ? String(row.label) : '',
+      icon: row?.icon != null ? String(row.icon) : '',
     })),
     ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
     ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
