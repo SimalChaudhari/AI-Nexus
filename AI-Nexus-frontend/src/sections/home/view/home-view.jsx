@@ -41,7 +41,7 @@ export function HomeView() {
 
       {/* <HomeFundingEligibilitySection /> */}
 
-      <HomeCeoLaunchSection />
+      {/* <HomeCeoLaunchSection /> */}
 
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
         <HomeCardsSection />
