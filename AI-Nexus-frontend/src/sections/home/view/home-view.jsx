@@ -39,7 +39,7 @@ export function HomeView() {
 
       <HomeEligibilityMembershipSection />
 
-      <HomeFundingEligibilitySection />
+      {/* <HomeFundingEligibilitySection /> */}
 
       <HomeCeoLaunchSection />
 
