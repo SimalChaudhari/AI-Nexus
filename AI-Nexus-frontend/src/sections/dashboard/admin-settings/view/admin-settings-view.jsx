@@ -83,6 +83,7 @@ import {
 import {
   resolveEligibilityMembershipContent,
 } from 'src/sections/home/eligibility-membership-defaults';
+import { compressImageFileForUpload } from 'src/utils/compress-image-file';
 
 const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
 const CONTACT_ICON_KEY_BY_FIELD = {
@@ -1235,16 +1236,22 @@ export function AdminSettingsView() {
     }
     try {
       setEligibilityMembershipHeroSubmitting(true);
-      const updated = await appSettingsService.uploadHomeEligibilityMembershipHero(
-        eligibilityMembershipHeroFile
-      );
+      const fileToUpload = await compressImageFileForUpload(eligibilityMembershipHeroFile);
+      const updated = await appSettingsService.uploadHomeEligibilityMembershipHero(fileToUpload);
       setEligibilityMembershipContent(
         resolveEligibilityMembershipContent(updated?.homeEligibilityMembershipContent)
       );
       setEligibilityMembershipHeroFile(null);
       toast.success('Eligibility section photo updated');
     } catch (error) {
-      toast.error(error?.message || 'Failed to upload eligibility section photo');
+      const status = error?.response?.status;
+      if (status === 413) {
+        toast.error(
+          'Image is too large for the server upload limit. Try a smaller JPG/PNG (under 1 MB) or ask ops to raise client_max_body_size on the API proxy.'
+        );
+      } else {
+        toast.error(error?.message || 'Failed to upload eligibility section photo');
+      }
     } finally {
       setEligibilityMembershipHeroSubmitting(false);
     }

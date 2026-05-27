@@ -595,16 +595,23 @@ export class AppSettingsController {
   })
   @UseInterceptors(
     FileInterceptor('hero', {
-      limits: { fileSize: 5 * 1024 * 1024 },
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
     })
   )
   async uploadHomeEligibilityMembershipHero(
     @Res() response: Response,
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
   ) {
-    if (!file) {
-      return response.status(HttpStatus.BAD_REQUEST).json({ message: 'Hero image file is required' });
-    }
     const result = await this.appSettingsService.uploadHomeEligibilityMembershipHeroImage(file);
     return response.status(HttpStatus.OK).json(result);
   }
