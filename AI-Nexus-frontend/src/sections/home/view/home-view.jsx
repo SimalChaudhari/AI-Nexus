@@ -13,6 +13,7 @@ import { HomeJoinSection } from '../home-join-section';
 import { HomeProgrammeFeesSection } from '../home-programme-fees-section';
 import { HomeCurriculumSection } from '../home-curriculum-section';
 import { HomeProgrammeStructureSection } from '../home-programme-structure-section';
+import { HomeEligibilityMembershipSection } from '../home-eligibility-membership-section';
 import { HomeFundingEligibilitySection } from '../home-funding-eligibility-section';
 import { HomeCeoLaunchSection } from '../home-ceo-launch-section';
 import { HomeTestimonialsSection } from '../home-testimonials-section';
@@ -35,6 +36,8 @@ export function HomeView() {
       <HomeHeroSection />
 
       <HomeProgrammeStructureSection />
+
+      <HomeEligibilityMembershipSection />
 
       <HomeFundingEligibilitySection />
 

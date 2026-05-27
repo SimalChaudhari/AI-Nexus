@@ -179,6 +179,42 @@ function transformFundingEligibilityContent(source) {
   };
 }
 
+function transformEligibilityMembershipContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const left = source.leftPanel && typeof source.leftPanel === 'object' ? source.leftPanel : {};
+  const right = source.rightPanel && typeof source.rightPanel === 'object' ? source.rightPanel : {};
+  const rawQuestions = Array.isArray(left.questions) ? left.questions : [];
+  const rawBenefits = Array.isArray(right.benefits) ? right.benefits : [];
+  return {
+    leftPanel: {
+      heading: left.heading != null ? String(left.heading) : '',
+      subtitle: left.subtitle != null ? String(left.subtitle) : '',
+      heroImageUrl: normalizeAssetUrl(left.heroImageUrl || ''),
+      questions: rawQuestions.slice(0, 4).map((row) => ({
+        id: row?.id != null ? String(row.id) : '',
+        icon: row?.icon != null ? String(row.icon) : 'solar:user-bold-duotone',
+        iconColor: String(row?.iconColor || '').toLowerCase() === 'red' ? 'red' : 'blue',
+        text: row?.text != null ? String(row.text) : '',
+      })),
+      ctaLabel: left.ctaLabel != null ? String(left.ctaLabel) : '',
+      ctaHref: left.ctaHref != null ? String(left.ctaHref) : '',
+    },
+    rightPanel: {
+      eyebrow: right.eyebrow != null ? String(right.eyebrow) : '',
+      heading: right.heading != null ? String(right.heading) : '',
+      benefits: rawBenefits.slice(0, 4).map((row) => ({
+        id: row?.id != null ? String(row.id) : '',
+        icon: row?.icon != null ? String(row.icon) : 'solar:star-bold-duotone',
+        label: row?.label != null ? String(row.label) : '',
+      })),
+      primaryCtaLabel: right.primaryCtaLabel != null ? String(right.primaryCtaLabel) : '',
+      primaryCtaHref: right.primaryCtaHref != null ? String(right.primaryCtaHref) : '',
+      secondaryCtaLabel: right.secondaryCtaLabel != null ? String(right.secondaryCtaLabel) : '',
+      secondaryCtaHref: right.secondaryCtaHref != null ? String(right.secondaryCtaHref) : '',
+    },
+  };
+}
+
 function transformEmployerContent(source) {
   if (!source || typeof source !== 'object') return null;
   const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
@@ -395,6 +431,9 @@ function transformSettings(settings) {
     ),
     homeFundingEligibilityContent: transformFundingEligibilityContent(
       settings?.homeFundingEligibilityContent
+    ),
+    homeEligibilityMembershipContent: transformEligibilityMembershipContent(
+      settings?.homeEligibilityMembershipContent
     ),
     homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
     totalCourseEnrollments:
@@ -616,6 +655,28 @@ export const appSettingsService = {
 
   async updateHomeFundingEligibilityContent(payload) {
     const response = await axios.put('/app-settings/home-funding-eligibility-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeEligibilityMembershipContent(payload) {
+    const response = await axios.put('/app-settings/home-eligibility-membership-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeEligibilityMembershipHero(file) {
+    const formData = new FormData();
+    formData.append('hero', file);
+    const response = await axios.post('/app-settings/home-eligibility-membership-hero', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeEligibilityMembershipHero() {
+    const response = await axios.delete('/app-settings/home-eligibility-membership-hero');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

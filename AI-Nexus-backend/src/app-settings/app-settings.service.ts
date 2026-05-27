@@ -154,6 +154,35 @@ type HomeFundingEligibilityContentPayload = {
   }>;
 };
 
+type HomeEligibilityMembershipContentPayload = {
+  leftPanel?: {
+    heading?: string;
+    subtitle?: string;
+    heroImageUrl?: string;
+    questions?: Array<{
+      id?: string;
+      icon?: string;
+      iconColor?: string;
+      text?: string;
+    }>;
+    ctaLabel?: string;
+    ctaHref?: string;
+  };
+  rightPanel?: {
+    eyebrow?: string;
+    heading?: string;
+    benefits?: Array<{
+      id?: string;
+      icon?: string;
+      label?: string;
+    }>;
+    primaryCtaLabel?: string;
+    primaryCtaHref?: string;
+    secondaryCtaLabel?: string;
+    secondaryCtaHref?: string;
+  };
+};
+
 type HomeCeoLaunchContentPayload = {
   eyebrow?: string;
   heading?: string;
@@ -251,6 +280,13 @@ const FUNDING_ELIGIBILITY_HEADING_MAX = 160;
 const FUNDING_ELIGIBILITY_CARD_TITLE_MAX = 120;
 const FUNDING_ELIGIBILITY_ICON_MAX = 120;
 const FUNDING_ELIGIBILITY_ITEMS_MAX = 6;
+const ELIGIBILITY_MEMBERSHIP_HEADING_MAX = 120;
+const ELIGIBILITY_MEMBERSHIP_SUBTITLE_MAX = 200;
+const ELIGIBILITY_MEMBERSHIP_QUESTION_MAX = 160;
+const ELIGIBILITY_MEMBERSHIP_ICON_MAX = 120;
+const ELIGIBILITY_MEMBERSHIP_QUESTIONS_MAX = 4;
+const ELIGIBILITY_MEMBERSHIP_BENEFITS_MAX = 4;
+const ELIGIBILITY_MEMBERSHIP_BENEFIT_LABEL_MAX = 120;
 const CEO_LAUNCH_EYEBROW_MAX = 80;
 const CEO_LAUNCH_HEADING_MAX = 160;
 const CEO_LAUNCH_STATS_MAX = 4;
@@ -275,6 +311,7 @@ export class AppSettingsService {
   private homeEmployeeColumnChecked = false;
   private homeProgrammeStructureColumnChecked = false;
   private homeFundingEligibilityColumnChecked = false;
+  private homeEligibilityMembershipColumnChecked = false;
   private homeCeoLaunchColumnChecked = false;
 
   constructor(
@@ -390,6 +427,14 @@ export class AppSettingsService {
     this.homeFundingEligibilityColumnChecked = true;
   }
 
+  private async ensureHomeEligibilityMembershipColumn(): Promise<void> {
+    if (this.homeEligibilityMembershipColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeEligibilityMembershipContent" jsonb'
+    );
+    this.homeEligibilityMembershipColumnChecked = true;
+  }
+
   private async ensureHomeCeoLaunchColumn(): Promise<void> {
     if (this.homeCeoLaunchColumnChecked) return;
     await this.appSettingsRepository.query(
@@ -411,6 +456,7 @@ export class AppSettingsService {
     await this.ensureHomeEmployeeColumn();
     await this.ensureHomeProgrammeStructureColumn();
     await this.ensureHomeFundingEligibilityColumn();
+    await this.ensureHomeEligibilityMembershipColumn();
     await this.ensureHomeCeoLaunchColumn();
 
     const settings = await this.appSettingsRepository.find({
@@ -968,6 +1014,53 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizeEligibilityMembershipIconColor(value: unknown): 'blue' | 'red' {
+    return String(value || '').trim().toLowerCase() === 'red' ? 'red' : 'blue';
+  }
+
+  private sanitizeHomeEligibilityMembershipContent(
+    input: unknown
+  ): HomeEligibilityMembershipContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const leftSource =
+      source.leftPanel && typeof source.leftPanel === 'object' ? source.leftPanel : {};
+    const rightSource =
+      source.rightPanel && typeof source.rightPanel === 'object' ? source.rightPanel : {};
+    const rawQuestions = Array.isArray(leftSource.questions) ? leftSource.questions : [];
+    const rawBenefits = Array.isArray(rightSource.benefits) ? rightSource.benefits : [];
+
+    return {
+      leftPanel: {
+        heading: this.cleanText(leftSource.heading, ELIGIBILITY_MEMBERSHIP_HEADING_MAX),
+        subtitle: this.cleanText(leftSource.subtitle, ELIGIBILITY_MEMBERSHIP_SUBTITLE_MAX),
+        heroImageUrl:
+          this.toStoredUploadPath(leftSource.heroImageUrl) ||
+          this.cleanText(leftSource.heroImageUrl, 500),
+        questions: rawQuestions.slice(0, ELIGIBILITY_MEMBERSHIP_QUESTIONS_MAX).map((row: any) => ({
+          id: this.ensureTestimonialsItemId(row?.id),
+          icon: this.cleanText(row?.icon, ELIGIBILITY_MEMBERSHIP_ICON_MAX) || 'solar:user-bold-duotone',
+          iconColor: this.sanitizeEligibilityMembershipIconColor(row?.iconColor),
+          text: this.cleanText(row?.text, ELIGIBILITY_MEMBERSHIP_QUESTION_MAX),
+        })),
+        ctaLabel: this.cleanText(leftSource.ctaLabel, 80),
+        ctaHref: this.cleanText(leftSource.ctaHref, 500),
+      },
+      rightPanel: {
+        eyebrow: this.cleanText(rightSource.eyebrow, ELIGIBILITY_MEMBERSHIP_HEADING_MAX),
+        heading: this.cleanText(rightSource.heading, ELIGIBILITY_MEMBERSHIP_HEADING_MAX),
+        benefits: rawBenefits.slice(0, ELIGIBILITY_MEMBERSHIP_BENEFITS_MAX).map((row: any) => ({
+          id: this.ensureTestimonialsItemId(row?.id),
+          icon: this.cleanText(row?.icon, ELIGIBILITY_MEMBERSHIP_ICON_MAX) || 'solar:star-bold-duotone',
+          label: this.cleanText(row?.label, ELIGIBILITY_MEMBERSHIP_BENEFIT_LABEL_MAX),
+        })),
+        primaryCtaLabel: this.cleanText(rightSource.primaryCtaLabel, 80),
+        primaryCtaHref: this.cleanText(rightSource.primaryCtaHref, 500),
+        secondaryCtaLabel: this.cleanText(rightSource.secondaryCtaLabel, 80),
+        secondaryCtaHref: this.cleanText(rightSource.secondaryCtaHref, 500),
+      },
+    };
+  }
+
   private sanitizeHomeCeoLaunchContent(input: unknown): HomeCeoLaunchContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const rawStats = Array.isArray(source.stats) ? source.stats : [];
@@ -1375,6 +1468,77 @@ export class AppSettingsService {
     };
   }
 
+  async updateHomeEligibilityMembershipContent(
+    payload: HomeEligibilityMembershipContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeEligibilityMembershipContent(
+      settings.homeEligibilityMembershipContent || {}
+    );
+    const next = this.sanitizeHomeEligibilityMembershipContent(payload);
+    settings.homeEligibilityMembershipContent = {
+      ...next,
+      leftPanel: {
+        ...next.leftPanel,
+        heroImageUrl: next.leftPanel?.heroImageUrl || existing.leftPanel?.heroImageUrl || '',
+      },
+    };
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home eligibility & membership content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeEligibilityMembershipHeroImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-eligibility-membership-hero');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-eligibility-membership-hero', {
+      fileName: 'hero',
+    });
+
+    const existing = this.sanitizeHomeEligibilityMembershipContent(
+      settings.homeEligibilityMembershipContent || {}
+    );
+    settings.homeEligibilityMembershipContent = this.sanitizeHomeEligibilityMembershipContent({
+      ...existing,
+      leftPanel: {
+        ...existing.leftPanel,
+        heroImageUrl: relativeUrl,
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Eligibility section hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeEligibilityMembershipHeroImage(): Promise<{
+    message: string;
+    settings: AppSettingsEntity;
+  }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('home-eligibility-membership-hero');
+    const existing = this.sanitizeHomeEligibilityMembershipContent(
+      settings.homeEligibilityMembershipContent || {}
+    );
+    settings.homeEligibilityMembershipContent = this.sanitizeHomeEligibilityMembershipContent({
+      ...existing,
+      leftPanel: {
+        ...existing.leftPanel,
+        heroImageUrl: '',
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Eligibility section hero image removed successfully',
+      settings: saved,
+    };
+  }
+
   async updateHomeCeoLaunchContent(
     payload: HomeCeoLaunchContentPayload
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -1757,6 +1921,7 @@ export class AppSettingsService {
     homeEmployeeContent: HomeEmployeeContentPayload | null;
     homeProgrammeStructureContent: HomeProgrammeStructureContentPayload | null;
     homeFundingEligibilityContent: HomeFundingEligibilityContentPayload | null;
+    homeEligibilityMembershipContent: HomeEligibilityMembershipContentPayload | null;
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
@@ -1803,6 +1968,9 @@ export class AppSettingsService {
         : null,
       homeFundingEligibilityContent: settings.homeFundingEligibilityContent
         ? this.sanitizeHomeFundingEligibilityContent(settings.homeFundingEligibilityContent)
+        : null,
+      homeEligibilityMembershipContent: settings.homeEligibilityMembershipContent
+        ? this.sanitizeHomeEligibilityMembershipContent(settings.homeEligibilityMembershipContent)
         : null,
       homeCeoLaunchContent: settings.homeCeoLaunchContent
         ? this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent)

@@ -53,6 +53,7 @@ import { TestimonialsSettingsCard } from './components/testimonials-settings-car
 import { EmployerSettingsCard } from './components/employer-settings-card';
 import { ProgrammeStructureSettingsCard } from './components/programme-structure-settings-card';
 import { FundingEligibilitySettingsCard } from './components/funding-eligibility-settings-card';
+import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
 import { CeoLaunchSettingsCard } from './components/ceo-launch-settings-card';
 import {
   DEFAULT_PROGRAMME_FEES_CONTENT,
@@ -79,6 +80,9 @@ import {
 import {
   resolveCeoLaunchContent,
 } from 'src/sections/home/ceo-launch-defaults';
+import {
+  resolveEligibilityMembershipContent,
+} from 'src/sections/home/eligibility-membership-defaults';
 
 const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
 const CONTACT_ICON_KEY_BY_FIELD = {
@@ -242,6 +246,14 @@ export function AdminSettingsView() {
     resolveFundingEligibilityContent(null)
   );
   const [fundingEligibilityContentSubmitting, setFundingEligibilityContentSubmitting] =
+    useState(false);
+  const [eligibilityMembershipContent, setEligibilityMembershipContent] = useState(() =>
+    resolveEligibilityMembershipContent(null)
+  );
+  const [eligibilityMembershipContentSubmitting, setEligibilityMembershipContentSubmitting] =
+    useState(false);
+  const [eligibilityMembershipHeroFile, setEligibilityMembershipHeroFile] = useState(null);
+  const [eligibilityMembershipHeroSubmitting, setEligibilityMembershipHeroSubmitting] =
     useState(false);
   const [ceoLaunchContent, setCeoLaunchContent] = useState(() => resolveCeoLaunchContent(null));
   const [ceoLaunchContentSubmitting, setCeoLaunchContentSubmitting] = useState(false);
@@ -537,6 +549,9 @@ export function AdminSettingsView() {
       );
       setFundingEligibilityContent(
         resolveFundingEligibilityContent(appSettings.homeFundingEligibilityContent)
+      );
+      setEligibilityMembershipContent(
+        resolveEligibilityMembershipContent(appSettings.homeEligibilityMembershipContent)
       );
       setCeoLaunchContent(resolveCeoLaunchContent(appSettings.homeCeoLaunchContent));
       setEmployerContent(resolveEmployerContent(appSettings.homeEmployerContent));
@@ -1184,6 +1199,77 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleSaveEligibilityMembershipContent = async (contentOverride) => {
+    const source = contentOverride || eligibilityMembershipContent;
+    try {
+      setEligibilityMembershipContentSubmitting(true);
+      const updated = await appSettingsService.updateHomeEligibilityMembershipContent(source);
+      setEligibilityMembershipContent(
+        resolveEligibilityMembershipContent(updated?.homeEligibilityMembershipContent)
+      );
+      if (!contentOverride) {
+        toast.success('Eligibility & membership section updated');
+      }
+      return updated;
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update eligibility & membership section');
+      throw error;
+    } finally {
+      setEligibilityMembershipContentSubmitting(false);
+    }
+  };
+
+  const handleDropEligibilityMembershipHero = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) setEligibilityMembershipHeroFile(file);
+  }, []);
+
+  const handleClearEligibilityMembershipHeroSelection = () => {
+    setEligibilityMembershipHeroFile(null);
+  };
+
+  const handleUploadEligibilityMembershipHero = async () => {
+    if (!eligibilityMembershipHeroFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+    try {
+      setEligibilityMembershipHeroSubmitting(true);
+      const updated = await appSettingsService.uploadHomeEligibilityMembershipHero(
+        eligibilityMembershipHeroFile
+      );
+      setEligibilityMembershipContent(
+        resolveEligibilityMembershipContent(updated?.homeEligibilityMembershipContent)
+      );
+      setEligibilityMembershipHeroFile(null);
+      toast.success('Eligibility section photo updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload eligibility section photo');
+    } finally {
+      setEligibilityMembershipHeroSubmitting(false);
+    }
+  };
+
+  const handleRemoveEligibilityMembershipHero = async () => {
+    if (eligibilityMembershipHeroFile) {
+      setEligibilityMembershipHeroFile(null);
+      return;
+    }
+    if (!String(eligibilityMembershipContent?.leftPanel?.heroImageUrl || '').trim()) return;
+    try {
+      setEligibilityMembershipHeroSubmitting(true);
+      const updated = await appSettingsService.removeHomeEligibilityMembershipHero();
+      setEligibilityMembershipContent(
+        resolveEligibilityMembershipContent(updated?.homeEligibilityMembershipContent)
+      );
+      toast.success('Eligibility section photo removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove eligibility section photo');
+    } finally {
+      setEligibilityMembershipHeroSubmitting(false);
+    }
+  };
+
   const handleSaveCeoLaunchContent = async () => {
     const videoUrl = String(ceoLaunchContent?.videoUrl || '').trim();
     const hasUpload = Boolean(String(ceoLaunchContent?.videoFileUrl || '').trim());
@@ -1647,6 +1733,14 @@ export function AdminSettingsView() {
       description: 'Learning journey timeline — phases with titles and rich descriptions on the home page.',
     },
     {
+      key: 'eligibility-membership',
+      badge: 'EM',
+      icon: 'solar:user-check-rounded-bold-duotone',
+      title: 'Eligibility & Membership',
+      description:
+        'Dual-panel “Am I Eligible?” and ISCA membership promo — questions, benefits, CTAs, and left-panel photo.',
+    },
+    {
       key: 'funding-eligibility',
       badge: 'FE',
       icon: 'solar:wallet-money-bold-duotone',
@@ -1707,6 +1801,7 @@ export function AdminSettingsView() {
     'workflow-templates-pitch',
     'programme-fees',
     'programme-structure',
+    'eligibility-membership',
     'funding-eligibility',
     'ceo-launch',
     'testimonials',
@@ -2083,6 +2178,22 @@ export function AdminSettingsView() {
       setContent={setFundingEligibilityContent}
       submitting={fundingEligibilityContentSubmitting}
       onSave={handleSaveFundingEligibilityContent}
+    />
+  );
+
+  const renderEligibilityMembershipSettings = (
+    <EligibilityMembershipSettingsCard
+      content={eligibilityMembershipContent}
+      setContent={setEligibilityMembershipContent}
+      submitting={eligibilityMembershipContentSubmitting}
+      onSave={handleSaveEligibilityMembershipContent}
+      heroFile={eligibilityMembershipHeroFile}
+      heroUrl={eligibilityMembershipContent?.leftPanel?.heroImageUrl || ''}
+      heroSubmitting={eligibilityMembershipHeroSubmitting}
+      onHeroDrop={handleDropEligibilityMembershipHero}
+      onHeroDelete={handleRemoveEligibilityMembershipHero}
+      onHeroSave={handleUploadEligibilityMembershipHero}
+      onHeroClearOrRemove={handleRemoveEligibilityMembershipHero}
     />
   );
 
@@ -2668,6 +2779,7 @@ export function AdminSettingsView() {
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
         {activeSection === 'programme-structure' && renderProgrammeStructureSettings}
+        {activeSection === 'eligibility-membership' && renderEligibilityMembershipSettings}
         {activeSection === 'funding-eligibility' && renderFundingEligibilitySettings}
         {activeSection === 'ceo-launch' && renderCeoLaunchSettings}
         {activeSection === 'testimonials' && renderTestimonialsSettings}

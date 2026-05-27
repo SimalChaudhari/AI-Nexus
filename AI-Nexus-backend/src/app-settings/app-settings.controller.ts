@@ -569,6 +569,56 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Put('home-eligibility-membership-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page eligibility check & ISCA membership dual-panel section' })
+  async updateHomeEligibilityMembershipContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeEligibilityMembershipContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('home-eligibility-membership-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload hero image for eligibility & membership section (left panel)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      limits: { fileSize: 5 * 1024 * 1024 },
+    })
+  )
+  async uploadHomeEligibilityMembershipHero(
+    @Res() response: Response,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    if (!file) {
+      return response.status(HttpStatus.BAD_REQUEST).json({ message: 'Hero image file is required' });
+    }
+    const result = await this.appSettingsService.uploadHomeEligibilityMembershipHeroImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('home-eligibility-membership-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove hero image for eligibility & membership section' })
+  async removeHomeEligibilityMembershipHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removeHomeEligibilityMembershipHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('home-ceo-launch-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

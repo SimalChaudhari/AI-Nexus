@@ -133,6 +133,35 @@ export type HomeFundingEligibilityContent = {
   }>;
 };
 
+export type HomeEligibilityMembershipContent = {
+  leftPanel?: {
+    heading?: string;
+    subtitle?: string;
+    heroImageUrl?: string;
+    questions?: Array<{
+      id?: string;
+      icon?: string;
+      iconColor?: string;
+      text?: string;
+    }>;
+    ctaLabel?: string;
+    ctaHref?: string;
+  };
+  rightPanel?: {
+    eyebrow?: string;
+    heading?: string;
+    benefits?: Array<{
+      id?: string;
+      icon?: string;
+      label?: string;
+    }>;
+    primaryCtaLabel?: string;
+    primaryCtaHref?: string;
+    secondaryCtaLabel?: string;
+    secondaryCtaHref?: string;
+  };
+};
+
 export type HomeCeoLaunchContent = {
   eyebrow?: string;
   heading?: string;
@@ -272,6 +301,10 @@ export class AppSettingsEntity {
   /** Home page funding & eligibility card grid. */
   @Column({ type: 'jsonb', nullable: true })
   homeFundingEligibilityContent?: HomeFundingEligibilityContent | null;
+
+  /** Home page dual-panel eligibility check + ISCA membership promo. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeEligibilityMembershipContent?: HomeEligibilityMembershipContent | null;
 
   /** Home page CEO launch video section. */
   @Column({ type: 'jsonb', nullable: true })
