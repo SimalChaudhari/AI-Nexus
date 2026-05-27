@@ -268,24 +268,7 @@ export function HomeTestimonialsSection() {
               />
             ) : null}
 
-            {reviewCount > 0 ? (
-              <Stack
-                direction="row"
-                spacing={1.5}
-                flexWrap="wrap"
-                justifyContent="center"
-                variants={varFade({ distance: 10 }).inUp}
-              >
-                <StatPill
-                  icon={<Iconify icon="solar:star-bold" width={18} sx={{ color: STAR_COLOR }} />}
-                  label="4.9 average rating"
-                />
-                <StatPill
-                  icon={<Iconify icon="solar:users-group-rounded-bold" width={18} sx={{ color: 'primary.main' }} />}
-                  label={`${reviewCount}+ verified reviews`}
-                />
-              </Stack>
-            ) : null}
+        
           </Stack>
 
           {testimonials.length > 0 ? (

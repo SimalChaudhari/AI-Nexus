@@ -232,7 +232,7 @@ function transformEmployerContent(source) {
       title: row?.title != null ? String(row.title) : '',
       description: row?.description != null ? String(row.description) : '',
     })),
-    logos: rawLogos.slice(0, 8).map((row) => ({
+    logos: rawLogos.slice(0, 50).map((row) => ({
       name: row?.name != null ? String(row.name) : '',
       logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
     })),

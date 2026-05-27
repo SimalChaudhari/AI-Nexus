@@ -169,14 +169,16 @@ export function CeoLaunchSettingsCard({
             onRemoveAllVideo={onVideoRemoveAll}
           />
 
-          <TextField
-            label="Quote"
-            value={content?.quote || ''}
-            onChange={(e) => setContent((prev) => ({ ...prev, quote: e.target.value }))}
-            multiline
-            minRows={3}
-            fullWidth
-          />
+          <Stack spacing={0.75}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Quote
+            </Typography>
+            <Editor
+              value={content?.quote || ''}
+              onChange={(value) => setContent((prev) => ({ ...prev, quote: value }))}
+              sx={{ minHeight: 100 }}
+            />
+          </Stack>
 
           <Card
             sx={{

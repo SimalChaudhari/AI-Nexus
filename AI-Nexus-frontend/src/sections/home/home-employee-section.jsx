@@ -246,7 +246,7 @@ export function HomeEmployeeSection() {
   };
 
   const heroSectionBg = `linear-gradient(135deg, ${heroBase} 0%, ${alpha(primary.lighter, 0.35)} 55%, ${alpha(primary.lighter, 0.18)} 100%)`;
-  const displayLogos = companyLogos.slice(0, 6);
+  const displayLogos = companyLogos;
 
   return (
     <Box component="section" sx={{ position: 'relative', overflow: 'hidden' }}>

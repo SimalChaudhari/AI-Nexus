@@ -11,6 +11,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
 import { Iconify } from 'src/components/iconify';
+import { RichTextContent } from 'src/components/html-content';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
@@ -133,7 +134,7 @@ export function HomeCeoLaunchSection() {
     label: String(row?.label || row?.value || '').trim(),
   })).filter((row) => row.label);
   const rightTitle = eyebrow || 'CEO Launch Message';
-  const rightSubtitle = subtitle || quote || 'Watch how ISCA is leading this national movement.';
+  const rightSubtitle = subtitle || quote;
 
   return (
     <Box
@@ -317,18 +318,32 @@ export function HomeCeoLaunchSection() {
                     >
                       {rightTitle}
                     </Typography>
-                    <Typography
-                      sx={{
-                        m: 0,
-                        mt: 0.55,
-                        color: alpha('#fff', 0.9),
-                        fontSize: { xs: '0.76rem', sm: '0.8rem' },
-                        lineHeight: 1.35,
-                        maxWidth: 200,
-                      }}
-                    >
-                      {rightSubtitle}
-                    </Typography>
+                    {rightSubtitle ? (
+                      <RichTextContent
+                        html={rightSubtitle}
+                        sx={{
+                          mt: 0.55,
+                          color: alpha('#fff', 0.9),
+                          fontSize: { xs: '0.76rem', sm: '0.8rem' },
+                          lineHeight: 1.35,
+                          maxWidth: 200,
+                          '& p': { m: 0 },
+                        }}
+                      />
+                    ) : (
+                      <Typography
+                        sx={{
+                          m: 0,
+                          mt: 0.55,
+                          color: alpha('#fff', 0.9),
+                          fontSize: { xs: '0.76rem', sm: '0.8rem' },
+                          lineHeight: 1.35,
+                          maxWidth: 200,
+                        }}
+                      >
+                        Watch how ISCA is leading this national movement.
+                      </Typography>
+                    )}
                   </Box>
                   <Stack direction="row" alignItems="center" justifyContent="space-between">
                     {playTarget ? (

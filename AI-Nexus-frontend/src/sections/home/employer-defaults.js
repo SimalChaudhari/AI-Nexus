@@ -9,7 +9,7 @@ export const DEFAULT_EMPLOYER_CONTENT = {
 };
 
 export const EMPLOYER_BENEFITS_MAX = 6;
-export const EMPLOYER_LOGOS_MAX = 8;
+export const EMPLOYER_LOGOS_MAX = 50;
 
 export function normalizeEmployerContent(source) {
   if (!source || typeof source !== 'object') {

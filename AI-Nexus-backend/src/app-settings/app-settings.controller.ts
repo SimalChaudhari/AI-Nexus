@@ -843,7 +843,7 @@ export class AppSettingsController {
   @Roles(UserRole.Admin)
   @ApiBearerAuth('bearer')
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload logo for employer section company strip (slot 0-7)' })
+  @ApiOperation({ summary: 'Upload logo for employer section company strip (slot 0-49)' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -880,7 +880,7 @@ export class AppSettingsController {
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Remove logo from employer section company strip (slot 0-7)' })
+  @ApiOperation({ summary: 'Remove logo from employer section company strip (slot 0-49)' })
   async removeHomeEmployerLogo(
     @Res() response: Response,
     @Param('index', ParseIntPipe) index: number

@@ -52,6 +52,7 @@ export function EmployerSettingsCard({
 }) {
   const benefits = Array.isArray(content?.benefits) ? content.benefits : [];
   const logos = Array.isArray(content?.logos) ? content.logos : [];
+  const canAddLogo = logos.length < EMPLOYER_LOGOS_MAX;
   const displayHeroUrl = resolvePreviewUrl(heroUrl || content?.heroImageUrl);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -222,16 +223,35 @@ export function EmployerSettingsCard({
 
             <Stack spacing={1.25}>
               <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  Company logos
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {logos.length} / {EMPLOYER_LOGOS_MAX}
-                </Typography>
+                <Stack spacing={0.25}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Company logos
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {logos.length} / {EMPLOYER_LOGOS_MAX}
+                  </Typography>
+                </Stack>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={!canAddLogo || submitting}
+                  onClick={() =>
+                    setContent((prev) => ({
+                      ...prev,
+                      logos: [...(Array.isArray(prev?.logos) ? prev.logos : []), { name: '', logoUrl: '' }],
+                    }))
+                  }
+                >
+                  Add logo
+                </Button>
               </Stack>
+              {logos.length === 0 ? (
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  No logos yet. Click Add logo.
+                </Typography>
+              ) : null}
               <Grid container spacing={1.25}>
-                {[...Array(EMPLOYER_LOGOS_MAX)].map((_, index) => {
-                  const row = logos[index] || { name: '', logoUrl: '' };
+                {logos.map((row, index) => {
                   return (
                     <Grid key={`employer-logo-${index}`} item xs={12} sm={6} md={4} lg={3}>
                       <Stack
@@ -299,6 +319,20 @@ export function EmployerSettingsCard({
                             onClick={() => onRemoveLogo?.(index)}
                           >
                             Remove
+                          </Button>
+                          <Button
+                            size="small"
+                            color="inherit"
+                            variant="text"
+                            disabled={uploadingLogoIndex === index}
+                            onClick={() =>
+                              setContent((prev) => ({
+                                ...prev,
+                                logos: (Array.isArray(prev?.logos) ? prev.logos : []).filter((_, i) => i !== index),
+                              }))
+                            }
+                          >
+                            Delete
                           </Button>
                         </Stack>
                       </Stack>
