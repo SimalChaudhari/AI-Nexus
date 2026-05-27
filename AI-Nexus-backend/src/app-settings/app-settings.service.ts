@@ -11,21 +11,28 @@ import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 
 type HomeHeroContentPayload = {
+  badge?: string;
   headline?: string;
+  headlineAccent?: string;
+  headlineColor?: string;
+  headlineAccentColor?: string;
   description?: string;
   cta?: {
     label?: string;
     href?: string;
+    icon?: string;
     buttonColor?: string;
     buttonTextColor?: string;
-    align?: 'left' | 'center' | 'right' | '';
   };
-  event?: {
-    startDateLabel?: string;
-    startDate?: string;
-    startTimeLabel?: string;
-    startTime?: string;
-  };
+  secondaryCtas?: Array<{
+    label?: string;
+    href?: string;
+    icon?: string;
+    variant?: string;
+    buttonColor?: string;
+    buttonTextColor?: string;
+  }>;
+  statIconSize?: number;
   stats?: Array<{ value?: string; label?: string; icon?: string }>;
 };
 
@@ -482,6 +489,42 @@ export class AppSettingsService {
     };
   }
 
+  async uploadHomeHeroStatIcon(
+    index: number,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    if (!Number.isInteger(index) || index < 0 || index > 3) {
+      throw new BadRequestException('Invalid hero stat index');
+    }
+
+    const settings = await this.getSettings();
+    const heroContent =
+      settings.homeHeroContent && typeof settings.homeHeroContent === 'object'
+        ? { ...(settings.homeHeroContent as any) }
+        : {};
+    const stats = Array.isArray(heroContent.stats) ? [...heroContent.stats] : [];
+    while (stats.length <= index) {
+      stats.push({ value: '', label: '', icon: '' });
+    }
+
+    const folder = `home-hero-stats/${index}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'icon',
+    });
+
+    const current = stats[index] && typeof stats[index] === 'object' ? stats[index] : {};
+    stats[index] = { ...current, icon: relativeUrl };
+    heroContent.stats = stats;
+    settings.homeHeroContent = heroContent;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Home hero stat icon uploaded successfully',
+      settings: saved,
+    };
+  }
+
   async uploadContactHeroImage(file: Express.Multer.File): Promise<{ message: string; settings: AppSettingsEntity }> {
     const settings = await this.getSettings();
 
@@ -559,37 +602,40 @@ export class AppSettingsService {
     return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(s) ? s : '';
   }
 
-  private sanitizeCtaAlign(value: unknown): 'left' | 'center' | 'right' | '' {
-    const s = this.cleanText(value).toLowerCase();
-    if (s === 'left' || s === 'center' || s === 'right') return s;
-    return '';
-  }
-
-  private sanitizeEventSlot(input: any) {
-    return {
-      startDateLabel: this.cleanText(input?.startDateLabel),
-      startDate: this.cleanText(input?.startDate),
-      startTimeLabel: this.cleanText(input?.startTimeLabel),
-      startTime: this.cleanText(input?.startTime),
-    };
+  private sanitizeHeroStatIconSize(value: unknown): number {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 26;
+    return Math.max(16, Math.min(56, Math.round(n)));
   }
 
   private sanitizeHomeHeroContent(input: unknown): HomeHeroContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const stats = Array.isArray(source.stats) ? source.stats : [];
-    const primaryEvent = this.sanitizeEventSlot(source.event);
+    const secondaryCtas = Array.isArray(source.secondaryCtas) ? source.secondaryCtas : [];
     return {
+      badge: this.cleanText(source.badge, 80),
       headline: this.cleanText(source.headline, HERO_HEADLINE_MAX_LENGTH),
+      headlineAccent: this.cleanText(source.headlineAccent, HERO_HEADLINE_MAX_LENGTH),
+      headlineColor: this.sanitizeHexColor(source.headlineColor),
+      headlineAccentColor: this.sanitizeHexColor(source.headlineAccentColor),
       description: this.cleanText(source.description),
       cta: {
         label: this.cleanText(source.cta?.label, HERO_CTA_LABEL_MAX_LENGTH),
         href: this.cleanText(source.cta?.href),
+        icon: this.cleanText(source.cta?.icon, 120),
         buttonColor: this.sanitizeHexColor(source.cta?.buttonColor),
         buttonTextColor: this.sanitizeHexColor(source.cta?.buttonTextColor),
-        align: this.sanitizeCtaAlign(source.cta?.align),
       },
-      event: primaryEvent,
-      stats: stats.slice(0, 3).map((item: any) => ({
+      secondaryCtas: secondaryCtas.slice(0, 5).map((item: any) => ({
+        label: this.cleanText(item?.label, HERO_CTA_LABEL_MAX_LENGTH),
+        href: this.cleanText(item?.href),
+        icon: this.cleanText(item?.icon, 120),
+        variant: this.cleanText(item?.variant, 40),
+        buttonColor: this.sanitizeHexColor(item?.buttonColor),
+        buttonTextColor: this.sanitizeHexColor(item?.buttonTextColor),
+      })),
+      statIconSize: this.sanitizeHeroStatIconSize(source?.statIconSize),
+      stats: stats.slice(0, 4).map((item: any) => ({
         value: this.cleanText(item?.value),
         label: this.cleanText(item?.label),
         icon: this.cleanText(item?.icon),

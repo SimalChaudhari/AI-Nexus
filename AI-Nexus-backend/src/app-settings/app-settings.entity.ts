@@ -7,24 +7,31 @@ import {
 } from 'typeorm';
 
 export type HomeHeroContent = {
+  badge?: string;
   headline?: string;
+  headlineAccent?: string;
+  headlineColor?: string;
+  headlineAccentColor?: string;
   description?: string;
   cta?: {
     label?: string;
     href?: string;
+    icon?: string;
     /** Hex color for button background, e.g. #d4f938 */
     buttonColor?: string;
     /** Hex color for button label */
     buttonTextColor?: string;
-    /** Horizontal placement of the CTA row */
-    align?: 'left' | 'center' | 'right' | '';
   };
-  event?: {
-    startDateLabel?: string;
-    startDate?: string;
-    startTimeLabel?: string;
-    startTime?: string;
-  };
+  secondaryCtas?: Array<{
+    label?: string;
+    href?: string;
+    icon?: string;
+    variant?: string;
+    buttonColor?: string;
+    buttonTextColor?: string;
+  }>;
+  /** Hero stats icon size in px */
+  statIconSize?: number;
   stats?: Array<{ value?: string; label?: string; icon?: string }>;
 };
 

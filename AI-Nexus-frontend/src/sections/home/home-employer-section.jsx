@@ -101,6 +101,7 @@ export function HomeEmployerSection() {
 
   return (
     <Box
+      id="employers"
       component="section"
       sx={{
         py: { xs: 5, md: 7 },

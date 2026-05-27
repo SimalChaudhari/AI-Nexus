@@ -62,7 +62,7 @@ export const NavItem = forwardRef(
                 }),
               transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
               color:
-                open || active ? (lightNav ? 'primary.light' : 'primary.main') : 'inherit',
+                open || active ? (lightNav ? 'secondary.light' : 'primary.main') : 'inherit',
             }}
           />
         )}
@@ -103,7 +103,7 @@ const StyledNavItem = styled(ButtonBase, {
       position: 'relative',
       color: customerHeader
         ? lightNav
-          ? theme.vars.palette.common.white
+          ? theme.vars.palette.secondary.main
           : theme.vars.palette.common.black
         : theme.vars.palette.text.primary,
       fontSize: customerHeader ? theme.typography.pxToRem(14) : undefined,
@@ -114,14 +114,14 @@ const StyledNavItem = styled(ButtonBase, {
         opacity: 1,
         color: customerHeader
           ? lightNav
-            ? theme.vars.palette.primary.light
+            ? theme.vars.palette.secondary.light
             : theme.vars.palette.primary.main
           : undefined,
       },
       ...(active && {
         color: customerHeader
           ? lightNav
-            ? theme.vars.palette.primary.light
+            ? theme.vars.palette.secondary.dark
             : theme.vars.palette.primary.main
           : theme.vars.palette.primary.main,
       }),
@@ -129,7 +129,7 @@ const StyledNavItem = styled(ButtonBase, {
         opacity: 1,
         color: customerHeader
           ? lightNav
-            ? theme.vars.palette.primary.light
+            ? theme.vars.palette.secondary.light
             : theme.vars.palette.primary.main
           : undefined,
       }),

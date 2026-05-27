@@ -179,6 +179,7 @@ export function HomeFundingEligibilitySection() {
 
   return (
     <Box
+      id="funding-eligibility"
       component="section"
       sx={{
         py: { xs: 5, md: 7 },

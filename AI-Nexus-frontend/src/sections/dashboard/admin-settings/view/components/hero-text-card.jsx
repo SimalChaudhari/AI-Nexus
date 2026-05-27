@@ -27,12 +27,31 @@ export function HeroTextCard({ heroContent, onFieldChange }) {
         </Box>
 
         <TextField
-          label="Hero headline (main title)"
+          label="Hero badge (eyebrow)"
+          value={heroContent.badge || ''}
+          onChange={(event) => onFieldChange('badge', event.target.value)}
+          inputProps={{ maxLength: 80 }}
+          fullWidth
+          placeholder="e.g. A NATIONAL INITIATIVE"
+        />
+
+        <TextField
+          label="Hero headline (line 1)"
           value={heroContent.headline}
           onChange={(event) => onFieldChange('headline', event.target.value)}
           inputProps={{ maxLength: HERO_HEADLINE_MAX_LENGTH }}
           fullWidth
           helperText={`${String(heroContent.headline || '').length}/${HERO_HEADLINE_MAX_LENGTH} characters`}
+          placeholder="e.g. AI Fluency for"
+        />
+
+        <TextField
+          label="Hero headline accent (line 2)"
+          value={heroContent.headlineAccent || ''}
+          onChange={(event) => onFieldChange('headlineAccent', event.target.value)}
+          inputProps={{ maxLength: HERO_HEADLINE_MAX_LENGTH }}
+          fullWidth
+          placeholder="e.g. the Future of Business"
         />
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>

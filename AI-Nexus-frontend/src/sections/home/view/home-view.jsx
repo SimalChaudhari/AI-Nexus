@@ -1,3 +1,4 @@
+import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 
 import { ScrollProgress, useScrollProgress } from 'src/components/animate/scroll-progress';
@@ -24,7 +25,7 @@ export function HomeView() {
   const pageProgress = useScrollProgress();
 
   return (
-    <>
+    <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       <ScrollProgress
         variant="linear"
         progress={pageProgress.scrollYProgress}
@@ -52,6 +53,6 @@ export function HomeView() {
 
         <HomeFaqsSection />
       </Stack>
-    </>
+    </Box>
   );
 }

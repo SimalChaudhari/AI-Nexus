@@ -220,8 +220,7 @@ export function AdminSettingsView() {
   const [workflowPitchSubmitting, setWorkflowPitchSubmitting] = useState(false);
   const [workflowPitchIconSlotLoading, setWorkflowPitchIconSlotLoading] = useState(null);
   const emptyHeroStatsRow = () => ({ value: '', label: '', icon: '' });
-  const emptyHeroEventSlot = () => ({ startDateLabel: '', startDate: '', startTimeLabel: '', startTime: '' });
-  const [emojiPickerStatIndex, setEmojiPickerStatIndex] = useState(null);
+  const [heroStatIconUploadingIndex, setHeroStatIconUploadingIndex] = useState(null);
   const [visibleStatsCount, setVisibleStatsCount] = useState(0);
   const [cardsContentSubmitting, setCardsContentSubmitting] = useState(false);
   const [faqContentSubmitting, setFaqContentSubmitting] = useState(false);
@@ -284,17 +283,24 @@ export function AdminSettingsView() {
   );
 
   const [heroContent, setHeroContent] = useState({
+    badge: '',
     headline: '',
+    headlineAccent: '',
     description: '',
     cta: {
       label: '',
       href: '',
+      icon: '',
       buttonColor: '',
       buttonTextColor: '',
-      align: '',
     },
-    event: emptyHeroEventSlot(),
-    stats: [emptyHeroStatsRow(), emptyHeroStatsRow(), emptyHeroStatsRow()],
+    secondaryCtas: [
+      { label: '', href: '', icon: '', buttonColor: '', buttonTextColor: '' },
+      { label: '', href: '', icon: '', buttonColor: '', buttonTextColor: '' },
+      { label: '', href: '', icon: '', buttonColor: '', buttonTextColor: '' },
+    ],
+    statIconSize: 26,
+    stats: [emptyHeroStatsRow(), emptyHeroStatsRow(), emptyHeroStatsRow(), emptyHeroStatsRow()],
   });
   const defaultCardIcons = ['mingcute:user-group-line', 'mingcute:flash-line', 'mingcute:git-branch-line'];
   const getDefaultCardIcon = (index) => defaultCardIcons[index] || 'mingcute:apps-line';
@@ -446,29 +452,37 @@ export function AdminSettingsView() {
       setCourseDefaultImageUrl(appSettings.courseDefaultImageUrl || '');
       const remoteHero = appSettings.homeHeroContent || {};
       const rawStats = Array.isArray(remoteHero.stats) ? remoteHero.stats : [];
-      const statsThree = [0, 1, 2].map((i) => ({
+      const statsFour = [0, 1, 2, 3].map((i) => ({
         value: rawStats[i]?.value != null ? String(rawStats[i].value) : '',
         label: rawStats[i]?.label != null ? String(rawStats[i].label) : '',
         icon: rawStats[i]?.icon != null ? String(rawStats[i].icon) : '',
       }));
-      const statsUsedCount = Math.max(1, statsThree.filter((s) => s.label || s.value || s.icon).length);
+      const statsUsedCount = Math.max(1, statsFour.filter((s) => s.label || s.value || s.icon).length);
+      const remoteSecondary = Array.isArray(remoteHero?.secondaryCtas) ? remoteHero.secondaryCtas : [];
+      const secondaryCtas = remoteSecondary.slice(0, 5).map((item) => ({
+        label: item?.label != null ? String(item.label) : '',
+        href: item?.href != null ? String(item.href) : '',
+        icon: item?.icon != null ? String(item.icon) : '',
+        buttonColor: item?.buttonColor != null ? String(item.buttonColor) : '',
+        buttonTextColor: item?.buttonTextColor != null ? String(item.buttonTextColor) : '',
+      }));
       setHeroContent({
+        badge: remoteHero?.badge || '',
         headline: remoteHero?.headline || '',
+        headlineAccent: remoteHero?.headlineAccent || '',
         description: remoteHero?.description || '',
         cta: {
           label: remoteHero?.cta?.label || '',
           href: remoteHero?.cta?.href || '',
+          icon: remoteHero?.cta?.icon || '',
           buttonColor: remoteHero?.cta?.buttonColor || '',
           buttonTextColor: remoteHero?.cta?.buttonTextColor || '',
-          align: remoteHero?.cta?.align || '',
         },
-        event: {
-          startDateLabel: remoteHero?.event?.startDateLabel || '',
-          startDate: remoteHero?.event?.startDate || '',
-          startTimeLabel: remoteHero?.event?.startTimeLabel || '',
-          startTime: remoteHero?.event?.startTime || '',
-        },
-        stats: statsThree,
+        secondaryCtas,
+        statIconSize: Number.isFinite(Number(remoteHero?.statIconSize))
+          ? Number(remoteHero.statIconSize)
+          : 26,
+        stats: statsFour,
       });
       setVisibleStatsCount(statsUsedCount);
       const remoteCards = appSettings.homeCardsContent || {};
@@ -829,19 +843,15 @@ export function AdminSettingsView() {
     setHeroContent((prev) => ({ ...prev, [field]: value }));
   };
 
-  const updateHeroEventField = (field, value) => {
-    setHeroContent((prev) => ({ ...prev, event: { ...(prev.event || {}), [field]: value } }));
-  };
-
   const updateHeroStat = (index, key, value) => {
     setHeroContent((prev) => {
       const stats = [...(prev.stats || [])];
-      while (stats.length < 3) stats.push(emptyHeroStatsRow());
+      while (stats.length < 4) stats.push(emptyHeroStatsRow());
       stats[index] = { ...stats[index], [key]: value };
       return { ...prev, stats };
     });
   };
-  const addVisibleStatRow = () => setVisibleStatsCount((prev) => Math.min(3, prev + 1));
+  const addVisibleStatRow = () => setVisibleStatsCount((prev) => Math.min(4, prev + 1));
   const removeVisibleStatRow = (index) => {
     setHeroContent((prev) => {
       const stats = [...(prev.stats || [])];
@@ -851,33 +861,49 @@ export function AdminSettingsView() {
     setVisibleStatsCount((prev) => Math.max(1, prev - 1));
   };
 
-  const openEmojiPicker = (index) => setEmojiPickerStatIndex(index);
-  const closeEmojiPicker = () => setEmojiPickerStatIndex(null);
-  const chooseStatEmoji = (emoji) => {
-    if (emojiPickerStatIndex == null) return;
-    updateHeroStat(emojiPickerStatIndex, 'icon', emoji);
-    setEmojiPickerStatIndex(null);
+  const handleUploadHeroStatIcon = async (index, file) => {
+    try {
+      setHeroStatIconUploadingIndex(index);
+      const updated = await appSettingsService.uploadHomeHeroStatIcon(index, file);
+      const next = updated?.homeHeroContent;
+      const nextStatsRaw = Array.isArray(next?.stats) ? next.stats : [];
+      const nextStatsFour = [0, 1, 2, 3].map((i) => ({
+        value: nextStatsRaw[i]?.value != null ? String(nextStatsRaw[i].value) : '',
+        label: nextStatsRaw[i]?.label != null ? String(nextStatsRaw[i].label) : '',
+        icon: nextStatsRaw[i]?.icon != null ? String(nextStatsRaw[i].icon) : '',
+      }));
+      setHeroContent((prev) => ({ ...prev, stats: nextStatsFour }));
+      toast.success('Stat icon uploaded');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload stat icon');
+    } finally {
+      setHeroStatIconUploadingIndex(null);
+    }
   };
 
   const handleSaveHeroContent = async () => {
     try {
       setHeroContentSubmitting(true);
       const payload = {
+        badge: heroContent.badge || '',
         headline: heroContent.headline,
+        headlineAccent: heroContent.headlineAccent || '',
         description: heroContent.description,
         cta: {
           label: heroContent?.cta?.label || '',
           href: heroContent?.cta?.href || '',
+          icon: heroContent?.cta?.icon || '',
           buttonColor: heroContent?.cta?.buttonColor || '',
           buttonTextColor: heroContent?.cta?.buttonTextColor || '',
-          align: heroContent?.cta?.align || '',
         },
-        event: {
-          startDateLabel: heroContent?.event?.startDateLabel || '',
-          startDate: heroContent?.event?.startDate || '',
-          startTimeLabel: heroContent?.event?.startTimeLabel || '',
-          startTime: heroContent?.event?.startTime || '',
-        },
+        secondaryCtas: (heroContent.secondaryCtas || []).map((row) => ({
+          label: row?.label || '',
+          href: row?.href || '',
+          icon: row?.icon || '',
+          buttonColor: row?.buttonColor || '',
+          buttonTextColor: row?.buttonTextColor || '',
+        })),
+        statIconSize: Number(heroContent?.statIconSize || 26),
         stats: (heroContent.stats || []).map((row) => ({
           value: row?.value || '',
           label: row?.label || '',
@@ -888,30 +914,35 @@ export function AdminSettingsView() {
       const next = updated?.homeHeroContent;
       if (next && typeof next === 'object') {
         const nextStatsRaw = Array.isArray(next.stats) ? next.stats : [];
-        const nextStatsThree = [0, 1, 2].map((i) => ({
+        const nextStatsFour = [0, 1, 2, 3].map((i) => ({
           value: nextStatsRaw[i]?.value != null ? String(nextStatsRaw[i].value) : '',
           label: nextStatsRaw[i]?.label != null ? String(nextStatsRaw[i].label) : '',
           icon: nextStatsRaw[i]?.icon != null ? String(nextStatsRaw[i].icon) : '',
         }));
+        const nextSecondary = Array.isArray(next.secondaryCtas) ? next.secondaryCtas : [];
         setHeroContent({
+          badge: next.badge || '',
           headline: next.headline || '',
+          headlineAccent: next.headlineAccent || '',
           description: next.description || '',
           cta: {
             label: next?.cta?.label || '',
             href: next?.cta?.href || '',
+            icon: next?.cta?.icon || '',
             buttonColor: next?.cta?.buttonColor || '',
             buttonTextColor: next?.cta?.buttonTextColor || '',
-            align: next?.cta?.align || '',
           },
-          event: {
-            startDateLabel: next?.event?.startDateLabel || '',
-            startDate: next?.event?.startDate || '',
-            startTimeLabel: next?.event?.startTimeLabel || '',
-            startTime: next?.event?.startTime || '',
-          },
-          stats: nextStatsThree,
+          secondaryCtas: nextSecondary.slice(0, 5).map((item) => ({
+            label: item?.label != null ? String(item.label) : '',
+            href: item?.href != null ? String(item.href) : '',
+            icon: item?.icon != null ? String(item.icon) : '',
+            buttonColor: item?.buttonColor != null ? String(item.buttonColor) : '',
+            buttonTextColor: item?.buttonTextColor != null ? String(item.buttonTextColor) : '',
+          })),
+          statIconSize: Number.isFinite(Number(next?.statIconSize)) ? Number(next.statIconSize) : 26,
+          stats: nextStatsFour,
         });
-        setVisibleStatsCount(Math.max(1, nextStatsThree.filter((s) => s.label || s.value || s.icon).length));
+        setVisibleStatsCount(Math.max(1, nextStatsFour.filter((s) => s.label || s.value || s.icon).length));
       }
       toast.success('Home hero content updated');
     } catch (error) {
@@ -1794,15 +1825,18 @@ export function AdminSettingsView() {
       <HeroTextCard heroContent={heroContent} onFieldChange={updateHeroField} />
       <EventAndStatsCard
         heroContent={heroContent}
-        updateHeroEventField={updateHeroEventField}
         updateHeroStat={updateHeroStat}
+        onStatIconSizeChange={(value) =>
+          setHeroContent((prev) => ({
+            ...prev,
+            statIconSize: Math.max(16, Math.min(56, Number(value) || 26)),
+          }))
+        }
+        onUploadStatIcon={handleUploadHeroStatIcon}
+        uploadingStatIconIndex={heroStatIconUploadingIndex}
         visibleStatsCount={visibleStatsCount}
         addVisibleStatRow={addVisibleStatRow}
         removeVisibleStatRow={removeVisibleStatRow}
-        emojiPickerStatIndex={emojiPickerStatIndex}
-        openEmojiPicker={openEmojiPicker}
-        closeEmojiPicker={closeEmojiPicker}
-        chooseStatEmoji={chooseStatEmoji}
       />
       <CtaButtonCard heroContent={heroContent} setHeroContent={setHeroContent} />
 

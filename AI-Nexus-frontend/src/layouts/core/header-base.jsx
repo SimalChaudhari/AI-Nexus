@@ -94,7 +94,7 @@ export function HeaderBase({
   const isDashboardRoute = pathname?.startsWith('/dashboard');
   const isHomeRoute = pathname === '/home' || pathname === '/';
   const isCustomerFacingRoute = !isAdminRoute && !isDashboardRoute;
-  /** Home + wide desktop: transparent header over hero — white menu until scroll */
+  /** Home + wide desktop: transparent header over hero — secondary nav text until scroll */
   const homeNavLightOnHero =
     isHomeRoute && isCustomerFacingRoute && !headerScrolled && !isHomeNarrowSolidHeader;
   // Show settings gear and other enabled slot utilities on all routes (e.g. /learning, catalog pages).
@@ -142,7 +142,7 @@ export function HeaderBase({
           color:
             isCustomerFacingRoute && isHomeRoute
               ? homeNavLightOnHero
-                ? 'common.white'
+                ? 'secondary.main'
                 : 'text.primary'
               : isCustomerFacingRoute
                 ? 'common.white'
@@ -383,7 +383,7 @@ export function HeaderBase({
                   ml: 0.5,
                   color: isCustomerFacingRoute
                     ? homeNavLightOnHero
-                      ? 'common.white'
+                      ? 'secondary.main'
                       : 'common.black'
                     : 'inherit',
                   [theme.breakpoints.up(layoutQuery)]: { display: 'none' },
