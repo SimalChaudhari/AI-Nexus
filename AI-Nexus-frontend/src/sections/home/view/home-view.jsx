@@ -44,10 +44,11 @@ export function HomeView() {
       {/* <HomeCeoLaunchSection /> */}
 
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
-        <HomeCardsSection />
         {/* <HomeCounterSection /> */}
         {/* <HomeCommunitiesSection /> */}
         <HomeJoinSection />
+        <HomeCardsSection />
+
         <HomeCurriculumSection />
         <HomeProgrammeFeesSection />
         <HomeTestimonialsSection />
