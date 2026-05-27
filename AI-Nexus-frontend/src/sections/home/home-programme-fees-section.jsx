@@ -24,6 +24,14 @@ function resolveAssetUrl(url) {
   return `${base}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
+function splitPricePair(rawPrice) {
+  const value = String(rawPrice || '').trim();
+  if (!value.includes('/')) return null;
+  const [left, right] = value.split('/').map((part) => String(part || '').trim());
+  if (!left || !right) return null;
+  return { left, right };
+}
+
 // ----------------------------------------------------------------------
 
 export function HomeProgrammeFeesSection() {
@@ -83,7 +91,9 @@ export function HomeProgrammeFeesSection() {
           }}
         >
           <Stack spacing={0}>
-            {tiers.map((tier, index) => (
+            {tiers.map((tier, index) => {
+              const splitPrice = splitPricePair(tier.price);
+              return (
               <Box key={`fee-tier-${index}`}>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
@@ -122,17 +132,48 @@ export function HomeProgrammeFeesSection() {
                   </Box>
 
                   <Box sx={{ flexShrink: 0, textAlign: { xs: 'left', sm: 'right' }, minWidth: { sm: 200 } }}>
-                    <Typography
-                      variant="h4"
-                      sx={{
-                        fontWeight: 700,
-                        lineHeight: 1.1,
-                        color: tier.priceVariant === 'default' ? 'text.primary' : 'primary.main',
-                        fontSize: { xs: '1.75rem', md: '2.125rem' },
-                      }}
-                    >
-                      {tier.price}
-                    </Typography>
+                    {splitPrice ? (
+                      <Typography
+                        variant="h4"
+                        sx={{
+                          fontWeight: 800,
+                          lineHeight: 1.1,
+                          color: 'error.main',
+                          fontSize: { xs: '1.75rem', md: '2.125rem' },
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            textDecoration: 'line-through',
+                            textDecorationThickness: '2px',
+                            textDecorationColor: 'common.black',
+                            opacity: 0.95,
+                          }}
+                        >
+                          {splitPrice.left}
+                        </Box>
+                        <Box component="span" sx={{ px: 0.6, color: 'error.main' }}>
+                          /
+                        </Box>
+                        <Box component="span" sx={{ color: 'error.main' }}>
+                          {splitPrice.right}
+                        </Box>
+                      </Typography>
+                    ) : (
+                      <Typography
+                        variant="h4"
+                        sx={{
+                          fontWeight: 700,
+                          lineHeight: 1.1,
+                          color: tier.priceVariant === 'default' ? 'text.primary' : 'primary.main',
+                          fontSize: { xs: '1.75rem', md: '2.125rem' },
+                        }}
+                      >
+                        {tier.price}
+                      </Typography>
+                    )}
                     {tier.priceNote ? (
                       <Typography
                         variant="caption"
@@ -145,7 +186,8 @@ export function HomeProgrammeFeesSection() {
                 </Stack>
                 {index < tiers.length - 1 ? <Divider /> : null}
               </Box>
-            ))}
+              );
+            })}
           </Stack>
 
           <Stack spacing={2} sx={{ mt: 3 }}>
