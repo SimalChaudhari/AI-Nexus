@@ -15,94 +15,185 @@ import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 import {
   hasProgrammeStructureContent,
+  PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS,
   resolveProgrammeStructureContent,
 } from './programme-structure-defaults';
 
 // ----------------------------------------------------------------------
 
-/** Same horizontal inset as header logo ↔ Sign In (header-base.jsx container). */
-const HEADER_CONTENT_PX = { xs: 0, sm: 2, md: 4, lg: 6 };
+const HEADER_CONTENT_PX = { xs: 2, sm: 2, md: 4, lg: 6 };
 
-/** Reference mockup: pale blue → purple → soft gold connector */
-const TIMELINE_LINE =
-  'linear-gradient(90deg, #93c5fd 0%, #c4b5fd 38%, #e9d5ff 58%, #fde68a 100%)';
+const RED = '#e63946';
+const NAVY = '#0f2744';
+const DESC_COLOR = '#6b7c8f';
+const LINE_COLOR = '#c5cdd6';
+const MID_DOT = '#b8c2cc';
 
-/** Reference: purple/blue top-left → gold bottom-right */
-const NODE_GRADIENT =
-  'linear-gradient(145deg, #4338ca 0%, #6d28d9 32%, #9333ea 52%, #eab308 100%)';
+const NODE_SIZE = { xs: 64, md: 72 };
+const ICON_SIZE = { xs: 28, md: 32 };
+const TRACK_H = { xs: 64, md: 72 };
 
-const EYEBROW_GRADIENT =
-  'linear-gradient(90deg, #2563eb 0%, #7c3aed 48%, #eab308 100%)';
+function phaseIconColor(index) {
+  return index % 2 === 0 ? RED : NAVY;
+}
 
-const PHASE_LABEL = '#e63946';
-const TITLE_COLOR = '#0f2744';
-const DESC_COLOR = '#5b6b7c';
+function isLikelyImagePath(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  if (/^https?:\/\//i.test(s) || s.startsWith('/')) return true;
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(s);
+}
 
-const NODE_PX = { xs: 52, md: 64 };
-const TRACK_H = { xs: 52, md: 64 };
-const LINE_TOP = { xs: 26, md: 32 };
+function resolvePhaseIcon(phase, index) {
+  const custom = String(phase?.icon || '').trim();
+  if (custom) return custom;
+  return (
+    PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS[index % PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS.length] ||
+    'solar:star-bold'
+  );
+}
 
-function PhaseNode({ index }) {
+function JourneyHeading({ heading, underlineWord }) {
+  const text = String(heading || '').trim() || 'Your AI Fluency Journey';
+  const accent = String(underlineWord || 'Fluency').trim();
+  const idx = accent ? text.indexOf(accent) : -1;
+
+  if (idx < 0) {
+    return (
+      <Typography
+        component="h2"
+        variants={varFade({ distance: 16 }).inUp}
+        sx={{
+          m: 0,
+          fontWeight: 700,
+          fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+          lineHeight: 1.25,
+          color: NAVY,
+          letterSpacing: -0.3,
+        }}
+      >
+        {text}
+      </Typography>
+    );
+  }
+
+  const before = text.slice(0, idx);
+  const word = text.slice(idx, idx + accent.length);
+  const after = text.slice(idx + accent.length);
+
+  return (
+    <Typography
+      component="h2"
+      variants={varFade({ distance: 16 }).inUp}
+      sx={{
+        m: 0,
+        fontWeight: 700,
+        fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+        lineHeight: 1.25,
+        color: NAVY,
+        letterSpacing: -0.3,
+      }}
+    >
+      {before}
+      <Box
+        component="span"
+        sx={{
+          position: 'relative',
+          display: 'inline-block',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {word}
+        <Box
+          component="span"
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bottom: { xs: -4, md: -6 },
+            width: '72%',
+            minWidth: 28,
+            height: { xs: 3, md: 4 },
+            borderRadius: 999,
+            bgcolor: RED,
+          }}
+        />
+      </Box>
+      {after}
+    </Typography>
+  );
+}
+
+function StepIconCircle({ index, icon, isActive }) {
+  const color = phaseIconColor(index);
+  const iconValue = String(icon || '').trim();
+  const isImage = isLikelyImagePath(iconValue);
+
   return (
     <Box
       sx={{
-        width: NODE_PX,
-        height: NODE_PX,
+        width: NODE_SIZE,
+        height: NODE_SIZE,
         borderRadius: '50%',
+        bgcolor: '#ffffff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: NODE_GRADIENT,
-        boxShadow: '0 4px 16px rgba(79, 70, 229, 0.22)',
         flexShrink: 0,
         position: 'relative',
         zIndex: 2,
+        boxShadow: '0 10px 28px rgba(15, 39, 68, 0.1)',
+        border: isActive ? `2px solid ${RED}` : '2px solid transparent',
       }}
     >
-      <Typography
-        component="span"
-        sx={{
-          color: '#ffffff',
-          fontWeight: 700,
-          fontSize: { xs: '1.2rem', md: '1.35rem' },
-          lineHeight: 1,
-        }}
-      >
-        {index + 1}
-      </Typography>
+      {isImage ? (
+        <Box
+          component="img"
+          src={iconValue}
+          alt=""
+          sx={{
+            width: ICON_SIZE,
+            height: ICON_SIZE,
+            objectFit: 'contain',
+          }}
+        />
+      ) : (
+        <Iconify icon={iconValue} width={ICON_SIZE} sx={{ color }} />
+      )}
     </Box>
   );
 }
 
-function PhaseTextBlock({ phase, index, showTrophy }) {
-  const label = String(phase?.label || '').trim() || `Phase ${index + 1}`;
+function StepTextBlock({ phase, index }) {
   const title = String(phase?.title || '').trim();
   const descriptionHtml = String(phase?.description || '');
   const hasDescription = !isEffectivelyEmptyHtml(descriptionHtml);
+  const stepNumber = index + 1;
 
   return (
     <Stack
-      spacing={0.5}
+      spacing={0.75}
       alignItems="center"
       sx={{
         textAlign: 'center',
         width: 1,
-        maxWidth: { xs: 260, md: '100%' },
-        px: { md: 0.5 },
+        maxWidth: { xs: 280, md: '100%' },
+        px: { xs: 0.5, md: 0.75 },
         mx: 'auto',
-        pt: { xs: 2.5, md: 3 },
+        pt: { xs: 1.75, md: 2 },
       }}
     >
       <Typography
         component="span"
         sx={{
-          color: PHASE_LABEL,
+          color: NAVY,
           fontWeight: 700,
-          fontSize: { xs: '0.7rem', md: '0.75rem' },
-          lineHeight: 1.2,
+          fontSize: { xs: '0.95rem', md: '1rem' },
+          lineHeight: 1,
         }}
       >
-        {label}
+        {stepNumber}
       </Typography>
       {title ? (
         <Typography
@@ -110,9 +201,9 @@ function PhaseTextBlock({ phase, index, showTrophy }) {
           sx={{
             m: 0,
             fontWeight: 700,
-            color: TITLE_COLOR,
-            lineHeight: 1.35,
-            fontSize: { xs: '0.9rem', md: '0.9375rem' },
+            color: NAVY,
+            lineHeight: 1.3,
+            fontSize: { xs: '0.9rem', md: '0.95rem' },
           }}
         >
           {title}
@@ -124,18 +215,14 @@ function PhaseTextBlock({ phase, index, showTrophy }) {
           sx={{
             typography: 'body2',
             color: DESC_COLOR,
-            lineHeight: 1.55,
+            lineHeight: 1.5,
             fontSize: { xs: '0.75rem', md: '0.8125rem' },
             fontWeight: 400,
+            maxWidth: 168,
             '& p': { m: 0, mb: 0.25, '&:last-child': { mb: 0 } },
             '& strong, & b': { fontWeight: 600, color: DESC_COLOR },
           }}
         />
-      ) : null}
-      {showTrophy ? (
-        <Box sx={{ pt: 0.75, color: '#eab308', lineHeight: 0 }}>
-          <Iconify icon="solar:cup-star-bold" width={18} />
-        </Box>
       ) : null}
     </Stack>
   );
@@ -145,38 +232,51 @@ function DesktopTimeline({ phases }) {
   const count = phases.length;
   if (!count) return null;
 
-  const lineInset = `${(50 / count).toFixed(2)}%`;
+  const lineInsetPct = (50 / count).toFixed(4);
 
   return (
-    <Box
-      sx={{
-        width: 1,
-        position: 'relative',
-      }}
-    >
+    <Box sx={{ width: 1, position: 'relative', pt: 0.5 }}>
       <Box
         aria-hidden
         sx={{
           position: 'absolute',
-          top: LINE_TOP,
-          left: lineInset,
-          right: lineInset,
-          height: 2,
-          transform: 'translateY(-50%)',
-          borderRadius: 999,
-          background: TIMELINE_LINE,
+          top: { xs: 32, md: 36 },
+          left: `${lineInsetPct}%`,
+          right: `${lineInsetPct}%`,
+          height: 0,
+          borderTop: `2px dashed ${LINE_COLOR}`,
           zIndex: 0,
+          pointerEvents: 'none',
         }}
       />
+
+      {Array.from({ length: count - 1 }).map((_, gapIndex) => (
+        <Box
+          key={`mid-${gapIndex}`}
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            top: { xs: 32, md: 36 },
+            left: `${(((gapIndex + 1) / count) * 100).toFixed(4)}%`,
+            transform: 'translate(-50%, -50%)',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: MID_DOT,
+            zIndex: 1,
+            pointerEvents: 'none',
+          }}
+        />
+      ))}
 
       <Box
         sx={{
           display: 'grid',
           gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
-          columnGap: { xs: 0.5, md: 1, lg: 1.5 },
+          columnGap: { xs: 0.5, md: 1 },
           alignItems: 'start',
           position: 'relative',
-          zIndex: 1,
+          zIndex: 2,
         }}
       >
         {phases.map((phase, index) => (
@@ -190,13 +290,13 @@ function DesktopTimeline({ phases }) {
                 justifyContent: 'center',
               }}
             >
-              <PhaseNode index={index} />
+              <StepIconCircle
+                index={index}
+                icon={resolvePhaseIcon(phase, index)}
+                isActive={index === 0}
+              />
             </Box>
-            <PhaseTextBlock
-              phase={phase}
-              index={index}
-              showTrophy={index === count - 1}
-            />
+            <StepTextBlock phase={phase} index={index} />
           </Stack>
         ))}
       </Box>
@@ -206,15 +306,15 @@ function DesktopTimeline({ phases }) {
 
 function MobileTimeline({ phases }) {
   return (
-    <Stack spacing={3.5} sx={{ width: 1, maxWidth: 340, mx: 'auto' }}>
+    <Stack spacing={4} sx={{ width: 1, maxWidth: 360, mx: 'auto' }}>
       {phases.map((phase, index) => (
-        <Stack key={phase.id || `phase-${index}`} spacing={1.5} alignItems="center">
-          <PhaseNode index={index} />
-          <PhaseTextBlock
-            phase={phase}
+        <Stack key={phase.id || `phase-${index}`} spacing={0} alignItems="center">
+          <StepIconCircle
             index={index}
-            showTrophy={index === phases.length - 1}
+            icon={resolvePhaseIcon(phase, index)}
+            isActive={index === 0}
           />
+          <StepTextBlock phase={phase} index={index} />
         </Stack>
       ))}
     </Stack>
@@ -250,24 +350,31 @@ export function HomeProgrammeStructureSection() {
       String(row?.label || '').trim() ||
       !isEffectivelyEmptyHtml(row?.description)
   );
-  if (
-    !phases.length &&
-    !String(content.heading || '').trim() &&
-    !String(content.eyebrow || '').trim()
-  ) {
-    return null;
-  }
 
   const eyebrow = String(content.eyebrow || '').trim();
   const heading = String(content.heading || '').trim();
+  const headingUnderlineWord = String(content.headingUnderlineWord || 'Fluency').trim();
+
+  if (!phases.length && !heading && !eyebrow) return null;
 
   return (
     <Box
       component="section"
       sx={{
-        py: { xs: 5, md: 7 },
-        bgcolor: 'grey.200',
+        position: 'relative',
+        py: { xs: 6, md: 8 },
         overflow: 'hidden',
+        background: 'linear-gradient(180deg, #f8fafc 0%, #eef4fa 48%, #f8fafc 100%)',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          backgroundImage: `
+            radial-gradient(ellipse 70% 55% at 0% 0%, rgba(147, 197, 253, 0.14), transparent 68%),
+            radial-gradient(ellipse 55% 45% at 100% 100%, rgba(147, 197, 253, 0.1), transparent 70%)
+          `,
+        },
       }}
     >
       <DashboardContent
@@ -277,14 +384,16 @@ export function HomeProgrammeStructureSection() {
           width: 1,
           maxWidth: '100%',
           px: HEADER_CONTENT_PX,
+          position: 'relative',
+          zIndex: 1,
         }}
       >
-        <Stack spacing={{ xs: 3.5, md: 4.5 }} alignItems="center" sx={{ width: 1 }}>
+        <Stack spacing={{ xs: 4, md: 5 }} alignItems="center" sx={{ width: 1 }}>
           {(eyebrow || heading) && (
             <Stack
-              spacing={1}
+              spacing={eyebrow ? 1 : 0}
               alignItems="center"
-              sx={{ textAlign: 'center', maxWidth: 760, px: 1 }}
+              sx={{ textAlign: 'center', maxWidth: 720, px: 1 }}
             >
               {eyebrow ? (
                 <Typography
@@ -292,34 +401,19 @@ export function HomeProgrammeStructureSection() {
                   variants={varFade({ distance: 12 }).inUp}
                   sx={{
                     m: 0,
-                    fontWeight: 800,
-                    letterSpacing: { xs: 1.5, md: 2 },
+                    fontWeight: 700,
+                    letterSpacing: 1.5,
                     textTransform: 'uppercase',
-                    fontSize: { xs: '0.65rem', md: '0.72rem' },
-                    background: EYEBROW_GRADIENT,
-                    backgroundClip: 'text',
-                    WebkitBackgroundClip: 'text',
-                    color: 'transparent',
+                    fontSize: '0.7rem',
+                    color: NAVY,
+                    opacity: 0.72,
                   }}
                 >
                   {eyebrow}
                 </Typography>
               ) : null}
               {heading ? (
-                <Typography
-                  component="h2"
-                  variants={varFade({ distance: 16 }).inUp}
-                  sx={{
-                    m: 0,
-                    fontWeight: 700,
-                    fontSize: { xs: '1.6rem', sm: '1.9rem', md: '2.15rem' },
-                    lineHeight: 1.2,
-                    color: TITLE_COLOR,
-                    letterSpacing: -0.3,
-                  }}
-                >
-                  {heading}
-                </Typography>
+                <JourneyHeading heading={heading} underlineWord={headingUnderlineWord} />
               ) : null}
             </Stack>
           )}

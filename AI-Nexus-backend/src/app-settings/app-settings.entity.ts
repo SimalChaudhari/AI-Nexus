@@ -112,11 +112,13 @@ export type HomeTestimonialsContent = {
 export type HomeProgrammeStructureContent = {
   eyebrow?: string;
   heading?: string;
+  headingUnderlineWord?: string;
   phases?: Array<{
     id?: string;
     label?: string;
     title?: string;
     description?: string;
+    icon?: string;
   }>;
 };
 

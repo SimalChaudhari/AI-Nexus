@@ -123,11 +123,14 @@ function transformProgrammeStructureContent(source) {
   return {
     eyebrow: source.eyebrow != null ? String(source.eyebrow) : '',
     heading: source.heading != null ? String(source.heading) : '',
+    headingUnderlineWord:
+      source.headingUnderlineWord != null ? String(source.headingUnderlineWord) : '',
     phases: rawPhases.slice(0, 8).map((row, index) => ({
       id: row?.id != null ? String(row.id) : '',
       label: String(row?.label ?? '').trim() || `Phase ${index + 1}`,
       title: row?.title != null ? String(row.title) : '',
       description: row?.description != null ? String(row.description) : '',
+      icon: normalizeMaybeAssetIcon(row?.icon),
     })),
   };
 }
@@ -595,6 +598,18 @@ export const appSettingsService = {
 
   async updateHomeProgrammeStructureContent(payload) {
     const response = await axios.put('/app-settings/home-programme-structure-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeProgrammeStructurePhaseIcon(phaseId, file) {
+    const formData = new FormData();
+    formData.append('icon', file);
+    const response = await axios.post(
+      `/app-settings/home-programme-structure-phase-icon/${phaseId}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

@@ -236,6 +236,8 @@ export function AdminSettingsView() {
   );
   const [programmeStructureContentSubmitting, setProgrammeStructureContentSubmitting] =
     useState(false);
+  const [programmeStructurePhaseIconUploadingId, setProgrammeStructurePhaseIconUploadingId] =
+    useState(null);
   const [fundingEligibilityContent, setFundingEligibilityContent] = useState(() =>
     resolveFundingEligibilityContent(null)
   );
@@ -1137,6 +1139,28 @@ export function AdminSettingsView() {
       throw error;
     } finally {
       setProgrammeStructureContentSubmitting(false);
+    }
+  };
+
+  const handleUploadProgrammeStructurePhaseIcon = async (phaseId, file) => {
+    const id = String(phaseId || '').trim();
+    if (!id) {
+      toast.error('Save the phase first, then upload an image');
+      return null;
+    }
+    try {
+      setProgrammeStructurePhaseIconUploadingId(id);
+      const updated = await appSettingsService.uploadHomeProgrammeStructurePhaseIcon(id, file);
+      setProgrammeStructureContent(
+        resolveProgrammeStructureContent(updated?.homeProgrammeStructureContent)
+      );
+      toast.success('Phase icon uploaded');
+      return updated;
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload phase icon');
+      throw error;
+    } finally {
+      setProgrammeStructurePhaseIconUploadingId(null);
     }
   };
 
@@ -2048,6 +2072,8 @@ export function AdminSettingsView() {
       setContent={setProgrammeStructureContent}
       submitting={programmeStructureContentSubmitting}
       onSave={handleSaveProgrammeStructureContent}
+      onUploadPhaseIcon={handleUploadProgrammeStructurePhaseIcon}
+      uploadingPhaseIconId={programmeStructurePhaseIconUploadingId}
     />
   );
 

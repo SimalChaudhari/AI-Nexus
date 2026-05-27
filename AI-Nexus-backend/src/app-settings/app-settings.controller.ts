@@ -517,6 +517,48 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Post('home-programme-structure-phase-icon/:phaseId')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload icon/image for a programme structure journey phase (by phase id)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        icon: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('icon', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadHomeProgrammeStructurePhaseIcon(
+    @Res() response: Response,
+    @Param('phaseId') phaseId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadHomeProgrammeStructurePhaseIcon(
+      phaseId,
+      file
+    );
+
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('home-funding-eligibility-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

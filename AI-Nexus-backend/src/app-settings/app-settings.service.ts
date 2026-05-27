@@ -133,11 +133,13 @@ type HomeTestimonialsContentPayload = {
 type HomeProgrammeStructureContentPayload = {
   eyebrow?: string;
   heading?: string;
+  headingUnderlineWord?: string;
   phases?: Array<{
     id?: string;
     label?: string;
     title?: string;
     description?: string;
+    icon?: string;
   }>;
 };
 
@@ -241,6 +243,8 @@ const PROGRAMME_STRUCTURE_EYEBROW_MAX = 80;
 const PROGRAMME_STRUCTURE_HEADING_MAX = 160;
 const PROGRAMME_STRUCTURE_PHASE_LABEL_MAX = 40;
 const PROGRAMME_STRUCTURE_PHASE_TITLE_MAX = 120;
+const PROGRAMME_STRUCTURE_HEADING_UNDERLINE_MAX = 40;
+const PROGRAMME_STRUCTURE_PHASE_ICON_MAX = 120;
 const PROGRAMME_STRUCTURE_PHASES_MAX = 8;
 const FUNDING_ELIGIBILITY_EYEBROW_MAX = 80;
 const FUNDING_ELIGIBILITY_HEADING_MAX = 160;
@@ -917,6 +921,10 @@ export class AppSettingsService {
     return {
       eyebrow: this.cleanText(source.eyebrow, PROGRAMME_STRUCTURE_EYEBROW_MAX),
       heading: this.cleanText(source.heading, PROGRAMME_STRUCTURE_HEADING_MAX),
+      headingUnderlineWord: this.cleanText(
+        source.headingUnderlineWord,
+        PROGRAMME_STRUCTURE_HEADING_UNDERLINE_MAX
+      ),
       phases: rawPhases.slice(0, PROGRAMME_STRUCTURE_PHASES_MAX).map((row: any, index: number) => {
         const labelRaw = this.cleanText(row?.label, PROGRAMME_STRUCTURE_PHASE_LABEL_MAX);
         return {
@@ -924,6 +932,9 @@ export class AppSettingsService {
           label: labelRaw || `Phase ${index + 1}`,
           title: this.cleanText(row?.title, PROGRAMME_STRUCTURE_PHASE_TITLE_MAX),
           description: this.cleanText(row?.description),
+          icon:
+            this.toStoredUploadPath(row?.icon) ||
+            this.cleanText(row?.icon, PROGRAMME_STRUCTURE_PHASE_ICON_MAX),
         };
       }),
     };
@@ -1313,6 +1324,41 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Home programme structure content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadHomeProgrammeStructurePhaseIcon(
+    phaseId: string,
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const id = this.requireTestimonialsItemId(phaseId, 'journey phase');
+
+    const settings = await this.getSettings();
+    const existing = this.sanitizeHomeProgrammeStructureContent(
+      settings.homeProgrammeStructureContent || {}
+    );
+    const phases = [...(existing.phases || [])];
+    const index = phases.findIndex((row) => row.id === id);
+    if (index < 0) {
+      throw new NotFoundException('Journey phase not found');
+    }
+
+    const folder = `home-programme-structure-icons/${id}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'icon',
+    });
+
+    phases[index] = { ...phases[index], icon: relativeUrl };
+    settings.homeProgrammeStructureContent = this.sanitizeHomeProgrammeStructureContent({
+      ...existing,
+      phases,
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Journey phase icon uploaded successfully',
       settings: saved,
     };
   }
