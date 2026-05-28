@@ -239,7 +239,7 @@ export function HomeEmployeeSection() {
 
   const heroFadeOverlay = {
     xs: `linear-gradient(180deg, ${heroBase} 0%, ${heroBase} 36%, ${alpha(heroBase, 0.94)} 50%, ${heroTint} 64%, transparent 88%)`,
-    md: `linear-gradient(90deg, ${heroBase} 0%, ${heroBase} 24%, ${alpha(heroBase, 0.97)} 36%, ${alpha(primary.lighter, 0.75)} 48%, ${alpha(primary.lighter, 0.35)} 58%, ${alpha(primary.lighter, 0.1)} 68%, transparent 78%)`,
+    md: `linear-gradient(90deg, ${heroBase} 0%, ${heroBase} 21%, ${alpha(heroBase, 0.9)} 30%, ${alpha(heroBase, 0.55)} 39%, ${alpha(primary.lighter, 0.24)} 49%, ${alpha(primary.lighter, 0.08)} 58%, transparent 66%)`,
   };
 
   const heroSectionBg = `linear-gradient(135deg, ${heroBase} 0%, ${alpha(primary.lighter, 0.35)} 55%, ${alpha(primary.lighter, 0.18)} 100%)`;
@@ -264,11 +264,12 @@ export function HomeEmployeeSection() {
               position: 'absolute',
               top: 0,
               right: 0,
-              width: { xs: '100%', md: '68%' },
+              width: { md: '68%' },
               height: '100%',
+              display: { xs: 'none', md: 'block' },
               backgroundImage: `url(${heroSrc})`,
               backgroundSize: 'cover',
-              backgroundPosition: { xs: 'center 25%', md: '65% center' },
+              backgroundPosition: { md: '70% center', lg: '74% center' },
               backgroundRepeat: 'no-repeat',
             }}
           />
@@ -314,6 +315,35 @@ export function HomeEmployeeSection() {
             alignItems: 'center',
           }}
         >
+          {heroSrc ? (
+            <Box
+              component={m.div}
+              variants={varFade({ distance: 20 }).inUp}
+              sx={{
+                display: { xs: 'block', md: 'none' },
+                width: 1,
+                mb: 2.25,
+                borderRadius: 2,
+                overflow: 'hidden',
+                border: `1px solid ${alpha(primary.main, 0.18)}`,
+                boxShadow: `0 14px 34px ${alpha(primary.main, 0.16)}`,
+              }}
+            >
+              <Box
+                component="img"
+                src={heroSrc}
+                alt={heroPanelTitle || content.heading || 'Employee'}
+                sx={{
+                  width: 1,
+                  height: 220,
+                  objectFit: 'cover',
+                  objectPosition: 'center 30%',
+                  display: 'block',
+                }}
+              />
+            </Box>
+          ) : null}
+
           <Grid container alignItems="center" sx={{ width: 1 }}>
             <Grid xs={12} md={heroSrc ? 6.5 : 12}>
               <Stack spacing={2.5} sx={{ maxWidth: { xs: 1, md: 560 }, pr: { md: 2 } }}>
@@ -505,32 +535,6 @@ export function HomeEmployeeSection() {
                     mt: { xs: 1, md: 1.4 },
                   }}
                 >
-                  <Stack spacing={0.8} sx={{ mb: { xs: 2, md: 2.8 } }}>
-                    <Typography
-                      variant="overline"
-                      sx={{
-                        textAlign: 'center',
-                        color: 'primary.main',
-                        letterSpacing: 1.4,
-                        fontWeight: 700,
-                        fontSize: { xs: '0.66rem', md: '0.7rem' },
-                      }}
-                    >
-                      OUR PARTNERS
-                    </Typography>
-                    <Typography
-                      sx={{
-                        textAlign: 'center',
-                        color: 'text.primary',
-                        fontWeight: 700,
-                        lineHeight: 1.2,
-                        fontSize: { xs: '1.55rem', sm: '1.9rem' },
-                      }}
-                    >
-                      We work with the best partners
-                    </Typography>
-                  </Stack>
-
                   <Grid
                     container
                     spacing={{ xs: 1.2, md: 1.6 }}
@@ -542,12 +546,25 @@ export function HomeEmployeeSection() {
                           sx={{
                             height: { xs: 76, md: 92 },
                             borderRadius: 1.5,
-                            bgcolor: 'common.white',
-                            boxShadow: `0 8px 20px ${alpha(primary.main, 0.12)}`,
+                            bgcolor: alpha('#fff', 0.82),
+                            border: `1px solid ${alpha(primary.main, 0.12)}`,
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: `0 12px 28px ${alpha(primary.main, 0.1)}`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             px: { xs: 0.4, md: 0.6 },
+                            transition: (t) =>
+                              t.transitions.create(['transform', 'box-shadow', 'border-color'], {
+                                duration: t.transitions.duration.shorter,
+                              }),
+                            '@media (hover: hover) and (pointer: fine)': {
+                              '&:hover': {
+                                transform: 'translateY(-4px)',
+                                borderColor: alpha(primary.main, 0.28),
+                                boxShadow: `0 16px 34px ${alpha(primary.main, 0.16)}`,
+                              },
+                            },
                           }}
                         >
                           <Box
