@@ -273,13 +273,7 @@ export function CurriculumModulesList({ modules = [], courses = [], courseIds = 
     });
   }, [curriculumRows]);
 
-  if (!curriculumRows.length) {
-    return (
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        No courses have been added to the curriculum yet.
-      </Typography>
-    );
-  }
+
 
   const leftColumn = curriculumRows.filter((_, index) => index % 2 === 0);
   const rightColumn = curriculumRows.filter((_, index) => index % 2 === 1);

@@ -137,17 +137,11 @@ export function HomeCurriculumSection() {
         ) : null}
 
         <Box component={m.div} variants={varFade({ distance: 24 }).inUp}>
-          {loading ? (
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Loading curriculum...
-            </Typography>
-          ) : (
-            <CurriculumModulesList
-              modules={modules}
-              courses={courses}
-              courseIds={courseIds}
-            />
-          )}
+          <CurriculumModulesList
+            modules={modules}
+            courses={courses}
+            courseIds={courseIds}
+          />
         </Box>
       </DashboardContent>
     </Box>
