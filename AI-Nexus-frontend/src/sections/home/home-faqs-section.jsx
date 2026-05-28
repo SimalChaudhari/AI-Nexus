@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -49,7 +50,7 @@ export function HomeFaqsSection() {
     >
       <DashboardContent component={MotionViewport}>
         <Typography
-          component="h2"
+          component={m.h2}
           variants={varFade({ distance: 24 }).inUp}
           sx={{
             mb: { xs: 3, md: 4 },
@@ -63,7 +64,7 @@ export function HomeFaqsSection() {
           {pageHeading}
         </Typography>
 
-        <Box variants={varFade({ distance: 24 }).inUp}>
+        <Box component={m.div} variants={varFade({ distance: 24 }).inUp}>
           <FaqsList items={items} />
         </Box>
       </DashboardContent>

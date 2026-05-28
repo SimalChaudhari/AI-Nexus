@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -58,7 +59,7 @@ export function HomeCurriculumSection() {
       <DashboardContent component={MotionViewport}>
         {smallTitle ? (
           <Typography
-            component="p"
+            component={m.p}
             variants={varFade({ distance: 24 }).inUp}
             sx={{
               mb: 1.5,
@@ -75,7 +76,7 @@ export function HomeCurriculumSection() {
 
         {headline ? (
           <Typography
-            component="h2"
+            component={m.h2}
             variants={varFade({ distance: 24 }).inUp}
             sx={{
               mb: subtext ? 2 : { xs: 3, md: 4 },
@@ -91,6 +92,7 @@ export function HomeCurriculumSection() {
 
         {subtext ? (
           <Typography
+            component={m.p}
             variants={varFade({ distance: 24 }).inUp}
             sx={{
               mb: { xs: 3, md: 5 },
@@ -103,7 +105,7 @@ export function HomeCurriculumSection() {
           </Typography>
         ) : null}
 
-        <Box variants={varFade({ distance: 24 }).inUp}>
+        <Box component={m.div} variants={varFade({ distance: 24 }).inUp}>
           {loading ? (
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Loading curriculum...

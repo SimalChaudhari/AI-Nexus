@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -61,7 +62,7 @@ function JourneyHeading({ heading, underlineWord }) {
   if (idx < 0) {
     return (
       <Typography
-        component="h2"
+        component={m.h2}
         variants={varFade({ distance: 16 }).inUp}
         sx={{
           m: 0,
@@ -83,7 +84,7 @@ function JourneyHeading({ heading, underlineWord }) {
 
   return (
     <Typography
-      component="h2"
+      component={m.h2}
       variants={varFade({ distance: 16 }).inUp}
       sx={{
         m: 0,
@@ -397,7 +398,7 @@ export function HomeProgrammeStructureSection() {
             >
               {eyebrow ? (
                 <Typography
-                  component="p"
+                  component={m.p}
                   variants={varFade({ distance: 12 }).inUp}
                   sx={{
                     m: 0,
@@ -419,7 +420,7 @@ export function HomeProgrammeStructureSection() {
           )}
 
           {phases.length > 0 ? (
-            <Box variants={varFade({ distance: 20 }).inUp} sx={{ width: 1 }}>
+            <Box component={m.div} variants={varFade({ distance: 20 }).inUp} sx={{ width: 1 }}>
               {isMobile ? (
                 <MobileTimeline phases={phases} />
               ) : (

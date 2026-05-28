@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -318,6 +319,7 @@ export function HomeEmployeeSection() {
               <Stack spacing={2.5} sx={{ maxWidth: { xs: 1, md: 560 }, pr: { md: 2 } }}>
                 {content.eyebrow ? (
                   <Typography
+                    component={m.p}
                     variant="overline"
                     variants={varFade({ distance: 12 }).inUp}
                     sx={{
@@ -332,7 +334,7 @@ export function HomeEmployeeSection() {
 
                 {(content.heading || content.headingAccent) && (
                   <Typography
-                    component="h2"
+                    component={m.h2}
                     variants={varFade({ distance: 20 }).inUp}
                     sx={{
                       m: 0,
@@ -365,20 +367,21 @@ export function HomeEmployeeSection() {
                 )}
 
                 {content.subtitle ? (
-                  <RichTextContent
-                    html={content.subtitle}
-                    variants={varFade({ distance: 14 }).inUp}
-                    sx={{
-                      color: 'text.secondary',
-                      typography: 'body1',
-                      lineHeight: 1.75,
-                      maxWidth: 520,
-                      '& p': { m: 0 },
-                    }}
-                  />
+                  <Box component={m.div} variants={varFade({ distance: 14 }).inUp} sx={{ maxWidth: 520 }}>
+                    <RichTextContent
+                      html={content.subtitle}
+                      sx={{
+                        color: 'text.secondary',
+                        typography: 'body1',
+                        lineHeight: 1.75,
+                        '& p': { m: 0 },
+                      }}
+                    />
+                  </Box>
                 ) : null}
 
                 <Stack
+                  component={m.div}
                   direction={{ xs: 'column', sm: 'row' }}
                   spacing={1.5}
                   flexWrap="wrap"
@@ -403,6 +406,7 @@ export function HomeEmployeeSection() {
 
           {showHeroPanelText && heroSrc ? (
             <Stack
+              component={m.div}
               spacing={0.75}
               variants={varFade({ distance: 16 }).inUp}
               sx={{
@@ -471,6 +475,7 @@ export function HomeEmployeeSection() {
             <Stack spacing={3} alignItems="center">
               {content.benefitsLabel ? (
                 <Typography
+                  component={m.p}
                   variant="overline"
                   variants={varFade({ distance: 10 }).inUp}
                   sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 2 }}
@@ -482,6 +487,7 @@ export function HomeEmployeeSection() {
                 {benefits.map((row, index) => (
                   <Grid
                     key={`employee-benefit-${index}`}
+                    component={m.div}
                     xs={isNarrowBenefitGrid ? 12 : 6}
                     sm={6}
                     md={3}

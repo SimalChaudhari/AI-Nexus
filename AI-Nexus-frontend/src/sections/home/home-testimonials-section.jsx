@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -197,7 +198,7 @@ export function HomeTestimonialsSection() {
           <Stack spacing={2.5} alignItems="center" sx={{ maxWidth: 720, textAlign: 'center', px: 1 }}>
 
             {(lead || main) && (
-              <Box component="h2" variants={varFade({ distance: 20 }).inUp} sx={{ m: 0, lineHeight: 1.1 }}>
+              <Box component={m.h2} variants={varFade({ distance: 20 }).inUp} sx={{ m: 0, lineHeight: 1.1 }}>
                 {lead ? (
                   <Typography
                     component="span"
@@ -241,17 +242,19 @@ export function HomeTestimonialsSection() {
             )}
 
             {hasSubtitle ? (
+              <Box
+                component={m.div}
+                variants={varFade({ distance: 14 }).inUp}
+                sx={{ width: 1, maxWidth: 560, mx: 'auto' }}
+              >
               <RichTextContent
                 html={subtitleHtml}
-                variants={varFade({ distance: 14 }).inUp}
                 sx={{
                   typography: 'body1',
                   fontSize: '1rem',
                   lineHeight: 1.8,
                   color: 'text.secondary',
-                  maxWidth: 560,
                   textAlign: 'center',
-                  mx: 'auto',
                   overflow: 'visible',
                   '& img': {
                     maxWidth: '100%',
@@ -266,13 +269,19 @@ export function HomeTestimonialsSection() {
                   },
                 }}
               />
+              </Box>
             ) : null}
 
         
           </Stack>
 
           {testimonials.length > 0 ? (
-            <Stack spacing={3.5} sx={{ width: '100%' }}>
+            <Stack
+              component={m.div}
+              spacing={3.5}
+              variants={varFade({ distance: 20 }).inUp}
+              sx={{ width: '100%' }}
+            >
               <Box
                 sx={{
                   position: 'relative',

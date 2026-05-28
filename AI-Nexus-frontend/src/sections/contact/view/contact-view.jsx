@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -8,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { _mapContact } from 'src/_mock';
+import { varFade, MotionViewport } from 'src/components/animate';
 import { Iconify } from 'src/components/iconify';
 import { appSettingsService } from 'src/services/app-settings.service';
 
@@ -114,9 +116,9 @@ export function ContactSection() {
           bgcolor: 'background.default',
         }}
       >
-        <DashboardContent >
+        <DashboardContent component={MotionViewport}>
           <Grid container spacing={{ xs: 4, md: 3 }}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6} component={m.div} variants={varFade({ distance: 24 }).inUp}>
               <Stack
                 spacing={0}
                 sx={{
@@ -329,10 +331,10 @@ export function ContactSection() {
                 </Box>
               </Stack>
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6} component={m.div} variants={varFade({ distance: 24 }).inUp}>
               <ContactForm />
             </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} component={m.div} variants={varFade({ distance: 24 }).inUp}>
               <Box sx={{ mt: { xs: 1, md: 2 } }}>
                 <ContactMap contacts={mapContacts.length ? mapContacts : _mapContact} />
               </Box>

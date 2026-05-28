@@ -401,7 +401,7 @@ export function HomeEligibilityMembershipSection() {
           bgcolor: 'background.default',
         }}
       >
-        <DashboardContent variant="fullWidth" >
+        <DashboardContent variant="fullWidth" component={MotionViewport}>
           <Box
             component={m.div}
             variants={varFade({ distance: 20 }).inUp}
