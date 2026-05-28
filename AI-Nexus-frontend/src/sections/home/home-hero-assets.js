@@ -6,5 +6,3 @@ import heroMainImage from 'src/assets/home/hero.png';
 export const HOME_HERO_ASSETS = {
   main: heroMainImage,
 };
-
-export const HOME_HERO_FALLBACK_IMAGE = HOME_HERO_ASSETS.main;

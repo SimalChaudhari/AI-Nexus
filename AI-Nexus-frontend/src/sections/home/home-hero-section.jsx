@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -23,7 +24,7 @@ import {
 } from 'src/utils/membership-eligibility-sso';
 import { useAuthContext } from 'src/auth/hooks';
 
-import { HOME_HERO_FALLBACK_IMAGE, resolveHomeHeroData } from './home-hero-defaults';
+import { resolveHomeHeroData } from './home-hero-defaults';
 
 // ----------------------------------------------------------------------
 
@@ -48,7 +49,7 @@ function normalizeRichTextHtml(value) {
 
 function resolveHeroImageSrc(imageUrl) {
   const src = String(imageUrl || '').trim();
-  return src || HOME_HERO_FALLBACK_IMAGE;
+  return src;
 }
 
 function isExternalHref(href) {
@@ -82,10 +83,32 @@ function isLikelyImagePath(value) {
 }
 
 const HERO_IMAGE_WIDTH = '58%';
+const HERO_EASE = [0.19, 1, 0.22, 1];
+const HERO_IMAGE_ANIMATION = {
+  initial: { opacity: 0, scale: 1.012, filter: 'blur(6px)' },
+  animate: { opacity: 1, scale: 1, filter: 'blur(0px)' },
+  transition: { duration: 1.4, ease: HERO_EASE, delay: 0.08 },
+};
+const HERO_IMAGE_REVEAL_ANIMATION = {
+  initial: { clipPath: 'inset(0 0 0 100%)', opacity: 0.92 },
+  animate: { clipPath: 'inset(0 0 0 0)', opacity: 1 },
+  transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
+};
+const HERO_TEXT_ANIMATION = {
+  initial: { opacity: 0, y: -10, filter: 'blur(4px)' },
+  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  transition: { duration: 1.1, ease: HERO_EASE, delay: 0.68 },
+};
+const HERO_FOOTER_ANIMATION = {
+  initial: { opacity: 0.92, clipPath: 'inset(0 100% 0 0)', filter: 'blur(4px)' },
+  animate: { opacity: 1, clipPath: 'inset(0 0 0 0)', filter: 'blur(0px)' },
+  transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
+};
 
 /** Mobile-only hero visual — full-width card below copy. */
 function HeroMobileImage({ imageSrc }) {
   const src = resolveHeroImageSrc(imageSrc);
+  if (!src) return null;
 
   return (
     <Box
@@ -121,10 +144,15 @@ function HeroMobileImage({ imageSrc }) {
 /** Desktop: hero image right; left white fades into image. Hidden on mobile. */
 function HeroFullWidthBackdrop({ imageSrc }) {
   const src = resolveHeroImageSrc(imageSrc);
+  if (!src) return null;
 
   return (
     <Box
       aria-hidden
+      component={m.div}
+      initial={HERO_IMAGE_ANIMATION.initial}
+      animate={HERO_IMAGE_ANIMATION.animate}
+      transition={HERO_IMAGE_ANIMATION.transition}
       sx={{
         display: { xs: 'none', md: 'block' },
         position: 'absolute',
@@ -133,6 +161,7 @@ function HeroFullWidthBackdrop({ imageSrc }) {
         width: '100%',
         overflow: 'hidden',
         bgcolor: '#ffffff',
+        willChange: 'opacity, transform',
       }}
     >
       {/* Left copy area — pure white, soft fade at image seam */}
@@ -160,6 +189,10 @@ function HeroFullWidthBackdrop({ imageSrc }) {
       />
 
       <Box
+        component={m.div}
+        initial={HERO_IMAGE_REVEAL_ANIMATION.initial}
+        animate={HERO_IMAGE_REVEAL_ANIMATION.animate}
+        transition={HERO_IMAGE_REVEAL_ANIMATION.transition}
         sx={{
           position: 'absolute',
           top: { xs: 52, md: 76 },
@@ -685,7 +718,15 @@ export function HomeHeroSection() {
               pt: { md: 0 },
             }}
           >
-          <Grid container alignItems={{ xs: 'flex-start', md: 'flex-start' }} sx={{ width: '100%', maxWidth: '100%', m: 0 }}>
+          <Grid
+            component={m.div}
+            initial={HERO_TEXT_ANIMATION.initial}
+            animate={HERO_TEXT_ANIMATION.animate}
+            transition={HERO_TEXT_ANIMATION.transition}
+            container
+            alignItems={{ xs: 'flex-start', md: 'flex-start' }}
+            sx={{ width: '100%', maxWidth: '100%', m: 0, willChange: 'opacity, transform' }}
+          >
             <Grid xs={12} md={6} lg={5} sx={{ minWidth: 0, pr: { md: 2 }, maxWidth: { md: 'none' } }}>
               <Stack spacing={{ xs: 2, sm: 2.5, md: 3 }} sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}>
                 {hero.badge?.trim() ? (
@@ -784,12 +825,17 @@ export function HomeHeroSection() {
           </Box>
 
           <Box
+            component={m.div}
+            initial={HERO_FOOTER_ANIMATION.initial}
+            animate={HERO_FOOTER_ANIMATION.animate}
+            transition={HERO_FOOTER_ANIMATION.transition}
             sx={{
               position: 'relative',
               zIndex: 1,
               width: '100%',
               mt: { xs: 2.5, md: 'auto' },
               pt: { xs: 0, md: 6 },
+              willChange: 'opacity, transform',
             }}
           >
             <HeroStatsBar stats={hero.stats} iconSize={hero.statIconSize} />

@@ -1,5 +1,5 @@
-import { m } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { m, useInView } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -28,11 +28,32 @@ const RED = '#e63946';
 const NAVY = '#0f2744';
 const DESC_COLOR = '#6b7c8f';
 const LINE_COLOR = '#c5cdd6';
-const MID_DOT = '#b8c2cc';
 
 const NODE_SIZE = { xs: 64, md: 72 };
 const ICON_SIZE = { xs: 28, md: 32 };
-const TRACK_H = { xs: 64, md: 72 };
+const TRACK_H = { xs: 96, md: 108 };
+const TIMELINE_GRID_PT_PX = { xs: 20, md: 22 };
+const TIMELINE_LINE_TOP = {
+  xs: TIMELINE_GRID_PT_PX.xs + TRACK_H.xs / 2,
+  md: TIMELINE_GRID_PT_PX.md + TRACK_H.md / 2,
+};
+const MOBILE_TRACK_H_PX = 70;
+const MOBILE_LINE_TOP_PX = MOBILE_TRACK_H_PX / 2;
+const STEP_ADVANCE_INTERVAL_MS = 1600;
+const PROGRESS_TICK_MS = 60;
+
+const STEP_ANIMATION = {
+  hidden: { opacity: 0, y: 18 },
+  visible: (index) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+      ease: [0.22, 1, 0.36, 1],
+      delay: 0.08 + index * 0.08,
+    },
+  }),
+};
 
 function phaseIconColor(index) {
   return index % 2 === 0 ? RED : NAVY;
@@ -126,26 +147,56 @@ function JourneyHeading({ heading, underlineWord }) {
   );
 }
 
-function StepIconCircle({ index, icon, isActive }) {
+function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, compact = false }) {
   const color = phaseIconColor(index);
   const iconValue = String(icon || '').trim();
   const isImage = isLikelyImagePath(iconValue);
+  const gradientBorder = `linear-gradient(135deg, ${primaryColor || RED}, #7c3aed)`;
+  const iconColor = isCompleted || isActive ? primaryColor || RED : color;
 
   return (
     <Box
+      component={m.div}
+      animate={
+        isActive
+          ? {
+              y: [0, -3, 0],
+            }
+          : { y: 0 }
+      }
+      transition={
+        isActive
+          ? { duration: 2.4, ease: 'easeInOut', repeat: Infinity, repeatType: 'loop' }
+          : { duration: 0.25 }
+      }
       sx={{
-        width: NODE_SIZE,
-        height: NODE_SIZE,
-        borderRadius: '50%',
-        bgcolor: '#ffffff',
+        width: compact ? { xs: 50, md: 56 } : NODE_SIZE,
+        height: compact ? { xs: 50, md: 56 } : NODE_SIZE,
+        borderRadius: 3,
+        background: isActive
+          ? `linear-gradient(#ffffff, #ffffff) padding-box, ${gradientBorder} border-box`
+          : '#ffffff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
         position: 'relative',
         zIndex: 2,
-        boxShadow: '0 10px 28px rgba(15, 39, 68, 0.1)',
-        border: isActive ? `2px solid ${RED}` : '2px solid transparent',
+        border: isActive ? '2px solid transparent' : '1px solid rgba(15, 39, 68, 0.1)',
+        boxShadow: isActive
+          ? `0 0 0 1px rgba(124, 58, 237, 0.16), 0 12px 34px rgba(124, 58, 237, 0.18)`
+          : '0 10px 28px rgba(15, 39, 68, 0.1)',
+        transition: 'all 0.3s ease',
+        '&::after': isActive
+          ? {
+              content: '""',
+              position: 'absolute',
+              inset: -10,
+              borderRadius: 4,
+              background: `radial-gradient(circle at 50% 50%, ${primaryColor || RED}33, transparent 72%)`,
+              zIndex: -1,
+            }
+          : undefined,
       }}
     >
       {isImage ? (
@@ -160,13 +211,38 @@ function StepIconCircle({ index, icon, isActive }) {
           }}
         />
       ) : (
-        <Iconify icon={iconValue} width={ICON_SIZE} sx={{ color }} />
+        <Iconify icon={iconValue} width={ICON_SIZE} sx={{ color: iconColor }} />
       )}
+
+      {isCompleted ? (
+        <Box
+          component={m.span}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.25 }}
+          sx={{
+            position: 'absolute',
+            right: -6,
+            top: -6,
+            width: 22,
+            height: 22,
+            borderRadius: '50%',
+            bgcolor: '#ecfdf3',
+            color: '#16a34a',
+            border: '1px solid rgba(22, 163, 74, 0.25)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Iconify icon="solar:verified-check-bold" width={14} />
+        </Box>
+      ) : null}
     </Box>
   );
 }
 
-function StepTextBlock({ phase, index }) {
+function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, hideDescription = false }) {
   const title = String(phase?.title || '').trim();
   const descriptionHtml = String(phase?.description || '');
   const hasDescription = !isEffectivelyEmptyHtml(descriptionHtml);
@@ -174,52 +250,54 @@ function StepTextBlock({ phase, index }) {
 
   return (
     <Stack
-      spacing={0.75}
+      component={m.div}
+      whileHover={{ y: -4 }}
+      transition={{ duration: 0.2 }}
+      spacing={compact ? 0.4 : 0.75}
       alignItems="center"
       sx={{
         textAlign: 'center',
         width: 1,
-        maxWidth: { xs: 280, md: '100%' },
-        px: { xs: 0.5, md: 0.75 },
+        maxWidth: compact ? { xs: 74, md: 90 } : { xs: 280, md: 210 },
+        px: compact ? { xs: 0.25, md: 0.5 } : { xs: 0.5, md: 0.75 },
         mx: 'auto',
-        pt: { xs: 1.75, md: 2 },
+        pt: compact ? { xs: 0.65, md: 0.75 } : { xs: 1.6, md: 1.8 },
+        pb: compact ? { xs: 0, md: 0.1 } : { xs: 0.2, md: 0.4 },
+        minHeight: compact ? 0 : { xs: 150, md: 168 },
+        justifyContent: 'flex-start',
       }}
     >
-      <Typography
-        component="span"
-        sx={{
-          color: NAVY,
-          fontWeight: 700,
-          fontSize: { xs: '0.95rem', md: '1rem' },
-          lineHeight: 1,
-        }}
-      >
-        {stepNumber}
-      </Typography>
       {title ? (
         <Typography
           component="h3"
           sx={{
             m: 0,
-            fontWeight: 700,
-            color: NAVY,
-            lineHeight: 1.3,
-            fontSize: { xs: '0.9rem', md: '0.95rem' },
+            fontWeight: compact ? 500 : 700,
+            color: compact && isActive ? '#1a2d4f' : NAVY,
+            lineHeight: compact ? 1.15 : 1.3,
+            fontSize: compact ? { xs: '0.72rem', md: '0.76rem' } : { xs: '0.92rem', md: '0.98rem' },
+            letterSpacing: compact ? 0.1 : 0,
+            display: compact ? '-webkit-box' : 'block',
+            WebkitLineClamp: compact ? 3 : 'unset',
+            WebkitBoxOrient: compact ? 'vertical' : 'unset',
+            overflow: compact ? 'hidden' : 'visible',
+            minHeight: compact ? '3.45em' : 'auto',
+            textWrap: compact ? 'balance' : 'wrap',
           }}
         >
           {title}
         </Typography>
       ) : null}
-      {hasDescription ? (
+      {hasDescription && !hideDescription ? (
         <RichTextContent
           html={descriptionHtml}
           sx={{
             typography: 'body2',
             color: DESC_COLOR,
             lineHeight: 1.5,
-            fontSize: { xs: '0.75rem', md: '0.8125rem' },
+            fontSize: compact ? { xs: '0.7rem', md: '0.74rem' } : { xs: '0.76rem', md: '0.8125rem' },
             fontWeight: 400,
-            maxWidth: 168,
+            maxWidth: 176,
             '& p': { m: 0, mb: 0.25, '&:last-child': { mb: 0 } },
             '& strong, & b': { fontWeight: 600, color: DESC_COLOR },
           }}
@@ -229,63 +307,303 @@ function StepTextBlock({ phase, index }) {
   );
 }
 
-function DesktopTimeline({ phases }) {
+function DesktopTimeline({ phases, primaryColor }) {
   const count = phases.length;
   if (!count) return null;
 
+  const timelineRef = useRef(null);
+  const isInView = useInView(timelineRef, { amount: 0.85, margin: '0px 0px -15% 0px' });
   const lineInsetPct = (50 / count).toFixed(4);
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [activeStepProgress, setActiveStepProgress] = useState(0);
+  const cycleDurationSeconds = Math.max((count * STEP_ADVANCE_INTERVAL_MS) / 1000, 1.6);
+  const totalProgress = (activeStepIndex + activeStepProgress) / count;
+  const progressPercentage = Math.max(0, Math.min(100, Math.round(totalProgress * 100)));
+
+  useEffect(() => {
+    if (!isInView) {
+      setActiveStepIndex(0);
+      setActiveStepProgress(0);
+      return undefined;
+    }
+
+    let currentIndex = 0;
+    let stepStartAt = Date.now();
+    setActiveStepIndex(0);
+    setActiveStepProgress(0);
+
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - stepStartAt;
+      const progress = Math.min(elapsed / STEP_ADVANCE_INTERVAL_MS, 1);
+      setActiveStepProgress(progress);
+
+      if (progress >= 1) {
+        currentIndex = (currentIndex + 1) % count;
+        setActiveStepIndex(currentIndex);
+        setActiveStepProgress(0);
+        stepStartAt = Date.now();
+      }
+    }, PROGRESS_TICK_MS);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [count, isInView]);
 
   return (
-    <Box sx={{ width: 1, position: 'relative', pt: 0.5 }}>
+    <Box
+      ref={timelineRef}
+      sx={{
+        width: 1,
+        position: 'relative',
+        pt: 0,
+        pb: { xs: 1, md: 1.4 },
+        borderRadius: 4,
+        background:
+          'linear-gradient(165deg, rgba(255,255,255,0.78), rgba(255,255,255,0.48) 55%, rgba(243,246,255,0.72))',
+        border: '1px solid rgba(15,39,68,0.08)',
+        backdropFilter: 'blur(10px)',
+        boxShadow: '0 18px 45px rgba(15, 39, 68, 0.09)',
+        overflow: 'hidden',
+      }}
+    >
+      <Box
+        aria-hidden
+        component={m.div}
+        animate={{ x: ['-20%', '120%'] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          width: '40%',
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <Typography
+        component={m.p}
+        initial={{ opacity: 0, y: 8 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        sx={{
+          position: 'absolute',
+          top: { xs: 12, md: 14 },
+          right: { xs: 12, md: 16 },
+          zIndex: 5,
+          m: 0,
+          px: 1.1,
+          py: 0.45,
+          borderRadius: 999,
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          color: NAVY,
+          bgcolor: 'rgba(255,255,255,0.82)',
+          border: '1px solid rgba(15,39,68,0.1)',
+        }}
+      >
+        Journey Progress {progressPercentage}%
+      </Typography>
       <Box
         aria-hidden
         sx={{
           position: 'absolute',
-          top: { xs: 32, md: 36 },
+          top: TIMELINE_LINE_TOP,
           left: `${lineInsetPct}%`,
           right: `${lineInsetPct}%`,
           height: 0,
           borderTop: `2px dashed ${LINE_COLOR}`,
           zIndex: 0,
           pointerEvents: 'none',
+          opacity: isInView ? 1 : 0,
+          transition: 'opacity 0.2s ease',
         }}
       />
 
-      {Array.from({ length: count - 1 }).map((_, gapIndex) => (
-        <Box
-          key={`mid-${gapIndex}`}
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            top: { xs: 32, md: 36 },
-            left: `${(((gapIndex + 1) / count) * 100).toFixed(4)}%`,
-            transform: 'translate(-50%, -50%)',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            bgcolor: MID_DOT,
-            zIndex: 1,
-            pointerEvents: 'none',
-          }}
-        />
-      ))}
+      <Box
+        aria-hidden
+        component={m.div}
+        initial={{ opacity: 0, scaleX: 0 }}
+        animate={isInView ? { scaleX: totalProgress, opacity: 1 } : { scaleX: 0, opacity: 0 }}
+        transition={{ duration: PROGRESS_TICK_MS / 1000, ease: 'linear' }}
+        sx={{
+          position: 'absolute',
+          top: TIMELINE_LINE_TOP,
+          left: `${lineInsetPct}%`,
+          right: `${lineInsetPct}%`,
+          height: 0,
+          borderTop: `3px solid ${RED}`,
+          zIndex: 1,
+          pointerEvents: 'none',
+          transformOrigin: 'left center',
+          filter: 'drop-shadow(0 0 6px rgba(230, 57, 70, 0.4))',
+        }}
+      />
 
       <Box
         sx={{
           display: 'grid',
           gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
-          columnGap: { xs: 0.5, md: 1 },
+          columnGap: { xs: 1.1, md: 1.35 },
           alignItems: 'start',
           position: 'relative',
           zIndex: 2,
+          pt: { xs: `${TIMELINE_GRID_PT_PX.xs}px`, md: `${TIMELINE_GRID_PT_PX.md}px` },
+          pb: { xs: 1.4, md: 1.8 },
+          px: { xs: 1, md: 1.4 },
         }}
       >
         {phases.map((phase, index) => (
-          <Stack key={phase.id || `phase-${index}`} alignItems="center" sx={{ minWidth: 0 }}>
+          <Stack
+            key={phase.id || `phase-${index}`}
+            component={m.div}
+            custom={index}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.6 }}
+            variants={STEP_ANIMATION}
+            alignItems="center"
+            sx={{
+              minWidth: 0,
+              height: 1,
+            }}
+          >
             <Box
               sx={{
                 width: 1,
                 height: TRACK_H,
+                display: 'flex',
+                position: 'relative',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <StepIconCircle
+                index={index}
+                icon={resolvePhaseIcon(phase, index)}
+                isActive={index === activeStepIndex}
+                isCompleted={index < activeStepIndex}
+                primaryColor={primaryColor}
+              />
+            </Box>
+            <StepTextBlock
+              phase={phase}
+              index={index}
+              isActive={index === activeStepIndex}
+              isCompleted={index < activeStepIndex}
+            />
+          </Stack>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+function MobileTimeline({ phases, primaryColor }) {
+  const count = phases.length;
+  if (!count) return null;
+
+  const timelineRef = useRef(null);
+  const isInView = useInView(timelineRef, { amount: 0.6, margin: '0px 0px -10% 0px' });
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [activeStepProgress, setActiveStepProgress] = useState(0);
+
+  useEffect(() => {
+    if (!isInView) {
+      setActiveStepIndex(0);
+      setActiveStepProgress(0);
+      return undefined;
+    }
+
+    let currentIndex = 0;
+    let stepStartAt = Date.now();
+    setActiveStepIndex(0);
+    setActiveStepProgress(0);
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - stepStartAt;
+      const progress = Math.min(elapsed / STEP_ADVANCE_INTERVAL_MS, 1);
+      setActiveStepProgress(progress);
+      if (progress >= 1) {
+        currentIndex = (currentIndex + 1) % count;
+        setActiveStepIndex(currentIndex);
+        setActiveStepProgress(0);
+        stepStartAt = Date.now();
+      }
+    }, PROGRESS_TICK_MS);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [count, isInView]);
+
+  const lineInsetPct = (50 / count).toFixed(4);
+  const totalProgress = (activeStepIndex + activeStepProgress) / count;
+
+  return (
+    <Box ref={timelineRef} sx={{ width: 1, maxWidth: 560, mx: 'auto', position: 'relative', pt: 0.5 }}>
+      <Box
+        aria-hidden
+        sx={{
+          position: 'absolute',
+          top: MOBILE_LINE_TOP_PX,
+          left: `${lineInsetPct}%`,
+          right: `${lineInsetPct}%`,
+          height: 0,
+          borderTop: `2px dashed ${LINE_COLOR}`,
+          opacity: isInView ? 1 : 0,
+          transition: 'opacity 0.2s ease',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <Box
+        aria-hidden
+        component={m.div}
+        initial={{ opacity: 0, scaleX: 0 }}
+        animate={isInView ? { scaleX: totalProgress, opacity: 1 } : { scaleX: 0, opacity: 0 }}
+        transition={{ duration: PROGRESS_TICK_MS / 1000, ease: 'linear' }}
+        sx={{
+          position: 'absolute',
+          top: MOBILE_LINE_TOP_PX,
+          left: `${lineInsetPct}%`,
+          right: `${lineInsetPct}%`,
+          height: 0,
+          borderTop: `3px solid ${RED}`,
+          filter: 'drop-shadow(0 0 6px rgba(230, 57, 70, 0.3))',
+          transformOrigin: 'left center',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+      />
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
+          columnGap: 0.45,
+          alignItems: 'start',
+          position: 'relative',
+          zIndex: 2,
+          px: 0.25,
+        }}
+      >
+        {phases.map((phase, index) => (
+          <Stack
+            key={phase.id || `phase-${index}`}
+            component={m.div}
+            custom={index}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.4 }}
+            variants={STEP_ANIMATION}
+            spacing={0}
+            alignItems="center"
+            sx={{ minWidth: 0 }}
+          >
+            <Box
+              sx={{
+                width: 1,
+                height: MOBILE_TRACK_H_PX,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -294,10 +612,20 @@ function DesktopTimeline({ phases }) {
               <StepIconCircle
                 index={index}
                 icon={resolvePhaseIcon(phase, index)}
-                isActive={index === 0}
+                isActive={index === activeStepIndex}
+                isCompleted={index < activeStepIndex}
+                primaryColor={primaryColor}
+                compact
               />
             </Box>
-            <StepTextBlock phase={phase} index={index} />
+            <StepTextBlock
+              phase={phase}
+              index={index}
+              isActive={index === activeStepIndex}
+              isCompleted={index < activeStepIndex}
+              compact
+              hideDescription
+            />
           </Stack>
         ))}
       </Box>
@@ -305,27 +633,11 @@ function DesktopTimeline({ phases }) {
   );
 }
 
-function MobileTimeline({ phases }) {
-  return (
-    <Stack spacing={4} sx={{ width: 1, maxWidth: 360, mx: 'auto' }}>
-      {phases.map((phase, index) => (
-        <Stack key={phase.id || `phase-${index}`} spacing={0} alignItems="center">
-          <StepIconCircle
-            index={index}
-            icon={resolvePhaseIcon(phase, index)}
-            isActive={index === 0}
-          />
-          <StepTextBlock phase={phase} index={index} />
-        </Stack>
-      ))}
-    </Stack>
-  );
-}
-
 export function HomeProgrammeStructureSection() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [content, setContent] = useState(() => resolveProgrammeStructureContent(null));
+  const [content, setContent] = useState(null);
+  const primaryColor = theme.palette.primary.main;
 
   useEffect(() => {
     let active = true;
@@ -333,17 +645,22 @@ export function HomeProgrammeStructureSection() {
       .getPublic()
       .then((settings) => {
         if (!active) return;
-        setContent(resolveProgrammeStructureContent(settings?.homeProgrammeStructureContent));
+        const sectionContent = settings?.homeProgrammeStructureContent;
+        if (hasProgrammeStructureContent(sectionContent)) {
+          setContent(resolveProgrammeStructureContent(sectionContent));
+        } else {
+          setContent(null);
+        }
       })
       .catch(() => {
-        if (active) setContent(resolveProgrammeStructureContent(null));
+        if (active) setContent(null);
       });
     return () => {
       active = false;
     };
   }, []);
 
-  if (!hasProgrammeStructureContent(content)) return null;
+  if (!content || !hasProgrammeStructureContent(content)) return null;
 
   const phases = (content.phases || []).filter(
     (row) =>
@@ -422,9 +739,12 @@ export function HomeProgrammeStructureSection() {
           {phases.length > 0 ? (
             <Box component={m.div} variants={varFade({ distance: 20 }).inUp} sx={{ width: 1 }}>
               {isMobile ? (
-                <MobileTimeline phases={phases} />
+                <MobileTimeline phases={phases} primaryColor={primaryColor} />
               ) : (
-                <DesktopTimeline phases={phases} />
+                <DesktopTimeline
+                  phases={phases}
+                  primaryColor={primaryColor}
+                />
               )}
             </Box>
           ) : null}
