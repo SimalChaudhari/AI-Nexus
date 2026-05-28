@@ -133,7 +133,7 @@ export function HomeCeoLaunchSection() {
     icon: String(row?.icon || '').trim() || FEATURE_ICONS[index % FEATURE_ICONS.length],
     label: String(row?.label || row?.value || '').trim(),
   })).filter((row) => row.label);
-  const rightTitle = eyebrow || 'CEO Launch Message';
+  const rightTitle = eyebrow;
   const rightSubtitle = subtitle || quote;
 
   return (
