@@ -26,8 +26,6 @@ import {
 } from 'src/utils/membership-eligibility-sso';
 
 import {
-  hasEligibilityMembershipContent,
-  resolveEligibilityMembershipContent,
   shouldOpenEligibilityModal,
 } from './eligibility-membership-defaults';
 
@@ -46,12 +44,6 @@ const LIGHT_PANEL_BORDER = '#e8ecf1';
 const CARD_MIN_HEIGHT = { xs: 260, sm: 285, md: 315, lg: 335 };
 const CARD_CONTENT_PX = { xs: 1.6, sm: 1.9, md: 2.2, lg: 2.5 };
 const CARD_CONTENT_PY = { xs: 1.6, sm: 1.9, md: 2.2, lg: 2.5 };
-const RIGHT_EYEBROW_FALLBACK = 'Not an ISCA Member Yet?';
-const RIGHT_HEADING_FALLBACK = 'Unlock more with ISCA Membership';
-const LEFT_HEADING_FALLBACK = 'Am I Eligible?';
-const LEFT_SUBTITLE_FALLBACK = 'Find the right pathway for you.';
-const LEFT_CTA_FALLBACK = 'Start Eligibility Check';
-
 const NETWORK_PATTERN = `radial-gradient(circle at 20% 30%, ${alpha('#7ec8ff', 0.35)} 0 2px, transparent 2px),
   radial-gradient(circle at 60% 70%, ${alpha('#5eb0f5', 0.28)} 0 2px, transparent 2px),
   radial-gradient(circle at 80% 20%, ${alpha('#8ad4ff', 0.22)} 0 1.5px, transparent 1.5px)`;
@@ -78,11 +70,65 @@ function iconAccentColor(iconColor) {
   return iconColor === 'red' ? RED : BLUE_ICON;
 }
 
+function normalizeEligibilityMembershipContentNoDefaults(source) {
+  if (!source || typeof source !== 'object') return null;
+  const left = source.leftPanel && typeof source.leftPanel === 'object' ? source.leftPanel : {};
+  const right = source.rightPanel && typeof source.rightPanel === 'object' ? source.rightPanel : {};
+  const leftQuestions = Array.isArray(left.questions) ? left.questions : [];
+  const rightBenefits = Array.isArray(right.benefits) ? right.benefits : [];
+
+  return {
+    leftPanel: {
+      heading: left.heading != null ? String(left.heading) : '',
+      subtitle: left.subtitle != null ? String(left.subtitle) : '',
+      heroImageUrl: left.heroImageUrl != null ? String(left.heroImageUrl) : '',
+      questions: leftQuestions.slice(0, 4).map((q) => ({
+        id: q?.id != null ? String(q.id) : '',
+        icon: q?.icon != null ? String(q.icon).trim() : '',
+        iconColor: String(q?.iconColor || '').trim().toLowerCase() === 'red' ? 'red' : '',
+        text: q?.text != null ? String(q.text) : '',
+      })),
+      ctaLabel: left.ctaLabel != null ? String(left.ctaLabel) : '',
+      ctaHref: left.ctaHref != null ? String(left.ctaHref) : '',
+    },
+    rightPanel: {
+      eyebrow: right.eyebrow != null ? String(right.eyebrow) : '',
+      heading: right.heading != null ? String(right.heading) : '',
+      benefits: rightBenefits.slice(0, 4).map((b) => ({
+        id: b?.id != null ? String(b.id) : '',
+        icon: b?.icon != null ? String(b.icon).trim() : '',
+        label: b?.label != null ? String(b.label) : '',
+      })),
+      primaryCtaLabel: right.primaryCtaLabel != null ? String(right.primaryCtaLabel) : '',
+      primaryCtaHref: right.primaryCtaHref != null ? String(right.primaryCtaHref) : '',
+      secondaryCtaLabel: right.secondaryCtaLabel != null ? String(right.secondaryCtaLabel) : '',
+      secondaryCtaHref: right.secondaryCtaHref != null ? String(right.secondaryCtaHref) : '',
+    },
+  };
+}
+
+function hasEligibilityMembershipContentNoDefaults(content) {
+  if (!content || typeof content !== 'object') return false;
+  const left = content.leftPanel || {};
+  const right = content.rightPanel || {};
+  if (String(left.heading || '').trim()) return true;
+  if (String(left.subtitle || '').trim()) return true;
+  if (String(left.heroImageUrl || '').trim()) return true;
+  if (String(left.ctaLabel || '').trim()) return true;
+  if (String(right.eyebrow || '').trim()) return true;
+  if (String(right.heading || '').trim()) return true;
+  if ((left.questions || []).some((q) => String(q?.text || '').trim())) return true;
+  if ((right.benefits || []).some((b) => String(b?.label || '').trim())) return true;
+  if (String(right.primaryCtaLabel || '').trim()) return true;
+  if (String(right.secondaryCtaLabel || '').trim()) return true;
+  return false;
+}
+
 function QuestionCard({ question }) {
   const text = String(question?.text || '').trim();
   if (!text) return null;
   const accent = iconAccentColor(question?.iconColor);
-  const icon = String(question?.icon || '').trim() || 'solar:user-bold-duotone';
+  const icon = String(question?.icon || '').trim();
 
   return (
     <Stack
@@ -111,7 +157,7 @@ function QuestionCard({ question }) {
           justifyContent: 'center',
         }}
       >
-        <Iconify icon={icon} width={20} sx={{ color: accent }} />
+        {icon ? <Iconify icon={icon} width={20} sx={{ color: accent }} /> : null}
       </Box>
       <Typography
         sx={{
@@ -134,7 +180,7 @@ function QuestionCard({ question }) {
 function MembershipBenefit({ benefit, showDivider }) {
   const label = String(benefit?.label || '').trim();
   if (!label) return null;
-  const icon = String(benefit?.icon || '').trim() || 'solar:star-bold-duotone';
+  const icon = String(benefit?.icon || '').trim();
   const displayLabel =
     label === 'Access to AI Fluency Programme' ? 'Access to AI Fluency\nProgramme' : label;
 
@@ -178,7 +224,7 @@ function MembershipBenefit({ benefit, showDivider }) {
           boxShadow: `0 3px 10px ${alpha(NAVY, 0.08)}`,
         }}
       >
-        <Iconify icon={icon} width={24} sx={{ color: BLUE_ICON }} />
+        {icon ? <Iconify icon={icon} width={24} sx={{ color: BLUE_ICON }} /> : null}
       </Box>
       <Typography
         sx={{
@@ -339,7 +385,7 @@ export function HomeEligibilityMembershipSection() {
   const location = useLocation();
   const { authenticated } = useAuthContext();
 
-  const [content, setContent] = useState(() => resolveEligibilityMembershipContent(null));
+  const [content, setContent] = useState(null);
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
 
   useEffect(() => {
@@ -348,12 +394,10 @@ export function HomeEligibilityMembershipSection() {
       .getPublic()
       .then((settings) => {
         if (!active) return;
-        setContent(
-          resolveEligibilityMembershipContent(settings?.homeEligibilityMembershipContent)
-        );
+        setContent(normalizeEligibilityMembershipContentNoDefaults(settings?.homeEligibilityMembershipContent));
       })
       .catch(() => {
-        if (active) setContent(resolveEligibilityMembershipContent(null));
+        if (active) setContent(null);
       });
     return () => {
       active = false;
@@ -377,18 +421,18 @@ export function HomeEligibilityMembershipSection() {
     }
   }, [authenticated, content?.leftPanel?.ctaHref, navigate]);
 
-  if (!hasEligibilityMembershipContent(content)) return null;
+  if (!hasEligibilityMembershipContentNoDefaults(content)) return null;
 
   const left = content.leftPanel || {};
   const right = content.rightPanel || {};
   const questions = (left.questions || []).filter((q) => String(q?.text || '').trim());
   const benefits = (right.benefits || []).filter((b) => String(b?.label || '').trim());
-  const rightEyebrow = String(right.eyebrow || '').trim() || RIGHT_EYEBROW_FALLBACK;
-  const rightHeading = String(right.heading || '').trim() || RIGHT_HEADING_FALLBACK;
+  const rightEyebrow = String(right.eyebrow || '').trim();
+  const rightHeading = String(right.heading || '').trim();
   const heroUrl = resolveAssetUrl(left.heroImageUrl);
-  const leftHeading = String(left.heading || '').trim() || LEFT_HEADING_FALLBACK;
-  const leftSubtitle = String(left.subtitle || '').trim() || LEFT_SUBTITLE_FALLBACK;
-  const leftCtaLabel = String(left.ctaLabel || '').trim() || LEFT_CTA_FALLBACK;
+  const leftHeading = String(left.heading || '').trim();
+  const leftSubtitle = String(left.subtitle || '').trim();
+  const leftCtaLabel = String(left.ctaLabel || '').trim();
   const returnPath = `${location.pathname}${location.search || ''}`;
 
   return (

@@ -23,7 +23,6 @@ import { categoryIcons } from 'src/_mock/_category-icons';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import {
   PROGRAMME_STRUCTURE_PHASES_MAX,
-  PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS,
   createProgrammePhaseId,
   normalizeProgrammeStructureContent,
 } from 'src/sections/home/programme-structure-defaults';
@@ -41,13 +40,10 @@ function isLikelyImagePath(value) {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(s);
 }
 
-function resolvePhaseIconPreview(icon, index) {
+function resolvePhaseIconPreview(icon) {
   const custom = String(icon || '').trim();
   if (custom) return custom;
-  return (
-    PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS[index % PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS.length] ||
-    'solar:star-bold'
-  );
+  return 'solar:star-bold';
 }
 
 function PhaseIconPreview({ icon, index, size = 18 }) {

@@ -16,7 +16,6 @@ import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import {
   buildCurriculumHeadline,
   CURRICULUM_COURSES_MAX,
-  DEFAULT_CURRICULUM_CONTENT,
   mapModulesForDisplay,
   normalizeCurriculumContent,
 } from 'src/sections/home/curriculum-defaults';
@@ -51,7 +50,7 @@ export function CurriculumSettingsCard({
   const initialServerPreviewDone = useRef(false);
   const curriculumPreviewFetchRef = useRef(0);
 
-  const content = normalizeCurriculumContent(curriculumContent || DEFAULT_CURRICULUM_CONTENT);
+  const content = normalizeCurriculumContent(curriculumContent);
   const selectedCourseIds = Array.isArray(content.courseIds) ? content.courseIds : [];
   const canAddMore = selectedCourseIds.length < maxCourses;
 
@@ -250,7 +249,7 @@ export function CurriculumSettingsCard({
                   normalizeCurriculumContent({ ...prev, smallTitle: event.target.value })
                 )
               }
-              placeholder={DEFAULT_CURRICULUM_CONTENT.smallTitle}
+              placeholder="Optional"
             />
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -263,7 +262,7 @@ export function CurriculumSettingsCard({
                     normalizeCurriculumContent({ ...prev, hoursLabel: event.target.value })
                   )
                 }
-                placeholder={DEFAULT_CURRICULUM_CONTENT.hoursLabel}
+                placeholder="Optional"
               />
               <TextField
                 fullWidth
@@ -274,7 +273,7 @@ export function CurriculumSettingsCard({
                     normalizeCurriculumContent({ ...prev, pacingLabel: event.target.value })
                   )
                 }
-                placeholder={DEFAULT_CURRICULUM_CONTENT.pacingLabel}
+                placeholder="Optional"
               />
             </Stack>
 
@@ -289,7 +288,7 @@ export function CurriculumSettingsCard({
                   normalizeCurriculumContent({ ...prev, subtext: event.target.value })
                 )
               }
-              placeholder={DEFAULT_CURRICULUM_CONTENT.subtext}
+              placeholder="Optional"
             />
           </Stack>
 
@@ -366,7 +365,7 @@ export function CurriculumSettingsCard({
                 textTransform: 'uppercase',
               }}
             >
-              {content.smallTitle || DEFAULT_CURRICULUM_CONTENT.smallTitle}
+              {content.smallTitle}
             </Typography>
 
             <Typography sx={{ ...HERO_TYPOGRAPHY.h3, mb: 1.5, fontWeight: 800 }}>

@@ -56,7 +56,6 @@ import { FundingEligibilitySettingsCard } from './components/funding-eligibility
 import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
 import { CeoLaunchSettingsCard } from './components/ceo-launch-settings-card';
 import {
-  DEFAULT_PROGRAMME_FEES_CONTENT,
   normalizeProgrammeFeesContent,
 } from 'src/sections/home/programme-fees-defaults';
 import {
@@ -68,7 +67,6 @@ import {
   normalizeEmployerContent,
 } from 'src/sections/home/employer-defaults';
 import {
-  DEFAULT_CURRICULUM_CONTENT,
   normalizeCurriculumContent,
 } from 'src/sections/home/curriculum-defaults';
 import {
@@ -337,10 +335,10 @@ export function AdminSettingsView() {
   const [joinContent, setJoinContent] = useState(DEFAULT_JOIN_CONTENT);
   const [faqContent, setFaqContent] = useState(DEFAULT_FAQ_CONTENT);
   const [feesContent, setFeesContent] = useState(() =>
-    normalizeProgrammeFeesContent(DEFAULT_PROGRAMME_FEES_CONTENT)
+    normalizeProgrammeFeesContent(null)
   );
   const [curriculumContent, setCurriculumContent] = useState(() =>
-    normalizeCurriculumContent(DEFAULT_CURRICULUM_CONTENT)
+    normalizeCurriculumContent(null)
   );
   const emptyContactRow = () => ({
     details: '',
@@ -537,14 +535,10 @@ export function AdminSettingsView() {
         items: normalizedFaqItems,
       });
       setFeesContent(
-        normalizeProgrammeFeesContent(
-          appSettings.programmeFeesContent || DEFAULT_PROGRAMME_FEES_CONTENT
-        )
+        normalizeProgrammeFeesContent(appSettings.programmeFeesContent)
       );
       setCurriculumContent(
-        normalizeCurriculumContent(
-          appSettings.curriculumContent || DEFAULT_CURRICULUM_CONTENT
-        )
+        normalizeCurriculumContent(appSettings.curriculumContent)
       );
       setTestimonialsContent(resolveTestimonialsContent(appSettings.homeTestimonialsContent));
       setProgrammeStructureContent(
@@ -1093,17 +1087,13 @@ export function AdminSettingsView() {
 
   const applyFeesFromSettings = (appSettings) => {
     setFeesContent(
-      normalizeProgrammeFeesContent(
-        appSettings?.programmeFeesContent || DEFAULT_PROGRAMME_FEES_CONTENT
-      )
+      normalizeProgrammeFeesContent(appSettings?.programmeFeesContent)
     );
   };
 
   const applyCurriculumFromSettings = (appSettings) => {
     setCurriculumContent(
-      normalizeCurriculumContent(
-        appSettings?.curriculumContent || DEFAULT_CURRICULUM_CONTENT
-      )
+      normalizeCurriculumContent(appSettings?.curriculumContent)
     );
   };
 

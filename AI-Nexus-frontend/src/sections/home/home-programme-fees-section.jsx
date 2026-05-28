@@ -14,7 +14,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { ViewHtmlContent } from 'src/components/html-content/view-html-content';
 import { appSettingsService } from 'src/services/app-settings.service';
 import {
-  DEFAULT_PROGRAMME_FEES_CONTENT,
   normalizeProgrammeFeesContent,
 } from './programme-fees-defaults';
 
@@ -36,7 +35,7 @@ function splitPricePair(rawPrice) {
 // ----------------------------------------------------------------------
 
 export function HomeProgrammeFeesSection() {
-  const [content, setContent] = useState(DEFAULT_PROGRAMME_FEES_CONTENT);
+  const [content, setContent] = useState(() => normalizeProgrammeFeesContent(null));
 
   useEffect(() => {
     let active = true;
@@ -44,10 +43,10 @@ export function HomeProgrammeFeesSection() {
       .getProgrammeFeesContent()
       .then((remote) => {
         if (!active) return;
-        setContent(normalizeProgrammeFeesContent(remote || DEFAULT_PROGRAMME_FEES_CONTENT));
+        setContent(normalizeProgrammeFeesContent(remote));
       })
       .catch(() => {
-        if (active) setContent(DEFAULT_PROGRAMME_FEES_CONTENT);
+        if (active) setContent(normalizeProgrammeFeesContent(null));
       });
     return () => {
       active = false;
@@ -68,19 +67,21 @@ export function HomeProgrammeFeesSection() {
       }}
     >
       <DashboardContent component={MotionViewport}>
-        <Typography
-          component={m.h2}
-          variants={varFade({ distance: 24 }).inUp}
-          sx={{
-            mb: { xs: 3, md: 4 },
-            color: 'primary.main',
-            fontWeight: 700,
-            fontSize: { xs: '1.35rem', sm: '1.5rem', md: '1.75rem' },
-            lineHeight: 1.25,
-          }}
-        >
-          {content.heading || DEFAULT_PROGRAMME_FEES_CONTENT.heading}
-        </Typography>
+        {content.heading ? (
+          <Typography
+            component={m.h2}
+            variants={varFade({ distance: 24 }).inUp}
+            sx={{
+              mb: { xs: 3, md: 4 },
+              color: 'primary.main',
+              fontWeight: 700,
+              fontSize: { xs: '1.35rem', sm: '1.5rem', md: '1.75rem' },
+              lineHeight: 1.25,
+            }}
+          >
+            {content.heading}
+          </Typography>
+        ) : null}
 
         <Card
           component={m.div}
@@ -201,9 +202,11 @@ export function HomeProgrammeFeesSection() {
                 bgcolor: theme.palette.background.neutral,
               })}
             >
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                {content.fundingPartnersHeading || 'Funding Partners'}
-              </Typography>
+              {content.fundingPartnersHeading ? (
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+                  {content.fundingPartnersHeading}
+                </Typography>
+              ) : null}
               <ViewHtmlContent
                 html={content.fundingPartnersBody}
                 sx={{

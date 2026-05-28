@@ -1,17 +1,12 @@
-export const DEFAULT_CURRICULUM_CONTENT = {
-  smallTitle: 'POWER-UP PHASE CURRICULUM',
-  subtext: 'Gain applied knowledge to master the use of AI coding assistants.',
-  hoursLabel: '18 hours',
-  pacingLabel: '100% self-paced',
-  courseIds: [],
-};
-
 export const CURRICULUM_COURSES_MAX = 20;
 
 export function normalizeCurriculumContent(source) {
   if (!source || typeof source !== 'object') {
     return {
-      ...DEFAULT_CURRICULUM_CONTENT,
+      smallTitle: '',
+      subtext: '',
+      hoursLabel: '',
+      pacingLabel: '',
       courseIds: [],
     };
   }
@@ -32,20 +27,10 @@ export function normalizeCurriculumContent(source) {
   });
 
   return {
-    smallTitle:
-      source.smallTitle != null
-        ? String(source.smallTitle)
-        : DEFAULT_CURRICULUM_CONTENT.smallTitle,
-    subtext:
-      source.subtext != null ? String(source.subtext) : DEFAULT_CURRICULUM_CONTENT.subtext,
-    hoursLabel:
-      source.hoursLabel != null
-        ? String(source.hoursLabel)
-        : DEFAULT_CURRICULUM_CONTENT.hoursLabel,
-    pacingLabel:
-      source.pacingLabel != null
-        ? String(source.pacingLabel)
-        : DEFAULT_CURRICULUM_CONTENT.pacingLabel,
+    smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
+    subtext: source.subtext != null ? String(source.subtext) : '',
+    hoursLabel: source.hoursLabel != null ? String(source.hoursLabel) : '',
+    pacingLabel: source.pacingLabel != null ? String(source.pacingLabel) : '',
     courseIds: courseIds.slice(0, CURRICULUM_COURSES_MAX),
   };
 }

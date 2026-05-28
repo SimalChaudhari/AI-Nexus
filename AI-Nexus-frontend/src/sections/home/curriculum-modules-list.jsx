@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -8,7 +9,6 @@ import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
-import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -79,7 +79,6 @@ function buildCurriculumRows(courses = [], modules = [], courseIds = []) {
 function CurriculumCourseRow({ row, expanded, onToggle, isLast }) {
   const [resolvedModules, setResolvedModules] = useState(null);
   const [resolvedCount, setResolvedCount] = useState(null);
-  const [loading, setLoading] = useState(false);
 
   const courseHref = row.courseId ? paths.learningCourse.details(row.courseId) : null;
   const modulesToShow = resolvedModules ?? row.modules ?? [];
@@ -94,7 +93,6 @@ function CurriculumCourseRow({ row, expanded, onToggle, isLast }) {
     if (!expanded) {
       setResolvedModules(null);
       setResolvedCount(null);
-      setLoading(false);
       return undefined;
     }
 
@@ -111,7 +109,6 @@ function CurriculumCourseRow({ row, expanded, onToggle, isLast }) {
     }
 
     let active = true;
-    setLoading(true);
 
     courseService
       .getCourseModulesWithSections(row.courseId)
@@ -134,9 +131,6 @@ function CurriculumCourseRow({ row, expanded, onToggle, isLast }) {
           setResolvedModules([]);
           setResolvedCount(0);
         }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
       });
 
     return () => {
@@ -147,7 +141,13 @@ function CurriculumCourseRow({ row, expanded, onToggle, isLast }) {
   const headline = `Module ${row.index} · ${row.courseTitle}`;
 
   return (
-    <Box>
+    <Box
+      component={m.div}
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+    >
       <Box sx={{ py: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
           <IconButton
@@ -192,22 +192,13 @@ function CurriculumCourseRow({ row, expanded, onToggle, isLast }) {
 
         <Collapse in={expanded}>
           <Box sx={{ pl: 4.5, pt: 1.5, pb: 0.5 }}>
-            {loading ? (
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
-                <CircularProgress size={18} />
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  Loading modules...
-                </Typography>
-              </Stack>
-            ) : null}
-
-            {!loading && modulesToShow.length === 0 ? (
+            {modulesToShow.length === 0 ? (
               <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
                 {formatModulesCountLabel(0)}
               </Typography>
             ) : null}
 
-            {!loading && modulesToShow.length > 0 ? (
+            {modulesToShow.length > 0 ? (
               <Stack spacing={1.25} component="ul" sx={{ m: 0, pl: 0, listStyle: 'none' }}>
                 {modulesToShow.map((mod, modIndex) => {
                   const modTitle = String(mod?.title || '').trim();
@@ -268,6 +259,20 @@ export function CurriculumModulesList({ modules = [], courses = [], courseIds = 
     [courses, modules, courseIds]
   );
 
+  useEffect(() => {
+    if (!curriculumRows.length) {
+      setExpandedKey(null);
+      return;
+    }
+    setExpandedKey((prev) => {
+      if (prev && curriculumRows.some((row) => row.courseId === prev)) return prev;
+      const withModules =
+        curriculumRows.find((row) => (row.modules || []).length > 0)
+        || curriculumRows.find((row) => Number(row.modulesCount) > 0);
+      return withModules?.courseId || curriculumRows[0]?.courseId || null;
+    });
+  }, [curriculumRows]);
+
   if (!curriculumRows.length) {
     return (
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -296,7 +301,15 @@ export function CurriculumModulesList({ modules = [], courses = [], courseIds = 
     });
 
   return (
-    <Grid container spacing={{ xs: 0, md: 6 }}>
+    <Grid
+      container
+      spacing={{ xs: 0, md: 6 }}
+      component={m.div}
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true, amount: 0.1 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+    >
       <Grid item xs={12} md={6}>
         {renderColumn(leftColumn)}
       </Grid>

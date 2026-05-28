@@ -16,7 +16,6 @@ import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 import {
   hasProgrammeStructureContent,
-  PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS,
   resolveProgrammeStructureContent,
 } from './programme-structure-defaults';
 
@@ -66,13 +65,10 @@ function isLikelyImagePath(value) {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(s);
 }
 
-function resolvePhaseIcon(phase, index) {
+function resolvePhaseIcon(phase) {
   const custom = String(phase?.icon || '').trim();
   if (custom) return custom;
-  return (
-    PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS[index % PROGRAMME_STRUCTURE_PHASE_ICON_DEFAULTS.length] ||
-    'solar:star-bold'
-  );
+  return 'solar:star-bold';
 }
 
 function JourneyHeading({ heading, underlineWord }) {

@@ -8,7 +8,7 @@ import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 import {
-  DEFAULT_CURRICULUM_CONTENT,
+  buildCurriculumHeadline,
   normalizeCurriculumContent,
 } from './curriculum-defaults';
 import { CurriculumModulesList } from './curriculum-modules-list';
@@ -21,30 +21,52 @@ export function HomeCurriculumSection() {
 
   useEffect(() => {
     let active = true;
-    appSettingsService
-      .getCurriculumContent()
-      .then((data) => {
+    (async () => {
+      try {
+        const data = await appSettingsService.getCurriculumContent();
         if (!active) return;
         setPayload(data);
-      })
-      .catch(() => {
-        if (active) setPayload(null);
-      })
-      .finally(() => {
+      } catch {
+        try {
+          const settings = await appSettingsService.getPublic();
+          if (!active) return;
+          const stored = normalizeCurriculumContent(settings?.curriculumContent);
+          setPayload({
+            ...stored,
+            moduleCount: 0,
+            modules: [],
+            courses: [],
+            headline: buildCurriculumHeadline(0, stored),
+          });
+        } catch {
+          if (active) setPayload(null);
+        }
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    })();
     return () => {
       active = false;
     };
   }, []);
 
-  const content = normalizeCurriculumContent(payload || DEFAULT_CURRICULUM_CONTENT);
+  const content = normalizeCurriculumContent(payload);
   const modules = Array.isArray(payload?.modules) ? payload.modules : [];
+  const courses = Array.isArray(payload?.courses) ? payload.courses : [];
+  const courseIds = Array.isArray(payload?.courseIds) ? payload.courseIds : [];
   const headline = String(payload?.headline || '').trim();
   const smallTitle = String(content.smallTitle || '').trim();
   const subtext = String(content.subtext || '').trim();
+  const shouldHide =
+    !loading &&
+    !modules.length &&
+    !courses.length &&
+    !courseIds.length &&
+    !smallTitle &&
+    !headline &&
+    !subtext;
 
-  if (!loading && !modules.length && !smallTitle && !headline) {
+  if (shouldHide) {
     return null;
   }
 
@@ -60,7 +82,10 @@ export function HomeCurriculumSection() {
         {smallTitle ? (
           <Typography
             component={m.p}
-            variants={varFade({ distance: 24 }).inUp}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
             sx={{
               mb: 1.5,
               color: 'primary.main',
@@ -77,7 +102,10 @@ export function HomeCurriculumSection() {
         {headline ? (
           <Typography
             component={m.h2}
-            variants={varFade({ distance: 24 }).inUp}
+            initial={{ opacity: 0, y: 22 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.04 }}
             sx={{
               mb: subtext ? 2 : { xs: 3, md: 4 },
               color: 'text.primary',
@@ -93,7 +121,10 @@ export function HomeCurriculumSection() {
         {subtext ? (
           <Typography
             component={m.p}
-            variants={varFade({ distance: 24 }).inUp}
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.45, ease: 'easeOut', delay: 0.08 }}
             sx={{
               mb: { xs: 3, md: 5 },
               color: 'text.secondary',
@@ -113,8 +144,8 @@ export function HomeCurriculumSection() {
           ) : (
             <CurriculumModulesList
               modules={modules}
-              courses={Array.isArray(payload?.courses) ? payload.courses : []}
-              courseIds={Array.isArray(payload?.courseIds) ? payload.courseIds : []}
+              courses={courses}
+              courseIds={courseIds}
             />
           )}
         </Box>
