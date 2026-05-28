@@ -35,6 +35,8 @@ export class UsersInitService implements OnModuleInit {
             "socialId" varchar,
             "socialAccessToken" varchar,
             "avatarUrl" varchar,
+            "contactNumber" varchar(48),
+            "companyCode" varchar(64),
             "isVerified" boolean NOT NULL DEFAULT false,
             "isDraft" boolean NOT NULL DEFAULT false,
             "role" varchar NOT NULL DEFAULT 'User',
@@ -235,6 +237,10 @@ export class UsersInitService implements OnModuleInit {
       await queryRunner.query(`
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "contactNumber" varchar(48)
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "companyCode" varchar(64)
       `);
       await queryRunner.query(`
         ALTER TABLE "users"

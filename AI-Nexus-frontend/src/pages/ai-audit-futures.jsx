@@ -462,10 +462,10 @@ export default function AiAuditFuturesPage() {
       <Stack spacing={2.5}>
         <Stack spacing={1}>
           <Typography variant="h3" sx={{ fontWeight: 800, letterSpacing: -0.02 }}>
-            AI Audit &amp; maturity
+            AI Readiness Assessment
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720, lineHeight: 1.65 }}>
-            Explore long-range audit scenarios, or run a structured maturity self-check with live rollup scores.
+            Explore long-range audit scenarios, or run a structured AI readiness assessment with live rollup scores.
           </Typography>
         </Stack>
 
@@ -518,7 +518,7 @@ export default function AiAuditFuturesPage() {
               <Tab
                 icon={<Iconify icon="solar:clipboard-check-bold-duotone" width={20} />}
                 iconPosition="start"
-                label="Maturity self-check"
+                label="AI readiness assessment"
                 sx={{ gap: 1 }}
               />
             </Tabs>
@@ -554,7 +554,7 @@ export default function AiAuditFuturesPage() {
               }}
             >
               <Tab label="Futures" aria-label="Futures explorer" />
-              <Tab label="Maturity" aria-label="Maturity self-check" />
+              <Tab label="Readiness" aria-label="AI readiness assessment" />
             </Tabs>
           </Box>
         )}

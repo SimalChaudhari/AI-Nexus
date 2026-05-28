@@ -58,6 +58,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
       firstname: currentUser?.firstname || '',
       lastname: currentUser?.lastname || '',
       email: currentUser?.email || '',
+      companyCode: currentUser?.companyCode || '',
       contactNumber: currentUser?.contactNumber || currentUser?.phoneNumber || '',
       avatar: currentUser?.avatarUrl || null,
     };
@@ -117,6 +118,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           firstname: data.firstname?.trim(),
           lastname: data.lastname?.trim(),
           email: data.email?.trim().toLowerCase(),
+          companyCode: typeof data.companyCode === 'string' && data.companyCode.trim() ? data.companyCode.trim() : null,
           contactNumber:
             typeof data.contactNumber === 'string' && data.contactNumber.trim() ? data.contactNumber.trim() : null,
           avatar: data.avatar,
@@ -248,6 +250,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               <Field.Text name="lastname" label="Last name" />
               <Field.Text name="username" label="Username" />
               <Field.Text name="email" label="Email" type="email" />
+              <Field.Text name="companyCode" label="Company’s Code (optional)" />
               <Box sx={{ gridColumn: { xs: 'span 1', sm: '1 / -1' } }}>
                 <Field.Phone name="contactNumber" label="Contact number" />
               </Box>
@@ -328,6 +331,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                 </Box>
                 <Stack spacing={3}>
                   <Field.Text name="email" label="Email address" type="email" />
+                  <Field.Text name="companyCode" label="Company’s Code (optional)" />
                   <Field.Phone name="contactNumber" label="Contact number" />
                   <Field.Text
                     name="password"
@@ -448,6 +452,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               </Box>
               <Stack spacing={3}>
                 <Field.Text name="email" label="Email address" type="email" />
+                <Field.Text name="companyCode" label="Company’s Code (optional)" />
                 <Field.Phone name="contactNumber" label="Contact number" />
                 <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
                   {STATUS_OPTIONS.map((opt) => (

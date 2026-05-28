@@ -71,6 +71,10 @@ export class UserEntity {
     @Column({ nullable: true, type: 'varchar', length: 48 })
     contactNumber?: string | null;
 
+    /** Optional organization/company invite/reference code entered during signup/profile edit */
+    @Column({ nullable: true, type: 'varchar', length: 64 })
+    companyCode?: string | null;
+
     @Column({ type: 'boolean', default: false })
     isVerified!: boolean;
 

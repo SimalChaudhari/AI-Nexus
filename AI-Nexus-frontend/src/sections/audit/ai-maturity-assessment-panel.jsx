@@ -139,10 +139,10 @@ export default function AiMaturityAssessmentPanel() {
                     variant="overline"
                     sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.4, lineHeight: 1.2, display: 'block' }}
                   >
-                    Self-assessment
+                    Readiness assessment
                   </Typography>
                   <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.03, lineHeight: 1.15 }}>
-                    AI maturity
+                    AI readiness
                   </Typography>
                 </Box>
               </Stack>

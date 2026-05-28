@@ -66,6 +66,7 @@ export const AuthSignUpSchema = zod.object({
   firstName: zod.string().min(1, { message: 'First name is required!' }),
   lastName: zod.string().min(1, { message: 'Last name is required!' }),
   email: emailSchema,
+  companyCode: zod.string().optional(),
   contactNumber: optionalPhoneSchema,
   password: zod
     .string()
@@ -103,6 +104,8 @@ export const NewUserSchema = zod.object({
   email: emailSchema,
 
   avatar: avatarFieldSchema,
+
+  companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
 
   contactNumber: optionalPhoneSchema,
 
@@ -156,6 +159,8 @@ export const UpdateUserSchema = zod.object({
 
   avatar: avatarFieldSchema,
 
+  companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
+
   contactNumber: optionalPhoneSchema,
 
   status: zod
@@ -197,6 +202,8 @@ export const ProfileSchema = zod.object({
   email: emailSchema,
 
   avatar: avatarFieldSchema,
+
+  companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
 
   contactNumber: optionalPhoneSchema,
 });

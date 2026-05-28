@@ -178,6 +178,7 @@ export function SimpleSignUpView() {
     firstName: '',
     lastName: '',
     email: '',
+    companyCode: '',
     contactNumber: '',
     password: '',
   };
@@ -239,6 +240,7 @@ export function SimpleSignUpView() {
           firstName: prefill.firstName || '',
           lastName: prefill.lastName || '',
           email: prefill.email || '',
+          companyCode: prefill.companyCode || '',
           contactNumber: prefill.contactNumber || '',
           password: '',
         });
@@ -320,6 +322,7 @@ export function SimpleSignUpView() {
         firstName: parsed.values.firstName || '',
         lastName: parsed.values.lastName || '',
         email: parsed.values.email || '',
+        companyCode: parsed.values.companyCode || '',
         contactNumber: parsed.values.contactNumber || '',
         password: parsed.values.password || '',
       });
@@ -498,6 +501,7 @@ export function SimpleSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        companyCode: data.companyCode,
         contactNumber: data.contactNumber,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         eligibilityData,
@@ -538,6 +542,7 @@ export function SimpleSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        companyCode: data.companyCode,
         contactNumber: data.contactNumber,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         draftUserId: cachedDraftUserId || undefined,
@@ -557,6 +562,7 @@ export function SimpleSignUpView() {
               firstName: data.firstName,
               lastName: data.lastName,
               email: data.email,
+              companyCode: data.companyCode,
               contactNumber: data.contactNumber,
               password: data.password,
             },
@@ -670,10 +676,11 @@ export function SimpleSignUpView() {
   );
 
   const renderAccountFields = (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
       <Field.Text
         name="username"
         label="Username"
+        required
         placeholder="Choose a username"
         InputLabelProps={{ shrink: true }}
         InputProps={{
@@ -728,6 +735,7 @@ export function SimpleSignUpView() {
         <Field.Text
           name="firstName"
           label="First name"
+          required
           InputLabelProps={{ shrink: true }}
           InputProps={{
             startAdornment: (
@@ -740,6 +748,7 @@ export function SimpleSignUpView() {
         <Field.Text
           name="lastName"
           label="Last name"
+          required
           InputLabelProps={{ shrink: true }}
           InputProps={{
             startAdornment: (
@@ -754,6 +763,7 @@ export function SimpleSignUpView() {
       <Field.Text
         name="email"
         label="Email address"
+        required
         InputLabelProps={{ shrink: true }}
         InputProps={{
           startAdornment: (
@@ -764,11 +774,14 @@ export function SimpleSignUpView() {
         }}
       />
 
+      <Field.Text name="companyCode" label="Company’s Code (optional)" InputLabelProps={{ shrink: true }} />
+
       <Field.Phone name="contactNumber" label="Contact number (optional)" country="SG" />
 
       <Field.Text
         name="password"
         label="Password"
+        required
         placeholder="6+ characters"
         type={password.value ? 'text' : 'password'}
         InputLabelProps={{ shrink: true }}

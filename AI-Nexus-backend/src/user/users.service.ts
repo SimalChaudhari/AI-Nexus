@@ -173,6 +173,7 @@ export class UserService {
             financeRole: createUserDto.financeRole?.trim() || null,
             avatarUrl: createUserDto.avatarUrl?.trim() || null,
             contactNumber: createUserDto.contactNumber?.trim() || null,
+            companyCode: createUserDto.companyCode?.trim() || null,
             password: passwordHash,
             authProvider: AuthProvider.LOCAL,
             role: createUserDto.role || UserRole.User,
@@ -278,6 +279,10 @@ export class UserService {
         if (updateUserDto.contactNumber !== undefined) {
             const trimmed = updateUserDto.contactNumber?.trim();
             user.contactNumber = trimmed ? trimmed : null;
+        }
+        if (updateUserDto.companyCode !== undefined) {
+            const trimmed = updateUserDto.companyCode?.trim();
+            user.companyCode = trimmed ? trimmed : null;
         }
         if (updateUserDto.password) {
             // Hash new password

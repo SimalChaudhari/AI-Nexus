@@ -38,6 +38,7 @@ export const SignUpSchema = zod.object({
     .string()
     .min(1, { message: 'Email is required!' })
     .email({ message: 'Email must be a valid email address!' }),
+  companyCode: zod.string().optional(),
   contactNumber: optionalPhoneSchema,
   password: zod
     .string()
@@ -61,6 +62,7 @@ export function JwtSignUpView() {
     firstName: '',
     lastName: '',
     email: '',
+    companyCode: '',
     contactNumber: '',
     password: '',
   };
@@ -83,6 +85,7 @@ export function JwtSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        companyCode: data.companyCode,
         contactNumber: data.contactNumber,
       });
       await checkUserSession?.();
@@ -111,26 +114,34 @@ export function JwtSignUpView() {
   );
 
   const renderForm = (
-    <Stack spacing={3}>
+    <Stack spacing={3} sx={{ '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
       <Field.Text
         name="username"
         label="Username"
+        required
         placeholder="Choose a username"
         InputLabelProps={{ shrink: true }}
       />
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <Field.Text name="firstName" label="First name" InputLabelProps={{ shrink: true }} />
-        <Field.Text name="lastName" label="Last name" InputLabelProps={{ shrink: true }} />
+        <Field.Text name="firstName" label="First name" required InputLabelProps={{ shrink: true }} />
+        <Field.Text name="lastName" label="Last name" required InputLabelProps={{ shrink: true }} />
       </Stack>
 
-      <Field.Text name="email" label="Email address" InputLabelProps={{ shrink: true }} />
+      <Field.Text name="email" label="Email address" required InputLabelProps={{ shrink: true }} />
+
+      <Field.Text
+        name="companyCode"
+        label="Company’s Code (optional)"
+        InputLabelProps={{ shrink: true }}
+      />
 
       <Field.Phone name="contactNumber" label="Contact number (optional)" />
 
       <Field.Text
         name="password"
         label="Password"
+        required
         placeholder="6+ characters"
         type={password.value ? 'text' : 'password'}
         InputLabelProps={{ shrink: true }}

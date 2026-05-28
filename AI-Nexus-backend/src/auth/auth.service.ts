@@ -635,6 +635,7 @@ export class AuthService {
         existingDraft.lastname = userDto.lastname;
         existingDraft.email = userDto.email;
         existingDraft.contactNumber = userDto.contactNumber?.trim() || null;
+        existingDraft.companyCode = userDto.companyCode?.trim() || null;
         existingDraft.persona = userDto.persona?.trim() || existingDraft.persona || null;
         existingDraft.password = hashedPassword;
         existingDraft.authProvider = AuthProvider.LOCAL;
@@ -653,6 +654,7 @@ export class AuthService {
           lastname: userDto.lastname,
           email: userDto.email,
           contactNumber: userDto.contactNumber?.trim() || null,
+          companyCode: userDto.companyCode?.trim() || null,
           persona: userDto.persona?.trim() || null,
           password: hashedPassword,
           authProvider: AuthProvider.LOCAL,
@@ -2214,6 +2216,7 @@ export class AuthService {
         verifiedSignupUser.lastname = userDto.lastname;
         verifiedSignupUser.email = userDto.email;
         verifiedSignupUser.contactNumber = userDto.contactNumber?.trim() || null;
+        verifiedSignupUser.companyCode = userDto.companyCode?.trim() || null;
         verifiedSignupUser.persona = userDto.persona?.trim() || verifiedSignupUser.persona || null;
         verifiedSignupUser.password = hashedPassword;
         verifiedSignupUser.authProvider = AuthProvider.LOCAL;
@@ -2235,6 +2238,7 @@ export class AuthService {
           lastname: userDto.lastname,
           email: userDto.email,
           contactNumber: userDto.contactNumber?.trim() || null,
+          companyCode: userDto.companyCode?.trim() || null,
           persona: userDto.persona?.trim() || null,
           password: hashedPassword,
           authProvider: AuthProvider.LOCAL,

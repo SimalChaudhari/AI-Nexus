@@ -68,6 +68,11 @@ export class UserDto {
     @MaxLength(48)
     contactNumber?: string;
 
+    @IsOptional()
+    @IsString()
+    @MaxLength(64)
+    companyCode?: string;
+
     /** Optional for admin-created users — backend generates a temporary password and emails it if omitted. */
     @IsOptional()
     @IsString()
@@ -161,6 +166,11 @@ export class UpdateUserDto {
     @IsString()
     @MaxLength(48)
     contactNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(64)
+    companyCode?: string;
 
     @IsOptional()
     @IsString()

@@ -200,6 +200,14 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
           </Grid>
           <Grid xs={12} sm={6}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
+              Company code
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+              {user.companyCode || '—'}
+            </Typography>
+          </Grid>
+          <Grid xs={12} sm={6}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
               Account Created
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 500 }}>
