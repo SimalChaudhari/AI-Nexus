@@ -271,7 +271,7 @@ export function AdminSettingsView() {
   const HOME_CARDS_MAX = 12;
   const FAQ_ITEMS_MAX = 50;
   const DEFAULT_FAQ_CONTENT = {
-    pageHeading: 'Frequently asked questions',
+    pageHeading: '',
     items: [],
   };
   const DEFAULT_JOIN_CONTENT = {
@@ -531,7 +531,7 @@ export function AdminSettingsView() {
         answer: String(item?.answer || '').trim(),
       }));
       setFaqContent({
-        pageHeading: String(remoteFaq?.pageHeading || DEFAULT_FAQ_CONTENT.pageHeading).trim(),
+        pageHeading: String(remoteFaq?.pageHeading || '').trim(),
         items: normalizedFaqItems,
       });
       setFeesContent(
@@ -1075,7 +1075,7 @@ export function AdminSettingsView() {
     const remoteFaq = appSettings?.faqContent || {};
     const remoteFaqRows = Array.isArray(remoteFaq?.items) ? remoteFaq.items : [];
     setFaqContent({
-      pageHeading: String(remoteFaq?.pageHeading || DEFAULT_FAQ_CONTENT.pageHeading).trim(),
+      pageHeading: String(remoteFaq?.pageHeading || '').trim(),
       items: remoteFaqRows
         .slice(0, FAQ_ITEMS_MAX)
         .map((item) => ({

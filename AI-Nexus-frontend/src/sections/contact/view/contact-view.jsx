@@ -8,7 +8,6 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
-import { _mapContact } from 'src/_mock';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { Iconify } from 'src/components/iconify';
 import { appSettingsService } from 'src/services/app-settings.service';
@@ -26,11 +25,11 @@ export function ContactSection() {
   const theme = useTheme();
   const [contactHeroImageUrl, setContactHeroImageUrl] = useState('');
   const [contactHeroContent, setContactHeroContent] = useState({
-    headingLine1: 'Where',
-    headingLine2: 'to find us?',
-    infoTitle: 'How can we help you?',
-    infoSubtitle: 'Fill up the form and our team will get back to you within 24 hours.',
-    contacts: _mapContact,
+    headingLine1: '',
+    headingLine2: '',
+    infoTitle: '',
+    infoSubtitle: '',
+    contacts: [],
   });
 
   useEffect(() => {
@@ -43,14 +42,13 @@ export function ContactSection() {
         if (!active) return;
         const remote = settings?.contactHeroContent || {};
         const remoteContacts = Array.isArray(remote.contacts) ? remote.contacts : [];
-        const normalizedContacts = (remoteContacts.length ? remoteContacts : _mapContact).map(
-          (row) => ({
+        const normalizedContacts = remoteContacts.map((row) => ({
             details: String(
               row?.details ||
-                [row?.country, row?.address, row?.phoneNumber]
-                  .map((item) => String(item || '').trim())
-                  .filter(Boolean)
-                  .join('<br/>')
+              [row?.country, row?.address, row?.phoneNumber]
+                .map((item) => String(item || '').trim())
+                .filter(Boolean)
+                .join('<br/>')
             ).trim(),
             address: String(row?.address || '').trim(),
             phone: String(row?.phone || '').trim(),
@@ -66,16 +64,13 @@ export function ContactSection() {
               Number(row?.lat || row?.latlng?.[0] || 0),
               Number(row?.lng || row?.latlng?.[1] || 0),
             ],
-          })
-        );
+          }));
         setContactHeroImageUrl(withCacheBust(settings?.contactHeroImageUrl || ''));
         setContactHeroContent({
-          headingLine1: String(remote?.headingLine1 || 'Where').trim(),
-          headingLine2: String(remote?.headingLine2 || 'to find us?').trim(),
-          infoTitle: String(remote?.infoTitle || 'How can we help you?').trim(),
-          infoSubtitle: String(
-            remote?.infoSubtitle || 'Fill up the form and our team will get back to you within 24 hours.'
-          ).trim(),
+          headingLine1: String(remote?.headingLine1 || '').trim(),
+          headingLine2: String(remote?.headingLine2 || '').trim(),
+          infoTitle: String(remote?.infoTitle || '').trim(),
+          infoSubtitle: String(remote?.infoSubtitle || '').trim(),
           contacts: normalizedContacts,
         });
       })
@@ -152,7 +147,7 @@ export function ContactSection() {
                       ...HERO_TYPOGRAPHY.contactInfoTitle,
                     }}
                   >
-                    {contactHeroContent.infoTitle || 'How can we help you?'}
+                    {contactHeroContent.infoTitle}
                   </Typography>
                   <Typography
                     sx={{
@@ -160,8 +155,7 @@ export function ContactSection() {
                       ...HERO_TYPOGRAPHY.contactInfoSubtitle,
                     }}
                   >
-                    {contactHeroContent.infoSubtitle ||
-                      'Fill up the form and our team will get back to you within 24 hours.'}
+                    {contactHeroContent.infoSubtitle}
                   </Typography>
                 </Box>
 
@@ -336,7 +330,7 @@ export function ContactSection() {
             </Grid>
             <Grid item xs={12} component={m.div} variants={varFade({ distance: 24 }).inUp}>
               <Box sx={{ mt: { xs: 1, md: 2 } }}>
-                <ContactMap contacts={mapContacts.length ? mapContacts : _mapContact} />
+                <ContactMap contacts={mapContacts} />
               </Box>
             </Grid>
           </Grid>

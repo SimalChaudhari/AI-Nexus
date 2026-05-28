@@ -13,15 +13,16 @@ import { AnimateText, MotionContainer, animateTextClasses } from 'src/components
 
 // ----------------------------------------------------------------------
 
-export function ContactHero({ headingLine1 = 'Where', headingLine2 = 'to find us?', imageUrl }) {
+export function ContactHero({ headingLine1 = '', headingLine2 = '', imageUrl = '' }) {
   const theme = useTheme();
+  const lines = [String(headingLine1 || '').trim(), String(headingLine2 || '').trim()].filter(Boolean);
 
   return (
     <Box
       sx={{
         ...bgGradient({
           color: `0deg, ${varAlpha(theme.vars.palette.grey['900Channel'], 0.8)}, ${varAlpha(theme.vars.palette.grey['900Channel'], 0.8)}`,
-          imgUrl: imageUrl || `${CONFIG.site.basePath}/assets/images/contact/hero.webp`,
+          imgUrl: imageUrl || '',
         }),
         height: { md: 560 },
         py: { xs: 10, md: 0 },
@@ -36,20 +37,28 @@ export function ContactHero({ headingLine1 = 'Where', headingLine2 = 'to find us
             position: { md: 'absolute' },
             textAlign: { xs: 'center', md: 'unset' },
             maxWidth: 780,
+            px: { xs: 1, sm: 2, md: 0 },
           }}
         >
-          <AnimateText
-            component="h1"
-            variant="h1"
-            text={[headingLine1, headingLine2]}
-            sx={{
-              color: 'common.white',
-              ...HERO_TYPOGRAPHY.sectionMainTitle,
-              [`& .${animateTextClasses.line}[data-index="0"]`]: {
-                [`& .${animateTextClasses.word}[data-index="0"]`]: { color: 'primary.main' },
-              },
-            }}
-          />
+          {lines.length ? (
+            <AnimateText
+              component="h1"
+              variant="h1"
+              text={lines}
+              sx={{
+                color: 'common.white',
+                ...HERO_TYPOGRAPHY.sectionMainTitle,
+                lineHeight: { xs: 1.2, sm: 1.15, md: 1.1 },
+                [`& .${animateTextClasses.line}`]: {
+                  fontSize: { xs: '2rem', sm: '2.6rem', md: '3.4rem' },
+                },
+                textShadow: '0 2px 12px rgba(0,0,0,0.28)',
+                [`& .${animateTextClasses.line}[data-index="0"]`]: {
+                  [`& .${animateTextClasses.word}[data-index="0"]`]: { color: 'primary.main' },
+                },
+              }}
+            />
+          ) : null}
         
         </Box>
       </Container>

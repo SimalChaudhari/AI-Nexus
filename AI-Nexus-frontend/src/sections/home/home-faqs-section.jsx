@@ -11,10 +11,8 @@ import { FaqsList } from 'src/sections/faqs/faqs-list';
 
 // ----------------------------------------------------------------------
 
-const DEFAULT_HEADING = 'FAQS';
-
 export function HomeFaqsSection() {
-  const [pageHeading, setPageHeading] = useState(DEFAULT_HEADING);
+  const [pageHeading, setPageHeading] = useState('');
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -24,12 +22,12 @@ export function HomeFaqsSection() {
       .then((data) => {
         if (!active) return;
         const heading = String(data?.pageHeading || '').trim();
-        setPageHeading(heading ? heading.toUpperCase() : DEFAULT_HEADING);
+        setPageHeading(heading ? heading.toUpperCase() : '');
         setItems(Array.isArray(data?.items) ? data.items : []);
       })
       .catch(() => {
         if (active) {
-          setPageHeading(DEFAULT_HEADING);
+          setPageHeading('');
           setItems([]);
         }
       });
