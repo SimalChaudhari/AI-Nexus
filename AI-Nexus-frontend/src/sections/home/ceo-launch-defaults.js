@@ -1,5 +1,5 @@
 export const DEFAULT_CEO_LAUNCH_CONTENT = {
-  eyebrow: 'CEO LAUNCH VIDEO',
+  // eyebrow: 'CEO LAUNCH VIDEO',
   heading: 'Why AI Fluency Matters Now',
   subtitle:
     'AI is transforming the workforce — and fluency in AI tools will become essential for professionals across industries.',

@@ -234,11 +234,7 @@ export function HomeEmployeeSection() {
   const heroPanelSubtitle = String(content.heroPanelSubtitle || '').trim();
   const showHeroPanelText = Boolean(heroPanelTitle || heroPanelSubtitle);
 
-  const benefitsSectionBg = `
-    radial-gradient(ellipse 70% 55% at 100% 0%, ${alpha(primary.main, 0.08)} 0%, transparent 55%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, ${alpha(primary.lighter, 0.45)} 0%, transparent 50%),
-    linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(primary.lighter, 0.35)} 100%)
-  `;
+  const benefitsSectionBg = 'linear-gradient(180deg, #f8fafc 0%, #eef4fa 48%, #f8fafc 100%)';
 
   const heroFadeOverlay = {
     xs: `linear-gradient(180deg, ${heroBase} 0%, ${heroBase} 36%, ${alpha(heroBase, 0.94)} 50%, ${heroTint} 64%, transparent 88%)`,
@@ -500,57 +496,69 @@ export function HomeEmployeeSection() {
                 <Box
                   sx={{
                     width: 1,
-                    pt: { xs: 0.75, md: 1 },
-                    pb: { xs: 0.4, md: 0.6 },
-                    overflow: 'hidden',
-                    position: 'relative',
-                    lineHeight: 0,
-                    borderTop: `1px solid ${alpha(primary.main, 0.12)}`,
-                    borderBottom: `1px solid ${alpha(primary.main, 0.12)}`,
-                    '@keyframes employeeLogoScroll': {
-                      from: { transform: 'translateX(0)' },
-                      to: { transform: 'translateX(-50%)' },
-                    },
+                    mt: { xs: 1, md: 1.4 },
                   }}
                 >
-                  <Stack
-                    direction="row"
-                    spacing={0}
-                    sx={{
-                      width: 'max-content',
-                      minWidth: '100%',
-                      animation: displayLogos.length > 1 ? 'employeeLogoScroll 22s linear infinite' : 'none',
-                    }}
-                  >
-                    {[...displayLogos, ...displayLogos].map((row, index) => (
-                      <Stack
-                        key={`employee-company-logo-${index}`}
-                        direction="row"
-                        alignItems="center"
-                        justifyContent="center"
-                        sx={{
-                          flex: { xs: '1 1 50%', sm: '1 1 33.33%', md: '1 1 16.66%' },
-                          minWidth: { xs: 150, sm: 180, md: 0 },
-                          px: { xs: 1.2, sm: 1.8, md: 2.2 },
-                          py: { xs: 0.5, md: 0.7 },
-                          borderRight: `1px solid ${alpha(primary.main, 0.14)}`,
-                          '&:last-of-type': { borderRight: 'none' },
-                        }}
-                      >
-                        <Box
-                          component="img"
-                          src={row.logoUrl}
-                          alt={row.name}
-                          sx={{
-                            height: { xs: 54, sm: 62, md: 68 },
-                            maxWidth: '100%',
-                            objectFit: 'contain',
-                            display: 'block',
-                          }}
-                        />
-                      </Stack>
-                    ))}
+                  <Stack spacing={0.8} sx={{ mb: { xs: 2, md: 2.8 } }}>
+                    <Typography
+                      variant="overline"
+                      sx={{
+                        textAlign: 'center',
+                        color: 'primary.main',
+                        letterSpacing: 1.4,
+                        fontWeight: 700,
+                        fontSize: { xs: '0.66rem', md: '0.7rem' },
+                      }}
+                    >
+                      OUR PARTNERS
+                    </Typography>
+                    <Typography
+                      sx={{
+                        textAlign: 'center',
+                        color: 'text.primary',
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        fontSize: { xs: '1.55rem', sm: '1.9rem' },
+                      }}
+                    >
+                      We work with the best partners
+                    </Typography>
                   </Stack>
+
+                  <Grid
+                    container
+                    spacing={{ xs: 1.2, md: 1.6 }}
+                    sx={{ width: 1, maxWidth: 980, mx: 'auto' }}
+                  >
+                    {displayLogos.map((row, index) => (
+                      <Grid key={`employee-company-logo-${index}`} xs={6} sm={3}>
+                        <Box
+                          sx={{
+                            height: { xs: 76, md: 92 },
+                            borderRadius: 1.5,
+                            bgcolor: 'common.white',
+                            boxShadow: `0 8px 20px ${alpha(primary.main, 0.12)}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            px: { xs: 0.4, md: 0.6 },
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            src={row.logoUrl}
+                            alt={row.name}
+                            sx={{
+                              width: '100%',
+                              height: { xs: 56, md: 68 },
+                              objectFit: 'contain',
+                              display: 'block',
+                            }}
+                          />
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
                 </Box>
               ) : null}
             </Stack>
