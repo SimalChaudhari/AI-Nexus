@@ -148,15 +148,14 @@ export function HeaderBase({
                 ? 'common.white'
                 : undefined,
           ...(isHomeRoute && {
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
             '@media (max-width:1080px)': {
               backgroundColor: 'common.white',
               borderBottom: '1px solid rgba(28,66,112,0.16)',
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
+            },
+            '& [data-slot="logo-wrapper"]': {
+              transition: 'none',
             },
             '&[data-offset-top="false"] [data-slot="logo-wrapper"]': {
               '@media (max-width:1080px)': {
@@ -188,7 +187,8 @@ export function HeaderBase({
       layoutQuery={layoutQuery}
       disableOffset={false}
       disableElevation={isHomeRoute}
-      disableAppBar={isHomeRoute}
+      disableAppBar={false}
+      appBarPosition={isCustomerFacingRoute && isHomeRoute ? 'fixed' : 'sticky'}
       offsetSx={
         isHomeRoute
           ? {

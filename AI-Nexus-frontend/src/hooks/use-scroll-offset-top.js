@@ -1,9 +1,12 @@
 import { useScroll, useMotionValueEvent } from 'framer-motion';
-import { useRef, useMemo, useState, useCallback } from 'react';
+import { useRef, useMemo, useState, useCallback, useLayoutEffect } from 'react';
+
+import { usePathname } from 'src/routes/hooks';
 
 // ----------------------------------------------------------------------
 
 export function useScrollOffSetTop(top = 0) {
+  const pathname = usePathname();
   const elementRef = useRef(null);
 
   const { scrollY } = useScroll();
@@ -23,7 +26,7 @@ export function useScrollOffSetTop(top = 0) {
         setOffsetTop(scrollHeight > top);
       }
     },
-    [elementRef, top]
+    [top]
   );
 
   useMotionValueEvent(
@@ -31,6 +34,11 @@ export function useScrollOffSetTop(top = 0) {
     'change',
     useMemo(() => handleScrollChange, [handleScrollChange])
   );
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    handleScrollChange(window.scrollY);
+  }, [pathname, handleScrollChange]);
 
   const memoizedValue = useMemo(() => ({ elementRef, offsetTop }), [offsetTop]);
 

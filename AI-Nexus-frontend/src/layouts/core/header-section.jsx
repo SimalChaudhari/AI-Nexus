@@ -43,12 +43,13 @@ export function HeaderSection({
   const theme = useTheme();
 
   const { offsetTop } = useScrollOffSetTop();
+  const usePlainHeader = disableAppBar;
 
   const toolbarStyles = {
     default: {
       minHeight: 'auto',
       height: 'var(--layout-header-mobile-height)',
-      transition: theme.transitions.create(['height', 'background-color'], {
+      transition: theme.transitions.create(['background-color'], {
         easing: theme.transitions.easing.easeInOut,
         duration: theme.transitions.duration.shorter,
       }),
@@ -76,8 +77,8 @@ export function HeaderSection({
       className={layoutClasses.header}
       sx={rootSx}
       data-offset-top={offsetTop ? 'true' : 'false'}
-      component={disableAppBar ? 'header' : AppBar}
-      {...(!disableAppBar && { position: appBarPosition })}
+      component={usePlainHeader ? 'header' : AppBar}
+      {...(!usePlainHeader && { position: appBarPosition })}
       {...other}
     >
       {slots?.topArea}
