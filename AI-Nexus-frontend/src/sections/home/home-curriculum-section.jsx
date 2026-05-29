@@ -2,16 +2,36 @@ import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 
+import { RichTextContent } from 'src/components/html-content';
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
-import {
-  buildCurriculumHeadline,
-  normalizeCurriculumContent,
-} from './curriculum-defaults';
+import { buildCurriculumHeadline, normalizeCurriculumContent } from './curriculum-defaults';
 import { CurriculumModulesList } from './curriculum-modules-list';
+import { Card } from '@mui/material';
+
+// ----------------------------------------------------------------------
+
+const RED = '#E32B24';
+
+function SectionUnderline() {
+  return (
+    <Box
+      sx={{
+        width: { xs: 72, sm: 88, md: 104 },
+        height: 4,
+        borderRadius: 999,
+        background: (theme) =>
+          `linear-gradient(90deg, ${RED} 0%, ${theme.palette.secondary.main} 100%)`,
+        boxShadow: `0 4px 12px ${alpha(RED, 0.28)}`,
+      }}
+    />
+  );
+}
 
 // ----------------------------------------------------------------------
 
@@ -36,7 +56,7 @@ export function HomeCurriculumSection() {
             moduleCount: 0,
             modules: [],
             courses: [],
-            headline: buildCurriculumHeadline(0, stored),
+            headline: '',
           });
         } catch {
           if (active) setPayload(null);
@@ -54,17 +74,15 @@ export function HomeCurriculumSection() {
   const modules = Array.isArray(payload?.modules) ? payload.modules : [];
   const courses = Array.isArray(payload?.courses) ? payload.courses : [];
   const courseIds = Array.isArray(payload?.courseIds) ? payload.courseIds : [];
-  const headline = String(payload?.headline || '').trim();
-  const smallTitle = String(content.smallTitle || '').trim();
-  const subtext = String(content.subtext || '').trim();
+  const moduleCount = Number(payload?.moduleCount) || modules.length;
+  const builtHeadline = buildCurriculumHeadline(moduleCount);
+  const apiHeadline = String(payload?.headline || '').trim();
+  const headline = moduleCount === 0 ? builtHeadline : apiHeadline || builtHeadline;
+  const smallTitle = String(payload?.smallTitle || content.smallTitle || '').trim();
+  const subtext = String(payload?.subtext || content.subtext || '').trim();
+  const hasHeader = Boolean(smallTitle || headline || subtext);
   const shouldHide =
-    !loading &&
-    !modules.length &&
-    !courses.length &&
-    !courseIds.length &&
-    !smallTitle &&
-    !headline &&
-    !subtext;
+    !loading && !modules.length && !courses.length && !courseIds.length && !hasHeader;
 
   if (shouldHide) {
     return null;
@@ -74,74 +92,99 @@ export function HomeCurriculumSection() {
     <Box
       component="section"
       sx={{
-        py: { xs: 5, md: 7 },
+        py: 4,
         bgcolor: 'background.paper',
       }}
     >
-      <DashboardContent component={MotionViewport}>
-        {smallTitle ? (
-          <Typography
-            component={m.p}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}
-            sx={{
-              mb: 1.5,
-              color: 'primary.main',
-              fontWeight: 700,
-              letterSpacing: 0.6,
-              textTransform: 'uppercase',
-              fontSize: { xs: '0.8rem', md: '0.875rem' },
-            }}
+      <DashboardContent
+        component={MotionViewport}
+        sx={{
+          width: 1,
+          maxWidth: '100%',
+          mx: 'auto',
+          px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+          pt: 0,
+          pb: 0,
+        }}
+      >
+        {hasHeader ? (
+          <Stack
+            spacing={{ xs: 1.5, md: 2 }}
+            alignItems="flex-start"
+            sx={{ mb: 2.5, maxWidth: 900 }}
           >
-            {smallTitle}
-          </Typography>
-        ) : null}
+            {smallTitle ? (
+              <Typography
+                component="span"
+                sx={{
+                  display: 'inline-flex',
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontWeight: 700,
+                  fontSize: '0.6875rem',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'primary.main',
+                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                  border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+                }}
+              >
+                {smallTitle}
+              </Typography>
+            ) : null}
 
-        {headline ? (
-          <Typography
-            component={m.h2}
-            initial={{ opacity: 0, y: 22 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.04 }}
-            sx={{
-              mb: subtext ? 2 : { xs: 3, md: 4 },
-              color: 'text.primary',
-              fontWeight: 800,
-              lineHeight: 1.2,
-              fontSize: { xs: '1.75rem', sm: '2rem', md: '2.35rem' },
-            }}
-          >
-            {headline}
-          </Typography>
-        ) : null}
+            {headline ? (
+              <Stack spacing={1.5} alignItems="flex-start" sx={{ width: 1 }}>
+                <Typography
+                  component="h2"
+                  sx={{
+                    m: 0,
+                    textAlign: 'left',
+                    color: 'secondary.main',
+                    fontWeight: 800,
+                    lineHeight: 1.2,
+                    letterSpacing: '-0.02em',
+                    fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+                  }}
+                >
+                  {headline}
+                </Typography>
+                <SectionUnderline />
+              </Stack>
+            ) : null}
 
-        {subtext ? (
-          <Typography
-            component={m.p}
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 0.45, ease: 'easeOut', delay: 0.08 }}
-            sx={{
-              mb: { xs: 3, md: 5 },
-              color: 'text.secondary',
-              maxWidth: 720,
-              fontSize: { xs: '1rem', md: '1.05rem' },
-            }}
-          >
-            {subtext}
-          </Typography>
+            {subtext ? (
+              <RichTextContent
+                html={subtext}
+                sx={{
+                  color: 'text.secondary',
+                  fontSize: { xs: '1rem', md: '1.05rem' },
+                  lineHeight: 1.65,
+                  maxWidth: 720,
+                  '& p': { m: 0, mb: 1 },
+                  '& p:last-child': { mb: 0 },
+                  '& ul, & ol': { m: 0, pl: 2.5, mb: 1 },
+                  '& a': { color: 'primary.main', fontWeight: 600 },
+                }}
+              />
+            ) : null}
+          </Stack>
         ) : null}
 
         <Box component={m.div} variants={varFade({ distance: 24 }).inUp}>
-          <CurriculumModulesList
-            modules={modules}
-            courses={courses}
-            courseIds={courseIds}
-          />
+        <Card
+          component={m.div}
+          variants={varFade({ distance: 24 }).inUp}
+          sx={{
+            p: 2.5,
+            borderRadius: 2,
+            boxShadow: (theme) => theme.customShadows?.card,
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <CurriculumModulesList modules={modules} courses={courses} courseIds={courseIds} />
+        </Card>
         </Box>
       </DashboardContent>
     </Box>

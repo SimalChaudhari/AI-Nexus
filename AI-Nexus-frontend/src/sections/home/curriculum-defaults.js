@@ -5,8 +5,6 @@ export function normalizeCurriculumContent(source) {
     return {
       smallTitle: '',
       subtext: '',
-      hoursLabel: '',
-      pacingLabel: '',
       courseIds: [],
     };
   }
@@ -29,21 +27,14 @@ export function normalizeCurriculumContent(source) {
   return {
     smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
     subtext: source.subtext != null ? String(source.subtext) : '',
-    hoursLabel: source.hoursLabel != null ? String(source.hoursLabel) : '',
-    pacingLabel: source.pacingLabel != null ? String(source.pacingLabel) : '',
     courseIds: courseIds.slice(0, CURRICULUM_COURSES_MAX),
   };
 }
 
-export function buildCurriculumHeadline(moduleCount, content) {
-  const parts = [];
+export function buildCurriculumHeadline(moduleCount) {
   const count = Number(moduleCount) || 0;
-  parts.push(`${count} module${count === 1 ? '' : 's'}`);
-  const hours = String(content?.hoursLabel || '').trim();
-  const pacing = String(content?.pacingLabel || '').trim();
-  if (hours) parts.push(hours);
-  if (pacing) parts.push(pacing);
-  return parts.join(' · ');
+  if (count <= 0) return '';
+  return `${count} module${count === 1 ? '' : 's'}`;
 }
 
 export function mapModulesForDisplay(modules = []) {

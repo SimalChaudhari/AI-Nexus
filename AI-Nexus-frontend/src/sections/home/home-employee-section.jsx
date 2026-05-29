@@ -16,11 +16,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { CONFIG } from 'src/config-global';
 import { appSettingsService } from 'src/services/app-settings.service';
 
-import {
-  resolveEmployeeContent,
-  hasEmployeeContent,
-  formatEmployeeHeading,
-} from './employee-defaults';
+import { resolveEmployeeContent, hasEmployeeContent } from './employee-defaults';
 
 // ----------------------------------------------------------------------
 
@@ -29,6 +25,7 @@ const HERO_IMAGE_WIDTH = '58%';
 const SECTION_GREY = '#eceef1';
 const SECTION_GREY_LIGHT = '#f4f6f8';
 const SECTION_BG = `linear-gradient(180deg, ${SECTION_GREY_LIGHT} 0%, ${SECTION_GREY} 48%, ${SECTION_GREY_LIGHT} 100%)`;
+const FONT_STACK = '"Montserrat", "Google Sans", system-ui, sans-serif';
 
 const sectionBackgroundSx = {
   bgcolor: 'grey.200',
@@ -156,7 +153,9 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
         position: 'relative',
         zIndex: 1,
         bgcolor: '#ffffff',
-        py: { xs: 4, md: 5.5 },
+        py: { xs: 3.5, md: 4 },
+        display: 'flex',
+        alignItems: 'center',
         overflow: 'hidden',
         borderTop: `1px solid ${alpha(SECTION_GREY, 0.9)}`,
         '&::before': {
@@ -172,8 +171,30 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
         },
       }}
     >
-      <DashboardContent component={MotionViewport} sx={{ position: 'relative', zIndex: 1 }}>
-        <Stack spacing={{ xs: 2.5, md: 3 }} alignItems="center" sx={{ width: 1 }}>
+      {/* <DashboardContent
+        disablePadding
+        component={MotionViewport}
+        sx={{ position: 'relative', zIndex: 1, width: 1 }}
+      > */}
+
+      <DashboardContent
+        component={MotionViewport}
+        sx={{
+          width: 1,
+          maxWidth: '100%',
+          position: 'relative', zIndex: 1,
+          mx: 'auto',
+          px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+          pt: 0,
+          pb: 0,
+        }}
+      >
+        <Stack
+          spacing={{ xs: 2, md: 2.5 }}
+          alignItems="center"
+          justifyContent="center"
+          sx={{ width: 1 }}
+        >
           {heading ? (
             <Stack spacing={0} alignItems="center" sx={{ width: 1 }}>
               <Typography
@@ -226,7 +247,6 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
                 justifyContent: shouldScroll ? 'flex-start' : 'center',
                 flexWrap: shouldScroll ? 'nowrap' : 'wrap',
                 gap: { xs: 3, sm: 4, md: 5 },
-                py: { xs: 0.5, md: 1 },
               }}
             >
               {(shouldScroll ? [...logos, ...logos] : logos).map((row, index) => (
@@ -241,7 +261,8 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
                     height: { xs: 56, md: 68 },
                     px: { xs: 0.5, md: 1 },
                     opacity: 0.92,
-                    transition: (theme) => theme.transitions.create(['opacity', 'transform'], { duration: 200 }),
+                    transition: (theme) =>
+                      theme.transitions.create(['opacity', 'transform'], { duration: 200 }),
                     '@media (hover: hover) and (pointer: fine)': {
                       '&:hover': {
                         opacity: 1,
@@ -296,16 +317,21 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
 
   const common = {
     size: 'large',
-    endIcon: variant === 'contained' && !icon ? <Iconify icon="solar:arrow-right-linear" width={18} /> : null,
+    endIcon:
+      variant === 'contained' && !icon ? (
+        <Iconify icon="solar:arrow-right-linear" width={18} />
+      ) : null,
     startIcon: icon ? <Iconify icon={icon} width={20} /> : null,
     sx: {
+      fontFamily: FONT_STACK,
       fontWeight: 700,
-      px: { xs: 2.25, md: 3 },
-      py: 1.35,
-      borderRadius: 1.5,
+      fontSize: '0.9375rem',
+      px: { xs: 2.5, md: 3.25 },
+      py: 1.4,
+      borderRadius: 2,
       textTransform: 'none',
       whiteSpace: { xs: 'normal', sm: 'nowrap' },
-      minWidth: { sm: 180 },
+      minWidth: { sm: 188 },
     },
   };
 
@@ -396,51 +422,163 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
   );
 }
 
-function HeroBenefitItem({ row }) {
-  const theme = useTheme();
-  const secondary = theme.palette.secondary;
-  const iconColor = row.iconColor || secondary.main;
+function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColor }) {
+  const hasHeading = Boolean(String(heading || '').trim());
+  const hasAccent = Boolean(String(headingAccent || '').trim());
+  const eyebrowText = String(eyebrow || '').trim();
+
+  if (!eyebrowText && !hasHeading && !hasAccent) return null;
 
   return (
-    <Stack
-      spacing={1}
-      alignItems="center"
+    <Stack spacing={{ xs: 1.25, md: 1.5 }}>
+      {eyebrowText ? (
+        <Typography
+          component="span"
+          sx={{
+            display: 'inline-flex',
+            alignSelf: 'flex-start',
+            px: 1.5,
+            py: 0.5,
+            borderRadius: 1,
+            fontFamily: FONT_STACK,
+            fontWeight: 700,
+            fontSize: '0.6875rem',
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'primary.main',
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+          }}
+        >
+          {eyebrowText}
+        </Typography>
+      ) : null}
+
+      {(hasHeading || hasAccent) && (
+        <Typography
+          component="h2"
+          sx={{
+            m: 0,
+            fontFamily: FONT_STACK,
+            fontWeight: 800,
+            fontSize: { xs: '1.75rem', sm: '2.125rem', md: '2.35rem', lg: '2.5rem' },
+            lineHeight: { xs: 1.2, md: 1.15 },
+            letterSpacing: '-0.03em',
+            color: 'secondary.main',
+          }}
+        >
+          {hasHeading ? (
+            <Box component="span" sx={{ display: 'block' }}>
+              {String(heading).trim()}
+            </Box>
+          ) : null}
+          {hasAccent ? (
+            <Box component="span" sx={{ display: 'block', color: 'primary.main' }}>
+              {String(headingAccent).trim()}
+            </Box>
+          ) : null}
+        </Typography>
+      )}
+
+      <Box
+        sx={{
+          width: { xs: 56, md: 72 },
+          height: 4,
+          borderRadius: 999,
+          background: (theme) =>
+            `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${secondaryColor || theme.palette.secondary.main} 100%)`,
+          boxShadow: (theme) => `0 4px 14px ${alpha(theme.palette.primary.main, 0.22)}`,
+        }}
+      />
+    </Stack>
+  );
+}
+
+function EmployeeBenefitCard({ row, index }) {
+  const theme = useTheme();
+  const iconColor = row.iconColor || theme.palette.primary.main;
+
+  return (
+    <Box
       sx={{
-        width: 1,
-        textAlign: 'center',
-        px: { xs: 0.5, md: 0.25, lg: 1 },
+        height: 1,
+        display: 'flex',
+        flexDirection: { xs: 'column', sm: 'row' },
+        alignItems: { xs: 'center', sm: 'flex-start' },
+        textAlign: { xs: 'center', sm: 'left' },
+        gap: { xs: 1, sm: 1.5 },
+        p: { xs: 1.25, sm: 1.5, md: 1.75 },
+        borderRadius: 2,
+        bgcolor: 'common.white',
+        border: `1px solid ${alpha(NAVY, 0.08)}`,
+        boxShadow: `0 8px 24px ${alpha(NAVY, 0.06)}`,
+        transition: (t) =>
+          t.transitions.create(['box-shadow', 'border-color', 'transform'], { duration: 220 }),
+        '@media (hover: hover) and (pointer: fine)': {
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            borderColor: alpha(theme.palette.primary.main, 0.22),
+            boxShadow: `0 14px 32px ${alpha(NAVY, 0.1)}`,
+          },
+        },
       }}
     >
       {row.icon ? (
         <Box
           sx={{
-            width: { xs: 52, md: 50, lg: 58 },
-            height: { xs: 52, md: 50, lg: 58 },
-            borderRadius: '50%',
+            flexShrink: 0,
+            width: { xs: 40, sm: 44 },
+            height: { xs: 40, sm: 44 },
+            borderRadius: 1.5,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: iconColor,
-            border: `2px solid ${alpha(secondary.main, 0.22)}`,
-            bgcolor: 'transparent',
+            background: `linear-gradient(145deg, ${alpha(iconColor, 0.14)} 0%, ${alpha(iconColor, 0.06)} 100%)`,
+            border: `1px solid ${alpha(iconColor, 0.2)}`,
           }}
         >
-          <Iconify icon={row.icon} width={26} />
+          <Iconify icon={row.icon} width={20} />
         </Box>
-      ) : null}
+      ) : (
+        <Box
+          sx={{
+            flexShrink: 0,
+            width: { xs: 40, sm: 44 },
+            height: { xs: 40, sm: 44 },
+            borderRadius: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: FONT_STACK,
+            fontWeight: 800,
+            fontSize: '0.875rem',
+            color: 'primary.main',
+            bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
+          }}
+        >
+          {index + 1}
+        </Box>
+      )}
       {row.title ? (
         <Typography
           sx={{
-            color: 'secondary.main',
-            fontWeight: 700,
-            fontSize: { xs: '0.72rem', sm: '0.78rem', md: '0.82rem' },
-            lineHeight: 1.35,
+            pt: { xs: 0, sm: 0.35 },
+            flex: 1,
+            minWidth: 0,
+            width: { xs: 1, sm: 'auto' },
+            fontFamily: FONT_STACK,
+            color: NAVY,
+            fontWeight: 600,
+            fontSize: { xs: '0.6875rem', sm: '0.8125rem', md: '0.875rem' },
+            lineHeight: { xs: 1.35, sm: 1.45 },
+            letterSpacing: '-0.01em',
           }}
         >
           {String(row.title).trim()}
         </Typography>
       ) : null}
-    </Stack>
+    </Box>
   );
 }
 
@@ -487,9 +625,7 @@ export function HomeEmployeeSection() {
 
   if (!hasEmployeeContent(content)) return null;
 
-  const benefits = (content.benefits || []).filter(
-    (row) => String(row?.title || '').trim()
-  );
+  const benefits = (content.benefits || []).filter((row) => String(row?.title || '').trim());
   const heroSrc = resolveAssetUrl(content.heroImageUrl);
   const displayLogos = companyLogos;
   const partnersHeading = String(content.partnersHeading || '').trim();
@@ -570,96 +706,117 @@ export function HomeEmployeeSection() {
 
           <Grid container alignItems="center" sx={{ width: 1 }}>
             <Grid xs={12} md={heroSrc ? 6.5 : 12}>
-              <Stack
-                spacing={{ xs: 2.25, md: 2.75 }}
+              <Box
+                component={m.div}
+                variants={varFade({ distance: 20 }).inUp}
                 sx={{
-                  maxWidth: heroSrc ? { xs: 1, md: 420, lg: 620 } : { xs: 1, md: 620 },
+                  position: 'relative',
+                  maxWidth: heroSrc ? { xs: 1, md: 480, lg: 640 } : { xs: 1, md: 640 },
+                  py: { md: 1 },
+                  pr: { md: heroSrc ? 2 : 0, lg: heroSrc ? 3 : 0 },
+                  '&::before': {
+                    content: '""',
+                    display: { xs: 'none', md: 'block' },
+                    position: 'absolute',
+                    left: 0,
+                    top: 12,
+                    bottom: 12,
+                    width: 4,
+                    borderRadius: 999,
+                    background: (t) =>
+                      `linear-gradient(180deg, ${t.palette.primary.main} 0%, ${secondary.main} 100%)`,
+                  },
                 }}
               >
-                {(content.heading || content.headingAccent) && (
-                  <Typography
-                    component={m.h2}
-                    variants={varFade({ distance: 20 }).inUp}
-                    sx={{
-                      m: 0,
-                      color: 'secondary.main',
-                      fontWeight: 800,
-                      fontSize: { xs: '1.85rem', sm: '2.25rem', md: '2.65rem' },
-                      lineHeight: 1.15,
-                      letterSpacing: '-0.02em',
-                    }}
-                  >
-                    {formatEmployeeHeading(content.heading, content.headingAccent)}
-                  </Typography>
-                )}
-
-                {content.subtitle ? (
-                  <Box
-                    component={m.div}
-                    variants={varFade({ distance: 14 }).inUp}
-                    sx={{
-                      width: 1,
-                      maxWidth: heroSrc ? { xs: 1, md: 400, lg: 540 } : { xs: 1, md: 540 },
-                    }}
-                  >
-                    <RichTextContent
-                      html={content.subtitle}
-                      sx={{
-                        color: NAVY,
-                        opacity: 0.72,
-                        typography: 'body1',
-                        fontSize: { xs: '0.9375rem', md: '0.9375rem', lg: '1rem' },
-                        lineHeight: { xs: 1.65, lg: 1.7 },
-                        '& p': { m: 0 },
-                      }}
-                    />
-                  </Box>
-                ) : null}
-
-                {benefits.length > 0 ? (
-                  <Grid
-                    component={m.div}
-                    container
-                    spacing={{ xs: 1.5, md: 2, lg: 2.5 }}
-                    variants={varFade({ distance: 14 }).inUp}
-                    sx={{
-                      pt: { xs: 0.5, md: 1 },
-                      width: 1,
-                      maxWidth: { xs: 1, md: 400, lg: 560 },
-                    }}
-                  >
-                    {benefits.slice(0, 4).map((row, index) => (
-                      <Grid key={`employee-hero-benefit-${index}`} xs={6} md={6} lg={3}>
-                        <HeroBenefitItem row={row} />
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : null}
-
                 <Stack
-                  component={m.div}
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1.5}
-                  flexWrap="wrap"
-                  variants={varFade({ distance: 12 }).inUp}
+                  spacing={{ xs: 2.5, md: 3 }}
                   sx={{
-                    pt: { xs: 0.5, md: 1 },
-                    width: 1,
-                    maxWidth: heroSrc ? { xs: 1, md: 400, lg: 1 } : 1,
+                    pl: { md: 2.5 },
                   }}
                 >
-                  <CtaButton
-                    label={content.primaryCtaLabel}
-                    href={content.primaryCtaHref}
+                  <EmployeeSectionHeading
+                    eyebrow={content.eyebrow}
+                    heading={content.heading}
+                    headingAccent={content.headingAccent}
+                    secondaryColor={secondary.main}
                   />
-                  <CtaButton
-                    label={content.secondaryCtaLabel}
-                    href={content.secondaryCtaHref}
-                    variant="outlined"
-                    icon="solar:download-minimalistic-bold"
-                  />
+
+                  {content.subtitle ? (
+                    <Box
+                      component={m.div}
+                      variants={varFade({ distance: 14 }).inUp}
+                      sx={{ width: 1 }}
+                    >
+                      <RichTextContent
+                        html={content.subtitle}
+                        sx={{
+                          fontFamily: FONT_STACK,
+                          color: alpha(NAVY, 0.78),
+                          typography: 'body1',
+                          fontSize: { xs: '0.9375rem', md: '1rem' },
+                          lineHeight: { xs: 1.65, md: 1.75 },
+                          maxWidth: { md: 520, lg: 560 },
+                          '& p': { m: 0 },
+                          '& p + p': { mt: 1.25 },
+                          '& strong': { color: NAVY, fontWeight: 700 },
+                        }}
+                      />
+                    </Box>
+                  ) : null}
+
+                  {benefits.length > 0 ? (
+                    <Stack
+                      component={m.div}
+                      spacing={1.5}
+                      variants={varFade({ distance: 14 }).inUp}
+                      sx={{ width: 1, pt: { xs: 0.25, md: 0.5 } }}
+                    >
+                      {content.benefitsLabel ? (
+                        <Typography
+                          sx={{
+                            fontFamily: FONT_STACK,
+                            fontWeight: 700,
+                            fontSize: '0.6875rem',
+                            letterSpacing: '0.12em',
+                            textTransform: 'uppercase',
+                            color: alpha(NAVY, 0.55),
+                          }}
+                        >
+                          {content.benefitsLabel}
+                        </Typography>
+                      ) : null}
+                      <Grid container spacing={{ xs: 1, sm: 1.25, md: 1.5 }}>
+                        {benefits.slice(0, 4).map((row, index) => (
+                          <Grid key={`employee-hero-benefit-${index}`} xs={6} sm={6}>
+                            <EmployeeBenefitCard row={row} index={index} />
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Stack>
+                  ) : null}
+
+                  <Stack
+                    component={m.div}
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    flexWrap="wrap"
+                    alignItems={{ xs: 'stretch', sm: 'center' }}
+                    variants={varFade({ distance: 12 }).inUp}
+                    sx={{
+                      width: 1,
+                      pt: { xs: 0.5, md: 1 },
+                    }}
+                  >
+                    <CtaButton label={content.primaryCtaLabel} href={content.primaryCtaHref} />
+                    <CtaButton
+                      label={content.secondaryCtaLabel}
+                      href={content.secondaryCtaHref}
+                      variant="outlined"
+                      icon="solar:download-minimalistic-bold"
+                    />
+                  </Stack>
                 </Stack>
-              </Stack>
+              </Box>
             </Grid>
           </Grid>
         </DashboardContent>

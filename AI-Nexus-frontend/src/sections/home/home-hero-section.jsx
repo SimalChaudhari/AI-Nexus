@@ -529,11 +529,8 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
         backgroundImage: `linear-gradient(135deg, ${alpha('#153A96', 0.5)} 0%, ${alpha('#001A70', 0.92)} 48%, ${alpha('#000C39', 0.92)} 100%)`,
         flexShrink: 0,
         overflow: 'hidden',
-        border: `1px solid ${alpha('#ffffff', 0.12)}`,
-        boxShadow: {
-          xs: `0 20px 40px ${alpha('#020B2E', 0.36)}`,
-          md: `0 28px 56px ${alpha('#020B2E', 0.34)}`,
-        },
+        border: 'none',
+        boxShadow: 'none',
       }}
     >
       <Grid container>

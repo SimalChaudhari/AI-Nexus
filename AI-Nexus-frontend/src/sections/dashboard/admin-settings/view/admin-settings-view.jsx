@@ -1104,8 +1104,6 @@ export function AdminSettingsView() {
       const payload = {
         smallTitle: source?.smallTitle || '',
         subtext: source?.subtext || '',
-        hoursLabel: source?.hoursLabel || '',
-        pacingLabel: source?.pacingLabel || '',
         courseIds: Array.isArray(source?.courseIds) ? source.courseIds : [],
       };
       const { settings: updated, curriculum } = await appSettingsService.updateCurriculumContent(payload);

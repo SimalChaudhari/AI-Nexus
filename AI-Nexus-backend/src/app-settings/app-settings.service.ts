@@ -61,8 +61,6 @@ type FaqContentPayload = {
 type CurriculumContentPayload = {
   smallTitle?: string;
   subtext?: string;
-  hoursLabel?: string;
-  pacingLabel?: string;
   courseIds?: string[];
 };
 
@@ -82,8 +80,6 @@ type CurriculumModulePayload = {
 type CurriculumPublicPayload = {
   smallTitle?: string;
   subtext?: string;
-  hoursLabel?: string;
-  pacingLabel?: string;
   courseIds: string[];
   courses: CurriculumCoursePayload[];
   headline: string;
@@ -266,8 +262,7 @@ const PROGRAMME_FEES_HEADING_MAX = 120;
 const PROGRAMME_FEES_TIER_TITLE_MAX = 240;
 const PROGRAMME_FEES_TIERS_MAX = 8;
 const CURRICULUM_SMALL_TITLE_MAX = 120;
-const CURRICULUM_SUBTEXT_MAX = 400;
-const CURRICULUM_LABEL_MAX = 80;
+const CURRICULUM_SUBTEXT_MAX = 4000;
 const CURRICULUM_COURSES_MAX = 20;
 const TESTIMONIALS_MAX = 12;
 const INDUSTRY_QUOTES_MAX = 8;
@@ -834,21 +829,13 @@ export class AppSettingsService {
     return {
       smallTitle: this.cleanText(source.smallTitle, CURRICULUM_SMALL_TITLE_MAX),
       subtext: this.cleanText(source.subtext, CURRICULUM_SUBTEXT_MAX),
-      hoursLabel: this.cleanText(source.hoursLabel, CURRICULUM_LABEL_MAX),
-      pacingLabel: this.cleanText(source.pacingLabel, CURRICULUM_LABEL_MAX),
       courseIds: courseIds.slice(0, CURRICULUM_COURSES_MAX),
     };
   }
 
-  private buildCurriculumHeadline(
-    moduleCount: number,
-    content: CurriculumContentPayload
-  ): string {
-    const parts: string[] = [];
-    parts.push(`${moduleCount} module${moduleCount === 1 ? '' : 's'}`);
-    if (content.hoursLabel) parts.push(content.hoursLabel);
-    if (content.pacingLabel) parts.push(content.pacingLabel);
-    return parts.join(' · ');
+  private buildCurriculumHeadline(moduleCount: number): string {
+    if (moduleCount <= 0) return '';
+    return `${moduleCount} module${moduleCount === 1 ? '' : 's'}`;
   }
 
   private async resolveCurriculumFromCourses(courseIds: string[]): Promise<{
@@ -906,13 +893,11 @@ export class AppSettingsService {
     return {
       smallTitle: sanitized.smallTitle,
       subtext: sanitized.subtext,
-      hoursLabel: sanitized.hoursLabel,
-      pacingLabel: sanitized.pacingLabel,
       courseIds,
       courses,
       moduleCount,
       modules,
-      headline: this.buildCurriculumHeadline(moduleCount, sanitized),
+      headline: this.buildCurriculumHeadline(moduleCount),
     };
   }
 

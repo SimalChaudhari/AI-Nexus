@@ -7,6 +7,7 @@ import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
 import { varFade, MotionViewport } from 'src/components/animate';
@@ -31,6 +32,11 @@ function splitPricePair(rawPrice) {
   if (!left || !right) return null;
   return { left, right };
 }
+
+// ----------------------------------------------------------------------
+
+const RED = '#E32B24';
+const SECTION_BG = 'linear-gradient(180deg, #f4f6f8 0%, #eceef1 48%, #f4f6f8 100%)';
 
 // ----------------------------------------------------------------------
 
@@ -64,30 +70,61 @@ export function HomeProgrammeFeesSection() {
       sx={{
         py: { xs: 4, md: 4 },
         bgcolor: 'grey.200',
+        background: SECTION_BG,
       }}
     >
-      <DashboardContent component={MotionViewport}>
+            <DashboardContent
+          component={MotionViewport}
+          sx={{
+            width: 1,
+            maxWidth: '100%',
+            mx: 'auto',
+            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+            pt: 0,
+            pb: 0,
+          }}
+        >
         {content.heading ? (
-          <Typography
-            component={m.h2}
+          <Stack
+            component={m.div}
             variants={varFade({ distance: 24 }).inUp}
-            sx={{
-              mb: { xs: 3, md: 4 },
-              color: 'primary.main',
-              fontWeight: 700,
-              fontSize: { xs: '1.35rem', sm: '1.5rem', md: '1.75rem' },
-              lineHeight: 1.25,
-            }}
+            spacing={1.5}
+            alignItems="flex-start"
+            sx={{ mb: { xs: 3, md: 4 } }}
           >
-            {content.heading}
-          </Typography>
+            <Typography
+              component="h2"
+              sx={{
+                m: 0,
+                textAlign: 'left',
+                color: 'secondary.main',
+                fontWeight: 800,
+                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {content.heading}
+            </Typography>
+
+            <Box
+              sx={{
+                width: { xs: 72, sm: 88, md: 104 },
+                height: 4,
+                borderRadius: 999,
+                background: (theme) =>
+                  `linear-gradient(90deg, ${RED} 0%, ${theme.palette.secondary.main} 100%)`,
+                boxShadow: `0 4px 12px ${alpha(RED, 0.28)}`,
+              }}
+            />
+          </Stack>
         ) : null}
 
         <Card
           component={m.div}
           variants={varFade({ distance: 24 }).inUp}
           sx={{
-            p: { xs: 2.5, md: 4 },
+            p: 2.5,
             borderRadius: 2,
             boxShadow: (theme) => theme.customShadows?.card,
             border: (theme) => `1px solid ${theme.palette.divider}`,

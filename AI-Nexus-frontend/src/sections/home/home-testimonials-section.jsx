@@ -104,10 +104,9 @@ export function HomeTestimonialsSection() {
     (row) => String(row?.quote || '').trim() || String(row?.name || '').trim()
   );
 
-  const isSingleCardLayout = useMediaQuery(
-    `(max-width:${MOBILE_ONE_CARD_MAX_PX}px)`,
-    { noSsr: true }
-  );
+  const isSingleCardLayout = useMediaQuery(`(max-width:${MOBILE_ONE_CARD_MAX_PX}px)`, {
+    noSsr: true,
+  });
   const isSideNavLayout = useMediaQuery(theme.breakpoints.up('sm'), { noSsr: true });
 
   const carousel = useCarousel({
@@ -164,7 +163,7 @@ export function HomeTestimonialsSection() {
       component="section"
       sx={{
         position: 'relative',
-        py: { xs: 6, sm: 8, md: 12 },
+        py: 6,
         // background: `linear-gradient(180deg, ${SECTION_BG} 0%, ${alpha(primary, 0.04)} 50%, ${SECTION_BG} 100%)`,
         overflow: 'visible',
       }}
@@ -185,20 +184,27 @@ export function HomeTestimonialsSection() {
 
       <DashboardContent
         component={MotionViewport}
-        disablePadding
         sx={{
-          position: 'relative',
-          zIndex: 1,
-          width: '100%',
+          width: 1,
           maxWidth: '100%',
-          px: { xs: 1.5, sm: 2.5, md: 4 },
+          mx: 'auto',
+          px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+          pt: 0,
+          pb: 0,
         }}
       >
         <Stack spacing={{ xs: 5, md: 7 }} alignItems="center" sx={{ width: '100%' }}>
-          <Stack spacing={2.5} alignItems="center" sx={{ maxWidth: 720, textAlign: 'center', px: 1 }}>
-
+          <Stack
+            spacing={2.5}
+            alignItems="center"
+            sx={{ maxWidth: 720, textAlign: 'center', px: 1 }}
+          >
             {(lead || main) && (
-              <Box component={m.h2} variants={varFade({ distance: 20 }).inUp} sx={{ m: 0, lineHeight: 1.1 }}>
+              <Box
+                component={m.h2}
+                variants={varFade({ distance: 20 }).inUp}
+                sx={{ m: 0, lineHeight: 1.1 }}
+              >
                 {lead ? (
                   <Typography
                     component="span"
@@ -233,7 +239,12 @@ export function HomeTestimonialsSection() {
                 ) : (
                   <Typography
                     component="span"
-                    sx={{ display: 'block', fontWeight: 800, fontSize: '2rem', color: 'primary.main' }}
+                    sx={{
+                      display: 'block',
+                      fontWeight: 800,
+                      fontSize: '2rem',
+                      color: 'primary.main',
+                    }}
                   >
                     {lead}
                   </Typography>
@@ -247,32 +258,30 @@ export function HomeTestimonialsSection() {
                 variants={varFade({ distance: 14 }).inUp}
                 sx={{ width: 1, maxWidth: 560, mx: 'auto' }}
               >
-              <RichTextContent
-                html={subtitleHtml}
-                sx={{
-                  typography: 'body1',
-                  fontSize: '1rem',
-                  lineHeight: 1.8,
-                  color: 'text.secondary',
-                  textAlign: 'center',
-                  overflow: 'visible',
-                  '& img': {
-                    maxWidth: '100%',
-                    height: 'auto',
-                    maxHeight: 'min(560px, 78vh)',
-                    objectFit: 'contain',
-                    verticalAlign: 'middle',
-                    borderRadius: 1.5,
-                  },
-                  '& figure': {
-                    maxWidth: '100%',
-                  },
-                }}
-              />
+                <RichTextContent
+                  html={subtitleHtml}
+                  sx={{
+                    typography: 'body1',
+                    fontSize: '1rem',
+                    lineHeight: 1.8,
+                    color: 'text.secondary',
+                    textAlign: 'center',
+                    overflow: 'visible',
+                    '& img': {
+                      maxWidth: '100%',
+                      height: 'auto',
+                      maxHeight: 'min(560px, 78vh)',
+                      objectFit: 'contain',
+                      verticalAlign: 'middle',
+                      borderRadius: 1.5,
+                    },
+                    '& figure': {
+                      maxWidth: '100%',
+                    },
+                  }}
+                />
               </Box>
             ) : null}
-
-        
           </Stack>
 
           {testimonials.length > 0 ? (
@@ -351,7 +360,11 @@ export function HomeTestimonialsSection() {
                   >
                     {testimonials.map((row, index) => (
                       <Box
-                        key={row?.id ? `testimonial-slide-${row.id}` : `testimonial-slide-${row.name}-${index}`}
+                        key={
+                          row?.id
+                            ? `testimonial-slide-${row.id}`
+                            : `testimonial-slide-${row.name}-${index}`
+                        }
                         sx={{
                           flex: 1,
                           width: '100%',
@@ -401,19 +414,19 @@ export function HomeTestimonialsSection() {
                     spacing={1.25}
                     sx={{ width: '100%', maxWidth: 400, mx: 'auto' }}
                   >
-                  <CarouselProgressBar
-                    value={carousel.progress.value}
-                    sx={{
-                      width: '100%',
-                      height: 5,
-                      borderRadius: 3,
-                      color: 'primary.main',
-                      bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
-                    }}
-                  />
-                  <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 600 }}>
-                    {currentSlide} / {snapCount}
-                  </Typography>
+                    <CarouselProgressBar
+                      value={carousel.progress.value}
+                      sx={{
+                        width: '100%',
+                        height: 5,
+                        borderRadius: 3,
+                        color: 'primary.main',
+                        bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 600 }}>
+                      {currentSlide} / {snapCount}
+                    </Typography>
                   </Stack>
                 </Stack>
               ) : null}

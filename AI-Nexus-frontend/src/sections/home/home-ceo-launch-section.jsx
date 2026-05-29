@@ -19,10 +19,7 @@ import { appSettingsService } from 'src/services/app-settings.service';
 import { hasCeoLaunchContent, resolveCeoLaunchContent } from './ceo-launch-defaults';
 
 // ----------------------------------------------------------------------
-
-const HEADER_CONTENT_PX = { xs: 0, sm: 2, md: 4, lg: 6 };
 const SECTION_MAX_WIDTH = '100%';
-
 const SECTION_BG = '#f3f6fb';
 const CARD_BORDER = '#deE8f5';
 const FEATURE_ICONS = [
@@ -144,15 +141,17 @@ export function HomeCeoLaunchSection() {
         bgcolor: SECTION_BG,
       }}
     >
-      <DashboardContent
-        component={MotionViewport}
-        sx={{
-          width: 1,
-          maxWidth: SECTION_MAX_WIDTH,
-          mx: 'auto',
-          px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
-        }}
-      >
+            <DashboardContent
+          component={MotionViewport}
+          sx={{
+            width: 1,
+            maxWidth: '100%',
+            mx: 'auto',
+            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+            pt: 0,
+            pb: 0,
+          }}
+        >
         <Box
           component={m.div}
           variants={varFade({ distance: 20 }).inUp}

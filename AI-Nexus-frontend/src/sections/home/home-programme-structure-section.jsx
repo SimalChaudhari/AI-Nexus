@@ -257,9 +257,9 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
         maxWidth: compact ? { xs: 74, md: 90 } : { xs: 280, md: 210 },
         px: compact ? { xs: 0.25, md: 0.5 } : { xs: 0.5, md: 0.75 },
         mx: 'auto',
-        pt: compact ? { xs: 0.65, md: 0.75 } : { xs: 1.6, md: 1.8 },
-        pb: compact ? { xs: 0, md: 0.1 } : { xs: 0.2, md: 0.4 },
-        minHeight: compact ? 0 : { xs: 150, md: 168 },
+        pt: compact ? { xs: 0.65, md: 0.75 } : { xs: 1.25, md: 1.4 },
+        pb: compact ? { xs: 0, md: 0.1 } : 0,
+        minHeight: compact ? 0 : { xs: 116, md: 128 },
         justifyContent: 'flex-start',
       }}
     >
@@ -352,9 +352,9 @@ function DesktopTimeline({ phases, primaryColor }) {
       sx={{
         width: 1,
         position: 'relative',
-        pt: 0,
-        pb: { xs: 1, md: 1.4 },
-        borderRadius: 4,
+        pt: { xs: 1, md: 1.25 },
+        pb: { xs: 1, md: 1.25 },
+        // borderRadius: 4,
         background:
           'linear-gradient(165deg, rgba(255,255,255,0.78), rgba(255,255,255,0.48) 55%, rgba(243,246,255,0.72))',
         border: '1px solid rgba(15,39,68,0.08)',
@@ -384,7 +384,7 @@ function DesktopTimeline({ phases, primaryColor }) {
         viewport={{ once: true }}
         sx={{
           position: 'absolute',
-          top: { xs: 12, md: 14 },
+          top: { xs: 10, md: 12 },
           right: { xs: 12, md: 16 },
           zIndex: 5,
           m: 0,
@@ -445,7 +445,7 @@ function DesktopTimeline({ phases, primaryColor }) {
           position: 'relative',
           zIndex: 2,
           pt: { xs: `${TIMELINE_GRID_PT_PX.xs}px`, md: `${TIMELINE_GRID_PT_PX.md}px` },
-          pb: { xs: 1.4, md: 1.8 },
+          pb: { xs: 1.1, md: 1.35 },
           px: { xs: 1, md: 1.4 },
         }}
       >
@@ -702,12 +702,18 @@ export function HomeProgrammeStructureSection() {
           zIndex: 1,
         }}
       >
-        <Stack spacing={{ xs: 4, md: 5 }} alignItems="center" sx={{ width: 1 }}>
+        <Stack
+          spacing={{ xs: 2.5, md: 3 }}
+          alignItems="center"
+          justifyContent="center"
+          sx={{ width: 1 }}
+        >
           {(eyebrow || heading) && (
             <Stack
-              spacing={eyebrow ? 1 : 0}
+              spacing={eyebrow ? 0.75 : 0}
               alignItems="center"
-              sx={{ textAlign: 'center', maxWidth: 720, px: 1 }}
+              justifyContent="center"
+              sx={{ textAlign: 'center', maxWidth: 720, px: 1, py: { xs: 0.25, md: 0.5 } }}
             >
               {eyebrow ? (
                 <Typography

@@ -10,7 +10,9 @@ import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
 
 import { toast } from 'src/components/snackbar';
+import { Editor } from 'src/components/editor';
 import { Iconify } from 'src/components/iconify';
+import { RichTextContent } from 'src/components/html-content';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import {
@@ -83,8 +85,8 @@ export function CurriculumSettingsCard({
   );
 
   const previewHeadline = useMemo(
-    () => buildCurriculumHeadline(estimatedModuleCount, content),
-    [estimatedModuleCount, content]
+    () => buildCurriculumHeadline(estimatedModuleCount),
+    [estimatedModuleCount]
   );
 
   const applyLocalPreview = useCallback(() => {
@@ -252,44 +254,28 @@ export function CurriculumSettingsCard({
               placeholder="Optional"
             />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                fullWidth
-                label="Hours label"
-                value={content.hoursLabel}
-                onChange={(event) =>
+            <Stack spacing={0.75}>
+              <Typography variant="subtitle2">Description</Typography>
+              <Editor
+                value={content.subtext || ''}
+                onChange={(value) =>
                   setCurriculumContent((prev) =>
-                    normalizeCurriculumContent({ ...prev, hoursLabel: event.target.value })
+                    normalizeCurriculumContent({ ...prev, subtext: value })
                   )
                 }
-                placeholder="Optional"
-              />
-              <TextField
-                fullWidth
-                label="Pacing label"
-                value={content.pacingLabel}
-                onChange={(event) =>
-                  setCurriculumContent((prev) =>
-                    normalizeCurriculumContent({ ...prev, pacingLabel: event.target.value })
-                  )
-                }
-                placeholder="Optional"
+                placeholder="Write curriculum description..."
+                editable
+                slotProps={{
+                  wrap: {
+                    sx: {
+                      minHeight: 140,
+                      borderRadius: 1.5,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                    },
+                  },
+                }}
               />
             </Stack>
-
-            <TextField
-              fullWidth
-              multiline
-              minRows={2}
-              label="Description"
-              value={content.subtext}
-              onChange={(event) =>
-                setCurriculumContent((prev) =>
-                  normalizeCurriculumContent({ ...prev, subtext: event.target.value })
-                )
-              }
-              placeholder="Optional"
-            />
           </Stack>
 
           <Stack spacing={1.5}>
@@ -373,9 +359,17 @@ export function CurriculumSettingsCard({
             </Typography>
 
             {content.subtext ? (
-              <Typography sx={{ ...HERO_TYPOGRAPHY.body, color: 'text.secondary', mb: 3 }}>
-                {content.subtext}
-              </Typography>
+              <RichTextContent
+                html={content.subtext}
+                sx={{
+                  ...HERO_TYPOGRAPHY.body,
+                  color: 'text.secondary',
+                  mb: 3,
+                  lineHeight: 1.65,
+                  '& p': { m: 0, mb: 1 },
+                  '& p:last-child': { mb: 0 },
+                }}
+              />
             ) : null}
 
             {previewLoading ? (
@@ -391,13 +385,16 @@ export function CurriculumSettingsCard({
             )}
           </Box>
 
-          <LoadingButton
-            variant="contained"
-            loading={curriculumContentSubmitting || previewLoading}
-            onClick={handleSaveCurriculum}
-          >
-            Save curriculum
-          </LoadingButton>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
+            <LoadingButton
+              variant="contained"
+              loading={curriculumContentSubmitting || previewLoading}
+              onClick={handleSaveCurriculum}
+              sx={{ width: 'auto' }}
+            >
+              Save curriculum
+            </LoadingButton>
+          </Box>
         </Stack>
       </Card>
 

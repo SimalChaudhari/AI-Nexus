@@ -260,20 +260,12 @@ export function CurriculumModulesList({ modules = [], courses = [], courseIds = 
   );
 
   useEffect(() => {
-    if (!curriculumRows.length) {
-      setExpandedKey(null);
-      return;
-    }
     setExpandedKey((prev) => {
-      if (prev && curriculumRows.some((row) => row.courseId === prev)) return prev;
-      const withModules =
-        curriculumRows.find((row) => (row.modules || []).length > 0)
-        || curriculumRows.find((row) => Number(row.modulesCount) > 0);
-      return withModules?.courseId || curriculumRows[0]?.courseId || null;
+      if (!prev) return null;
+      if (curriculumRows.some((row) => row.courseId === prev)) return prev;
+      return null;
     });
   }, [curriculumRows]);
-
-
 
   const leftColumn = curriculumRows.filter((_, index) => index % 2 === 0);
   const rightColumn = curriculumRows.filter((_, index) => index % 2 === 1);

@@ -65,8 +65,6 @@ export type FaqContent = {
 export type CurriculumContent = {
   smallTitle?: string;
   subtext?: string;
-  hoursLabel?: string;
-  pacingLabel?: string;
   courseIds?: string[];
 };
 

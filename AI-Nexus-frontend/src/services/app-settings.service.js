@@ -54,8 +54,6 @@ function transformCurriculumStored(source) {
   return {
     smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
     subtext: source.subtext != null ? String(source.subtext) : '',
-    hoursLabel: source.hoursLabel != null ? String(source.hoursLabel) : '',
-    pacingLabel: source.pacingLabel != null ? String(source.pacingLabel) : '',
     courseIds: rawIds.slice(0, 20).map((id) => String(id || '')).filter(Boolean),
   };
 }
@@ -74,8 +72,6 @@ function transformCurriculumContent(source) {
   return {
     smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
     subtext: source.subtext != null ? String(source.subtext) : '',
-    hoursLabel: source.hoursLabel != null ? String(source.hoursLabel) : '',
-    pacingLabel: source.pacingLabel != null ? String(source.pacingLabel) : '',
     courseIds: rawIds.map((id) => String(id || '')).filter(Boolean),
     courses: rawCourses.map((course) => ({
       id: course?.id != null ? String(course.id) : '',

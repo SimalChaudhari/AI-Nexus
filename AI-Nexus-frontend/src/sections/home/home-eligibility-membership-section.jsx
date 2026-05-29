@@ -25,9 +25,7 @@ import {
   continueMembershipSignupDialog,
 } from 'src/utils/membership-eligibility-sso';
 
-import {
-  shouldOpenEligibilityModal,
-} from './eligibility-membership-defaults';
+import { shouldOpenEligibilityModal } from './eligibility-membership-defaults';
 
 // ----------------------------------------------------------------------
 
@@ -85,7 +83,12 @@ function normalizeEligibilityMembershipContentNoDefaults(source) {
       questions: leftQuestions.slice(0, 4).map((q) => ({
         id: q?.id != null ? String(q.id) : '',
         icon: q?.icon != null ? String(q.icon).trim() : '',
-        iconColor: String(q?.iconColor || '').trim().toLowerCase() === 'red' ? 'red' : '',
+        iconColor:
+          String(q?.iconColor || '')
+            .trim()
+            .toLowerCase() === 'red'
+            ? 'red'
+            : '',
         text: q?.text != null ? String(q.text) : '',
       })),
       ctaLabel: left.ctaLabel != null ? String(left.ctaLabel) : '',
@@ -246,13 +249,7 @@ function MembershipBenefit({ benefit, showDivider }) {
   );
 }
 
-function PanelCtaButton({
-  label,
-  href,
-  variant = 'contained',
-  onEligibilityClick,
-  sx,
-}) {
+function PanelCtaButton({ label, href, variant = 'contained', onEligibilityClick, sx }) {
   if (!String(label || '').trim()) return null;
 
   const handleClick = (event) => {
@@ -310,7 +307,13 @@ function PanelCtaButton({
         {label}
       </Button>
     ) : (
-      <Button component={RouterLink} href={normalizeAppPath(href)} variant="outlined" {...common} sx={btnSx}>
+      <Button
+        component={RouterLink}
+        href={normalizeAppPath(href)}
+        variant="outlined"
+        {...common}
+        sx={btnSx}
+      >
         {label}
       </Button>
     );
@@ -372,7 +375,13 @@ function PanelCtaButton({
       {label}
     </Button>
   ) : (
-    <Button component={RouterLink} href={normalizeAppPath(href)} variant="contained" {...common} sx={containedSx}>
+    <Button
+      component={RouterLink}
+      href={normalizeAppPath(href)}
+      variant="contained"
+      {...common}
+      sx={containedSx}
+    >
       {label}
     </Button>
   );
@@ -394,7 +403,11 @@ export function HomeEligibilityMembershipSection() {
       .getPublic()
       .then((settings) => {
         if (!active) return;
-        setContent(normalizeEligibilityMembershipContentNoDefaults(settings?.homeEligibilityMembershipContent));
+        setContent(
+          normalizeEligibilityMembershipContentNoDefaults(
+            settings?.homeEligibilityMembershipContent
+          )
+        );
       })
       .catch(() => {
         if (active) setContent(null);
@@ -442,10 +455,25 @@ export function HomeEligibilityMembershipSection() {
         component="section"
         sx={{
           py: { xs: 2.5, sm: 3, md: 3.5, lg: 4 },
-          bgcolor: 'background.default',
+          bgcolor: 'grey.500',
         }}
       >
-        <DashboardContent variant="fullWidth" component={MotionViewport}>
+        {/* <DashboardContent variant="fullWidth" 
+        component={MotionViewport}
+        
+        > */}
+
+        <DashboardContent
+          component={MotionViewport}
+          sx={{
+            width: 1,
+            maxWidth: '100%',
+            mx: 'auto',
+            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+            pt: 0,
+            pb: 0,
+          }}
+        >
           <Box
             component={m.div}
             variants={varFade({ distance: 20 }).inUp}
