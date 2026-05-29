@@ -140,21 +140,12 @@ export function ContactSection() {
                         : `linear-gradient(180deg, ${alpha(t.palette.primary.main, 0.06)} 0%, transparent 100%)`,
                   }}
                 >
-                  <Typography
-                    component="h2"
-                    sx={{
-                      mb: 0.5,
-                      ...HERO_TYPOGRAPHY.contactInfoTitle,
-                    }}
-                  >
+                 
+                  <Typography variant="h4" sx={{ mb: 0.75, fontWeight: 700 }}>
+                
                     {contactHeroContent.infoTitle}
                   </Typography>
-                  <Typography
-                    sx={{
-                      color: 'text.secondary',
-                      ...HERO_TYPOGRAPHY.contactInfoSubtitle,
-                    }}
-                  >
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                     {contactHeroContent.infoSubtitle}
                   </Typography>
                 </Box>
