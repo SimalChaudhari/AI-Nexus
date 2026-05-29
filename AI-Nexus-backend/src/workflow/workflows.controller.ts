@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
+import { extractAccessTokenFromRequest } from '../jwt/jwt-token.extractor';
 import { LocalStorageService } from '../service/local-storage.service';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -61,8 +62,7 @@ export class WorkflowController {
     @ApiBearerAuth('bearer')
     @ApiOperation({ summary: 'List Flowise templates for logged-in user' })
     async getFlowiseTemplates(@Req() request: Request, @Res() response: Response) {
-        const authHeader = (request.headers.authorization || '').toString();
-        const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+        const accessToken = extractAccessTokenFromRequest(request) || '';
         const templates = await this.workflowService.getFlowiseTemplates(accessToken);
         return response.status(HttpStatus.OK).json({
             length: templates.length,

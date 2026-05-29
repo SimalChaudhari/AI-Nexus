@@ -282,9 +282,10 @@ export class WorkflowService {
             .map((value) => (value || '').trim().replace(/\/$/, ''))
             .filter(Boolean);
         const fallbackBases = [
+            `http://${backendHost}:${flowisePort}`,
+            `http://localhost:${flowisePort}`,
             `https://${backendHost}:${flowisePort}`,
             `http://${backendHost}:3000`,
-            'https://localhost:3002',
             'http://localhost:3002',
             'http://localhost:3000',
             'http://localhost:3001',
