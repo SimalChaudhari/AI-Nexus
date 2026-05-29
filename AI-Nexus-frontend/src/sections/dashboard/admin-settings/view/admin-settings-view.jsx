@@ -1476,12 +1476,20 @@ export function AdminSettingsView() {
     }
     try {
       setEmployerHeroSubmitting(true);
-      const updated = await appSettingsService.uploadHomeEmployerHero(employerHeroFile);
+      const fileToUpload = await compressImageFileForUpload(employerHeroFile);
+      const updated = await appSettingsService.uploadHomeEmployerHero(fileToUpload);
       setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
       setEmployerHeroFile(null);
       toast.success('Employer section image updated');
     } catch (error) {
-      toast.error(error?.message || 'Failed to upload employer image');
+      const status = error?.response?.status;
+      if (status === 413) {
+        toast.error(
+          'Image is too large for the server upload limit. Try a smaller JPG/PNG (under 1 MB) or ask ops to raise client_max_body_size on the API proxy.'
+        );
+      } else {
+        toast.error(error?.message || 'Failed to upload employer image');
+      }
     } finally {
       setEmployerHeroSubmitting(false);
     }
@@ -1509,11 +1517,21 @@ export function AdminSettingsView() {
     if (!file) return;
     try {
       setEmployerLogoUploadingIndex(index);
-      const updated = await appSettingsService.uploadHomeEmployerLogo(index, file);
+      const fileToUpload = await compressImageFileForUpload(file, {
+        maxWidth: 800,
+        maxHeight: 400,
+        maxBytes: 512 * 1024,
+      });
+      const updated = await appSettingsService.uploadHomeEmployerLogo(index, fileToUpload);
       setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
       toast.success('Employer logo uploaded');
     } catch (error) {
-      toast.error(error?.message || 'Failed to upload employer logo');
+      const status = error?.response?.status;
+      if (status === 413) {
+        toast.error('Logo file is too large. Try a smaller image (under 500 KB).');
+      } else {
+        toast.error(error?.message || 'Failed to upload employer logo');
+      }
     } finally {
       setEmployerLogoUploadingIndex(null);
     }

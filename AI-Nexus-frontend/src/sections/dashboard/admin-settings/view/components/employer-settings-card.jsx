@@ -1,19 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
-import Drawer from '@mui/material/Drawer';
 import Divider from '@mui/material/Divider';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
 import LoadingButton from '@mui/lab/LoadingButton';
 
-import { toast } from 'src/components/snackbar';
 import { Editor } from 'src/components/editor';
 import { Iconify } from 'src/components/iconify';
 import { categoryIcons } from 'src/_mock/_category-icons';
@@ -54,11 +50,8 @@ export function EmployerSettingsCard({
   const canAddLogo = logos.length < EMPLOYER_LOGOS_MAX;
   const displayHeroUrl = resolvePreviewUrl(heroUrl || content?.heroImageUrl);
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerMode, setDrawerMode] = useState('add');
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [draft, setDraft] = useState(emptyBenefit);
   const [iconToolOpen, setIconToolOpen] = useState(false);
+  const [iconPickerIndex, setIconPickerIndex] = useState(null);
   const [iconSearchQuery, setIconSearchQuery] = useState('');
 
   const canAddMore = benefits.length < EMPLOYER_BENEFITS_MAX;
@@ -72,74 +65,37 @@ export function EmployerSettingsCard({
     [availableCategoryIcons, iconSearchQuery]
   );
 
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false);
-    setEditingIndex(null);
-    setDraft(emptyBenefit());
-  }, []);
-
-  useEffect(() => {
-    if (!drawerOpen) return undefined;
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') closeDrawer();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [drawerOpen, closeDrawer]);
-
-  const openAddDrawer = () => {
-    if (!canAddMore) return;
-    setDrawerMode('add');
-    setEditingIndex(null);
-    setDraft(emptyBenefit());
-    setDrawerOpen(true);
-  };
-
-  const openEditDrawer = (index) => {
-    const row = benefits[index];
-    if (!row) return;
-    setDrawerMode('edit');
-    setEditingIndex(index);
-    setDraft({
-      icon: String(row.icon || emptyBenefit().icon),
-      title: String(row.title || ''),
-    });
-    setDrawerOpen(true);
-  };
-
-  const handleDrawerApply = () => {
-    const title = String(draft.title || '').trim();
-    if (!title) {
-      toast.error('Benefit title is required');
-      return;
-    }
-
-    const entry = {
-      icon: String(draft.icon || emptyBenefit().icon).trim() || emptyBenefit().icon,
-      title,
-    };
-
-    setContent((prev) => {
-      const rows = [...(prev.benefits || [])];
-      if (drawerMode === 'add') {
-        return { ...prev, benefits: [...rows, entry] };
-      }
-      if (editingIndex != null && editingIndex >= 0) {
-        rows[editingIndex] = entry;
+  const updateBenefit = useCallback(
+    (index, field, value) => {
+      setContent((prev) => {
+        const rows = [...(prev.benefits || [])];
+        while (rows.length <= index) rows.push(emptyBenefit());
+        rows[index] = { ...rows[index], [field]: value };
         return { ...prev, benefits: rows };
-      }
-      return prev;
-    });
-    closeDrawer();
-  };
+      });
+    },
+    [setContent]
+  );
 
-  const handleDrawerDelete = () => {
-    if (drawerMode !== 'edit' || editingIndex == null) return;
+  const addBenefit = () => {
+    if (!canAddMore) return;
     setContent((prev) => ({
       ...prev,
-      benefits: (prev.benefits || []).filter((_, i) => i !== editingIndex),
+      benefits: [...(prev.benefits || []), emptyBenefit()],
     }));
-    closeDrawer();
+  };
+
+  const removeBenefit = (index) => {
+    setContent((prev) => ({
+      ...prev,
+      benefits: (prev.benefits || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const openIconPicker = (index) => {
+    setIconPickerIndex(index);
+    setIconSearchQuery('');
+    setIconToolOpen(true);
   };
 
   return (
@@ -165,7 +121,7 @@ export function EmployerSettingsCard({
                 Employer section content
               </Typography>
               <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
-                Heading, subtitle, and CTA. Use Add benefit — the editor opens in a right sidebar.
+                Heading, subtitle, CTA, benefits grid, and partner logos.
               </Typography>
             </Box>
 
@@ -359,213 +315,116 @@ export function EmployerSettingsCard({
                   {benefits.length} / {EMPLOYER_BENEFITS_MAX} items
                 </Typography>
               </Stack>
-              <Button variant="outlined" onClick={openAddDrawer} disabled={!canAddMore || submitting}>
+              <Button variant="outlined" size="small" onClick={addBenefit} disabled={!canAddMore || submitting}>
                 Add benefit
               </Button>
             </Stack>
 
-            <Box sx={{ borderTop: (theme) => `1px solid ${theme.palette.divider}` }}>
-              {benefits.length === 0 ? (
-                <Typography variant="body2" sx={{ py: 4, color: 'text.secondary', textAlign: 'center' }}>
-                  No benefits yet. Click Add benefit to open the right sidebar editor.
-                </Typography>
-              ) : (
-                benefits.map((row, index) => {
-                  const label = String(row?.title || '').trim() || `Benefit ${index + 1}`;
-                  const isLast = index === benefits.length - 1;
+            {benefits.length === 0 ? (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                No benefits yet. Home page shows icon + title only.
+              </Typography>
+            ) : null}
 
-                  return (
-                    <Box key={`admin-employer-benefit-${index}`}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        sx={{
-                          py: { xs: 1.25, sm: 1.5 },
-                        }}
-                      >
+            <Grid container spacing={1.5}>
+              {benefits.map((row, index) => (
+                <Grid key={`admin-employer-benefit-${index}`} item xs={12} sm={6} md={4}>
+                  <Stack
+                    spacing={1.25}
+                    sx={{
+                      p: 1.5,
+                      height: 1,
+                      borderRadius: 1,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                      bgcolor: 'background.neutral',
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
                         <Box
+                          onClick={() => openIconPicker(index)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              openIconPicker(index);
+                            }
+                          }}
                           sx={{
-                            width: 36,
-                            height: 36,
-                            flexShrink: 0,
+                            width: 40,
+                            height: 40,
                             borderRadius: 1,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            bgcolor: 'background.neutral',
+                            bgcolor: 'background.paper',
                             border: (theme) => `1px solid ${theme.palette.divider}`,
                             color: 'primary.main',
+                            cursor: 'pointer',
+                            '&:hover': { bgcolor: 'action.hover' },
                           }}
                         >
                           <Iconify icon={row?.icon || emptyBenefit().icon} width={20} />
                         </Box>
-
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            flex: 1,
-                            minWidth: 0,
-                            fontWeight: 600,
-                            lineHeight: 1.5,
-                          }}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => openIconPicker(index)}
+                          disabled={submitting}
                         >
-                          {label}
-                        </Typography>
-
-                        <Tooltip title="Edit benefit">
-                          <IconButton
-                            size="small"
-                            onClick={() => openEditDrawer(index)}
-                            disabled={submitting}
-                            aria-label="Edit benefit"
-                          >
-                            <Iconify icon="solar:pen-bold" width={20} />
-                          </IconButton>
-                        </Tooltip>
+                          Change icon
+                        </Button>
                       </Stack>
-                      {!isLast ? <Divider /> : null}
-                    </Box>
-                  );
-                })
-              )}
-            </Box>
+                      <Button size="small" color="inherit" onClick={() => removeBenefit(index)} disabled={submitting}>
+                        Remove
+                      </Button>
+                    </Stack>
 
-            <LoadingButton variant="contained" loading={submitting} onClick={onSave}>
-              Save employer section
-            </LoadingButton>
+                    <TextField
+                      size="small"
+                      label="Title"
+                      value={row.title || ''}
+                      onChange={(e) => updateBenefit(index, 'title', e.target.value)}
+                      fullWidth
+                    />
+                  </Stack>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
+              <LoadingButton variant="contained" loading={submitting} onClick={onSave} sx={{ width: 'auto' }}>
+                Save employer section
+              </LoadingButton>
+            </Box>
           </Stack>
         </Card>
       </Stack>
 
-      {/* Right sidebar — benefit editor (open / close like FAQs) */}
-      <Drawer
-        anchor="right"
-        open={drawerOpen}
-        onClose={closeDrawer}
-        PaperProps={{ sx: { width: { xs: '100%', sm: 480 }, p: 0 } }}
-      >
-        <Stack sx={{ height: '100%' }}>
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{
-              px: 2.5,
-              py: 2,
-              borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-            }}
-          >
-            <Typography variant="h6" sx={HERO_TYPOGRAPHY.adminCardTitle}>
-              {drawerMode === 'add' ? 'Add benefit' : 'Edit benefit'}
-            </Typography>
-            <IconButton onClick={closeDrawer} aria-label="Close benefit editor">
-              <Iconify icon="mingcute:close-line" />
-            </IconButton>
-          </Stack>
-
-          <Stack spacing={2.5} sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={(theme) => ({
-                p: 1.25,
-                borderRadius: 1.5,
-                border: `1px solid ${theme.palette.divider}`,
-                bgcolor: 'background.neutral',
-              })}
-            >
-              <Box
-                sx={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 1.25,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: 'background.paper',
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
-                  color: 'primary.main',
-                  flexShrink: 0,
-                }}
-              >
-                <Iconify icon={draft.icon || emptyBenefit().icon} width={24} />
-              </Box>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  setIconSearchQuery('');
-                  setIconToolOpen(true);
-                }}
-                sx={{ flex: 1 }}
-              >
-                Pick icon
-              </Button>
-            </Stack>
-
-            <TextField
-              label="Title"
-              value={draft.title}
-              onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-              fullWidth
-              autoFocus
-            />
-          </Stack>
-
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1.5}
-            justifyContent="space-between"
-            alignItems={{ xs: 'stretch', sm: 'center' }}
-            sx={{
-              p: { xs: 2, sm: 2.5 },
-              borderTop: (theme) => `1px solid ${theme.palette.divider}`,
-            }}
-          >
-            {drawerMode === 'edit' ? (
-              <Button
-                color="error"
-                variant="outlined"
-                onClick={handleDrawerDelete}
-                disabled={submitting}
-                sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}
-              >
-                Delete
-              </Button>
-            ) : (
-              <Box sx={{ display: { xs: 'none', sm: 'block' } }} />
-            )}
-
-            <Stack direction="row" spacing={1.5} justifyContent="flex-end">
-              <Button color="inherit" variant="outlined" onClick={closeDrawer} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleDrawerApply}
-                disabled={submitting || !String(draft.title || '').trim()}
-              >
-                {drawerMode === 'add' ? 'Add' : 'Save'}
-              </Button>
-            </Stack>
-          </Stack>
-        </Stack>
-      </Drawer>
-
       <IconPickerDrawer
         open={iconToolOpen}
-        onClose={() => setIconToolOpen(false)}
+        onClose={() => {
+          setIconToolOpen(false);
+          setIconPickerIndex(null);
+        }}
         contextLabel={
-          drawerMode === 'add' ? 'new employer benefit' : `employer benefit ${(editingIndex ?? 0) + 1}`
+          iconPickerIndex != null ? `employer benefit ${iconPickerIndex + 1}` : 'employer benefit'
         }
         searchQuery={iconSearchQuery}
         onSearchQueryChange={(event) => setIconSearchQuery(event.target.value)}
         filteredIcons={filteredCategoryIcons}
-        selectedIcon={draft.icon || emptyBenefit().icon}
+        selectedIcon={
+          iconPickerIndex != null
+            ? benefits[iconPickerIndex]?.icon || emptyBenefit().icon
+            : emptyBenefit().icon
+        }
         onSelectIcon={(iconName) => {
-          setDraft((prev) => ({ ...prev, icon: iconName }));
+          if (iconPickerIndex != null) {
+            updateBenefit(iconPickerIndex, 'icon', iconName);
+          }
           setIconToolOpen(false);
+          setIconPickerIndex(null);
         }}
       />
     </>
