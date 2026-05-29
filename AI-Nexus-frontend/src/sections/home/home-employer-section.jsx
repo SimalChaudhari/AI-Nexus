@@ -51,9 +51,7 @@ export function HomeEmployerSection() {
     };
   }, []);
 
-  const benefits = (content.benefits || []).filter(
-    (row) => String(row?.title || '').trim() || String(row?.description || '').trim()
-  );
+  const benefits = (content.benefits || []).filter((row) => String(row?.title || '').trim());
   const logos = (content.logos || []).filter((row) => String(row?.logoUrl || '').trim());
   const showCta = Boolean(content.ctaLabel?.trim() && content.ctaHref?.trim());
   const ctaHref = String(content.ctaHref || '').trim();
@@ -190,13 +188,8 @@ export function HomeEmployerSection() {
                       ) : null}
                       <Box sx={{ minWidth: 0, flex: 1 }}>
                         {row.title ? (
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, lineHeight: 1.35 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
                             {String(row.title).trim()}
-                          </Typography>
-                        ) : null}
-                        {row.description ? (
-                          <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
-                            {String(row.description).trim()}
                           </Typography>
                         ) : null}
                       </Box>

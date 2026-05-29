@@ -230,12 +230,12 @@ function transformEmployerContent(source) {
     benefits: rawBenefits.slice(0, 6).map((row) => ({
       icon: row?.icon != null ? String(row.icon) : '',
       title: row?.title != null ? String(row.title) : '',
-      description: row?.description != null ? String(row.description) : '',
     })),
     logos: rawLogos.slice(0, 50).map((row) => ({
       name: row?.name != null ? String(row.name) : '',
       logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
     })),
+    partnersHeading: source.partnersHeading != null ? String(source.partnersHeading) : '',
     ctaLabel: source.ctaLabel != null ? String(source.ctaLabel) : '',
     ctaHref: source.ctaHref != null ? String(source.ctaHref) : '',
   };
@@ -253,11 +253,11 @@ function transformEmployeeContent(source) {
     heroPanelTitle: source.heroPanelTitle != null ? String(source.heroPanelTitle) : '',
     heroPanelSubtitle: source.heroPanelSubtitle != null ? String(source.heroPanelSubtitle) : '',
     benefitsLabel: source.benefitsLabel != null ? String(source.benefitsLabel) : '',
+    partnersHeading: source.partnersHeading != null ? String(source.partnersHeading) : '',
     benefits: rawBenefits.slice(0, 6).map((row) => ({
       icon: row?.icon != null ? String(row.icon) : '',
       iconColor: row?.iconColor != null ? String(row.iconColor) : '',
       title: row?.title != null ? String(row.title) : '',
-      description: row?.description != null ? String(row.description) : '',
     })),
     primaryCtaLabel: source.primaryCtaLabel != null ? String(source.primaryCtaLabel) : '',
     primaryCtaHref: source.primaryCtaHref != null ? String(source.primaryCtaHref) : '',

@@ -15,7 +15,6 @@ import { HeroImageCard } from './hero-image-card';
 const emptyBenefit = () => ({
   icon: 'solar:book-bookmark-bold-duotone',
   title: '',
-  description: '',
 });
 
 function resolvePreviewUrl(url) {
@@ -197,6 +196,15 @@ export function EmployeeSettingsCard({
             fullWidth
           />
 
+          <TextField
+            label="Supporting partners heading"
+            value={content?.partnersHeading || ''}
+            onChange={(e) => setContent((prev) => ({ ...prev, partnersHeading: e.target.value }))}
+            fullWidth
+            placeholder="Supporting Partners"
+            helperText="Shown above scrolling partner logos. Employer section heading is used if this is empty."
+          />
+
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="subtitle2">Benefits (up to {EMPLOYEE_BENEFITS_MAX})</Typography>
             <Button variant="outlined" onClick={addBenefit} disabled={benefits.length >= EMPLOYEE_BENEFITS_MAX}>
@@ -221,14 +229,6 @@ export function EmployeeSettingsCard({
                   value={row.title || ''}
                   onChange={(e) => updateBenefit(index, 'title', e.target.value)}
                   fullWidth
-                />
-                <TextField
-                  label="Description"
-                  value={row.description || ''}
-                  onChange={(e) => updateBenefit(index, 'description', e.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={2}
                 />
                 <Button color="inherit" onClick={() => removeBenefit(index)}>
                   Remove benefit

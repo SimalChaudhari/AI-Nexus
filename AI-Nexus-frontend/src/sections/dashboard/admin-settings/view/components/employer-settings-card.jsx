@@ -7,7 +7,6 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
 import Divider from '@mui/material/Divider';
-import Collapse from '@mui/material/Collapse';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
@@ -24,7 +23,7 @@ import { EMPLOYER_BENEFITS_MAX, EMPLOYER_LOGOS_MAX } from 'src/sections/home/emp
 import { HeroImageCard } from './hero-image-card';
 import { IconPickerDrawer } from './icon-picker-drawer';
 
-const emptyBenefit = () => ({ icon: 'solar:buildings-2-bold-duotone', title: '', description: '' });
+const emptyBenefit = () => ({ icon: 'solar:buildings-2-bold-duotone', title: '' });
 
 function resolvePreviewUrl(url) {
   const raw = String(url || '').trim();
@@ -59,7 +58,6 @@ export function EmployerSettingsCard({
   const [drawerMode, setDrawerMode] = useState('add');
   const [editingIndex, setEditingIndex] = useState(null);
   const [draft, setDraft] = useState(emptyBenefit);
-  const [expandedIndex, setExpandedIndex] = useState(null);
   const [iconToolOpen, setIconToolOpen] = useState(false);
   const [iconSearchQuery, setIconSearchQuery] = useState('');
 
@@ -105,13 +103,8 @@ export function EmployerSettingsCard({
     setDraft({
       icon: String(row.icon || emptyBenefit().icon),
       title: String(row.title || ''),
-      description: String(row.description || ''),
     });
     setDrawerOpen(true);
-  };
-
-  const toggleExpand = (index) => {
-    setExpandedIndex((prev) => (prev === index ? null : index));
   };
 
   const handleDrawerApply = () => {
@@ -124,7 +117,6 @@ export function EmployerSettingsCard({
     const entry = {
       icon: String(draft.icon || emptyBenefit().icon).trim() || emptyBenefit().icon,
       title,
-      description: String(draft.description || ''),
     };
 
     setContent((prev) => {
@@ -220,6 +212,15 @@ export function EmployerSettingsCard({
             </Stack>
 
             <Divider />
+
+            <TextField
+              label="Supporting partners heading (employee section)"
+              value={content?.partnersHeading || ''}
+              onChange={(e) => setContent((prev) => ({ ...prev, partnersHeading: e.target.value }))}
+              fullWidth
+              placeholder="Supporting Partners"
+              helperText="Shown above the scrolling partner logos on the home page employee section."
+            />
 
             <Stack spacing={1.25}>
               <Stack direction="row" alignItems="center" justifyContent="space-between">
@@ -371,8 +372,6 @@ export function EmployerSettingsCard({
               ) : (
                 benefits.map((row, index) => {
                   const label = String(row?.title || '').trim() || `Benefit ${index + 1}`;
-                  const isExpanded = expandedIndex === index;
-                  const description = String(row?.description || '').trim();
                   const isLast = index === benefits.length - 1;
 
                   return (
@@ -380,17 +379,15 @@ export function EmployerSettingsCard({
                       <Stack
                         direction="row"
                         spacing={1}
-                        alignItems="flex-start"
+                        alignItems="center"
                         sx={{
-                          pt: { xs: 1.5, sm: 2 },
-                          pb: isExpanded ? 0.5 : { xs: 1.5, sm: 2 },
+                          py: { xs: 1.25, sm: 1.5 },
                         }}
                       >
                         <Box
                           sx={{
                             width: 36,
                             height: 36,
-                            mt: 0.15,
                             flexShrink: 0,
                             borderRadius: 1,
                             display: 'flex',
@@ -404,57 +401,28 @@ export function EmployerSettingsCard({
                           <Iconify icon={row?.icon || emptyBenefit().icon} width={20} />
                         </Box>
 
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontWeight: 600,
-                              lineHeight: 1.5,
-                              ...(isExpanded
-                                ? { wordBreak: 'break-word' }
-                                : {
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical',
-                                    overflow: 'hidden',
-                                  }),
-                            }}
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flex: 1,
+                            minWidth: 0,
+                            fontWeight: 600,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {label}
+                        </Typography>
+
+                        <Tooltip title="Edit benefit">
+                          <IconButton
+                            size="small"
+                            onClick={() => openEditDrawer(index)}
+                            disabled={submitting}
+                            aria-label="Edit benefit"
                           >
-                            {label}
-                          </Typography>
-
-                          <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                            <Typography
-                              variant="body2"
-                              sx={{ pt: 0.75, color: 'text.secondary', lineHeight: 1.6 }}
-                            >
-                              {description || 'No description yet.'}
-                            </Typography>
-                          </Collapse>
-                        </Box>
-
-                        <Stack direction="row" spacing={0} sx={{ flexShrink: 0 }}>
-                          <Tooltip title={isExpanded ? 'Hide details' : 'View details'}>
-                            <IconButton
-                              size="small"
-                              onClick={() => toggleExpand(index)}
-                              aria-label={isExpanded ? 'Hide details' : 'View details'}
-                              color={isExpanded ? 'primary' : 'default'}
-                            >
-                              <Iconify icon="solar:eye-bold" width={20} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit benefit">
-                            <IconButton
-                              size="small"
-                              onClick={() => openEditDrawer(index)}
-                              disabled={submitting}
-                              aria-label="Edit benefit"
-                            >
-                              <Iconify icon="solar:pen-bold" width={20} />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
+                            <Iconify icon="solar:pen-bold" width={20} />
+                          </IconButton>
+                        </Tooltip>
                       </Stack>
                       {!isLast ? <Divider /> : null}
                     </Box>
@@ -542,15 +510,6 @@ export function EmployerSettingsCard({
               onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
               fullWidth
               autoFocus
-            />
-
-            <TextField
-              label="Description"
-              value={draft.description}
-              onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
-              fullWidth
-              multiline
-              minRows={4}
             />
           </Stack>
 

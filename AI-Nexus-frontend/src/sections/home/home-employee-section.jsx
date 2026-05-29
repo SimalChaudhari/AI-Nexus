@@ -6,7 +6,6 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Unstable_Grid2';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { RouterLink } from 'src/routes/components';
@@ -17,12 +16,261 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { CONFIG } from 'src/config-global';
 import { appSettingsService } from 'src/services/app-settings.service';
 
-import { resolveEmployeeContent, hasEmployeeContent } from './employee-defaults';
+import {
+  resolveEmployeeContent,
+  hasEmployeeContent,
+  formatEmployeeHeading,
+} from './employee-defaults';
 
 // ----------------------------------------------------------------------
 
-const MOBILE_ONE_CARD_MAX_PX = 375;
-const HOVER_EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+const NAVY = '#1C4270';
+const HERO_IMAGE_WIDTH = '58%';
+const SECTION_GREY = '#eceef1';
+const SECTION_GREY_LIGHT = '#f4f6f8';
+const SECTION_BG = `linear-gradient(180deg, ${SECTION_GREY_LIGHT} 0%, ${SECTION_GREY} 48%, ${SECTION_GREY_LIGHT} 100%)`;
+
+const sectionBackgroundSx = {
+  bgcolor: 'grey.200',
+  background: SECTION_BG,
+};
+
+function EmployeeHeroBackdrop({ imageSrc }) {
+  if (!imageSrc) return null;
+
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        display: { xs: 'none', md: 'block' },
+        position: 'absolute',
+        inset: 0,
+        zIndex: 0,
+        width: '100%',
+        overflow: 'hidden',
+        bgcolor: 'transparent',
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: { md: '56%' },
+          background: `
+            linear-gradient(
+              90deg,
+              ${SECTION_GREY_LIGHT} 0%,
+              ${SECTION_GREY_LIGHT} 68%,
+              rgba(244, 246, 248, 0.96) 78%,
+              rgba(236, 238, 241, 0.55) 88%,
+              rgba(236, 238, 241, 0.18) 96%,
+              transparent 100%
+            )
+          `,
+        }}
+      />
+
+      <Box
+        sx={{
+          position: 'absolute',
+          top: { md: 20 },
+          right: 0,
+          bottom: { md: 20 },
+          width: HERO_IMAGE_WIDTH,
+          overflow: 'hidden',
+          borderRadius: { md: '0 0 0 12px' },
+        }}
+      >
+        <Box
+          component="img"
+          src={imageSrc}
+          alt=""
+          loading="lazy"
+          sx={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: '68% center',
+            display: 'block',
+          }}
+        />
+
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background: `
+              linear-gradient(
+                180deg,
+                rgba(244, 246, 248, 0.22) 0%,
+                rgba(244, 246, 248, 0.08) 3%,
+                transparent 10%
+              ),
+              linear-gradient(
+                90deg,
+                ${SECTION_GREY_LIGHT} 0%,
+                rgba(244, 246, 248, 0.98) 5%,
+                rgba(236, 238, 241, 0.78) 12%,
+                rgba(236, 238, 241, 0.38) 22%,
+                rgba(236, 238, 241, 0.1) 32%,
+                transparent 44%
+              ),
+              linear-gradient(
+                0deg,
+                rgba(244, 246, 248, 0.24) 0%,
+                rgba(236, 238, 241, 0.08) 5%,
+                transparent 10%
+              )
+            `,
+          }}
+        />
+
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            boxShadow: `
+              inset 0 14px 20px -12px rgba(244, 246, 248, 0.5),
+              inset 48px 0 56px -20px rgba(244, 246, 248, 0.82),
+              inset 0 -12px 18px -10px rgba(244, 246, 248, 0.28)
+            `,
+          }}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+function PartnersLogoSection({ heading, logos, secondaryColor }) {
+  const shouldScroll = logos.length > 5;
+
+  return (
+    <Box
+      component={m.section}
+      variants={varFade({ distance: 16 }).inUp}
+      sx={{
+        position: 'relative',
+        zIndex: 1,
+        bgcolor: '#ffffff',
+        py: { xs: 4, md: 5.5 },
+        overflow: 'hidden',
+        borderTop: `1px solid ${alpha(SECTION_GREY, 0.9)}`,
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background: `
+            radial-gradient(ellipse 80% 60% at 12% 18%, rgba(196, 181, 253, 0.14), transparent 58%),
+            radial-gradient(ellipse 72% 55% at 88% 78%, rgba(147, 197, 253, 0.16), transparent 60%),
+            radial-gradient(ellipse 58% 48% at 52% 42%, rgba(251, 207, 232, 0.12), transparent 62%)
+          `,
+        },
+      }}
+    >
+      <DashboardContent component={MotionViewport} sx={{ position: 'relative', zIndex: 1 }}>
+        <Stack spacing={{ xs: 2.5, md: 3 }} alignItems="center" sx={{ width: 1 }}>
+          {heading ? (
+            <Stack spacing={0} alignItems="center" sx={{ width: 1 }}>
+              <Typography
+                component="h3"
+                sx={{
+                  m: 0,
+                  textAlign: 'center',
+                  color: 'secondary.main',
+                  fontWeight: 800,
+                  fontSize: { xs: '1.35rem', sm: '1.55rem', md: '1.75rem' },
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {heading}
+              </Typography>
+
+              <Box
+                sx={{
+                  mt: 1.5,
+                  width: { xs: 72, sm: 80, md: 96 },
+                  height: 4,
+                  borderRadius: 999,
+                  flexShrink: 0,
+                  background: (theme) =>
+                    `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${secondaryColor || theme.palette.secondary.main} 100%)`,
+                  boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.primary.main, 0.25)}`,
+                }}
+              />
+            </Stack>
+          ) : null}
+
+          <Box
+            sx={{
+              width: 1,
+              overflow: 'hidden',
+              '@keyframes employeePartnersScroll': {
+                from: { transform: 'translateX(0)' },
+                to: { transform: 'translateX(-50%)' },
+              },
+            }}
+          >
+            <Stack
+              direction="row"
+              alignItems="center"
+              sx={{
+                width: shouldScroll ? 'max-content' : 1,
+                minWidth: shouldScroll ? '100%' : 'auto',
+                animation: shouldScroll ? 'employeePartnersScroll 34s linear infinite' : 'none',
+                justifyContent: shouldScroll ? 'flex-start' : 'center',
+                flexWrap: shouldScroll ? 'nowrap' : 'wrap',
+                gap: { xs: 3, sm: 4, md: 5 },
+                py: { xs: 0.5, md: 1 },
+              }}
+            >
+              {(shouldScroll ? [...logos, ...logos] : logos).map((row, index) => (
+                <Box
+                  key={`employee-partner-logo-${index}`}
+                  sx={{
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: { xs: 88, sm: 104, md: 120 },
+                    height: { xs: 56, md: 68 },
+                    px: { xs: 0.5, md: 1 },
+                    opacity: 0.92,
+                    transition: (theme) => theme.transitions.create(['opacity', 'transform'], { duration: 200 }),
+                    '@media (hover: hover) and (pointer: fine)': {
+                      '&:hover': {
+                        opacity: 1,
+                        transform: 'translateY(-2px)',
+                      },
+                    },
+                  }}
+                >
+                  <Box
+                    component="img"
+                    src={row.logoUrl}
+                    alt={row.name}
+                    sx={{
+                      height: { xs: 44, md: 56 },
+                      maxWidth: { xs: 120, md: 140 },
+                      width: 'auto',
+                      objectFit: 'contain',
+                      display: 'block',
+                    }}
+                  />
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        </Stack>
+      </DashboardContent>
+    </Box>
+  );
+}
 
 function isExternalHref(href) {
   return /^https?:\/\//i.test(String(href || '').trim());
@@ -42,142 +290,157 @@ function resolveAssetUrl(url) {
   return `${base}${raw.startsWith('/') ? raw : `/${raw}`}`;
 }
 
-function CtaButton({ label, href, variant = 'contained', icon, onDark = false }) {
+function CtaButton({ label, href, variant = 'contained', icon }) {
   if (!label?.trim() || !href?.trim()) return null;
   const external = isExternalHref(href);
+
   const common = {
     size: 'large',
+    endIcon: variant === 'contained' && !icon ? <Iconify icon="solar:arrow-right-linear" width={18} /> : null,
     startIcon: icon ? <Iconify icon={icon} width={20} /> : null,
     sx: {
       fontWeight: 700,
-      px: 2.5,
+      px: { xs: 2.25, md: 3 },
       py: 1.35,
       borderRadius: 1.5,
       textTransform: 'none',
-      whiteSpace: 'nowrap',
+      whiteSpace: { xs: 'normal', sm: 'nowrap' },
+      minWidth: { sm: 180 },
     },
   };
 
   if (variant === 'outlined') {
-    const sx = onDark
-      ? {
+    return external ? (
+      <Button
+        component="a"
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        variant="outlined"
+        {...common}
+        sx={{
           ...common.sx,
-          color: 'common.white',
-          borderColor: alpha('#fff', 0.45),
-          bgcolor: 'transparent',
-          '&:hover': {
-            borderColor: 'common.white',
-            bgcolor: alpha('#fff', 0.08),
-          },
-        }
-      : {
-          ...common.sx,
-          color: 'primary.main',
-          borderColor: (t) => alpha(t.palette.primary.main, 0.4),
+          color: 'secondary.main',
+          borderColor: (t) => alpha(t.palette.secondary.main, 0.45),
           bgcolor: 'common.white',
           '&:hover': {
-            borderColor: 'primary.main',
-            bgcolor: (t) => alpha(t.palette.primary.main, 0.06),
+            borderColor: 'secondary.main',
+            bgcolor: SECTION_GREY_LIGHT,
           },
-        };
-    return external ? (
-      <Button component="a" href={href} target="_blank" rel="noopener noreferrer" variant="outlined" {...common} sx={sx}>
+        }}
+      >
         {label}
       </Button>
     ) : (
-      <Button component={RouterLink} href={normalizeAppPath(href)} variant="outlined" {...common} sx={sx}>
+      <Button
+        component={RouterLink}
+        href={normalizeAppPath(href)}
+        variant="outlined"
+        {...common}
+        sx={{
+          ...common.sx,
+          color: 'secondary.main',
+          borderColor: (t) => alpha(t.palette.secondary.main, 0.45),
+          bgcolor: 'common.white',
+          '&:hover': {
+            borderColor: 'secondary.main',
+            bgcolor: SECTION_GREY_LIGHT,
+          },
+        }}
+      >
         {label}
       </Button>
     );
   }
 
-  const sx = {
-    ...common.sx,
-    color: 'primary.contrastText',
-    bgcolor: 'primary.main',
-    boxShadow: (t) => `0 8px 24px ${alpha(t.palette.primary.main, 0.28)}`,
-    '&:hover': {
-      bgcolor: 'primary.dark',
-      boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.38)}`,
-    },
-  };
-
   return external ? (
-    <Button component="a" href={href} target="_blank" rel="noopener noreferrer" variant="contained" {...common} sx={sx}>
+    <Button
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      variant="contained"
+      {...common}
+      sx={{
+        ...common.sx,
+        color: 'primary.contrastText',
+        bgcolor: 'primary.main',
+        boxShadow: (t) => `0 8px 24px ${alpha(t.palette.primary.main, 0.28)}`,
+        '&:hover': {
+          bgcolor: 'primary.dark',
+          boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.38)}`,
+        },
+      }}
+    >
       {label}
     </Button>
   ) : (
-    <Button component={RouterLink} href={normalizeAppPath(href)} variant="contained" {...common} sx={sx}>
+    <Button
+      component={RouterLink}
+      href={normalizeAppPath(href)}
+      variant="contained"
+      {...common}
+      sx={{
+        ...common.sx,
+        color: 'primary.contrastText',
+        bgcolor: 'primary.main',
+        boxShadow: (t) => `0 8px 24px ${alpha(t.palette.primary.main, 0.28)}`,
+        '&:hover': {
+          bgcolor: 'primary.dark',
+          boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.38)}`,
+        },
+      }}
+    >
       {label}
     </Button>
   );
 }
 
-function BenefitCard({ row }) {
+function HeroBenefitItem({ row }) {
   const theme = useTheme();
-  const primary = theme.palette.primary;
-  const iconColor = row.iconColor || primary.main;
+  const secondary = theme.palette.secondary;
+  const iconColor = row.iconColor || secondary.main;
 
   return (
-    <Box
-      className="employee-benefit-card"
+    <Stack
+      spacing={1}
+      alignItems="center"
       sx={{
-        height: 1,
-        p: { xs: 2, md: 2.5 },
-        borderRadius: 2,
-        bgcolor: 'common.white',
-        border: `1px solid ${alpha(primary.main, 0.12)}`,
-        boxShadow: `0 4px 20px ${alpha(theme.palette.grey[500], 0.08)}`,
-        transition: (t) =>
-          t.transitions.create(['transform', 'box-shadow', 'border-color', 'background-color'], {
-            duration: t.transitions.duration.standard,
-            easing: HOVER_EASE,
-          }),
-        '@media (hover: hover) and (pointer: fine)': {
-          '&:hover': {
-            transform: 'translateY(-6px) scale(1.02)',
-            bgcolor: alpha(primary.main, 0.03),
-            borderColor: alpha(primary.main, 0.35),
-            boxShadow: `0 16px 36px ${alpha(primary.main, 0.14)}, 0 8px 20px ${alpha(theme.palette.grey[500], 0.1)}`,
-            '& .employee-benefit-icon': {
-              transform: 'scale(1.08) rotate(-4deg)',
-              bgcolor: alpha(primary.main, 0.14),
-            },
-          },
-        },
+        width: 1,
+        textAlign: 'center',
+        px: { xs: 0.5, md: 0.25, lg: 1 },
       }}
     >
       {row.icon ? (
         <Box
-          className="employee-benefit-icon"
           sx={{
-            width: 44,
-            height: 44,
-            mb: 1.75,
+            width: { xs: 52, md: 50, lg: 58 },
+            height: { xs: 52, md: 50, lg: 58 },
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            bgcolor: alpha(primary.main, 0.08),
             color: iconColor,
-            border: `1px solid ${alpha(primary.main, 0.18)}`,
-            transition: (t) => t.transitions.create('transform', { duration: 300, easing: HOVER_EASE }),
+            border: `2px solid ${alpha(secondary.main, 0.22)}`,
+            bgcolor: 'transparent',
           }}
         >
-          <Iconify icon={row.icon} width={22} />
+          <Iconify icon={row.icon} width={26} />
         </Box>
       ) : null}
       {row.title ? (
-        <Typography sx={{ color: 'text.primary', fontWeight: 700, fontSize: '1rem', mb: 1, lineHeight: 1.3 }}>
+        <Typography
+          sx={{
+            color: 'secondary.main',
+            fontWeight: 700,
+            fontSize: { xs: '0.72rem', sm: '0.78rem', md: '0.82rem' },
+            lineHeight: 1.35,
+          }}
+        >
           {String(row.title).trim()}
         </Typography>
       ) : null}
-      {row.description ? (
-        <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', lineHeight: 1.65 }}>
-          {String(row.description).trim()}
-        </Typography>
-      ) : null}
-    </Box>
+    </Stack>
   );
 }
 
@@ -185,10 +448,7 @@ function BenefitCard({ row }) {
 
 export function HomeEmployeeSection() {
   const theme = useTheme();
-  const primary = theme.palette.primary;
-  const heroBase = theme.palette.common.white;
-  const heroTint = alpha(primary.lighter, 0.45);
-  const isNarrowBenefitGrid = useMediaQuery(`(max-width:${MOBILE_ONE_CARD_MAX_PX}px)`, { noSsr: true });
+  const secondary = theme.palette.secondary;
 
   const [content, setContent] = useState(() => resolveEmployeeContent(null, null));
   const [companyLogos, setCompanyLogos] = useState([]);
@@ -228,89 +488,51 @@ export function HomeEmployeeSection() {
   if (!hasEmployeeContent(content)) return null;
 
   const benefits = (content.benefits || []).filter(
-    (row) => String(row?.title || '').trim() || String(row?.description || '').trim()
+    (row) => String(row?.title || '').trim()
   );
   const heroSrc = resolveAssetUrl(content.heroImageUrl);
-  const heroPanelTitle = String(content.heroPanelTitle || '').trim();
-  const heroPanelSubtitle = String(content.heroPanelSubtitle || '').trim();
-  const showHeroPanelText = Boolean(heroPanelTitle || heroPanelSubtitle);
-
-  const benefitsSectionBg = 'linear-gradient(180deg, #f8fafc 0%, #eef4fa 48%, #f8fafc 100%)';
-
-  const heroFadeOverlay = {
-    xs: `linear-gradient(180deg, ${heroBase} 0%, ${heroBase} 36%, ${alpha(heroBase, 0.94)} 50%, ${heroTint} 64%, transparent 88%)`,
-    md: `linear-gradient(90deg, ${heroBase} 0%, ${heroBase} 21%, ${alpha(heroBase, 0.9)} 30%, ${alpha(heroBase, 0.55)} 39%, ${alpha(primary.lighter, 0.24)} 49%, ${alpha(primary.lighter, 0.08)} 58%, transparent 66%)`,
-  };
-
-  const heroSectionBg = `linear-gradient(135deg, ${heroBase} 0%, ${alpha(primary.lighter, 0.35)} 55%, ${alpha(primary.lighter, 0.18)} 100%)`;
   const displayLogos = companyLogos;
+  const partnersHeading = String(content.partnersHeading || '').trim();
+  const showPartners = displayLogos.length > 0;
 
   return (
-    <Box component="section" sx={{ position: 'relative', overflow: 'hidden' }}>
-      {/* Seamless light hero — soft primary tint on white, image blends in */}
+    <Box
+      component="section"
+      sx={{
+        position: 'relative',
+        overflow: 'hidden',
+        ...sectionBackgroundSx,
+      }}
+    >
       <Box
         sx={{
           position: 'relative',
-          bgcolor: 'common.white',
-          background: heroSectionBg,
-          minHeight: { xs: heroSrc ? 520 : 400, sm: 460, md: 440 },
+          zIndex: 1,
+          bgcolor: 'transparent',
+          minHeight: { xs: heroSrc ? 560 : 420, md: 520 },
           overflow: 'hidden',
         }}
       >
-        {heroSrc ? (
-          <Box
-            aria-hidden
-            sx={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              width: { md: '68%' },
-              height: '100%',
-              display: { xs: 'none', md: 'block' },
-              backgroundImage: `url(${heroSrc})`,
-              backgroundSize: 'cover',
-              backgroundPosition: { md: '70% center', lg: '74% center' },
-              backgroundRepeat: 'no-repeat',
-            }}
-          />
-        ) : (
+        <EmployeeHeroBackdrop imageSrc={heroSrc} />
+
+        {!heroSrc ? (
           <Box
             aria-hidden
             sx={{
               position: 'absolute',
               inset: 0,
-              background: `radial-gradient(ellipse 80% 70% at 85% 50%, ${alpha(primary.lighter, 0.5)} 0%, transparent 60%)`,
+              background: `radial-gradient(ellipse 75% 70% at 88% 50%, ${alpha(secondary.lighter, 0.2)} 0%, transparent 62%)`,
             }}
           />
-        )}
-
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            background: heroFadeOverlay,
-            pointerEvents: 'none',
-          }}
-        />
-
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            background: `radial-gradient(ellipse 55% 80% at 0% 50%, ${alpha(primary.lighter, 0.35)} 0%, transparent 55%)`,
-            pointerEvents: 'none',
-          }}
-        />
+        ) : null}
 
         <DashboardContent
           component={MotionViewport}
           sx={{
             position: 'relative',
             zIndex: 1,
-            py: { xs: 6, md: 8 },
-            minHeight: { xs: heroSrc ? 520 : 400, sm: 460, md: 440 },
+            py: { xs: 5, md: 7 },
+            minHeight: { xs: heroSrc ? 560 : 420, md: 520 },
             display: 'flex',
             alignItems: 'center',
           }}
@@ -322,22 +544,24 @@ export function HomeEmployeeSection() {
               sx={{
                 display: { xs: 'block', md: 'none' },
                 width: 1,
-                mb: 2.25,
-                borderRadius: 2,
+                mb: 2.5,
+                borderRadius: '20px',
                 overflow: 'hidden',
-                border: `1px solid ${alpha(primary.main, 0.18)}`,
-                boxShadow: `0 14px 34px ${alpha(primary.main, 0.16)}`,
+                aspectRatio: '16 / 10',
+                maxHeight: 260,
+                boxShadow: `0 20px 40px ${alpha(NAVY, 0.14)}, 0 4px 12px ${alpha(NAVY, 0.06)}`,
+                border: `1px solid ${alpha(NAVY, 0.08)}`,
               }}
             >
               <Box
                 component="img"
                 src={heroSrc}
-                alt={heroPanelTitle || content.heading || 'Employee'}
+                alt={content.heading || 'Employee'}
                 sx={{
                   width: 1,
-                  height: 220,
+                  height: 1,
                   objectFit: 'cover',
-                  objectPosition: 'center 30%',
+                  objectPosition: '68% center',
                   display: 'block',
                 }}
               />
@@ -346,68 +570,70 @@ export function HomeEmployeeSection() {
 
           <Grid container alignItems="center" sx={{ width: 1 }}>
             <Grid xs={12} md={heroSrc ? 6.5 : 12}>
-              <Stack spacing={2.5} sx={{ maxWidth: { xs: 1, md: 560 }, pr: { md: 2 } }}>
-                {content.eyebrow ? (
-                  <Typography
-                    component={m.p}
-                    variant="overline"
-                    variants={varFade({ distance: 12 }).inUp}
-                    sx={{
-                      color: 'primary.main',
-                      fontWeight: 800,
-                      letterSpacing: 2,
-                    }}
-                  >
-                    {content.eyebrow}
-                  </Typography>
-                ) : null}
-
+              <Stack
+                spacing={{ xs: 2.25, md: 2.75 }}
+                sx={{
+                  maxWidth: heroSrc ? { xs: 1, md: 420, lg: 620 } : { xs: 1, md: 620 },
+                }}
+              >
                 {(content.heading || content.headingAccent) && (
                   <Typography
                     component={m.h2}
                     variants={varFade({ distance: 20 }).inUp}
                     sx={{
                       m: 0,
-                      color: 'text.primary',
+                      color: 'secondary.main',
                       fontWeight: 800,
-                      fontSize: { xs: '2rem', sm: '2.5rem', md: '2.85rem' },
-                      lineHeight: 1.12,
+                      fontSize: { xs: '1.85rem', sm: '2.25rem', md: '2.65rem' },
+                      lineHeight: 1.15,
+                      letterSpacing: '-0.02em',
                     }}
                   >
-                    {content.heading ? (
-                      <Box component="span" sx={{ display: 'block' }}>
-                        {content.heading}
-                      </Box>
-                    ) : null}
-                    {content.headingAccent ? (
-                      <Box
-                        component="span"
-                        sx={{
-                          display: 'block',
-                          background: `linear-gradient(90deg, ${primary.light} 0%, ${primary.main} 55%, ${primary.dark} 100%)`,
-                          backgroundClip: 'text',
-                          WebkitBackgroundClip: 'text',
-                          color: 'transparent',
-                        }}
-                      >
-                        {content.headingAccent}
-                      </Box>
-                    ) : null}
+                    {formatEmployeeHeading(content.heading, content.headingAccent)}
                   </Typography>
                 )}
 
                 {content.subtitle ? (
-                  <Box component={m.div} variants={varFade({ distance: 14 }).inUp} sx={{ maxWidth: 520 }}>
+                  <Box
+                    component={m.div}
+                    variants={varFade({ distance: 14 }).inUp}
+                    sx={{
+                      width: 1,
+                      maxWidth: heroSrc ? { xs: 1, md: 400, lg: 540 } : { xs: 1, md: 540 },
+                    }}
+                  >
                     <RichTextContent
                       html={content.subtitle}
                       sx={{
-                        color: 'text.secondary',
+                        color: NAVY,
+                        opacity: 0.72,
                         typography: 'body1',
-                        lineHeight: 1.75,
+                        fontSize: { xs: '0.9375rem', md: '0.9375rem', lg: '1rem' },
+                        lineHeight: { xs: 1.65, lg: 1.7 },
                         '& p': { m: 0 },
                       }}
                     />
                   </Box>
+                ) : null}
+
+                {benefits.length > 0 ? (
+                  <Grid
+                    component={m.div}
+                    container
+                    spacing={{ xs: 1.5, md: 2, lg: 2.5 }}
+                    variants={varFade({ distance: 14 }).inUp}
+                    sx={{
+                      pt: { xs: 0.5, md: 1 },
+                      width: 1,
+                      maxWidth: { xs: 1, md: 400, lg: 560 },
+                    }}
+                  >
+                    {benefits.slice(0, 4).map((row, index) => (
+                      <Grid key={`employee-hero-benefit-${index}`} xs={6} md={6} lg={3}>
+                        <HeroBenefitItem row={row} />
+                      </Grid>
+                    ))}
+                  </Grid>
                 ) : null}
 
                 <Stack
@@ -416,11 +642,15 @@ export function HomeEmployeeSection() {
                   spacing={1.5}
                   flexWrap="wrap"
                   variants={varFade({ distance: 12 }).inUp}
+                  sx={{
+                    pt: { xs: 0.5, md: 1 },
+                    width: 1,
+                    maxWidth: heroSrc ? { xs: 1, md: 400, lg: 1 } : 1,
+                  }}
                 >
                   <CtaButton
                     label={content.primaryCtaLabel}
                     href={content.primaryCtaHref}
-                    icon="solar:hand-shake-bold"
                   />
                   <CtaButton
                     label={content.secondaryCtaLabel}
@@ -431,165 +661,17 @@ export function HomeEmployeeSection() {
                 </Stack>
               </Stack>
             </Grid>
-
           </Grid>
-
-          {showHeroPanelText && heroSrc ? (
-            <Stack
-              component={m.div}
-              spacing={0.75}
-              variants={varFade({ distance: 16 }).inUp}
-              sx={{
-                display: { xs: 'none', md: 'flex' },
-                position: 'absolute',
-                right: { md: 32, lg: 48 },
-                bottom: { md: 32, lg: 40 },
-                zIndex: 2,
-                maxWidth: 300,
-                textAlign: 'right',
-              }}
-            >
-              {heroPanelTitle ? (
-                <Typography
-                  sx={{
-                    color: alpha('#fff', 0.92),
-                    fontWeight: 700,
-                    fontSize: '1.05rem',
-                    textShadow: `0 2px 12px ${alpha('#000', 0.45)}`,
-                  }}
-                >
-                  {heroPanelTitle}
-                </Typography>
-              ) : null}
-              {heroPanelSubtitle ? (
-                <Typography
-                  sx={{
-                    color: alpha('#fff', 0.72),
-                    fontSize: '0.85rem',
-                    textShadow: `0 1px 8px ${alpha('#000', 0.4)}`,
-                  }}
-                >
-                  {heroPanelSubtitle}
-                </Typography>
-              ) : null}
-            </Stack>
-          ) : null}
         </DashboardContent>
       </Box>
 
-      {/* Benefits — light section below */}
-      {benefits.length > 0 ? (
-        <Box
-          sx={{
-            py: { xs: 6, md: 8 },
-            bgcolor: 'common.white',
-            background: benefitsSectionBg,
-            position: 'relative',
-          }}
-        >
-          <Box
-            aria-hidden
-            sx={{
-              pointerEvents: 'none',
-              position: 'absolute',
-              top: -80,
-              right: -60,
-              width: 320,
-              height: 320,
-              borderRadius: '50%',
-              background: `radial-gradient(circle, ${alpha(primary.main, 0.08)} 0%, transparent 68%)`,
-            }}
-          />
-
-          <DashboardContent component={MotionViewport} sx={{ position: 'relative', zIndex: 1 }}>
-            <Stack spacing={3} alignItems="center">
-              {content.benefitsLabel ? (
-                <Typography
-                  component={m.p}
-                  variant="overline"
-                  variants={varFade({ distance: 10 }).inUp}
-                  sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 2 }}
-                >
-                  {content.benefitsLabel}
-                </Typography>
-              ) : null}
-              <Grid container spacing={2} sx={{ width: 1 }}>
-                {benefits.map((row, index) => (
-                  <Grid
-                    key={`employee-benefit-${index}`}
-                    component={m.div}
-                    xs={isNarrowBenefitGrid ? 12 : 6}
-                    sm={6}
-                    md={3}
-                    variants={varFade({ distance: 16 }).inUp}
-                  >
-                    <BenefitCard row={row} />
-                  </Grid>
-                ))}
-              </Grid>
-
-              {displayLogos.length > 0 ? (
-                <Box
-                  sx={{
-                    width: 1,
-                    mt: { xs: 1, md: 1.4 },
-                  }}
-                >
-                  <Grid
-                    container
-                    spacing={{ xs: 1.2, md: 1.6 }}
-                    sx={{ width: 1, maxWidth: 980, mx: 'auto' }}
-                  >
-                    {displayLogos.map((row, index) => (
-                      <Grid key={`employee-company-logo-${index}`} xs={6} sm={3}>
-                        <Box
-                          sx={{
-                            height: { xs: 76, md: 92 },
-                            borderRadius: 1.5,
-                            bgcolor: alpha('#fff', 0.82),
-                            border: `1px solid ${alpha(primary.main, 0.12)}`,
-                            backdropFilter: 'blur(8px)',
-                            boxShadow: `0 12px 28px ${alpha(primary.main, 0.1)}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            px: { xs: 0.4, md: 0.6 },
-                            transition: (t) =>
-                              t.transitions.create(['transform', 'box-shadow', 'border-color'], {
-                                duration: t.transitions.duration.shorter,
-                              }),
-                            '@media (hover: hover) and (pointer: fine)': {
-                              '&:hover': {
-                                transform: 'translateY(-4px)',
-                                borderColor: alpha(primary.main, 0.28),
-                                boxShadow: `0 16px 34px ${alpha(primary.main, 0.16)}`,
-                              },
-                            },
-                          }}
-                        >
-                          <Box
-                            component="img"
-                            src={row.logoUrl}
-                            alt={row.name}
-                            sx={{
-                              width: '100%',
-                              height: { xs: 56, md: 68 },
-                              objectFit: 'contain',
-                              display: 'block',
-                            }}
-                          />
-                        </Box>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              ) : null}
-            </Stack>
-          </DashboardContent>
-        </Box>
+      {showPartners ? (
+        <PartnersLogoSection
+          heading={partnersHeading}
+          logos={displayLogos}
+          secondaryColor={secondary.main}
+        />
       ) : null}
-
-    
     </Box>
   );
 }

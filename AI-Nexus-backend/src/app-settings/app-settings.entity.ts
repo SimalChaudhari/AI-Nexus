@@ -179,8 +179,9 @@ export type HomeEmployerContent = {
   heading?: string;
   subtitle?: string;
   heroImageUrl?: string;
-  benefits?: Array<{ icon?: string; title?: string; description?: string }>;
+  benefits?: Array<{ icon?: string; title?: string }>;
   logos?: Array<{ name?: string; logoUrl?: string }>;
+  partnersHeading?: string;
   ctaLabel?: string;
   ctaHref?: string;
 };
@@ -198,12 +199,12 @@ export type HomeEmployeeContent = {
     icon?: string;
     iconColor?: string;
     title?: string;
-    description?: string;
   }>;
   primaryCtaLabel?: string;
   primaryCtaHref?: string;
   secondaryCtaLabel?: string;
   secondaryCtaHref?: string;
+  partnersHeading?: string;
   trustedLabel?: string;
   logos?: Array<{ name?: string; logoUrl?: string }>;
   stats?: Array<{ icon?: string; value?: string; label?: string }>;

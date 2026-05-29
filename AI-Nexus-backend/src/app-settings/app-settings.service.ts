@@ -201,8 +201,9 @@ type HomeEmployerContentPayload = {
   heading?: string;
   subtitle?: string;
   heroImageUrl?: string;
-  benefits?: Array<{ icon?: string; title?: string; description?: string }>;
+  benefits?: Array<{ icon?: string; title?: string }>;
   logos?: Array<{ name?: string; logoUrl?: string }>;
+  partnersHeading?: string;
   ctaLabel?: string;
   ctaHref?: string;
 };
@@ -220,12 +221,12 @@ type HomeEmployeeContentPayload = {
     icon?: string;
     iconColor?: string;
     title?: string;
-    description?: string;
   }>;
   primaryCtaLabel?: string;
   primaryCtaHref?: string;
   secondaryCtaLabel?: string;
   secondaryCtaHref?: string;
+  partnersHeading?: string;
   trustedLabel?: string;
   logos?: Array<{ name?: string; logoUrl?: string }>;
   stats?: Array<{ icon?: string; value?: string; label?: string }>;
@@ -1103,12 +1104,12 @@ export class AppSettingsService {
       benefits: rawBenefits.slice(0, EMPLOYER_BENEFITS_MAX).map((row: any) => ({
         icon: this.cleanText(row?.icon, 120),
         title: this.cleanText(row?.title, 120),
-        description: this.cleanText(row?.description),
       })),
       logos: rawLogos.slice(0, EMPLOYER_LOGOS_MAX).map((row: any) => ({
         name: this.cleanText(row?.name, 120),
         logoUrl: this.toStoredUploadPath(row?.logoUrl) || this.cleanText(row?.logoUrl, 500),
       })),
+      partnersHeading: this.cleanText(source.partnersHeading, 120),
       ctaLabel: this.cleanText(source.ctaLabel, 80),
       ctaHref: this.cleanText(source.ctaHref, 500),
     };
@@ -1140,12 +1141,12 @@ export class AppSettingsService {
         icon: this.cleanText(row?.icon, 120),
         iconColor: this.sanitizeIconColor(row?.iconColor),
         title: this.cleanText(row?.title, 120),
-        description: this.cleanText(row?.description),
       })),
       primaryCtaLabel: this.cleanText(source.primaryCtaLabel, 80),
       primaryCtaHref: this.cleanText(source.primaryCtaHref, 500),
       secondaryCtaLabel: this.cleanText(source.secondaryCtaLabel, 80),
       secondaryCtaHref: this.cleanText(source.secondaryCtaHref, 500),
+      partnersHeading: this.cleanText(source.partnersHeading, 120),
       trustedLabel: this.cleanText(source.trustedLabel, 120),
       logos: rawLogos.slice(0, EMPLOYEE_LOGOS_MAX).map((row: any) => ({
         name: this.cleanText(row?.name, 120),

@@ -1,3 +1,5 @@
+import { normalizeEmployerContent } from './employer-defaults';
+
 export const EMPLOYEE_BENEFITS_MAX = 6;
 
 const BENEFIT_ICON_COLORS = ['#E32B24', '#EE6A64', '#B7221D', '#E32B24'];
@@ -31,12 +33,23 @@ export const DEFAULT_EMPLOYEE_CONTENT = {
   heroPanelTitle: '',
   heroPanelSubtitle: '',
   benefitsLabel: '',
+  partnersHeading: '',
   benefits: [],
   primaryCtaLabel: '',
   primaryCtaHref: '',
   secondaryCtaLabel: '',
   secondaryCtaHref: '',
 };
+
+export function formatEmployeeHeading(heading, headingAccent) {
+  const main = String(heading || '').trim();
+  const accent = String(headingAccent || '').trim();
+  if (!main && !accent) return '';
+  if (!accent) return main;
+  if (!main) return accent;
+  const mainWithoutTrailingPeriod = main.replace(/\.\s*$/, '');
+  return `${mainWithoutTrailingPeriod} ${accent}`.trim();
+}
 
 export function normalizeEmployeeContent(source) {
   if (!source || typeof source !== 'object') {
@@ -54,11 +67,11 @@ export function normalizeEmployeeContent(source) {
     heroPanelTitle: cleaned.heroPanelTitle != null ? String(cleaned.heroPanelTitle) : '',
     heroPanelSubtitle: cleaned.heroPanelSubtitle != null ? String(cleaned.heroPanelSubtitle) : '',
     benefitsLabel: normalizeBenefitsLabel(cleaned.benefitsLabel),
+    partnersHeading: cleaned.partnersHeading != null ? String(cleaned.partnersHeading) : '',
     benefits: rawBenefits.slice(0, EMPLOYEE_BENEFITS_MAX).map((row, index) => ({
       icon: row?.icon != null ? String(row.icon) : '',
       iconColor: row?.iconColor != null ? String(row.iconColor) : BENEFIT_ICON_COLORS[index % BENEFIT_ICON_COLORS.length],
       title: row?.title != null ? String(row.title) : '',
-      description: row?.description != null ? String(row.description) : '',
     })),
     primaryCtaLabel: cleaned.primaryCtaLabel != null ? String(cleaned.primaryCtaLabel) : '',
     primaryCtaHref: cleaned.primaryCtaHref != null ? String(cleaned.primaryCtaHref) : '',
@@ -75,7 +88,7 @@ export function hasEmployeeContent(content) {
   if (String(c.subtitle || '').trim()) return true;
   if (String(c.primaryCtaLabel || '').trim() && String(c.primaryCtaHref || '').trim()) return true;
   const benefits = Array.isArray(c.benefits) ? c.benefits : [];
-  return benefits.some((r) => r?.title?.trim() || r?.description?.trim());
+  return benefits.some((r) => r?.title?.trim());
 }
 
 export function isEmployeeContentEmpty(source) {
@@ -92,8 +105,8 @@ export function mapEmployerToEmployee(employer) {
   const main = parts.join(' ') || heading;
   return normalizeEmployeeContent({
     eyebrow: '',
-    heading: main.endsWith('.') ? main : main ? `${main}.` : '',
-    headingAccent: accent ? (accent.endsWith('.') ? accent : `${accent}.`) : '',
+    heading: main,
+    headingAccent: accent,
     subtitle: employer.subtitle,
     heroImageUrl: employer.heroImageUrl,
     heroPanelTitle: '',
@@ -112,17 +125,37 @@ function normalizeEmployerForMerge(source) {
   return normalizeEmployeeContent(mapEmployerToEmployee(source));
 }
 
+function resolvePartnersHeading(employeeHeading, employerSource) {
+  const fromEmployee = String(employeeHeading || '').trim();
+  if (fromEmployee) return fromEmployee;
+  const employer = employerSource && typeof employerSource === 'object' ? employerSource : null;
+  return String(employer?.partnersHeading || '').trim();
+}
+
 export function resolveEmployeeContent(employeeSource, employerSource) {
   const employerMapped = normalizeEmployerForMerge(employerSource);
+  const employerNorm =
+    employerSource && typeof employerSource === 'object'
+      ? normalizeEmployerContent(employerSource)
+      : null;
 
   if (!isEmployeeContentEmpty(employeeSource)) {
     const employee = normalizeEmployeeContent(employeeSource);
+    const merged = {
+      ...employee,
+      partnersHeading: resolvePartnersHeading(employee.partnersHeading, employerNorm),
+    };
     if (!String(employee.heroImageUrl || '').trim() && employerMapped?.heroImageUrl) {
-      return { ...employee, heroImageUrl: employerMapped.heroImageUrl };
+      merged.heroImageUrl = employerMapped.heroImageUrl;
     }
-    return employee;
+    return merged;
   }
 
-  if (employerMapped && hasEmployeeContent(employerMapped)) return employerMapped;
+  if (employerMapped && hasEmployeeContent(employerMapped)) {
+    return {
+      ...employerMapped,
+      partnersHeading: resolvePartnersHeading('', employerNorm),
+    };
+  }
   return normalizeEmployeeContent(null);
 }
