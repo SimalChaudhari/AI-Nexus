@@ -7,7 +7,7 @@ export function useScrollToTop() {
   const { pathname } = useLocation();
 
   useLayoutEffect(() => {
-    if (typeof window === 'undefined' || window.scrollY === 0) return;
+    if (typeof window === 'undefined') return;
     window.scrollTo(0, 0);
   }, [pathname]);
 

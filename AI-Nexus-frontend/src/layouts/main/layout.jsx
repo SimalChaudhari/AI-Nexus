@@ -10,7 +10,7 @@ import { useSettingsContext } from 'src/components/settings';
 import { Main } from './main';
 import { NavMobile } from './nav/mobile';
 import { NavDesktop } from './nav/desktop';
-import { Footer, HomeFooter } from './footer';
+import { Footer } from './footer';
 import { HeaderBase } from '../core/header-base';
 import { LayoutSection } from '../core/layout-section';
 import { navData as mainNavData } from '../config-nav-main';
@@ -90,11 +90,7 @@ export function MainLayout({ sx, data, children }) {
          * Footer (stats + dynamic contact + links)
          *************************************** */
         footerSection={
-          homePage ? (
-            <HomeFooter />
-          ) : hideFooterOnLearning ? null : (
-            <Footer layoutQuery={layoutQuery} />
-          )
+          homePage || hideFooterOnLearning ? null : <Footer layoutQuery={layoutQuery} />
         }
         /** **************************************
          * Style
@@ -108,6 +104,7 @@ export function MainLayout({ sx, data, children }) {
         }}
         sx={{
           ...(isLearningCoursePlayer && { overflow: 'hidden' }),
+          ...(homePage && { bgcolor: '#ffffff' }),
           ...sx,
         }}
       >
@@ -129,7 +126,12 @@ export function MainLayout({ sx, data, children }) {
                     md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
                   },
                 }
-              : undefined
+              : homePage
+                ? {
+                    flex: '1 1 auto',
+                    bgcolor: '#ffffff',
+                  }
+                : undefined
           }
         >
           {children}

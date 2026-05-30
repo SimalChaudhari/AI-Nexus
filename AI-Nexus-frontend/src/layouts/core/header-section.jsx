@@ -49,10 +49,7 @@ export function HeaderSection({
     default: {
       minHeight: 'auto',
       height: 'var(--layout-header-mobile-height)',
-      transition: theme.transitions.create(['background-color'], {
-        easing: theme.transitions.easing.easeInOut,
-        duration: theme.transitions.duration.shorter,
-      }),
+      transition: 'none',
       [theme.breakpoints.up('sm')]: {
         minHeight: 'auto',
       },

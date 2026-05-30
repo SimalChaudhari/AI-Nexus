@@ -37,6 +37,7 @@
 html {
   height: 100%;
   -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: rgba(28, 66, 112, 0.28) #ffffff;
 }

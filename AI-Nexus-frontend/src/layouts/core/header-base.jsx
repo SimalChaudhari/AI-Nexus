@@ -109,6 +109,7 @@ export function HeaderBase({
         ...(isCustomerFacingRoute && {
           px: { xs: 0, md: 0 },
           minHeight: 'var(--layout-header-mobile-height)',
+          transition: 'none',
           [theme.breakpoints.up(layoutQuery)]: {
             minHeight: 'var(--layout-header-desktop-height)',
           },
@@ -135,18 +136,25 @@ export function HeaderBase({
     <HeaderSection
       sx={{
         ...(isCustomerFacingRoute && {
-          backgroundColor: isHomeRoute ? 'transparent' : 'rgba(255,255,255,0.25)',
+          backgroundColor:
+            isHomeRoute && homeNavLightOnHero ? 'transparent' : 'common.white',
           backgroundImage: 'none',
           boxShadow: 'none',
-          borderBottom: isHomeRoute ? 'none' : '1px solid rgba(28,66,112,0.30)',
-          color:
-            isCustomerFacingRoute && isHomeRoute
-              ? homeNavLightOnHero
-                ? 'secondary.main'
-                : 'text.primary'
-              : isCustomerFacingRoute
-                ? 'common.white'
-                : undefined,
+          borderBottom: '1px solid rgba(28,66,112,0.16)',
+          color: isHomeRoute && homeNavLightOnHero ? 'secondary.main' : 'text.primary',
+          backdropFilter:
+            isHomeRoute && homeNavLightOnHero ? undefined : 'blur(10px)',
+          WebkitBackdropFilter:
+            isHomeRoute && homeNavLightOnHero ? undefined : 'blur(10px)',
+          transition: 'none',
+          '& [data-slot="logo-wrapper"]': {
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            width: { xs: 100, md: 150 },
+            transition: 'none',
+          },
           ...(isHomeRoute && {
             '@media (max-width:1080px)': {
               backgroundColor: 'common.white',
@@ -154,24 +162,12 @@ export function HeaderBase({
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
             },
-            '& [data-slot="logo-wrapper"]': {
-              transition: 'none',
-            },
             '&[data-offset-top="false"] [data-slot="logo-wrapper"]': {
-              '@media (max-width:1080px)': {
-                backgroundColor: 'transparent',
-                borderRadius: 0,
-                overflow: 'visible',
-                boxShadow: 'none',
-              },
               '@media (min-width:1081px)': {
                 backgroundColor: 'common.white',
                 borderRadius: '0 0 24px 24px',
                 overflow: 'hidden',
                 boxShadow: '0 10px 24px rgba(15, 23, 42, 0.16)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               },
             },
             '&[data-offset-top="true"] [data-slot="logo-wrapper"]': {
@@ -188,7 +184,7 @@ export function HeaderBase({
       disableOffset={false}
       disableElevation={isHomeRoute}
       disableAppBar={false}
-      appBarPosition={isCustomerFacingRoute && isHomeRoute ? 'fixed' : 'sticky'}
+      appBarPosition="sticky"
       offsetSx={
         isHomeRoute
           ? {
@@ -196,6 +192,7 @@ export function HeaderBase({
               borderBottom: '1px solid rgba(28,66,112,0.16)',
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
+              color: 'text.primary',
             }
           : undefined
       }
