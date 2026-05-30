@@ -584,6 +584,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const fullDurationSyncRef = useRef({ sectionId: null, sent: false });
   const imageSectionMarkedRef = useRef(false);
   const resumeSeekAppliedRef = useRef({ sectionId: null, seconds: 0, applied: false });
+  const rightScrollRef = useRef(null);
+  const lessonDetailSectionRef = useRef(null);
   viewedSectionIdsRef.current = viewedSectionIds;
   completedSectionIdsRef.current = new Set([
     ...viewedSectionIds,
@@ -2121,22 +2123,40 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     overflow: 'hidden',
   };
 
+  const playerScrollPanelSx = {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    scrollbarWidth: 'none',
+    msOverflowStyle: 'none',
+    WebkitOverflowScrolling: 'touch',
+    '&::-webkit-scrollbar': {
+      display: 'none',
+      width: 0,
+      height: 0,
+    },
+    overscrollBehavior: 'contain',
+  };
+
+  /** Left sidebar — same scroll behaviour as right column. */
+  const playerLeftScrollPanelSx = playerScrollPanelSx;
+
+  /** Right column — one scroll for video + notes + materials together. */
+  const playerRightScrollPanelSx = playerScrollPanelSx;
+
   const courseSidebar = (
     <Box
       sx={{
         width: 1,
-        flex: 1,
-        minHeight: '100%',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
       <Box
         sx={{
-          flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          minHeight: '100%',
           width: 1,
         }}
       >
@@ -3044,37 +3064,48 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     </Box>
   );
 
+  const isModulePracticeView = Boolean(
+    activeLessonId !== FEEDBACK_LESSON_ID && modulePracticeModuleId && course?.id
+  );
+  const isModulePracticeQuiz = isModulePracticeView && practiceQuizOn;
+  /** Video, notes, materials, feedback — scroll in the main panel; quiz fills panel without page scroll. */
+  const isScrollableLessonPanel = !isModulePracticeQuiz;
+  const showLessonDetailPanel = Boolean(
+    activeLesson &&
+      activeLessonId !== FEEDBACK_LESSON_ID &&
+      !modulePracticeModuleId
+  );
+
+  const handleLessonDetailTabChange = (_, value) => {
+    setLessonDetailTab(value);
+  };
+
   return (
     <DashboardContent
       disablePadding
       sx={{
-        flex: '0 0 auto',
+        height: '100%',
+        minHeight: 0,
+        flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'visible',
+        overflow: 'hidden',
         bgcolor: 'grey.50',
         backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.04)} 0%, ${theme.palette.grey[50]} 280px)`,
-      }}
-    >
-    <Box
-      sx={{
-        flex: '0 0 auto',
-        bgcolor: 'transparent',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'visible',
       }}
     >
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         alignItems="stretch"
         sx={{
-          flex: '1 1 auto',
+          flex: 1,
+          minHeight: 0,
+          height: '100%',
           width: '100%',
-          overflow: 'visible',
+          overflow: 'hidden',
         }}
       >
-        {/* Left: full column height (matches main content); scroll when outline is long */}
+        {/* Left: course outline — own scroll, scrollbar on left edge */}
         <Box
           sx={{
             display: { xs: 'none', md: 'flex' },
@@ -3082,36 +3113,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             width: { md: 384, lg: 420 },
             flex: { md: '0 0 auto' },
             flexShrink: 0,
+            minHeight: 0,
             alignSelf: 'stretch',
-            minHeight: '100%',
             bgcolor: 'background.paper',
             backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, ${alpha(theme.palette.grey[500], 0.04)} 100%)`,
             borderRight: playerCardBorder,
             overflow: 'hidden',
           }}
         >
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              width: 1,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              scrollbarGutter: 'stable',
-              scrollbarWidth: 'thin',
-              scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
-              WebkitOverflowScrolling: 'touch',
-              '&::-webkit-scrollbar': { width: 8 },
-              '&::-webkit-scrollbar-thumb': {
-                borderRadius: 8,
-                backgroundColor: alpha(theme.palette.grey[500], 0.45),
-              },
-              '&::-webkit-scrollbar-track': {
-                backgroundColor: alpha(theme.palette.grey[500], 0.08),
-              },
-              overscrollBehavior: 'contain',
-            }}
-          >
+          <Box sx={{ flex: 1, minHeight: 0, width: 1, ...playerLeftScrollPanelSx }}>
             {courseSidebar}
           </Box>
         </Box>
@@ -3135,44 +3145,44 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             },
           }}
         >
+          <Box sx={{ flex: 1, minHeight: 0, ...playerLeftScrollPanelSx }}>{courseSidebar}</Box>
+        </Drawer>
+
+        {/* Right: own scroll when cursor is here — independent from left sidebar */}
+        <Box
+          sx={{
+            flex: '1 1 0%',
+            minWidth: 0,
+            minHeight: 0,
+            width: { xs: '100%', md: 0 },
+            order: { xs: 1, md: 2 },
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            p: isModulePracticeQuiz ? 0 : { xs: 2, sm: 3, md: 4 },
+            pt: isModulePracticeQuiz ? 0 : { xs: 2, sm: 3, md: 4 },
+            pb: isModulePracticeQuiz ? 0 : { xs: 3, md: 5 },
+          }}
+        >
           <Box
+            ref={rightScrollRef}
             sx={{
               flex: 1,
               minHeight: 0,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              WebkitOverflowScrolling: 'touch',
-              scrollbarGutter: 'stable',
-              scrollbarWidth: 'thin',
-              scrollbarColor: `${alpha(theme.palette.grey[500], 0.45)} ${alpha(theme.palette.grey[500], 0.08)}`,
-              '&::-webkit-scrollbar': { width: 8 },
-              '&::-webkit-scrollbar-thumb': {
-                borderRadius: 8,
-                backgroundColor: alpha(theme.palette.grey[500], 0.45),
-              },
-              '&::-webkit-scrollbar-track': {
-                backgroundColor: alpha(theme.palette.grey[500], 0.08),
-              },
-              overscrollBehavior: 'contain',
+              width: 1,
+              ...(isModulePracticeQuiz
+                ? {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }
+                : isScrollableLessonPanel
+                  ? playerRightScrollPanelSx
+                  : { overflow: 'hidden' }),
             }}
           >
-            {courseSidebar}
-          </Box>
-        </Drawer>
-
-        <Box
-          sx={{
-            flex: '1 1 auto',
-            minWidth: 0,
-            width: { xs: '100%', md: 0 },
-            flexGrow: { md: 1 },
-            order: { xs: 1, md: 2 },
-            overflow: 'visible',
-            p: { xs: 2, sm: 3, md: 4 },
-            pb: { xs: 3, md: 5 },
-          }}
-        >
-          <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 2 }}>
+          {!isModulePracticeQuiz ? (
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 2, flexShrink: 0 }}>
             <Button
               size="medium"
               variant="contained"
@@ -3192,6 +3202,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               Course content
             </Button>
           </Box>
+          ) : null}
 
           {activeLessonId === FEEDBACK_LESSON_ID ? null : modulePracticeModuleId && course?.id ? (
             playerLoading || modules.length === 0 ? (
@@ -3206,9 +3217,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               <Box
                 sx={{
                   width: '100%',
+                  flex: isModulePracticeQuiz ? 1 : undefined,
+                  minHeight: isModulePracticeQuiz ? 0 : undefined,
+                  display: isModulePracticeQuiz ? 'flex' : 'block',
+                  flexDirection: 'column',
                   bgcolor: practiceQuizOn ? 'background.paper' : 'transparent',
                   borderRadius: 0,
-                  overflow: 'visible',
+                  overflow: isModulePracticeQuiz ? 'hidden' : 'visible',
                   boxShadow: 'none',
                   border: 'none',
                 }}
@@ -3220,6 +3235,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     moduleId={modulePracticeModuleId}
                     moduleTitle={modulePracticeModuleMeta.title || 'Module'}
                     questions={modulePracticeQuestions}
+                    fillContainer
                     onBackToIntro={() => {
                       setSearchParams({ section: activeLessonId }, { replace: true });
                     }}
@@ -3636,7 +3652,123 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Stack>
           )}
 
-          {/* Global Previous / Next lesson navigation */}
+          {/* Lesson notes & learning materials */}
+          {showLessonDetailPanel ? (
+            <Box
+              ref={lessonDetailSectionRef}
+              sx={{
+                mt: 2,
+                width: '100%',
+                bgcolor: 'background.paper',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 2.5,
+                boxShadow: playerElevatedShadow,
+              }}
+            >
+              <Tabs
+                value={hasLearningMaterials && lessonDetailTab === 1 ? 1 : 0}
+                onChange={handleLessonDetailTabChange}
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  minHeight: 48,
+                  borderBottom: `1px solid ${theme.palette.divider}`,
+                  '& .MuiTabs-flexContainer': { gap: { xs: 2, sm: 3 } },
+                  '& .MuiTab-root': {
+                    minHeight: 48,
+                    minWidth: { xs: 128, sm: 168 },
+                    px: { xs: 2, sm: 2.5 },
+                    py: 1.25,
+                    gap: 1,
+                    fontSize: playerFluidType.tab,
+                    fontWeight: 600,
+                    textTransform: 'none',
+                    color: 'secondary.main',
+                    '& .MuiTab-iconWrapper': { marginRight: 0.75 },
+                  },
+                  '& .MuiTab-root.Mui-selected': {
+                    color: 'primary.main',
+                    fontWeight: 700,
+                  },
+                  '& .MuiTabs-indicator': { height: 3, borderRadius: '3px 3px 0 0' },
+                }}
+              >
+                <Tab
+                  label="Lesson notes"
+                  color={
+                    hasLearningMaterials && lessonDetailTab === 1 ? 'secondary' : 'primary'
+                  }
+                  icon={
+                    <Box
+                      component="img"
+                      src={courseLessonNotesIcon}
+                      alt=""
+                      sx={playerTabIconSx}
+                    />
+                  }
+                  iconPosition="start"
+                />
+                {hasLearningMaterials ? (
+                  <Tab
+                    label="Learning materials"
+                    color={lessonDetailTab === 1 ? 'primary' : 'secondary'}
+                    icon={
+                      <Box
+                        component="img"
+                        src={courseLearningMaterialsIcon}
+                        alt=""
+                        sx={playerTabIconSx}
+                      />
+                    }
+                    iconPosition="start"
+                  />
+                ) : null}
+              </Tabs>
+              <Box sx={{ px: { xs: 2, md: 2.5 }, pt: 2, pb: { xs: 2, md: 2.5 } }}>
+                <Box
+                  sx={{
+                    display: hasLearningMaterials && lessonDetailTab === 1 ? 'none' : 'block',
+                  }}
+                >
+                  {hasDisplayableHtml(activeLesson?.description) ? (
+                    <RichTextContent html={activeLesson.description} sx={playerLessonNotesSx} />
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.secondary',
+                        lineHeight: 1.7,
+                        fontSize: playerFluidType.body,
+                      }}
+                    >
+                      {activeLesson && course?.description
+                        ? (() => {
+                            const paras = htmlToPlainText(course.description || '')
+                              .split(/\n\n+/)
+                              .filter(Boolean);
+                            const idx = modules
+                              .flatMap((m) => m.lessons || [])
+                              .findIndex((l) => l.id === activeLesson.id);
+                            const text = paras[idx] || paras[0];
+                            return (
+                              text || `Notes for "${activeLesson.title}" can be added here.`
+                            );
+                          })()
+                        : `Notes for "${activeLesson.title}" can be added here.`}
+                    </Typography>
+                  )}
+                </Box>
+                {hasLearningMaterials ? (
+                  <Box sx={{ display: lessonDetailTab === 1 ? 'block' : 'none' }}>
+                    <LessonLearningMaterialsPanel
+                      key={`materials-${activeLessonId}`}
+                      materials={activeLesson.learningMaterials}
+                    />
+                  </Box>
+                ) : null}
+              </Box>
+            </Box>
+          ) : null}
+
           {activeLesson && flatLessons.length > 1 && (
             <Box
               sx={{
@@ -3703,115 +3835,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Box>
           )}
 
-          {/* Lesson notes & learning materials */}
-          {activeLesson && activeLessonId !== FEEDBACK_LESSON_ID && !modulePracticeModuleId ? (
-            <Box
-              sx={{
-                mt: 2,
-                width: '100%',
-                bgcolor: 'background.paper',
-                border: `1px solid ${theme.palette.divider}`,
-                overflow: 'hidden',
-              }}
-            >
-              <Tabs
-                value={hasLearningMaterials && lessonDetailTab === 1 ? 1 : 0}
-                onChange={(_, value) => setLessonDetailTab(value)}
-                sx={{
-                  px: { xs: 2, md: 2.5 },
-                  minHeight: 48,
-                  borderBottom: `1px solid ${theme.palette.divider}`,
-                  '& .MuiTabs-flexContainer': { gap: { xs: 2, sm: 3 } },
-                  '& .MuiTab-root': {
-                    minHeight: 48,
-                    minWidth: { xs: 128, sm: 168 },
-                    px: { xs: 2, sm: 2.5 },
-                    py: 1.25,
-                    gap: 1,
-                    fontSize: playerFluidType.tab,
-                    fontWeight: 600,
-                    textTransform: 'none',
-                    color: 'secondary.main',
-                    '& .MuiTab-iconWrapper': { marginRight: 0.75 },
-                  },
-                  '& .MuiTab-root.Mui-selected': {
-                    color: 'primary.main',
-                    fontWeight: 700,
-                  },
-                  '& .MuiTabs-indicator': { height: 3, borderRadius: '3px 3px 0 0' },
-                }}
-              >
-                <Tab
-                  label="Lesson notes"
-                  color={
-                    hasLearningMaterials && lessonDetailTab === 1 ? 'secondary' : 'primary'
-                  }
-                  icon={
-                    <Box
-                      component="img"
-                      src={courseLessonNotesIcon}
-                      alt=""
-                      sx={playerTabIconSx}
-                    />
-                  }
-                  iconPosition="start"
-                />
-                {hasLearningMaterials ? (
-                  <Tab
-                    label="Learning materials"
-                    color={lessonDetailTab === 1 ? 'primary' : 'secondary'}
-                    icon={
-                      <Box
-                        component="img"
-                        src={courseLearningMaterialsIcon}
-                        alt=""
-                        sx={playerTabIconSx}
-                      />
-                    }
-                    iconPosition="start"
-                  />
-                ) : null}
-              </Tabs>
-              <Box sx={{ px: { xs: 2, md: 2.5 }, pt: 2, pb: { xs: 2, md: 2.5 } }}>
-                {lessonDetailTab === 1 && hasLearningMaterials ? (
-                  <LessonLearningMaterialsPanel
-                    key={`materials-${activeLessonId}`}
-                    materials={activeLesson.learningMaterials}
-                  />
-                ) : hasDisplayableHtml(activeLesson?.description) ? (
-                  <RichTextContent html={activeLesson.description} sx={playerLessonNotesSx} />
-                ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: 'text.secondary',
-                      lineHeight: 1.7,
-                      fontSize: playerFluidType.body,
-                    }}
-                  >
-                    {activeLesson && course?.description
-                      ? (() => {
-                          const paras = htmlToPlainText(course.description || '')
-                            .split(/\n\n+/)
-                            .filter(Boolean);
-                          const idx = modules
-                            .flatMap((m) => m.lessons || [])
-                            .findIndex((l) => l.id === activeLesson.id);
-                          const text = paras[idx] || paras[0];
-                          return (
-                            text || `Notes for "${activeLesson.title}" can be added here.`
-                          );
-                        })()
-                      : `Notes for "${activeLesson.title}" can be added here.`}
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-          ) : null}
+          </Box>
         </Box>
       </Stack>
-    </Box>
-
     </DashboardContent>
   );
 }

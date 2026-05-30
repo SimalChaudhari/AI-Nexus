@@ -84,9 +84,10 @@ function isLikelyImagePath(value) {
 
 const HERO_IMAGE_WIDTH = '58%';
 const HERO_EASE = [0.19, 1, 0.22, 1];
+/** Opacity-only motion — blur/scale on load can expand scroll overflow and flash a scrollbar. */
 const HERO_IMAGE_ANIMATION = {
-  initial: { opacity: 0, scale: 1.012, filter: 'blur(6px)' },
-  animate: { opacity: 1, scale: 1, filter: 'blur(0px)' },
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
   transition: { duration: 1.4, ease: HERO_EASE, delay: 0.08 },
 };
 const HERO_IMAGE_REVEAL_ANIMATION = {
@@ -95,13 +96,13 @@ const HERO_IMAGE_REVEAL_ANIMATION = {
   transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
 };
 const HERO_TEXT_ANIMATION = {
-  initial: { opacity: 0, y: -10, filter: 'blur(4px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
   transition: { duration: 1.1, ease: HERO_EASE, delay: 0.68 },
 };
 const HERO_FOOTER_ANIMATION = {
-  initial: { opacity: 0.92, clipPath: 'inset(0 100% 0 0)', filter: 'blur(4px)' },
-  animate: { opacity: 1, clipPath: 'inset(0 0 0 0)', filter: 'blur(0px)' },
+  initial: { opacity: 0.92, clipPath: 'inset(0 100% 0 0)' },
+  animate: { opacity: 1, clipPath: 'inset(0 0 0 0)' },
   transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
 };
 
@@ -671,6 +672,8 @@ export function HomeHeroSection() {
           maxWidth: '100%',
           overflow: 'hidden',
           overflowX: 'hidden',
+          overflowY: 'clip',
+          isolation: 'isolate',
           bgcolor: '#ffffff',
           fontFamily: FONT_STACK,
           minHeight: { xs: 'auto', md: 680 },
@@ -689,6 +692,7 @@ export function HomeHeroSection() {
             flexDirection: 'column',
             width: '100%',
             maxWidth: '100%',
+            overflow: 'hidden',
             overflowX: 'hidden',
             boxSizing: 'border-box',
             px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },

@@ -28,13 +28,13 @@ export function MainLayout({ sx, data, children }) {
 
   const settings = useSettingsContext();
 
-  const homePage = pathname === '/';
-
-  const hideChatbotOnAiForum =
-    pathname === paths.aiForum.root || pathname.startsWith(`${paths.aiForum.root}/`);
+  const homePage = pathname === '/home';
 
   const hideFooterOnLearning =
     pathname === paths.learning || pathname.startsWith(`${paths.learning}/`);
+
+  /** Course player: fill viewport below header; lesson/quiz scroll inside, not on body. */
+  const isLearningCoursePlayer = /^\/learning\/course\/[^/]+\/learn/.test(pathname);
 
   const layoutQuery = 'md';
 
@@ -106,10 +106,35 @@ export function MainLayout({ sx, data, children }) {
           '--layout-dashboard-content-pb': settings.compactLayout ? theme.spacing(8) : theme.spacing(10),
           '--layout-dashboard-content-px': settings.compactLayout ? theme.spacing(5) : theme.spacing(3),
         }}
-        sx={sx}
+        sx={{
+          ...(isLearningCoursePlayer && { overflow: 'hidden' }),
+          ...sx,
+        }}
       >
-        <Main>{children}</Main>
-        {!hideChatbotOnAiForum && <ChatbotWidget title="AI Nexus Chatbot" />}
+        <Main
+          sx={
+            isLearningCoursePlayer
+              ? {
+                  flex: '1 1 auto',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  height: {
+                    xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
+                    md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
+                  },
+                  maxHeight: {
+                    xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
+                    md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
+                  },
+                }
+              : undefined
+          }
+        >
+          {children}
+        </Main>
+        {homePage ? <ChatbotWidget title="AI Nexus Chatbot" /> : null}
       </LayoutSection>
     </>
   );

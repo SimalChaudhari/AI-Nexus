@@ -31,6 +31,8 @@ export const playerLessonNotesSx = {
   fontSize: playerFluidType.body,
   color: 'text.secondary',
   lineHeight: 1.75,
+  overflow: 'visible',
+  maxHeight: 'none',
   '& p, & li, & td, & th': {
     fontSize: 'inherit',
     lineHeight: 'inherit',

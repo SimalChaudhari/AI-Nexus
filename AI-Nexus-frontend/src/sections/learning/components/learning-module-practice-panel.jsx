@@ -43,6 +43,24 @@ function buildCheckPayload(q, st) {
   return { answer: String(st.text || '').trim() };
 }
 
+/** Hidden scrollbar — scroll works, bar not shown (matches course player panels). */
+const quizScrollPanelSx = {
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  scrollbarWidth: 'none',
+  msOverflowStyle: 'none',
+  WebkitOverflowScrolling: 'touch',
+  overscrollBehavior: 'contain',
+  '&::-webkit-scrollbar': {
+    display: 'none',
+    width: 0,
+    height: 0,
+  },
+};
+
+/** Side-by-side question/answers from md up (original layout). */
+const QUIZ_SPLIT_BP = 'md';
+
 /** Same breakpoints as lesson video (`LESSON_FRAME_HEIGHT`) when parent does not pass `frameHeight`. */
 const DEFAULT_PRACTICE_FRAME_HEIGHT = { xs: 260, sm: 320, md: 580 };
 
@@ -168,6 +186,8 @@ export function LearningModulePracticeQuiz({
   moduleTitle,
   questions,
   onBackToIntro,
+  /** When true, fill the course player panel (no viewport calc / double scroll). */
+  fillContainer = false,
 }) {
   const theme = useTheme();
   const [phase, setPhase] = useState('questions');
@@ -360,9 +380,11 @@ export function LearningModulePracticeQuiz({
       <Box
         sx={{
           width: '100%',
-          mx: { xs: -2, md: -3 },
-          mt: { xs: -2, md: -3 },
-          bgcolor: 'background.paper',
+          display: 'flex',
+          flexDirection: 'column',
+          ...(fillContainer
+            ? { flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }
+            : { bgcolor: 'background.paper' }),
         }}
       >
         <Stack
@@ -386,7 +408,15 @@ export function LearningModulePracticeQuiz({
           </Typography>
         </Stack>
 
-        <Box sx={{ px: { xs: 2, md: 4 }, py: 3 }}>
+        <Box
+          sx={{
+            flex: fillContainer ? 1 : undefined,
+            minHeight: fillContainer ? 0 : undefined,
+            px: { xs: 2, sm: 3, md: 4 },
+            py: 3,
+            ...(fillContainer ? quizScrollPanelSx : {}),
+          }}
+        >
           <Paper
             elevation={0}
             sx={{
@@ -473,13 +503,17 @@ export function LearningModulePracticeQuiz({
         display: 'flex',
         flexDirection: 'column',
         width: '100%',
-        mx: { xs: -2, md: -3 },
-        mt: { xs: -2, md: -3 },
         bgcolor: 'background.paper',
-        // Fixed-height shell: only the middle scrolls; Previous/Next stay at the bottom.
-        height: { xs: 'calc(100dvh - 168px)', md: 'calc(100dvh - 228px)' },
-        maxHeight: { xs: 'calc(100dvh - 168px)', md: 'calc(100dvh - 228px)' },
-        minHeight: { xs: 320, md: 380 },
+        ...(fillContainer
+          ? {
+              flex: 1,
+              minHeight: 0,
+              height: '100%',
+              overflow: 'hidden',
+            }
+          : {
+              minHeight: { xs: 360, sm: 420 },
+            }),
       }}
     >
       <Stack
@@ -508,27 +542,29 @@ export function LearningModulePracticeQuiz({
         sx={{
           flex: 1,
           minHeight: 0,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-          '&::-webkit-scrollbar': { display: 'none' },
+          ...(fillContainer ? quizScrollPanelSx : { overflowY: 'auto', overflowX: 'hidden' }),
         }}
       >
         <Box
           sx={{
             display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            minHeight: '100%',
+            flexDirection: { xs: 'column', [QUIZ_SPLIT_BP]: 'row' },
+            alignItems: 'stretch',
           }}
         >
           <Box
             sx={{
-              flex: { md: '0 0 42%' },
-              px: { xs: 2, md: 4 },
-              py: { xs: 3, md: 4 },
-              borderRight: { md: `1px solid ${theme.palette.divider}` },
+              flex: { [QUIZ_SPLIT_BP]: '0 0 38%', xl: '0 0 40%' },
+              px: { xs: 2, sm: 2.5, md: 3 },
+              py: { xs: 2, sm: 2.5, md: 3 },
+              borderBottom: {
+                xs: `1px solid ${theme.palette.divider}`,
+                [QUIZ_SPLIT_BP]: 'none',
+              },
+              borderRight: {
+                [QUIZ_SPLIT_BP]: `1px solid ${theme.palette.divider}`,
+              },
+              bgcolor: 'background.paper',
             }}
           >
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
@@ -537,7 +573,17 @@ export function LearningModulePracticeQuiz({
             <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
               {questionTypeLabel(q.questionType)}
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 700, mt: 2, color: 'text.primary', lineHeight: 1.35 }}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 700,
+                mt: { xs: 1.25, md: 1.5 },
+                color: 'text.primary',
+                lineHeight: 1.35,
+                fontSize: { xs: '1.1rem', sm: '1.2rem', md: '1.35rem', lg: '1.5rem' },
+                wordBreak: 'break-word',
+              }}
+            >
               {q.prompt}
             </Typography>
           </Box>
@@ -545,17 +591,17 @@ export function LearningModulePracticeQuiz({
           <Box
             sx={{
               flex: 1,
-              px: { xs: 2, md: 4 },
-              py: { xs: 2, md: 4 },
-              pb: { xs: 3, md: 4 },
-              bgcolor: { md: alpha(theme.palette.grey[500], 0.08) },
+              minWidth: 0,
+              px: { xs: 2, sm: 2.5, md: 3 },
+              py: { xs: 2, sm: 2.5, md: 3 },
+              bgcolor: alpha(theme.palette.grey[500], 0.06),
             }}
           >
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
               {q.questionType === 'mcq' ? 'Select the correct answer' : 'Your answer'}
             </Typography>
 
-            <Stack spacing={1.5} sx={{ mt: 2 }}>
+            <Stack spacing={1.25} sx={{ mt: { xs: 1.25, md: 1.5 } }}>
               {q.questionType === 'mcq' && Array.isArray(q.options) && (
                 <RadioGroup
                   value={st.selectedIndex ?? ''}
@@ -566,18 +612,31 @@ export function LearningModulePracticeQuiz({
                       key={idx}
                       variant="outlined"
                       sx={{
-                        px: 2,
-                        py: 1.25,
+                        px: { xs: 1.5, sm: 2 },
+                        py: { xs: 1, sm: 1.25 },
                         borderRadius: 1.5,
                         bgcolor: 'background.paper',
                         boxShadow: 'none',
+                        borderColor:
+                          st.selectedIndex === idx
+                            ? theme.palette.secondary.main
+                            : theme.palette.divider,
                       }}
                     >
                       <FormControlLabel
                         value={idx}
-                        control={<Radio />}
+                        control={<Radio size="small" />}
                         label={opt}
-                        sx={{ m: 0, alignItems: 'flex-start', '& .MuiFormControlLabel-label': { pt: 0.25 } }}
+                        sx={{
+                          m: 0,
+                          width: '100%',
+                          alignItems: 'flex-start',
+                          '& .MuiFormControlLabel-label': {
+                            pt: 0.25,
+                            fontSize: { xs: '0.9375rem', sm: '1rem' },
+                            lineHeight: 1.5,
+                          },
+                        }}
                       />
                     </Paper>
                   ))}
@@ -585,9 +644,14 @@ export function LearningModulePracticeQuiz({
               )}
 
               {q.questionType === 'true_false' && (
-                <RadioGroup row value={st.tf || ''} onChange={(e) => setTf(q.id, e.target.value)}>
-                  <FormControlLabel value="true" control={<Radio />} label="True" />
-                  <FormControlLabel value="false" control={<Radio />} label="False" />
+                <RadioGroup
+                  row
+                  value={st.tf || ''}
+                  onChange={(e) => setTf(q.id, e.target.value)}
+                  sx={{ flexWrap: 'wrap', gap: 1 }}
+                >
+                  <FormControlLabel value="true" control={<Radio size="small" />} label="True" />
+                  <FormControlLabel value="false" control={<Radio size="small" />} label="False" />
                 </RadioGroup>
               )}
 
@@ -607,14 +671,14 @@ export function LearningModulePracticeQuiz({
       </Box>
 
       <Stack
-        direction="row"
+        direction={{ xs: 'column-reverse', sm: 'row' }}
         justifyContent="flex-end"
-        alignItems="center"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
         spacing={1.5}
         sx={{
           flexShrink: 0,
-          px: { xs: 2, md: 3 },
-          py: 2,
+          px: { xs: 2, sm: 3, md: 3 },
+          py: { xs: 1.5, sm: 2 },
           borderTop: `1px solid ${theme.palette.divider}`,
           bgcolor: 'background.paper',
           boxShadow: (t) => `0 -4px 16px -4px ${alpha(t.palette.grey[500], 0.2)}`,
@@ -627,18 +691,20 @@ export function LearningModulePracticeQuiz({
           disabled={index === 0 || submitting}
           onClick={goPrev}
           startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={18} />}
+          fullWidth={false}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
         >
           Previous
         </Button>
         <Button
           variant="contained"
           color="secondary"
-          disabled={
-            submitting || (index < total - 1 && !currentAnswered)
-          }
+          disabled={submitting || (index < total - 1 && !currentAnswered)}
           onClick={goNext}
           startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : null}
           endIcon={submitting ? null : <Iconify icon="eva:arrow-ios-forward-fill" width={18} />}
+          fullWidth={false}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
         >
           {submitting ? 'Submitting…' : nextLabel}
         </Button>

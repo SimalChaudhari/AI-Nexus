@@ -137,7 +137,7 @@ export function LessonLearningMaterialsPanel({ materials = [] }) {
   }
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1.5} sx={{ overflow: 'visible' }}>
       <Typography
         variant="body2"
         sx={{ color: 'text.secondary', fontWeight: 500, fontSize: playerFluidType.body }}

@@ -33,18 +33,17 @@ export default function LearningCoursePlayerPage() {
       <Helmet>
         <title>{course ? `${course.title} | ${metadata.title}` : metadata.title}</title>
       </Helmet>
-      {/* Top bar fixed; lesson area grows with content (notes/materials are not forced to viewport height). */}
+      {/* Player fills viewport below site header; left + right columns scroll inside. */}
       <Box
         sx={{
           display: 'flex',
           flexDirection: 'column',
           width: 1,
-          flex: '1 1 auto',
-          minHeight: {
-            xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
-            md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
-          },
-          overflow: 'visible',
+          flex: 1,
+          minHeight: 0,
+          height: '100%',
+          maxHeight: '100%',
+          overflow: 'hidden',
         }}
       >
         <Box
@@ -64,8 +63,9 @@ export default function LearningCoursePlayerPage() {
         </Box>
         <Box
           sx={{
-            flex: '0 0 auto',
-            overflow: 'visible',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
           }}
