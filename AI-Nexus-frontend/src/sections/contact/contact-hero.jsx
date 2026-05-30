@@ -16,13 +16,18 @@ import { AnimateText, MotionContainer, animateTextClasses } from 'src/components
 export function ContactHero({ headingLine1 = '', headingLine2 = '', imageUrl = '' }) {
   const theme = useTheme();
   const lines = [String(headingLine1 || '').trim(), String(headingLine2 || '').trim()].filter(Boolean);
+  const heroImage = String(imageUrl || '').trim();
+
+  if (!heroImage && !lines.length) {
+    return null;
+  }
 
   return (
     <Box
       sx={{
         ...bgGradient({
           color: `0deg, ${varAlpha(theme.vars.palette.grey['900Channel'], 0.8)}, ${varAlpha(theme.vars.palette.grey['900Channel'], 0.8)}`,
-          imgUrl: imageUrl || '',
+          imgUrl: heroImage,
         }),
         height: { md: 560 },
         py: { xs: 10, md: 0 },

@@ -21,8 +21,9 @@ import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 
 // ----------------------------------------------------------------------
 
-export function ContactSection() {
+export function ContactSection({ hideWhenEmpty = false }) {
   const theme = useTheme();
+  const [loaded, setLoaded] = useState(false);
   const [contactHeroImageUrl, setContactHeroImageUrl] = useState('');
   const [contactHeroContent, setContactHeroContent] = useState({
     headingLine1: '',
@@ -74,7 +75,10 @@ export function ContactSection() {
           contacts: normalizedContacts,
         });
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
 
     return () => {
       active = false;
@@ -95,6 +99,21 @@ export function ContactSection() {
 
   const addressField = contactFields.find((f) => f.key === 'address');
   const otherContactFields = contactFields.filter((f) => f.key !== 'address');
+
+  const hasSectionContent = useMemo(() => {
+    const hasHero =
+      Boolean(contactHeroImageUrl?.trim()) ||
+      Boolean(contactHeroContent.headingLine1?.trim()) ||
+      Boolean(contactHeroContent.headingLine2?.trim());
+    const hasInfo =
+      Boolean(contactHeroContent.infoTitle?.trim()) ||
+      Boolean(contactHeroContent.infoSubtitle?.trim());
+    return hasHero || hasInfo || contactFields.length > 0 || mapContacts.length > 0;
+  }, [contactHeroImageUrl, contactHeroContent, contactFields, mapContacts]);
+
+  if (hideWhenEmpty && (!loaded || !hasSectionContent)) {
+    return null;
+  }
 
   return (
     <>

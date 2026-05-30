@@ -1,7 +1,10 @@
+import { useCallback, useState } from 'react';
+
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 
 import { ScrollProgress, useScrollProgress } from 'src/components/animate/scroll-progress';
+import { HomeFooter } from 'src/layouts/main/footer';
 
 import { ContactSection } from 'src/sections/contact/view/contact-view';
 
@@ -53,7 +56,7 @@ export function HomeView() {
         <HomeProgrammeFeesSection />
         <HomeTestimonialsSection />
         <HomeEmployeeSection />
-        <ContactSection />
+        <ContactSection hideWhenEmpty />
 
         <HomeFaqsSection />
       </Stack>
