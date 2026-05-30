@@ -74,6 +74,8 @@ export function HomeCurriculumSection() {
   const modules = Array.isArray(payload?.modules) ? payload.modules : [];
   const courses = Array.isArray(payload?.courses) ? payload.courses : [];
   const courseIds = Array.isArray(payload?.courseIds) ? payload.courseIds : [];
+  const categories = Array.isArray(payload?.categories) ? payload.categories : [];
+  const categoryIds = Array.isArray(payload?.categoryIds) ? payload.categoryIds : [];
   const moduleCount = Number(payload?.moduleCount) || modules.length;
   const builtHeadline = buildCurriculumHeadline(moduleCount);
   const apiHeadline = String(payload?.headline || '').trim();
@@ -82,7 +84,13 @@ export function HomeCurriculumSection() {
   const subtext = String(payload?.subtext || content.subtext || '').trim();
   const hasHeader = Boolean(smallTitle || headline || subtext);
   const shouldHide =
-    !loading && !modules.length && !courses.length && !courseIds.length && !hasHeader;
+    !loading &&
+    !modules.length &&
+    !courses.length &&
+    !courseIds.length &&
+    !categories.length &&
+    !categoryIds.length &&
+    !hasHeader;
 
   if (shouldHide) {
     return null;
@@ -183,7 +191,13 @@ export function HomeCurriculumSection() {
             border: (theme) => `1px solid ${theme.palette.divider}`,
           }}
         >
-          <CurriculumModulesList modules={modules} courses={courses} courseIds={courseIds} />
+          <CurriculumModulesList
+            modules={modules}
+            courses={courses}
+            courseIds={courseIds}
+            categories={categories}
+            categoryIds={categoryIds}
+          />
         </Card>
         </Box>
       </DashboardContent>

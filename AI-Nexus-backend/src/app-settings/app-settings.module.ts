@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { CourseEntity } from '../course/courses.entity';
 import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
+import { CategoryEntity } from '../category/categories.entity';
 
 import { UserEntity } from '../user/users.entity';
 import { LocalStorageModule } from '../service/local-storage.module';
@@ -20,6 +21,7 @@ import { AppSettingsInitService } from './app-settings-init.service';
       CourseEntity,
       CourseModuleEntity,
       CourseEnrollmentEntity,
+      CategoryEntity,
     ]),
     LocalStorageModule,
     JwtModule.register({

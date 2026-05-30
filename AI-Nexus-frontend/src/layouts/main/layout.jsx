@@ -33,6 +33,9 @@ export function MainLayout({ sx, data, children }) {
   const hideChatbotOnAiForum =
     pathname === paths.aiForum.root || pathname.startsWith(`${paths.aiForum.root}/`);
 
+  const hideFooterOnLearning =
+    pathname === paths.learning || pathname.startsWith(`${paths.learning}/`);
+
   const layoutQuery = 'md';
 
   const navData = data?.nav ?? mainNavData;
@@ -86,7 +89,13 @@ export function MainLayout({ sx, data, children }) {
         /** **************************************
          * Footer (stats + dynamic contact + links)
          *************************************** */
-        footerSection={homePage ? <HomeFooter /> : <Footer layoutQuery={layoutQuery} />}
+        footerSection={
+          homePage ? (
+            <HomeFooter />
+          ) : hideFooterOnLearning ? null : (
+            <Footer layoutQuery={layoutQuery} />
+          )
+        }
         /** **************************************
          * Style
          *************************************** */

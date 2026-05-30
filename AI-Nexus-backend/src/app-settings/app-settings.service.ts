@@ -9,6 +9,7 @@ import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
 import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
+import { CategoryEntity } from '../category/categories.entity';
 
 type HomeHeroContentPayload = {
   badge?: string;
@@ -61,6 +62,7 @@ type FaqContentPayload = {
 type CurriculumContentPayload = {
   smallTitle?: string;
   subtext?: string;
+  categoryIds?: string[];
   courseIds?: string[];
 };
 
@@ -68,6 +70,14 @@ type CurriculumCoursePayload = {
   id: string;
   title: string;
   modulesCount: number;
+  categoryId?: string;
+};
+
+type CurriculumCategoryPayload = {
+  id: string;
+  title: string;
+  courseIds: string[];
+  courses: CurriculumCoursePayload[];
 };
 
 type CurriculumModulePayload = {
@@ -80,6 +90,8 @@ type CurriculumModulePayload = {
 type CurriculumPublicPayload = {
   smallTitle?: string;
   subtext?: string;
+  categoryIds: string[];
+  categories: CurriculumCategoryPayload[];
   courseIds: string[];
   courses: CurriculumCoursePayload[];
   headline: string;
@@ -263,7 +275,8 @@ const PROGRAMME_FEES_TIER_TITLE_MAX = 240;
 const PROGRAMME_FEES_TIERS_MAX = 8;
 const CURRICULUM_SMALL_TITLE_MAX = 120;
 const CURRICULUM_SUBTEXT_MAX = 4000;
-const CURRICULUM_COURSES_MAX = 20;
+const CURRICULUM_COURSES_MAX = 100;
+const CURRICULUM_CATEGORIES_MAX = 20;
 const TESTIMONIALS_MAX = 12;
 const INDUSTRY_QUOTES_MAX = 8;
 const PROGRAMME_STRUCTURE_EYEBROW_MAX = 80;
@@ -325,6 +338,8 @@ export class AppSettingsService {
     private readonly courseModuleRepository: Repository<CourseModuleEntity>,
     @InjectRepository(CourseEnrollmentEntity)
     private readonly courseEnrollmentRepository: Repository<CourseEnrollmentEntity>,
+    @InjectRepository(CategoryEntity)
+    private readonly categoryRepository: Repository<CategoryEntity>,
     private readonly localStorageService: LocalStorageService
   ) {}
 
@@ -809,26 +824,39 @@ export class AppSettingsService {
 
   private sanitizeCurriculumContent(input: unknown): CurriculumContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
-    const rawIds = Array.isArray(source.courseIds) ? source.courseIds : [];
+    const rawCategoryIds = Array.isArray(source.categoryIds) ? source.categoryIds : [];
+    const rawCourseIds = Array.isArray(source.courseIds) ? source.courseIds : [];
     const legacyCourseId = this.cleanText(source.courseId, 64);
-    const seen = new Set<string>();
+    const seenCategories = new Set<string>();
+    const seenCourses = new Set<string>();
+    const categoryIds: string[] = [];
     const courseIds: string[] = [];
 
-    const pushId = (value: string) => {
+    const pushCategoryId = (value: string) => {
       const id = this.cleanText(value, 64);
-      if (!/^[0-9a-f-]{36}$/i.test(id) || seen.has(id)) return;
-      seen.add(id);
+      if (!/^[0-9a-f-]{36}$/i.test(id) || seenCategories.has(id)) return;
+      seenCategories.add(id);
+      categoryIds.push(id);
+    };
+
+    const pushCourseId = (value: string) => {
+      const id = this.cleanText(value, 64);
+      if (!/^[0-9a-f-]{36}$/i.test(id) || seenCourses.has(id)) return;
+      seenCourses.add(id);
       courseIds.push(id);
     };
 
-    rawIds.forEach((id: unknown) => pushId(String(id || '')));
-    if (!courseIds.length && /^[0-9a-f-]{36}$/i.test(legacyCourseId)) {
-      pushId(legacyCourseId);
+    rawCategoryIds.forEach((id: unknown) => pushCategoryId(String(id || '')));
+    rawCourseIds.forEach((id: unknown) => pushCourseId(String(id || '')));
+
+    if (!categoryIds.length && !courseIds.length && /^[0-9a-f-]{36}$/i.test(legacyCourseId)) {
+      pushCourseId(legacyCourseId);
     }
 
     return {
       smallTitle: this.cleanText(source.smallTitle, CURRICULUM_SMALL_TITLE_MAX),
       subtext: this.cleanText(source.subtext, CURRICULUM_SUBTEXT_MAX),
+      categoryIds: categoryIds.slice(0, CURRICULUM_CATEGORIES_MAX),
       courseIds: courseIds.slice(0, CURRICULUM_COURSES_MAX),
     };
   }
@@ -882,10 +910,109 @@ export class AppSettingsService {
     return { courses, modules };
   }
 
+  private async resolveCurriculumFromCategories(
+    categoryIds: string[],
+    selectedCourseIds: string[] = []
+  ): Promise<{
+    categories: CurriculumCategoryPayload[];
+    courses: CurriculumCoursePayload[];
+    modules: CurriculumModulePayload[];
+    courseIds: string[];
+  }> {
+    const categories: CurriculumCategoryPayload[] = [];
+    const courses: CurriculumCoursePayload[] = [];
+    const modules: CurriculumModulePayload[] = [];
+    const courseIds: string[] = [];
+    const selectedSet = new Set(selectedCourseIds);
+    let index = 0;
+
+    for (const categoryId of categoryIds) {
+      const category = await this.categoryRepository.findOne({ where: { id: categoryId } });
+      if (!category) continue;
+
+      const categoryTitle = String(category.title || '').trim();
+      if (!categoryTitle) continue;
+
+      const categoryCourses = await this.courseRepository.find({
+        where: { categoryId: category.id, isBundle: false },
+        order: { createdAt: 'ASC' },
+      });
+
+      const categoryCoursePayloads: CurriculumCoursePayload[] = [];
+      const categoryCourseIds: string[] = [];
+
+      for (const course of categoryCourses) {
+        const courseTitle = String(course.title || '').trim();
+        if (!courseTitle) continue;
+        if (!selectedSet.has(course.id)) continue;
+
+        const moduleRows = await this.courseModuleRepository.find({
+          where: { courseId: course.id },
+          order: { sortOrder: 'ASC', createdAt: 'ASC' },
+        });
+
+        const coursePayload: CurriculumCoursePayload = {
+          id: course.id,
+          title: courseTitle,
+          modulesCount: moduleRows.length,
+          categoryId: category.id,
+        };
+
+        categoryCoursePayloads.push(coursePayload);
+        categoryCourseIds.push(course.id);
+        courses.push(coursePayload);
+        courseIds.push(course.id);
+
+        moduleRows.forEach((row) => {
+          const title = String(row.title || '').trim();
+          if (!title) return;
+          modules.push({
+            index,
+            courseId: course.id,
+            title,
+            description: String(row.description || '').trim(),
+          });
+          index += 1;
+        });
+      }
+
+      categories.push({
+        id: category.id,
+        title: categoryTitle,
+        courseIds: categoryCourseIds,
+        courses: categoryCoursePayloads,
+      });
+    }
+
+    return { categories, courses, modules, courseIds };
+  }
+
   private async buildCurriculumPublicPayload(
     content?: CurriculumContentPayload | null
   ): Promise<CurriculumPublicPayload> {
     const sanitized = this.sanitizeCurriculumContent(content || {});
+    const categoryIds = sanitized.categoryIds || [];
+
+    if (categoryIds.length) {
+      const resolved = await this.resolveCurriculumFromCategories(
+        categoryIds,
+        sanitized.courseIds || []
+      );
+      const moduleCount = resolved.modules.length;
+
+      return {
+        smallTitle: sanitized.smallTitle,
+        subtext: sanitized.subtext,
+        categoryIds,
+        categories: resolved.categories,
+        courseIds: resolved.courseIds,
+        courses: resolved.courses,
+        moduleCount,
+        modules: resolved.modules,
+        headline: this.buildCurriculumHeadline(moduleCount),
+      };
+    }
+
     const courseIds = sanitized.courseIds || [];
     const { courses, modules } = await this.resolveCurriculumFromCourses(courseIds);
     const moduleCount = modules.length;
@@ -893,6 +1020,8 @@ export class AppSettingsService {
     return {
       smallTitle: sanitized.smallTitle,
       subtext: sanitized.subtext,
+      categoryIds: [],
+      categories: [],
       courseIds,
       courses,
       moduleCount,

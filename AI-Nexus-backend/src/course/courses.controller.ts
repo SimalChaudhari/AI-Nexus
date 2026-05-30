@@ -266,6 +266,8 @@ export class CourseController {
     @ApiQuery({ name: 'freeOrPaid', required: false, description: 'Filter paid status: true = paid, false = free', example: false })
     @ApiQuery({ name: 'isFavorite', required: false, description: 'Filter by current user favorite status', example: true })
     @ApiQuery({ name: 'isEnrolled', required: false, description: 'Filter by current user enrolled status', example: true })
+    @ApiQuery({ name: 'categoryId', required: false, description: 'Filter by category UUID' })
+    @ApiQuery({ name: 'excludeBundles', required: false, description: 'When true, exclude bundle courses', example: true })
     async getAllCourses(
         @Req() request: Request,
         @Query('page') page?: string,
@@ -275,9 +277,13 @@ export class CourseController {
         @Query('freeOrPaid') freeOrPaid?: string,
         @Query('isFavorite') isFavorite?: string,
         @Query('isEnrolled') isEnrolled?: string,
+        @Query('categoryId') categoryId?: string,
+        @Query('excludeBundles') excludeBundles?: string,
         @Res() response?: Response,
     ) {
-        const hasFilters = Boolean(page || limit || search || group || freeOrPaid || isFavorite || isEnrolled);
+        const hasFilters = Boolean(
+            page || limit || search || group || freeOrPaid || isFavorite || isEnrolled || categoryId || excludeBundles
+        );
         const userId = (request as any).user?.id;
 
         if (hasFilters) {
@@ -291,6 +297,8 @@ export class CourseController {
                 freeOrPaid: parseBooleanQuery(freeOrPaid),
                 isFavorite: parseBooleanQuery(isFavorite),
                 isEnrolled: parseBooleanQuery(isEnrolled),
+                categoryId: categoryId?.trim() || undefined,
+                excludeBundles: parseBooleanQuery(excludeBundles) ?? undefined,
             });
 
             return response!.status(HttpStatus.OK).json({

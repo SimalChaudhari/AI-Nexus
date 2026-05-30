@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,28 +13,48 @@ import { toast } from 'src/components/snackbar';
 import { Editor } from 'src/components/editor';
 import { Iconify } from 'src/components/iconify';
 import { RichTextContent } from 'src/components/html-content';
-import { appSettingsService } from 'src/services/app-settings.service';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import {
   buildCurriculumHeadline,
-  CURRICULUM_COURSES_MAX,
+  buildDraftPreviewCategories,
+  CURRICULUM_CATEGORIES_MAX,
   mapModulesForDisplay,
   normalizeCurriculumContent,
 } from 'src/sections/home/curriculum-defaults';
 import { CurriculumModulesList } from 'src/sections/home/curriculum-modules-list';
-import { CurriculumAddCoursesDrawer } from './curriculum-add-courses-drawer';
+import { appSettingsService } from 'src/services/app-settings.service';
+import { CurriculumCategoryDrawer } from './curriculum-category-drawer';
 
 // ----------------------------------------------------------------------
 
-function buildLocalPreviewModules() {
-  return [];
+function getCourseIdsForCategory(categoryId, categoryCache, resolvedCategories, selectedCourseIds) {
+  const selectedSet = new Set(selectedCourseIds);
+  const fromCache = (categoryCache[categoryId]?.appliedCourseIds || []).filter((id) =>
+    selectedSet.has(id)
+  );
+  if (fromCache.length) return fromCache;
+
+  const resolved = (resolvedCategories || []).find((cat) => cat.id === categoryId);
+  return (resolved?.courseIds || []).filter((id) => selectedSet.has(id));
 }
 
-function estimateModuleCount(courseIds, courseCache) {
-  return courseIds.reduce((sum, id) => {
-    const count = Number(courseCache[id]?.modulesCount);
-    return sum + (Number.isFinite(count) && count > 0 ? count : 1);
-  }, 0);
+function buildCategoryCourseIdsMap({
+  selectedCategoryIds,
+  selectedCourseIds,
+  categoryCache,
+  resolvedCategories,
+}) {
+  const map = {};
+  selectedCategoryIds.forEach((categoryId) => {
+    const ids = getCourseIdsForCategory(
+      categoryId,
+      categoryCache,
+      resolvedCategories,
+      selectedCourseIds
+    );
+    if (ids.length) map[categoryId] = ids;
+  });
+  return map;
 }
 
 export function CurriculumSettingsCard({
@@ -42,183 +62,221 @@ export function CurriculumSettingsCard({
   setCurriculumContent,
   curriculumContentSubmitting,
   onSave,
-  maxCourses = CURRICULUM_COURSES_MAX,
+  maxCategories = CURRICULUM_CATEGORIES_MAX,
 }) {
-  const [courseCache, setCourseCache] = useState({});
-  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+  const [categoryCache, setCategoryCache] = useState({});
+  const [resolvedCurriculum, setResolvedCurriculum] = useState(null);
+  const [curriculumHydrating, setCurriculumHydrating] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerCategory, setDrawerCategory] = useState(null);
   const [previewModules, setPreviewModules] = useState([]);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewFromServer, setPreviewFromServer] = useState(false);
-  const initialServerPreviewDone = useRef(false);
-  const curriculumPreviewFetchRef = useRef(0);
 
   const content = normalizeCurriculumContent(curriculumContent);
+  const selectedCategoryIds = Array.isArray(content.categoryIds) ? content.categoryIds : [];
   const selectedCourseIds = Array.isArray(content.courseIds) ? content.courseIds : [];
-  const canAddMore = selectedCourseIds.length < maxCourses;
+  const canAddMore = selectedCategoryIds.length < maxCategories;
+  const storedCategoryKey = selectedCategoryIds.join('|');
 
-  const selectedCourseChips = useMemo(
-    () =>
-      selectedCourseIds.map((id) => ({
-        id,
-        title: courseCache[id]?.title || 'Course',
-      })),
-    [selectedCourseIds, courseCache]
-  );
+  const resolvedCategories = resolvedCurriculum?.categories || [];
 
-  const previewCourses = useMemo(
+  const categoryCourseIdsMap = useMemo(
     () =>
-      selectedCourseIds.map((id) => {
-        const cached = courseCache[id];
-        const count = Number(cached?.modulesCount);
-        return {
-          id,
-          title: cached?.title || 'Course',
-          modulesCount: Number.isFinite(count) ? Math.max(0, count) : 0,
-        };
+      buildCategoryCourseIdsMap({
+        selectedCategoryIds,
+        selectedCourseIds,
+        categoryCache,
+        resolvedCategories,
       }),
-    [selectedCourseIds, courseCache]
+    [selectedCategoryIds, selectedCourseIds, categoryCache, resolvedCategories]
   );
 
-  const estimatedModuleCount = useMemo(
-    () => estimateModuleCount(selectedCourseIds, courseCache),
-    [selectedCourseIds, courseCache]
+  const selectedCategoryRows = useMemo(
+    () =>
+      selectedCategoryIds.map((id) => ({
+        id,
+        title: categoryCache[id]?.title || resolvedCategories.find((cat) => cat.id === id)?.title || 'Category',
+        selectedCount: getCourseIdsForCategory(
+          id,
+          categoryCache,
+          resolvedCategories,
+          selectedCourseIds
+        ).length,
+      })),
+    [selectedCategoryIds, categoryCache, resolvedCategories, selectedCourseIds]
   );
 
-  const previewHeadline = useMemo(
-    () => buildCurriculumHeadline(estimatedModuleCount),
-    [estimatedModuleCount]
+  const draftPreviewCategories = useMemo(
+    () =>
+      buildDraftPreviewCategories({
+        categoryIds: selectedCategoryIds,
+        categoryCache,
+        selectedCourseIds,
+      }),
+    [selectedCategoryIds, categoryCache, selectedCourseIds]
   );
 
-  const applyLocalPreview = useCallback(() => {
-    setPreviewFromServer(false);
-    setPreviewModules(buildLocalPreviewModules());
+  const displayCourses = draftPreviewCategories.flatMap((cat) => cat.courses || []);
+  const displayCourseIds = draftPreviewCategories.flatMap((cat) => cat.courseIds || []);
+
+  const previewHeadline = useMemo(() => {
+    const moduleCount =
+      previewModules.length ||
+      displayCourses.reduce((sum, course) => sum + (Number(course.modulesCount) || 0), 0);
+    return buildCurriculumHeadline(moduleCount);
+  }, [previewModules.length, displayCourses]);
+
+  const applyPreviewFromCurriculumData = useCallback((data) => {
+    if (!data) {
+      setPreviewModules([]);
+      return;
+    }
+
+    setPreviewModules(mapModulesForDisplay(data?.modules));
+
+    if (Array.isArray(data?.categories)) {
+      setCategoryCache((prev) => {
+        const next = { ...prev };
+
+        data.categories.forEach((category) => {
+          if (!category?.id) return;
+
+          const courseIds = Array.isArray(category.courseIds) ? category.courseIds : [];
+          const courses = Array.isArray(category.courses) ? category.courses : [];
+
+          next[category.id] = {
+            id: category.id,
+            title: category.title || prev[category.id]?.title || '',
+            appliedCourseIds: courseIds,
+            appliedCourses: courses.map((course) => ({
+              id: course.id,
+              title: course.title || '',
+              modulesCount: Number(course.modulesCount) || 0,
+              categoryId: category.id,
+            })),
+          };
+        });
+
+        return next;
+      });
+    }
   }, []);
 
-  const applyPreviewFromCurriculumData = useCallback(
-    (data) => {
-      if (!data) {
-        applyLocalPreview();
-        return;
+  useEffect(() => {
+    if (!storedCategoryKey) {
+      setResolvedCurriculum(null);
+      setCategoryCache({});
+      setPreviewModules([]);
+      return undefined;
+    }
+
+    let active = true;
+    setCurriculumHydrating(true);
+
+    (async () => {
+      try {
+        const data = await appSettingsService.getCurriculumContent();
+        if (!active) return;
+        setResolvedCurriculum(data);
+        applyPreviewFromCurriculumData(data);
+      } catch {
+        if (active) setResolvedCurriculum(null);
+      } finally {
+        if (active) setCurriculumHydrating(false);
       }
+    })();
 
-      setPreviewModules(mapModulesForDisplay(data?.modules));
-      setPreviewFromServer(true);
+    return () => {
+      active = false;
+    };
+  }, [storedCategoryKey, applyPreviewFromCurriculumData]);
 
-      if (Array.isArray(data?.courses) && data.courses.length) {
-        setCourseCache((prev) => {
-          const next = { ...prev };
-          data.courses.forEach((course) => {
-            if (course?.id) {
-              const modulesCount = Number(course?.modulesCount);
-              next[course.id] = {
-                ...prev[course.id],
-                id: course.id,
-                title: course.title || '',
-                modulesCount: Number.isFinite(modulesCount)
-                  ? Math.max(0, modulesCount)
-                  : prev[course.id]?.modulesCount ?? 0,
-                isBundle: false,
-              };
-            }
-          });
-          return next;
+  const openAddDrawer = () => {
+    setDrawerCategory(null);
+    setDrawerOpen(true);
+  };
+
+  const openEditDrawer = (row) => {
+    setDrawerCategory({ id: row.id, title: row.title });
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setDrawerCategory(null);
+  };
+
+  const handleApplyCategoryCourses = useCallback(
+    ({ category, courseIds, appliedCourses, isNew }) => {
+      if (!category?.id || !courseIds?.length) return;
+
+      const prevForCategory = categoryCache[category.id]?.appliedCourseIds || [];
+      const prevSet = new Set(prevForCategory);
+      const withoutThisCategory = selectedCourseIds.filter((id) => !prevSet.has(id));
+
+      setCategoryCache((prev) => ({
+        ...prev,
+        [category.id]: {
+          ...category,
+          appliedCourseIds: courseIds,
+          appliedCourses: appliedCourses || [],
+        },
+      }));
+
+      setCurriculumContent((prev) => {
+        const normalized = normalizeCurriculumContent(prev);
+        return normalizeCurriculumContent({
+          ...normalized,
+          categoryIds: isNew ? [...normalized.categoryIds, category.id] : normalized.categoryIds,
+          courseIds: [...withoutThisCategory, ...courseIds],
         });
-      }
+      });
+
+      toast.success(
+        isNew
+          ? 'Category and courses added — click Save curriculum to store in database'
+          : 'Courses updated — click Save curriculum to store in database'
+      );
     },
-    [applyLocalPreview]
+    [categoryCache, selectedCourseIds, setCurriculumContent]
   );
 
-  const loadServerPreview = useCallback(async () => {
-    if (!selectedCourseIds.length) {
-      setPreviewModules([]);
-      setPreviewFromServer(false);
-      return;
-    }
+  const handleRemoveCategory = useCallback(
+    (categoryId) => {
+      const prevForCategory =
+        categoryCache[categoryId]?.appliedCourseIds ||
+        getCourseIdsForCategory(categoryId, categoryCache, resolvedCategories, selectedCourseIds);
+      const removeSet = new Set(prevForCategory);
 
-    const fetchId = curriculumPreviewFetchRef.current + 1;
-    curriculumPreviewFetchRef.current = fetchId;
-
-    try {
-      setPreviewLoading(true);
-      const data = await appSettingsService.getCurriculumContent();
-      if (fetchId !== curriculumPreviewFetchRef.current) return;
-      applyPreviewFromCurriculumData(data);
-    } catch {
-      if (fetchId === curriculumPreviewFetchRef.current) {
-        applyLocalPreview();
-      }
-    } finally {
-      if (fetchId === curriculumPreviewFetchRef.current) {
-        setPreviewLoading(false);
-      }
-    }
-  }, [selectedCourseIds.length, applyPreviewFromCurriculumData, applyLocalPreview]);
-
-  useEffect(() => {
-    applyLocalPreview();
-  }, [applyLocalPreview]);
-
-  useEffect(() => {
-    if (initialServerPreviewDone.current) return;
-    if (!selectedCourseIds.length) return;
-
-    initialServerPreviewDone.current = true;
-    loadServerPreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when saved courses exist on first load
-  }, [selectedCourseIds.length]);
-
-  const handleConfirmCourses = (courses) => {
-    const incoming = (courses || []).filter((c) => c?.id);
-    if (!incoming.length) return;
-
-    const existing = new Set(selectedCourseIds);
-    const toAdd = incoming.filter((c) => !existing.has(c.id));
-    if (!toAdd.length) {
-      toast.error('Selected courses are already on the curriculum');
-      return;
-    }
-
-    const room = maxCourses - selectedCourseIds.length;
-    const accepted = toAdd.slice(0, room);
-    if (accepted.length < toAdd.length) {
-      toast.warning(`Only ${accepted.length} course(s) added (maximum ${maxCourses})`);
-    }
-
-    setCourseCache((prev) => {
-      const next = { ...prev };
-      accepted.forEach((course) => {
-        next[course.id] = course;
+      setCategoryCache((prev) => {
+        const next = { ...prev };
+        delete next[categoryId];
+        return next;
       });
-      return next;
-    });
 
-    setCurriculumContent((prev) =>
-      normalizeCurriculumContent({
-        ...normalizeCurriculumContent(prev),
-        courseIds: [...selectedCourseIds, ...accepted.map((c) => c.id)],
-      })
-    );
-
-    toast.success(
-      accepted.length === 1
-        ? '1 course added — click Save curriculum to publish'
-        : `${accepted.length} courses added — click Save curriculum to publish`
-    );
-  };
-
-  const handleRemoveCourse = (courseId) => {
-    setCurriculumContent((prev) =>
-      normalizeCurriculumContent({
-        ...normalizeCurriculumContent(prev),
-        courseIds: selectedCourseIds.filter((id) => id !== courseId),
-      })
-    );
-  };
+      setCurriculumContent((prev) =>
+        normalizeCurriculumContent({
+          ...normalizeCurriculumContent(prev),
+          categoryIds: selectedCategoryIds.filter((id) => id !== categoryId),
+          courseIds: selectedCourseIds.filter((id) => !removeSet.has(id)),
+        })
+      );
+    },
+    [categoryCache, resolvedCategories, selectedCategoryIds, selectedCourseIds, setCurriculumContent]
+  );
 
   const handleSaveCurriculum = async () => {
+    const toSave = normalizeCurriculumContent(curriculumContent);
+
+    if (toSave.categoryIds.length && !toSave.courseIds.length) {
+      toast.error('Add at least one course for your categories');
+      return;
+    }
+
     try {
       setPreviewLoading(true);
-      const curriculum = await onSave(content);
+      const curriculum = await onSave(toSave);
+      setResolvedCurriculum(curriculum);
       applyPreviewFromCurriculumData(curriculum);
     } catch {
       // Parent shows error toast
@@ -236,8 +294,8 @@ export function CurriculumSettingsCard({
               Curriculum
             </Typography>
             <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
-              Add courses in the side panel (no save until you click Save curriculum). Search in the
-              drawer uses the course list API only while it is open.
+              Use the side panel to add a category and pick courses. Changes are stored in the
+              database only after you click Save curriculum.
             </Typography>
           </Box>
 
@@ -287,38 +345,72 @@ export function CurriculumSettingsCard({
             >
               <Stack spacing={0.25}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  Courses
+                  Categories
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {selectedCourseIds.length} / {maxCourses} courses · ~{estimatedModuleCount}{' '}
-                  module(s) estimated
+                  {selectedCategoryIds.length} / {maxCategories} categories ·{' '}
+                  {curriculumHydrating ? 'Loading saved courses…' : `${selectedCourseIds.length} course(s) selected`}
                 </Typography>
               </Stack>
               <Button
                 variant="contained"
                 startIcon={<Iconify icon="mingcute:add-line" />}
-                onClick={() => setAddDrawerOpen(true)}
+                onClick={openAddDrawer}
                 disabled={curriculumContentSubmitting || !canAddMore}
               >
-                Add courses
+                Add category
               </Button>
             </Stack>
 
-            {selectedCourseChips.length === 0 ? (
+            {selectedCategoryRows.length === 0 ? (
               <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
-                No courses yet. Click Add courses to select one or more from the list.
+                No categories yet. Click Add category to open the side panel.
               </Typography>
             ) : (
-              <Stack direction="row" flexWrap="wrap" gap={1}>
-                {selectedCourseChips.map((course) => (
-                  <Chip
-                    key={course.id}
-                    label={course.title}
-                    onDelete={() => handleRemoveCourse(course.id)}
-                    deleteIcon={<Iconify icon="mingcute:close-line" />}
-                    disabled={curriculumContentSubmitting}
-                    sx={{ maxWidth: '100%' }}
-                  />
+              <Stack spacing={1}>
+                {selectedCategoryRows.map((row) => (
+                  <Box
+                    key={row.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                      bgcolor: 'background.neutral',
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      alignItems={{ xs: 'flex-start', sm: 'center' }}
+                      justifyContent="space-between"
+                      spacing={1}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                        <Chip label={row.title} size="small" sx={{ maxWidth: '100%' }} />
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          {curriculumHydrating ? '…' : row.selectedCount} course
+                          {row.selectedCount === 1 ? '' : 's'}
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={curriculumContentSubmitting || curriculumHydrating}
+                          onClick={() => openEditDrawer(row)}
+                        >
+                          Edit courses
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          disabled={curriculumContentSubmitting}
+                          onClick={() => handleRemoveCategory(row.id)}
+                        >
+                          Remove
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Box>
                 ))}
               </Stack>
             )}
@@ -336,13 +428,6 @@ export function CurriculumSettingsCard({
               Home page preview
             </Typography>
 
-            {!previewFromServer && selectedCourseIds.length > 0 ? (
-              <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'text.secondary' }}>
-                Draft preview — expand a course to load its modules. Save curriculum to publish on
-                the home page.
-              </Typography>
-            ) : null}
-
             <Typography
               sx={{
                 ...HERO_TYPOGRAPHY.caption,
@@ -355,7 +440,7 @@ export function CurriculumSettingsCard({
             </Typography>
 
             <Typography sx={{ ...HERO_TYPOGRAPHY.h3, mb: 1.5, fontWeight: 800 }}>
-              {previewHeadline || 'Add courses to build the curriculum'}
+              {previewHeadline || 'Add a category and courses to build the curriculum'}
             </Typography>
 
             {content.subtext ? (
@@ -379,8 +464,10 @@ export function CurriculumSettingsCard({
             ) : (
               <CurriculumModulesList
                 modules={previewModules}
-                courses={previewCourses}
-                courseIds={selectedCourseIds}
+                courses={displayCourses}
+                courseIds={displayCourseIds}
+                categories={draftPreviewCategories}
+                categoryIds={selectedCategoryIds}
               />
             )}
           </Box>
@@ -398,14 +485,16 @@ export function CurriculumSettingsCard({
         </Stack>
       </Card>
 
-      <CurriculumAddCoursesDrawer
-        open={addDrawerOpen}
-        onClose={() => setAddDrawerOpen(false)}
-        excludeIds={selectedCourseIds}
-        maxCourses={maxCourses}
-        currentCount={selectedCourseIds.length}
-        submitting={curriculumContentSubmitting}
-        onConfirm={handleConfirmCourses}
+      <CurriculumCategoryDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        initialCategory={drawerCategory}
+        selectedCategoryIds={selectedCategoryIds}
+        selectedCourseIds={selectedCourseIds}
+        categoryCourseIdsMap={categoryCourseIdsMap}
+        disabled={curriculumContentSubmitting}
+        maxCategories={maxCategories}
+        onApply={handleApplyCategoryCourses}
       />
     </>
   );

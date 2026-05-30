@@ -46,15 +46,18 @@ function transformCurriculumStored(source) {
   if (!source || typeof source !== 'object') {
     return null;
   }
-  const rawIds = Array.isArray(source.courseIds)
+  const rawCategoryIds = Array.isArray(source.categoryIds) ? source.categoryIds : [];
+  const rawCourseIds = Array.isArray(source.courseIds)
     ? source.courseIds
     : source.courseId
       ? [source.courseId]
       : [];
+  const categoryIds = rawCategoryIds.slice(0, 20).map((id) => String(id || '')).filter(Boolean);
   return {
     smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
     subtext: source.subtext != null ? String(source.subtext) : '',
-    courseIds: rawIds.slice(0, 20).map((id) => String(id || '')).filter(Boolean),
+    categoryIds,
+    courseIds: rawCourseIds.slice(0, 100).map((id) => String(id || '')).filter(Boolean),
   };
 }
 
@@ -64,6 +67,8 @@ function transformCurriculumContent(source) {
   }
   const rawModules = Array.isArray(source.modules) ? source.modules : [];
   const rawCourses = Array.isArray(source.courses) ? source.courses : [];
+  const rawCategories = Array.isArray(source.categories) ? source.categories : [];
+  const rawCategoryIds = Array.isArray(source.categoryIds) ? source.categoryIds : [];
   const rawIds = Array.isArray(source.courseIds)
     ? source.courseIds
     : source.courseId
@@ -72,11 +77,28 @@ function transformCurriculumContent(source) {
   return {
     smallTitle: source.smallTitle != null ? String(source.smallTitle) : '',
     subtext: source.subtext != null ? String(source.subtext) : '',
+    categoryIds: rawCategoryIds.map((id) => String(id || '')).filter(Boolean),
+    categories: rawCategories.map((category) => ({
+      id: category?.id != null ? String(category.id) : '',
+      title: category?.title != null ? String(category.title) : '',
+      courseIds: Array.isArray(category?.courseIds)
+        ? category.courseIds.map((id) => String(id || '')).filter(Boolean)
+        : [],
+      courses: Array.isArray(category?.courses)
+        ? category.courses.map((course) => ({
+            id: course?.id != null ? String(course.id) : '',
+            title: course?.title != null ? String(course.title) : '',
+            modulesCount: Number(course?.modulesCount) || 0,
+            categoryId: course?.categoryId != null ? String(course.categoryId) : '',
+          }))
+        : [],
+    })),
     courseIds: rawIds.map((id) => String(id || '')).filter(Boolean),
     courses: rawCourses.map((course) => ({
       id: course?.id != null ? String(course.id) : '',
       title: course?.title != null ? String(course.title) : '',
       modulesCount: Number(course?.modulesCount) || 0,
+      categoryId: course?.categoryId != null ? String(course.categoryId) : '',
     })),
     headline: source.headline != null ? String(source.headline) : '',
     moduleCount: Number(source.moduleCount) || 0,

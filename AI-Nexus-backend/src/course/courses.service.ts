@@ -54,6 +54,8 @@ type GetCoursesOptions = PaginatedQueryOptions & {
   group?: string;
   recommendedCourseIds?: string[];
   courseIds?: string[];
+  categoryId?: string;
+  excludeBundles?: boolean;
 };
 
 type GroupedCoursesQuery = {
@@ -260,6 +262,15 @@ export class CourseService {
 
         if (typeof options.freeOrPaid === 'boolean') {
             baseQuery.andWhere('course.freeOrPaid = :freeOrPaid', { freeOrPaid: options.freeOrPaid });
+        }
+
+        const categoryId = String(options.categoryId || '').trim();
+        if (/^[0-9a-f-]{36}$/i.test(categoryId)) {
+            baseQuery.andWhere('course.categoryId = :categoryId', { categoryId });
+        }
+
+        if (options.excludeBundles === true) {
+            baseQuery.andWhere('course.isBundle = false');
         }
 
         const levelFilter = mapGroupToLevel(options.group);

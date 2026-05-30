@@ -65,6 +65,9 @@ export type FaqContent = {
 export type CurriculumContent = {
   smallTitle?: string;
   subtext?: string;
+  /** Selected learning categories shown on the home page. */
+  categoryIds?: string[];
+  /** Courses to include (within selected categories). When categoryIds is set, only these courses are shown. */
   courseIds?: string[];
 };
 
