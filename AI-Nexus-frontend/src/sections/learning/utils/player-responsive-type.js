@@ -75,3 +75,46 @@ export const playerTabIconSx = {
   display: 'block',
   flexShrink: 0,
 };
+
+/** Lesson / practice hero height — capped on laptop so notes/materials need less scroll. */
+export const LESSON_FRAME_HEIGHT = {
+  xs: 260,
+  sm: 320,
+  md: 'clamp(240px, 34vh, 380px)',
+  lg: 'clamp(280px, 36vh, 440px)',
+  xl: 580,
+};
+
+/** Left/right player columns — hidden bars on phone; thin visible bars on laptop (touchpad). */
+export const playerScrollPanelSx = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  WebkitOverflowScrolling: 'touch',
+  overscrollBehavior: 'contain',
+  scrollbarWidth: 'none',
+  msOverflowStyle: 'none',
+  '&::-webkit-scrollbar': {
+    display: 'none',
+    width: 0,
+    height: 0,
+  },
+  '@media (min-width:900px)': {
+    scrollbarWidth: 'thin',
+    msOverflowStyle: 'auto',
+    scrollbarColor: 'rgba(28, 66, 112, 0.28) transparent',
+    '&::-webkit-scrollbar': {
+      display: 'block',
+      width: 6,
+      height: 6,
+    },
+    '&::-webkit-scrollbar-track': {
+      background: 'transparent',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      backgroundColor: 'rgba(28, 66, 112, 0.28)',
+      borderRadius: 999,
+    },
+  },
+};

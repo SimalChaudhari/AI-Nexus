@@ -19,6 +19,10 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Iconify } from 'src/components/iconify';
 import { toast } from 'src/components/snackbar';
 import { courseService } from 'src/services/course.service';
+import {
+  LESSON_FRAME_HEIGHT,
+  playerScrollPanelSx,
+} from 'src/sections/learning/utils/player-responsive-type';
 
 // ----------------------------------------------------------------------
 const attemptStartInFlightByKey = new Map();
@@ -43,33 +47,18 @@ function buildCheckPayload(q, st) {
   return { answer: String(st.text || '').trim() };
 }
 
-/** Hidden scrollbar — scroll works, bar not shown (matches course player panels). */
-const quizScrollPanelSx = {
-  overflowY: 'auto',
-  overflowX: 'hidden',
-  scrollbarWidth: 'none',
-  msOverflowStyle: 'none',
-  WebkitOverflowScrolling: 'touch',
-  overscrollBehavior: 'contain',
-  '&::-webkit-scrollbar': {
-    display: 'none',
-    width: 0,
-    height: 0,
-  },
-};
+/** Hidden scrollbar on phone; thin bar on laptop (touchpad) — matches course player panels. */
+const quizScrollPanelSx = playerScrollPanelSx;
 
 /** Side-by-side question/answers from md up (original layout). */
 const QUIZ_SPLIT_BP = 'md';
-
-/** Same breakpoints as lesson video (`LESSON_FRAME_HEIGHT`) when parent does not pass `frameHeight`. */
-const DEFAULT_PRACTICE_FRAME_HEIGHT = { xs: 260, sm: 320, md: 580 };
 
 export function LearningModulePracticeIntro({
   moduleTitle,
   questionCount,
   onStartTest,
   /** Responsive height object — must match `LessonVideoPlayer` `frameHeight` for aligned layout. */
-  frameHeight = DEFAULT_PRACTICE_FRAME_HEIGHT,
+  frameHeight = LESSON_FRAME_HEIGHT,
 }) {
   const theme = useTheme();
 

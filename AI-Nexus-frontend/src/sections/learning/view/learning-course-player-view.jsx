@@ -52,8 +52,10 @@ import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import courseLessonNotesIcon from 'src/assets/course/notes.png';
 import courseLearningMaterialsIcon from 'src/assets/course/material.png';
 import {
+  LESSON_FRAME_HEIGHT,
   playerFluidType,
   playerLessonNotesSx,
+  playerScrollPanelSx,
   playerTabIconSx,
 } from 'src/sections/learning/utils/player-responsive-type';
 
@@ -519,7 +521,6 @@ const swrOptions = {
   revalidateOnReconnect: true,
 };
 
-const LESSON_FRAME_HEIGHT = { xs: 260, sm: 320, md: 580 };
 const AUTO_NEXT_SECONDS = 5;
 
 export function LearningCoursePlayerView({ course, loading, error }) {
@@ -2123,23 +2124,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     overflow: 'hidden',
   };
 
-  const playerScrollPanelSx = {
-    flex: 1,
-    minHeight: 0,
-    overflowY: 'auto',
-    overflowX: 'hidden',
-    scrollbarWidth: 'none',
-    msOverflowStyle: 'none',
-    WebkitOverflowScrolling: 'touch',
-    '&::-webkit-scrollbar': {
-      display: 'none',
-      width: 0,
-      height: 0,
-    },
-    overscrollBehavior: 'contain',
-  };
-
-  /** Left sidebar — same scroll behaviour as right column. */
   const playerLeftScrollPanelSx = playerScrollPanelSx;
 
   /** Right column — one scroll for video + notes + materials together. */
@@ -3121,7 +3105,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             overflow: 'hidden',
           }}
         >
-          <Box sx={{ flex: 1, minHeight: 0, width: 1, ...playerLeftScrollPanelSx }}>
+          <Box
+            sx={{ flex: 1, minHeight: 0, width: 1, ...playerLeftScrollPanelSx }}
+            tabIndex={0}
+            aria-label="Course outline"
+          >
             {courseSidebar}
           </Box>
         </Box>
@@ -3166,6 +3154,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         >
           <Box
             ref={rightScrollRef}
+            tabIndex={0}
+            aria-label="Lesson content"
             sx={{
               flex: 1,
               minHeight: 0,
