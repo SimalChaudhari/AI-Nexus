@@ -677,7 +677,6 @@ export function HomeHeroSection() {
           bgcolor: '#ffffff',
           fontFamily: FONT_STACK,
           minHeight: { xs: 'auto', md: 680 },
-          mt: { md: 'calc(-1 * var(--layout-header-desktop-height, 104px))' },
           background: {
             xs: `linear-gradient(180deg, ${alpha(NAVY, 0.04)} 0%, #ffffff 28%)`,
             md: '#ffffff',
@@ -698,7 +697,7 @@ export function HomeHeroSection() {
             boxSizing: 'border-box',
             px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
             pt: {
-              xs: 2,
+              xs: 'calc(var(--layout-header-mobile-height, 84px) + 16px)',
               md: 'calc(var(--layout-header-desktop-height, 104px) + 32px)',
             },
             pb: { xs: 2.5, md: 0 },

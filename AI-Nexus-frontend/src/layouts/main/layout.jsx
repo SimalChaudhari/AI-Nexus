@@ -1,8 +1,10 @@
 import Alert from '@mui/material/Alert';
+import { useEffect } from 'react';
 import { useTheme } from '@mui/material/styles';
 
 import { usePathname } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
+import { prefetchMainPages } from 'src/routes/prefetch-main-pages';
 
 import { useBoolean } from 'src/hooks/use-boolean';
 import { useSettingsContext } from 'src/components/settings';
@@ -39,6 +41,10 @@ export function MainLayout({ sx, data, children }) {
   const layoutQuery = 'md';
 
   const navData = data?.nav ?? mainNavData;
+
+  useEffect(() => {
+    prefetchMainPages();
+  }, []);
 
   return (
     <>

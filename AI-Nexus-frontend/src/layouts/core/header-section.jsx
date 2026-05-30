@@ -49,7 +49,6 @@ export function HeaderSection({
     default: {
       minHeight: 'auto',
       height: 'var(--layout-header-mobile-height)',
-      transition: 'none',
       [theme.breakpoints.up('sm')]: {
         minHeight: 'auto',
       },

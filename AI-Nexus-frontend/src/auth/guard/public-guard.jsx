@@ -9,12 +9,14 @@ import { useAuthContext } from '../hooks';
 
 // ----------------------------------------------------------------------
 
+let publicGuardReady = false;
+
 export function PublicGuard({ children }) {
   const router = useRouter();
 
   const { loading, authenticated, user } = useAuthContext();
 
-  const [isChecking, setIsChecking] = useState(true);
+  const [isChecking, setIsChecking] = useState(() => !publicGuardReady);
 
   const checkPermissions = async () => {
     if (loading) {
@@ -27,6 +29,7 @@ export function PublicGuard({ children }) {
       return;
     }
 
+    publicGuardReady = true;
     setIsChecking(false);
   };
 

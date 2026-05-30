@@ -109,7 +109,12 @@ export function HeaderBase({
         ...(isCustomerFacingRoute && {
           px: { xs: 0, md: 0 },
           minHeight: 'var(--layout-header-mobile-height)',
-          transition: 'none',
+          transition: isHomeRoute
+            ? theme.transitions.create(['background-color', 'backdrop-filter'], {
+                easing: theme.transitions.easing.easeInOut,
+                duration: theme.transitions.duration.shorter,
+              })
+            : 'none',
           [theme.breakpoints.up(layoutQuery)]: {
             minHeight: 'var(--layout-header-desktop-height)',
           },
@@ -136,17 +141,6 @@ export function HeaderBase({
     <HeaderSection
       sx={{
         ...(isCustomerFacingRoute && {
-          backgroundColor:
-            isHomeRoute && homeNavLightOnHero ? 'transparent' : 'common.white',
-          backgroundImage: 'none',
-          boxShadow: 'none',
-          borderBottom: '1px solid rgba(28,66,112,0.16)',
-          color: isHomeRoute && homeNavLightOnHero ? 'secondary.main' : 'text.primary',
-          backdropFilter:
-            isHomeRoute && homeNavLightOnHero ? undefined : 'blur(10px)',
-          WebkitBackdropFilter:
-            isHomeRoute && homeNavLightOnHero ? undefined : 'blur(10px)',
-          transition: 'none',
           '& [data-slot="logo-wrapper"]': {
             display: 'inline-flex',
             alignItems: 'center',
@@ -155,28 +149,57 @@ export function HeaderBase({
             width: { xs: 100, md: 150 },
             transition: 'none',
           },
-          ...(isHomeRoute && {
-            '@media (max-width:1080px)': {
-              backgroundColor: 'common.white',
-              borderBottom: '1px solid rgba(28,66,112,0.16)',
-              backdropFilter: 'blur(10px)',
-              WebkitBackdropFilter: 'blur(10px)',
-            },
-            '&[data-offset-top="false"] [data-slot="logo-wrapper"]': {
-              '@media (min-width:1081px)': {
+          ...(isHomeRoute
+            ? {
+                backgroundColor: homeNavLightOnHero ? 'transparent' : 'common.white',
+                backgroundImage: 'none',
+                boxShadow: 'none',
+                borderBottom: 'none',
+                color: homeNavLightOnHero ? 'secondary.main' : 'text.primary',
+                backdropFilter: homeNavLightOnHero ? undefined : 'blur(10px)',
+                WebkitBackdropFilter: homeNavLightOnHero ? undefined : 'blur(10px)',
+                '@media (max-width:1080px)': {
+                  backgroundColor: 'common.white',
+                  borderBottom: 'none',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                },
+                '& [data-slot="logo-wrapper"]': {
+                  transition: 'none',
+                },
+                '&[data-offset-top="false"] [data-slot="logo-wrapper"]': {
+                  '@media (max-width:1080px)': {
+                    backgroundColor: 'transparent',
+                    borderRadius: 0,
+                    overflow: 'visible',
+                    boxShadow: 'none',
+                  },
+                  '@media (min-width:1081px)': {
+                    backgroundColor: 'common.white',
+                    borderRadius: '0 0 24px 24px',
+                    overflow: 'hidden',
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.16)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                },
+                '&[data-offset-top="true"] [data-slot="logo-wrapper"]': {
+                  backgroundColor: 'transparent',
+                  borderRadius: 0,
+                  overflow: 'visible',
+                  boxShadow: 'none',
+                },
+              }
+            : {
                 backgroundColor: 'common.white',
-                borderRadius: '0 0 24px 24px',
-                overflow: 'hidden',
-                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.16)',
-              },
-            },
-            '&[data-offset-top="true"] [data-slot="logo-wrapper"]': {
-              backgroundColor: 'transparent',
-              borderRadius: 0,
-              overflow: 'visible',
-              boxShadow: 'none',
-            },
-          }),
+                backgroundImage: 'none',
+                boxShadow: 'none',
+                borderBottom: '1px solid rgba(28,66,112,0.16)',
+                color: 'text.primary',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+              }),
         }),
         ...sx,
       }}
@@ -184,12 +207,12 @@ export function HeaderBase({
       disableOffset={false}
       disableElevation={isHomeRoute}
       disableAppBar={false}
-      appBarPosition="sticky"
+      appBarPosition={isCustomerFacingRoute && isHomeRoute ? 'fixed' : 'sticky'}
       offsetSx={
         isHomeRoute
           ? {
               backgroundColor: 'common.white',
-              borderBottom: '1px solid rgba(28,66,112,0.16)',
+              borderBottom: 'none',
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
               color: 'text.primary',

@@ -4,7 +4,8 @@ import { Outlet } from 'react-router-dom';
 import { MainLayout } from 'src/layouts/main';
 import { SimpleLayout } from 'src/layouts/simple';
 
-import { LoadingScreen, SplashScreen } from 'src/components/loading-screen';
+import { SplashScreen } from 'src/components/loading-screen';
+import { MainRouteFallback } from 'src/routes/components/main-route-fallback';
 import { PublicGuard, AuthGuard } from 'src/auth/guard';
 
 // ----------------------------------------------------------------------
@@ -60,20 +61,7 @@ export const mainRoutes = [
       {
         element: (
           <MainLayout>
-            <Suspense
-              fallback={
-                <LoadingScreen
-                  portal
-                  sx={{
-                    position: 'fixed',
-                    inset: 0,
-                    zIndex: 9999,
-                    minHeight: '100vh',
-                    bgcolor: 'background.default',
-                  }}
-                />
-              }
-            >
+            <Suspense fallback={<MainRouteFallback />}>
               <Outlet />
             </Suspense>
           </MainLayout>
