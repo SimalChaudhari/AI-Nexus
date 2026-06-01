@@ -732,18 +732,56 @@ export const courseService = {
 
   async uploadSectionVideo(file, onProgress) {
     if (!file) return '';
-    const formData = new FormData();
-    formData.append('video', file);
-    const response = await axios.post('/courses/modules/sections/upload-video', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (event) => {
-        if (!event?.total) return;
-        const percent = Math.round((event.loaded * 100) / event.total);
-        if (onProgress) onProgress(percent);
-      },
-    });
-    const url = response.data?.data?.url || response.data?.url || '';
-    return resolveAssetUrl(url);
+    const CHUNK_BYTES = 4 * 1024 * 1024;
+    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_BYTES));
+    const uploadId =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const chunkRequestConfig = {
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+      timeout: 15 * 60 * 1000,
+    };
+
+    try {
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+        const start = chunkIndex * CHUNK_BYTES;
+        const end = Math.min(start + CHUNK_BYTES, file.size);
+        const formData = new FormData();
+        formData.append('chunk', file.slice(start, end), file.name);
+        formData.append('uploadId', uploadId);
+        formData.append('chunkIndex', String(chunkIndex));
+        formData.append('totalChunks', String(totalChunks));
+        formData.append('fileName', file.name);
+        if (file.type) formData.append('mimeType', file.type);
+
+        await axios.post(
+          '/courses/modules/sections/upload-video/chunk',
+          formData,
+          chunkRequestConfig
+        );
+
+        if (onProgress) onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 90));
+      }
+
+      const response = await axios.post(
+        '/courses/modules/sections/upload-video/complete',
+        { uploadId },
+        { timeout: 30 * 60 * 1000 }
+      );
+      const url = response.data?.data?.url || response.data?.url || '';
+      if (onProgress) onProgress(100);
+      return resolveAssetUrl(url);
+    } catch (error) {
+      if (error?.response?.status === 413) {
+        throw new Error(
+          'Upload blocked (413): server proxy must allow at least 10 MB per request. Videos upload in 4 MB chunks — contact ops to raise the limit, then redeploy this frontend build.'
+        );
+      }
+      throw error;
+    }
   },
 
   async uploadSectionFiles(files) {
