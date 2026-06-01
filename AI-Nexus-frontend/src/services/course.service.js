@@ -733,8 +733,8 @@ export const courseService = {
   async uploadSectionVideo(file, onProgress) {
     if (!file) return '';
 
-    // Production proxies often reject one large POST (413). Send 2 MB chunks instead.
-    const CHUNK_BYTES = 2 * 1024 * 1024;
+    // Production proxies often reject one large POST (413). Send 1 MB chunks instead.
+    const CHUNK_BYTES = 1024 * 1024;
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_BYTES));
     const uploadId =
       typeof crypto !== 'undefined' && crypto.randomUUID
@@ -759,7 +759,11 @@ export const courseService = {
         formData.append('fileName', file.name);
         if (file.type) formData.append('mimeType', file.type);
 
-        await axios.post('/courses/modules/sections/upload-video/chunk', formData, requestConfig);
+        await axios.post('/courses/modules/sections/upload-video/chunk', formData, {
+          ...requestConfig,
+          params: { mode: 'chunk' },
+          headers: { 'X-Upload-Mode': 'chunked' },
+        });
 
         if (onProgress) onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 90));
       }
@@ -774,8 +778,10 @@ export const courseService = {
       return resolveAssetUrl(url);
     } catch (error) {
       if (error?.response?.status === 413) {
+        const serverMsg = error?.response?.data?.message;
         throw new Error(
-          'Upload blocked (413). Ask server admin to set nginx client_max_body_size to at least 20M (see AI-Nexus-backend/deploy/nginx-upload-body-size.conf).'
+          serverMsg ||
+            'Upload blocked (413). Redeploy AI-Nexus-frontend (chunked upload) and ask ops to set nginx client_max_body_size to at least 10M (see AI-Nexus-backend/deploy/nginx-upload-body-size.conf).'
         );
       }
       throw error;

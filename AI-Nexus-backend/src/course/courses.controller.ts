@@ -119,8 +119,9 @@ const IMAGE_LIMIT_BYTES =
 const SECTION_VIDEO_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 20) * 1024 * 1024 * 1024;
 const SECTION_VIDEO_TMP_DIR = join(process.cwd(), 'public', 'uploads', '.tmp-section-videos');
+const SECTION_VIDEO_LEGACY_SINGLE_MAX_BYTES = 4 * 1024 * 1024;
 const SECTION_VIDEO_CHUNK_LIMIT_BYTES =
-    parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_CHUNK_MB, 8) * 1024 * 1024;
+    parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_CHUNK_MB, 3) * 1024 * 1024;
 
 function ensureSectionVideoTmpDir(): void {
     mkdirSync(SECTION_VIDEO_TMP_DIR, { recursive: true });
@@ -1380,11 +1381,13 @@ export class CourseController {
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
     @ApiConsumes('multipart/form-data')
-    @ApiOperation({ summary: 'Upload single course section video' })
+    @ApiOperation({
+        summary: 'Upload small course section video (legacy, max 4 MB — use chunked routes for larger files)',
+    })
     @UseInterceptors(
         FileInterceptor('video', {
             storage: memoryStorage(),
-            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES }, // 20GB
+            limits: { fileSize: SECTION_VIDEO_LEGACY_SINGLE_MAX_BYTES },
             fileFilter: (_req, file, cb) => {
                 const name = String(file.originalname || '');
                 const extOk = /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
