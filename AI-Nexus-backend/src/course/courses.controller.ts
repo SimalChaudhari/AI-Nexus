@@ -21,10 +21,7 @@ import {
     ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage, memoryStorage } from 'multer';
-import { mkdirSync } from 'fs';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
+import { memoryStorage } from 'multer';
 import { Response, Request } from 'express';
 import { UserRole } from '../user/users.entity';
 import { CourseService } from './courses.service';
@@ -67,8 +64,6 @@ import { LanguageService } from '../language/language.service';
 import { ReviewService } from '../review/review.service';
 import { CourseCertificateService } from './course-certificate.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
-import { SectionVideoChunkUploadService } from './section-video-chunk-upload.service';
-
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
     speakerIds: unknown,
@@ -118,14 +113,6 @@ const IMAGE_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const SECTION_VIDEO_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 20) * 1024 * 1024 * 1024;
-const SECTION_VIDEO_TMP_DIR = join(process.cwd(), 'public', 'uploads', '.tmp-section-videos');
-const SECTION_VIDEO_LEGACY_SINGLE_MAX_BYTES = 4 * 1024 * 1024;
-const SECTION_VIDEO_CHUNK_LIMIT_BYTES =
-    parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_CHUNK_MB, 3) * 1024 * 1024;
-
-function ensureSectionVideoTmpDir(): void {
-    mkdirSync(SECTION_VIDEO_TMP_DIR, { recursive: true });
-}
 
 const parseOptionalPositiveInteger = (value?: string): number | undefined => {
     if (value === undefined || value === null || value === '') return undefined;
@@ -266,7 +253,6 @@ export class CourseController {
         private readonly reviewService: ReviewService,
         private readonly courseCertificateService: CourseCertificateService,
         private readonly appSettingsService: AppSettingsService,
-        private readonly sectionVideoChunkUploadService: SectionVideoChunkUploadService,
     ) {}
 
     @Get()
@@ -1381,18 +1367,14 @@ export class CourseController {
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
     @ApiConsumes('multipart/form-data')
-    @ApiOperation({
-        summary: 'Upload small course section video (legacy, max 4 MB — use chunked routes for larger files)',
-    })
+    @ApiOperation({ summary: 'Upload single course section video' })
     @UseInterceptors(
         FileInterceptor('video', {
             storage: memoryStorage(),
-            limits: { fileSize: SECTION_VIDEO_LEGACY_SINGLE_MAX_BYTES },
+            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES },
             fileFilter: (_req, file, cb) => {
-                const name = String(file.originalname || '');
-                const extOk = /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
-                const mimeOk = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
-                cb(null, mimeOk || extOk || (file.mimetype === 'application/octet-stream' && extOk));
+                const allowed = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
+                cb(null, allowed);
             },
         }),
     )
@@ -1406,72 +1388,6 @@ export class CourseController {
             });
         }
         const url = await this.localStorageService.saveFile(file, 'course-section-video');
-        return response.status(HttpStatus.OK).json({ data: { url } });
-    }
-
-    @Post('modules/sections/upload-video/chunk')
-    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.Admin)
-    @ApiBearerAuth('bearer')
-    @ApiConsumes('multipart/form-data')
-    @ApiOperation({ summary: 'Upload one video chunk (production-safe, ~2 MB each)' })
-    @UseInterceptors(
-        FileInterceptor('chunk', {
-            storage: diskStorage({
-                destination: (_req, _file, cb) => {
-                    try {
-                        ensureSectionVideoTmpDir();
-                        cb(null, SECTION_VIDEO_TMP_DIR);
-                    } catch (err) {
-                        cb(err as Error, SECTION_VIDEO_TMP_DIR);
-                    }
-                },
-                filename: (_req, _file, cb) => cb(null, `part-${randomUUID()}.bin`),
-            }),
-            limits: { fileSize: SECTION_VIDEO_CHUNK_LIMIT_BYTES, files: 1 },
-        }),
-    )
-    async uploadSectionVideoChunk(
-        @UploadedFile() file: Express.Multer.File,
-        @Req() req: Request,
-        @Res() response: Response,
-    ) {
-        if (!file?.path) {
-            return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No chunk uploaded' });
-        }
-        try {
-            await this.sectionVideoChunkUploadService.saveChunk({
-                uploadId: String((req.body as { uploadId?: string })?.uploadId || '').trim(),
-                chunkIndex: Number((req.body as { chunkIndex?: string })?.chunkIndex),
-                totalChunks: Number((req.body as { totalChunks?: string })?.totalChunks),
-                fileName: String((req.body as { fileName?: string })?.fileName || file.originalname || ''),
-                mimeType: String((req.body as { mimeType?: string })?.mimeType || file.mimetype || ''),
-                tempFilePath: file.path,
-            });
-            return response.status(HttpStatus.OK).json({ data: { received: true } });
-        } catch (err) {
-            await unlink(file.path).catch(() => undefined);
-            throw err;
-        }
-    }
-
-    @Post('modules/sections/upload-video/complete')
-    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.Admin)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Finish chunked video upload' })
-    async completeSectionVideoUpload(
-        @Body() body: { uploadId?: string },
-        @Res() response: Response,
-    ) {
-        const uploadId = String(body?.uploadId || '').trim();
-        if (!uploadId) {
-            return response.status(HttpStatus.BAD_REQUEST).json({ message: 'uploadId is required' });
-        }
-        const url = await this.sectionVideoChunkUploadService.complete(
-            uploadId,
-            this.localStorageService,
-        );
         return response.status(HttpStatus.OK).json({ data: { url } });
     }
 

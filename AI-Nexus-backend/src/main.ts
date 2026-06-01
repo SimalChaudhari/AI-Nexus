@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger, ValidationPipe, type NestApplicationOptions } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -64,51 +64,6 @@ function isTrue(value?: string): boolean {
 
 const bootstrapLogger = new Logger('Bootstrap');
 
-function shouldSkipBodyParsing(req: express.Request): boolean {
-  if (req.path === '/api/payments/webhook') return true;
-  const url = `${req.originalUrl || ''}${req.url || ''}`;
-  if (String(req.headers['content-type'] || '').includes('multipart/form-data')) return true;
-  return /\/upload-video|\/upload-images|\/upload-files|\/upload-learning-materials/i.test(url);
-}
-
-/** Legacy SPA posts the whole file to POST .../upload-video (no /chunk). Reject before Multer. */
-const SECTION_VIDEO_LEGACY_MAX_BYTES = 4 * 1024 * 1024;
-
-function isLegacySectionVideoUpload(req: express.Request): boolean {
-  const pathOnly = (req.originalUrl || req.url || '').split('?')[0];
-  if (!/\/api\/courses\/modules\/sections\/upload-video$/i.test(pathOnly)) return false;
-  try {
-    const mode = new URL(req.originalUrl || req.url || '', 'http://localhost').searchParams.get('mode');
-    if (mode === 'chunk' || mode === 'complete') return false;
-  } catch {
-    // ignore invalid URL
-  }
-  return true;
-}
-
-function rejectOversizedLegacySectionVideoUpload(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction,
-): void {
-  if (req.method !== 'POST' || !isLegacySectionVideoUpload(req)) {
-    next();
-    return;
-  }
-  const contentLength = Number(req.headers['content-length'] || 0);
-  if (!Number.isFinite(contentLength) || contentLength <= SECTION_VIDEO_LEGACY_MAX_BYTES) {
-    next();
-    return;
-  }
-  res.status(413).json({
-    statusCode: 413,
-    error: 'Payload Too Large',
-    message:
-      'Video is too large for a single upload. Deploy the latest AI-Nexus-frontend (chunked upload) and set nginx client_max_body_size to at least 5M (see deploy/nginx-upload-body-size.conf).',
-    chunkedUploadRequired: true,
-  });
-}
-
 async function bootstrap() {
   try {
     const nodeEnv = process.env.NODE_ENV;
@@ -134,9 +89,10 @@ async function bootstrap() {
           }
         : undefined;
 
-    const nestCreateOptions: NestApplicationOptions = { bodyParser: false };
-    if (httpsOptions) nestCreateOptions.httpsOptions = httpsOptions;
-    const app = await NestFactory.create(AppModule, nestCreateOptions);
+    const app = await NestFactory.create(
+      AppModule,
+      httpsOptions ? { httpsOptions } : undefined,
+    );
 
     app.useWebSocketAdapter(new IoAdapter(app));
     app.useGlobalPipes(
@@ -153,7 +109,6 @@ async function bootstrap() {
     app.setGlobalPrefix('api');
 
     app.use(cookieParser());
-    app.use(rejectOversizedLegacySectionVideoUpload);
 
     // Enable CORS — include Flowise browser origin (often different port than main SPA)
     const configuredOrigins = (process.env.FRONTEND_URLS || '')
@@ -233,7 +188,7 @@ async function bootstrap() {
 
     // Webhook route needs raw body for signature verification; skip json parser for it
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (shouldSkipBodyParsing(req)) return next();
+      if (req.path === '/api/payments/webhook') return next();
       express.json({ limit: '50mb' })(req, res, next);
     });
     app.use(
@@ -252,10 +207,7 @@ async function bootstrap() {
       },
     );
 
-    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (shouldSkipBodyParsing(req)) return next();
-      express.urlencoded({ limit: '50mb', extended: true })(req, res, next);
-    });
+    app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
     // Root route handler (before app.listen) - returns health check
     const httpAdapter = app.getHttpAdapter();
