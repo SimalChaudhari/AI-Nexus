@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe, type NestApplicationOptions } from '@nestjs/common';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -64,6 +64,13 @@ function isTrue(value?: string): boolean {
 
 const bootstrapLogger = new Logger('Bootstrap');
 
+function shouldSkipBodyParsing(req: express.Request): boolean {
+  if (req.path === '/api/payments/webhook') return true;
+  const url = `${req.originalUrl || ''}${req.url || ''}`;
+  if (String(req.headers['content-type'] || '').includes('multipart/form-data')) return true;
+  return /\/upload-video|\/upload-images|\/upload-files|\/upload-learning-materials/i.test(url);
+}
+
 async function bootstrap() {
   try {
     const nodeEnv = process.env.NODE_ENV;
@@ -89,10 +96,9 @@ async function bootstrap() {
           }
         : undefined;
 
-    const app = await NestFactory.create(
-      AppModule,
-      httpsOptions ? { httpsOptions } : undefined,
-    );
+    const nestCreateOptions: NestApplicationOptions = { bodyParser: false };
+    if (httpsOptions) nestCreateOptions.httpsOptions = httpsOptions;
+    const app = await NestFactory.create(AppModule, nestCreateOptions);
 
     app.useWebSocketAdapter(new IoAdapter(app));
     app.useGlobalPipes(
@@ -163,6 +169,7 @@ async function bootstrap() {
         ...extraCorsOrigins,
         ...originsFromFlowiseEnv,
         ...productionFlowiseOrigins,
+        ...(nodeEnv === 'production' && prodDefaultOrigin ? [prodDefaultOrigin] : []),
         ...(isDevelopment ? devLocalOrigins : []),
       ]),
     );
@@ -187,7 +194,7 @@ async function bootstrap() {
 
     // Webhook route needs raw body for signature verification; skip json parser for it
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.path === '/api/payments/webhook') return next();
+      if (shouldSkipBodyParsing(req)) return next();
       express.json({ limit: '50mb' })(req, res, next);
     });
     app.use(
@@ -206,7 +213,10 @@ async function bootstrap() {
       },
     );
 
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (shouldSkipBodyParsing(req)) return next();
+      express.urlencoded({ limit: '50mb', extended: true })(req, res, next);
+    });
 
     // Root route handler (before app.listen) - returns health check
     const httpAdapter = app.getHttpAdapter();
@@ -246,6 +256,10 @@ async function bootstrap() {
     });
 
     await app.listen(port, bindHost);
+    const httpServer = app.getHttpServer();
+    httpServer.setTimeout(0);
+    if (typeof httpServer.requestTimeout === 'number') httpServer.requestTimeout = 0;
+    if (typeof httpServer.headersTimeout === 'number') httpServer.headersTimeout = 0;
     const scheme = httpsEnabled ? 'https' : 'http';
     console.log('[SSL] NODE_ENV:', nodeEnv ?? '(not set)');
     console.log('[SSL] SSL_ENABLED:', sslEnabled);

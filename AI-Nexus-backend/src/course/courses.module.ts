@@ -43,6 +43,8 @@ import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { CategoryEntity } from '../category/categories.entity';
 import { CourseOptionEntity } from './course-option.entity';
 import { CourseOptionInitService } from './course-option-init.service';
+import { SectionVideoChunkUploadService } from './section-video-chunk-upload.service';
+
 @Module({
     imports: [
         SpeakerModule,
@@ -55,7 +57,7 @@ import { CourseOptionInitService } from './course-option-init.service';
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService, SectionVideoChunkUploadService],
     controllers: [CourseController],
     exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService],
 })
