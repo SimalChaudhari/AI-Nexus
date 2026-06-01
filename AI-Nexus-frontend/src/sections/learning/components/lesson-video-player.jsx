@@ -17,8 +17,6 @@ export function LessonVideoPlayer({
   onSeeking,
   onSeeked,
   floatingOverlay,
-  /** Blocks touch on the native control scrubber strip (coarse pointers only). */
-  blockMobileSeekControls = false,
 }) {
   return (
     <Box
@@ -41,8 +39,10 @@ export function LessonVideoPlayer({
           ref={videoRef}
           poster={videoPoster || undefined}
           controls
-          controlsList="noseek nodownload"
+          controlsList="noseek nodownload nofullscreen"
           playsInline
+          disablePictureInPicture
+          preload="metadata"
           onLoadedMetadata={onLoadedMetadata}
           onPlay={onPlay}
           onPause={onPause}
@@ -75,39 +75,8 @@ export function LessonVideoPlayer({
           <source src={videoSrc} type="video/mp4" />
         </Box>
       ) : null}
-      {blockMobileSeekControls && (videoSrc || embedUrl) ? (
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 56,
-            zIndex: 2,
-            pointerEvents: 'auto',
-            touchAction: 'none',
-            '@media (hover: hover) and (pointer: fine)': {
-              display: 'none',
-            },
-          }}
-          onTouchStart={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onTouchEnd={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-        />
-      ) : null}
       {floatingOverlay}
       {lockedOverlay}
     </Box>
   );
 }
-
