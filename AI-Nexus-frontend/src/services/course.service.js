@@ -734,28 +734,16 @@ export const courseService = {
     if (!file) return '';
     const formData = new FormData();
     formData.append('video', file);
-    try {
-      const response = await axios.post('/courses/modules/sections/upload-video', formData, {
-        // Let the browser set multipart boundary (manual Content-Type breaks uploads).
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-        timeout: 6 * 60 * 60 * 1000,
-        onUploadProgress: (event) => {
-          if (!event?.total) return;
-          const percent = Math.round((event.loaded * 100) / event.total);
-          if (onProgress) onProgress(percent);
-        },
-      });
-      const url = response.data?.data?.url || response.data?.url || '';
-      return resolveAssetUrl(url);
-    } catch (error) {
-      if (error?.response?.status === 413) {
-        throw new Error(
-          'Video is too large for the server upload limit (max 20 GB). If your file is smaller, the API proxy may need client_max_body_size raised — see deploy/nginx-upload-limits.conf on the backend.'
-        );
-      }
-      throw error;
-    }
+    const response = await axios.post('/courses/modules/sections/upload-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!event?.total) return;
+        const percent = Math.round((event.loaded * 100) / event.total);
+        if (onProgress) onProgress(percent);
+      },
+    });
+    const url = response.data?.data?.url || response.data?.url || '';
+    return resolveAssetUrl(url);
   },
 
   async uploadSectionFiles(files) {

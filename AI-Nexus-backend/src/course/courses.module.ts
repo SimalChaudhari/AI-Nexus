@@ -43,7 +43,6 @@ import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { CategoryEntity } from '../category/categories.entity';
 import { CourseOptionEntity } from './course-option.entity';
 import { CourseOptionInitService } from './course-option-init.service';
-
 @Module({
     imports: [
         SpeakerModule,

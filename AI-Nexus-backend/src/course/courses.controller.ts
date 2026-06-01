@@ -21,9 +21,7 @@ import {
     ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage, memoryStorage } from 'multer';
-import { mkdirSync } from 'fs';
-import { extname, join } from 'path';
+import { memoryStorage } from 'multer';
 import { Response, Request } from 'express';
 import { UserRole } from '../user/users.entity';
 import { CourseService } from './courses.service';
@@ -66,7 +64,6 @@ import { LanguageService } from '../language/language.service';
 import { ReviewService } from '../review/review.service';
 import { CourseCertificateService } from './course-certificate.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
-
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
     speakerIds: unknown,
@@ -116,11 +113,6 @@ const IMAGE_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const SECTION_VIDEO_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 20) * 1024 * 1024 * 1024;
-const SECTION_VIDEO_TMP_DIR = join(process.cwd(), 'public', 'uploads', '.tmp-section-videos');
-
-function ensureSectionVideoTmpDir(): void {
-    mkdirSync(SECTION_VIDEO_TMP_DIR, { recursive: true });
-}
 
 const parseOptionalPositiveInteger = (value?: string): number | undefined => {
     if (value === undefined || value === null || value === '') return undefined;
@@ -1378,33 +1370,11 @@ export class CourseController {
     @ApiOperation({ summary: 'Upload single course section video' })
     @UseInterceptors(
         FileInterceptor('video', {
-            storage: diskStorage({
-                destination: (_req, _file, cb) => {
-                    try {
-                        ensureSectionVideoTmpDir();
-                        cb(null, SECTION_VIDEO_TMP_DIR);
-                    } catch (err) {
-                        cb(err as Error, SECTION_VIDEO_TMP_DIR);
-                    }
-                },
-                filename: (_req, file, cb) => {
-                    const ext = extname(file.originalname || '') || '.mp4';
-                    cb(null, `${randomUUID()}${ext}`);
-                },
-            }),
-            limits: {
-                fileSize: SECTION_VIDEO_LIMIT_BYTES,
-                files: 1,
-                parts: 12,
-                fields: 10,
-                fieldSize: 10 * 1024 * 1024,
-            },
+            storage: memoryStorage(),
+            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES }, // 20GB
             fileFilter: (_req, file, cb) => {
-                const name = String(file.originalname || '');
-                const extOk = /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
-                const mimeOk = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
-                const octetOk = file.mimetype === 'application/octet-stream' && extOk;
-                cb(null, mimeOk || extOk || octetOk);
+                const allowed = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
+                cb(null, allowed);
             },
         }),
     )
