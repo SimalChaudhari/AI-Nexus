@@ -57,7 +57,9 @@ export function LearningModulePracticeIntro({
   moduleTitle,
   questionCount,
   onStartTest,
-  /** Responsive height object — must match `LessonVideoPlayer` `frameHeight` for aligned layout. */
+  /** Same panel footprint as quiz (`fillContainer`) — no layout jump on Start Test. */
+  fillContainer = false,
+  /** Used when `fillContainer` is false — matches `LessonVideoPlayer` height. */
   frameHeight = LESSON_FRAME_HEIGHT,
 }) {
   const theme = useTheme();
@@ -66,35 +68,43 @@ export function LearningModulePracticeIntro({
     <Box
       sx={{
         position: 'relative',
-        overflow: 'hidden',
         bgcolor: 'grey.900',
         width: '100%',
-        height: frameHeight,
-        boxShadow: (t) => t.customShadows.z8,
-        border: (t) => `1px solid ${t.palette.divider}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        ...(fillContainer
+          ? { flex: '1 1 0%', minHeight: 0, alignSelf: 'stretch' }
+          : {
+              height: frameHeight,
+              borderRadius: 0,
+              boxShadow: (t) => `0 12px 40px ${alpha(t.palette.common.black, 0.14)}`,
+              border: (t) => `1px solid ${alpha(t.palette.grey[500], 0.2)}`,
+              overflow: 'hidden',
+            }),
       }}
     >
       <Box
         sx={{
           width: '100%',
-          height: '100%',
-          overflowY: 'auto',
+          flex: fillContainer ? '1 1 0%' : undefined,
+          minHeight: fillContainer ? 0 : undefined,
+          height: fillContainer ? undefined : '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          py: { xs: 1.5, sm: 2 },
-          px: { xs: 1.5, sm: 2 },
+          p: { xs: 1, sm: 1.5, md: 1.5, lg: 2, xl: 2.5 },
         }}
       >
         <Paper
           elevation={0}
           sx={{
             width: '100%',
-            maxWidth: 520,
-            p: { xs: 2, sm: 3 },
+            maxWidth: { xs: 520, md: 440, xl: 520 },
+            maxHeight: '100%',
+            minHeight: 0,
+            flexShrink: 1,
+            p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 },
             borderRadius: 2,
             textAlign: 'center',
             border: `1px solid ${theme.palette.divider}`,
@@ -102,8 +112,12 @@ export function LearningModulePracticeIntro({
             bgcolor: 'background.paper',
           }}
         >
-          <Stack spacing={1.5} alignItems="center">
-            <Stack spacing={0.75} sx={{ width: '100%', alignItems: 'center' }}>
+          <Stack
+            spacing={{ xs: 1, sm: 1.25, md: 0.875, lg: 1, xl: 1.5 }}
+            alignItems="center"
+            sx={{ minHeight: 0 }}
+          >
+            <Stack spacing={0.5} sx={{ width: '100%', alignItems: 'center' }}>
               <Typography
                 variant="subtitle1"
                 sx={{
@@ -112,6 +126,8 @@ export function LearningModulePracticeIntro({
                   textAlign: 'center',
                   whiteSpace: 'normal',
                   wordBreak: 'break-word',
+                  fontSize: { xs: '0.9375rem', md: '0.875rem', xl: '1rem' },
+                  lineHeight: 1.3,
                 }}
               >
                 {moduleTitle}
@@ -121,6 +137,8 @@ export function LearningModulePracticeIntro({
                 size="small"
                 sx={{
                   fontWeight: 600,
+                  height: { xs: 24, md: 22, xl: 24 },
+                  fontSize: { xs: '0.6875rem', md: '0.625rem', xl: '0.6875rem' },
                   bgcolor: alpha(theme.palette.secondary.main, 0.12),
                   color: 'secondary.dark',
                 }}
@@ -128,21 +146,45 @@ export function LearningModulePracticeIntro({
             </Stack>
             <Box
               sx={{
-                width: 72,
-                height: 72,
+                width: { xs: 56, sm: 60, md: 48, lg: 52, xl: 72 },
+                height: { xs: 56, sm: 60, md: 48, lg: 52, xl: 72 },
                 borderRadius: '50%',
                 bgcolor: alpha(theme.palette.warning.main, 0.2),
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Iconify icon="solar:clipboard-list-bold" width={34} sx={{ color: 'warning.dark' }} />
+              <Iconify
+                icon="solar:clipboard-list-bold"
+                sx={{
+                  color: 'warning.dark',
+                  width: { xs: 28, sm: 30, md: 24, lg: 26, xl: 34 },
+                  height: { xs: 28, sm: 30, md: 24, lg: 26, xl: 34 },
+                }}
+              />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.dark' }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                color: 'primary.dark',
+                fontSize: { xs: '1rem', md: '0.9375rem', lg: '1rem', xl: '1.125rem' },
+                lineHeight: 1.3,
+              }}
+            >
               Ready for a non-graded assessment?
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.7, maxWidth: 400 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                lineHeight: 1.5,
+                maxWidth: 400,
+                fontSize: { xs: '0.8125rem', md: '0.75rem', lg: '0.8125rem', xl: '0.875rem' },
+              }}
+            >
               Refresh your knowledge on what you just learned.
               {questionCount > 0 ? (
                 <>
@@ -154,9 +196,15 @@ export function LearningModulePracticeIntro({
             <Button
               variant="contained"
               color="secondary"
-              size="large"
+              size="medium"
               onClick={onStartTest}
-              sx={{ mt: 0.5, minWidth: 200, fontWeight: 700, py: 1.1 }}
+              sx={{
+                mt: { xs: 0.25, xl: 0.5 },
+                minWidth: { xs: 160, md: 150, xl: 200 },
+                fontWeight: 700,
+                py: { xs: 0.75, md: 0.65, xl: 1.1 },
+                fontSize: { xs: '0.8125rem', md: '0.75rem', xl: '0.875rem' },
+              }}
             >
               Start Test
             </Button>

@@ -55,6 +55,7 @@ import {
   LESSON_FRAME_HEIGHT,
   playerFluidType,
   playerLessonNotesSx,
+  playerPracticePanelSx,
   playerScrollPanelSx,
   playerTabIconSx,
 } from 'src/sections/learning/utils/player-responsive-type';
@@ -2129,6 +2130,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   /** Right column — one scroll for video + notes + materials together. */
   const playerRightScrollPanelSx = playerScrollPanelSx;
 
+  const playerPracticeFillSx = {
+    flex: '1 1 0%',
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
   const courseSidebar = (
     <Box
       sx={{
@@ -3052,8 +3060,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     activeLessonId !== FEEDBACK_LESSON_ID && modulePracticeModuleId && course?.id
   );
   const isModulePracticeQuiz = isModulePracticeView && practiceQuizOn;
-  /** Video, notes, materials, feedback — scroll in the main panel; quiz fills panel without page scroll. */
-  const isScrollableLessonPanel = !isModulePracticeQuiz;
+  /** Practice intro + quiz share one panel; lessons scroll separately. */
+  const isScrollableLessonPanel = !isModulePracticeView;
   const showLessonDetailPanel = Boolean(
     activeLesson &&
       activeLessonId !== FEEDBACK_LESSON_ID &&
@@ -3068,12 +3076,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     <DashboardContent
       disablePadding
       sx={{
-        height: '100%',
+        flex: '1 1 0%',
         minHeight: 0,
-        flex: 1,
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
         bgcolor: 'grey.50',
         backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.04)} 0%, ${theme.palette.grey[50]} 280px)`,
       }}
@@ -3082,11 +3089,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         direction={{ xs: 'column', md: 'row' }}
         alignItems="stretch"
         sx={{
-          flex: 1,
+          flex: '1 1 0%',
           minHeight: 0,
-          height: '100%',
           width: '100%',
-          overflow: 'hidden',
         }}
       >
         {/* Left: course outline — own scroll, scrollbar on left edge */}
@@ -3146,10 +3151,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             order: { xs: 1, md: 2 },
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden',
-            p: isModulePracticeQuiz ? 0 : { xs: 2, sm: 3, md: 4 },
-            pt: isModulePracticeQuiz ? 0 : { xs: 2, sm: 3, md: 4 },
-            pb: isModulePracticeQuiz ? 0 : { xs: 3, md: 5 },
+            p: isModulePracticeView ? 0 : { xs: 2, sm: 3, md: 4 },
+            pt: isModulePracticeView ? 0 : { xs: 2, sm: 3, md: 4 },
+            pb: isModulePracticeView ? 0 : { xs: 3, md: 5 },
           }}
         >
           <Box
@@ -3157,21 +3161,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             tabIndex={0}
             aria-label="Lesson content"
             sx={{
-              flex: 1,
+              flex: '1 1 0%',
               minHeight: 0,
               width: 1,
-              ...(isModulePracticeQuiz
-                ? {
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'hidden',
-                  }
+              ...(isModulePracticeView
+                ? playerPracticePanelSx
                 : isScrollableLessonPanel
                   ? playerRightScrollPanelSx
-                  : { overflow: 'hidden' }),
+                  : {}),
             }}
           >
-          {!isModulePracticeQuiz ? (
+          {!isModulePracticeView ? (
             <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 2, flexShrink: 0 }}>
             <Button
               size="medium"
@@ -3207,13 +3207,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               <Box
                 sx={{
                   width: '100%',
-                  flex: isModulePracticeQuiz ? 1 : undefined,
-                  minHeight: isModulePracticeQuiz ? 0 : undefined,
-                  display: isModulePracticeQuiz ? 'flex' : 'block',
-                  flexDirection: 'column',
+                  ...playerPracticeFillSx,
                   bgcolor: practiceQuizOn ? 'background.paper' : 'transparent',
                   borderRadius: 0,
-                  overflow: isModulePracticeQuiz ? 'hidden' : 'visible',
                   boxShadow: 'none',
                   border: 'none',
                 }}
@@ -3232,7 +3228,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   />
                 ) : (
                   <LearningModulePracticeIntro
-                    frameHeight={LESSON_FRAME_HEIGHT}
+                    fillContainer
                     moduleTitle={modulePracticeModuleMeta.title || 'Module'}
                     questionCount={modulePracticeQuestions.length}
                     onStartTest={() =>

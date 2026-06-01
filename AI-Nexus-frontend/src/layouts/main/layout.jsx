@@ -19,6 +19,8 @@ import { navData as mainNavData } from '../config-nav-main';
 import { _account } from '../config-nav-account';
 import { ChatbotWidget } from 'src/components/chatbot/chatbot-widget';
 
+import { layoutClasses } from '../classes';
+
 // ----------------------------------------------------------------------
 
 export function MainLayout({ sx, data, children }) {
@@ -109,7 +111,14 @@ export function MainLayout({ sx, data, children }) {
           '--layout-dashboard-content-px': settings.compactLayout ? theme.spacing(5) : theme.spacing(3),
         }}
         sx={{
-          ...(isLearningCoursePlayer && { overflow: 'hidden' }),
+          ...(isLearningCoursePlayer && {
+            height: '100dvh',
+            maxHeight: '100dvh',
+            display: 'flex',
+            flexDirection: 'column',
+            [`& .${layoutClasses.header}`]: { flexShrink: 0 },
+            [`& .${layoutClasses.main}`]: { flex: '1 1 0%', minHeight: 0 },
+          }),
           ...(homePage && { bgcolor: '#ffffff' }),
           ...sx,
         }}
@@ -118,19 +127,10 @@ export function MainLayout({ sx, data, children }) {
           sx={
             isLearningCoursePlayer
               ? {
-                  flex: '1 1 auto',
+                  flex: '1 1 0%',
                   minHeight: 0,
-                  overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  height: {
-                    xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
-                    md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
-                  },
-                  maxHeight: {
-                    xs: 'calc(100dvh - var(--layout-header-mobile-height, 84px))',
-                    md: 'calc(100dvh - var(--layout-header-desktop-height, 104px))',
-                  },
                 }
               : homePage
                 ? {

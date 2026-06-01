@@ -85,6 +85,14 @@ export const LESSON_FRAME_HEIGHT = {
   xl: 580,
 };
 
+/** Practice intro + quiz — flex child fills remaining panel height (no overflow). */
+export const playerPracticePanelSx = {
+  flex: '1 1 0%',
+  minHeight: 0,
+  display: 'flex',
+  flexDirection: 'column',
+};
+
 /** Left/right player columns — hidden bars on phone; thin visible bars on laptop (touchpad). */
 export const playerScrollPanelSx = {
   flex: 1,
