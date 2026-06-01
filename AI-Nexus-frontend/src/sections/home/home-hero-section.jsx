@@ -25,6 +25,7 @@ import {
 import { useAuthContext } from 'src/auth/hooks';
 
 import { resolveHomeHeroData } from './home-hero-defaults';
+import { FLUID_FONT_SIZES, FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -288,7 +289,7 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
     position: 'relative',
     borderRadius: '8px',
     fontWeight: 700,
-    fontSize: { xs: '0.8125rem', sm: '0.875rem', md: '0.9375rem' },
+    fontSize: FLUID_FONT_SIZES.button,
     fontFamily: FONT_STACK,
     textTransform: 'none',
     boxShadow: 'none',
@@ -576,9 +577,7 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
                 sx={{
                   color: '#fff',
                   fontFamily: FONT_STACK,
-                  fontWeight: 800,
-                  fontSize: { xs: '0.875rem', sm: '1rem', md: '1.0625rem' },
-                  lineHeight: 1.15,
+                  ...FLUID_TYPOGRAPHY.statLabel,
                   letterSpacing: '-0.015em',
                 }}
               >
@@ -588,9 +587,7 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
                 sx={{
                   color: alpha('#fff', 0.88),
                   fontFamily: FONT_STACK,
-                  fontWeight: 500,
-                  fontSize: { xs: '0.625rem', sm: '0.75rem', md: '0.8rem' },
-                  lineHeight: 1.35,
+                  ...FLUID_TYPOGRAPHY.micro,
                 }}
               >
                 {row.label}
@@ -735,10 +732,7 @@ export function HomeHeroSection() {
                     sx={{
                       color: RED,
                       fontFamily: FONT_STACK,
-                      fontWeight: 700,
-                      fontSize: { xs: '0.6875rem', sm: '0.75rem' },
-                      letterSpacing: '0.14em',
-                      textTransform: 'uppercase',
+                      ...FLUID_TYPOGRAPHY.heroBadge,
                       m: 0,
                     }}
                   >
@@ -750,15 +744,7 @@ export function HomeHeroSection() {
                   component="h1"
                   sx={{
                     fontFamily: FONT_STACK,
-                    fontWeight: 800,
-                    fontSize: {
-                      xs: '1.75rem',
-                      sm: '2.125rem',
-                      md: 'clamp(1.75rem, 2vw + 1rem, 2.5rem)',
-                      lg: '2.625rem',
-                    },
-                    lineHeight: 1.1,
-                    letterSpacing: '-0.025em',
+                    ...FLUID_TYPOGRAPHY.heroHeadline,
                     m: 0,
                     maxWidth: '100%',
                     overflowWrap: 'break-word',
@@ -785,9 +771,7 @@ export function HomeHeroSection() {
                     sx={{
                       color: NAVY,
                       fontFamily: FONT_STACK,
-                      fontSize: { xs: '1rem', sm: '1.0625rem', md: '1.0625rem' },
-                      lineHeight: { xs: 1.5, md: 1.55 },
-                      fontWeight: 400,
+                      ...FLUID_TYPOGRAPHY.heroDescription,
                       maxWidth: '100%',
                       '& p': { m: 0 },
                       '& p + p': { mt: 1 },

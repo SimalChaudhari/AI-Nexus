@@ -17,6 +17,7 @@ import { CONFIG } from 'src/config-global';
 import { appSettingsService } from 'src/services/app-settings.service';
 
 import { resolveEmployeeContent, hasEmployeeContent } from './employee-defaults';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -204,7 +205,7 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
                   textAlign: 'center',
                   color: 'secondary.main',
                   fontWeight: 800,
-                  fontSize: { xs: '1.35rem', sm: '1.55rem', md: '1.75rem' },
+                  fontSize: FLUID_FONT_SIZES.h5,
                   lineHeight: 1.2,
                   letterSpacing: '-0.02em',
                 }}
@@ -325,7 +326,7 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
     sx: {
       fontFamily: FONT_STACK,
       fontWeight: 700,
-      fontSize: '0.9375rem',
+      fontSize: FLUID_FONT_SIZES.body1,
       px: { xs: 2.5, md: 3.25 },
       py: 1.4,
       borderRadius: 2,
@@ -442,7 +443,7 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
             borderRadius: 1,
             fontFamily: FONT_STACK,
             fontWeight: 700,
-            fontSize: '0.6875rem',
+            fontSize: FLUID_FONT_SIZES.overline,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
             color: 'primary.main',
@@ -461,7 +462,7 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
             m: 0,
             fontFamily: FONT_STACK,
             fontWeight: 800,
-            fontSize: { xs: '1.75rem', sm: '2.125rem', md: '2.35rem', lg: '2.5rem' },
+            fontSize: FLUID_FONT_SIZES.statLg,
             lineHeight: { xs: 1.2, md: 1.15 },
             letterSpacing: '-0.03em',
             color: 'secondary.main',
@@ -552,7 +553,7 @@ function EmployeeBenefitCard({ row, index }) {
             justifyContent: 'center',
             fontFamily: FONT_STACK,
             fontWeight: 800,
-            fontSize: '0.875rem',
+            fontSize: FLUID_FONT_SIZES.body2,
             color: 'primary.main',
             bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
           }}
@@ -570,7 +571,7 @@ function EmployeeBenefitCard({ row, index }) {
             fontFamily: FONT_STACK,
             color: NAVY,
             fontWeight: 600,
-            fontSize: { xs: '0.6875rem', sm: '0.8125rem', md: '0.875rem' },
+            fontSize: FLUID_FONT_SIZES.caption,
             lineHeight: { xs: 1.35, sm: 1.45 },
             letterSpacing: '-0.01em',
           }}
@@ -753,7 +754,7 @@ export function HomeEmployeeSection() {
                           fontFamily: FONT_STACK,
                           color: alpha(NAVY, 0.78),
                           typography: 'body1',
-                          fontSize: { xs: '0.9375rem', md: '1rem' },
+                          fontSize: FLUID_FONT_SIZES.body1,
                           lineHeight: { xs: 1.65, md: 1.75 },
                           maxWidth: { md: 520, lg: 560 },
                           '& p': { m: 0 },
@@ -776,7 +777,7 @@ export function HomeEmployeeSection() {
                           sx={{
                             fontFamily: FONT_STACK,
                             fontWeight: 700,
-                            fontSize: '0.6875rem',
+                            fontSize: FLUID_FONT_SIZES.overline,
                             letterSpacing: '0.12em',
                             textTransform: 'uppercase',
                             color: alpha(NAVY, 0.55),

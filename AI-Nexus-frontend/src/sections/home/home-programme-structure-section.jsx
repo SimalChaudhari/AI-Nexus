@@ -18,6 +18,7 @@ import {
   hasProgrammeStructureContent,
   resolveProgrammeStructureContent,
 } from './programme-structure-defaults';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -84,7 +85,7 @@ function JourneyHeading({ heading, underlineWord }) {
         sx={{
           m: 0,
           fontWeight: 700,
-          fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+          fontSize: FLUID_FONT_SIZES.h3,
           lineHeight: 1.25,
           color: NAVY,
           letterSpacing: -0.3,
@@ -106,7 +107,7 @@ function JourneyHeading({ heading, underlineWord }) {
       sx={{
         m: 0,
         fontWeight: 700,
-        fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+        fontSize: FLUID_FONT_SIZES.h3,
         lineHeight: 1.25,
         color: NAVY,
         letterSpacing: -0.3,
@@ -271,7 +272,7 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
             fontWeight: compact ? 500 : 700,
             color: compact && isActive ? '#1a2d4f' : NAVY,
             lineHeight: compact ? 1.15 : 1.3,
-            fontSize: compact ? { xs: '0.72rem', md: '0.76rem' } : { xs: '0.92rem', md: '0.98rem' },
+            fontSize: compact ? FLUID_FONT_SIZES.caption : FLUID_FONT_SIZES.body2,
             letterSpacing: compact ? 0.1 : 0,
             display: compact ? '-webkit-box' : 'block',
             WebkitLineClamp: compact ? 3 : 'unset',
@@ -291,7 +292,7 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
             typography: 'body2',
             color: DESC_COLOR,
             lineHeight: 1.5,
-            fontSize: compact ? { xs: '0.7rem', md: '0.74rem' } : { xs: '0.76rem', md: '0.8125rem' },
+            fontSize: compact ? FLUID_FONT_SIZES.caption : FLUID_FONT_SIZES.body2,
             fontWeight: 400,
             maxWidth: 176,
             '& p': { m: 0, mb: 0.25, '&:last-child': { mb: 0 } },
@@ -391,7 +392,7 @@ function DesktopTimeline({ phases, primaryColor }) {
           px: 1.1,
           py: 0.45,
           borderRadius: 999,
-          fontSize: '0.72rem',
+          fontSize: FLUID_FONT_SIZES.caption,
           fontWeight: 700,
           color: NAVY,
           bgcolor: 'rgba(255,255,255,0.82)',
@@ -724,7 +725,7 @@ export function HomeProgrammeStructureSection() {
                     fontWeight: 700,
                     letterSpacing: 1.5,
                     textTransform: 'uppercase',
-                    fontSize: '0.7rem',
+                    fontSize: FLUID_FONT_SIZES.caption,
                     color: NAVY,
                     opacity: 0.72,
                   }}

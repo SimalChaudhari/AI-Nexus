@@ -10,6 +10,7 @@ import { Iconify } from 'src/components/iconify';
 import { RichTextContent } from 'src/components/html-content';
 import { CONFIG } from 'src/config-global';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -189,7 +190,7 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
               position: 'relative',
               zIndex: 1,
               mb: { xs: 1.25, md: 2 },
-              fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.5rem' },
+              fontSize: FLUID_FONT_SIZES.h5,
               '& .MuiRating-icon': {
                 transition: 'transform 0.3s ease, color 0.3s ease',
               },
@@ -228,7 +229,7 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
                 top: 6,
                 left: 10,
                 fontFamily: 'Georgia, serif',
-                fontSize: { xs: '1.25rem', md: '1.75rem' },
+                fontSize: FLUID_FONT_SIZES.h5,
                 lineHeight: 1,
                 color: alpha(primary, 0.35),
                 userSelect: 'none',
@@ -250,7 +251,7 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
                 bottom: 6,
                 right: 10,
                 fontFamily: 'Georgia, serif',
-                fontSize: { xs: '1.25rem', md: '1.75rem' },
+                fontSize: FLUID_FONT_SIZES.h5,
                 lineHeight: 1,
                 color: alpha(primary, 0.35),
                 userSelect: 'none',
@@ -270,7 +271,7 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
                 className="testimonial-quote-text"
                 sx={{
                   typography: 'body1',
-                  fontSize: { xs: '0.875rem', sm: '0.8rem', md: '0.9375rem' },
+                  fontSize: FLUID_FONT_SIZES.body2,
                   lineHeight: { xs: 1.65, md: 1.75 },
                   color: 'text.primary',
                   textAlign: 'center',
@@ -320,7 +321,7 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
                   color: primary,
                   fontWeight: 800,
                   textTransform: 'uppercase',
-                  fontSize: { xs: '0.68rem', sm: '0.75rem', md: '0.84rem' },
+                  fontSize: FLUID_FONT_SIZES.caption,
                   letterSpacing: { xs: 0.3, md: 0.6 },
                   lineHeight: 1.25,
                   transition: (t) =>
@@ -362,7 +363,7 @@ export function HomeTestimonialQuoteCard({ item, sectionBg = '#F4F6F8' }) {
                   fontWeight: 600,
                   letterSpacing: { xs: 0.35, md: 0.5 },
                   textTransform: 'uppercase',
-                  fontSize: { xs: '0.55rem', sm: '0.6rem', md: '0.625rem' },
+                  fontSize: FLUID_FONT_SIZES.overline,
                 }}
               >
                 Verified

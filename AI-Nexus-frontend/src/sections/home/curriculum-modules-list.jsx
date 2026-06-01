@@ -15,6 +15,7 @@ import { RouterLink } from 'src/routes/components';
 import { Iconify } from 'src/components/iconify';
 import { courseService } from 'src/services/course.service';
 import { ViewHtmlContent } from 'src/components/html-content/view-html-content';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -347,7 +348,7 @@ function NestedCourseRow({ row, expanded, onToggle, isLast }) {
             flex: 1,
             minWidth: 0,
             color: CURRICULUM_COURSE_BLUE,
-            fontSize: '0.9375rem',
+            fontSize: FLUID_FONT_SIZES.body1,
             fontWeight: 400,
             lineHeight: 1.5,
             cursor: 'pointer',
@@ -432,7 +433,7 @@ function CurriculumCategoryRow({
             sx={{
               color: CURRICULUM_RED,
               fontWeight: 600,
-              fontSize: '1rem',
+              fontSize: FLUID_FONT_SIZES.body1,
               lineHeight: 1.5,
               cursor: 'pointer',
             }}
@@ -441,7 +442,7 @@ function CurriculumCategoryRow({
           </Typography>
           <Typography
             variant="body2"
-            sx={{ mt: 0.25, color: 'text.secondary', fontSize: '0.875rem' }}
+            sx={{ mt: 0.25, color: 'text.secondary', fontSize: FLUID_FONT_SIZES.body2 }}
           >
             {formatCoursesCountLabel(row.coursesCount)}
           </Typography>

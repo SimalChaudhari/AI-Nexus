@@ -17,6 +17,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 
 import { hasCeoLaunchContent, resolveCeoLaunchContent } from './ceo-launch-defaults';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 const SECTION_MAX_WIDTH = '100%';
@@ -178,7 +179,7 @@ export function HomeCeoLaunchSection() {
                     sx={{
                       m: 0,
                       fontWeight: 700,
-                      fontSize: { xs: '1.2rem', sm: '1.35rem', md: '1.55rem' },
+                      fontSize: FLUID_FONT_SIZES.h5,
                       lineHeight: 1.15,
                       color: '#1d3260',
                     }}
@@ -231,7 +232,7 @@ export function HomeCeoLaunchSection() {
                         <Typography
                           sx={{
                             m: 0,
-                            fontSize: { xs: '0.72rem', sm: '0.76rem' },
+                            fontSize: FLUID_FONT_SIZES.caption,
                             fontWeight: 600,
                             lineHeight: 1.35,
                             color: '#22314f',
@@ -311,7 +312,7 @@ export function HomeCeoLaunchSection() {
                         m: 0,
                         color: 'common.white',
                         fontWeight: 700,
-                        fontSize: { xs: '1rem', sm: '1.12rem' },
+                        fontSize: FLUID_FONT_SIZES.body1,
                         lineHeight: 1.2,
                       }}
                     >
@@ -323,7 +324,7 @@ export function HomeCeoLaunchSection() {
                         sx={{
                           mt: 0.55,
                           color: alpha('#fff', 0.9),
-                          fontSize: { xs: '0.76rem', sm: '0.8rem' },
+                          fontSize: FLUID_FONT_SIZES.caption,
                           lineHeight: 1.35,
                           maxWidth: 200,
                           '& p': { m: 0 },
@@ -335,7 +336,7 @@ export function HomeCeoLaunchSection() {
                           m: 0,
                           mt: 0.55,
                           color: alpha('#fff', 0.9),
-                          fontSize: { xs: '0.76rem', sm: '0.8rem' },
+                          fontSize: FLUID_FONT_SIZES.caption,
                           lineHeight: 1.35,
                           maxWidth: 200,
                         }}

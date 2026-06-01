@@ -20,10 +20,7 @@ import {
   MembershipSignupDialog,
   MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
 } from 'src/sections/learning/components/membership-signup-dialog';
-import {
-  clearMembershipEligibilityDraftOnModalClose,
-  continueMembershipSignupDialog,
-} from 'src/utils/membership-eligibility-sso';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 import { shouldOpenEligibilityModal } from './eligibility-membership-defaults';
 
@@ -166,7 +163,7 @@ function QuestionCard({ question }) {
         sx={{
           m: 0,
           fontWeight: 600,
-          fontSize: { xs: '0.62rem', sm: '0.72rem', md: '0.8rem' },
+          fontSize: FLUID_FONT_SIZES.overline,
           lineHeight: 1.2,
           color: NAVY,
           flex: 1,
@@ -233,7 +230,7 @@ function MembershipBenefit({ benefit, showDivider }) {
         sx={{
           m: 0,
           fontWeight: 700,
-          fontSize: { xs: '0.74rem', sm: '0.78rem', md: '0.85rem' },
+          fontSize: FLUID_FONT_SIZES.caption,
           lineHeight: 1.2,
           color: NAVY,
           width: '100%',
@@ -268,7 +265,7 @@ function PanelCtaButton({ label, href, variant = 'contained', onEligibilityClick
       py: 0.85,
       borderRadius: 1.15,
       textTransform: 'none',
-      fontSize: { xs: '0.72rem', md: '0.78rem' },
+      fontSize: FLUID_FONT_SIZES.caption,
       minHeight: 36,
       whiteSpace: 'nowrap',
       ...sx,
@@ -334,7 +331,7 @@ function PanelCtaButton({ label, href, variant = 'contained', onEligibilityClick
           px: { xs: 2.5, sm: 3 },
           py: { xs: 1.1, sm: 1.25 },
           minHeight: { xs: 44, sm: 48 },
-          fontSize: { xs: '0.8rem', sm: '0.88rem', md: '0.92rem' },
+          fontSize: FLUID_FONT_SIZES.body2,
           fontWeight: 700,
           boxShadow: `0 4px 14px ${alpha('#000', 0.16)}`,
           '&:hover': { bgcolor: alpha('#fff', 0.95) },
@@ -574,7 +571,7 @@ export function HomeEligibilityMembershipSection() {
                       sx={{
                         m: 0,
                         fontWeight: 700,
-                        fontSize: { xs: '1.45rem', sm: '1.65rem', lg: '2rem', xl: '2.2rem' },
+                        fontSize: FLUID_FONT_SIZES.display,
                         lineHeight: 1.15,
                         color: 'common.white',
                         textAlign: { xs: 'center', sm: 'left' },
@@ -588,7 +585,7 @@ export function HomeEligibilityMembershipSection() {
                         m: 0,
                         mt: 0.35,
                         fontWeight: 400,
-                        fontSize: { xs: '0.82rem', sm: '0.9rem', lg: '0.96rem' },
+                        fontSize: FLUID_FONT_SIZES.body1,
                         color: alpha('#fff', 0.9),
                         textAlign: { xs: 'center', sm: 'left' },
                       }}
@@ -668,7 +665,7 @@ export function HomeEligibilityMembershipSection() {
                     sx={{
                       m: 0,
                       fontWeight: 600,
-                      fontSize: '0.65rem',
+                      fontSize: FLUID_FONT_SIZES.overline,
                       color: NAVY,
                       textAlign: 'left',
                     }}
@@ -681,7 +678,7 @@ export function HomeEligibilityMembershipSection() {
                     sx={{
                       m: 0,
                       fontWeight: 700,
-                      fontSize: { xs: '1.35rem', sm: '1.55rem', lg: '2rem', xl: '2.2rem' },
+                      fontSize: FLUID_FONT_SIZES.h4,
                       lineHeight: 1.08,
                       color: NAVY,
                       textAlign: 'left',

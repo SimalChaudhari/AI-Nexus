@@ -6,6 +6,7 @@ import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
+import { FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 import { varAlpha, textGradient } from 'src/theme/styles';
 
 import { varFade } from 'src/components/animate';
@@ -50,7 +51,7 @@ export function SectionTitle({ title, caption, slotProps, txtGradient, descripti
         <Typography
           component={m.p}
           variants={slotProps?.description?.variants ?? varFade({ distance: 24 }).inUp}
-          sx={{ color: 'text.secondary', ...slotProps?.description?.sx }}
+          sx={{ color: 'text.secondary', ...FLUID_TYPOGRAPHY.sectionSubtitle, ...slotProps?.description?.sx }}
         >
           {description}
         </Typography>

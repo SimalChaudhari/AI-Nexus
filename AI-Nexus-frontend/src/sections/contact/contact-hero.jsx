@@ -7,6 +7,7 @@ import { useTheme } from '@mui/material/styles';
 
 import { CONFIG } from 'src/config-global';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 import { varAlpha, bgGradient } from 'src/theme/styles';
 
 import { AnimateText, MotionContainer, animateTextClasses } from 'src/components/animate';
@@ -55,7 +56,7 @@ export function ContactHero({ headingLine1 = '', headingLine2 = '', imageUrl = '
                 ...HERO_TYPOGRAPHY.sectionMainTitle,
                 lineHeight: { xs: 1.2, sm: 1.15, md: 1.1 },
                 [`& .${animateTextClasses.line}`]: {
-                  fontSize: { xs: '2rem', sm: '2.6rem', md: '3.4rem' },
+                  fontSize: FLUID_FONT_SIZES.display,
                 },
                 textShadow: '0 2px 12px rgba(0,0,0,0.28)',
                 [`& .${animateTextClasses.line}[data-index="0"]`]: {

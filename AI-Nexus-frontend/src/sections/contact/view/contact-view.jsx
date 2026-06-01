@@ -18,6 +18,7 @@ import { ContactForm } from '../contact-form';
 import { buildContactFieldRows } from '../utils/contact-hero-public-fields';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -228,7 +229,7 @@ export function ContactSection({ hideWhenEmpty = false }) {
                             <Typography
                               sx={{
                                 fontWeight: 600,
-                                fontSize: '0.8125rem',
+                                fontSize: FLUID_FONT_SIZES.body2,
                                 color: 'text.secondary',
                                 letterSpacing: '0.02em',
                               }}
@@ -241,7 +242,7 @@ export function ContactSection({ hideWhenEmpty = false }) {
                                 m: 0,
                                 fontWeight: 500,
                                 color: 'text.primary',
-                                fontSize: { xs: '0.9375rem', sm: '1rem' },
+                                fontSize: FLUID_FONT_SIZES.body1,
                                 lineHeight: 1.55,
                                 wordBreak: 'break-word',
                                 overflowWrap: 'anywhere',
@@ -306,7 +307,7 @@ export function ContactSection({ hideWhenEmpty = false }) {
                               <Typography
                                 sx={{
                                   fontWeight: 600,
-                                  fontSize: '0.75rem',
+                                  fontSize: FLUID_FONT_SIZES.caption,
                                   color: 'text.secondary',
                                   textTransform: 'uppercase',
                                   letterSpacing: '0.06em',
@@ -317,7 +318,7 @@ export function ContactSection({ hideWhenEmpty = false }) {
                               <Typography
                                 sx={{
                                   fontWeight: 500,
-                                  fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                                  fontSize: FLUID_FONT_SIZES.body2,
                                   color: 'text.primary',
                                   lineHeight: 1.45,
                                   wordBreak: 'break-word',

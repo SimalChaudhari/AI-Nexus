@@ -17,6 +17,13 @@ import { appSettingsService } from 'src/services/app-settings.service';
 import {
   normalizeProgrammeFeesContent,
 } from './programme-fees-defaults';
+import {
+  HOME_SECTION_HEADING_SX,
+  PROGRAMME_FEES_HTML_SX,
+  PROGRAMME_FEES_PRICE_NOTE_SX,
+  PROGRAMME_FEES_PRICE_SX,
+} from 'src/theme/home-typography';
+import { FLUID_FONT_SIZES } from 'src/theme/fluid-typography';
 
 function resolveAssetUrl(url) {
   if (!url) return '';
@@ -92,18 +99,7 @@ export function HomeProgrammeFeesSection() {
             alignItems="flex-start"
             sx={{ mb: { xs: 3, md: 4 } }}
           >
-            <Typography
-              component="h2"
-              sx={{
-                m: 0,
-                textAlign: 'left',
-                color: 'secondary.main',
-                fontWeight: 800,
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
-                lineHeight: 1.2,
-                letterSpacing: '-0.02em',
-              }}
-            >
+            <Typography component="h2" sx={HOME_SECTION_HEADING_SX}>
               {content.heading}
             </Typography>
 
@@ -155,7 +151,7 @@ export function HomeProgrammeFeesSection() {
                           mt: 0.75,
                           color: 'primary.main',
                           fontWeight: 600,
-                          fontSize: '0.875rem',
+                          fontSize: FLUID_FONT_SIZES.body2,
                         }}
                       >
                         {tier.linkLabel}
@@ -171,16 +167,21 @@ export function HomeProgrammeFeesSection() {
                     ) : null}
                   </Box>
 
-                  <Box sx={{ flexShrink: 0, textAlign: { xs: 'left', sm: 'right' }, minWidth: { sm: 200 } }}>
+                  <Box
+                    sx={{
+                      flexShrink: 0,
+                      textAlign: { xs: 'left', sm: 'right' },
+                      minWidth: 0,
+                      width: { xs: '100%', sm: 'auto' },
+                      maxWidth: '100%',
+                    }}
+                  >
                     {splitPrice ? (
                       <Typography
-                        variant="h4"
+                        component="div"
                         sx={{
-                          fontWeight: 800,
-                          lineHeight: 1.1,
+                          ...PROGRAMME_FEES_PRICE_SX,
                           color: 'error.main',
-                          fontSize: { xs: '1.75rem', md: '2.125rem' },
-                          whiteSpace: 'nowrap',
                         }}
                       >
                         <Box
@@ -203,22 +204,17 @@ export function HomeProgrammeFeesSection() {
                       </Typography>
                     ) : (
                       <Typography
-                        variant="h4"
+                        component="div"
                         sx={{
-                          fontWeight: 700,
-                          lineHeight: 1.1,
+                          ...PROGRAMME_FEES_PRICE_SX,
                           color: tier.priceVariant === 'default' ? 'text.primary' : 'primary.main',
-                          fontSize: { xs: '1.75rem', md: '2.125rem' },
                         }}
                       >
                         {tier.price}
                       </Typography>
                     )}
                     {tier.priceNote ? (
-                      <Typography
-                        variant="caption"
-                        sx={{ color: 'text.secondary', display: 'block', mt: 0.5, lineHeight: 1.5 }}
-                      >
+                      <Typography component="p" sx={PROGRAMME_FEES_PRICE_NOTE_SX}>
                         {tier.priceNote}
                       </Typography>
                     ) : null}
@@ -248,8 +244,9 @@ export function HomeProgrammeFeesSection() {
                 html={content.fundingPartnersBody}
                 sx={{
                   color: 'text.primary',
+                  ...PROGRAMME_FEES_HTML_SX,
                   '& em': { color: 'primary.main', fontStyle: 'italic' },
-                  '& a': { color: 'primary.main', fontWeight: 600 },
+                  '& a': { color: 'primary.main', fontWeight: 600, fontSize: 'inherit' },
                 }}
               />
             </Box>

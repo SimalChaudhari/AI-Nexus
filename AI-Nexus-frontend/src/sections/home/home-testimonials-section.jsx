@@ -19,6 +19,7 @@ import {
   CarouselProgressBar,
   carouselBreakpoints,
 } from 'src/components/carousel';
+import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 import { appSettingsService } from 'src/services/app-settings.service';
 
 import { resolveTestimonialsContent, hasTestimonialsContent } from './testimonials-defaults';
@@ -64,7 +65,7 @@ function StatPill({ icon, label }) {
         sx={{
           fontWeight: 700,
           color: 'text.primary',
-          fontSize: { xs: '0.75rem', sm: '0.875rem' },
+          fontSize: FLUID_FONT_SIZES.body2,
           whiteSpace: { xs: 'normal', sm: 'nowrap' },
           textAlign: { xs: 'center', sm: 'left' },
         }}
@@ -211,7 +212,7 @@ export function HomeTestimonialsSection() {
                     sx={{
                       display: 'block',
                       fontFamily: '"Segoe Script", "Brush Script MT", cursive',
-                      fontSize: { xs: '2rem', sm: '2.5rem', md: '2.85rem' },
+                      fontSize: FLUID_FONT_SIZES.statLg,
                       fontWeight: 400,
                       color: 'text.primary',
                       mb: 0.5,
@@ -227,7 +228,7 @@ export function HomeTestimonialsSection() {
                       display: 'block',
                       fontWeight: 800,
                       letterSpacing: { xs: 0.5, md: 1 },
-                      fontSize: { xs: '1.75rem', sm: '2.2rem', md: '2.65rem' },
+                      fontSize: FLUID_FONT_SIZES.statMd,
                       background: `linear-gradient(135deg, ${primaryDark} 0%, ${primary} 100%)`,
                       backgroundClip: 'text',
                       WebkitBackgroundClip: 'text',
@@ -242,7 +243,7 @@ export function HomeTestimonialsSection() {
                     sx={{
                       display: 'block',
                       fontWeight: 800,
-                      fontSize: '2rem',
+                      fontSize: FLUID_FONT_SIZES.h3,
                       color: 'primary.main',
                     }}
                   >
@@ -262,7 +263,7 @@ export function HomeTestimonialsSection() {
                   html={subtitleHtml}
                   sx={{
                     typography: 'body1',
-                    fontSize: '1rem',
+                    fontSize: FLUID_FONT_SIZES.body1,
                     lineHeight: 1.8,
                     color: 'text.secondary',
                     textAlign: 'center',

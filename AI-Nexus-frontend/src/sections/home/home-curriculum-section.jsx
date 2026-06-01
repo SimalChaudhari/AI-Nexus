@@ -12,6 +12,11 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { buildCurriculumHeadline, normalizeCurriculumContent } from './curriculum-defaults';
 import { CurriculumModulesList } from './curriculum-modules-list';
+import {
+  FLUID_TYPOGRAPHY,
+  HOME_SECTION_BADGE_SX,
+  HOME_SECTION_HEADING_SX,
+} from 'src/theme/home-typography';
 import { Card } from '@mui/material';
 
 // ----------------------------------------------------------------------
@@ -125,14 +130,7 @@ export function HomeCurriculumSection() {
               <Typography
                 component="span"
                 sx={{
-                  display: 'inline-flex',
-                  px: 1.5,
-                  py: 0.5,
-                  borderRadius: 1,
-                  fontWeight: 700,
-                  fontSize: '0.6875rem',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
+                  ...HOME_SECTION_BADGE_SX,
                   color: 'primary.main',
                   bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
                   border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
@@ -144,18 +142,7 @@ export function HomeCurriculumSection() {
 
             {headline ? (
               <Stack spacing={1.5} alignItems="flex-start" sx={{ width: 1 }}>
-                <Typography
-                  component="h2"
-                  sx={{
-                    m: 0,
-                    textAlign: 'left',
-                    color: 'secondary.main',
-                    fontWeight: 800,
-                    lineHeight: 1.2,
-                    letterSpacing: '-0.02em',
-                    fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
-                  }}
-                >
+                <Typography component="h2" sx={HOME_SECTION_HEADING_SX}>
                   {headline}
                 </Typography>
                 <SectionUnderline />
@@ -167,8 +154,7 @@ export function HomeCurriculumSection() {
                 html={subtext}
                 sx={{
                   color: 'text.secondary',
-                  fontSize: { xs: '1rem', md: '1.05rem' },
-                  lineHeight: 1.65,
+                  ...FLUID_TYPOGRAPHY.sectionSubtitle,
                   maxWidth: 720,
                   '& p': { m: 0, mb: 1 },
                   '& p:last-child': { mb: 0 },

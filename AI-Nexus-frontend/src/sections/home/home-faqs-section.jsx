@@ -10,6 +10,7 @@ import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { FaqsList } from 'src/sections/faqs/faqs-list';
+import { HOME_SECTION_HEADING_SX } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
@@ -71,18 +72,7 @@ export function HomeFaqsSection() {
           alignItems="flex-start"
           sx={{ mb: { xs: 3, md: 4 } }}
         >
-          <Typography
-            component="h2"
-            sx={{
-              m: 0,
-              textAlign: 'left',
-              color: 'secondary.main',
-              fontWeight: 800,
-              fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
-              lineHeight: 1.2,
-              letterSpacing: '-0.02em',
-            }}
-          >
+          <Typography component="h2" sx={HOME_SECTION_HEADING_SX}>
             {pageHeading}
           </Typography>
 
