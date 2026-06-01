@@ -1392,10 +1392,19 @@ export class CourseController {
                     cb(null, `${randomUUID()}${ext}`);
                 },
             }),
-            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES }, // default 20GB (UPLOAD_SECTION_VIDEO_MAX_GB)
+            limits: {
+                fileSize: SECTION_VIDEO_LIMIT_BYTES,
+                files: 1,
+                parts: 12,
+                fields: 10,
+                fieldSize: 10 * 1024 * 1024,
+            },
             fileFilter: (_req, file, cb) => {
-                const allowed = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
-                cb(null, allowed);
+                const name = String(file.originalname || '');
+                const extOk = /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
+                const mimeOk = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
+                const octetOk = file.mimetype === 'application/octet-stream' && extOk;
+                cb(null, mimeOk || extOk || octetOk);
             },
         }),
     )

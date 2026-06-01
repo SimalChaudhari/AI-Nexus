@@ -9,7 +9,9 @@ let cachedApp: express.Express;
 async function bootstrap(): Promise<express.Express> {
   if (!cachedApp) {
     const expressApp = express();
-    const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
+    const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
+      bodyParser: false,
+    });
     
     // Set global prefix for all routes
     app.setGlobalPrefix('api');

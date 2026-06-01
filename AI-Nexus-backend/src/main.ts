@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe, type NestApplicationOptions } from '@nestjs/common';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -64,6 +64,15 @@ function isTrue(value?: string): boolean {
 
 const bootstrapLogger = new Logger('Bootstrap');
 
+/** Routes that must reach multer without express body-parser consuming the stream. */
+function shouldSkipBodyParsing(req: express.Request): boolean {
+  if (req.path === '/api/payments/webhook') return true;
+  const url = `${req.originalUrl || ''}${req.url || ''}`;
+  const contentType = String(req.headers['content-type'] || '');
+  if (contentType.includes('multipart/form-data')) return true;
+  return /\/upload-video\b|\/upload-images\b|\/upload-files\b|\/upload-learning-materials\b/i.test(url);
+}
+
 async function bootstrap() {
   try {
     const nodeEnv = process.env.NODE_ENV;
@@ -89,10 +98,13 @@ async function bootstrap() {
           }
         : undefined;
 
-    const app = await NestFactory.create(
-      AppModule,
-      httpsOptions ? { httpsOptions } : undefined,
-    );
+    // Nest's default body parser uses a ~100kb limit and runs before bootstrap middleware.
+    // Disable it; register JSON/urlencoded below with explicit limits and skip multipart/upload paths.
+    const nestCreateOptions: NestApplicationOptions = { bodyParser: false };
+    if (httpsOptions) {
+      nestCreateOptions.httpsOptions = httpsOptions;
+    }
+    const app = await NestFactory.create(AppModule, nestCreateOptions);
 
     app.useWebSocketAdapter(new IoAdapter(app));
     app.useGlobalPipes(
@@ -187,14 +199,11 @@ async function bootstrap() {
 
     const jsonBodyLimit = process.env.JSON_BODY_LIMIT?.trim() || '50mb';
 
-    const isMultipartUpload = (req: express.Request) =>
-      String(req.headers['content-type'] || '').includes('multipart/form-data');
-
     // Webhook route needs raw body for signature verification; skip json parser for it.
     // Multipart uploads (videos, images) are parsed by multer — do not run json/urlencoded parsers
     // on them or large bodies can hit the JSON limit and return 413 before multer runs.
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.path === '/api/payments/webhook' || isMultipartUpload(req)) return next();
+      if (shouldSkipBodyParsing(req)) return next();
       express.json({ limit: jsonBodyLimit })(req, res, next);
     });
     app.use(
@@ -214,7 +223,7 @@ async function bootstrap() {
     );
 
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (isMultipartUpload(req)) return next();
+      if (shouldSkipBodyParsing(req)) return next();
       express.urlencoded({ limit: jsonBodyLimit, extended: true })(req, res, next);
     });
 
