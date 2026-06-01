@@ -21,7 +21,9 @@ import {
     ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
+import { mkdirSync } from 'fs';
+import { extname, join } from 'path';
 import { Response, Request } from 'express';
 import { UserRole } from '../user/users.entity';
 import { CourseService } from './courses.service';
@@ -114,6 +116,11 @@ const IMAGE_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const SECTION_VIDEO_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 20) * 1024 * 1024 * 1024;
+const SECTION_VIDEO_TMP_DIR = join(process.cwd(), 'public', 'uploads', '.tmp-section-videos');
+
+function ensureSectionVideoTmpDir(): void {
+    mkdirSync(SECTION_VIDEO_TMP_DIR, { recursive: true });
+}
 
 const parseOptionalPositiveInteger = (value?: string): number | undefined => {
     if (value === undefined || value === null || value === '') return undefined;
@@ -1371,8 +1378,21 @@ export class CourseController {
     @ApiOperation({ summary: 'Upload single course section video' })
     @UseInterceptors(
         FileInterceptor('video', {
-            storage: memoryStorage(),
-            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES }, // 20GB
+            storage: diskStorage({
+                destination: (_req, _file, cb) => {
+                    try {
+                        ensureSectionVideoTmpDir();
+                        cb(null, SECTION_VIDEO_TMP_DIR);
+                    } catch (err) {
+                        cb(err as Error, SECTION_VIDEO_TMP_DIR);
+                    }
+                },
+                filename: (_req, file, cb) => {
+                    const ext = extname(file.originalname || '') || '.mp4';
+                    cb(null, `${randomUUID()}${ext}`);
+                },
+            }),
+            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES }, // default 20GB (UPLOAD_SECTION_VIDEO_MAX_GB)
             fileFilter: (_req, file, cb) => {
                 const allowed = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
                 cb(null, allowed);

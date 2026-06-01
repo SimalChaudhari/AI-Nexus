@@ -25,9 +25,18 @@ async function bootstrap(): Promise<express.Express> {
     const { join } = require('path');
     app.use('/assets', express.static(join(process.cwd(), 'assets')));
 
-    // Enable JSON body parser with increased limit for large payloads
-    app.use(express.json({ limit: '50mb' }));
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    const jsonBodyLimit = process.env.JSON_BODY_LIMIT?.trim() || '50mb';
+    const isMultipartUpload = (req: express.Request) =>
+      String(req.headers['content-type'] || '').includes('multipart/form-data');
+
+    app.use((req, res, next) => {
+      if (isMultipartUpload(req)) return next();
+      express.json({ limit: jsonBodyLimit })(req, res, next);
+    });
+    app.use((req, res, next) => {
+      if (isMultipartUpload(req)) return next();
+      express.urlencoded({ limit: jsonBodyLimit, extended: true })(req, res, next);
+    });
 
     // Root route handler (before app.init) - returns health check
     expressApp.get('/', (req: Request, res: Response) => {

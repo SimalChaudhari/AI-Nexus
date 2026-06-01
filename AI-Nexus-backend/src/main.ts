@@ -185,10 +185,17 @@ async function bootstrap() {
     // Serve static files from public/uploads directory
     app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
 
-    // Webhook route needs raw body for signature verification; skip json parser for it
+    const jsonBodyLimit = process.env.JSON_BODY_LIMIT?.trim() || '50mb';
+
+    const isMultipartUpload = (req: express.Request) =>
+      String(req.headers['content-type'] || '').includes('multipart/form-data');
+
+    // Webhook route needs raw body for signature verification; skip json parser for it.
+    // Multipart uploads (videos, images) are parsed by multer — do not run json/urlencoded parsers
+    // on them or large bodies can hit the JSON limit and return 413 before multer runs.
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.path === '/api/payments/webhook') return next();
-      express.json({ limit: '50mb' })(req, res, next);
+      if (req.path === '/api/payments/webhook' || isMultipartUpload(req)) return next();
+      express.json({ limit: jsonBodyLimit })(req, res, next);
     });
     app.use(
       '/api/payments/webhook',
@@ -206,7 +213,10 @@ async function bootstrap() {
       },
     );
 
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (isMultipartUpload(req)) return next();
+      express.urlencoded({ limit: jsonBodyLimit, extended: true })(req, res, next);
+    });
 
     // Root route handler (before app.listen) - returns health check
     const httpAdapter = app.getHttpAdapter();
@@ -246,6 +256,20 @@ async function bootstrap() {
     });
 
     await app.listen(port, bindHost);
+    const httpServer = app.getHttpServer();
+    // Allow long-running section video uploads (up to UPLOAD_SECTION_VIDEO_MAX_GB).
+    httpServer.setTimeout(0);
+    if (typeof httpServer.requestTimeout === 'number') {
+      httpServer.requestTimeout = 0;
+    }
+    if (typeof httpServer.headersTimeout === 'number') {
+      httpServer.headersTimeout = 0;
+    }
+    const sectionVideoMaxGb = process.env.UPLOAD_SECTION_VIDEO_MAX_GB?.trim() || '20';
+    bootstrapLogger.log(
+      `Section video upload limit: ${sectionVideoMaxGb} GB (UPLOAD_SECTION_VIDEO_MAX_GB). ` +
+        'If uploads return 413, raise reverse-proxy client_max_body_size (see deploy/nginx-upload-limits.conf).',
+    );
     const scheme = httpsEnabled ? 'https' : 'http';
     console.log('[SSL] NODE_ENV:', nodeEnv ?? '(not set)');
     console.log('[SSL] SSL_ENABLED:', sslEnabled);

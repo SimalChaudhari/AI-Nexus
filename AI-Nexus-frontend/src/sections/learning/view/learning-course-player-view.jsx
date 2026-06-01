@@ -166,6 +166,21 @@ function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration) {
   rangesRef.current = cap != null ? clipCoverageRangesPlayer(merged, cap) : merged;
 }
 
+/** Furthest timeline position the learner may seek to (watched coverage + resume point). */
+function computeMaxAllowedTimeline(coverageRangesRef, prog, sectionProgress, durRounded) {
+  const merged = mergeCoverageRangesPlayer(
+    parseCoverageRangePairs(coverageRangesRef.current)
+  );
+  let maxAllowed = maxCoverageEndPlayer(merged);
+  if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
+  maxAllowed = Math.max(
+    maxAllowed,
+    Number(prog?.maxWatchedTimeline || 0),
+    Number(sectionProgress?.lastPositionSeconds || 0)
+  );
+  return maxAllowed;
+}
+
 function buildVideoCoveragePayloadFromRef(rangesRef, lastPosition, durationSeconds) {
   const dur = Math.max(0, Math.round(Number(durationSeconds) || 0));
   const covered = dur > 0 ? coverageMeasurePlayer(rangesRef.current, dur) : 0;
@@ -1354,7 +1369,45 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     };
   }, [sectionProgressData, activeLessonId]);
 
+  // Native upload: rAF seek guard — mobile often shows a scrub jump before `seeked` fires.
+  useEffect(() => {
+    if (!activeLessonId || embedVideoId || activeLessonGateBlocked) return undefined;
+    if (sectionProgressData?.isCompleted || sectionProgressData?.isWatched) return undefined;
 
+    let rafId;
+    const guard = () => {
+      const el = videoRef.current;
+      const prog = nativeVideoProgressRef.current;
+      if (el && !prog.markedComplete && sectionProgressData?.isCompleted !== true) {
+        const current = Number(el.currentTime || 0);
+        const durRounded = Math.round(Number(el.duration) || 0);
+        const maxAllowed = computeMaxAllowedTimeline(
+          videoCoverageRangesRef,
+          prog,
+          sectionProgressData,
+          durRounded
+        );
+        if (current > maxAllowed + 0.2) {
+          try {
+            el.currentTime = Math.max(0, maxAllowed);
+          } catch {
+            // ignore seek reset errors
+          }
+          prog.lastTime = Math.max(0, maxAllowed);
+        }
+      }
+      rafId = requestAnimationFrame(guard);
+    };
+    rafId = requestAnimationFrame(guard);
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    activeLessonId,
+    embedVideoId,
+    activeLessonGateBlocked,
+    sectionProgressCoverageSig,
+    sectionProgressData?.isCompleted,
+    sectionProgressData?.isWatched,
+  ]);
 
   // If section progress arrives after player mounted, seek immediately.
   useEffect(() => {
@@ -1488,8 +1541,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       watchedSeconds: 0,
       pendingDeltaSeconds: 0,
       lastTime: 0,
+      maxWatchedTimeline: nativeVideoProgressRef.current.maxWatchedTimeline || 0,
       isPlaying: false,
-      markedComplete: false,
+      markedComplete: nativeVideoProgressRef.current.markedComplete || false,
     };
     let player = null;
     let intervalId = null;
@@ -1507,6 +1561,41 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       container.style.minHeight = '320px';
       wrapper.appendChild(container);
 
+      const isCoarsePointer =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      const youtubePollMs = isCoarsePointer ? 100 : 300;
+
+      const rollbackYoutubeIfSeekPastAllowed = () => {
+        if (!player || !player.getCurrentTime) return false;
+        const t = player.getCurrentTime();
+        const d = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+        const prog = youtubeProgressRef.current;
+        if (prog.markedComplete || sectionProgressData?.isCompleted) return false;
+        const previousTime = Math.max(0, Number(prog.lastTime || 0));
+        const durRounded = Math.round(Number(d) || 0);
+        const maxAllowed = computeMaxAllowedTimeline(
+          videoCoverageRangesRef,
+          prog,
+          sectionProgressData,
+          durRounded
+        );
+        const jumpDelta = Math.abs(Number(t || 0) - previousTime);
+        const isLikelySeekJump = jumpDelta > 2.5;
+        const pastAllowed = Number(t || 0) > maxAllowed + (isCoarsePointer ? 0.2 : 0.35);
+        if (!pastAllowed) return false;
+        if (!isLikelySeekJump && !isCoarsePointer) return false;
+        if (typeof player.seekTo === 'function') {
+          try {
+            player.seekTo(Math.max(0, maxAllowed), true);
+          } catch {
+            // ignore seek rollback errors
+          }
+        }
+        prog.lastTime = Math.max(0, maxAllowed);
+        return true;
+      };
+
       if (window.YT && window.YT.Player) {
         player = new window.YT.Player(container, {
           videoId: embedVideoId,
@@ -1515,6 +1604,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             fs: 1,
             rel: 0,
             playsinline: 1,
+            disablekb: 1,
           },
           events: {
             onReady: () => {
@@ -1552,31 +1642,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   const requiredSec = effectiveRequiredSeconds(watchtimeSeconds, d);
                   const prog = youtubeProgressRef.current;
                   if (prog.markedComplete) return;
-                  const previousTime = Math.max(0, Number(prog.lastTime || 0));
+                  if (rollbackYoutubeIfSeekPastAllowed()) return;
                   const durRounded = Math.round(Number(d) || 0);
-                  const merged = mergeCoverageRangesPlayer(parseCoverageRangePairs(videoCoverageRangesRef.current));
-                  let maxAllowed = maxCoverageEndPlayer(merged);
-                  if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
-                  maxAllowed = Math.max(
-                    maxAllowed,
-                    Number(prog.maxWatchedTimeline || 0),
-                    Number(sectionProgressData?.lastPositionSeconds || 0)
-                  );
-                  const jumpDelta = Math.abs(Number(t || 0) - previousTime);
-                  const isLikelySeekJump = jumpDelta > 2.5;
-                  // YouTube lock: rollback only true seek jumps beyond watched timeline.
-                  if (isLikelySeekJump && t > maxAllowed + 0.35) {
-                    if (typeof player.seekTo === 'function') {
-                      try {
-                        player.seekTo(Math.max(0, maxAllowed), true);
-                      } catch {
-                        // ignore seek rollback errors
-                      }
-                    }
-                    prog.lastTime = Math.max(0, maxAllowed);
-                    return;
-                  }
                   if (prog.isPlaying) {
+                    const previousTime = Math.max(0, Number(prog.lastTime || 0));
+                    if (Math.abs(t - previousTime) <= 2.5) {
+                      prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
+                    }
                     appendCoverageSlicePlayer(videoCoverageRangesRef, prog.lastTime, t, durRounded);
                     const cov =
                       durRounded > 0
@@ -1605,11 +1677,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 } catch (e) {
                   // ignore
                 }
-              }, 300);
+              }, youtubePollMs);
             },
             onStateChange: (e) => {
               const prog = youtubeProgressRef.current;
-              if (e.data === 1) {
+              if (e.data === 3) {
+                rollbackYoutubeIfSeekPastAllowed();
+              } else if (e.data === 1) {
                 prog.isPlaying = true;
                 try {
                   const current = player ? player.getCurrentTime() : 0;
@@ -2050,6 +2124,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     embedUrl = match ? `https://www.youtube-nocookie.com/embed/${match[1]}` : null;
   }
   const hasVideo = !!(embedUrl || (videoSrc && !isYouTube));
+  const videoSeekLocked =
+    hasVideo &&
+    !activeLessonGateBlocked &&
+    sectionProgressData?.isCompleted !== true &&
+    sectionProgressData?.isWatched !== true;
   const hasTextContent = !!(
     activeLesson?.content &&
     activeLesson.content.trim() &&
@@ -3358,6 +3437,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 ) : null
               }
               frameHeight={LESSON_FRAME_HEIGHT}
+              blockMobileSeekControls={videoSeekLocked}
               onLoadedMetadata={() => {
                 const v = videoRef.current;
                 if (!v) return;
@@ -3476,6 +3556,27 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   prog.pendingDeltaSeconds = 0;
                 }
               }}
+              onSeeking={(e) => {
+                const v = e.target;
+                if (!v || embedUrl) return;
+                if (sectionProgressData?.isCompleted || nativeVideoProgressRef.current.markedComplete) return;
+                const prog = nativeVideoProgressRef.current;
+                const current = Math.max(0, Number(v.currentTime || 0));
+                const durRounded = Math.round(Number(v.duration) || 0);
+                const maxAllowed = computeMaxAllowedTimeline(
+                  videoCoverageRangesRef,
+                  prog,
+                  sectionProgressData,
+                  durRounded
+                );
+                if (current <= maxAllowed + 0.35) return;
+                try {
+                  v.currentTime = Math.max(0, maxAllowed);
+                } catch {
+                  // ignore seek errors
+                }
+                prog.lastTime = Math.max(0, maxAllowed);
+              }}
               onSeeked={(e) => {
                 const v = e.target;
                 if (!v || embedUrl) return;
@@ -3483,13 +3584,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 const prog = nativeVideoProgressRef.current;
                 const current = Math.max(0, Number(v.currentTime || 0));
                 const durRounded = Math.round(Number(v.duration) || 0);
-                const merged = mergeCoverageRangesPlayer(parseCoverageRangePairs(videoCoverageRangesRef.current));
-                let maxAllowed = maxCoverageEndPlayer(merged);
-                if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
-                maxAllowed = Math.max(
-                  maxAllowed,
-                  Number(prog.maxWatchedTimeline || 0),
-                  Number(sectionProgressData?.lastPositionSeconds || 0)
+                const maxAllowed = computeMaxAllowedTimeline(
+                  videoCoverageRangesRef,
+                  prog,
+                  sectionProgressData,
+                  durRounded
                 );
                 // Allow seeking only inside already watched timeline.
                 if (current <= maxAllowed + 0.35) {
@@ -3510,13 +3609,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 if (prog.markedComplete) return;
                 const currentTime = Number(v.currentTime || 0);
                 const durRounded = Math.round(Number(v.duration) || 0);
-                const merged = mergeCoverageRangesPlayer(parseCoverageRangePairs(videoCoverageRangesRef.current));
-                let maxAllowed = maxCoverageEndPlayer(merged);
-                if (durRounded > 0) maxAllowed = Math.min(maxAllowed, durRounded);
-                maxAllowed = Math.max(
-                  maxAllowed,
-                  Number(prog.maxWatchedTimeline || 0),
-                  Number(sectionProgressData?.lastPositionSeconds || 0)
+                const maxAllowed = computeMaxAllowedTimeline(
+                  videoCoverageRangesRef,
+                  prog,
+                  sectionProgressData,
+                  durRounded
                 );
                 const allowedForwardDrift = 0.35;
                 const previousTime = Math.max(0, Number(prog.lastTime || 0));
