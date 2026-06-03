@@ -2,30 +2,36 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import Divider from '@mui/material/Divider';
 import CircularProgress from 'src/components/loading/circular-progress';
-import { alpha, useTheme } from '@mui/material/styles';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Iconify } from 'src/components/iconify';
-import { QuickLinksCommentList } from 'src/components/comment-section';
+import {
+  QuickLinksCommentList,
+  DetailCommentForm,
+  DetailCommentSignInPrompt,
+  DetailPostCard,
+  DetailCommentsSection,
+  DetailCommentsSectionDivider,
+} from 'src/components/comment-section';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { RouterLink } from 'src/routes/components';
 import { paths } from 'src/routes/paths';
 import { aiForumService, buildAiForumCommentTree } from 'src/services/ai-forum.service';
 import { toast } from 'src/components/snackbar';
 import { RichTextContent } from 'src/components/html-content';
-import { Editor } from 'src/components/editor';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { useAuthContext } from 'src/auth/hooks';
 import { formatViewCount } from 'src/utils/format-view-count';
 import { fDateTimePersonal } from 'src/utils/format-time';
 import { useAiForumCommentsSocket } from '../../../hooks/use-ai-forum-comments-socket';
+import {
+  DETAIL_PAGE_CONTENT_SX,
+  DETAIL_PAGE_WRAPPER_SX,
+} from 'src/components/page-section-header/detail-page-styles';
 
 // ----------------------------------------------------------------------
 
@@ -39,7 +45,6 @@ function getCommentAuthorName(comment) {
 // ----------------------------------------------------------------------
 
 export function AiForumDetailView() {
-  const theme = useTheme();
   const { id } = useParams();
   const { user } = useAuthContext();
   const [post, setAiForumPost] = useState(null);
@@ -371,148 +376,83 @@ export function AiForumDetailView() {
 
   return (
     <DashboardContent>
-      <Box
-        sx={{
-          width: 1,
-          maxWidth: { xs: '100%', lg: 1040 },
-          mx: 'auto',
-        }}
-      >
+      <Box sx={DETAIL_PAGE_WRAPPER_SX}>
         <Button
           component={RouterLink}
           href={paths.aiForum.root}
-          startIcon={<Iconify icon="solar:arrow-left-bold" />}
-          sx={{ mb: 3 }}
+          size="small"
+          startIcon={<Iconify icon="solar:arrow-left-bold" width={18} />}
+          sx={{ mb: 2 }}
         >
           Back to AI Forum
         </Button>
 
-        <Card sx={{ overflow: 'visible' }}>
-          <Box sx={{ p: { xs: 3, md: 4 } }}>
-            <Typography
-              variant="h3"
+        <DetailPostCard
+          title={post.title}
+          headerIcon="solar:chat-round-bold-duotone"
+          headerGradient="linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
+          metaItems={[
+            {
+              key: 'comments',
+              icon: 'solar:chat-round-dots-bold',
+              value: comments.length,
+              label: 'comments',
+            },
+            {
+              key: 'views',
+              icon: 'solar:eye-bold',
+              value: formatViewCount(post.viewCount || 0),
+              label: 'views',
+            },
+            {
+              key: 'date',
+              icon: 'solar:clock-circle-bold',
+              value: formatRelativeTime(post.createdAt),
+              label: null,
+            },
+          ]}
+        >
+          {linkedWorkflowId ? (
+            <Button
+              component={RouterLink}
+              href={paths.workflowsDetails(linkedWorkflowId)}
+              variant="soft"
+              color="primary"
+              size="small"
+              startIcon={<Iconify icon="solar:widget-5-bold-duotone" width={18} />}
+              sx={{ mb: 2 }}
+            >
+              Open linked workflow template
+            </Button>
+          ) : null}
+          {post.description || post.content ? (
+            <RichTextContent
+              html={post.description || post.content}
               sx={{
-                fontSize: { xs: '1.5rem', md: '2rem' },
-                fontWeight: 700,
-                mb: 3,
+                ...DETAIL_PAGE_CONTENT_SX,
+                color: 'text.primary',
+                overflow: 'visible',
+                '& img': {
+                  maxWidth: '100%',
+                  height: 'auto',
+                  maxHeight: 'min(560px, 78vh)',
+                  objectFit: 'contain',
+                  verticalAlign: 'middle',
+                  borderRadius: 1.5,
+                },
+                '& figure': {
+                  maxWidth: '100%',
+                },
               }}
-            >
-              {post.title}
+            />
+          ) : (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              No content available
             </Typography>
+          )}
+        </DetailPostCard>
 
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
-              alignItems={{ xs: 'flex-start', sm: 'center' }}
-              sx={{ mb: 3 }}
-            >
-              <Box sx={{ flex: 1 }} />
-
-              <Stack
-                direction="row"
-                spacing={{ xs: 1.25, sm: 2.5 }}
-                useFlexGap
-                flexWrap="wrap"
-                justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}
-                sx={{ width: { xs: '100%', sm: 'auto' } }}
-              >
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  alignItems="center"
-                  sx={{ minWidth: 0, flexShrink: 0 }}
-                >
-                  <Iconify icon="solar:chat-round-dots-bold" width={18} color="text.secondary" />
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {comments.length}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    comments
-                  </Typography>
-                </Stack>
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  alignItems="center"
-                  sx={{ minWidth: 0, flexShrink: 0 }}
-                >
-                  <Iconify icon="solar:eye-bold" width={18} color="text.secondary" />
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {formatViewCount(post.viewCount || 0)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    views
-                  </Typography>
-                </Stack>
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  alignItems="center"
-                  sx={{ minWidth: 0, flex: { xs: '1 1 100%', sm: '0 1 auto' } }}
-                >
-                  <Iconify icon="solar:clock-circle-bold" width={18} color="text.secondary" />
-                  <Typography
-                    variant="body2"
-                    sx={{ color: 'text.secondary', wordBreak: 'break-word' }}
-                  >
-                    {formatRelativeTime(post.createdAt)}
-                  </Typography>
-                </Stack>
-              </Stack>
-            </Stack>
-
-            <Divider />
-          </Box>
-
-          <Box sx={{ p: { xs: 3, md: 4 }, overflow: 'visible', minWidth: 0 }}>
-            {linkedWorkflowId ? (
-              <Button
-                component={RouterLink}
-                href={paths.workflowsDetails(linkedWorkflowId)}
-                variant="outlined"
-                startIcon={<Iconify icon="solar:workflow-bold-duotone" />}
-                sx={{ mb: 2 }}
-              >
-                Open Linked Workflow Template
-              </Button>
-            ) : null}
-            {post.description || post.content ? (
-              <RichTextContent
-                html={post.description || post.content}
-                sx={{
-                  typography: 'body1',
-                  fontSize: '1rem',
-                  lineHeight: 1.8,
-                  color: 'text.primary',
-                  overflow: 'visible',
-                  '& img': {
-                    maxWidth: '100%',
-                    height: 'auto',
-                    maxHeight: 'min(560px, 78vh)',
-                    objectFit: 'contain',
-                    verticalAlign: 'middle',
-                    borderRadius: 1.5,
-                  },
-                  '& figure': {
-                    maxWidth: '100%',
-                  },
-                }}
-              />
-            ) : (
-              <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                No content available
-              </Typography>
-            )}
-          </Box>
-        </Card>
-
-        {/* Comments Section */}
-        <Card sx={{ mt: 3 }}>
-          <Box sx={{ p: { xs: 3, md: 4 } }}>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 700 }}>
-              Comments ({comments.length})
-            </Typography>
-
+        <DetailCommentsSection count={comments.length}>
             {loadingComments ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress size={40} />
@@ -561,70 +501,23 @@ export function AiForumDetailView() {
               />
             )}
 
-            <Divider sx={{ my: 3 }} />
+          <DetailCommentsSectionDivider />
 
             {user ? (
-              <Box>
-                <Stack spacing={2}>
-                  <Editor
-                    key={commentEditorKey}
-                    value={commentText}
-                    onChange={setCommentText}
-                    onUploadImage={handleCommentMediaUpload}
-                    fullItem={false}
-                    placeholder="Write a comment…"
-                    sx={{ maxHeight: 320 }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {commentText.length}/50000 characters (HTML)
-                  </Typography>
-                  <Stack direction="row" spacing={2} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      onClick={() => {
-                        setCommentText('');
-                        setCommentEditorKey((k) => k + 1);
-                      }}
-                      disabled={submittingComment}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="contained"
-                      onClick={handleSubmitComment}
-                      disabled={
-                        submittingComment ||
-                        isEffectivelyEmptyHtml(commentText) ||
-                        commentText.length > 50000
-                      }
-                      startIcon={submittingComment ? <CircularProgress size={16} /> : null}
-                    >
-                      {submittingComment ? 'Posting...' : 'Post Comment'}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  p: 3,
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.primary.main, 0.08),
-                  textAlign: 'center',
+              <DetailCommentForm
+                commentText={commentText}
+                commentEditorKey={commentEditorKey}
+                onChange={setCommentText}
+                onUploadImage={handleCommentMediaUpload}
+                onClear={() => {
+                  setCommentText('');
+                  setCommentEditorKey((k) => k + 1);
                 }}
-              >
-                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
-                  Please sign in to comment
-                </Typography>
-                <Button
-                  component={RouterLink}
-                  href={paths.auth.simple.signIn}
-                  variant="contained"
-                  startIcon={<Iconify icon="solar:login-2-bold" />}
-                >
-                  Sign In
-                </Button>
-              </Box>
+                onSubmit={handleSubmitComment}
+                submitting={submittingComment}
+              />
+            ) : (
+              <DetailCommentSignInPrompt />
             )}
 
             <ConfirmDialog
@@ -643,8 +536,7 @@ export function AiForumDetailView() {
                 </Button>
               }
             />
-          </Box>
-        </Card>
+        </DetailCommentsSection>
       </Box>
     </DashboardContent>
   );

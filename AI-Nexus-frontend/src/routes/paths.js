@@ -25,7 +25,6 @@ export const paths = {
   payment: '/payment',
   about: '/about-us',
   contact: '/contact-us',
-  faqs: '/faqs',
   categories: '/categories',
   announcements: '/announcements',
   announcement: {

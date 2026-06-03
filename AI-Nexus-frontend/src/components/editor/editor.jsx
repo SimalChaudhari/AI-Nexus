@@ -64,6 +64,7 @@ export const Editor = forwardRef(
       slotProps,
       helperText,
       onUploadImage,
+      hideImage = false,
       resetValue,
       editable = true,
       fullItem = false,
@@ -159,6 +160,7 @@ export const Editor = forwardRef(
               editor={editor}
               fullItem={fullItem}
               fullScreen={fullScreen}
+              hideImage={hideImage}
               onUploadImage={onUploadImage}
               onToggleFullScreen={handleToggleFullScreen}
             />

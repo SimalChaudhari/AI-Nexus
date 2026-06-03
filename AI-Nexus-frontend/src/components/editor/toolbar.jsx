@@ -17,7 +17,7 @@ import { HeadingBlock } from './components/heading-block';
 
 // ----------------------------------------------------------------------
 
-export function Toolbar({ editor, fullItem, fullScreen, onToggleFullScreen, onUploadImage }) {
+export function Toolbar({ editor, fullItem, fullScreen, hideImage = false, onToggleFullScreen, onUploadImage }) {
   if (!editor) {
     return null;
   }
@@ -172,7 +172,7 @@ export function Toolbar({ editor, fullItem, fullScreen, onToggleFullScreen, onUp
       {/* Link - Image */}
       <Stack direction="row" spacing={0.5}>
         <LinkBlock editor={editor} />
-        <ImageBlock editor={editor} onUploadImage={onUploadImage} />
+        {!hideImage ? <ImageBlock editor={editor} onUploadImage={onUploadImage} /> : null}
       </Stack>
 
       {/* HardBreak - Clear */}

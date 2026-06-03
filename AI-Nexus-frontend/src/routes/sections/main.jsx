@@ -16,7 +16,6 @@ const AnnouncementsPage = lazy(() => import('src/pages/announcements'));
 const AnnouncementDetailPage = lazy(() => import('src/pages/announcements/detail'));
 const AiForumPage = lazy(() => import('src/pages/ai-forum'));
 const AiForumDetailPage = lazy(() => import('src/pages/ai-forum/detail'));
-const FaqsPage = lazy(() => import('src/pages/faqs'));
 const AboutPage = lazy(() => import('src/pages/about-us'));
 const ContactPage = lazy(() => import('src/pages/contact-us'));
 const PricingPage = lazy(() => import('src/pages/pricing'));
@@ -96,10 +95,6 @@ export const mainRoutes = [
           {
             path: 'contact-us',
             element: <ContactPage />,
-          },
-          {
-            path: 'faqs',
-            element: <FaqsPage />,
           },
           {
             path: 'blank',

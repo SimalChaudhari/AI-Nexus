@@ -143,7 +143,7 @@ export function FaqSettingsCard({
               FAQs Page
             </Typography>
             <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
-              Configure FAQs on the home page and the public /faqs page.
+              Configure FAQs on the home page.
             </Typography>
           </Box>
 

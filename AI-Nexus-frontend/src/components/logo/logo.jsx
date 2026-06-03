@@ -4,6 +4,7 @@ import Box from '@mui/material/Box';
 import NoSsr from '@mui/material/NoSsr';
 import { useTheme } from '@mui/material/styles';
 
+import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { usePathname } from 'src/routes/hooks';
 import { appSettingsService } from 'src/services/app-settings.service';
@@ -12,8 +13,13 @@ import { logoClasses } from './classes';
 
 // ----------------------------------------------------------------------
 
+const HOME_PATHS = [paths.home, '/'];
+
 export const Logo = forwardRef(
-  ({ width = 40, height = 40, disableLink = false, className, href = '/', sx, ...other }, ref) => {
+  (
+    { width = 40, height = 40, disableLink = false, className, href = paths.home, sx, onClick, ...other },
+    ref
+  ) => {
     const theme = useTheme();
     const pathname = usePathname();
 
@@ -21,6 +27,18 @@ export const Logo = forwardRef(
 
     // Check if we're on a public route (not admin/dashboard)
     const isPublicRoute = !pathname?.startsWith('/admin') && !pathname?.startsWith('/dashboard');
+
+    const isHomeLink = HOME_PATHS.includes(href);
+    const isOnHome = HOME_PATHS.includes(pathname);
+
+    const handleLogoClick = (event) => {
+      onClick?.(event);
+      if (event.defaultPrevented || disableLink || !isHomeLink || !isOnHome) {
+        return;
+      }
+      event.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
     const [siteLogoUrl, setSiteLogoUrl] = useState(() => {
       if (typeof window === 'undefined') {
         return '';
@@ -89,17 +107,27 @@ export const Logo = forwardRef(
       />
     );
 
+    const publicLogoSx = isPublicRoute
+      ? {
+          width: 'auto',
+          height: 'auto',
+          minHeight: 'unset',
+        }
+      : undefined;
+
     return (
       <NoSsr
         fallback={
           <Box
-            width={width}
-            height={height}
+            width={isPublicRoute ? 'auto' : width}
+            height={isPublicRoute ? 'auto' : height}
             className={logoClasses.root.concat(className ? ` ${className}` : '')}
             sx={{
               flexShrink: 0,
               display: 'inline-flex',
+              alignItems: 'center',
               verticalAlign: 'middle',
+              ...publicLogoSx,
               ...sx,
             }}
           />
@@ -113,15 +141,13 @@ export const Logo = forwardRef(
           height={isPublicRoute ? 'auto' : 72}
           className={logoClasses.root.concat(className ? ` ${className}` : '')}
           aria-label="logo"
+          onClick={handleLogoClick}
           sx={{
             flexShrink: 0,
             display: 'inline-flex',
+            alignItems: 'center',
             verticalAlign: 'middle',
-            ...(isPublicRoute && {
-              width: 'auto',
-              height: '10px',
-              minHeight: 40,
-            }),
+            ...publicLogoSx,
             ...(disableLink && { pointerEvents: 'none' }),
             ...sx,
           }}

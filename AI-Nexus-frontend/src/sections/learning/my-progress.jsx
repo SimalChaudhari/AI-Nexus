@@ -11,7 +11,6 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { GradientButton } from 'src/components/custom-button';
-import { DashboardContent } from 'src/layouts/dashboard';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
@@ -24,8 +23,16 @@ import {
 } from 'src/utils/linkedin-share';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
+import { LearningSectionHeader } from './components/learning-section-header';
+import { HOME_SECTION_CARD_SX } from 'src/sections/home/home-section-styles';
 
 // ----------------------------------------------------------------------
+
+const STAT_VALUE_SX = {
+  fontWeight: 700,
+  fontSize: { xs: '1rem', md: '1.125rem' },
+  lineHeight: 1.2,
+};
 
 const COURSES_PER_PAGE = 8;
 
@@ -193,7 +200,13 @@ export function MyProgress({ onNavigateToCertificates }) {
 
   if (authenticated && !progressRows?.length) {
     return (
-      <DashboardContent>
+      <>
+        <LearningSectionHeader
+          icon="solar:graph-up-bold"
+          iconGradient="linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)"
+          title="Your Learning Journey"
+          subtitle="Track your courses and learning stats"
+        />
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <Iconify icon="solar:graph-up-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
           <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
@@ -203,21 +216,23 @@ export function MyProgress({ onNavigateToCertificates }) {
             Open a course once and your progress will appear here.
           </Typography>
         </Box>
-      </DashboardContent>
+      </>
     );
   }
 
   // Empty progress list: guest uses shared sign-in component; signed-in user sees simple empty state.
   if (!myCourses?.length && !progressLoading) {
     if (!authenticated) {
-      return (
-        <DashboardContent>
-          <LearningGuestSignInPrompt variant="progress" />
-        </DashboardContent>
-      );
+      return <LearningGuestSignInPrompt variant="progress" />;
     }
     return (
-      <DashboardContent>
+      <>
+        <LearningSectionHeader
+          icon="solar:graph-up-bold"
+          iconGradient="linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)"
+          title="Your Learning Journey"
+          subtitle="Track your courses and learning stats"
+        />
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <Iconify icon="solar:graph-up-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
           <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
@@ -227,36 +242,89 @@ export function MyProgress({ onNavigateToCertificates }) {
             Free courses and purchased courses appear here after you open them once. Use All Courses to browse, then return to My Progress.
           </Typography>
         </Box>
-      </DashboardContent>
+      </>
     );
   }
 
   return (
-    <DashboardContent>
-      <Grid container spacing={{ xs: 2, md: 4 }}>
-        {/* LEFT SIDE – 8 columns on md+ */}
-        <Grid xs={12} md={8}>
-          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: { xs: 2, md: 3 } }}>
-            <Box
-              sx={{
-                width: { xs: 32, md: 40 },
-                height: { xs: 32, md: 40 },
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 1,
-                background: 'linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              }}
-            >
-              <Iconify icon="solar:graph-up-bold" width={20} sx={{ color: 'common.white' }} />
-            </Box>
-            <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-              Your Learning Journey
-            </Typography>
-          </Stack>
+    <>
+      <LearningSectionHeader
+        icon="solar:graph-up-bold"
+        iconGradient="linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)"
+        title="Your Learning Journey"
+        subtitle={[
+          `${myCourses.length} course${myCourses.length === 1 ? '' : 's'} in progress`,
+          completedCount > 0 ? `${completedCount} completed` : null,
+        ]
+          .filter(Boolean)
+          .join(' • ')}
+      />
 
-          <Stack spacing={{ xs: 2, md: 3 }}>
+      <Grid container spacing={2} sx={{ mb: { xs: 2, md: 3 } }}>
+        <Grid xs={12} sm={4}>
+          <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Iconify icon="solar:clock-circle-bold" width={18} sx={{ color: 'info.main' }} />
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Total watch time
+                </Typography>
+              </Stack>
+              <Typography sx={STAT_VALUE_SX}>{formatWatchTime(totalWatchSeconds)}</Typography>
+            </Stack>
+          </Card>
+        </Grid>
+        <Grid xs={12} sm={4}>
+          <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Iconify icon="solar:book-bold" width={18} sx={{ color: 'success.main' }} />
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Courses completed
+                </Typography>
+              </Stack>
+              <Typography sx={STAT_VALUE_SX}>{completedCount}</Typography>
+            </Stack>
+          </Card>
+        </Grid>
+        <Grid xs={12} sm={4}>
+          <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Iconify icon="solar:medal-ribbons-star-bold" width={18} sx={{ color: 'warning.main' }} />
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Certificates earned
+                </Typography>
+              </Stack>
+              <Typography sx={STAT_VALUE_SX}>{certificatesCount}</Typography>
+            </Stack>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+            letterSpacing: 0.2,
+            fontSize: { xs: '1.08rem', md: '1.2rem' },
+          }}
+        >
+          In progress ({myCourses.length})
+        </Typography>
+        <Box
+          sx={{
+            flexGrow: 1,
+            height: 2,
+            borderRadius: 999,
+            background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
+          }}
+        />
+      </Stack>
+
+      <Stack spacing={2}>
             {(() => {
               const pageCount = Math.max(1, Math.ceil(myCourses.length / COURSES_PER_PAGE));
               const displayedCourses = myCourses.slice(
@@ -266,10 +334,10 @@ export function MyProgress({ onNavigateToCertificates }) {
               return (
                 <>
                   {displayedCourses.map((course) => (
-              <Card key={course.id} sx={{ p: { xs: 2, md: 3 } }}>
+              <Card key={course.id} sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
-                  spacing={{ xs: 2, sm: 2 }}
+                  spacing={{ xs: 1.5, sm: 2 }}
                   alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
                 >
                   <Image
@@ -277,17 +345,17 @@ export function MyProgress({ onNavigateToCertificates }) {
                     src={course.image || DEFAULT_COURSE_IMAGE}
                     ratio="1/1"
                     sx={{
-                      width: { xs: '100%', sm: 80 },
-                      height: { xs: 160, sm: 80 },
-                      borderRadius: 1,
+                      width: { xs: '100%', sm: 72 },
+                      height: { xs: 140, sm: 72 },
+                      borderRadius: 1.5,
                       flexShrink: 0,
                     }}
                   />
                   <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
-                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '0.95rem', md: '1rem' } }}>
                       {course.title}
                     </Typography>
-                    <Box sx={{ mb: 1.5 }}>
+                    <Box sx={{ mb: 1.25 }}>
                       <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                           Progress
@@ -300,7 +368,7 @@ export function MyProgress({ onNavigateToCertificates }) {
                         variant="determinate"
                         value={Math.min(100, course.progress)}
                         sx={{
-                          height: 8,
+                          height: 6,
                           borderRadius: 1,
                           bgcolor: alpha(theme.palette.grey[500], 0.16),
                           '& .MuiLinearProgress-bar': {
@@ -311,7 +379,7 @@ export function MyProgress({ onNavigateToCertificates }) {
                       />
                     </Box>
 
-                    <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: 2 }}>
+                    <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: 1.5 }}>
                       <Grid xs={12} sm={6}>
                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
                           Lessons: {course.lessons}
@@ -377,169 +445,74 @@ export function MyProgress({ onNavigateToCertificates }) {
                 </>
               );
             })()}
-          </Stack>
+      </Stack>
 
-          {/* Earned certificates – completed courses */}
-          {completedCourses.length > 0 && (
-            <Box sx={{ mt: { xs: 3, md: 4 } }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  Earned certificates
-                </Typography>
-                {typeof onNavigateToCertificates === 'function' && (
-                  <Button
-                    size="small"
-                    variant="soft"
-                    color="warning"
-                    endIcon={<Iconify icon="solar:arrow-right-bold" width={18} />}
-                    onClick={onNavigateToCertificates}
-                  >
-                    View all certificates
-                  </Button>
-                )}
-              </Stack>
-              <Stack direction="row" flexWrap="wrap" gap={1.5}>
-                {completedCourses.map((course) => (
-                  <Stack key={course.id} direction="row" spacing={0.75} alignItems="center">
-                    <Button
-                      component={RouterLink}
-                      to={paths.learningCourse.details(course.id)}
-                      variant="outlined"
-                      size="small"
-                      startIcon={<Iconify icon="solar:medal-ribbons-star-bold" width={18} sx={{ color: 'warning.main' }} />}
-                      sx={{
-                        borderRadius: 2,
-                        borderColor: alpha(theme.palette.warning.main, 0.4),
-                        color: 'warning.darker',
-                        '&:hover': { borderColor: 'warning.main', bgcolor: alpha(theme.palette.warning.main, 0.08) },
-                      }}
-                    >
-                      {course.title}
-                    </Button>
-                    <Button
-                      size="small"
-                      color="info"
-                      variant="soft"
-                      startIcon={<Iconify icon="mdi:linkedin" width={16} />}
-                      onClick={() =>
-                        window.open(
-                          buildLinkedInFeedShareUrl(
-                            buildCourseCompletionLinkedInShareText({ courseTitle: course.title })
-                          ),
-                          '_blank',
-                          'noopener,noreferrer'
-                        )
-                      }
-                      sx={{ borderRadius: 2 }}
-                    >
-                      Share
-                    </Button>
-                  </Stack>
-                ))}
-              </Stack>
-            </Box>
-          )}
-
-        </Grid>
-
-        {/* RIGHT SIDE – 4 columns on md+ */}
-        <Grid xs={12} md={4}>
-        <Stack spacing={{ xs: 2, md: 3 }}>
-            <Card
+      {/* Earned certificates – completed courses */}
+      {completedCourses.length > 0 && (
+        <Box sx={{ mt: { xs: 3, md: 4 } }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+            <Typography
+              variant="h6"
               sx={{
-                p: { xs: 2, md: 3 },
-                bgcolor: alpha(theme.palette.background.paper, 0.9),
-                backdropFilter: 'blur(8px)',
-                boxShadow: theme.customShadows.z16,
-                border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-                transition: 'transform 0.3s',
-                '&:hover': { transform: 'scale(1.05)' },
+                fontWeight: 800,
+                fontSize: { xs: '1.08rem', md: '1.2rem' },
               }}
             >
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: { xs: 1.5, md: 2 } }}>
-                <Box
-                  sx={{
-                    width: { xs: 28, md: 32 },
-                    height: { xs: 28, md: 32 },
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 1,
-                    bgcolor: alpha(theme.palette.info.main, 0.12),
-                  }}
-                >
-                  <Iconify icon="solar:chart-2-bold" width={16} sx={{ color: 'info.main' }} />
-                </Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  Learning Stats
-                </Typography>
-              </Stack>
-              <Stack spacing={{ xs: 1.5, md: 2 }}>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{
-                    p: { xs: 1.25, md: 1.5 },
-                    borderRadius: 1,
-                    background: `linear-gradient(90deg, ${alpha(theme.palette.info.main, 0.08)} 0%, ${alpha(theme.palette.secondary.main, 0.08)} 100%)`,
-                  }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Iconify icon="solar:clock-circle-bold" width={16} sx={{ color: 'info.main' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Total watch time
-                    </Typography>
-                  </Stack>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                    {formatWatchTime(totalWatchSeconds)}
-                  </Typography>
-                </Stack>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{
-                    p: { xs: 1.25, md: 1.5 },
-                    borderRadius: 1,
-                    background: `linear-gradient(90deg, ${alpha(theme.palette.success.main, 0.08)} 0%, ${alpha(theme.palette.info.main, 0.08)} 100%)`,
-                  }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Iconify icon="solar:book-bold" width={16} sx={{ color: 'success.main' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Courses Completed
-                    </Typography>
-                  </Stack>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                    {completedCount}
-                  </Typography>
-                </Stack>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{
-                    p: { xs: 1.25, md: 1.5 },
-                    borderRadius: 1,
-                    background: `linear-gradient(90deg, ${alpha(theme.palette.warning.main, 0.08)} 0%, ${alpha(theme.palette.error.main, 0.08)} 100%)`,
-                  }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Iconify icon="solar:medal-ribbons-star-bold" width={16} sx={{ color: 'warning.main' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Certificates Earned
-                    </Typography>
-                  </Stack>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                    {certificatesCount}
-                  </Typography>
-                </Stack>
-              </Stack>
-            </Card>
+              Earned certificates
+            </Typography>
+            {typeof onNavigateToCertificates === 'function' && (
+              <Button
+                size="small"
+                variant="soft"
+                color="warning"
+                endIcon={<Iconify icon="solar:arrow-right-bold" width={16} />}
+                onClick={onNavigateToCertificates}
+              >
+                View all certificates
+              </Button>
+            )}
           </Stack>
-        </Grid>
-      </Grid>
-    </DashboardContent>
+          <Stack direction="row" flexWrap="wrap" gap={1.5}>
+            {completedCourses.map((course) => (
+              <Stack key={course.id} direction="row" spacing={0.75} alignItems="center">
+                <Button
+                  component={RouterLink}
+                  to={paths.learningCourse.details(course.id)}
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Iconify icon="solar:medal-ribbons-star-bold" width={16} sx={{ color: 'warning.main' }} />}
+                  sx={{
+                    borderRadius: 2,
+                    borderColor: alpha(theme.palette.warning.main, 0.4),
+                    color: 'warning.darker',
+                    '&:hover': { borderColor: 'warning.main', bgcolor: alpha(theme.palette.warning.main, 0.08) },
+                  }}
+                >
+                  {course.title}
+                </Button>
+                <Button
+                  size="small"
+                  color="info"
+                  variant="soft"
+                  startIcon={<Iconify icon="mdi:linkedin" width={16} />}
+                  onClick={() =>
+                    window.open(
+                      buildLinkedInFeedShareUrl(
+                        buildCourseCompletionLinkedInShareText({ courseTitle: course.title })
+                      ),
+                      '_blank',
+                      'noopener,noreferrer'
+                    )
+                  }
+                  sx={{ borderRadius: 2 }}
+                >
+                  Share
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </>
   );
 }

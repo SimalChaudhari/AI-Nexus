@@ -34,8 +34,6 @@ const NAVY_STATS = '#001A70';
 const RED = '#E32B24';
 const BORDER_BLUE = '#5C7AA1';
 
-const FONT_STACK = '"Montserrat", "Google Sans", system-ui, sans-serif';
-
 function normalizeRichTextHtml(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -290,7 +288,6 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
     borderRadius: '8px',
     fontWeight: 700,
     fontSize: FLUID_FONT_SIZES.button,
-    fontFamily: FONT_STACK,
     textTransform: 'none',
     boxShadow: 'none',
     gap: 0,
@@ -576,7 +573,6 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
               <Typography
                 sx={{
                   color: '#fff',
-                  fontFamily: FONT_STACK,
                   ...FLUID_TYPOGRAPHY.statLabel,
                   letterSpacing: '-0.015em',
                 }}
@@ -586,7 +582,6 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
               <Typography
                 sx={{
                   color: alpha('#fff', 0.88),
-                  fontFamily: FONT_STACK,
                   ...FLUID_TYPOGRAPHY.micro,
                 }}
               >
@@ -672,7 +667,6 @@ export function HomeHeroSection() {
           overflowY: 'clip',
           isolation: 'isolate',
           bgcolor: '#ffffff',
-          fontFamily: FONT_STACK,
           minHeight: { xs: 'auto', md: 680 },
           background: {
             xs: `linear-gradient(180deg, ${alpha(NAVY, 0.04)} 0%, #ffffff 28%)`,
@@ -731,7 +725,6 @@ export function HomeHeroSection() {
                   <Typography
                     sx={{
                       color: RED,
-                      fontFamily: FONT_STACK,
                       ...FLUID_TYPOGRAPHY.heroBadge,
                       m: 0,
                     }}
@@ -743,7 +736,6 @@ export function HomeHeroSection() {
                 <Typography
                   component="h1"
                   sx={{
-                    fontFamily: FONT_STACK,
                     ...FLUID_TYPOGRAPHY.heroHeadline,
                     m: 0,
                     maxWidth: '100%',
@@ -770,7 +762,6 @@ export function HomeHeroSection() {
                     html={descriptionHtml}
                     sx={{
                       color: NAVY,
-                      fontFamily: FONT_STACK,
                       ...FLUID_TYPOGRAPHY.heroDescription,
                       maxWidth: '100%',
                       '& p': { m: 0 },

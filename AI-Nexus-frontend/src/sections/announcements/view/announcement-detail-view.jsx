@@ -2,20 +2,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import Stack from '@mui/material/Stack';
-import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
-import Divider from '@mui/material/Divider';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CircularProgress from 'src/components/loading/circular-progress';
-import { alpha, useTheme } from '@mui/material/styles';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Iconify } from 'src/components/iconify';
-import { QuickLinksCommentList } from 'src/components/comment-section';
+import {
+  QuickLinksCommentList,
+  DetailCommentForm,
+  DetailCommentSignInPrompt,
+  DetailPostCard,
+  DetailCommentsSection,
+  DetailCommentsSectionDivider,
+} from 'src/components/comment-section';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { RouterLink } from 'src/routes/components';
 import { paths } from 'src/routes/paths';
@@ -27,6 +29,10 @@ import { fDateTimePersonal } from 'src/utils/format-time';
 import { useAnnouncementCommentsSocket } from '../../../hooks/use-announcement-comments-socket';
 import { useAnnouncementsListSocket } from 'src/hooks/use-announcements-list-socket';
 import { RichTextContent } from 'src/components/html-content';
+import {
+  DETAIL_PAGE_CONTENT_SX,
+  DETAIL_PAGE_WRAPPER_SX,
+} from 'src/components/page-section-header/detail-page-styles';
 
 // ----------------------------------------------------------------------
 
@@ -51,7 +57,6 @@ function getAnnouncementCreator(announcement) {
 // ----------------------------------------------------------------------
 
 export function AnnouncementDetailView() {
-  const theme = useTheme();
   const { id } = useParams();
   const { user } = useAuthContext();
   const [announcement, setAnnouncement] = useState(null);
@@ -71,6 +76,7 @@ export function AnnouncementDetailView() {
   const [quickLinksExpanded, setQuickLinksExpanded] = useState(() => new Set());
   const [error, setError] = useState(null);
   const [commentText, setCommentText] = useState('');
+  const [commentEditorKey, setCommentEditorKey] = useState(0);
   const recentlyAddedCommentIdsRef = useRef(new Set());
 
   const fetchAnnouncement = useCallback(async () => {
@@ -196,10 +202,23 @@ export function AnnouncementDetailView() {
     },
   });
 
+  const handleCommentMediaUpload = useCallback(async (file) => {
+    try {
+      return await announcementService.uploadAnnouncementMedia(file);
+    } catch (uploadErr) {
+      toast.error(uploadErr?.response?.data?.message || uploadErr?.message || 'Media upload failed');
+      return '';
+    }
+  }, []);
+
   // Handle comment submit (users can post multiple comments)
   const handleSubmitComment = async () => {
-    if (!commentText.trim()) {
+    if (isEffectivelyEmptyHtml(commentText)) {
       toast.error('Please enter a comment');
+      return;
+    }
+    if (commentText.length > 50000) {
+      toast.error('Comment is too long');
       return;
     }
 
@@ -220,6 +239,7 @@ export function AnnouncementDetailView() {
         return [newComment, ...prev];
       });
       setCommentText('');
+      setCommentEditorKey((k) => k + 1);
       toast.success('Comment added successfully');
     } catch (err) {
       // console.error('Error adding comment:', err);
@@ -233,7 +253,7 @@ export function AnnouncementDetailView() {
   // Handle edit comment
   const handleEditComment = (comment) => {
     setEditingCommentId(comment.id);
-    setEditCommentText(comment.content);
+    setEditCommentText(comment.content ?? '');
   };
 
   // Handle cancel edit
@@ -244,8 +264,12 @@ export function AnnouncementDetailView() {
 
   // Handle update comment
   const handleUpdateComment = async (commentId) => {
-    if (!editCommentText.trim()) {
+    if (isEffectivelyEmptyHtml(editCommentText)) {
       toast.error('Please enter a comment');
+      return;
+    }
+    if (editCommentText.length > 50000) {
+      toast.error('Comment is too long');
       return;
     }
 
@@ -286,7 +310,15 @@ export function AnnouncementDetailView() {
   };
 
   const handleReplySubmit = async () => {
-    if (!replyText.trim() || !replyingToCommentId || !user) return;
+    if (!replyingToCommentId || !user) return;
+    if (isEffectivelyEmptyHtml(replyText)) {
+      toast.error('Please enter a reply');
+      return;
+    }
+    if (replyText.length > 50000) {
+      toast.error('Reply is too long');
+      return;
+    }
 
     try {
       setSubmittingReply(true);
@@ -408,129 +440,73 @@ export function AnnouncementDetailView() {
 
   return (
     <DashboardContent>
-      <Box
-        sx={{
-          width: 1,
-          maxWidth: { xs: '100%', lg: 1040 },
-          mx: 'auto',
-        }}
-      >
+      <Box sx={DETAIL_PAGE_WRAPPER_SX}>
         {/* Back Button */}
         <Button
           component={RouterLink}
           href={paths.announcements}
-          startIcon={<Iconify icon="solar:arrow-left-bold" />}
-          sx={{ mb: 3 }}
+          size="small"
+          startIcon={<Iconify icon="solar:arrow-left-bold" width={18} />}
+          sx={{ mb: 2 }}
         >
           Back to Announcements
         </Button>
 
-        <Card sx={{ overflow: 'visible' }}>
-          {/* Header */}
-          <Box sx={{ p: { xs: 3, md: 4 } }}>
-            {/* Title */}
-            <Typography
-              variant="h3"
+        <DetailPostCard
+          title={announcement.title}
+          headerIcon="solar:volume-loud-bold-duotone"
+          headerGradient="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)"
+          creator={creator || null}
+          metaItems={[
+            {
+              key: 'comments',
+              icon: 'solar:chat-round-dots-bold',
+              value: comments.length,
+              label: 'comments',
+            },
+            {
+              key: 'views',
+              icon: 'solar:eye-bold',
+              value: formatViewCount(announcement.viewCount || 0),
+              label: 'views',
+            },
+            {
+              key: 'date',
+              icon: 'solar:clock-circle-bold',
+              value: formatPersonalDateTime(announcement.createdAt),
+              label: null,
+            },
+          ]}
+        >
+          {announcement.description || announcement.content ? (
+            <RichTextContent
+              html={announcement.description || announcement.content}
               sx={{
-                fontSize: { xs: '1.5rem', md: '2rem' },
-                fontWeight: 700,
-                mb: 3,
+                ...DETAIL_PAGE_CONTENT_SX,
+                lineHeight: 1.8,
+                color: 'text.primary',
+                overflow: 'visible',
+                '& img': {
+                  maxWidth: '100%',
+                  height: 'auto',
+                  maxHeight: 'min(560px, 78vh)',
+                  objectFit: 'contain',
+                  verticalAlign: 'middle',
+                  borderRadius: 1.5,
+                },
+                '& figure': {
+                  maxWidth: '100%',
+                },
               }}
-            >
-              {announcement.title}
+            />
+          ) : (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              No content available
             </Typography>
+          )}
+        </DetailPostCard>
 
-            {/* Meta Info */}
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
-              alignItems={{ xs: 'flex-start', sm: 'center' }}
-              sx={{ mb: 3 }}
-            >
-              {creator && (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem' }}>{creator.initials}</Avatar>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    Created by {creator.name}
-                  </Typography>
-                </Stack>
-              )}
-              <Box sx={{ flex: 1 }} />
-
-              {/* Stats */}
-              <Stack direction="row" spacing={3}>
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Iconify icon="solar:chat-round-dots-bold" width={18} color="text.secondary" />
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {comments.length}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    comments
-                  </Typography>
-                </Stack>
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Iconify icon="solar:eye-bold" width={18} color="text.secondary" />
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {formatViewCount(announcement.viewCount || 0)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    views
-                  </Typography>
-                </Stack>
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Iconify icon="solar:clock-circle-bold" width={18} color="text.secondary" />
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {formatPersonalDateTime(announcement.createdAt)}
-                  </Typography>
-                </Stack>
-              </Stack>
-            </Stack>
-
-            <Divider />
-          </Box>
-
-          {/* Content */}
-          <Box sx={{ p: { xs: 3, md: 4 }, overflow: 'visible', minWidth: 0 }}>
-            {announcement.description || announcement.content ? (
-              <RichTextContent
-                html={announcement.description || announcement.content}
-                sx={{
-                  typography: 'body1',
-                  fontSize: '1rem',
-                  lineHeight: 1.8,
-                  color: 'text.primary',
-                  overflow: 'visible',
-                  '& img': {
-                    maxWidth: '100%',
-                    height: 'auto',
-                    maxHeight: 'min(560px, 78vh)',
-                    objectFit: 'contain',
-                    verticalAlign: 'middle',
-                    borderRadius: 1.5,
-                  },
-                  '& figure': {
-                    maxWidth: '100%',
-                  },
-                }}
-              />
-            ) : (
-              <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                No content available
-              </Typography>
-            )}
-          </Box>
-        </Card>
-
-        {/* Comments Section */}
-        <Card sx={{ mt: 3 }}>
-          <Box sx={{ p: { xs: 3, md: 4 } }}>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 700 }}>
-              Comments ({comments.length})
-            </Typography>
-
-            <Divider sx={{ mb: 3 }} />
-
-            {/* Comments List - same layout as post detail (QuickLinksCommentList) */}
+        <DetailCommentsSection count={comments.length}>
             {loadingComments ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress size={40} />
@@ -574,68 +550,29 @@ export function AnnouncementDetailView() {
                 updatingComment={updatingComment}
                 onDeleteComment={handleDeleteCommentClick}
                 deletingComment={deletingComment}
+                richText
+                onUploadCommentImage={handleCommentMediaUpload}
               />
             )}
 
-            <Divider sx={{ my: 3 }} />
+          <DetailCommentsSectionDivider />
 
             {/* Comment Form - users can post multiple comments (kept below list like AI Forum) */}
             {user ? (
-              <Box>
-                <Stack spacing={2}>
-                  <TextField
-                    multiline
-                    rows={4}
-                    placeholder="Write a comment..."
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    fullWidth
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: 'background.paper',
-                      },
-                    }}
-                  />
-                  <Stack direction="row" spacing={2} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      onClick={() => setCommentText('')}
-                      disabled={submittingComment}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="contained"
-                      onClick={handleSubmitComment}
-                      disabled={submittingComment || !commentText.trim()}
-                      startIcon={submittingComment ? <CircularProgress size={16} /> : null}
-                    >
-                      {submittingComment ? 'Posting...' : 'Post Comment'}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  p: 3,
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.primary.main, 0.08),
-                  textAlign: 'center',
+              <DetailCommentForm
+                commentText={commentText}
+                commentEditorKey={commentEditorKey}
+                onChange={setCommentText}
+                onUploadImage={handleCommentMediaUpload}
+                onClear={() => {
+                  setCommentText('');
+                  setCommentEditorKey((k) => k + 1);
                 }}
-              >
-                <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
-                  Please sign in to comment
-                </Typography>
-                <Button
-                  component={RouterLink}
-                  href={paths.auth.simple.signIn}
-                  variant="contained"
-                  startIcon={<Iconify icon="solar:login-2-bold" />}
-                >
-                  Sign In
-                </Button>
-              </Box>
+                onSubmit={handleSubmitComment}
+                submitting={submittingComment}
+              />
+            ) : (
+              <DetailCommentSignInPrompt />
             )}
 
             <ConfirmDialog
@@ -654,8 +591,7 @@ export function AnnouncementDetailView() {
                 </Button>
               }
             />
-          </Box>
-        </Card>
+        </DetailCommentsSection>
       </Box>
     </DashboardContent>
   );

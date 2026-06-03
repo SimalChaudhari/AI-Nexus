@@ -195,7 +195,7 @@ export function HeaderBase({
         ...sx,
       }}
       layoutQuery={layoutQuery}
-      disableOffset={false}
+      disableOffset={isHomeRoute}
       disableElevation={isHomeRoute}
       disableAppBar={false}
       appBarPosition={isCustomerFacingRoute && isHomeRoute ? 'fixed' : 'sticky'}
@@ -241,6 +241,7 @@ export function HeaderBase({
               }
             >
               <Logo
+                href={paths.home}
                 data-slot="logo"
                 sx={
                   isCustomerFacingRoute
@@ -291,7 +292,7 @@ export function HeaderBase({
                 {helpLink && (
                   <Link
                     data-slot="help-link"
-                    href={paths.faqs}
+                    href={paths.contact}
                     component={RouterLink}
                     color="inherit"
                     sx={{ typography: 'subtitle2' }}

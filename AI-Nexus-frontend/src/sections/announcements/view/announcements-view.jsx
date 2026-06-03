@@ -14,6 +14,9 @@ import { DashboardContent } from 'src/layouts/dashboard';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
+import { PageSectionHeader } from 'src/components/page-section-header/page-section-header';
+import { DETAIL_PAGE_LIST_SHELL_SX, DETAIL_PAGE_WRAPPER_SX } from 'src/components/page-section-header/detail-page-styles';
+import { HOME_SECTION_CARD_SX } from 'src/sections/home/home-section-styles';
 import { InfinitePagination } from 'src/components/infinite-pagination';
 import { AnnouncementItem } from '../announcement-item';
 import { announcementService } from 'src/services/announcement.service';
@@ -266,37 +269,13 @@ export function AnnouncementsView() {
 
   return (
     <DashboardContent>
-      <Box sx={{ mx: 'fullWidth' }}>
-        <Box sx={{ mb: 5 }}>
-          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
-            <Iconify
-              icon="solar:volume-loud-bold-duotone"
-              width={40}
-              sx={{ color: 'primary.main' }}
-            />
-            <Typography
-              variant="h3"
-              sx={{
-                fontSize: { xs: '1.75rem', md: '2.5rem' },
-                fontWeight: 700,
-                color: 'text.primary',
-              }}
-            >
-              Announcements
-            </Typography>
-          </Stack>
-          <Typography
-            variant="body1"
-            sx={{
-              fontSize: { xs: '0.9375rem', md: '1rem' },
-              color: 'text.secondary',
-            }}
-          >
-            Stay updated with the latest news, features, and community updates
-          </Typography>
-        </Box>
+      <Box sx={DETAIL_PAGE_WRAPPER_SX}>
+        <PageSectionHeader
+          title="Announcements"
+          description="Stay updated with the latest news, features, and community updates"
+        />
 
-        <Card sx={{ mb: 3, p: 2 }}>
+        <Card sx={{ ...HOME_SECTION_CARD_SX, mb: 3, p: 2 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <Box
               sx={{
@@ -381,15 +360,7 @@ export function AnnouncementsView() {
           </Stack>
         </Card>
 
-        <Box
-          sx={{
-            width: 1,
-            overflow: 'hidden',
-            borderRadius: 1,
-            border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-            bgcolor: 'background.paper',
-          }}
-        >
+        <Box sx={DETAIL_PAGE_LIST_SHELL_SX}>
           {showRefreshingState && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={28} />

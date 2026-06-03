@@ -4,7 +4,6 @@ import Box from '@mui/material/Box';
 import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
-import IconButton from '@mui/material/IconButton';
 
 import { Iconify } from 'src/components/iconify';
 import { ViewHtmlContent } from 'src/components/html-content/view-html-content';
@@ -17,7 +16,12 @@ const FAQ_DIVIDER_SX = {
   opacity: 0.2,
 };
 
-export function FaqsList({ items = [], compact = false }) {
+const ICON_SIZE = 32;
+const ICON_GLYPH = 24;
+
+// ----------------------------------------------------------------------
+
+export function HomeFaqsList({ items = [] }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const visibleItems = (items || []).filter((item) => String(item?.question || '').trim());
 
@@ -41,62 +45,79 @@ export function FaqsList({ items = [], compact = false }) {
         const isLast = index === visibleItems.length - 1;
 
         return (
-          <Box key={`faq-${index}-${item.question}`}>
-            <Box sx={{ pt: compact ? 1.15 : 2, pb: isExpanded ? 0.75 : compact ? 1.15 : 2 }}>
+          <Box key={`faq-${index}-${item.question}`} sx={{ overflowAnchor: 'none' }}>
+            <Box sx={{ py: 2 }}>
               <Box
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleExpand(index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleExpand(index);
+                  }
+                }}
+                aria-expanded={isExpanded}
                 sx={{
                   display: 'flex',
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  gap: compact ? 1 : 1.5,
+                  gap: 1.5,
+                  cursor: 'pointer',
+                  userSelect: 'none',
                 }}
               >
-                <IconButton
-                  onClick={() => toggleExpand(index)}
-                  aria-label={isExpanded ? 'Hide answer' : 'Show answer'}
+                <Box
+                  component="span"
+                  aria-hidden
                   sx={{
                     flexShrink: 0,
-                    p: 0.5,
-                    width: compact ? 28 : 32,
-                    height: compact ? 28 : 32,
-                    color: 'common.black',
-                    bgcolor: 'grey.400',
+                    width: ICON_SIZE,
+                    height: ICON_SIZE,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     borderRadius: '50%',
-                    '&:hover': {
-                      bgcolor: 'grey.500',
+                    bgcolor: 'grey.400',
+                    color: 'common.black',
+                    transition: (theme) =>
+                      theme.transitions.create('background-color', { duration: 150 }),
+                    '@media (hover: hover)': {
+                      '&:hover': { bgcolor: 'grey.500' },
                     },
                   }}
                 >
                   <Iconify
                     icon={isExpanded ? 'eva:minus-fill' : 'eva:plus-fill'}
-                    width={compact ? 20 : 24}
-                    sx={{ color: 'common.black' }}
+                    width={ICON_GLYPH}
+                    sx={{ color: 'common.black', display: 'block' }}
                   />
-                </IconButton>
+                </Box>
 
                 <Typography
-                  variant={compact ? 'body1' : 'subtitle1'}
-                  onClick={() => toggleExpand(index)}
+                  component="span"
+                  variant="subtitle1"
                   sx={{
                     flex: 1,
                     minWidth: 0,
+                    m: 0,
                     color: 'primary.main',
                     fontWeight: 500,
-                    fontSize: compact ? '0.9375rem' : undefined,
-                    lineHeight: 1.45,
-                    cursor: 'pointer',
-                    userSelect: 'none',
+                    fontSize: '0.9375rem',
+                    lineHeight: `${ICON_SIZE}px`,
                   }}
                 >
                   {item.question}
                 </Typography>
               </Box>
 
-              <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+              <Collapse in={isExpanded} timeout={220} unmountOnExit={false}>
                 <Box
                   sx={{
-                    pl: compact ? 'calc(28px + 8px)' : 'calc(36px + 12px)',
-                    pt: 0.5,
-                    pb: 0.15,
+                    pl: `calc(${ICON_SIZE}px + 12px)`,
+                    pt: 0.75,
+                    pb: 0.25,
+                    overflow: 'hidden',
                   }}
                 >
                   {answer ? (

@@ -1851,7 +1851,7 @@ export function AdminSettingsView() {
       badge: 'FAQ',
       icon: 'solar:question-circle-bold-duotone',
       title: 'FAQs Page',
-      description: 'Configure FAQs shown on the home page and the public /faqs page.',
+      description: 'Configure FAQs shown on the home page.',
     },
     {
       key: 'curriculum',

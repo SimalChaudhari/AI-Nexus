@@ -22,8 +22,29 @@ import {
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { PageSectionHeader } from 'src/components/page-section-header/page-section-header';
+import { DashboardContent } from 'src/layouts/dashboard';
 
+import { ExpandablePriorityActionsList } from 'src/components/expandable-priority-actions-list';
 import AiMaturityAssessmentPanel from 'src/sections/audit/ai-maturity-assessment-panel';
+import { FLUID_FONT_SIZES, FLUID_NUMERIC_SX } from 'src/theme/fluid-typography';
+
+const METRIC_CARD_TITLE_SX = {
+  m: 0,
+  mb: 0.5,
+  fontWeight: 700,
+  fontSize: FLUID_FONT_SIZES.subtitle1,
+  lineHeight: 1.3,
+};
+
+const METRIC_VALUE_SX = {
+  ...FLUID_NUMERIC_SX,
+  mb: 1,
+  fontWeight: 700,
+  fontSize: FLUID_FONT_SIZES.statMd,
+  lineHeight: 1.2,
+  letterSpacing: '-0.02em',
+};
 
 const REGULATORY_OPTIONS = ['Low', 'Medium', 'High'];
 const BUDGET_OPTIONS = ['Low', 'Moderate', 'High'];
@@ -268,13 +289,13 @@ function AuditFuturesExploration() {
                 boxShadow: `0 3px 14px ${alpha(theme.palette.common.black, 0.04)}`,
               }}
             >
-              <Typography variant="h5" gutterBottom>
+              <Typography component="h3" sx={METRIC_CARD_TITLE_SX}>
                 Automation Forecast
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Estimated AI-assisted coverage in {timelineYears} years
               </Typography>
-              <Typography variant="h2" sx={{ mb: 1.25, fontWeight: 800, letterSpacing: -0.02 }}>
+              <Typography component="p" sx={METRIC_VALUE_SX}>
                 {outputs.automationPercent}%
               </Typography>
               <LinearProgress
@@ -305,13 +326,18 @@ function AuditFuturesExploration() {
                 boxShadow: `0 3px 14px ${alpha(theme.palette.common.black, 0.04)}`,
               }}
             >
-              <Typography variant="h5" gutterBottom>
+              <Typography component="h3" sx={METRIC_CARD_TITLE_SX}>
                 Readiness Score
               </Typography>
-              <Typography variant="h2" sx={{ mb: 1.25, fontWeight: 800, letterSpacing: -0.02 }}>
+              <Typography component="p" sx={METRIC_VALUE_SX}>
                 {outputs.readinessScore}/100
               </Typography>
-              <Chip color={readinessChipColor} label={outputs.readinessLabel} sx={{ fontWeight: 700 }} />
+              <Chip
+                size="small"
+                color={readinessChipColor}
+                label={outputs.readinessLabel}
+                sx={{ fontWeight: 600, fontSize: FLUID_FONT_SIZES.caption }}
+              />
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1.75, lineHeight: 1.6 }}>
                 Scenario: {industry} industry, {teamSize.toLowerCase()}, {aiLiteracy.toLowerCase()} AI literacy.
               </Typography>
@@ -329,7 +355,7 @@ function AuditFuturesExploration() {
                 boxShadow: `0 3px 14px ${alpha(theme.palette.common.black, 0.04)}`,
               }}
             >
-              <Typography variant="h5" gutterBottom>
+              <Typography component="h3" sx={METRIC_CARD_TITLE_SX}>
                 Skills Gap Analysis
               </Typography>
               <Stack spacing={1.75}>
@@ -409,44 +435,7 @@ function AuditFuturesExploration() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.75 }}>
             Priority actions to improve audit readiness over the next planning cycle.
           </Typography>
-          <Stack spacing={1.1}>
-            {outputs.recommendations.map((item, index) => (
-              <Stack
-                key={item}
-                direction="row"
-                spacing={1.25}
-                alignItems="flex-start"
-                sx={{
-                  p: 1.25,
-                  borderRadius: 1.25,
-                  bgcolor: alpha(theme.palette.success.main, 0.06),
-                  border: `1px solid ${alpha(theme.palette.success.main, 0.12)}`,
-                }}
-              >
-                <Box
-                  sx={{
-                    mt: 0.2,
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: 'success.main',
-                    color: 'success.contrastText',
-                    fontSize: '0.7rem',
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {index + 1}
-                </Box>
-                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-                  {item}
-                </Typography>
-              </Stack>
-            ))}
-          </Stack>
+          <ExpandablePriorityActionsList items={outputs.recommendations} />
         </Paper>
     </Stack>
   );
@@ -458,24 +447,12 @@ export default function AiAuditFuturesPage() {
   const [tab, setTab] = useState(0);
 
   return (
-    <Box
-      sx={{
-        width: '100%',
-        maxWidth: '1400px',
-        mx: 'auto',
-        px: { xs: 2, sm: 3, md: 4, lg: 6, xl: 8 },
-        py: { xs: 3, md: 5 },
-      }}
-    >
+    <DashboardContent>
       <Stack spacing={2.5}>
-        <Stack spacing={1}>
-          <Typography variant="h3" sx={{ fontWeight: 800, letterSpacing: -0.02 }}>
-            AI Readiness Assessment
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720, lineHeight: 1.65 }}>
-            Explore long-range audit scenarios, or run a structured AI readiness assessment with live rollup scores.
-          </Typography>
-        </Stack>
+        <PageSectionHeader
+          title="AI Readiness Assessment"
+          description="Explore long-range audit scenarios, or run a structured AI readiness assessment with live rollup scores."
+        />
 
         {isSmUp ? (
           <Paper
@@ -569,6 +546,6 @@ export default function AiAuditFuturesPage() {
 
         {tab === 0 ? <AuditFuturesExploration /> : <AiMaturityAssessmentPanel />}
       </Stack>
-    </Box>
+    </DashboardContent>
   );
 }

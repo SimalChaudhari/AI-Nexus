@@ -18,8 +18,10 @@ export const FLUID_FONT_SIZES = {
   overline: 'clamp(0.625rem, 0.58rem + 0.2vw, 0.75rem)',
   button: 'clamp(0.8125rem, 0.76rem + 0.28vw, 0.875rem)',
   lead: 'clamp(0.875rem, 0.8rem + 0.4vw, 1.125rem)',
-  /** Home hero headline (slightly below display cap) */
-  heroHeadline: 'clamp(1.75rem, 1.1rem + 2.2vw, 2.625rem)',
+  /** Home hero headline — compact but still prominent */
+  heroHeadline: 'clamp(1.5rem, 0.95rem + 1.85vw, 2.25rem)',
+  /** Home hero body copy */
+  heroDescription: 'clamp(0.8125rem, 0.76rem + 0.32vw, 0.9375rem)',
   /** Large stat / price numbers */
   statLg: 'clamp(1.75rem, 1.35rem + 1.4vw, 2.65rem)',
   statMd: 'clamp(1.35rem, 1.05rem + 0.9vw, 2.15rem)',
@@ -56,7 +58,7 @@ export const FLUID_TYPOGRAPHY = {
     fontWeight: 800,
   },
   heroDescription: {
-    fontSize: FLUID_FONT_SIZES.lead,
+    fontSize: FLUID_FONT_SIZES.heroDescription,
     lineHeight: { xs: 1.5, md: 1.55 },
     fontWeight: 400,
   },

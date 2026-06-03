@@ -19,6 +19,7 @@ import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
+import { LearningSectionHeader } from './components/learning-section-header';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 
 // ----------------------------------------------------------------------
@@ -165,29 +166,12 @@ export function MyFavorites() {
   if (favoriteCourses.length === 0 && favoriteSections.length === 0) {
     return (
       <>
-        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: { xs: 2, md: 3 } }}>
-          <Box
-            sx={{
-              width: { xs: 40, md: 48 },
-              height: { xs: 40, md: 48 },
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 1.5,
-              background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)',
-            }}
-          >
-            <Iconify icon="solar:heart-bold" width={24} sx={{ color: 'common.white' }} />
-          </Box>
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 700 }}>
-              My Favorites
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Courses and lessons you&apos;ve favorited
-            </Typography>
-          </Box>
-        </Stack>
+        <LearningSectionHeader
+          icon="solar:heart-bold"
+          iconGradient="linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
+          title="My Favorites"
+          subtitle="Courses and lessons you've favorited"
+        />
 
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <Iconify icon="solar:heart-outline" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
@@ -212,36 +196,19 @@ export function MyFavorites() {
 
   return (
     <>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: { xs: 2, md: 3 } }}>
-        <Box
-          sx={{
-            width: { xs: 40, md: 48 },
-            height: { xs: 40, md: 48 },
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 1.5,
-            background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)',
-          }}
-        >
-          <Iconify icon="solar:heart-bold" width={24} sx={{ color: 'common.white' }} />
-        </Box>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            My Favorites
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            {[
-              `${favoriteCourses.length} ${favoriteCourses.length === 1 ? 'course' : 'courses'}`,
-              favoriteSections.length > 0
-                ? `${favoriteSections.length} ${favoriteSections.length === 1 ? 'lesson' : 'lessons'}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' • ')}
-          </Typography>
-        </Box>
-      </Stack>
+      <LearningSectionHeader
+        icon="solar:heart-bold"
+        iconGradient="linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
+        title="My Favorites"
+        subtitle={[
+          `${favoriteCourses.length} ${favoriteCourses.length === 1 ? 'course' : 'courses'}`,
+          favoriteSections.length > 0
+            ? `${favoriteSections.length} ${favoriteSections.length === 1 ? 'lesson' : 'lessons'}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' • ')}
+      />
 
       {/* Course(s) Section */}
       {favoriteCourses.length > 0 && (

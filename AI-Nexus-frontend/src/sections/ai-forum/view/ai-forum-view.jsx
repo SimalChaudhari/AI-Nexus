@@ -17,6 +17,9 @@ import { DashboardContent } from 'src/layouts/dashboard';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
+import { PageSectionHeader } from 'src/components/page-section-header/page-section-header';
+import { DETAIL_PAGE_LIST_SHELL_SX, DETAIL_PAGE_WRAPPER_SX } from 'src/components/page-section-header/detail-page-styles';
+import { HOME_SECTION_CARD_SX } from 'src/sections/home/home-section-styles';
 import { InfinitePagination } from 'src/components/infinite-pagination';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { Editor } from 'src/components/editor';
@@ -469,55 +472,30 @@ export function AiForumView() {
 
   return (
     <DashboardContent>
-      <Box sx={{ maxWidth: 'fullWidth' }}>
-        {/* Header Section */}
-        <Box sx={{ mb: 5 }}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            alignItems={{ xs: 'flex-start', sm: 'center' }}
-            justifyContent="space-between"
-            sx={{ mb: 1 }}
-          >
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <Iconify
-                icon="solar:chat-round-bold-duotone"
-                width={40}
-                sx={{ color: 'primary.main' }}
-              />
-              <Typography
-                variant="h3"
-                sx={{
-                  fontSize: { xs: '1.75rem', md: '2.5rem' },
-                  fontWeight: 700,
-                  color: 'text.primary',
-                }}
-              >
-                AI Forum
-              </Typography>
-            </Stack>
-            {user && (
-              <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                <Button
-                  variant="contained"
-                  startIcon={<Iconify icon="solar:add-circle-bold" width={22} />}
-                  onClick={handleCreateOpen}
-                >
-                  Create post
-                </Button>
-              </Stack>
-            )}
-          </Stack>
-          <Typography
-            variant="body1"
-            sx={{
-              fontSize: { xs: '0.9375rem', md: '1rem' },
-              color: 'text.secondary',
-            }}
-          >
-            Ask posts, get help, and share knowledge with the AI community
-          </Typography>
-        </Box>
+      <Box sx={DETAIL_PAGE_WRAPPER_SX}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+          justifyContent="space-between"
+          sx={{ mb: { xs: 2, md: 3 } }}
+        >
+          <PageSectionHeader
+            title="AI Forum"
+            description="Ask posts, get help, and share knowledge with the AI community"
+            sx={{ mb: 0, flex: 1, minWidth: 0 }}
+          />
+          {user ? (
+            <Button
+              variant="contained"
+              startIcon={<Iconify icon="solar:add-circle-bold" width={22} />}
+              onClick={handleCreateOpen}
+              sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'flex-start' } }}
+            >
+              Create post
+            </Button>
+          ) : null}
+        </Stack>
 
         {/* Create post drawer */}
         <Drawer anchor="right" open={createOpen} onClose={handleCreateClose}>
@@ -662,7 +640,7 @@ export function AiForumView() {
         </Drawer>
 
         {/* Search and Filter */}
-        <Card sx={{ mb: 3, p: 2 }}>
+        <Card sx={{ ...HOME_SECTION_CARD_SX, mb: 3, p: 2 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             {/* Search Box */}
             <Box
@@ -820,15 +798,7 @@ export function AiForumView() {
         )}
 
         {/* Posts — flat rows, dividers between items */}
-        <Box
-          sx={{
-            width: 1,
-            overflow: 'hidden',
-            borderRadius: 1,
-            border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-            bgcolor: 'background.paper',
-          }}
-        >
+        <Box sx={DETAIL_PAGE_LIST_SHELL_SX}>
           {showRefreshingState && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={28} />

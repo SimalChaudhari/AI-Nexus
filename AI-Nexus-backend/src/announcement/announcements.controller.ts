@@ -133,11 +133,10 @@ export class AnnouncementController {
     }
 
     @Post('upload-media')
-    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.Admin)
+    @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
     @ApiConsumes('multipart/form-data')
-    @ApiOperation({ summary: 'Upload announcement editor media (images/documents)' })
+    @ApiOperation({ summary: 'Upload announcement media (images/documents) for posts and comments' })
     @ApiBody({
         schema: {
             type: 'object',

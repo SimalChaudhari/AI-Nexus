@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -19,6 +19,7 @@ import { ConfirmDialog } from 'src/components/custom-dialog';
 import { fDateTime, fDateTimePersonal } from 'src/utils/format-time';
 import { announcementService, buildAnnouncementCommentTree } from 'src/services/announcement.service';
 import { toast } from 'src/components/snackbar';
+import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { ViewHtmlContent } from 'src/components/html-content';
 import { useAuthContext } from 'src/auth/hooks';
 import { useAnnouncementCommentsSocket } from '../../../../hooks/use-announcement-comments-socket';
@@ -118,6 +119,15 @@ export function AnnouncementDetailsView({ announcement, loading, error, onAnnoun
     }
   };
 
+  const handleCommentMediaUpload = useCallback(async (file) => {
+    try {
+      return await announcementService.uploadAnnouncementMedia(file);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Media upload failed');
+      return '';
+    }
+  }, []);
+
   const handleEditComment = (comment) => {
     setEditingCommentId(comment.id);
     setEditCommentText(comment.content || '');
@@ -129,7 +139,7 @@ export function AnnouncementDetailsView({ announcement, loading, error, onAnnoun
   };
 
   const handleUpdateComment = async (commentId) => {
-    if (!editCommentText.trim()) return;
+    if (isEffectivelyEmptyHtml(editCommentText)) return;
     try {
       setUpdatingComment(commentId);
       const updated = await announcementService.updateComment(commentId, { content: editCommentText.trim() });
@@ -328,6 +338,8 @@ export function AnnouncementDetailsView({ announcement, loading, error, onAnnoun
                 updatingComment={updatingComment}
                 onDeleteComment={handleDeleteCommentClick}
                 deletingComment={deletingCommentId}
+                richText
+                onUploadCommentImage={handleCommentMediaUpload}
               />
             )}
 

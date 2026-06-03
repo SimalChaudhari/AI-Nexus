@@ -15,6 +15,7 @@ import { Iconify } from 'src/components/iconify';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
+import { LearningSectionHeader } from './components/learning-section-header';
 import { pdf } from '@react-pdf/renderer';
 import { CertificatePdfDocument } from './certificate-pdf-document';
 import { svgToPngDataUrl } from 'src/utils/svg-to-png';
@@ -208,30 +209,14 @@ export function MyCertificates() {
 
   return (
     <>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: { xs: 2, md: 3 } }}>
-        <Box
-          sx={{
-            width: { xs: 40, md: 48 },
-            height: { xs: 40, md: 48 },
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 1.5,
-            background: (t) =>
-              `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`,
-          }}
-        >
-          <Iconify icon="solar:medal-ribbons-star-bold" width={24} sx={{ color: 'common.white' }} />
-        </Box>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            My Certificates
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Certificates earned from completed courses
-          </Typography>
-        </Box>
-      </Stack>
+      <LearningSectionHeader
+        icon="solar:medal-ribbons-star-bold"
+        iconGradient={(t) =>
+          `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`
+        }
+        title="My Certificates"
+        subtitle="Certificates earned from completed courses"
+      />
 
       <Grid container spacing={{ xs: 2, sm: 2.5, md: 2 }}>
         {(() => {

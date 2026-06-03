@@ -10,10 +10,10 @@ import CircularProgress from 'src/components/loading/circular-progress';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
-import { RouterLink } from 'src/routes/components';
-import { paths } from 'src/routes/paths';
-import { Editor } from 'src/components/editor';
 import { RichTextContent } from 'src/components/html-content';
+import { CommentRichTextComposer } from './comment-rich-text-composer';
+import { CommentInlineFormActions } from './comment-inline-form-actions';
+import { commentComposerFullWidthWrapSx } from './comment-composer-styles';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 
 // ----------------------------------------------------------------------
@@ -55,7 +55,7 @@ export function QuickLinksCommentList({
   disableLikeAndReply = false,
   /** When true, reply/edit use the TipTap editor (AI forum); comment bodies render as HTML */
   richText = false,
-  /** Upload handler for editor image toolbar (same contract as post editor) */
+  /** When set (e.g. AI forum), enables image upload in reply/edit composers */
   onUploadCommentImage,
 }) {
   const theme = useTheme();
@@ -71,48 +71,211 @@ export function QuickLinksCommentList({
   const hasReplies = (comment) => comment.replies && comment.replies.length > 0;
 
   const renderCommentBlock = (comment, isReply = false) => {
-    const href = linkBase
-      ? `${linkBase.replace(/#.*$/, '')}#comment-${comment.id}`
-      : `${paths.announcements}/${announcementId || ''}#comment-${comment.id}`;
     const isReplying = replyingToCommentId === comment.id;
     const isEditing = editingCommentId === comment.id;
     const authorName = getCommentAuthorName ? getCommentAuthorName(comment) : comment.user?.username || 'Anonymous';
+    const showActions = user && !disableLikeAndReply;
+
+    const likeReplyBar = disableLikeAndReply ? (
+      (comment.likeCount ?? 0) > 0 ? (
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1, opacity: 0.85 }}>
+          <Iconify
+            icon="solar:like-outline"
+            width={16}
+            sx={{ color: 'text.secondary', display: { xs: 'none', sm: 'block' } }}
+          />
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {comment.likeCount}
+          </Typography>
+        </Stack>
+      ) : null
+    ) : showActions ? (
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={{ xs: 0.5, sm: 1 }}
+        flexWrap="wrap"
+        useFlexGap
+        sx={{ mt: 1.25, gap: { xs: 0.5, sm: 1 } }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={0.25}
+          sx={{ cursor: 'pointer', minHeight: 32 }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleLike?.(comment.id);
+          }}
+        >
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleLike?.(comment.id);
+            }}
+            disabled={likingCommentId === comment.id}
+            sx={{
+              color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
+              p: { xs: 0.5, sm: 1 },
+            }}
+          >
+            {likingCommentId === comment.id ? (
+              <CircularProgress size={16} />
+            ) : (
+              <Iconify
+                icon={comment.likedByCurrentUser ? 'solar:like-bold' : 'solar:like-outline'}
+                width={18}
+              />
+            )}
+          </IconButton>
+          <Typography
+            variant="caption"
+            sx={{
+              color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
+              fontWeight: comment.likedByCurrentUser ? 600 : 400,
+            }}
+          >
+            {comment.likeCount ?? 0}
+          </Typography>
+        </Stack>
+        <Button
+          size="small"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onReplyClick?.(comment);
+          }}
+          sx={{
+            minWidth: 'auto',
+            px: { xs: 1, sm: 1.5 },
+            py: 0.5,
+            color: 'text.secondary',
+            fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+            '& .MuiButton-startIcon': { display: { xs: 'none', sm: 'inline-flex' } },
+          }}
+        >
+          Reply
+        </Button>
+      </Stack>
+    ) : (comment.likeCount ?? 0) > 0 ? (
+      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1 }}>
+        <Iconify
+          icon="solar:like-outline"
+          width={16}
+          sx={{ color: 'text.secondary', display: { xs: 'none', sm: 'block' } }}
+        />
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {comment.likeCount}
+        </Typography>
+      </Stack>
+    ) : null;
+
+    const showOwnerActions = canEditDelete(comment);
+
+    const commentBody =
+      !isReplying && !isEditing &&
+      (richText ? (
+        (comment.content || '').trim() ? (
+          <Box
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              typography: 'body2',
+              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+              lineHeight: 1.65,
+              color: 'text.primary',
+              overflow: 'visible',
+              wordBreak: 'break-word',
+              '& img': {
+                maxWidth: '100%',
+                height: 'auto',
+                maxHeight: 'min(400px, 70vh)',
+                objectFit: 'contain',
+                verticalAlign: 'middle',
+                borderRadius: 1,
+              },
+              '& figure': { maxWidth: '100%' },
+            }}
+          >
+            <RichTextContent html={(comment.content || '').trim()} />
+          </Box>
+        ) : (
+          <Typography variant="body2" sx={{ color: 'text.disabled', lineHeight: 1.6 }}>
+            —
+          </Typography>
+        )
+      ) : (
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.primary',
+            whiteSpace: 'pre-line',
+            lineHeight: 1.6,
+            fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+            wordBreak: 'break-word',
+          }}
+        >
+          {(comment.content || '').trim() || '—'}
+        </Typography>
+      ));
+
     return (
       <Box
         key={comment.id}
-        component={RouterLink}
-        href={href}
+        id={`comment-${comment.id}`}
         sx={{
           display: 'block',
-          textDecoration: 'none',
-          color: 'inherit',
-          borderRadius: 1,
-          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) },
+          borderRadius: 1.5,
+          scrollMarginTop: 80,
+          borderBottom: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+          '&:last-child': { borderBottom: 'none' },
         }}
       >
-        <Box sx={{ p: isReply ? 1.25 : 1.5 }}>
-          <Stack direction="row" spacing={isReply ? 1.25 : 1.5} alignItems="flex-start">
+        <Box sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 0.5, sm: 1 } }}>
+          <Stack direction="row" spacing={{ xs: 1.25, sm: 1.5 }} alignItems="flex-start">
             <Avatar
               src={comment.user?.avatarUrl}
               sx={{
-                width: isReply ? 32 : 40,
-                height: isReply ? 32 : 40,
+                width: { xs: 36, sm: isReply ? 36 : 40 },
+                height: { xs: 36, sm: isReply ? 36 : 40 },
                 bgcolor: 'primary.main',
                 flexShrink: 0,
+                fontSize: { xs: '0.8rem', sm: '0.875rem' },
               }}
             >
               {authorName.charAt(0).toUpperCase() || '?'}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  {authorName}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {formatRelativeTime(comment.createdAt)}
-                </Typography>
-                {canEditDelete(comment) && (
-                  <Stack direction="row" spacing={0.5} sx={{ ml: 'auto' }}>
+              <Stack
+                direction="row"
+                alignItems="flex-start"
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ mb: 0.75 }}
+              >
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.35,
+                      wordBreak: 'break-word',
+                      display: 'block',
+                    }}
+                  >
+                    {authorName}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: 'text.secondary', display: 'block', mt: 0.25, lineHeight: 1.4 }}
+                  >
+                    {formatRelativeTime(comment.createdAt)}
+                  </Typography>
+                </Box>
+                {showOwnerActions && (
+                  <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0, mt: { xs: -0.25, sm: 0 } }}>
                     {!isEditing && (
                       <IconButton
                         size="small"
@@ -124,7 +287,7 @@ export function QuickLinksCommentList({
                         disabled={deletingComment === comment.id || updatingComment === comment.id}
                         sx={{
                           color: 'primary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) },
+                          p: { xs: 0.75, sm: 1 },
                         }}
                       >
                         <Iconify icon="solar:pen-bold" width={18} />
@@ -140,7 +303,7 @@ export function QuickLinksCommentList({
                       disabled={deletingComment === comment.id || updatingComment === comment.id}
                       sx={{
                         color: 'error.main',
-                        '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.08) },
+                        p: { xs: 0.75, sm: 1 },
                       }}
                     >
                       {deletingComment === comment.id ? (
@@ -152,260 +315,104 @@ export function QuickLinksCommentList({
                   </Stack>
                 )}
               </Stack>
-              {user ? (
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
-                  {disableLikeAndReply ? (
-                    <Stack direction="row" alignItems="center" spacing={0.5} sx={{ opacity: 0.7 }}>
-                      <Iconify icon="solar:like-outline" width={18} sx={{ color: 'text.secondary' }} />
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        {comment.likeCount ?? 0}
-                      </Typography>
-                    </Stack>
-                  ) : (
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={0.5}
-                      sx={{ cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onToggleLike?.(comment.id);
-                      }}
-                    >
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onToggleLike?.(comment.id);
-                        }}
-                        disabled={likingCommentId === comment.id}
-                        sx={{
-                          color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
-                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) },
-                        }}
-                      >
-                        {likingCommentId === comment.id ? (
-                          <CircularProgress size={16} />
-                        ) : (
-                          <Iconify
-                            icon={comment.likedByCurrentUser ? 'solar:like-bold' : 'solar:like-outline'}
-                            width={18}
-                          />
-                        )}
-                      </IconButton>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
-                          fontWeight: comment.likedByCurrentUser ? 600 : 400,
-                        }}
-                      >
-                        {comment.likeCount ?? 0}
-                      </Typography>
-                    </Stack>
-                  )}
-                  {disableLikeAndReply ? (
-                    <Button
-                      size="small"
-                      startIcon={<Iconify icon="solar:reply-outline" width={16} />}
-                      disabled
-                      sx={{ minWidth: 'auto', px: 1, color: 'text.secondary', opacity: 0.7 }}
-                    >
-                      Reply
-                    </Button>
-                  ) : (
-                    <Button
-                      size="small"
-                      startIcon={<Iconify icon="solar:reply-outline" width={16} />}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onReplyClick?.(comment);
-                      }}
-                      sx={{ minWidth: 'auto', px: 1, color: 'text.secondary' }}
-                    >
-                      Reply
-                    </Button>
-                  )}
-                </Stack>
-              ) : (
-                (comment.likeCount ?? 0) > 0 && (
-                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.75 }}>
-                    <Iconify icon="solar:like-outline" width={16} sx={{ color: 'text.secondary' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      {comment.likeCount}
-                    </Typography>
-                  </Stack>
-                )
-              )}
-              {isReplying && !disableLikeAndReply && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
-                    Replying to {authorName}
-                  </Typography>
-                  {richText ? (
-                    <Box
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      sx={{ mb: 1 }}
-                    >
-                      <Editor
-                        key={`reply-${replyingToCommentId}`}
-                        value={replyText || ''}
-                        onChange={onReplyTextChange}
-                        onUploadImage={onUploadCommentImage}
-                        fullItem={false}
-                        placeholder="Write a reply…"
-                        sx={{ maxHeight: 260 }}
-                      />
-                    </Box>
-                  ) : (
-                    <TextField
-                      multiline
-                      rows={2}
-                      placeholder="Write a reply..."
-                      value={replyText}
-                      onChange={(e) => onReplyTextChange?.(e.target.value)}
-                      fullWidth
-                      onClick={(e) => e.stopPropagation()}
-                      sx={{ mb: 1, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
-                    />
-                  )}
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onCancelReply?.();
-                      }}
-                      disabled={submittingReply}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onSubmitReply?.();
-                      }}
-                      disabled={
-                        submittingReply ||
-                        (richText ? isEffectivelyEmptyHtml(replyText) : !replyText?.trim())
-                      }
-                      startIcon={submittingReply ? <CircularProgress size={14} /> : null}
-                    >
-                      {submittingReply ? 'Posting...' : 'Reply'}
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-              {isEditing && (
-                <Box sx={{ mt: 2 }}>
-                  {richText ? (
-                    <Box
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      sx={{ mb: 2 }}
-                    >
-                      <Editor
-                        key={`edit-${editingCommentId}`}
-                        value={editCommentText || ''}
-                        onChange={onEditCommentTextChange}
-                        onUploadImage={onUploadCommentImage}
-                        fullItem={false}
-                        placeholder="Edit comment…"
-                        sx={{ maxHeight: 280 }}
-                      />
-                    </Box>
-                  ) : (
-                    <TextField
-                      multiline
-                      rows={3}
-                      value={editCommentText}
-                      onChange={(e) => onEditCommentTextChange?.(e.target.value)}
-                      fullWidth
-                      onClick={(e) => e.stopPropagation()}
-                      sx={{ mb: 2, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
-                    />
-                  )}
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onCancelEdit?.();
-                      }}
-                      disabled={updatingComment === comment.id}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onUpdateComment?.(comment.id);
-                      }}
-                      disabled={
-                        updatingComment === comment.id ||
-                        (richText
-                          ? isEffectivelyEmptyHtml(editCommentText)
-                          : !editCommentText?.trim())
-                      }
-                      startIcon={updatingComment === comment.id ? <CircularProgress size={14} /> : null}
-                    >
-                      {updatingComment === comment.id ? 'Updating...' : 'Update'}
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-              {!isReplying && !isEditing &&
-                (richText ? (
-                  (comment.content || '').trim() ? (
-                    <Box
-                      onClick={(e) => e.stopPropagation()}
-                      sx={{
-                        typography: 'body2',
-                        lineHeight: 1.65,
-                        color: 'text.primary',
-                        overflow: 'visible',
-                        '& img': {
-                          maxWidth: '100%',
-                          height: 'auto',
-                          maxHeight: 'min(400px, 70vh)',
-                          objectFit: 'contain',
-                          verticalAlign: 'middle',
-                          borderRadius: 1,
-                        },
-                        '& figure': { maxWidth: '100%' },
-                      }}
-                    >
-                      <RichTextContent html={(comment.content || '').trim()} />
-                    </Box>
-                  ) : (
-                    <Typography variant="body2" sx={{ color: 'text.disabled', lineHeight: 1.6 }}>
-                      —
-                    </Typography>
-                  )
-                ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{ color: 'text.primary', whiteSpace: 'pre-line', lineHeight: 1.6 }}
-                  >
-                    {(comment.content || '').trim() || '—'}
-                  </Typography>
-                ))}
+
+              {commentBody}
+
+              {!isReplying && !isEditing && likeReplyBar}
             </Box>
           </Stack>
+
+          {isReplying && !disableLikeAndReply && (
+            <Box sx={commentComposerFullWidthWrapSx}>
+              {richText ? (
+                <CommentRichTextComposer
+                  editorKey={`reply-${replyingToCommentId}`}
+                  value={replyText || ''}
+                  onChange={onReplyTextChange}
+                  onUploadImage={onUploadCommentImage}
+                  title={`Replying to ${authorName}`}
+                  placeholder="Write a reply…"
+                  secondaryLabel="Cancel"
+                  submitLabel="Reply"
+                  submittingLabel="Posting…"
+                  onSecondary={() => onCancelReply?.()}
+                  onSubmit={() => onSubmitReply?.()}
+                  submitting={submittingReply}
+                  showHeaderIcon={false}
+                  stopPropagation
+                />
+              ) : (
+                <>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: 'text.secondary', mb: 1, display: 'block', fontWeight: 600 }}
+                  >
+                    Replying to {authorName}
+                  </Typography>
+                  <TextField
+                    multiline
+                    rows={2}
+                    placeholder="Write a reply..."
+                    value={replyText}
+                    onChange={(e) => onReplyTextChange?.(e.target.value)}
+                    fullWidth
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ mb: 1, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+                  />
+                  <CommentInlineFormActions
+                    onCancel={() => onCancelReply?.()}
+                    onSubmit={() => onSubmitReply?.()}
+                    submitting={submittingReply}
+                    submitDisabled={!replyText?.trim()}
+                    submitLabel="Reply"
+                    submittingLabel="Posting…"
+                  />
+                </>
+              )}
+            </Box>
+          )}
+          {isEditing && (
+            <Box sx={commentComposerFullWidthWrapSx}>
+              {richText ? (
+                <CommentRichTextComposer
+                  editorKey={`edit-${editingCommentId}`}
+                  value={editCommentText || ''}
+                  onChange={onEditCommentTextChange}
+                  onUploadImage={onUploadCommentImage}
+                  title="Edit comment"
+                  placeholder="Edit comment…"
+                  secondaryLabel="Cancel"
+                  submitLabel="Update"
+                  submittingLabel="Updating…"
+                  onSecondary={() => onCancelEdit?.()}
+                  onSubmit={() => onUpdateComment?.(comment.id)}
+                  submitting={updatingComment === comment.id}
+                  showHeaderIcon={false}
+                  stopPropagation
+                />
+              ) : (
+                <>
+                  <TextField
+                    multiline
+                    rows={3}
+                    value={editCommentText}
+                    onChange={(e) => onEditCommentTextChange?.(e.target.value)}
+                    fullWidth
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ mb: 1, '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+                  />
+                  <CommentInlineFormActions
+                    onCancel={() => onCancelEdit?.()}
+                    onSubmit={() => onUpdateComment?.(comment.id)}
+                    submitting={updatingComment === comment.id}
+                    submitDisabled={!editCommentText?.trim()}
+                    submitLabel="Update"
+                    submittingLabel="Updating…"
+                  />
+                </>
+              )}
+            </Box>
+          )}
         </Box>
       </Box>
     );
@@ -413,7 +420,14 @@ export function QuickLinksCommentList({
 
   const renderReplies = (replies, depth = 0) =>
     (replies || []).map((reply) => (
-      <Box key={reply.id} sx={{ pl: depth > 0 ? 2 : 1.5 }}>
+      <Box
+        key={reply.id}
+        sx={{
+          pl: { xs: 1, sm: depth > 0 ? 2 : 1.5 },
+          borderLeft: { xs: `2px solid ${alpha(theme.palette.divider, 0.5)}`, sm: 'none' },
+          ml: { xs: 0.5, sm: 0 },
+        }}
+      >
         {renderCommentBlock(reply, true)}
         {hasReplies(reply) && (
           <Box sx={{ pl: 1.5 }}>
@@ -432,9 +446,9 @@ export function QuickLinksCommentList({
           <Box key={comment.id}>
             {renderCommentBlock(comment, false)}
             {hasReplies(comment) && (
-              <Box sx={{ pl: 1.5, mt: 0.5 }}>
+              <Box sx={{ pl: { xs: 1, sm: 1.5 }, mt: 0.5 }}>
                 <Collapse in={repliesExpanded}>
-                  <Box sx={{ pl: 0.5 }}>{renderReplies(comment.replies)}</Box>
+                  <Box sx={{ pl: { xs: 0, sm: 0.5 } }}>{renderReplies(comment.replies)}</Box>
                 </Collapse>
                 <Button
                   size="small"
@@ -443,21 +457,15 @@ export function QuickLinksCommentList({
                     e.stopPropagation();
                     onToggleExpanded(comment.id);
                   }}
-                  startIcon={
-                    <Iconify
-                      icon={repliesExpanded ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'}
-                      width={16}
-                      sx={{ color: 'text.secondary' }}
-                    />
-                  }
                   sx={{
                     minWidth: 'auto',
-                    px: 0,
+                    px: { xs: 0.5, sm: 0 },
                     py: 0.5,
                     mt: 0.5,
                     color: 'text.secondary',
-                    fontSize: theme.typography.pxToRem(12),
+                    fontSize: { xs: '0.75rem', sm: theme.typography.pxToRem(12) },
                     textTransform: 'none',
+                    '& .MuiButton-startIcon': { display: { xs: 'none', sm: 'inline-flex' }, mr: 0.5 },
                     '&:hover': { color: 'primary.main', bgcolor: 'transparent' },
                   }}
                 >
