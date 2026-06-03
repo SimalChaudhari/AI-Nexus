@@ -37,8 +37,10 @@ const TIMELINE_LINE_TOP = {
   xs: TIMELINE_GRID_PT_PX.xs + TRACK_H.xs / 2,
   md: TIMELINE_GRID_PT_PX.md + TRACK_H.md / 2,
 };
-const MOBILE_TRACK_H_PX = 70;
+const MOBILE_TRACK_H_PX = 56;
 const MOBILE_LINE_TOP_PX = MOBILE_TRACK_H_PX / 2;
+/** Compact step labels — small enough to fit long titles in narrow columns */
+const MOBILE_STEP_TITLE_FONT = 'clamp(0.5625rem, 2.35vw, 0.6875rem)';
 const STEP_ADVANCE_INTERVAL_MS = 1600;
 const PROGRESS_TICK_MS = 60;
 
@@ -167,8 +169,8 @@ function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, comp
           : { duration: 0.25 }
       }
       sx={{
-        width: compact ? { xs: 50, md: 56 } : NODE_SIZE,
-        height: compact ? { xs: 50, md: 56 } : NODE_SIZE,
+        width: compact ? { xs: 44, md: 50 } : NODE_SIZE,
+        height: compact ? { xs: 44, md: 50 } : NODE_SIZE,
         borderRadius: 3,
         background: isActive
           ? `linear-gradient(#ffffff, #ffffff) padding-box, ${gradientBorder} border-box`
@@ -202,13 +204,20 @@ function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, comp
           src={iconValue}
           alt=""
           sx={{
-            width: ICON_SIZE,
-            height: ICON_SIZE,
+            width: compact ? { xs: 22, md: 26 } : ICON_SIZE,
+            height: compact ? { xs: 22, md: 26 } : ICON_SIZE,
             objectFit: 'contain',
           }}
         />
       ) : (
-        <Iconify icon={iconValue} width={ICON_SIZE} sx={{ color: iconColor }} />
+        <Iconify
+          icon={iconValue}
+          width={compact ? 22 : 32}
+          sx={{
+            color: iconColor,
+            ...(compact ? {} : { width: ICON_SIZE, height: ICON_SIZE }),
+          }}
+        />
       )}
 
       {isCompleted ? (
@@ -255,11 +264,11 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
       sx={{
         textAlign: 'center',
         width: 1,
-        maxWidth: compact ? { xs: 74, md: 90 } : { xs: 280, md: 210 },
-        px: compact ? { xs: 0.25, md: 0.5 } : { xs: 0.5, md: 0.75 },
+        maxWidth: compact ? 1 : { xs: 280, md: 210 },
+        px: compact ? { xs: 0.125, md: 0.5 } : { xs: 0.5, md: 0.75 },
         mx: 'auto',
-        pt: compact ? { xs: 0.65, md: 0.75 } : { xs: 1.25, md: 1.4 },
-        pb: compact ? { xs: 0, md: 0.1 } : 0,
+        pt: compact ? { xs: 0.5, md: 0.75 } : { xs: 1.25, md: 1.4 },
+        pb: compact ? { xs: 0.25, md: 0.1 } : 0,
         minHeight: compact ? 0 : { xs: 116, md: 128 },
         justifyContent: 'flex-start',
       }}
@@ -272,14 +281,13 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
             fontWeight: compact ? 500 : 700,
             color: compact && isActive ? '#1a2d4f' : NAVY,
             lineHeight: compact ? 1.15 : 1.3,
-            fontSize: compact ? FLUID_FONT_SIZES.caption : FLUID_FONT_SIZES.body2,
-            letterSpacing: compact ? 0.1 : 0,
-            display: compact ? '-webkit-box' : 'block',
-            WebkitLineClamp: compact ? 3 : 'unset',
-            WebkitBoxOrient: compact ? 'vertical' : 'unset',
-            overflow: compact ? 'hidden' : 'visible',
-            minHeight: compact ? '3.45em' : 'auto',
-            textWrap: compact ? 'balance' : 'wrap',
+            fontSize: compact ? MOBILE_STEP_TITLE_FONT : FLUID_FONT_SIZES.body2,
+            letterSpacing: compact ? 0 : 0,
+            display: 'block',
+            overflow: 'visible',
+            wordBreak: 'break-word',
+            hyphens: 'auto',
+            width: 1,
           }}
         >
           {title}
@@ -537,7 +545,7 @@ function MobileTimeline({ phases, primaryColor }) {
   const totalProgress = (activeStepIndex + activeStepProgress) / count;
 
   return (
-    <Box ref={timelineRef} sx={{ width: 1, maxWidth: 560, mx: 'auto', position: 'relative', pt: 0.5 }}>
+    <Box ref={timelineRef} sx={{ width: 1, maxWidth: 1, mx: 'auto', position: 'relative', pt: 0.5 }}>
       <Box
         aria-hidden
         sx={{
@@ -577,11 +585,12 @@ function MobileTimeline({ phases, primaryColor }) {
         sx={{
           display: 'grid',
           gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
-          columnGap: 0.45,
+          columnGap: { xs: 0.25, sm: 0.35 },
           alignItems: 'start',
           position: 'relative',
           zIndex: 2,
-          px: 0.25,
+          px: { xs: 0, sm: 0.25 },
+          pb: { xs: 0.5, sm: 0 },
         }}
       >
         {phases.map((phase, index) => (

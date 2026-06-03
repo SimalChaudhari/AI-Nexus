@@ -164,7 +164,7 @@ export function HomeTestimonialsSection() {
       component="section"
       sx={{
         position: 'relative',
-        py: 6,
+        py: { xs: 2, md: 2.5 },
         // background: `linear-gradient(180deg, ${SECTION_BG} 0%, ${alpha(primary, 0.04)} 50%, ${SECTION_BG} 100%)`,
         overflow: 'visible',
       }}
@@ -192,6 +192,7 @@ export function HomeTestimonialsSection() {
           px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
           pt: 0,
           pb: 0,
+          
         }}
       >
         <Stack spacing={{ xs: 5, md: 7 }} alignItems="center" sx={{ width: '100%' }}>

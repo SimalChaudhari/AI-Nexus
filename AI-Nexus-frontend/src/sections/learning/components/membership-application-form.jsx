@@ -95,8 +95,11 @@ import {
 import {
   EMPTY_DOCUMENT_UPLOAD_FORM,
   buildDocumentUploadApiPayload,
+  buildUploadedDocumentEntry,
   fileToBase64,
   getDocumentsToUpload,
+  isDuplicateDocumentUploadError,
+  syncUploadedDocumentTypesToEntries,
   validateDocumentUploadBeforeSubmit,
 } from 'src/utils/membership-application-document';
 import { EMPTY_BILLING_FORM } from 'src/utils/membership-application-billing';
@@ -436,6 +439,13 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
   const handleDocumentFileSelect = (documentType, file) => {
     if (!file) return;
+
+    const typeMeta = documentTypes.find((type) => type.value === documentType);
+    const existingEntry = draft.documentUpload?.entries?.[documentType];
+    if (typeMeta?.isUploaded || existingEntry?.uploadedToSalesforce) {
+      return;
+    }
+
     setDocumentFiles((prev) => ({ ...prev, [documentType]: file }));
     setDraft((prev) => {
       const entries = {
@@ -453,6 +463,91 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       return next;
     });
   };
+
+  const handleDocumentFileRemove = (documentType) => {
+    setDocumentFiles((prev) => {
+      const next = { ...prev };
+      delete next[documentType];
+      return next;
+    });
+    setDraft((prev) => {
+      const existing = prev.documentUpload?.entries?.[documentType] || {};
+      if (existing.uploadedToSalesforce) {
+        return prev;
+      }
+      const entries = {
+        ...(prev.documentUpload?.entries || {}),
+        [documentType]: {
+          otherDetails: existing.otherDetails || '',
+          fileName: '',
+        },
+      };
+      const next = {
+        ...prev,
+        documentUpload: { ...prev.documentUpload, entries },
+      };
+      saveDraft(next);
+      return next;
+    });
+  };
+
+  const markDocumentUploadedInDraft = (documentType, fileName) => {
+    setDocumentFiles((prev) => {
+      const next = { ...prev };
+      delete next[documentType];
+      return next;
+    });
+    setDraft((prev) => {
+      const existing = prev.documentUpload?.entries?.[documentType] || {};
+      const entries = {
+        ...(prev.documentUpload?.entries || {}),
+        [documentType]: buildUploadedDocumentEntry(fileName, existing),
+      };
+      const next = {
+        ...prev,
+        documentUpload: { ...prev.documentUpload, entries },
+      };
+      saveDraft(next);
+      return next;
+    });
+    setDocumentTypes((prev) =>
+      prev.map((type) =>
+        type.value === documentType
+          ? { ...type, isUploaded: true, uploadedFileName: fileName || type.uploadedFileName }
+          : type
+      )
+    );
+  };
+
+  const handleDocumentTypesLoaded = useCallback((types) => {
+    setDocumentTypes(types);
+    setDocumentFiles((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      types.forEach((type) => {
+        if (type.isUploaded && next[type.value]) {
+          delete next[type.value];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setDraft((prev) => {
+      const entries = syncUploadedDocumentTypesToEntries(
+        types,
+        prev.documentUpload?.entries || {}
+      );
+      if (entries === prev.documentUpload?.entries) {
+        return prev;
+      }
+      const next = {
+        ...prev,
+        documentUpload: { ...prev.documentUpload, entries },
+      };
+      saveDraft(next);
+      return next;
+    });
+  }, []);
 
   const handleDocumentOtherDetailsChange = (documentType, value) => {
     setDraft((prev) => {
@@ -676,13 +771,22 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       throw new Error('Application ID is missing. Submit the Application tab first.');
     }
 
-    const validationError = validateDocumentUploadBeforeSubmit(documentTypes, documentFiles);
+    const validationError = validateDocumentUploadBeforeSubmit(
+      documentTypes,
+      documentFiles,
+      draft.documentUpload?.entries
+    );
     if (validationError) {
       throw new Error(validationError);
     }
 
-    const toUpload = getDocumentsToUpload(documentTypes, documentFiles);
+    const toUpload = getDocumentsToUpload(
+      documentTypes,
+      documentFiles,
+      draft.documentUpload?.entries
+    );
     let uploadedCount = 0;
+    let skippedDuplicates = 0;
 
     for (const type of toUpload) {
       const file = documentFiles[type.value];
@@ -696,14 +800,27 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         fileContent,
       });
 
-      await submitMembershipDocumentUpload({
-        socialAccessToken: session.socialToken,
-        ...payload,
-      });
-      uploadedCount += 1;
+      try {
+        await submitMembershipDocumentUpload({
+          socialAccessToken: session.socialToken,
+          ...payload,
+        });
+        markDocumentUploadedInDraft(type.value, file.name);
+        uploadedCount += 1;
+      } catch (err) {
+        if (isDuplicateDocumentUploadError(err)) {
+          markDocumentUploadedInDraft(
+            type.value,
+            file.name || draft.documentUpload?.entries?.[type.value]?.uploadedFileName
+          );
+          skippedDuplicates += 1;
+          continue;
+        }
+        throw err;
+      }
     }
 
-    return uploadedCount;
+    return { uploadedCount, skippedDuplicates };
   };
 
   const submitResidentialDeclarationTab = async () => {
@@ -785,13 +902,27 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         setTabMessageSeverity('success');
         setTabMessage('Declaration submitted to Salesforce successfully.');
       } else if (tabId === 'document-upload') {
-        const count = await submitDocumentUploadTab();
+        const { uploadedCount, skippedDuplicates } = await submitDocumentUploadTab();
         setTabMessageSeverity('success');
-        setTabMessage(
-          count === 1
-            ? '1 document uploaded to Salesforce successfully.'
-            : `${count} documents uploaded to Salesforce successfully.`
-        );
+        if (uploadedCount > 0 && skippedDuplicates > 0) {
+          setTabMessage(
+            `${uploadedCount} document(s) uploaded. ${skippedDuplicates} document(s) were already on file with ISCA eServices.`
+          );
+        } else if (uploadedCount > 0) {
+          setTabMessage(
+            uploadedCount === 1
+              ? '1 document uploaded to Salesforce successfully.'
+              : `${uploadedCount} documents uploaded to Salesforce successfully.`
+          );
+        } else if (skippedDuplicates > 0) {
+          setTabMessage(
+            'All selected documents are already on file with ISCA eServices. You can continue to the next step.'
+          );
+        } else {
+          setTabMessage(
+            'All required documents are already on file with ISCA eServices. You can continue to the next step.'
+          );
+        }
       } else if (tabId === 'residential-declaration') {
         await submitResidentialDeclarationTab();
         setTabMessageSeverity('success');
@@ -1515,8 +1646,9 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       documentUpload={draft.documentUpload}
       documentFiles={documentFiles}
       onFileSelect={handleDocumentFileSelect}
+      onFileRemove={handleDocumentFileRemove}
       onOtherDetailsChange={handleDocumentOtherDetailsChange}
-      onDocumentTypesLoaded={setDocumentTypes}
+      onDocumentTypesLoaded={handleDocumentTypesLoaded}
     />
   );
 
