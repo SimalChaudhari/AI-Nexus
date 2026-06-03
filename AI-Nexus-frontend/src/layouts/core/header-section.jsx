@@ -38,6 +38,7 @@ export function HeaderSection({
   disableAppBar = false,
   appBarPosition = 'sticky',
   layoutQuery = 'md',
+  compressCenterWhenEmpty = false,
   ...other
 }) {
   const theme = useTheme();
@@ -101,7 +102,16 @@ export function HeaderSection({
         >
           {slots?.leftArea}
 
-          <Box sx={{ display: 'flex', flex: '1 1 auto', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              flex:
+                slots?.centerArea || !compressCenterWhenEmpty ? '1 1 auto' : '0 0 auto',
+              width:
+                slots?.centerArea || !compressCenterWhenEmpty ? 'auto' : 0,
+            }}
+          >
             {slots?.centerArea}
           </Box>
 

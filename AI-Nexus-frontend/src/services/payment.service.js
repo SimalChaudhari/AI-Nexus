@@ -75,7 +75,11 @@ export async function createMembershipApplicationCheckout({
   successUrl,
   cancelUrl,
   customerEmail,
+  customerName,
+  customerPhone,
   currency = 'sgd',
+  totalAmount,
+  description,
 }) {
   const response = await axios.post('/payments/create-membership-application-checkout', {
     applicationId,
@@ -83,7 +87,11 @@ export async function createMembershipApplicationCheckout({
     successUrl,
     cancelUrl,
     customerEmail,
+    customerName,
+    customerPhone,
     currency,
+    totalAmount,
+    description,
   });
   return response.data;
 }

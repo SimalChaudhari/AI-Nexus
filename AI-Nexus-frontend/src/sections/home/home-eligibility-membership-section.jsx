@@ -36,9 +36,21 @@ const RED = '#e63946';
 const BLUE_ICON = '#1e5a8a';
 const LIGHT_PANEL_BG = '#f5f7fa';
 const LIGHT_PANEL_BORDER = '#e8ecf1';
-const CARD_MIN_HEIGHT = { xs: 260, sm: 285, md: 315, lg: 335 };
-const CARD_CONTENT_PX = { xs: 1.6, sm: 1.9, md: 2.2, lg: 2.5 };
-const CARD_CONTENT_PY = { xs: 1.6, sm: 1.9, md: 2.2, lg: 2.5 };
+const CARD_CONTENT_PX = { xs: 2, sm: 2.5 };
+const CARD_CONTENT_PY = { xs: 1.5, sm: 2 };
+const PANEL_TITLE_SX = {
+  m: 0,
+  fontWeight: 700,
+  fontSize: FLUID_FONT_SIZES.h5,
+  lineHeight: 1.25,
+};
+const PANEL_SUBTITLE_SX = {
+  m: 0,
+  mt: 0.5,
+  fontWeight: 400,
+  fontSize: FLUID_FONT_SIZES.body2,
+  lineHeight: 1.5,
+};
 const NETWORK_PATTERN = `radial-gradient(circle at 20% 30%, ${alpha('#7ec8ff', 0.35)} 0 2px, transparent 2px),
   radial-gradient(circle at 60% 70%, ${alpha('#5eb0f5', 0.28)} 0 2px, transparent 2px),
   radial-gradient(circle at 80% 20%, ${alpha('#8ad4ff', 0.22)} 0 1.5px, transparent 1.5px)`;
@@ -137,27 +149,27 @@ function QuestionCard({ question }) {
       alignItems="center"
       sx={{
         width: 1,
-        p: { xs: 0.75, sm: 1.1, md: 1.2 },
-        borderRadius: 1.5,
+        p: { xs: 0.65, sm: 0.85 },
+        borderRadius: 1.25,
         bgcolor: 'common.white',
         border: `1px solid ${alpha('#e2e8f0', 0.95)}`,
-        boxShadow: `0 2px 8px ${alpha('#000', 0.07)}`,
+        boxShadow: `0 1px 4px ${alpha('#000', 0.06)}`,
         height: 1,
-        minHeight: { xs: 56, sm: 58, md: 60 },
+        minHeight: { xs: 48, sm: 52 },
         justifyContent: 'flex-start',
       }}
     >
       <Box
         sx={{
-          width: { xs: 22, sm: 28 },
-          height: { xs: 22, sm: 28 },
+          width: { xs: 20, sm: 24 },
+          height: { xs: 20, sm: 24 },
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        {icon ? <Iconify icon={icon} width={20} sx={{ color: accent }} /> : null}
+        {icon ? <Iconify icon={icon} width={18} sx={{ color: accent }} /> : null}
       </Box>
       <Typography
         sx={{
@@ -187,7 +199,7 @@ function MembershipBenefit({ benefit, showDivider }) {
   return (
     <Stack
       alignItems="center"
-      spacing={0.95}
+      spacing={0.65}
       sx={{
         flex: { xs: '1 1 calc(50% - 8px)', md: '1 1 25%' },
         minWidth: 0,
@@ -213,18 +225,18 @@ function MembershipBenefit({ benefit, showDivider }) {
     >
       <Box
         sx={{
-          width: { xs: 46, md: 54 },
-          height: { xs: 46, md: 54 },
+          width: { xs: 36, md: 40 },
+          height: { xs: 36, md: 40 },
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           bgcolor: 'common.white',
           border: `1px solid ${alpha('#dce6f0', 0.95)}`,
-          boxShadow: `0 3px 10px ${alpha(NAVY, 0.08)}`,
+          boxShadow: `0 2px 6px ${alpha(NAVY, 0.06)}`,
         }}
       >
-        {icon ? <Iconify icon={icon} width={24} sx={{ color: BLUE_ICON }} /> : null}
+        {icon ? <Iconify icon={icon} width={20} sx={{ color: BLUE_ICON }} /> : null}
       </Box>
       <Typography
         sx={{
@@ -234,7 +246,7 @@ function MembershipBenefit({ benefit, showDivider }) {
           lineHeight: 1.2,
           color: NAVY,
           width: '100%',
-          maxWidth: 138,
+          maxWidth: 120,
           textAlign: 'center',
           mx: 'auto',
           whiteSpace: 'pre-line',
@@ -328,10 +340,10 @@ function PanelCtaButton({ label, href, variant = 'contained', onEligibilityClick
           color: NAVY,
           bgcolor: 'common.white',
           borderRadius: 999,
-          px: { xs: 2.5, sm: 3 },
-          py: { xs: 1.1, sm: 1.25 },
-          minHeight: { xs: 44, sm: 48 },
-          fontSize: FLUID_FONT_SIZES.body2,
+          px: { xs: 2, sm: 2.25 },
+          py: { xs: 0.85, sm: 1 },
+          minHeight: { xs: 38, sm: 42 },
+          fontSize: FLUID_FONT_SIZES.caption,
           fontWeight: 700,
           boxShadow: `0 4px 14px ${alpha('#000', 0.16)}`,
           '&:hover': { bgcolor: alpha('#fff', 0.95) },
@@ -451,15 +463,10 @@ export function HomeEligibilityMembershipSection() {
         id="eligibility-membership"
         component="section"
         sx={{
-          py: { xs: 2.5, sm: 3, md: 3.5, lg: 4 },
+          py: { xs: 2, md: 2.5 },
           bgcolor: 'grey.500',
         }}
       >
-        {/* <DashboardContent variant="fullWidth" 
-        component={MotionViewport}
-        
-        > */}
-
         <DashboardContent
           component={MotionViewport}
           sx={{
@@ -471,22 +478,20 @@ export function HomeEligibilityMembershipSection() {
             pb: 0,
           }}
         >
-          <Box
+          <Grid
+            container
+            spacing={{ xs: 2, md: 3 }}
+            alignItems="stretch"
             component={m.div}
             variants={varFade({ distance: 20 }).inUp}
-            sx={{
-              width: 1,
-              display: 'flex',
-              flexDirection: { xs: 'column', lg: 'row' },
-              alignItems: 'stretch',
-              gap: { xs: 1.5, sm: 1.75, lg: 1.75 },
-            }}
           >
             {/* Left panel — Am I Eligible? */}
+            <Grid xs={12} lg={6} sx={{ display: 'flex', minWidth: 0 }}>
             <Box
               sx={{
-                flex: { xs: 'none', lg: '1 1 50%' },
-                // width: { xs: 1, lg: 'auto' },
+                width: 1,
+                flex: 1,
+                minWidth: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 position: 'relative',
@@ -494,8 +499,8 @@ export function HomeEligibilityMembershipSection() {
                 bgcolor: LEFT_BLUE_MID,
                 backgroundImage: NETWORK_PATTERN,
                 backgroundSize: '44px 44px, 58px 58px, 38px 38px',
-                borderRadius: { xs: 1.6, md: 2.2 },
-                boxShadow: `0 10px 26px ${alpha(LEFT_BLUE_DEEP, 0.22)}`,
+                borderRadius: '20px',
+                boxShadow: `0 8px 20px ${alpha(LEFT_BLUE_DEEP, 0.18)}`,
               }}
             >
               <Box
@@ -511,14 +516,13 @@ export function HomeEligibilityMembershipSection() {
                 sx={{
                   position: 'relative',
                   flex: 1,
-                  minHeight: { xs: 'auto', lg: CARD_MIN_HEIGHT },
                   zIndex: 2,
                 }}
               >
                 {heroUrl ? (
                   <Box
                     sx={{
-                      flex: { xs: '0 0 auto', sm: '0 0 40%', lg: '0 0 42%' },
+                      flex: { xs: '0 0 auto', sm: '0 0 36%', lg: '0 0 38%' },
                       width: { xs: 1, sm: 'auto' },
                       minHeight: { sm: 'auto' },
                       alignSelf: { sm: 'stretch' },
@@ -554,7 +558,7 @@ export function HomeEligibilityMembershipSection() {
                 ) : null}
 
                 <Stack
-                  spacing={{ xs: 1.1, sm: 1.2 }}
+                  spacing={{ xs: 0.85, sm: 1 }}
                   sx={{
                     flex: 1,
                     minWidth: 0,
@@ -569,10 +573,7 @@ export function HomeEligibilityMembershipSection() {
                     <Typography
                       component="h2"
                       sx={{
-                        m: 0,
-                        fontWeight: 700,
-                        fontSize: FLUID_FONT_SIZES.display,
-                        lineHeight: 1.15,
+                        ...PANEL_TITLE_SX,
                         color: 'common.white',
                         textAlign: { xs: 'center', sm: 'left' },
                       }}
@@ -582,10 +583,7 @@ export function HomeEligibilityMembershipSection() {
 
                     <Typography
                       sx={{
-                        m: 0,
-                        mt: 0.35,
-                        fontWeight: 400,
-                        fontSize: FLUID_FONT_SIZES.body1,
+                        ...PANEL_SUBTITLE_SX,
                         color: alpha('#fff', 0.9),
                         textAlign: { xs: 'center', sm: 'left' },
                       }}
@@ -596,9 +594,9 @@ export function HomeEligibilityMembershipSection() {
                     {questions.length > 0 ? (
                       <Grid
                         container
-                        spacing={{ xs: 0.7, sm: 0.85 }}
+                        spacing={{ xs: 0.6, sm: 0.75 }}
                         sx={{
-                          mt: { xs: 1, sm: 1.1 },
+                          mt: { xs: 0.85, sm: 1 },
                           width: 1,
                           mx: 'auto',
                         }}
@@ -617,7 +615,7 @@ export function HomeEligibilityMembershipSection() {
 
                     <Box
                       sx={{
-                        mt: { xs: 1, sm: 1.15, md: 1.25 },
+                        mt: { xs: 0.85, sm: 1 },
                         display: 'flex',
                         justifyContent: 'center',
                         width: 1,
@@ -628,44 +626,46 @@ export function HomeEligibilityMembershipSection() {
                         href={left.ctaHref}
                         variant="eligibility"
                         onEligibilityClick={openEligibilityFlow}
-                        sx={{ width: 'auto', minWidth: { xs: 210, sm: 240 } }}
+                        sx={{ width: 'auto', minWidth: { xs: 180, sm: 200 } }}
                       />
                     </Box>
                   </Box>
                 </Stack>
               </Stack>
             </Box>
+            </Grid>
 
             {/* Right panel — ISCA Membership */}
+            <Grid xs={12} lg={6} sx={{ display: 'flex', minWidth: 0 }}>
             <Box
               sx={{
-                flex: { xs: 'none', lg: '1 1 50%' },
-                // width: { xs: 1, lg: 'auto' },
+                width: 1,
+                flex: 1,
+                minWidth: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 bgcolor: '#fcfdff',
                 border: `1px solid ${alpha('#cfe0ff', 0.95)}`,
-                borderRadius: { xs: 1.6, md: 2.2 },
-                boxShadow: `0 10px 24px ${alpha('#0f2744', 0.08)}`,
+                borderRadius: '20px',
+                boxShadow: `0 8px 20px ${alpha('#0f2744', 0.06)}`,
               }}
             >
               <Stack
-                spacing={1.1}
+                spacing={0.85}
                 sx={{
                   height: 1,
                   px: CARD_CONTENT_PX,
                   py: CARD_CONTENT_PY,
-                  minHeight: { xs: 'auto', lg: CARD_MIN_HEIGHT },
                   justifyContent: 'flex-start',
                   alignItems: 'center',
                 }}
               >
-                <Stack spacing={0.45} sx={{ width: 1, mx: 'auto' }}>
+                <Stack spacing={0.35} sx={{ width: 1, mx: 'auto' }}>
                   <Typography
                     sx={{
                       m: 0,
                       fontWeight: 600,
-                      fontSize: FLUID_FONT_SIZES.overline,
+                      fontSize: FLUID_FONT_SIZES.caption,
                       color: NAVY,
                       textAlign: 'left',
                     }}
@@ -676,10 +676,7 @@ export function HomeEligibilityMembershipSection() {
                   <Typography
                     component="h3"
                     sx={{
-                      m: 0,
-                      fontWeight: 700,
-                      fontSize: FLUID_FONT_SIZES.h4,
-                      lineHeight: 1.08,
+                      ...PANEL_TITLE_SX,
                       color: NAVY,
                       textAlign: 'left',
                     }}
@@ -698,8 +695,8 @@ export function HomeEligibilityMembershipSection() {
                       mx: 'auto',
                       flexWrap: { xs: 'wrap', md: 'nowrap' },
                       justifyContent: { xs: 'center', md: 'space-between' },
-                      gap: { xs: 1.2, md: 0 },
-                      py: { xs: 0.3, md: 0.4 },
+                      gap: { xs: 1, md: 0 },
+                      py: { xs: 0.15, md: 0.25 },
                       alignItems: 'flex-start',
                     }}
                   >
@@ -750,7 +747,8 @@ export function HomeEligibilityMembershipSection() {
                 </Stack>
               </Stack>
             </Box>
-          </Box>
+            </Grid>
+          </Grid>
         </DashboardContent>
       </Box>
 

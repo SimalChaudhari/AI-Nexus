@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
-import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
@@ -11,6 +10,7 @@ import { RouterLink } from 'src/routes/components';
 import { paths } from 'src/routes/paths';
 import { Iconify } from 'src/components/iconify';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
+import { FLUID_FONT_SIZES } from 'src/theme/fluid-typography';
 import { DashboardContent } from '../dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 
@@ -35,6 +35,20 @@ const ENROLLMENT_FALLBACK_VALUE = '12K+';
 
 /** Static domain line (replace with env later) */
 const FOOTER_DOMAIN_LINE = 'ainexus.com · AI learning & community';
+
+const FOOTER_STAT_VALUE_SX = {
+  fontSize: FLUID_FONT_SIZES.h5,
+  lineHeight: 1.25,
+  fontWeight: 700,
+  fontVariantNumeric: 'tabular-nums',
+  fontFeatureSettings: '"tnum"',
+};
+
+const FOOTER_STAT_LABEL_SX = {
+  ...HERO_TYPOGRAPHY.footerMetaText,
+  fontSize: FLUID_FONT_SIZES.caption,
+  lineHeight: 1.4,
+};
 
 const FOOTER_LINKS = [
   { label: 'Home', path: paths.home, external: false, icon: 'solar:home-bold' },
@@ -84,16 +98,16 @@ function FooterStatsBand() {
             : `linear-gradient(180deg, ${alpha(t.palette.secondary.light, 0.22)} 0%, ${alpha(t.palette.secondary.main, 0.18)} 100%)`,
       }}
     >
-      <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3 }, py: { xs: 3.5, md: 5 } }}>
-        <Grid container spacing={{ xs: 1.25, sm: 2, md: 2.5 }}>
+      <DashboardContent sx={{ py: { xs: 2.5, md: 3.5 } }}>
+        <Grid container spacing={{ xs: 1, sm: 1.5, md: 2 }}>
           {footerStats.map((stat) => (
             <Grid item xs={6} md={3} key={stat.label}>
               <Stack
-                spacing={0.6}
+                spacing={0.5}
                 sx={{
                   textAlign: { xs: 'center', md: 'left' },
-                  p: { xs: 1.25, sm: 1.5, md: 1.75 },
-                  borderRadius: 2,
+                  p: { xs: 1, sm: 1.15, md: 1.35 },
+                  borderRadius: '14px',
                   backdropFilter: 'blur(12px)',
                   WebkitBackdropFilter: 'blur(12px)',
                   background: (t) =>
@@ -122,9 +136,9 @@ function FooterStatsBand() {
                 <Stack direction="row" spacing={1.2} alignItems="center" justifyContent={{ xs: 'center', md: 'flex-start' }}>
                   <Box
                     sx={{
-                      width: { xs: 38, sm: 42, md: 46 },
-                      height: { xs: 38, sm: 42, md: 46 },
-                      borderRadius: '14px',
+                      width: { xs: 32, sm: 34, md: 36 },
+                      height: { xs: 32, sm: 34, md: 36 },
+                      borderRadius: '10px',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -132,14 +146,13 @@ function FooterStatsBand() {
                       color: 'primary.main',
                     }}
                   >
-                    <Iconify icon={stat.icon} width={24} />
+                    <Iconify icon={stat.icon} width={18} />
                   </Box>
                 </Stack>
                 <Typography
                   sx={{
-                    ...HERO_TYPOGRAPHY.footerStatValue,
+                    ...FOOTER_STAT_VALUE_SX,
                     color: (t) => (t.palette.mode === 'dark' ? 'common.white' : 'text.primary'),
-                    fontWeight: 800,
                     letterSpacing: '-0.01em',
                   }}
                 >
@@ -149,7 +162,7 @@ function FooterStatsBand() {
                   variant="body2"
                   sx={{
                     color: (t) => alpha(t.palette.text.secondary, 0.95),
-                    ...HERO_TYPOGRAPHY.footerMetaText,
+                    ...FOOTER_STAT_LABEL_SX,
                   }}
                 >
                   {stat.label}
@@ -171,7 +184,7 @@ function FooterStatsBand() {
         >
           {FOOTER_DOMAIN_LINE}
         </Typography>
-      </Container>
+      </DashboardContent>
     </Box>
   );
 }
@@ -354,7 +367,7 @@ export function HomeFooter({ sx }) {
       }}
     >
       <FooterStatsBand />
-      <FooterBottomLinksAndBrand currentYear={currentYear} useContainer />
+      <FooterBottomLinksAndBrand currentYear={currentYear} useContainer={false} />
     </Box>
   );
 }

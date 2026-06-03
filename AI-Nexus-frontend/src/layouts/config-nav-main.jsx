@@ -4,10 +4,6 @@ import { paths } from 'src/routes/paths';
 
 export const navData = [
   {
-    title: 'Home',
-    path: paths.home,
-  },
-  {
     title: 'Learning',
     path: paths.learning,
   },

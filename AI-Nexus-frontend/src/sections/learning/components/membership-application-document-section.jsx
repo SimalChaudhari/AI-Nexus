@@ -13,7 +13,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Iconify } from 'src/components/iconify';
 import { MembershipFormTextField } from 'src/components/membership-form-textfield';
 import { fetchAvailableDocumentTypes } from 'src/api/membership-application';
-import { readMembershipSalesforceSession } from 'src/utils/membership-salesforce-session';
+import { ensureMembershipSalesforceSession } from 'src/utils/membership-salesforce-auth';
 import {
   MEMBERSHIP_DOCUMENT_ACCEPT,
   normalizeDocumentTypesResponse,
@@ -37,10 +37,21 @@ export function MembershipApplicationDocumentSection({
   const [loadError, setLoadError] = useState('');
 
   const loadDocumentTypes = useCallback(async () => {
-    const session = readMembershipSalesforceSession();
     const appId = applicationId?.trim();
-    if (!session?.socialToken || !appId) {
-      setLoadError('Application ID and Salesforce sign-in are required before uploading documents.');
+    if (!appId) {
+      setLoadError('Application ID is required before uploading documents.');
+      setDocumentTypes([]);
+      return;
+    }
+
+    let session;
+    try {
+      session = ensureMembershipSalesforceSession();
+    } catch (error) {
+      if (error?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
+        return;
+      }
+      setLoadError(error instanceof Error ? error.message : 'Salesforce sign-in is required.');
       setDocumentTypes([]);
       return;
     }

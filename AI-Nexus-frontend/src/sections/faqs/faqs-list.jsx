@@ -17,7 +17,7 @@ const FAQ_DIVIDER_SX = {
   opacity: 0.2,
 };
 
-export function FaqsList({ items = [] }) {
+export function FaqsList({ items = [], compact = false }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const visibleItems = (items || []).filter((item) => String(item?.question || '').trim());
 
@@ -42,12 +42,12 @@ export function FaqsList({ items = [] }) {
 
         return (
           <Box key={`faq-${index}-${item.question}`}>
-            <Box sx={{ pt: 2, pb: isExpanded ? 1 : 2 }}>
+            <Box sx={{ pt: compact ? 1.15 : 2, pb: isExpanded ? 0.75 : compact ? 1.15 : 2 }}>
               <Box
                 sx={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 1.5,
+                  gap: compact ? 1 : 1.5,
                 }}
               >
                 <IconButton
@@ -56,8 +56,8 @@ export function FaqsList({ items = [] }) {
                   sx={{
                     flexShrink: 0,
                     p: 0.5,
-                    width: 32,
-                    height: 32,
+                    width: compact ? 28 : 32,
+                    height: compact ? 28 : 32,
                     color: 'common.black',
                     bgcolor: 'grey.400',
                     borderRadius: '50%',
@@ -68,19 +68,20 @@ export function FaqsList({ items = [] }) {
                 >
                   <Iconify
                     icon={isExpanded ? 'eva:minus-fill' : 'eva:plus-fill'}
-                    width={24}
+                    width={compact ? 20 : 24}
                     sx={{ color: 'common.black' }}
                   />
                 </IconButton>
 
                 <Typography
-                  variant="subtitle1"
+                  variant={compact ? 'body1' : 'subtitle1'}
                   onClick={() => toggleExpand(index)}
                   sx={{
                     flex: 1,
                     minWidth: 0,
                     color: 'primary.main',
                     fontWeight: 500,
+                    fontSize: compact ? '0.9375rem' : undefined,
                     lineHeight: 1.45,
                     cursor: 'pointer',
                     userSelect: 'none',
@@ -91,7 +92,13 @@ export function FaqsList({ items = [] }) {
               </Box>
 
               <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                <Box sx={{ pl: 'calc(36px + 12px)', pt: 0.75, pb: 0.25 }}>
+                <Box
+                  sx={{
+                    pl: compact ? 'calc(28px + 8px)' : 'calc(36px + 12px)',
+                    pt: 0.5,
+                    pb: 0.15,
+                  }}
+                >
                   {answer ? (
                     <ViewHtmlContent
                       html={answer}

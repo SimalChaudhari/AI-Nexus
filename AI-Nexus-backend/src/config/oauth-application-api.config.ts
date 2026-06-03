@@ -18,8 +18,10 @@ export const OAUTH_APPLICATION_API_ROUTES = {
   ato: 'createATONexus',
   characterReference: 'createCharacterReferenceNexus',
   declaration: 'createDeclarationNexus',
+  residentialDeclaration: 'createResidentialDeclarationNexus',
   availableDocumentTypes: 'getAvailableDocumentTypesNexus',
   uploadDocument: 'uploadDocumentNexus',
+  checkoutDetails: 'getCheckoutDetailsForNexus',
   createBilling: 'createBillingNexus',
 } as const;
 
@@ -34,8 +36,10 @@ const ROUTE_PATH_ENV: Record<OAuthApplicationApiRouteKey, string> = {
   ato: 'OAUTH_APPLICATION_API_ROUTE_ATO',
   characterReference: 'OAUTH_APPLICATION_API_ROUTE_CHARACTER_REFERENCE',
   declaration: 'OAUTH_APPLICATION_API_ROUTE_DECLARATION',
+  residentialDeclaration: 'OAUTH_APPLICATION_API_ROUTE_RESIDENTIAL_DECLARATION',
   availableDocumentTypes: 'OAUTH_APPLICATION_API_ROUTE_AVAILABLE_DOCUMENT_TYPES',
   uploadDocument: 'OAUTH_APPLICATION_API_ROUTE_UPLOAD_DOCUMENT',
+  checkoutDetails: 'OAUTH_APPLICATION_API_ROUTE_CHECKOUT_DETAILS',
   createBilling: 'OAUTH_APPLICATION_API_ROUTE_CREATE_BILLING',
 };
 
@@ -49,8 +53,10 @@ const LEGACY_FULL_URL_ENV: Partial<Record<OAuthApplicationApiRouteKey, string>> 
   ato: 'OAUTH_APPLICATION_ATO_URL',
   characterReference: 'OAUTH_APPLICATION_CHARACTER_REFERENCE_URL',
   declaration: 'OAUTH_APPLICATION_DECLARATION_URL',
+  residentialDeclaration: 'OAUTH_APPLICATION_RESIDENTIAL_DECLARATION_URL',
   availableDocumentTypes: 'OAUTH_APPLICATION_AVAILABLE_DOCUMENT_TYPES_URL',
   uploadDocument: 'OAUTH_APPLICATION_UPLOAD_DOCUMENT_URL',
+  checkoutDetails: 'OAUTH_APPLICATION_CHECKOUT_DETAILS_URL',
   createBilling: 'OAUTH_APPLICATION_CREATE_BILLING_URL',
 };
 

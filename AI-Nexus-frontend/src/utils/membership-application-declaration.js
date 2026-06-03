@@ -18,6 +18,7 @@ export const EMPTY_DECLARATION_FORM = {
   pdpaPolicy: false,
   infoIsTrueAndComplete: false,
   acknowledgeNonRefundableAdmissionFee: false,
+  transitionalArrangements: false,
 };
 
 export function buildDeclarationApiPayload(form, applicationId) {
@@ -32,6 +33,7 @@ export function buildDeclarationApiPayload(form, applicationId) {
     pdpaPolicy: Boolean(form.pdpaPolicy),
     infoIsTrueAndComplete: Boolean(form.infoIsTrueAndComplete),
     acknowledgeNonRefundableAdmissionFee: Boolean(form.acknowledgeNonRefundableAdmissionFee),
+    transitionalArrangements: Boolean(form.transitionalArrangements),
   };
 
   if (form.convictedOfAnyCriminalOffence === 'Yes' && form.criminalConvictionDetails?.trim()) {

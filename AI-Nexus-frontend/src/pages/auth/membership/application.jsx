@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -19,6 +20,10 @@ import {
   clearMembershipApplicationCourseReturn,
   applyDeferredPlatformLoginAfterApplication,
 } from 'src/utils/membership-salesforce-session';
+import {
+  redirectToMembershipApplicationSsoLogin,
+  readMembershipApplicationSsoRedirectNotice,
+} from 'src/utils/membership-salesforce-auth';
 
 // ----------------------------------------------------------------------
 
@@ -27,15 +32,27 @@ export default function MembershipApplicationPage() {
   const { primary, secondary } = theme.palette;
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [ssoNotice, setSsoNotice] = useState('');
   const session = readMembershipSalesforceSession();
 
   useEffect(() => {
-    if (session?.accountId) {
-      setReady(true);
+    const notice = readMembershipApplicationSsoRedirectNotice();
+    if (notice) {
+      setSsoNotice(notice);
+    }
+
+    if (!session?.accountId) {
+      redirectToMembershipApplicationSsoLogin({ reason: 'missing_session' });
       return;
     }
-    router.replace(paths.auth.oauth.start);
-  }, [router, session?.accountId]);
+
+    if (!session?.socialToken?.trim()) {
+      redirectToMembershipApplicationSsoLogin({ reason: 'session_expired' });
+      return;
+    }
+
+    setReady(true);
+  }, [router, session?.accountId, session?.socialToken]);
 
   const handleAllTabsSubmitted = async () => {
     await applyDeferredPlatformLoginAfterApplication();
@@ -220,6 +237,11 @@ export default function MembershipApplicationPage() {
           flexDirection: 'column',
         }}
       >
+        {ssoNotice && (
+          <Alert severity="info" sx={{ mx: { xs: 2, md: 4 }, mt: 2 }} onClose={() => setSsoNotice('')}>
+            {ssoNotice}
+          </Alert>
+        )}
         <MembershipApplicationForm onAllTabsSubmitted={handleAllTabsSubmitted} fullPage />
       </Box>
     </Box>

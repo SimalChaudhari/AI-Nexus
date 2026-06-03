@@ -2,7 +2,7 @@ import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
+import Grid from '@mui/material/Unstable_Grid2';
 import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Divider from '@mui/material/Divider';
@@ -14,11 +14,8 @@ import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { ViewHtmlContent } from 'src/components/html-content/view-html-content';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { normalizeProgrammeFeesContent } from './programme-fees-defaults';
 import {
-  normalizeProgrammeFeesContent,
-} from './programme-fees-defaults';
-import {
-  HOME_SECTION_HEADING_SX,
   PROGRAMME_FEES_HTML_SX,
   PROGRAMME_FEES_PRICE_NOTE_SX,
   PROGRAMME_FEES_PRICE_SX,
@@ -44,6 +41,42 @@ function splitPricePair(rawPrice) {
 
 const RED = '#E32B24';
 const SECTION_BG = 'linear-gradient(180deg, #f4f6f8 0%, #eceef1 48%, #f4f6f8 100%)';
+const CARD_SHELL_SX = {
+  borderRadius: '20px',
+  bgcolor: 'background.paper',
+  border: (theme) => `1px solid ${theme.palette.divider}`,
+  boxShadow: (theme) =>
+    theme.palette.mode === 'dark'
+      ? theme.customShadows?.card
+      : '0 8px 20px rgba(15, 23, 42, 0.06)',
+};
+const COMPACT_PRICE_SX = {
+  ...PROGRAMME_FEES_PRICE_SX,
+  fontSize: FLUID_FONT_SIZES.h5,
+  lineHeight: 1.3,
+  fontWeight: 700,
+};
+const COMPACT_PRICE_NOTE_SX = {
+  ...PROGRAMME_FEES_PRICE_NOTE_SX,
+  fontSize: FLUID_FONT_SIZES.caption,
+  mt: 0.35,
+};
+const INNER_PANEL_SX = (theme) => ({
+  width: 1,
+  flex: 1,
+  minWidth: 0,
+  p: { xs: 1.5, sm: 2 },
+  borderRadius: '14px',
+  border: `1px solid ${theme.palette.divider}`,
+  bgcolor: theme.palette.background.neutral,
+});
+const SECTION_TITLE_SX = {
+  m: 0,
+  fontWeight: 700,
+  fontSize: FLUID_FONT_SIZES.h5,
+  lineHeight: 1.25,
+  color: 'secondary.main',
+};
 
 // ----------------------------------------------------------------------
 
@@ -68,6 +101,13 @@ export function HomeProgrammeFeesSection() {
 
   const tiers = (content.tiers || []).filter((t) => t.title || t.price);
   const agencyLogo = resolveAssetUrl(content.agency?.logoUrl);
+  const hasFundingPartners =
+    Boolean(String(content.fundingPartnersHeading || '').trim()) ||
+    Boolean(String(content.fundingPartnersBody || '').trim());
+  const hasAgency =
+    Boolean(agencyLogo) ||
+    Boolean(String(content.agency?.name || '').trim()) ||
+    Boolean(String(content.agency?.tagline || '').trim());
 
   if (!content.heading && !tiers.length) return null;
 
@@ -75,216 +115,252 @@ export function HomeProgrammeFeesSection() {
     <Box
       component="section"
       sx={{
-        py: { xs: 4, md: 4 },
+        py: { xs: 2, md: 2.5 },
         bgcolor: 'grey.200',
         background: SECTION_BG,
       }}
     >
-            <DashboardContent
-          component={MotionViewport}
-          sx={{
-            width: 1,
-            maxWidth: '100%',
-            mx: 'auto',
-            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
-            pt: 0,
-            pb: 0,
-          }}
-        >
+      <DashboardContent
+        component={MotionViewport}
+        sx={{
+          width: 1,
+          maxWidth: '100%',
+          mx: 'auto',
+          px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+          pt: 0,
+          pb: 0,
+        }}
+      >
         {content.heading ? (
           <Stack
             component={m.div}
             variants={varFade({ distance: 24 }).inUp}
-            spacing={1.5}
+            spacing={0.75}
             alignItems="flex-start"
-            sx={{ mb: { xs: 3, md: 4 } }}
+            sx={{ mb: { xs: 2, md: 2.5 } }}
           >
-            <Typography component="h2" sx={HOME_SECTION_HEADING_SX}>
+            <Typography component="h2" sx={SECTION_TITLE_SX}>
               {content.heading}
             </Typography>
 
             <Box
               sx={{
-                width: { xs: 72, sm: 88, md: 104 },
-                height: 4,
+                width: { xs: 56, sm: 64 },
+                height: 3,
                 borderRadius: 999,
                 background: (theme) =>
                   `linear-gradient(90deg, ${RED} 0%, ${theme.palette.secondary.main} 100%)`,
-                boxShadow: `0 4px 12px ${alpha(RED, 0.28)}`,
+                boxShadow: `0 2px 8px ${alpha(RED, 0.22)}`,
               }}
             />
           </Stack>
         ) : null}
 
-        <Card
+        <Box
           component={m.div}
           variants={varFade({ distance: 24 }).inUp}
           sx={{
-            p: 2.5,
-            borderRadius: 2,
-            boxShadow: (theme) => theme.customShadows?.card,
-            border: (theme) => `1px solid ${theme.palette.divider}`,
+            ...CARD_SHELL_SX,
+            p: { xs: 2, sm: 2.5 },
           }}
         >
-          <Stack spacing={0}>
-            {tiers.map((tier, index) => {
-              const splitPrice = splitPricePair(tier.price);
-              return (
-              <Box key={`fee-tier-${index}`}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={{ xs: 1.5, sm: 3 }}
-                  alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
-                  justifyContent="space-between"
-                  sx={{ py: { xs: 2, md: 2.5 } }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0, pr: { sm: 2 } }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.4 }}>
-                      {tier.title}
-                    </Typography>
-                    {tier.linkLabel ? (
-                      <Link
-                        href={tier.linkHref || '#'}
-                        underline="always"
-                        sx={{
-                          display: 'inline-block',
-                          mt: 0.75,
-                          color: 'primary.main',
-                          fontWeight: 600,
-                          fontSize: FLUID_FONT_SIZES.body2,
-                        }}
-                      >
-                        {tier.linkLabel}
-                      </Link>
-                    ) : null}
-                    {tier.description ? (
-                      <Typography
-                        variant="body2"
-                        sx={{ color: 'text.secondary', mt: 1, lineHeight: 1.65, maxWidth: 640 }}
-                      >
-                        {tier.description}
-                      </Typography>
-                    ) : null}
-                  </Box>
-
-                  <Box
-                    sx={{
-                      flexShrink: 0,
-                      textAlign: { xs: 'left', sm: 'right' },
-                      minWidth: 0,
-                      width: { xs: '100%', sm: 'auto' },
-                      maxWidth: '100%',
-                    }}
-                  >
-                    {splitPrice ? (
-                      <Typography
-                        component="div"
-                        sx={{
-                          ...PROGRAMME_FEES_PRICE_SX,
-                          color: 'error.main',
-                        }}
-                      >
-                        <Box
-                          component="span"
+          {tiers.length > 0 ? (
+            <Stack spacing={0}>
+              {tiers.map((tier, index) => {
+                const splitPrice = splitPricePair(tier.price);
+                return (
+                  <Box key={`fee-tier-${index}`}>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={{ xs: 1, sm: 2 }}
+                      alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
+                      justifyContent="space-between"
+                      sx={{ py: { xs: 1.25, md: 1.5 } }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0, pr: { sm: 1.5 } }}>
+                        <Typography
                           sx={{
-                            textDecoration: 'line-through',
-                            textDecorationThickness: '2px',
-                            textDecorationColor: 'common.black',
-                            opacity: 0.95,
+                            fontWeight: 700,
+                            lineHeight: 1.4,
+                            fontSize: FLUID_FONT_SIZES.body1,
                           }}
                         >
-                          {splitPrice.left}
-                        </Box>
-                        <Box component="span" sx={{ px: 0.6, color: 'error.main' }}>
-                          /
-                        </Box>
-                        <Box component="span" sx={{ color: 'error.main' }}>
-                          {splitPrice.right}
-                        </Box>
-                      </Typography>
-                    ) : (
-                      <Typography
-                        component="div"
+                          {tier.title}
+                        </Typography>
+                        {tier.linkLabel ? (
+                          <Link
+                            href={tier.linkHref || '#'}
+                            underline="always"
+                            sx={{
+                              display: 'inline-block',
+                              mt: 0.5,
+                              color: 'primary.main',
+                              fontWeight: 600,
+                              fontSize: FLUID_FONT_SIZES.body2,
+                            }}
+                          >
+                            {tier.linkLabel}
+                          </Link>
+                        ) : null}
+                        {tier.description ? (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                              mt: 0.75,
+                              lineHeight: 1.55,
+                              maxWidth: 640,
+                              fontSize: FLUID_FONT_SIZES.body2,
+                            }}
+                          >
+                            {tier.description}
+                          </Typography>
+                        ) : null}
+                      </Box>
+
+                      <Box
                         sx={{
-                          ...PROGRAMME_FEES_PRICE_SX,
-                          color: tier.priceVariant === 'default' ? 'text.primary' : 'primary.main',
+                          flexShrink: 0,
+                          textAlign: { xs: 'left', sm: 'right' },
+                          minWidth: 0,
+                          width: { xs: '100%', sm: 'auto' },
+                          maxWidth: '100%',
                         }}
                       >
-                        {tier.price}
-                      </Typography>
-                    )}
-                    {tier.priceNote ? (
-                      <Typography component="p" sx={PROGRAMME_FEES_PRICE_NOTE_SX}>
-                        {tier.priceNote}
+                        {splitPrice ? (
+                          <Typography
+                            component="div"
+                            sx={{
+                              ...COMPACT_PRICE_SX,
+                              color: 'error.main',
+                            }}
+                          >
+                            <Box
+                              component="span"
+                              sx={{
+                                textDecoration: 'line-through',
+                                textDecorationThickness: '2px',
+                                textDecorationColor: 'common.black',
+                                opacity: 0.95,
+                              }}
+                            >
+                              {splitPrice.left}
+                            </Box>
+                            <Box component="span" sx={{ px: 0.6, color: 'error.main' }}>
+                              /
+                            </Box>
+                            <Box component="span" sx={{ color: 'error.main' }}>
+                              {splitPrice.right}
+                            </Box>
+                          </Typography>
+                        ) : (
+                          <Typography
+                            component="div"
+                        sx={{
+                          ...COMPACT_PRICE_SX,
+                          color: tier.priceVariant === 'default' ? 'text.primary' : 'primary.main',
+                        }}
+                          >
+                            {tier.price}
+                          </Typography>
+                        )}
+                        {tier.priceNote ? (
+                          <Typography component="p" sx={COMPACT_PRICE_NOTE_SX}>
+                            {tier.priceNote}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    </Stack>
+                    {index < tiers.length - 1 ? <Divider /> : null}
+                  </Box>
+                );
+              })}
+            </Stack>
+          ) : null}
+
+          {(hasFundingPartners || hasAgency) && (
+            <Grid
+              container
+              spacing={{ xs: 2, md: 3 }}
+              alignItems="stretch"
+              sx={{ mt: tiers.length > 0 ? 2 : 0 }}
+            >
+              {hasFundingPartners ? (
+                <Grid xs={12} md={hasAgency ? 6 : 12} sx={{ display: 'flex', minWidth: 0 }}>
+                  <Box sx={(theme) => INNER_PANEL_SX(theme)}>
+                    {content.fundingPartnersHeading ? (
+                      <Typography
+                        sx={{
+                          fontWeight: 700,
+                          mb: 0.75,
+                          fontSize: FLUID_FONT_SIZES.body1,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {content.fundingPartnersHeading}
                       </Typography>
                     ) : null}
+                    <ViewHtmlContent
+                      html={content.fundingPartnersBody}
+                      sx={{
+                        color: 'text.primary',
+                        ...PROGRAMME_FEES_HTML_SX,
+                        '& em': { color: 'primary.main', fontStyle: 'italic' },
+                        '& a': { color: 'primary.main', fontWeight: 600, fontSize: 'inherit' },
+                      }}
+                    />
                   </Box>
-                </Stack>
-                {index < tiers.length - 1 ? <Divider /> : null}
-              </Box>
-              );
-            })}
-          </Stack>
-
-          <Stack spacing={2} sx={{ mt: 3 }}>
-            <Box
-              sx={(theme) => ({
-                p: 2,
-                borderRadius: 1.5,
-                border: `1px solid ${theme.palette.divider}`,
-                bgcolor: theme.palette.background.neutral,
-              })}
-            >
-              {content.fundingPartnersHeading ? (
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                  {content.fundingPartnersHeading}
-                </Typography>
+                </Grid>
               ) : null}
-              <ViewHtmlContent
-                html={content.fundingPartnersBody}
-                sx={{
-                  color: 'text.primary',
-                  ...PROGRAMME_FEES_HTML_SX,
-                  '& em': { color: 'primary.main', fontStyle: 'italic' },
-                  '& a': { color: 'primary.main', fontWeight: 600, fontSize: 'inherit' },
-                }}
-              />
-            </Box>
 
-            <Box
-              sx={(theme) => ({
-                p: 2,
-                borderRadius: 1.5,
-                border: `1px solid ${theme.palette.divider}`,
-                bgcolor: theme.palette.background.neutral,
-              })}
-            >
-              <Stack direction="row" spacing={2} alignItems="center">
-                {agencyLogo ? (
-                  <Box
-                    component="img"
-                    src={agencyLogo}
-                    alt=""
-                    sx={{ width: 72, height: 72, objectFit: 'contain', flexShrink: 0 }}
-                  />
-                ) : null}
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
-                    {content.agency?.name}
-                  </Typography>
-                  {content.agency?.tagline ? (
-                    <Typography
-                      variant="body2"
-                      sx={{ color: 'text.secondary', fontStyle: 'italic', mt: 0.25 }}
-                    >
-                      {content.agency.tagline}
-                    </Typography>
-                  ) : null}
-                </Box>
-              </Stack>
-            </Box>
-          </Stack>
-        </Card>
+              {hasAgency ? (
+                <Grid xs={12} md={hasFundingPartners ? 6 : 12} sx={{ display: 'flex', minWidth: 0 }}>
+                  <Box sx={(theme) => INNER_PANEL_SX(theme)}>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      {agencyLogo ? (
+                        <Box
+                          component="img"
+                          src={agencyLogo}
+                          alt=""
+                          sx={{
+                            width: 56,
+                            height: 56,
+                            objectFit: 'contain',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : null}
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          sx={{
+                            fontWeight: 700,
+                            lineHeight: 1.35,
+                            fontSize: FLUID_FONT_SIZES.body1,
+                          }}
+                        >
+                          {content.agency?.name}
+                        </Typography>
+                        {content.agency?.tagline ? (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                              fontStyle: 'italic',
+                              mt: 0.25,
+                              fontSize: FLUID_FONT_SIZES.body2,
+                            }}
+                          >
+                            {content.agency.tagline}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    </Stack>
+                  </Box>
+                </Grid>
+              ) : null}
+            </Grid>
+          )}
+        </Box>
       </DashboardContent>
     </Box>
   );

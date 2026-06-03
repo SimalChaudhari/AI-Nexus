@@ -19,6 +19,7 @@ import {
   UploadMembershipDocumentDto,
 } from './membership-application-document.dto';
 import { CreateMembershipBillingDto } from './membership-application-billing.dto';
+import { CreateResidentialDeclarationDto } from './membership-application-residential-declaration.dto';
 
 @ApiTags('Membership Application')
 @Controller('auth/membership-application')
@@ -246,6 +247,56 @@ export class MembershipApplicationController {
     return response.status(HttpStatus.OK).json({
       success: true,
       message: 'Document uploaded successfully.',
+      salesforce,
+    });
+  }
+
+  @Post('checkout-details')
+  @ApiOperation({
+    summary:
+      'Load checkout / payment summary for billing tab (getCheckoutDetailsForNexus)',
+  })
+  @ApiBody({ type: GetAvailableDocumentTypesDto })
+  async getCheckoutDetails(
+    @Res() response: Response,
+    @Body() dto: GetAvailableDocumentTypesDto,
+  ) {
+    const salesforce = await this.oauthAuthService.getCheckoutDetailsForNexus(
+      dto.socialAccessToken,
+      dto.applicationId,
+    );
+
+    const checkoutData =
+      salesforce?.data && typeof salesforce.data === 'object' && !Array.isArray(salesforce.data)
+        ? (salesforce.data as Record<string, unknown>)
+        : {};
+
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message:
+        (salesforce?.message as string) || 'Checkout details retrieved successfully.',
+      checkout: checkoutData,
+      salesforce,
+    });
+  }
+
+  @Post('residential-declaration')
+  @ApiOperation({
+    summary: 'Submit Residential Declaration tab (createResidentialDeclarationNexus)',
+  })
+  @ApiBody({ type: CreateResidentialDeclarationDto })
+  async createResidentialDeclaration(
+    @Res() response: Response,
+    @Body() dto: CreateResidentialDeclarationDto,
+  ) {
+    const { socialAccessToken, ...rest } = dto;
+    const salesforce = await this.oauthAuthService.createResidentialDeclarationNexus(
+      socialAccessToken,
+      rest as Record<string, unknown>,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Residential declaration submitted successfully.',
       salesforce,
     });
   }

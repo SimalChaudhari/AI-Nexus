@@ -6,7 +6,7 @@ import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { alpha, useTheme } from '@mui/material/styles';
+import { alpha } from '@mui/material/styles';
 
 import { varFade, MotionViewport } from 'src/components/animate';
 import { Iconify } from 'src/components/iconify';
@@ -15,15 +15,15 @@ import { appSettingsService } from 'src/services/app-settings.service';
 import { ContactMap } from '../contact-map';
 import { ContactHero } from '../contact-hero';
 import { ContactForm } from '../contact-form';
+import { ContactCardHeader } from '../contact-card-header';
 import { buildContactFieldRows } from '../utils/contact-hero-public-fields';
+import { contactCardBodySx, contactCardShellSx } from '../contact-card-styles';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
 
 export function ContactSection({ hideWhenEmpty = false }) {
-  const theme = useTheme();
   const [loaded, setLoaded] = useState(false);
   const [contactHeroImageUrl, setContactHeroImageUrl] = useState('');
   const [contactHeroContent, setContactHeroContent] = useState({
@@ -45,28 +45,28 @@ export function ContactSection({ hideWhenEmpty = false }) {
         const remote = settings?.contactHeroContent || {};
         const remoteContacts = Array.isArray(remote.contacts) ? remote.contacts : [];
         const normalizedContacts = remoteContacts.map((row) => ({
-            details: String(
-              row?.details ||
+          details: String(
+            row?.details ||
               [row?.country, row?.address, row?.phoneNumber]
                 .map((item) => String(item || '').trim())
                 .filter(Boolean)
                 .join('<br/>')
-            ).trim(),
-            address: String(row?.address || '').trim(),
-            phone: String(row?.phone || '').trim(),
-            email: String(row?.email || '').trim(),
-            whatsapp: String(row?.whatsapp || '').trim(),
-            website: String(row?.website || '').trim(),
-            addressIcon: String(row?.addressIcon || '').trim(),
-            phoneIcon: String(row?.phoneIcon || '').trim(),
-            emailIcon: String(row?.emailIcon || '').trim(),
-            whatsappIcon: String(row?.whatsappIcon || '').trim(),
-            websiteIcon: String(row?.websiteIcon || '').trim(),
-            latlng: [
-              Number(row?.lat || row?.latlng?.[0] || 0),
-              Number(row?.lng || row?.latlng?.[1] || 0),
-            ],
-          }));
+          ).trim(),
+          address: String(row?.address || '').trim(),
+          phone: String(row?.phone || '').trim(),
+          email: String(row?.email || '').trim(),
+          whatsapp: String(row?.whatsapp || '').trim(),
+          website: String(row?.website || '').trim(),
+          addressIcon: String(row?.addressIcon || '').trim(),
+          phoneIcon: String(row?.phoneIcon || '').trim(),
+          emailIcon: String(row?.emailIcon || '').trim(),
+          whatsappIcon: String(row?.whatsappIcon || '').trim(),
+          websiteIcon: String(row?.websiteIcon || '').trim(),
+          latlng: [
+            Number(row?.lat || row?.latlng?.[0] || 0),
+            Number(row?.lng || row?.latlng?.[1] || 0),
+          ],
+        }));
         setContactHeroImageUrl(withCacheBust(settings?.contactHeroImageUrl || ''));
         setContactHeroContent({
           headingLine1: String(remote?.headingLine1 || '').trim(),
@@ -98,9 +98,6 @@ export function ContactSection({ hideWhenEmpty = false }) {
     [contactHeroContent.contacts]
   );
 
-  const addressField = contactFields.find((f) => f.key === 'address');
-  const otherContactFields = contactFields.filter((f) => f.key !== 'address');
-
   const hasSectionContent = useMemo(() => {
     const hasHero =
       Boolean(contactHeroImageUrl?.trim()) ||
@@ -118,145 +115,47 @@ export function ContactSection({ hideWhenEmpty = false }) {
 
   return (
     <>
-      <ContactHero
-        imageUrl={contactHeroImageUrl}
-        headingLine1={contactHeroContent.headingLine1}
-        headingLine2={contactHeroContent.headingLine2}
-      />
-
       <Box
         component="section"
         sx={{
-          py: { xs: 4, md: 8 },
+          py: { xs: 4, md: 4 },
           bgcolor: 'background.default',
         }}
       >
-        <DashboardContent component={MotionViewport}>
-          <Grid container spacing={{ xs: 4, md: 3 }}>
-            <Grid item xs={12} md={6} component={m.div} variants={varFade({ distance: 24 }).inUp}>
-              <Stack
-                spacing={0}
-                sx={{
-                  borderRadius: '20px',
-                  overflow: 'hidden',
-                  border: (t) =>
-                    `1px solid ${t.palette.mode === 'dark' ? alpha(t.palette.common.white, 0.08) : alpha('#000', 0.06)}`,
-                  bgcolor: 'background.paper',
-                  boxShadow: (t) =>
-                    t.palette.mode === 'dark'
-                      ? `0 0 0 1px ${alpha(t.palette.common.black, 0.35)}`
-                      : '0 12px 40px rgba(15, 23, 42, 0.08)',
-                  minHeight: '100%',
-                }}
-              >
-                <Box
-                  sx={{
-                    px: { xs: 2.25, sm: 3 },
-                    pt: { xs: 2.5, sm: 3 },
-                    pb: { xs: 2, sm: 2.25 },
-                    background: (t) =>
-                      t.palette.mode === 'dark'
-                        ? alpha(t.palette.primary.dark, 0.15)
-                        : `linear-gradient(180deg, ${alpha(t.palette.primary.main, 0.06)} 0%, transparent 100%)`,
-                  }}
-                >
-                 
-                  <Typography variant="h4" sx={{ mb: 0.75, fontWeight: 700 }}>
-                
-                    {contactHeroContent.infoTitle}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {contactHeroContent.infoSubtitle}
-                  </Typography>
-                </Box>
+        <DashboardContent
+          component={MotionViewport}
+          sx={{
+            width: 1,
+            maxWidth: '100%',
+            mx: 'auto',
+            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+            pt: 0,
+            pb: 0,
+          }}
+        >
+          <ContactHero
+            imageUrl={contactHeroImageUrl}
+            headingLine1={contactHeroContent.headingLine1}
+            headingLine2={contactHeroContent.headingLine2}
+          />
+          <Grid container spacing={{ xs: 4, md: 3 }} alignItems="stretch">
+            <Grid
+              item
+              xs={12}
+              md={6}
+              component={m.div}
+              variants={varFade({ distance: 24 }).inUp}
+              sx={{ display: 'flex', minWidth: 0 }}
+            >
+              <Stack spacing={0} sx={contactCardShellSx}>
+                <ContactCardHeader
+                  title={contactHeroContent.infoTitle}
+                  titleHighlight="help you?"
+                  subtitle={contactHeroContent.infoSubtitle}
+                />
 
-                <Box sx={{ px: { xs: 2, sm: 2.5 }, pb: { xs: 2, sm: 2.5 }, pt: 0 }}>
-                  <Stack spacing={1.5}>
-                    {addressField && (
-                      <Box
-                        key={addressField.key}
-                        sx={{
-                          position: 'relative',
-                          p: { xs: 2, sm: 2.25 },
-                          borderRadius: '16px',
-                          bgcolor: (t) =>
-                            t.palette.mode === 'dark'
-                              ? alpha(t.palette.common.white, 0.04)
-                              : alpha(theme.palette.grey[500], 0.06),
-                          border: (t) =>
-                            `1px solid ${
-                              t.palette.mode === 'dark'
-                                ? alpha(t.palette.common.white, 0.08)
-                                : alpha(theme.palette.grey[500], 0.12)
-                            }`,
-                          boxShadow: (t) =>
-                            t.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 16,
-                            bottom: 16,
-                            width: 3,
-                            borderRadius: '0 4px 4px 0',
-                            bgcolor: addressField.iconColor,
-                            opacity: 0.85,
-                          }}
-                        />
-                        <Stack direction="row" spacing={1.75} alignItems="flex-start" sx={{ pl: 0.75 }}>
-                          <Box
-                            sx={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: '14px',
-                              flexShrink: 0,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              bgcolor: (t) =>
-                                alpha(addressField.iconColor, t.palette.mode === 'dark' ? 0.2 : 0.12),
-                              border: `1px solid ${alpha(addressField.iconColor, 0.25)}`,
-                            }}
-                          >
-                            <Iconify
-                              icon={addressField.icon}
-                              sx={{ color: addressField.iconColor, width: 24, height: 24 }}
-                            />
-                          </Box>
-                          <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1, pt: 0.25 }}>
-                            <Typography
-                              sx={{
-                                fontWeight: 600,
-                                fontSize: FLUID_FONT_SIZES.body2,
-                                color: 'text.secondary',
-                                letterSpacing: '0.02em',
-                              }}
-                            >
-                              {addressField.label}
-                            </Typography>
-                            <Typography
-                              component="p"
-                              sx={{
-                                m: 0,
-                                fontWeight: 500,
-                                color: 'text.primary',
-                                fontSize: FLUID_FONT_SIZES.body1,
-                                lineHeight: 1.55,
-                                wordBreak: 'break-word',
-                                overflowWrap: 'anywhere',
-                                hyphens: 'auto',
-                              }}
-                            >
-                              {addressField.value}
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                      </Box>
-                    )}
-
-                    {otherContactFields.length > 0 && (
+                <Box sx={contactCardBodySx}>
+                  {contactFields.length > 0 && (
                     <Stack
                       divider={
                         <Divider
@@ -270,77 +169,87 @@ export function ContactSection({ hideWhenEmpty = false }) {
                       }
                       spacing={0}
                     >
-                      {otherContactFields.map((field) => (
-                          <Stack
-                            key={field.key}
-                            direction="row"
-                            spacing={1.5}
-                            alignItems="center"
+                      {contactFields.map((field) => (
+                        <Stack
+                          key={field.key}
+                          direction="row"
+                          spacing={1.5}
+                          alignItems="flex-start"
+                          sx={{
+                            py: 1.15,
+                            px: 0.5,
+                            borderRadius: '12px',
+                            transition: 'background-color 0.15s ease',
+                            '&:hover': {
+                              bgcolor: (t) =>
+                                t.palette.mode === 'dark'
+                                  ? alpha(t.palette.common.white, 0.04)
+                                  : alpha('#000', 0.03),
+                            },
+                          }}
+                        >
+                          <Box
                             sx={{
-                              py: 1.35,
-                              px: 0.5,
-                              borderRadius: '12px',
-                              transition: 'background-color 0.15s ease',
-                              '&:hover': {
-                                bgcolor: (t) =>
-                                  t.palette.mode === 'dark'
-                                    ? alpha(t.palette.common.white, 0.04)
-                                    : alpha('#000', 0.03),
-                              },
+                              width: 36,
+                              height: 36,
+                              borderRadius: '10px',
+                              flexShrink: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              bgcolor: (t) =>
+                                alpha(field.iconColor, t.palette.mode === 'dark' ? 0.18 : 0.1),
                             }}
                           >
-                            <Box
+                            <Iconify
+                              icon={field.icon}
+                              sx={{ color: field.iconColor, width: 18, height: 18 }}
+                            />
+                          </Box>
+                          <Stack spacing={0.15} sx={{ minWidth: 0, flex: 1, pt: 0.15 }}>
+                            <Typography
                               sx={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: '12px',
-                                flexShrink: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                bgcolor: (t) => alpha(field.iconColor, t.palette.mode === 'dark' ? 0.18 : 0.1),
+                                fontWeight: 600,
+                                fontSize: FLUID_FONT_SIZES.caption,
+                                color: 'text.secondary',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.06em',
                               }}
                             >
-                              <Iconify icon={field.icon} sx={{ color: field.iconColor, width: 20, height: 20 }} />
-                            </Box>
-                            <Stack spacing={0.15} sx={{ minWidth: 0, flex: 1 }}>
-                              <Typography
-                                sx={{
-                                  fontWeight: 600,
-                                  fontSize: FLUID_FONT_SIZES.caption,
-                                  color: 'text.secondary',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.06em',
-                                }}
-                              >
-                                {field.label}
-                              </Typography>
-                              <Typography
-                                sx={{
-                                  fontWeight: 500,
-                                  fontSize: FLUID_FONT_SIZES.body2,
-                                  color: 'text.primary',
-                                  lineHeight: 1.45,
-                                  wordBreak: 'break-word',
-                                  overflowWrap: 'anywhere',
-                                }}
-                              >
-                                {field.value}
-                              </Typography>
-                            </Stack>
+                              {field.label}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontWeight: 500,
+                                fontSize: FLUID_FONT_SIZES.body2,
+                                color: 'text.primary',
+                                lineHeight: 1.45,
+                                wordBreak: 'break-word',
+                                overflowWrap: 'anywhere',
+                              }}
+                            >
+                              {field.value}
+                            </Typography>
                           </Stack>
-                        ))}
+                        </Stack>
+                      ))}
                     </Stack>
-                    )}
-                  </Stack>
+                  )}
                 </Box>
               </Stack>
             </Grid>
-            <Grid item xs={12} md={6} component={m.div} variants={varFade({ distance: 24 }).inUp}>
+            <Grid
+              item
+              xs={12}
+              md={6}
+              component={m.div}
+              variants={varFade({ distance: 24 }).inUp}
+              sx={{ display: 'flex', minWidth: 0 }}
+            >
               <ContactForm />
             </Grid>
             <Grid item xs={12} component={m.div} variants={varFade({ distance: 24 }).inUp}>
-              <Box sx={{ mt: { xs: 1, md: 2 } }}>
+              <Box sx={{ mt: { xs: 0, md: 0 } }}>
                 <ContactMap contacts={mapContacts} />
               </Box>
             </Grid>

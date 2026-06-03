@@ -458,7 +458,15 @@ export default function AiAuditFuturesPage() {
   const [tab, setTab] = useState(0);
 
   return (
-    <Box sx={{ px: { xs: 2, md: 4 }, py: { xs: 3, md: 5 } }}>
+    <Box
+      sx={{
+        width: '100%',
+        maxWidth: '1400px',
+        mx: 'auto',
+        px: { xs: 2, sm: 3, md: 4, lg: 6, xl: 8 },
+        py: { xs: 3, md: 5 },
+      }}
+    >
       <Stack spacing={2.5}>
         <Stack spacing={1}>
           <Typography variant="h3" sx={{ fontWeight: 800, letterSpacing: -0.02 }}>

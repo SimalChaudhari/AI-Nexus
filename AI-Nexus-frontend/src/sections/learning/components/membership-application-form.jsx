@@ -34,20 +34,21 @@ import {
   submitCharacterReference,
   submitDeclaration,
   submitMembershipDocumentUpload,
-  submitMembershipApplicationBilling,
+  submitResidentialDeclaration,
 } from 'src/api/membership-application';
 import { MembershipApplicationDocumentSection } from './membership-application-document-section';
 import { MembershipApplicationBillingSection } from './membership-application-billing-section';
-import { paths } from 'src/routes/paths';
 import { MembershipApplicationCreateSection } from './membership-application-create-section';
 import { MembershipApplicationQualificationSection } from './membership-application-qualification-section';
 import { MembershipApplicationCharacterReferenceSection } from './membership-application-character-reference-section';
 import { MembershipApplicationDeclarationSection } from './membership-application-declaration-section';
+import { MembershipApplicationResidentialDeclarationSection } from './membership-application-residential-declaration-section';
 import {
   MEMBERSHIP_APPLICATION_FORM_DRAFT_KEY,
   readMembershipSalesforceSession,
   mergeApplicationIdIntoSession,
 } from 'src/utils/membership-salesforce-session';
+import { ensureMembershipSalesforceSession } from 'src/utils/membership-salesforce-auth';
 import {
   EMPTY_PERSONAL_FORM,
   buildPersonalDetailsApiPayload,
@@ -82,6 +83,11 @@ import {
   validateDeclarationBeforeSubmit,
 } from 'src/utils/membership-application-declaration';
 import {
+  EMPTY_RESIDENTIAL_DECLARATION_FORM,
+  buildResidentialDeclarationApiPayload,
+  validateResidentialDeclarationBeforeSubmit,
+} from 'src/utils/membership-application-residential-declaration';
+import {
   EMPTY_APPLICATION_FORM,
   buildCreateApplicationApiPayload,
   validateApplicationBeforeSubmit,
@@ -93,14 +99,7 @@ import {
   getDocumentsToUpload,
   validateDocumentUploadBeforeSubmit,
 } from 'src/utils/membership-application-document';
-import {
-  EMPTY_BILLING_FORM,
-  buildMembershipApplicationCheckoutUrls,
-  buildMembershipBillingApiPayload,
-  clearPendingMembershipApplicationPayment,
-  resolveWooshPayReferenceAfterReturn,
-  validateBillingBeforeSubmit,
-} from 'src/utils/membership-application-billing';
+import { EMPTY_BILLING_FORM } from 'src/utils/membership-application-billing';
 import {
   DEFAULT_MEMBERSHIP_COUNTRY,
   DEFAULT_MEMBERSHIP_DIAL_CODE,
@@ -120,6 +119,7 @@ const TABS = [
   { id: 'character-reference', label: 'Character Reference', icon: 'solar:users-group-two-rounded-bold' },
   { id: 'declaration', label: 'Declaration', icon: 'solar:document-text-bold' },
   { id: 'document-upload', label: 'Document Upload', icon: 'solar:upload-bold' },
+  { id: 'residential-declaration', label: 'Residential Declaration', icon: 'solar:home-2-bold' },
   { id: 'billing', label: 'Billing', icon: 'solar:wallet-money-bold' },
 ];
 
@@ -135,6 +135,7 @@ const EMPTY_DRAFT = {
   characterReference: { ...EMPTY_CHARACTER_REFERENCE_FORM },
   declaration: { ...EMPTY_DECLARATION_FORM },
   documentUpload: { ...EMPTY_DOCUMENT_UPLOAD_FORM },
+  residentialDeclaration: { ...EMPTY_RESIDENTIAL_DECLARATION_FORM },
   billing: { ...EMPTY_BILLING_FORM },
 };
 
@@ -219,6 +220,10 @@ function loadDraft() {
           ...(parsed.documentUpload?.entries || {}),
         },
       },
+      residentialDeclaration: {
+        ...EMPTY_DRAFT.residentialDeclaration,
+        ...parsed.residentialDeclaration,
+      },
       billing: { ...EMPTY_BILLING_FORM, ...parsed.billing },
       submittedTabs: parsed.submittedTabs || {},
     };
@@ -254,10 +259,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
   const currentTabId = TABS[activeTab]?.id || 'personal';
   const documentsSubmitted = Boolean(draft.submittedTabs['document-upload']);
-  const billingCheckoutUrls = useMemo(
-    () => buildMembershipApplicationCheckoutUrls(paths.auth.membership.application),
-    []
-  );
+  const residentialDeclarationSubmitted = Boolean(draft.submittedTabs['residential-declaration']);
 
   useEffect(() => {
     const session = readMembershipSalesforceSession();
@@ -293,50 +295,31 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const {
-      sessionId,
-      paymentCanceled,
-      paymentSuccess,
-    } = resolveWooshPayReferenceAfterReturn(window.location.search);
-    const openBilling = new URLSearchParams(window.location.search).get('billing') === '1';
+    const params = new URLSearchParams(window.location.search);
+    const openBilling = params.get('billing') === '1';
+    const paymentCanceled = params.get('payment') === 'canceled';
 
-    if (openBilling || paymentSuccess || paymentCanceled) {
+    if (openBilling || paymentCanceled) {
       const billingIndex = TABS.findIndex((t) => t.id === 'billing');
       if (billingIndex >= 0) setActiveTab(billingIndex);
     }
+
+    const paymentError = params.get('paymentError');
 
     if (paymentCanceled) {
       setPaymentReturnNotice({
         severity: 'warning',
         message: 'Payment was canceled. You can try again when ready.',
       });
-    } else if (sessionId) {
-      setDraft((prev) => {
-        const next = {
-          ...prev,
-          billing: { ...prev.billing, wooshPayReferenceNo: sessionId },
-        };
-        saveDraft(next);
-        return next;
-      });
-      clearPendingMembershipApplicationPayment();
+    } else if (paymentError) {
       setPaymentReturnNotice({
-        severity: 'success',
-        message: 'Payment completed. Submit billing below to register with ISCA eServices.',
-      });
-    } else if (paymentSuccess) {
-      setPaymentReturnNotice({
-        severity: 'info',
-        message:
-          'Payment may have completed, but the reference was not found. Paste the WooshPay session id from your receipt, or pay again.',
+        severity: 'error',
+        message: decodeURIComponent(paymentError),
       });
     }
 
-    if (openBilling || sessionId || paymentCanceled || paymentSuccess) {
-      const params = new URLSearchParams(window.location.search);
-      ['billing', 'payment', 'session_id', 'sessionId', 'ref', 'applicationId'].forEach((key) => {
-        params.delete(key);
-      });
+    if (openBilling || paymentCanceled || paymentError) {
+      ['billing', 'payment', 'ref', 'paymentError'].forEach((key) => params.delete(key));
       const nextSearch = params.toString();
       const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
       window.history.replaceState({}, '', nextUrl);
@@ -511,13 +494,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   };
 
   const submitApplicationTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.accountId) {
-      throw new Error('Salesforce account is not linked. Please sign in with Eservices again.');
-    }
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+    const session = ensureMembershipSalesforceSession();
 
     const existingId = resolveApplicationId();
     const validationError = validateApplicationBeforeSubmit(
@@ -549,13 +526,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   };
 
   const submitPersonalTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.accountId) {
-      throw new Error('Salesforce account is not linked. Please sign in with Eservices again.');
-    }
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+    const session = ensureMembershipSalesforceSession();
 
     const validationError = validatePersonalFormBeforeSubmit(draft.personal, resolveApplicationId());
     if (validationError) {
@@ -610,10 +581,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     setTabMessage('');
     setTabMessageSeverity('info');
     try {
-      const session = readMembershipSalesforceSession();
-      if (!session?.socialToken) {
-        throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-      }
+      const session = ensureMembershipSalesforceSession();
 
       const applicationId = resolveApplicationId();
       const validationError = validate(draft.qualification, applicationId);
@@ -632,6 +600,9 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           : emptySuccessMessage
       );
     } catch (err) {
+      if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
+        return;
+      }
       setTabMessageSeverity('error');
       setTabMessage(err instanceof Error ? err.message : 'Failed to submit section.');
     } finally {
@@ -682,10 +653,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     );
 
   const submitCharacterReferenceTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+    const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
     const validationError = validateCharacterReferenceBeforeSubmit(
@@ -701,10 +669,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   };
 
   const submitDocumentUploadTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+    const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
     if (!applicationId) {
@@ -741,57 +706,27 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     return uploadedCount;
   };
 
-  const submitBillingTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+  const submitResidentialDeclarationTab = async () => {
+    const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
-    const accountId = session.accountId;
-    if (!applicationId) {
-      throw new Error('Application ID is missing. Submit the Application tab first.');
-    }
-    if (!accountId) {
-      throw new Error('Salesforce account is not linked.');
-    }
-
-    const validationError = validateBillingBeforeSubmit({
-      documentsSubmitted,
-      wooshPayReferenceNo: draft.billing?.wooshPayReferenceNo,
-    });
+    const validationError = validateResidentialDeclarationBeforeSubmit(
+      draft.residentialDeclaration,
+      applicationId
+    );
     if (validationError) {
       throw new Error(validationError);
     }
 
-    const body = buildMembershipBillingApiPayload({
-      applicationId,
-      accountId,
-      wooshPayReferenceNo: draft.billing.wooshPayReferenceNo,
-    });
-
-    await submitMembershipApplicationBilling({
-      socialAccessToken: session.socialToken,
-      ...body,
-    });
-  };
-
-  const handleBillingReferenceChange = (value) => {
-    setDraft((prev) => {
-      const next = {
-        ...prev,
-        billing: { ...prev.billing, wooshPayReferenceNo: value },
-      };
-      saveDraft(next);
-      return next;
-    });
+    const body = buildResidentialDeclarationApiPayload(
+      draft.residentialDeclaration,
+      applicationId
+    );
+    await submitResidentialDeclaration({ socialAccessToken: session.socialToken, ...body });
   };
 
   const submitDeclarationTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+    const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
     const validationError = validateDeclarationBeforeSubmit(draft.declaration, applicationId);
@@ -804,10 +739,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   };
 
   const submitWorkExperienceTab = async () => {
-    const session = readMembershipSalesforceSession();
-    if (!session?.socialToken) {
-      throw new Error('Salesforce social token is missing. Please sign in with Eservices again.');
-    }
+    const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
     const validationError = validateWorkExperienceBeforeSubmit(draft.workExperience, applicationId);
@@ -860,16 +792,21 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             ? '1 document uploaded to Salesforce successfully.'
             : `${count} documents uploaded to Salesforce successfully.`
         );
-      } else if (tabId === 'billing') {
-        await submitBillingTab();
+      } else if (tabId === 'residential-declaration') {
+        await submitResidentialDeclarationTab();
         setTabMessageSeverity('success');
-        setTabMessage('Billing submitted to Salesforce successfully.');
+        setTabMessage('Residential declaration submitted to Salesforce successfully.');
+      } else if (tabId === 'billing') {
+        throw new Error('Use the Pay button on this tab to complete payment.');
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
         setTabMessage(`${TABS.find((t) => t.id === tabId)?.label || 'Section'} saved.`);
       }
       advanceAfterTabSuccess(tabId);
     } catch (err) {
+      if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
+        return;
+      }
       setTabMessageSeverity('error');
       setTabMessage(err instanceof Error ? err.message : 'Failed to submit section.');
     } finally {
@@ -1583,16 +1520,23 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     />
   );
 
+  const renderResidentialDeclaration = () => (
+    <MembershipApplicationResidentialDeclarationSection
+      residentialDeclaration={draft.residentialDeclaration}
+      applicationId={resolveApplicationId()}
+      onUpdate={(field, value) => updateSection('residentialDeclaration', field, value)}
+    />
+  );
+
   const renderBilling = () => (
     <MembershipApplicationBillingSection
       applicationId={resolveApplicationId()}
       accountId={salesforceSession?.accountId || ''}
-      billing={draft.billing}
+      socialAccessToken={salesforceSession?.socialToken || ''}
       documentsSubmitted={documentsSubmitted}
-      checkoutUrls={billingCheckoutUrls}
-      customerEmail={draft.personal?.email || ''}
+      residentialDeclarationSubmitted={residentialDeclarationSubmitted}
+      customerEmail={draft.personal?.personalEmail || draft.personal?.email || ''}
       paymentReturnNotice={paymentReturnNotice}
-      onReferenceChange={handleBillingReferenceChange}
       onClearPaymentReturnNotice={() => setPaymentReturnNotice(null)}
     />
   );
@@ -1605,6 +1549,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     'character-reference': renderCharacterReference,
     declaration: renderDeclaration,
     'document-upload': renderDocumentUpload,
+    'residential-declaration': renderResidentialDeclaration,
     billing: renderBilling,
   };
 
@@ -1829,6 +1774,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             <Typography variant="body2" sx={{ maxWidth: 360, textAlign: 'right', color: 'text.primary' }}>
               Submit each section above using its own button. Professional and Other Professional
               Bodies are required.
+            </Typography>
+          ) : currentTabId === 'billing' ? (
+            <Typography variant="body2" sx={{ maxWidth: 360, textAlign: 'right', color: 'text.primary' }}>
+              Review the payment summary above, then use Pay to complete your application fee.
             </Typography>
           ) : (
             <LoadingButton

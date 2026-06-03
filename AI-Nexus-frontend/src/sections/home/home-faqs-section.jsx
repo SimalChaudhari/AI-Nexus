@@ -4,17 +4,19 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { alpha } from '@mui/material/styles';
 
 import { varFade, MotionViewport } from 'src/components/animate';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { FaqsList } from 'src/sections/faqs/faqs-list';
-import { HOME_SECTION_HEADING_SX } from 'src/theme/home-typography';
 
-// ----------------------------------------------------------------------
-
-const RED = '#E32B24';
+import {
+  HOME_DASHBOARD_CONTENT_SX,
+  HOME_SECTION_BG,
+  HOME_SECTION_CARD_SX,
+  HOME_SECTION_TITLE_SX,
+  HOME_SECTION_UNDERLINE_SX,
+} from './home-section-styles';
 
 // ----------------------------------------------------------------------
 
@@ -49,47 +51,35 @@ export function HomeFaqsSection() {
     <Box
       component="section"
       sx={{
-        py: { xs: 4, md: 4 },
+        py: { xs: 2, md: 2.5 },
         bgcolor: 'grey.200',
-        background: 'linear-gradient(180deg, #f4f6f8 0%, #eceef1 48%, #f4f6f8 100%)',
+        background: HOME_SECTION_BG,
       }}
     >
-      <DashboardContent
-          component={MotionViewport}
-          sx={{
-            width: 1,
-            maxWidth: '100%',
-            mx: 'auto',
-            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
-            pt: 0,
-            pb: 0,
-          }}
-        >
+      <DashboardContent component={MotionViewport} sx={HOME_DASHBOARD_CONTENT_SX}>
         <Stack
           component={m.div}
           variants={varFade({ distance: 24 }).inUp}
-          spacing={1.5}
+          spacing={0.75}
           alignItems="flex-start"
-          sx={{ mb: { xs: 3, md: 4 } }}
+          sx={{ mb: { xs: 2, md: 2.5 } }}
         >
-          <Typography component="h2" sx={HOME_SECTION_HEADING_SX}>
+          <Typography component="h2" sx={HOME_SECTION_TITLE_SX}>
             {pageHeading}
           </Typography>
 
-          <Box
-            sx={{
-              width: { xs: 72, sm: 88, md: 104 },
-              height: 4,
-              borderRadius: 999,
-              background: (theme) =>
-                `linear-gradient(90deg, ${RED} 0%, ${theme.palette.secondary.main} 100%)`,
-              boxShadow: `0 4px 12px ${alpha(RED, 0.28)}`,
-            }}
-          />
+          <Box sx={HOME_SECTION_UNDERLINE_SX} />
         </Stack>
 
-        <Box component={m.div} variants={varFade({ distance: 24 }).inUp}>
-          <FaqsList items={items} />
+        <Box
+          component={m.div}
+          variants={varFade({ distance: 24 }).inUp}
+          sx={{
+            ...HOME_SECTION_CARD_SX,
+            p: { xs: 2, sm: 2.5 },
+          }}
+        >
+          <FaqsList items={items} compact />
         </Box>
       </DashboardContent>
     </Box>

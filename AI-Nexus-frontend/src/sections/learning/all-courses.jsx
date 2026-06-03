@@ -760,7 +760,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                         <Grid
                           container
                           spacing={{ xs: 2, md: 2.5 }}
-                          columns={{ xs: 2, sm: 3, md: 3, lg: 4, xl: 5 }}
+                          columns={{ xs: 2, sm: 3, md: 3, lg: 4, xl: 4 }}
                         >
                           {group.items.map((course) => {
                             const { moduleCount, sectionCount } = getCourseContentMeta(course);

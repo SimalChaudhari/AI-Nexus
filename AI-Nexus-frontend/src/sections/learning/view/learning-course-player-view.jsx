@@ -60,6 +60,14 @@ import {
   playerTabIconSx,
 } from 'src/sections/learning/utils/player-responsive-type';
 
+const VIDEO_FRAME_HEIGHT = {
+  xs: 240,
+  sm: 300,
+  md: 'clamp(210px, 30vh, 320px)',
+  lg: 'clamp(230px, 31vh, 360px)',
+  xl: 'clamp(250px, 30vh, 400px)',
+};
+
 const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
 
@@ -3251,7 +3259,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           ModalProps={{ keepMounted: true }}
           PaperProps={{
             sx: {
-              width: { xs: 'min(100vw - 16px, 400px)', sm: 400 },
+              width: { xs: 'min(100vw - 16px, 800px)', sm: 400 },
               maxHeight: '100%',
               display: 'flex',
               flexDirection: 'column',
@@ -3425,7 +3433,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 sectionImageIndex < activeLesson.images.length - 1
               }
               lockedOverlay={lessonLockOverlay}
-              frameHeight={LESSON_FRAME_HEIGHT}
+              frameHeight={VIDEO_FRAME_HEIGHT}
             />
           ) : hasAttachments && !hasVideo ? (
             <LessonDocumentViewer

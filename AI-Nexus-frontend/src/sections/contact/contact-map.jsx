@@ -24,7 +24,7 @@ export function ContactMap({ contacts }) {
       sx={{
         zIndex: 0,
         p: { xs: 2, md: 2.5 },
-        borderRadius: 2,
+        borderRadius: '20px',
         border: (theme) => `1px solid ${theme.palette.divider}`,
         bgcolor: 'background.paper',
         boxShadow: (theme) => theme.customShadows.z8,
@@ -36,7 +36,7 @@ export function ContactMap({ contacts }) {
           borderRadius: 1.5,
           overflow: 'hidden',
           position: 'relative',
-          height: { xs: 320, md: 560 },
+          height: { xs: 240, md: 360 },
           border: (theme) => `1px solid ${theme.palette.divider}`,
           bgcolor: 'background.neutral',
         }}

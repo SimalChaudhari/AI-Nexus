@@ -12,6 +12,7 @@ import {
   notifyMembershipSalesforceSessionReady,
   isRecognitionMembershipApplicationFlow,
 } from 'src/utils/membership-salesforce-session';
+import { clearMembershipApplicationDraftOnSsoReturn } from 'src/utils/membership-salesforce-auth';
 
 // ----------------------------------------------------------------------
 
@@ -50,6 +51,8 @@ export default function MembershipSalesforceBridgePage() {
         ? { pendingPlatformAccessToken }
         : {}),
     });
+
+    clearMembershipApplicationDraftOnSsoReturn();
 
     if (isRecognitionApplication) {
       setMessage('Salesforce account linked. Opening membership application…');

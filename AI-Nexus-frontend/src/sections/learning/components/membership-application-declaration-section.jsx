@@ -14,6 +14,24 @@ import { YES_NO_OPTIONS } from 'src/utils/membership-application-declaration';
 
 const fieldSize = 'medium';
 
+const acknowledgementLabelSx = {
+  m: 0,
+  width: '100%',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 1,
+  '& .MuiCheckbox-root': {
+    flexShrink: 0,
+    p: 0.75,
+  },
+  '& .MuiFormControlLabel-label': {
+    flex: 1,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+};
+
 function YesNoField({ label, value, onChange }) {
   return (
     <MembershipFormTextField
@@ -161,7 +179,7 @@ export function MembershipApplicationDeclarationSection({
 
       <Box sx={{ pt: 1 }}>
         <MembershipFormSectionTitleBlock title="Acknowledgements" />
-        <Stack spacing={0.5}>
+        <Stack spacing={1.5}>
           <FormControlLabel
             control={
               <Checkbox
@@ -169,7 +187,12 @@ export function MembershipApplicationDeclarationSection({
                 onChange={(e) => update('pdpaPolicy', e.target.checked)}
               />
             }
-            label="I agree to the PDPA policy"
+            label={
+              <Typography variant="body2" component="span">
+                I agree to the PDPA policy
+              </Typography>
+            }
+            sx={acknowledgementLabelSx}
           />
           <FormControlLabel
             control={
@@ -178,7 +201,12 @@ export function MembershipApplicationDeclarationSection({
                 onChange={(e) => update('infoIsTrueAndComplete', e.target.checked)}
               />
             }
-            label="I declare that the information provided is true and complete"
+            label={
+              <Typography variant="body2" component="span">
+                I declare that the information provided is true and complete
+              </Typography>
+            }
+            sx={acknowledgementLabelSx}
           />
           <FormControlLabel
             control={
@@ -189,7 +217,26 @@ export function MembershipApplicationDeclarationSection({
                 }
               />
             }
-            label="I acknowledge the non-refundable admission fee"
+            label={
+              <Typography variant="body2" component="span">
+                I acknowledge the non-refundable admission fee
+              </Typography>
+            }
+            sx={acknowledgementLabelSx}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={Boolean(declaration.transitionalArrangements)}
+                onChange={(e) => update('transitionalArrangements', e.target.checked)}
+              />
+            }
+            label={
+              <Typography variant="body2" component="span">
+                I am applying under transitional arrangements
+              </Typography>
+            }
+            sx={acknowledgementLabelSx}
           />
         </Stack>
       </Box>

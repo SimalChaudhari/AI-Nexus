@@ -179,4 +179,8 @@ export class CreateDeclarationDto extends MembershipApplicationSocialTokenDto {
   @ApiProperty()
   @IsBoolean()
   acknowledgeNonRefundableAdmissionFee!: boolean;
+
+  @ApiProperty()
+  @IsBoolean()
+  transitionalArrangements!: boolean;
 }

@@ -402,7 +402,11 @@ export class PaymentController {
         successUrl: { type: 'string' },
         cancelUrl: { type: 'string' },
         customerEmail: { type: 'string', nullable: true },
+        customerName: { type: 'string', nullable: true },
+        customerPhone: { type: 'string', nullable: true },
         currency: { type: 'string', nullable: true },
+        totalAmount: { type: 'number', nullable: true },
+        description: { type: 'string', nullable: true },
       },
     },
   })
@@ -414,7 +418,11 @@ export class PaymentController {
       successUrl?: string;
       cancelUrl?: string;
       customerEmail?: string;
+      customerName?: string;
+      customerPhone?: string;
       currency?: string;
+      totalAmount?: number;
+      description?: string;
     },
     @Res() res: Response,
   ) {
@@ -423,6 +431,8 @@ export class PaymentController {
     const successUrl = String(body?.successUrl || '').trim();
     const cancelUrl = String(body?.cancelUrl || '').trim();
     const customerEmail = String(body?.customerEmail || '').trim();
+    const customerName = String(body?.customerName || '').trim();
+    const customerPhone = String(body?.customerPhone || '').trim();
 
     if (!applicationId || !accountId) {
       return res.status(HttpStatus.BAD_REQUEST).json({
@@ -451,7 +461,16 @@ export class PaymentController {
       });
     }
 
-    const pricing = this.resolveMembershipApplicationFeePricing();
+    const requestedTotal = Number(body?.totalAmount);
+    const pricing = Number.isFinite(requestedTotal) && requestedTotal > 0
+      ? {
+          baseAmount: requestedTotal,
+          gstAmount: 0,
+          totalAmount: requestedTotal,
+          totalAmountCents: Math.round(requestedTotal * 100),
+          itemName: String(body?.description || '').trim() || 'ISCA membership application fee',
+        }
+      : this.resolveMembershipApplicationFeePricing();
     const placeholderUserId =
       process.env.MEMBERSHIP_APPLICATION_PAYMENT_USER_ID?.trim()
       || '00000000-0000-4000-8000-000000000001';
@@ -492,6 +511,15 @@ export class PaymentController {
         cancel_url: finalCancelUrl,
         client_reference_id: refId,
         ...(customerEmail && { customer_email: customerEmail }),
+        ...((customerName || customerEmail || customerPhone) && {
+          payment_intent_data: {
+            billing_details: {
+              ...(customerName && { name: customerName }),
+              ...(customerEmail && { email: customerEmail }),
+              ...(customerPhone && { phone: customerPhone }),
+            },
+          },
+        }),
         payment_method_types: ['card'],
       });
 

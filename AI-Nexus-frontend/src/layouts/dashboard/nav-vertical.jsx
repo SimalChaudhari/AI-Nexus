@@ -18,8 +18,15 @@ export function NavVertical({ sx, data, slots, isNavMini, layoutQuery, onToggleN
   const renderNavVertical = (
     <>
       {slots?.topArea ?? (
-        <Box sx={{ pl: 3.5, pt: 2.5, pb: 1 }}>
-          <Logo />
+        <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1.5, pb: 0.5, px: 1 }}>
+          <Logo
+            sx={{
+              width: { md: 102, lg: 112 },
+              height: 'auto',
+              minHeight: 'unset',
+              maxWidth: '100%',
+            }}
+          />
         </Box>
       )}
 
@@ -34,8 +41,16 @@ export function NavVertical({ sx, data, slots, isNavMini, layoutQuery, onToggleN
   const renderNavMini = (
     <>
       {slots?.topArea ?? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
-          <Logo />
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, px: 1 }}>
+          <Logo
+            sx={{
+              width: 34,
+              height: 34,
+              minHeight: 'unset',
+              maxWidth: 34,
+              overflow: 'hidden',
+            }}
+          />
         </Box>
       )}
 

@@ -18,11 +18,11 @@ import { appSettingsService } from 'src/services/app-settings.service';
 
 import { resolveEmployeeContent, hasEmployeeContent } from './employee-defaults';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
+import { HOME_DASHBOARD_CONTENT_SX, HOME_SECTION_CARD_SX } from './home-section-styles';
 
 // ----------------------------------------------------------------------
 
 const NAVY = '#1C4270';
-const HERO_IMAGE_WIDTH = '58%';
 const SECTION_GREY = '#eceef1';
 const SECTION_GREY_LIGHT = '#f4f6f8';
 const SECTION_BG = `linear-gradient(180deg, ${SECTION_GREY_LIGHT} 0%, ${SECTION_GREY} 48%, ${SECTION_GREY_LIGHT} 100%)`;
@@ -33,169 +33,31 @@ const sectionBackgroundSx = {
   background: SECTION_BG,
 };
 
-function EmployeeHeroBackdrop({ imageSrc }) {
-  if (!imageSrc) return null;
-
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        display: { xs: 'none', md: 'block' },
-        position: 'absolute',
-        inset: 0,
-        zIndex: 0,
-        width: '100%',
-        overflow: 'hidden',
-        bgcolor: 'transparent',
-      }}
-    >
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          bottom: 0,
-          width: { md: '56%' },
-          background: `
-            linear-gradient(
-              90deg,
-              ${SECTION_GREY_LIGHT} 0%,
-              ${SECTION_GREY_LIGHT} 68%,
-              rgba(244, 246, 248, 0.96) 78%,
-              rgba(236, 238, 241, 0.55) 88%,
-              rgba(236, 238, 241, 0.18) 96%,
-              transparent 100%
-            )
-          `,
-        }}
-      />
-
-      <Box
-        sx={{
-          position: 'absolute',
-          top: { md: 20 },
-          right: 0,
-          bottom: { md: 20 },
-          width: HERO_IMAGE_WIDTH,
-          overflow: 'hidden',
-          borderRadius: { md: '0 0 0 12px' },
-        }}
-      >
-        <Box
-          component="img"
-          src={imageSrc}
-          alt=""
-          loading="lazy"
-          sx={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            objectPosition: '68% center',
-            display: 'block',
-          }}
-        />
-
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background: `
-              linear-gradient(
-                180deg,
-                rgba(244, 246, 248, 0.22) 0%,
-                rgba(244, 246, 248, 0.08) 3%,
-                transparent 10%
-              ),
-              linear-gradient(
-                90deg,
-                ${SECTION_GREY_LIGHT} 0%,
-                rgba(244, 246, 248, 0.98) 5%,
-                rgba(236, 238, 241, 0.78) 12%,
-                rgba(236, 238, 241, 0.38) 22%,
-                rgba(236, 238, 241, 0.1) 32%,
-                transparent 44%
-              ),
-              linear-gradient(
-                0deg,
-                rgba(244, 246, 248, 0.24) 0%,
-                rgba(236, 238, 241, 0.08) 5%,
-                transparent 10%
-              )
-            `,
-          }}
-        />
-
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            boxShadow: `
-              inset 0 14px 20px -12px rgba(244, 246, 248, 0.5),
-              inset 48px 0 56px -20px rgba(244, 246, 248, 0.82),
-              inset 0 -12px 18px -10px rgba(244, 246, 248, 0.28)
-            `,
-          }}
-        />
-      </Box>
-    </Box>
-  );
-}
+const PARTNERS_BG = '#F7F9FA';
 
 function PartnersLogoSection({ heading, logos, secondaryColor }) {
-  const shouldScroll = logos.length > 5;
+  const shouldScroll = logos.length > 6;
 
   return (
     <Box
       component={m.section}
       variants={varFade({ distance: 16 }).inUp}
       sx={{
-        position: 'relative',
-        zIndex: 1,
-        bgcolor: '#ffffff',
-        py: { xs: 3.5, md: 4 },
-        display: 'flex',
-        alignItems: 'center',
-        overflow: 'hidden',
-        borderTop: `1px solid ${alpha(SECTION_GREY, 0.9)}`,
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          background: `
-            radial-gradient(ellipse 80% 60% at 12% 18%, rgba(196, 181, 253, 0.14), transparent 58%),
-            radial-gradient(ellipse 72% 55% at 88% 78%, rgba(147, 197, 253, 0.16), transparent 60%),
-            radial-gradient(ellipse 58% 48% at 52% 42%, rgba(251, 207, 232, 0.12), transparent 62%)
-          `,
-        },
+        width: '100%',
+        bgcolor: PARTNERS_BG,
+        py: { xs: 4, md: 5 },
+        borderTop: `1px solid ${alpha(SECTION_GREY, 0.65)}`,
       }}
     >
-      {/* <DashboardContent
-        disablePadding
-        component={MotionViewport}
-        sx={{ position: 'relative', zIndex: 1, width: 1 }}
-      > */}
-
       <DashboardContent
         component={MotionViewport}
         sx={{
           width: 1,
-          maxWidth: '100%',
-          position: 'relative', zIndex: 1,
-          mx: 'auto',
-          px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
           pt: 0,
           pb: 0,
         }}
       >
-        <Stack
-          spacing={{ xs: 2, md: 2.5 }}
-          alignItems="center"
-          justifyContent="center"
-          sx={{ width: 1 }}
-        >
+        <Stack spacing={{ xs: 3, md: 3.5 }} alignItems="center" sx={{ width: 1 }}>
           {heading ? (
             <Stack spacing={0} alignItems="center" sx={{ width: 1 }}>
               <Typography
@@ -244,10 +106,11 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
               sx={{
                 width: shouldScroll ? 'max-content' : 1,
                 minWidth: shouldScroll ? '100%' : 'auto',
-                animation: shouldScroll ? 'employeePartnersScroll 34s linear infinite' : 'none',
+                animation: shouldScroll ? 'employeePartnersScroll 40s linear infinite' : 'none',
                 justifyContent: shouldScroll ? 'flex-start' : 'center',
                 flexWrap: shouldScroll ? 'nowrap' : 'wrap',
-                gap: { xs: 3, sm: 4, md: 5 },
+                gap: { xs: 2.5, sm: 3.5, md: 4.5, lg: 5 },
+                px: { xs: 0.5, md: 1 },
               }}
             >
               {(shouldScroll ? [...logos, ...logos] : logos).map((row, index) => (
@@ -258,18 +121,8 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    minWidth: { xs: 88, sm: 104, md: 120 },
-                    height: { xs: 56, md: 68 },
+                    height: { xs: 52, md: 64 },
                     px: { xs: 0.5, md: 1 },
-                    opacity: 0.92,
-                    transition: (theme) =>
-                      theme.transitions.create(['opacity', 'transform'], { duration: 200 }),
-                    '@media (hover: hover) and (pointer: fine)': {
-                      '&:hover': {
-                        opacity: 1,
-                        transform: 'translateY(-2px)',
-                      },
-                    },
                   }}
                 >
                   <Box
@@ -277,11 +130,20 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
                     src={row.logoUrl}
                     alt={row.name}
                     sx={{
-                      height: { xs: 44, md: 56 },
-                      maxWidth: { xs: 120, md: 140 },
+                      height: { xs: 40, sm: 44, md: 52 },
+                      maxWidth: { xs: 120, sm: 140, md: 160 },
                       width: 'auto',
                       objectFit: 'contain',
                       display: 'block',
+                      filter: 'grayscale(1)',
+                      opacity: 0.72,
+                      transition: (theme) => theme.transitions.create(['opacity', 'filter'], { duration: 200 }),
+                      '@media (hover: hover) and (pointer: fine)': {
+                        '&:hover': {
+                          opacity: 0.95,
+                          filter: 'grayscale(0)',
+                        },
+                      },
                     }}
                   />
                 </Box>
@@ -317,22 +179,28 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
   const external = isExternalHref(href);
 
   const common = {
-    size: 'large',
+    size: 'small',
     endIcon:
       variant === 'contained' && !icon ? (
-        <Iconify icon="solar:arrow-right-linear" width={18} />
+        <Iconify icon="solar:arrow-right-linear" width={14} />
       ) : null,
-    startIcon: icon ? <Iconify icon={icon} width={20} /> : null,
+    startIcon: icon ? <Iconify icon={icon} width={16} /> : null,
     sx: {
       fontFamily: FONT_STACK,
       fontWeight: 700,
-      fontSize: FLUID_FONT_SIZES.body1,
-      px: { xs: 2.5, md: 3.25 },
-      py: 1.4,
-      borderRadius: 2,
+      fontSize: FLUID_FONT_SIZES.caption,
+      lineHeight: 1.35,
+      px: { xs: 1.75, md: 2 },
+      py: 0.65,
+      minHeight: 36,
+      borderRadius: 1.15,
       textTransform: 'none',
       whiteSpace: { xs: 'normal', sm: 'nowrap' },
-      minWidth: { sm: 188 },
+      minWidth: { sm: 140 },
+      '& .MuiButton-startIcon, & .MuiButton-endIcon': {
+        marginLeft: 0.5,
+        marginRight: 0.5,
+      },
     },
   };
 
@@ -392,10 +260,10 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
         ...common.sx,
         color: 'primary.contrastText',
         bgcolor: 'primary.main',
-        boxShadow: (t) => `0 8px 24px ${alpha(t.palette.primary.main, 0.28)}`,
+        boxShadow: (t) => `0 4px 14px ${alpha(t.palette.primary.main, 0.22)}`,
         '&:hover': {
           bgcolor: 'primary.dark',
-          boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.38)}`,
+          boxShadow: (t) => `0 6px 18px ${alpha(t.palette.primary.main, 0.3)}`,
         },
       }}
     >
@@ -411,10 +279,10 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
         ...common.sx,
         color: 'primary.contrastText',
         bgcolor: 'primary.main',
-        boxShadow: (t) => `0 8px 24px ${alpha(t.palette.primary.main, 0.28)}`,
+        boxShadow: (t) => `0 4px 14px ${alpha(t.palette.primary.main, 0.22)}`,
         '&:hover': {
           bgcolor: 'primary.dark',
-          boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.38)}`,
+          boxShadow: (t) => `0 6px 18px ${alpha(t.palette.primary.main, 0.3)}`,
         },
       }}
     >
@@ -431,20 +299,20 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
   if (!eyebrowText && !hasHeading && !hasAccent) return null;
 
   return (
-    <Stack spacing={{ xs: 1.25, md: 1.5 }}>
+    <Stack spacing={{ xs: 0.85, md: 1 }}>
       {eyebrowText ? (
         <Typography
           component="span"
           sx={{
             display: 'inline-flex',
             alignSelf: 'flex-start',
-            px: 1.5,
-            py: 0.5,
+            px: 1.25,
+            py: 0.4,
             borderRadius: 1,
             fontFamily: FONT_STACK,
             fontWeight: 700,
-            fontSize: FLUID_FONT_SIZES.overline,
-            letterSpacing: '0.14em',
+            fontSize: FLUID_FONT_SIZES.caption,
+            letterSpacing: '0.12em',
             textTransform: 'uppercase',
             color: 'primary.main',
             bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
@@ -461,10 +329,10 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
           sx={{
             m: 0,
             fontFamily: FONT_STACK,
-            fontWeight: 800,
-            fontSize: FLUID_FONT_SIZES.statLg,
-            lineHeight: { xs: 1.2, md: 1.15 },
-            letterSpacing: '-0.03em',
+            fontWeight: 700,
+            fontSize: FLUID_FONT_SIZES.h5,
+            lineHeight: 1.25,
+            letterSpacing: '-0.02em',
             color: 'secondary.main',
           }}
         >
@@ -483,12 +351,12 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
 
       <Box
         sx={{
-          width: { xs: 56, md: 72 },
-          height: 4,
+          width: { xs: 56, md: 64 },
+          height: 3,
           borderRadius: 999,
           background: (theme) =>
             `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${secondaryColor || theme.palette.secondary.main} 100%)`,
-          boxShadow: (theme) => `0 4px 14px ${alpha(theme.palette.primary.main, 0.22)}`,
+          boxShadow: (theme) => `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
         }}
       />
     </Stack>
@@ -507,12 +375,12 @@ function EmployeeBenefitCard({ row, index }) {
         flexDirection: { xs: 'column', sm: 'row' },
         alignItems: { xs: 'center', sm: 'flex-start' },
         textAlign: { xs: 'center', sm: 'left' },
-        gap: { xs: 1, sm: 1.5 },
-        p: { xs: 1.25, sm: 1.5, md: 1.75 },
-        borderRadius: 2,
+        gap: { xs: 0.85, sm: 1.15 },
+        p: { xs: 1, sm: 1.15, md: 1.25 },
+        borderRadius: '12px',
         bgcolor: 'common.white',
         border: `1px solid ${alpha(NAVY, 0.08)}`,
-        boxShadow: `0 8px 24px ${alpha(NAVY, 0.06)}`,
+        boxShadow: `0 4px 14px ${alpha(NAVY, 0.05)}`,
         transition: (t) =>
           t.transitions.create(['box-shadow', 'border-color', 'transform'], { duration: 220 }),
         '@media (hover: hover) and (pointer: fine)': {
@@ -528,8 +396,8 @@ function EmployeeBenefitCard({ row, index }) {
         <Box
           sx={{
             flexShrink: 0,
-            width: { xs: 40, sm: 44 },
-            height: { xs: 40, sm: 44 },
+            width: { xs: 36, sm: 38 },
+            height: { xs: 36, sm: 38 },
             borderRadius: 1.5,
             display: 'flex',
             alignItems: 'center',
@@ -545,8 +413,8 @@ function EmployeeBenefitCard({ row, index }) {
         <Box
           sx={{
             flexShrink: 0,
-            width: { xs: 40, sm: 44 },
-            height: { xs: 40, sm: 44 },
+            width: { xs: 36, sm: 38 },
+            height: { xs: 36, sm: 38 },
             borderRadius: 1.5,
             display: 'flex',
             alignItems: 'center',
@@ -636,192 +504,154 @@ export function HomeEmployeeSection() {
     <Box
       component="section"
       sx={{
-        position: 'relative',
-        overflow: 'hidden',
         ...sectionBackgroundSx,
       }}
     >
-      <Box
+      <DashboardContent
+        component={MotionViewport}
         sx={{
-          position: 'relative',
-          zIndex: 1,
-          bgcolor: 'transparent',
-          minHeight: { xs: heroSrc ? 560 : 420, md: 520 },
-          overflow: 'hidden',
+          ...HOME_DASHBOARD_CONTENT_SX,
+          py: { xs: 2.5, md: 3.5 },
         }}
       >
-        <EmployeeHeroBackdrop imageSrc={heroSrc} />
-
-        {!heroSrc ? (
-          <Box
-            aria-hidden
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              background: `radial-gradient(ellipse 75% 70% at 88% 50%, ${alpha(secondary.lighter, 0.2)} 0%, transparent 62%)`,
-            }}
-          />
-        ) : null}
-
-        <DashboardContent
-          component={MotionViewport}
-          sx={{
-            position: 'relative',
-            zIndex: 1,
-            py: { xs: 5, md: 7 },
-            minHeight: { xs: heroSrc ? 560 : 420, md: 520 },
-            display: 'flex',
-            alignItems: 'center',
-          }}
+        <Grid
+          container
+          spacing={{ xs: 2, md: 3 }}
+          alignItems="center"
+          component={m.div}
+          variants={varFade({ distance: 20 }).inUp}
         >
-          {heroSrc ? (
+          <Grid xs={12} md={heroSrc ? 6 : 12} sx={{ display: 'flex', minWidth: 0, order: { xs: 2, md: 1 } }}>
             <Box
-              component={m.div}
-              variants={varFade({ distance: 20 }).inUp}
               sx={{
-                display: { xs: 'block', md: 'none' },
+                position: 'relative',
                 width: 1,
-                mb: 2.5,
-                borderRadius: '20px',
-                overflow: 'hidden',
-                aspectRatio: '16 / 10',
-                maxHeight: 260,
-                boxShadow: `0 20px 40px ${alpha(NAVY, 0.14)}, 0 4px 12px ${alpha(NAVY, 0.06)}`,
-                border: `1px solid ${alpha(NAVY, 0.08)}`,
+                py: { md: 0.5 },
+                '&::before': {
+                  content: '""',
+                  display: { xs: 'none', md: 'block' },
+                  position: 'absolute',
+                  left: 0,
+                  top: 12,
+                  bottom: 12,
+                  width: 4,
+                  borderRadius: 999,
+                  background: (t) =>
+                    `linear-gradient(180deg, ${t.palette.primary.main} 0%, ${secondary.main} 100%)`,
+                },
               }}
             >
-              <Box
-                component="img"
-                src={heroSrc}
-                alt={content.heading || 'Employee'}
+              <Stack
+                spacing={{ xs: 2, md: 2.25 }}
                 sx={{
-                  width: 1,
-                  height: 1,
-                  objectFit: 'cover',
-                  objectPosition: '68% center',
-                  display: 'block',
-                }}
-              />
-            </Box>
-          ) : null}
-
-          <Grid container alignItems="center" sx={{ width: 1 }}>
-            <Grid xs={12} md={heroSrc ? 6.5 : 12}>
-              <Box
-                component={m.div}
-                variants={varFade({ distance: 20 }).inUp}
-                sx={{
-                  position: 'relative',
-                  maxWidth: heroSrc ? { xs: 1, md: 480, lg: 640 } : { xs: 1, md: 640 },
-                  py: { md: 1 },
-                  pr: { md: heroSrc ? 2 : 0, lg: heroSrc ? 3 : 0 },
-                  '&::before': {
-                    content: '""',
-                    display: { xs: 'none', md: 'block' },
-                    position: 'absolute',
-                    left: 0,
-                    top: 12,
-                    bottom: 12,
-                    width: 4,
-                    borderRadius: 999,
-                    background: (t) =>
-                      `linear-gradient(180deg, ${t.palette.primary.main} 0%, ${secondary.main} 100%)`,
-                  },
+                  pl: { md: 2 },
                 }}
               >
-                <Stack
-                  spacing={{ xs: 2.5, md: 3 }}
-                  sx={{
-                    pl: { md: 2.5 },
-                  }}
-                >
-                  <EmployeeSectionHeading
-                    eyebrow={content.eyebrow}
-                    heading={content.heading}
-                    headingAccent={content.headingAccent}
-                    secondaryColor={secondary.main}
-                  />
+                <EmployeeSectionHeading
+                  eyebrow={content.eyebrow}
+                  heading={content.heading}
+                  headingAccent={content.headingAccent}
+                  secondaryColor={secondary.main}
+                />
 
-                  {content.subtitle ? (
-                    <Box
-                      component={m.div}
-                      variants={varFade({ distance: 14 }).inUp}
-                      sx={{ width: 1 }}
-                    >
-                      <RichTextContent
-                        html={content.subtitle}
+                {content.subtitle ? (
+                  <Box sx={{ width: 1 }}>
+                    <RichTextContent
+                      html={content.subtitle}
+                      sx={{
+                        fontFamily: FONT_STACK,
+                        color: alpha(NAVY, 0.78),
+                        typography: 'body2',
+                        fontSize: FLUID_FONT_SIZES.body2,
+                        lineHeight: 1.55,
+                        '& p': { m: 0 },
+                        '& p + p': { mt: 0.85 },
+                        '& strong': { color: NAVY, fontWeight: 700 },
+                      }}
+                    />
+                  </Box>
+                ) : null}
+
+                {benefits.length > 0 ? (
+                  <Stack spacing={1.5} sx={{ width: 1, pt: { xs: 0.25, md: 0.5 } }}>
+                    {content.benefitsLabel ? (
+                      <Typography
                         sx={{
                           fontFamily: FONT_STACK,
-                          color: alpha(NAVY, 0.78),
-                          typography: 'body1',
-                          fontSize: FLUID_FONT_SIZES.body1,
-                          lineHeight: { xs: 1.65, md: 1.75 },
-                          maxWidth: { md: 520, lg: 560 },
-                          '& p': { m: 0 },
-                          '& p + p': { mt: 1.25 },
-                          '& strong': { color: NAVY, fontWeight: 700 },
+                          fontWeight: 700,
+                          fontSize: FLUID_FONT_SIZES.overline,
+                          letterSpacing: '0.12em',
+                          textTransform: 'uppercase',
+                          color: alpha(NAVY, 0.55),
                         }}
-                      />
-                    </Box>
-                  ) : null}
-
-                  {benefits.length > 0 ? (
-                    <Stack
-                      component={m.div}
-                      spacing={1.5}
-                      variants={varFade({ distance: 14 }).inUp}
-                      sx={{ width: 1, pt: { xs: 0.25, md: 0.5 } }}
-                    >
-                      {content.benefitsLabel ? (
-                        <Typography
-                          sx={{
-                            fontFamily: FONT_STACK,
-                            fontWeight: 700,
-                            fontSize: FLUID_FONT_SIZES.overline,
-                            letterSpacing: '0.12em',
-                            textTransform: 'uppercase',
-                            color: alpha(NAVY, 0.55),
-                          }}
-                        >
-                          {content.benefitsLabel}
-                        </Typography>
-                      ) : null}
-                      <Grid container spacing={{ xs: 1, sm: 1.25, md: 1.5 }}>
-                        {benefits.slice(0, 4).map((row, index) => (
-                          <Grid key={`employee-hero-benefit-${index}`} xs={6} sm={6}>
-                            <EmployeeBenefitCard row={row} index={index} />
-                          </Grid>
-                        ))}
-                      </Grid>
-                    </Stack>
-                  ) : null}
-
-                  <Stack
-                    component={m.div}
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.5}
-                    flexWrap="wrap"
-                    alignItems={{ xs: 'stretch', sm: 'center' }}
-                    variants={varFade({ distance: 12 }).inUp}
-                    sx={{
-                      width: 1,
-                      pt: { xs: 0.5, md: 1 },
-                    }}
-                  >
-                    <CtaButton label={content.primaryCtaLabel} href={content.primaryCtaHref} />
-                    <CtaButton
-                      label={content.secondaryCtaLabel}
-                      href={content.secondaryCtaHref}
-                      variant="outlined"
-                      icon="solar:download-minimalistic-bold"
-                    />
+                      >
+                        {content.benefitsLabel}
+                      </Typography>
+                    ) : null}
+                    <Grid container spacing={{ xs: 1, sm: 1.25, md: 1.5 }}>
+                      {benefits.slice(0, 4).map((row, index) => (
+                        <Grid key={`employee-hero-benefit-${index}`} xs={6} sm={6}>
+                          <EmployeeBenefitCard row={row} index={index} />
+                        </Grid>
+                      ))}
+                    </Grid>
                   </Stack>
+                ) : null}
+
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1.15}
+                  flexWrap="wrap"
+                  alignItems={{ xs: 'stretch', sm: 'center' }}
+                  sx={{
+                    width: 1,
+                    pt: { xs: 0.25, md: 0.5 },
+                  }}
+                >
+                  <CtaButton label={content.primaryCtaLabel} href={content.primaryCtaHref} />
+                  <CtaButton
+                    label={content.secondaryCtaLabel}
+                    href={content.secondaryCtaHref}
+                    variant="outlined"
+                    icon="solar:download-minimalistic-bold"
+                  />
                 </Stack>
+              </Stack>
+            </Box>
+          </Grid>
+
+          {heroSrc ? (
+            <Grid xs={12} md={6} sx={{ display: 'flex', minWidth: 0, alignItems: 'center', order: { xs: 1, md: 2 } }}>
+              <Box
+                sx={{
+                  width: 1,
+                  borderRadius: '20px',
+                  overflow: 'hidden',
+                  aspectRatio: { xs: '16 / 10', md: '4 / 3' },
+                  maxHeight: { xs: 240, md: 360 },
+                  ...HOME_SECTION_CARD_SX,
+                  p: 0,
+                  bgcolor: 'common.white',
+                }}
+              >
+                <Box
+                  component="img"
+                  src={heroSrc}
+                  alt={content.heading || 'Employee'}
+                  loading="lazy"
+                  sx={{
+                    width: 1,
+                    height: 1,
+                    objectFit: 'cover',
+                    objectPosition: '68% center',
+                    display: 'block',
+                  }}
+                />
               </Box>
             </Grid>
-          </Grid>
-        </DashboardContent>
-      </Box>
+          ) : null}
+        </Grid>
+      </DashboardContent>
 
       {showPartners ? (
         <PartnersLogoSection

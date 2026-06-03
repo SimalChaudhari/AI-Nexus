@@ -247,12 +247,20 @@ export class OAuthAuthService {
     return this.resolveApplicationApiUrl('declaration');
   }
 
+  get applicationResidentialDeclarationUrl(): string {
+    return this.resolveApplicationApiUrl('residentialDeclaration');
+  }
+
   get applicationAvailableDocumentTypesUrl(): string {
     return this.resolveApplicationApiUrl('availableDocumentTypes');
   }
 
   get applicationUploadDocumentUrl(): string {
     return this.resolveApplicationApiUrl('uploadDocument');
+  }
+
+  get applicationCheckoutDetailsUrl(): string {
+    return this.resolveApplicationApiUrl('checkoutDetails');
   }
 
   get applicationCreateBillingUrl(): string {
@@ -655,10 +663,7 @@ export class OAuthAuthService {
     socialAccessToken: string,
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const token = socialAccessToken?.trim();
-    if (!token) {
-      throw new BadRequestException('Salesforce social access token is required.');
-    }
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
 
     const accountId = String(payload.accountId || '').trim();
     if (!accountId) {
@@ -706,14 +711,10 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as {
-          message?: string;
-          error?: string;
-          error_description?: string;
-        };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
-        throw new BadRequestException(desc || 'Failed to create application in Salesforce.');
+        this.throwMappedSalesforceApplicationApiError(
+          err,
+          'Failed to create application in Salesforce.',
+        );
       }
       throw err;
     }
@@ -727,10 +728,7 @@ export class OAuthAuthService {
     socialAccessToken: string,
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const token = socialAccessToken?.trim();
-    if (!token) {
-      throw new BadRequestException('Salesforce social access token is required.');
-    }
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
 
     const accountId = String(payload.accountId || '').trim();
     if (!accountId) {
@@ -763,15 +761,9 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as {
-          message?: string;
-          error?: string;
-          error_description?: string;
-        };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
-        throw new BadRequestException(
-          desc || 'Failed to submit personal details to Salesforce.',
+        this.throwMappedSalesforceApplicationApiError(
+          err,
+          'Failed to submit personal details to Salesforce.',
         );
       }
       throw err;
@@ -785,10 +777,7 @@ export class OAuthAuthService {
     socialAccessToken: string,
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const token = socialAccessToken?.trim();
-    if (!token) {
-      throw new BadRequestException('Salesforce social access token is required.');
-    }
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
 
     const applicationId = String(payload.applicationId || '').trim();
     if (!applicationId) {
@@ -824,19 +813,62 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as {
-          message?: string;
-          error?: string;
-          error_description?: string;
-        };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
-        throw new BadRequestException(
-          desc || 'Failed to submit employment details to Salesforce.',
+        this.throwMappedSalesforceApplicationApiError(
+          err,
+          'Failed to submit employment details to Salesforce.',
         );
       }
       throw err;
     }
+  }
+
+  static readonly SALESFORCE_SOCIAL_TOKEN_EXPIRED = 'SALESFORCE_SOCIAL_TOKEN_EXPIRED';
+
+  private isSalesforceSocialTokenExpired(status?: number, description?: string): boolean {
+    if (status === 401) return true;
+    const text = (description || '').toLowerCase();
+    return (
+      /expired/.test(text)
+      && (/token|session|eservices|idp|salesforce|social|unauthorized|invalid/.test(text)
+        || /sign in again/.test(text))
+    );
+  }
+
+  private throwMappedSalesforceApplicationApiError(
+    err: unknown,
+    fallbackMessage: string,
+  ): never {
+    if (!axios.isAxiosError(err)) {
+      throw err;
+    }
+
+    const data = err.response?.data as Record<string, unknown> | undefined;
+    const description = String(
+      data?.message
+        || data?.errorDetails
+        || data?.error_description
+        || data?.error
+        || err.message
+        || '',
+    ).trim();
+
+    if (this.isSalesforceSocialTokenExpired(err.response?.status, description)) {
+      throw new UnauthorizedException(
+        `${OAuthAuthService.SALESFORCE_SOCIAL_TOKEN_EXPIRED}: Your eServices session has expired. Please sign in again.`,
+      );
+    }
+
+    throw new BadRequestException(description || fallbackMessage);
+  }
+
+  private requireSalesforceSocialAccessToken(socialAccessToken: string): string {
+    const token = socialAccessToken?.trim();
+    if (!token) {
+      throw new UnauthorizedException(
+        `${OAuthAuthService.SALESFORCE_SOCIAL_TOKEN_EXPIRED}: Salesforce social access token is required. Please sign in with eServices again.`,
+      );
+    }
+    return token;
   }
 
   private async postSalesforceApplicationApi(
@@ -846,10 +878,7 @@ export class OAuthAuthService {
     logLabel: string,
     errorMessage: string,
   ): Promise<Record<string, unknown>> {
-    const token = socialAccessToken?.trim();
-    if (!token) {
-      throw new BadRequestException('Salesforce social access token is required.');
-    }
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
 
     console.log(`[Salesforce] ${logLabel}:`, { url, applicationId: body.applicationId });
 
@@ -870,14 +899,7 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as {
-          message?: string;
-          error?: string;
-          error_description?: string;
-        };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
-        throw new BadRequestException(desc || errorMessage);
+        this.throwMappedSalesforceApplicationApiError(err, errorMessage);
       }
       throw err;
     }
@@ -973,6 +995,24 @@ export class OAuthAuthService {
     );
   }
 
+  /** Residential declaration — single POST. */
+  async createResidentialDeclarationNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationResidentialDeclarationUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createResidentialDeclarationNexus',
+      'Failed to submit residential declaration to Salesforce.',
+    );
+  }
+
   /**
    * GET ApplicationAPI/getAvailableDocumentTypesNexus?applicationId=...
    * Returns pathway-specific required/optional document types for the application.
@@ -981,10 +1021,7 @@ export class OAuthAuthService {
     socialAccessToken: string,
     applicationId: string,
   ): Promise<Record<string, unknown>> {
-    const token = socialAccessToken?.trim();
-    if (!token) {
-      throw new BadRequestException('Salesforce social access token is required.');
-    }
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
     const appId = applicationId?.trim();
     if (!appId) {
       throw new BadRequestException('applicationId is required.');
@@ -1010,15 +1047,52 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as {
-          message?: string;
-          error?: string;
-          error_description?: string;
-        };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
-        throw new BadRequestException(
-          desc || 'Failed to load available document types from Salesforce.',
+        this.throwMappedSalesforceApplicationApiError(
+          err,
+          'Failed to load available document types from Salesforce.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * GET ApplicationAPI/getCheckoutDetailsForNexus?applicationId=...
+   * Returns payment summary and billing information for the application.
+   */
+  async getCheckoutDetailsForNexus(
+    socialAccessToken: string,
+    applicationId: string,
+  ): Promise<Record<string, unknown>> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
+    const appId = applicationId?.trim();
+    if (!appId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+
+    const url = this.applicationCheckoutDetailsUrl;
+    console.log('[Salesforce] getCheckoutDetailsForNexus:', { url, applicationId: appId });
+
+    try {
+      const res = await axios.get<Record<string, unknown>>(url, {
+        params: { applicationId: appId },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { status: 'Success', data: {} };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] getCheckoutDetailsForNexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        this.throwMappedSalesforceApplicationApiError(
+          err,
+          'Failed to load checkout details from Salesforce.',
         );
       }
       throw err;
@@ -1030,6 +1104,7 @@ export class OAuthAuthService {
     socialAccessToken: string,
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
     const applicationId = String(payload.applicationId || '').trim();
     if (!applicationId) {
       throw new BadRequestException('applicationId is required.');
@@ -1054,13 +1129,66 @@ export class OAuthAuthService {
       wooshPayReferenceNo,
     };
 
-    return this.postSalesforceApplicationApi(
-      this.applicationCreateBillingUrl,
-      socialAccessToken,
-      body,
-      'createBillingNexus',
-      'Failed to submit billing to Salesforce.',
-    );
+    const url = this.applicationCreateBillingUrl;
+    console.log('[Salesforce] createBillingNexus:', { url, applicationId });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (!axios.isAxiosError(err)) {
+        throw err;
+      }
+
+      const data = err.response?.data as {
+        message?: string;
+        error?: string;
+        error_description?: string;
+        errorDetails?: string;
+      };
+      const desc =
+        data?.message
+        || data?.errorDetails
+        || data?.error_description
+        || data?.error
+        || err.message
+        || '';
+      const lower = String(desc).toLowerCase();
+
+      if (
+        lower.includes('billing')
+        && lower.includes('already')
+        && (lower.includes('exist') || lower.includes('submitted'))
+      ) {
+        console.warn('[Salesforce] createBillingNexus: billing already exists, treating as success.', {
+          applicationId,
+          message: desc,
+        });
+        return {
+          status: 'Success',
+          message: desc || 'Billing already exists. Treated as success.',
+          alreadyExists: true,
+          applicationId,
+        };
+      }
+
+      console.error('[Salesforce] createBillingNexus failed:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+      });
+      this.throwMappedSalesforceApplicationApiError(
+        err,
+        'Failed to submit billing to Salesforce.',
+      );
+    }
   }
 
   /** POST ApplicationAPI/uploadDocumentNexus — one file per request (base64 body). */

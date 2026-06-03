@@ -126,11 +126,13 @@ export function HeaderBase({
       ...slotProps?.container,
       sx: {
         ...(isCustomerFacingRoute && {
-          px: { xs: 0, sm: 2, md: 4, lg: 6 },
-          justifyContent: 'space-between',
-        }),
-        ...(isHomeRoute && {
+          px: { xs: 2, sm: 3, md: 4, lg: 6, xl: 8 },
           alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 0,
+          width: '100%',
+          maxWidth: '1400px',
+          mx: 'auto',
         }),
         ...slotProps?.container?.sx,
       },
@@ -146,7 +148,7 @@ export function HeaderBase({
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            width: { xs: 100, md: 150 },
+            width: { xs: 88, md: 100 },
             transition: 'none',
           },
           ...(isHomeRoute
@@ -168,21 +170,10 @@ export function HeaderBase({
                   transition: 'none',
                 },
                 '&[data-offset-top="false"] [data-slot="logo-wrapper"]': {
-                  '@media (max-width:1080px)': {
-                    backgroundColor: 'transparent',
-                    borderRadius: 0,
-                    overflow: 'visible',
-                    boxShadow: 'none',
-                  },
-                  '@media (min-width:1081px)': {
-                    backgroundColor: 'common.white',
-                    borderRadius: '0 0 24px 24px',
-                    overflow: 'hidden',
-                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.16)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  },
+                  backgroundColor: 'transparent',
+                  borderRadius: 0,
+                  overflow: 'visible',
+                  boxShadow: 'none',
                 },
                 '&[data-offset-top="true"] [data-slot="logo-wrapper"]': {
                   backgroundColor: 'transparent',
@@ -255,7 +246,7 @@ export function HeaderBase({
                   isCustomerFacingRoute
                     ? {
                         /* One size on all breakpoints so branding doesn’t scale when the bar reflows */
-                        width: { xs: 100, md: 150 },
+                        width: { xs: 88, md: 100 },
                         height: 'auto',
                         minHeight: 'unset',
                         display: 'block',
