@@ -32,6 +32,7 @@ import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
 import { LearningBundlePill, LearningBundleRibbon } from './components/course-bundle-badge';
 import { MembershipSignupDialog } from './components/membership-signup-dialog';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
+import { LearningCourseGridCard } from './components/learning-course-grid-card';
 import {
   buildScaqAssociateOptInOAuthStartUrl,
   clearMembershipEligibilityDraftOnModalClose,
@@ -42,7 +43,7 @@ import { clearMembershipApplicationPending } from 'src/utils/membership-salesfor
 
 // ----------------------------------------------------------------------
 
-const ROWS_PER_PAGE = 10;
+const ROWS_PER_PAGE = 8;
 const SEARCH_DEBOUNCE_MS = 450;
 const DEFAULT_PAGINATION = {
   page: 1,
@@ -69,6 +70,16 @@ const transformCourse = (course, defaultCourseImage) => ({
   accessViaBundle: course.accessViaBundle ?? false,
   categoryId: course.categoryId || course.category?.id || null,
   category: course.category || null,
+  reviewStats: {
+    averageRating: Number(course?.reviewStats?.averageRating || 0),
+    reviewCount: Number(course?.reviewStats?.reviewCount || 0),
+  },
+  createdAt: course.createdAt || null,
+  updatedAt: course.updatedAt || null,
+  goals: Array.isArray(course.goals) ? course.goals : [],
+  languages: Array.isArray(course.languages) ? course.languages : [],
+  modulesCount: Number(course.modulesCount ?? course.moduleCount ?? 0),
+  sectionsCount: Number(course.sectionsCount ?? course.sectionCount ?? 0),
 });
 
 const getCourseContentMeta = (course = {}) => {
@@ -489,10 +500,6 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
       (group.items || []).map((course) => course.id).filter(Boolean)
     )
   ).size;
-  const getCategoryTitle = useCallback(
-    (course) => course?.category?.title || '',
-    []
-  );
   const displayedCourses = displayCourses;
 
   const handleRefresh = () => {
@@ -756,11 +763,12 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                           }}
                         />
                       </Stack>
-                      <Box sx={{ position: 'relative' }}>
+                      <Box sx={{ position: 'relative', overflow: 'visible' }}>
                         <Grid
                           container
-                          spacing={{ xs: 2, md: 2.5 }}
-                          columns={{ xs: 2, sm: 3, md: 3, lg: 4, xl: 4 }}
+                          spacing={{ xs: 1.25, sm: 1.5, md: 2 }}
+                          columns={{ xs: 2, sm: 2, md: 4, lg: 4, xl: 4 }}
+                          sx={{ overflow: 'visible' }}
                         >
                           {group.items.map((course) => {
                             const { moduleCount, sectionCount } = getCourseContentMeta(course);
@@ -770,442 +778,28 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                               : 0;
                             const showCourseProgress = authenticated && (!course.freeOrPaid || isEnrolled(course.id));
                             const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
+                            const courseIsFavorite = favorites.has(course.id) || course.isFavorite;
                             return (
                               <Grid key={course.id} xs={1}>
-                                <Card
-                                  sx={{
-                                    height: '100%',
-                                    minHeight: { xs: 210, sm: 235, md: 250 },
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    borderRadius: 2,
-                                    boxShadow: theme.customShadows.z4,
-                                    overflow: 'hidden',
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                    transition: 'box-shadow 0.25s ease',
-                                    '&:hover': { boxShadow: theme.customShadows.z16 },
-                                  }}
-                                >
-                                  <Box
-                                    onClick={(e) => handleCourseImageClick(e, course)}
-                                    sx={{
-                                      position: 'relative',
-                                      height: { xs: 112, sm: 150, md: 155, lg: 145 },
-                                      bgcolor: 'grey.100',
-                                      flexShrink: 0,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    <Image
-                                      alt={course.title}
-                                      src={course.image || defaultCourseImage}
-                                      sx={{
-                                        width: '100%',
-                                        height: '100%',
-                                        display: 'block',
-                                        objectFit: 'cover',
-                                      }}
-                                      onError={(e) => {
-                                        e.target.src = defaultCourseImage;
-                                      }}
-                                    />
-                                    <Box
-                                      sx={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        bgcolor: alpha(theme.palette.common.black, 0.2),
-                                        opacity: 0,
-                                        transition: 'opacity 0.2s',
-                                        '&:hover': { opacity: 1 },
-                                      }}
-                                    >
-                                      <Box
-                                        sx={{
-                                          width: 48,
-                                          height: 48,
-                                          borderRadius: '50%',
-                                          bgcolor: alpha(theme.palette.common.white, 0.9),
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                        }}
-                                      >
-                                        <Iconify
-                                          icon="solar:play-bold"
-                                          width={24}
-                                          sx={{ color: 'primary.main', ml: 0.25 }}
-                                        />
-                                      </Box>
-                                    </Box>
-                                    {course.isBundle && (
-                                      <LearningBundleRibbon
-                                        count={
-                                          Array.isArray(course.bundleCourseIds)
-                                            ? course.bundleCourseIds.length
-                                            : 0
-                                        }
-                                      />
-                                    )}
-                                    {group.groupKey !== 'recommended' && course.isRecommended && (
-                                      <Chip
-                                        size="small"
-                                        label="Recommended"
-                                        color="warning"
-                                        sx={{
-                                          position: 'absolute',
-                                          top: 8,
-                                          left: 8,
-                                          height: 22,
-                                          fontWeight: 700,
-                                          zIndex: 2,
-                                        }}
-                                      />
-                                    )}
-                                    <IconButton
-                                      size="small"
-                                      onClick={(e) => handleFavorite(e, course.id)}
-                                      disabled={favoriteLoading.has(course.id)}
-                                      sx={{
-                                        position: 'absolute',
-                                        top: 8,
-                                        right: 8,
-                                        bgcolor: alpha(theme.palette.common.white, 0.98),
-                                        color:
-                                          favorites.has(course.id) || course.isFavorite
-                                            ? 'error.main'
-                                            : 'grey.600',
-                                        boxShadow: theme.shadows[6],
-                                        border: `1px solid ${alpha(theme.palette.common.black, 0.08)}`,
-                                        '&:hover': { bgcolor: 'common.white' },
-                                        opacity: favoriteLoading.has(course.id) ? 0.6 : 1,
-                                      }}
-                                      aria-label="Favorite"
-                                    >
-                                      <Iconify
-                                        icon={
-                                          favorites.has(course.id) || course.isFavorite
-                                            ? 'solar:heart-bold'
-                                            : 'solar:heart-outline'
-                                        }
-                                        width={22}
-                                      />
-                                    </IconButton>
-                                  </Box>
-                                  <Box
-                                    sx={{
-                                      p: { xs: 1, sm: 1.5 },
-                                      flex: 1,
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      justifyContent: 'space-between',
-                                      minHeight: { xs: 88, sm: 108, md: 96 },
-                                    }}
-                                  >
-                                    <Tooltip
-                                      title={course.title}
-                                      arrow
-                                      placement="top"
-                                      disableHoverListener={!shouldShowTitleTooltip(course.title)}
-                                    >
-                                      <Typography
-                                        variant="body1"
-                                        component={RouterLink}
-                                        to={getCourseDetailsPath(course.id)}
-                                        sx={{
-                                          fontWeight: 500,
-                                          fontSize: {
-                                            xs: 'clamp(0.72rem, 2.2vw, 0.9rem)',
-                                            sm: '0.95rem',
-                                            md: '0.98rem',
-                                          },
-                                          display: '-webkit-box',
-                                          WebkitLineClamp: 1,
-                                          WebkitBoxOrient: 'vertical',
-                                          overflow: 'hidden',
-                                          lineHeight: { xs: 1.32, sm: 1.36, md: 1.4 },
-                                          mb: { xs: 0.45, sm: 0.75 },
-                                          minHeight: { xs: '1.2em', sm: '1.25em', md: '1.35em' },
-                                          wordBreak: 'break-word',
-                                          color: 'inherit',
-                                          textDecoration: 'none',
-                                        }}
-                                      >
-                                        {course.title}
-                                      </Typography>
-                                    </Tooltip>
-                                    {getCategoryTitle(course) ? (
-                                      <Chip
-                                        size="small"
-                                        label={getCategoryTitle(course)}
-                                        variant="soft"
-                                        color="default"
-                                        sx={{ alignSelf: 'flex-start', mb: 0.65, height: 22, fontWeight: 600 }}
-                                      />
-                                    ) : null}
-                                    <Box
-                                      sx={{
-                                        mb: { xs: 0.45, sm: 0.85 },
-                                        minHeight: { xs: 34, sm: 24 },
-                                      }}
-                                    >
-                                      {moduleCount > 0 || sectionCount > 0 ? (
-                                        <Stack
-                                          direction={{ xs: 'column', sm: 'row' }}
-                                          spacing={0.6}
-                                          alignItems="flex-start"
-                                        >
-                                          {moduleCount > 0 && (
-                                            <Stack
-                                              direction="row"
-                                              spacing={0.45}
-                                              alignItems="center"
-                                              sx={{
-                                                px: 0.8,
-                                                py: 0.2,
-                                                borderRadius: 1,
-                                                bgcolor: alpha(theme.palette.info.main, 0.1),
-                                                width: 'fit-content',
-                                                maxWidth: '100%',
-                                              }}
-                                            >
-                                              <Iconify
-                                                icon="solar:widget-5-bold"
-                                                width={13}
-                                                sx={{ color: 'info.main' }}
-                                              />
-                                              <Typography
-                                                variant="caption"
-                                                sx={{
-                                                  color: 'info.main',
-                                                  fontWeight: 700,
-                                                  fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                                                }}
-                                              >
-                                                {moduleCount} Modules
-                                              </Typography>
-                                            </Stack>
-                                          )}
-                                          {sectionCount > 0 && (
-                                            <Stack
-                                              direction="row"
-                                              spacing={0.45}
-                                              alignItems="center"
-                                              sx={{
-                                                px: 0.8,
-                                                py: 0.2,
-                                                borderRadius: 1,
-                                                bgcolor: alpha(theme.palette.warning.main, 0.12),
-                                                width: 'fit-content',
-                                                maxWidth: '100%',
-                                              }}
-                                            >
-                                              <Iconify
-                                                icon="solar:document-text-bold"
-                                                width={13}
-                                                sx={{ color: 'warning.main' }}
-                                              />
-                                              <Typography
-                                                variant="caption"
-                                                sx={{
-                                                  color: 'warning.main',
-                                                  fontWeight: 700,
-                                                  fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                                                }}
-                                              >
-                                                {sectionCount} Sections
-                                              </Typography>
-                                            </Stack>
-                                          )}
-                                        </Stack>
-                                      ) : (
-                                        <Typography
-                                          variant="caption"
-                                          sx={{
-                                            color: 'text.disabled',
-                                            fontStyle: 'italic',
-                                            fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                                          }}
-                                        >
-                                          Modules & Sections not available
-                                        </Typography>
-                                      )}
-                                    </Box>
-                                    {course.isBundle && (
-                                      <LearningBundlePill
-                                        count={
-                                          Array.isArray(course.bundleCourseIds)
-                                            ? course.bundleCourseIds.length
-                                            : 0
-                                        }
-                                        sx={{ mb: 0.75 }}
-                                      />
-                                    )}
-                                    {showCourseProgress && (
-                                      <Box sx={{ mb: 0.8 }}>
-                                        <Stack
-                                          direction="row"
-                                          alignItems="center"
-                                          justifyContent="space-between"
-                                          sx={{ mb: 0.35 }}
-                                        >
-                                          <Chip
-                                            size="small"
-                                            label={progressStatus.label}
-                                            color={progressStatus.color}
-                                            variant="soft"
-                                            sx={{ height: 20, fontWeight: 700 }}
-                                          />
-                                          <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700 }}>
-                                            {courseProgress}%
-                                          </Typography>
-                                        </Stack>
-                                        <LinearProgress
-                                          variant="determinate"
-                                          value={Math.max(0, Math.min(100, courseProgress))}
-                                          color={progressStatus.color === 'success' ? 'success' : 'warning'}
-                                          sx={{ height: 6, borderRadius: 999 }}
-                                        />
-                                      </Box>
-                                    )}
-                                    <Stack
-                                      direction="row"
-                                      alignItems="center"
-                                      justifyContent="space-between"
-                                      spacing={1}
-                                    >
-                                      <Stack
-                                        direction="row"
-                                        spacing={0.75}
-                                        alignItems="center"
-                                        flexWrap="wrap"
-                                      >
-                                        <Typography
-                                          variant="caption"
-                                          sx={{
-                                            color: course.freeOrPaid
-                                              ? isEnrolled(course.id)
-                                                ? 'text.disabled'
-                                                : 'secondary.main'
-                                              : 'success.main',
-                                            fontWeight: 500,
-                                            display: 'block',
-                                            fontSize: { xs: '0.82rem', md: '0.85rem' },
-                                            textDecoration:
-                                              course.freeOrPaid && isEnrolled(course.id)
-                                                ? 'line-through'
-                                                : 'none',
-                                          }}
-                                        >
-                                          {course.freeOrPaid
-                                            ? `${Number(course.amount || 0).toFixed(2)} SGD`
-                                            : 'AI Fluency'}
-                                        </Typography>
-                                        {course.freeOrPaid && isEnrolled(course.id) && (
-                                          <Stack direction="row" spacing={0.5} alignItems="center">
-                                            <Iconify
-                                              icon="solar:verified-check-bold"
-                                              width={14}
-                                              sx={{ color: 'success.main' }}
-                                            />
-                                            <Typography
-                                              variant="caption"
-                                              sx={{
-                                                color: 'success.main',
-                                                fontWeight: 600,
-                                                fontSize: { xs: '0.78rem', md: '0.82rem' },
-                                              }}
-                                            >
-                                              {course.accessViaBundle
-                                                ? 'Included in bundle'
-                                                : 'Purchased'}
-                                            </Typography>
-                                          </Stack>
-                                        )}
-                                      </Stack>
-                                      {(course.freeOrPaid ||
-                                        isEnrolled(course.id) ||
-                                        isInCart(course.id)) && (
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => handleAddToCartClick(e, course)}
-                                          disabled={isEnrolled(course.id)}
-                                          sx={{
-                                            flexShrink: 0,
-                                            bgcolor: isEnrolled(course.id)
-                                              ? 'common.white'
-                                              : isInCart(course.id)
-                                                ? 'primary.main'
-                                                : 'warning.main',
-                                            color:
-                                              isEnrolled(course.id) || isInCart(course.id)
-                                                ? isEnrolled(course.id)
-                                                  ? 'success.main'
-                                                  : 'primary.contrastText'
-                                                : 'warning.contrastText',
-                                            boxShadow: theme.shadows[4],
-                                            border: `1px solid ${
-                                              isEnrolled(course.id)
-                                                ? alpha(theme.palette.success.main, 0.45)
-                                                : isInCart(course.id)
-                                                  ? alpha(theme.palette.primary.main, 0.4)
-                                                  : alpha(theme.palette.common.white, 0.24)
-                                            }`,
-                                            '&:hover': {
-                                              bgcolor: isEnrolled(course.id)
-                                                ? alpha(theme.palette.success.main, 0.08)
-                                                : isInCart(course.id)
-                                                  ? 'primary.dark'
-                                                  : 'warning.dark',
-                                            },
-                                            opacity: isEnrolled(course.id) ? 0.9 : 1,
-                                            ...(isEnrolled(course.id) && {
-                                              borderRadius: '50%',
-                                              animation: 'verifiedRing 2s ease-in-out infinite',
-                                              '@keyframes verifiedRing': {
-                                                '0%, 100%': {
-                                                  boxShadow: `0 0 0 0 ${alpha(theme.palette.success.main, 0.22)}`,
-                                                },
-                                                '50%': {
-                                                  boxShadow: `0 0 0 8px ${alpha(theme.palette.success.main, 0)}`,
-                                                },
-                                              },
-                                            }),
-                                          }}
-                                          aria-label={
-                                            isEnrolled(course.id) ? 'Purchased' : 'Add to cart'
-                                          }
-                                        >
-                                          <Iconify
-                                            icon={
-                                              isEnrolled(course.id)
-                                                ? 'solar:verified-check-bold'
-                                                : isInCart(course.id)
-                                                  ? 'solar:cart-check-bold'
-                                                  : 'solar:cart-plus-bold'
-                                            }
-                                            width={20}
-                                            sx={
-                                              isEnrolled(course.id) || isInCart(course.id)
-                                                ? {
-                                                    color: isEnrolled(course.id)
-                                                      ? 'success.main'
-                                                      : 'primary.contrastText',
-                                                  }
-                                                : undefined
-                                            }
-                                          />
-                                        </IconButton>
-                                      )}
-                                    </Stack>
-                                  </Box>
-                                </Card>
+                                <LearningCourseGridCard
+                                  course={course}
+                                  defaultCourseImage={defaultCourseImage}
+                                  groupKey={group.groupKey}
+                                  moduleCount={moduleCount}
+                                  sectionCount={sectionCount}
+                                  showCourseProgress={showCourseProgress}
+                                  courseProgress={courseProgress}
+                                  progressStatus={progressStatus}
+                                  isFavorite={courseIsFavorite}
+                                  favoriteLoading={favoriteLoading.has(course.id)}
+                                  isEnrolled={isEnrolled(course.id)}
+                                  isInCart={isInCart(course.id)}
+                                  detailsHref={getCourseDetailsPath(course.id)}
+                                  onImageClick={handleCourseImageClick}
+                                  onFavorite={handleFavorite}
+                                  onAddToCart={handleAddToCartClick}
+                                  onViewDetails={handleGoToDetails}
+                                />
                               </Grid>
                             );
                           })}
@@ -1407,15 +1001,6 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                         {course.title}
                                       </Typography>
                                     </Tooltip>
-                                    {getCategoryTitle(course) ? (
-                                      <Chip
-                                        size="small"
-                                        label={getCategoryTitle(course)}
-                                        variant="soft"
-                                        color="default"
-                                        sx={{ alignSelf: 'flex-start', mb: 0.65, height: 22, fontWeight: 600 }}
-                                      />
-                                    ) : null}
                                     <Box sx={{ mb: 0.85, minHeight: 24 }}>
                                       {moduleCount > 0 || sectionCount > 0 ? (
                                         <Stack direction="row" spacing={0.75} alignItems="center">

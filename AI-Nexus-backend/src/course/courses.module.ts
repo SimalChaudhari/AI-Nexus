@@ -43,13 +43,14 @@ import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { CategoryEntity } from '../category/categories.entity';
 import { CourseOptionEntity } from './course-option.entity';
 import { CourseOptionInitService } from './course-option-init.service';
+import { ReviewEntity } from '../review/review.entity';
 @Module({
     imports: [
         SpeakerModule,
         LanguageModule,
         ReviewModule,
         AppSettingsModule,
-        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseCertificateEntity, CategoryEntity, CourseOptionEntity]),
+        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseCertificateEntity, CategoryEntity, CourseOptionEntity, ReviewEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},

@@ -291,6 +291,7 @@ export function CategoryNewEditForm({ currentCategory, onCancel }) {
                   Image (optional)
                 </Typography>
                 <Upload
+                  coverPreview
                   value={selectedFile || previewImage}
                   onDrop={handleDropImage}
                   onDelete={handleRemoveImage}

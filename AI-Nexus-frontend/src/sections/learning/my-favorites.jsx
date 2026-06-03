@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -6,21 +7,23 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Button from '@mui/material/Button';
+import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { LoadingScreen } from 'src/components/loading-screen';
-import { DashboardContent } from 'src/layouts/dashboard';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
+import { useCheckoutContext } from 'src/sections/checkout/context';
 import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import { LearningSectionHeader } from './components/learning-section-header';
-import Pagination, { paginationClasses } from '@mui/material/Pagination';
+import { LearningCourseGridCard } from './components/learning-course-grid-card';
+import { MembershipSignupDialog } from './components/membership-signup-dialog';
 
 // ----------------------------------------------------------------------
 
@@ -28,24 +31,54 @@ const COURSES_PER_PAGE = 8;
 const LESSONS_PER_PAGE = 8;
 const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
 
-const transformCourse = (course) => ({
+const normalizeFavoriteCourse = (course, defaultCourseImage = DEFAULT_COURSE_IMAGE) => ({
+  ...course,
   id: course.id,
   title: course.title || 'Untitled Course',
   description: course.description || '',
-  image: course.image || DEFAULT_COURSE_IMAGE,
+  image: course.image || defaultCourseImage,
   freeOrPaid: course.freeOrPaid,
   amount: course.amount,
   level: course.level || 'Beginner',
+  isFavorite: true,
   isBundle: course.isBundle ?? false,
   bundleCourseIds: Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds : [],
+  isRecommended: course.isRecommended ?? false,
   isEnrolled: course.isEnrolled ?? false,
   accessViaBundle: course.accessViaBundle ?? false,
-  isFavorite: course.isFavorite ?? true, // Favorites tab shows only favorited courses
+  reviewStats: {
+    averageRating: Number(course?.reviewStats?.averageRating || 0),
+    reviewCount: Number(course?.reviewStats?.reviewCount || 0),
+  },
+  createdAt: course.createdAt || null,
+  updatedAt: course.updatedAt || null,
+  goals: Array.isArray(course.goals) ? course.goals : [],
+  languages: Array.isArray(course.languages) ? course.languages : [],
+  modulesCount: Number(course.modulesCount ?? course.moduleCount ?? 0),
+  sectionsCount: Number(course.sectionsCount ?? course.sectionCount ?? 0),
 });
+
+const getCourseContentMeta = (course = {}) => {
+  const modulesCount = Number(course.modulesCount ?? course.moduleCount ?? 0);
+  const sectionsCount = Number(course.sectionsCount ?? course.sectionCount ?? 0);
+
+  return {
+    moduleCount: Number.isFinite(modulesCount) && modulesCount > 0 ? modulesCount : 0,
+    sectionCount: Number.isFinite(sectionsCount) && sectionsCount > 0 ? sectionsCount : 0,
+  };
+};
+
+const getCourseProgressStatus = (status, courseProgress) => {
+  if (status === 'completed' || courseProgress >= 100) return { label: 'Completed', color: 'success' };
+  if (status === 'in_progress' || courseProgress > 0) return { label: 'In Progress', color: 'warning' };
+  return { label: 'Not Started', color: 'default' };
+};
 
 export function MyFavorites() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { authenticated } = useAuthContext();
+  const checkout = useCheckoutContext();
   const [favoriteCourses, setFavoriteCourses] = useState([]);
   const [favoriteSections, setFavoriteSections] = useState([]);
   const [coursePage, setCoursePage] = useState(1);
@@ -53,7 +86,64 @@ export function MyFavorites() {
   const [loading, setLoading] = useState(true);
   const [favoriteLoading, setFavoriteLoading] = useState(new Set());
   const [sectionFavoriteLoading, setSectionFavoriteLoading] = useState(new Set());
+  const [courseProgressById, setCourseProgressById] = useState({});
+  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
   const loadInFlightRef = useRef(false);
+
+  const isInCart = (id) => checkout.items.some((item) => item.id === id);
+  const enrolledCourseIds = useMemo(
+    () => new Set(favoriteCourses.filter((course) => course.isEnrolled).map((course) => course.id)),
+    [favoriteCourses]
+  );
+  const isEnrolled = (id) => enrolledCourseIds.has(id);
+  const getCourseDetailsPath = (id) => paths.learningCourse.details(id);
+  const getCourseLearnPath = (id) => paths.learningCourse.learn(id);
+
+  const displayCourses = useMemo(
+    () => favoriteCourses.map((course) => normalizeFavoriteCourse(course, DEFAULT_COURSE_IMAGE)),
+    [favoriteCourses]
+  );
+  const coursePageCount = Math.max(1, Math.ceil(displayCourses.length / COURSES_PER_PAGE));
+  const paginatedCourses = displayCourses.slice(
+    (coursePage - 1) * COURSES_PER_PAGE,
+    coursePage * COURSES_PER_PAGE
+  );
+
+  const handleCourseImageClick = (event, course) => {
+    event.preventDefault();
+    event.stopPropagation();
+    navigate(isEnrolled(course.id) ? getCourseLearnPath(course.id) : getCourseDetailsPath(course.id));
+  };
+
+  const handleGoToDetails = (event, courseId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    navigate(getCourseDetailsPath(courseId));
+  };
+
+  const handleAddToCartClick = (event, course) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (isEnrolled(course.id)) return;
+    if (!authenticated) {
+      setMembershipSignupOpen(true);
+      return;
+    }
+
+    if (!isInCart(course.id)) {
+      checkout.onAddToCart({
+        id: course.id,
+        name: course.title,
+        coverUrl: course.image || '',
+        price: Number(course.amount) || 0,
+        quantity: 1,
+      });
+      toast.success('Added to cart');
+      return;
+    }
+    toast.info('Already in cart');
+  };
 
   const loadFavorites = async () => {
     try {
@@ -82,6 +172,39 @@ export function MyFavorites() {
       loadInFlightRef.current = false;
     });
   }, [authenticated]);
+
+  useEffect(() => {
+    let active = true;
+    if (!authenticated) {
+      setCourseProgressById({});
+      return () => {
+        active = false;
+      };
+    }
+    const loadProgressOverview = async () => {
+      try {
+        const rows = await courseService.getMyProgressOverview();
+        if (!active) return;
+        const nextProgressMap = (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+          const courseId = row?.course?.id ? String(row.course.id) : '';
+          if (!courseId) return acc;
+          const progress = row?.progress && typeof row.progress === 'object' ? row.progress : {};
+          acc[courseId] = {
+            completionPercent: Math.max(0, Math.min(100, Number(progress.completionPercent ?? 0))),
+            status: String(progress.status || '').toLowerCase(),
+          };
+          return acc;
+        }, {});
+        setCourseProgressById(nextProgressMap);
+      } catch (_error) {
+        if (active) setCourseProgressById({});
+      }
+    };
+    loadProgressOverview();
+    return () => {
+      active = false;
+    };
+  }, [authenticated, favoriteCourses.length]);
 
   // Reset to page 1 when list length shrinks (e.g. after removing a favorite)
   useEffect(() => {
@@ -234,189 +357,64 @@ export function MyFavorites() {
               }}
             />
           </Stack>
-          <Grid container spacing={2.5}>
-        {(() => {
-          const coursePageCount = Math.max(1, Math.ceil(favoriteCourses.length / COURSES_PER_PAGE));
-          const displayedCourses = favoriteCourses.slice(
-            (coursePage - 1) * COURSES_PER_PAGE,
-            coursePage * COURSES_PER_PAGE
-          );
-          return (
-            <>
-              {displayedCourses.map((course) => (
-          <Grid key={course.id} xs={12} sm={6} md={4} lg={3}>
-            <Card
-              component={RouterLink}
-              to={paths.learningCourse.details(course.id)}
-              sx={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                borderRadius: 2,
-                minHeight: 250,
-                boxShadow: theme.customShadows.z4,
-                overflow: 'hidden',
-                textDecoration: 'none',
-                color: 'inherit',
-                transition: 'box-shadow 0.25s ease',
-                '&:hover': { boxShadow: theme.customShadows.z16 },
-              }}
+          <Box sx={{ position: 'relative', overflow: 'visible' }}>
+            <Grid
+              container
+              spacing={{ xs: 1.25, sm: 1.5, md: 2 }}
+              columns={{ xs: 2, sm: 2, md: 4, lg: 4, xl: 4 }}
+              sx={{ overflow: 'visible' }}
             >
-              <Box
-                sx={{
-                  position: 'relative',
-                  height: { xs: 150, sm: 165, md: 155, lg: 145 },
-                  bgcolor: 'grey.100',
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                }}
-              >
-                <Image
-                  alt={course.title}
-                  src={course.image || DEFAULT_COURSE_IMAGE}
+              {paginatedCourses.map((course) => {
+                const { moduleCount, sectionCount } = getCourseContentMeta(course);
+                const progressRow = courseProgressById[course.id] || {};
+                const courseProgress = Number.isFinite(progressRow.completionPercent)
+                  ? progressRow.completionPercent
+                  : 0;
+                const showCourseProgress = authenticated && (!course.freeOrPaid || isEnrolled(course.id));
+                const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
+
+                return (
+                  <Grid key={course.id} xs={1}>
+                    <LearningCourseGridCard
+                      course={course}
+                      defaultCourseImage={DEFAULT_COURSE_IMAGE}
+                      groupKey="favorites"
+                      moduleCount={moduleCount}
+                      sectionCount={sectionCount}
+                      showCourseProgress={showCourseProgress}
+                      courseProgress={courseProgress}
+                      progressStatus={progressStatus}
+                      isFavorite
+                      favoriteLoading={favoriteLoading.has(course.id)}
+                      isEnrolled={isEnrolled(course.id)}
+                      isInCart={isInCart(course.id)}
+                      detailsHref={getCourseDetailsPath(course.id)}
+                      onImageClick={handleCourseImageClick}
+                      onFavorite={handleFavorite}
+                      onAddToCart={handleAddToCartClick}
+                      onViewDetails={handleGoToDetails}
+                    />
+                  </Grid>
+                );
+              })}
+            </Grid>
+            {coursePageCount > 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                <Pagination
+                  count={coursePageCount}
+                  page={coursePage}
+                  onChange={(_, value) => setCoursePage(value)}
+                  color="primary"
+                  shape="rounded"
+                  showFirstButton
+                  showLastButton
                   sx={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                  }}
-                  onError={(e) => {
-                    e.target.src = DEFAULT_COURSE_IMAGE;
+                    [`& .${paginationClasses.ul}`]: { justifyContent: 'flex-end' },
                   }}
                 />
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: alpha(theme.palette.common.black, 0.2),
-                    opacity: 0,
-                    transition: 'opacity 0.2s',
-                    '&:hover': { opacity: 1 },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: '50%',
-                      bgcolor: alpha(theme.palette.common.white, 0.9),
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Iconify icon="solar:play-bold" width={28} sx={{ color: 'primary.main', ml: 0.5 }} />
-                  </Box>
-                </Box>
-                <IconButton
-                  size="small"
-                  onClick={(e) => handleFavorite(e, course.id)}
-                  disabled={favoriteLoading.has(course.id)}
-                  sx={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    bgcolor: alpha(theme.palette.common.white, 0.98),
-                    color: 'error.main',
-                    boxShadow: theme.shadows[6],
-                    border: `1px solid ${alpha(theme.palette.common.black, 0.08)}`,
-                    '&:hover': { bgcolor: 'common.white' },
-                    opacity: favoriteLoading.has(course.id) ? 0.6 : 1,
-                  }}
-                  aria-label="Remove from favorites"
-                >
-                  <Iconify icon="solar:heart-bold" width={22} />
-                </IconButton>
               </Box>
-              <Box sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 96 }}>
-                <Typography
-                  variant="body1"
-                  sx={{
-                    fontWeight: 500,
-                    fontSize: { xs: '1rem', md: '0.98rem' },
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                    lineHeight: 1.4,
-                    mb: 0.75,
-                    height: '2.8em',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {course.title}
-                </Typography>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: course.freeOrPaid
-                          ? course.isEnrolled
-                            ? 'text.disabled'
-                            : 'secondary.main'
-                          : 'success.main',
-                        fontWeight: 500,
-                        fontSize: { xs: '0.82rem', md: '0.85rem' },
-                        textDecoration:
-                          course.freeOrPaid && course.isEnrolled ? 'line-through' : 'none',
-                      }}
-                    >
-                      {course.freeOrPaid ? `${Number(course.amount || 0).toFixed(2)} SGD` : 'AI Fluency'}
-                    </Typography>
-                    {course.freeOrPaid && course.isEnrolled && (
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        <Iconify
-                          icon="solar:verified-check-bold"
-                          width={14}
-                          sx={{ color: 'success.main' }}
-                        />
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            color: 'success.main',
-                            fontWeight: 600,
-                            fontSize: { xs: '0.78rem', md: '0.82rem' },
-                          }}
-                        >
-                          {course.accessViaBundle ? 'Included in bundle' : 'Purchased'}
-                        </Typography>
-                      </Stack>
-                    )}
-                  </Stack>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                    {course.level || 'Beginner'}
-                  </Typography>
-                </Stack>
-              </Box>
-            </Card>
-          </Grid>
-              ))}
-              {coursePageCount > 1 && (
-                <Grid xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                  <Pagination
-                    count={coursePageCount}
-                    page={coursePage}
-                    onChange={(_, value) => setCoursePage(value)}
-                    color="primary"
-                    shape="rounded"
-                    showFirstButton
-                    showLastButton
-                    sx={{
-                      [`& .${paginationClasses.ul}`]: { justifyContent: 'center' },
-                    }}
-                  />
-                </Grid>
-              )}
-            </>
-          );
-        })()}
-          </Grid>
+            )}
+          </Box>
         </Box>
       )}
 
@@ -601,6 +599,12 @@ export function MyFavorites() {
           </Grid>
         </Box>
       )}
+
+      <MembershipSignupDialog
+        open={membershipSignupOpen}
+        onClose={() => setMembershipSignupOpen(false)}
+        entrySource="learning-favorites"
+      />
     </>
   );
 }

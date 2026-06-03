@@ -362,11 +362,11 @@ export function WorkflowNewEditForm({
                   Cover image
                 </Typography>
                 <Upload
+                  coverPreview
                   value={selectedFile || previewImage}
                   onDrop={handleDropImage}
                   onDelete={handleDeleteImage}
                   maxSize={5 * 1024 * 1024}
-                  thumbnail
                   accept={{
                     'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
                   }}

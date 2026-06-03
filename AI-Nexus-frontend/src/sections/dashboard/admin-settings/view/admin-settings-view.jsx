@@ -2658,15 +2658,10 @@ export function AdminSettingsView() {
         </Box>
 
         <Upload
+          coverPreview
           value={courseDefaultImageFile || courseDefaultImageUrl || null}
           onDrop={handleDropCourseDefaultImage}
           onDelete={courseDefaultImageFile || courseDefaultImageUrl ? handleRemoveCourseDefaultImage : undefined}
-          sx={{
-            '& > .MuiBox-root:first-of-type': {
-              minHeight: 180,
-              p: 2.5,
-            },
-          }}
           accept={{
             'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
           }}

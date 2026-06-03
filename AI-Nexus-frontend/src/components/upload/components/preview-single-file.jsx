@@ -7,7 +7,7 @@ import { Iconify } from '../../iconify';
 
 // ----------------------------------------------------------------------
 
-export function SingleFilePreview({ file }) {
+export function SingleFilePreview({ file, objectFit = 'contain' }) {
   const fileName = typeof file === 'string' ? file : file.name;
 
   const previewUrl = typeof file === 'string' ? file : URL.createObjectURL(file);
@@ -15,7 +15,7 @@ export function SingleFilePreview({ file }) {
   return (
     <Box
       sx={{
-        p: 1,
+        p: objectFit === 'cover' ? 0 : 1,
         top: 0,
         left: 0,
         width: 1,
@@ -31,8 +31,7 @@ export function SingleFilePreview({ file }) {
           width: 1,
           height: 1,
           borderRadius: 1,
-          // objectFit: 'cover',
-          objectFit: 'contain',
+          objectFit,
         }}
       />
     </Box>

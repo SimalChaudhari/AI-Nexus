@@ -21,6 +21,7 @@ import {
 import { CourseEnrollmentService } from './course-enrollment.service';
 import { CategoryEntity } from '../category/categories.entity';
 import { CourseOptionEntity, CourseOptionType } from './course-option.entity';
+import { ReviewEntity } from '../review/review.entity';
 
 /** Multipart / plain body may send booleans as strings. */
 function coerceBoolean(value: unknown, defaultValue = false): boolean {
@@ -106,6 +107,8 @@ export class CourseService {
         private categoryRepository: Repository<CategoryEntity>,
         @InjectRepository(CourseOptionEntity)
         private courseOptionRepository: Repository<CourseOptionEntity>,
+        @InjectRepository(ReviewEntity)
+        private reviewRepository: Repository<ReviewEntity>,
         private readonly courseEnrollmentService: CourseEnrollmentService,
     ) { }
 
@@ -207,6 +210,46 @@ export class CourseService {
                 ...course,
                 modulesCount,
                 sectionsCount,
+            };
+        });
+    }
+
+    private async attachReviewStats(data: any[]): Promise<any[]> {
+        if (!Array.isArray(data) || data.length === 0) {
+            return data;
+        }
+
+        const courseIds = [...new Set(data.map((course) => course?.id).filter(Boolean))];
+        if (courseIds.length === 0) {
+            return data;
+        }
+
+        const reviewRows = await this.reviewRepository
+            .createQueryBuilder('review')
+            .select('review.courseId', 'courseId')
+            .addSelect('COUNT(*)::int', 'reviewCount')
+            .addSelect('AVG(review.rating)::float', 'averageRating')
+            .where('review.courseId IN (:...courseIds)', { courseIds })
+            .andWhere('review.isCourse = :isCourse', { isCourse: true })
+            .groupBy('review.courseId')
+            .getRawMany<{ courseId: string; reviewCount: string | number; averageRating: string | number }>();
+
+        const statsByCourseId = new Map(
+            reviewRows.map((row) => {
+                const reviewCount = Number(row.reviewCount) || 0;
+                const averageRating = Math.min(
+                    5,
+                    Math.max(0, Number(row.averageRating) || 0),
+                );
+                return [row.courseId, { averageRating, reviewCount }];
+            }),
+        );
+
+        return data.map((course) => {
+            const stats = statsByCourseId.get(course.id) || { averageRating: 0, reviewCount: 0 };
+            return {
+                ...course,
+                reviewStats: stats,
             };
         });
     }
@@ -396,7 +439,8 @@ export class CourseService {
         });
         const withCategories = await this.attachCourseCategories(mappedData);
         const withCounts = await this.attachCourseContentCounts(withCategories);
-        const data = this.stripCategoryIdFromCourses(withCounts);
+        const withReviewStats = await this.attachReviewStats(withCounts);
+        const data = this.stripCategoryIdFromCourses(withReviewStats);
 
         if (!usePagination) {
             return data;

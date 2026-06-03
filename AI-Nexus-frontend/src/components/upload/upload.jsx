@@ -28,6 +28,8 @@ export function Upload({
   helperText,
   onRemoveAll,
   multiple = false,
+  /** Compact 16:9 cover preview for admin forms (avoids tall 28% padding box). */
+  coverPreview = false,
   ...other
 }) {
   const { getRootProps, getInputProps, isDragActive, isDragReject, fileRejections } = useDropzone({
@@ -99,13 +101,29 @@ export function Upload({
             borderColor: 'error.main',
             bgcolor: (theme) => varAlpha(theme.vars.palette.error.mainChannel, 0.08),
           }),
-          ...(hasFile && { padding: '28% 0' }),
+          ...(coverPreview && {
+            maxWidth: 480,
+          }),
+          ...(coverPreview && !hasFile && {
+            p: 3,
+            minHeight: 140,
+          }),
+          ...(hasFile && !coverPreview && { padding: '28% 0' }),
+          ...(hasFile && coverPreview && {
+            p: 0,
+            aspectRatio: '16 / 9',
+            maxHeight: 200,
+          }),
         }}
       >
         <input {...getInputProps()} />
 
         {/* Single file */}
-        {hasFile ? <SingleFilePreview file={value} /> : <UploadPlaceholder />}
+        {hasFile ? (
+          <SingleFilePreview file={value} objectFit={coverPreview ? 'cover' : 'contain'} />
+        ) : (
+          <UploadPlaceholder />
+        )}
       </Box>
 
       {/* Single file */}

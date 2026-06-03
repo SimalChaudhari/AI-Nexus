@@ -1045,10 +1045,14 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
 
                 <Grid xs={12}>
                   <Divider sx={{ borderStyle: 'dashed', my: 0.5 }} />
-                  <Typography variant="subtitle2" sx={{ mb: 2, mt: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, mt: 1 }}>
                     Cover image
                   </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                    Recommended 16:9. JPG, PNG, GIF, or WEBP — max 5 MB.
+                  </Typography>
                   <Upload
+                    coverPreview
                     value={selectedFile || previewImage}
                     onDrop={handleDropImage}
                     onDelete={handleDeleteImage}
