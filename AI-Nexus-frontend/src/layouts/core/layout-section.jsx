@@ -21,8 +21,8 @@ export function LayoutSection({
           '--layout-nav-mobile-width': '320px',
           '--layout-header-blur': '8px',
           '--layout-header-zIndex': 1100,
-          '--layout-header-mobile-height': '84px',
-          '--layout-header-desktop-height': '104px',
+          '--layout-header-mobile-height': '64px',
+          '--layout-header-desktop-height': '72px',
           ...cssVars,
         },
       }}

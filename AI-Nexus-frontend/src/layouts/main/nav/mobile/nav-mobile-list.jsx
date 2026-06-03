@@ -1,42 +1,81 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
+import Box from '@mui/material/Box';
 import Collapse from '@mui/material/Collapse';
 
-import { isExternalLink } from 'src/routes/utils';
+import { usePathname } from 'src/routes/hooks';
+import { isExternalLink, removeLastSlash } from 'src/routes/utils';
 import { useActiveLink } from 'src/routes/hooks/use-active-link';
 
-import { CONFIG } from 'src/config-global';
 import { varAlpha } from 'src/theme/styles';
 
-import { NavLi, navSectionClasses, NavSectionVertical } from 'src/components/nav-section';
+import { NavLi, NavUl } from 'src/components/nav-section';
 
-import { NavItem } from './nav-mobile-item';
+import { NavItem, NavSubItem } from './nav-mobile-item';
+
+// ----------------------------------------------------------------------
+
+function isPathActive(currentPath, targetPath) {
+  if (!targetPath) return false;
+
+  const normalize = (value) => removeLastSlash(String(value).split('#')[0].split('?')[0]);
+  const normalizedCurrent = normalize(currentPath);
+  const normalizedTarget = normalize(targetPath);
+
+  if (normalizedTarget === '/') {
+    return normalizedCurrent === '/';
+  }
+
+  return (
+    normalizedCurrent === normalizedTarget || normalizedCurrent.startsWith(`${normalizedTarget}/`)
+  );
+}
+
+function flattenChildItems(children) {
+  if (!Array.isArray(children)) return [];
+
+  return children.flatMap((group) => (Array.isArray(group?.items) ? group.items : []));
+}
 
 // ----------------------------------------------------------------------
 
 export function NavList({ data }) {
-  const active = useActiveLink(data.path, !!data.children || !!data.deepMatch);
+  const pathname = usePathname();
+  const currentPath = removeLastSlash(pathname);
+  const subItems = flattenChildItems(data.children);
+  const hasActiveSubItem = subItems.some((item) => isPathActive(currentPath, item.path));
 
-  const [openMenu, setOpenMenu] = useState(false);
+  const active = useActiveLink(data.path, !!data.children || !!data.deepMatch) || hasActiveSubItem;
 
-  const handleToggleMenu = useCallback(() => {
-    if (data.children) {
-      setOpenMenu((prev) => !prev);
+  const [openMenu, setOpenMenu] = useState(hasActiveSubItem);
+
+  useEffect(() => {
+    if (hasActiveSubItem) {
+      setOpenMenu(true);
     }
-  }, [data.children]);
+  }, [hasActiveSubItem]);
+
+  const handleToggleMenu = useCallback(
+    (event) => {
+      if (data.children) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpenMenu((prev) => !prev);
+      }
+    },
+    [data.children]
+  );
 
   const renderNavItem = (
     <NavItem
-      // slots
       path={data.path}
       icon={data.icon}
+      iconColor={data.iconColor}
       title={data.title}
-      // state
       active={active}
       hasChild={!!data.children}
       open={data.children && !!openMenu}
       externalLink={isExternalLink(data.path)}
-      // actions
       onClick={handleToggleMenu}
     />
   );
@@ -45,28 +84,32 @@ export function NavList({ data }) {
     return (
       <NavLi>
         {renderNavItem}
-        <Collapse in={openMenu}>
-          <NavSectionVertical
-            data={data.children}
-            slotProps={{ rootItem: { sx: { minHeight: 36 } } }}
+
+        <Collapse in={openMenu} unmountOnExit>
+          <Box
             sx={{
-              py: 1.5,
-              px: 1.5,
-              [`& .${navSectionClasses.item.root}`]: {
-                '&[aria-label="Dashboard"]': {
-                  [`& .${navSectionClasses.item.title}`]: { display: 'none' },
-                  height: 180,
-                  borderRadius: 1.5,
-                  backgroundSize: 'auto 88%',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                  backgroundImage: `url(${CONFIG.site.basePath}/assets/illustrations/illustration-dashboard.webp)`,
-                  border: (theme) =>
-                    `solid 1px ${varAlpha(theme.palette.grey['500Channel'], 0.12)}`,
-                },
-              },
+              mt: 0.5,
+              ml: 1.75,
+              pl: 1.5,
+              borderLeft: (theme) =>
+                `2px solid ${varAlpha(theme.vars.palette.primary.mainChannel, 0.2)}`,
             }}
-          />
+          >
+            <NavUl sx={{ gap: 0.25, py: 0.5 }}>
+              {subItems.map((item) => (
+                <NavLi key={item.title}>
+                  <NavSubItem
+                    title={item.title}
+                    path={item.path}
+                    icon={item.icon}
+                    iconColor={item.iconColor}
+                    active={isPathActive(currentPath, item.path)}
+                    externalLink={isExternalLink(item.path)}
+                  />
+                </NavLi>
+              ))}
+            </NavUl>
+          </Box>
         </Collapse>
       </NavLi>
     );

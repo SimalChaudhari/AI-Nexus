@@ -688,8 +688,8 @@ export function HomeHeroSection() {
             boxSizing: 'border-box',
             px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
             pt: {
-              xs: 'calc(var(--layout-header-mobile-height, 84px) + 16px)',
-              md: 'calc(var(--layout-header-desktop-height, 104px) + 32px)',
+              xs: 'calc(var(--layout-header-mobile-height, 64px) + 16px)',
+              md: 'calc(var(--layout-header-desktop-height, 72px) + 32px)',
             },
             pb: { xs: 2.5, md: 0 },
           }}

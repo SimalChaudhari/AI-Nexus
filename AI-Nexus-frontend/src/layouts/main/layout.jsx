@@ -107,8 +107,8 @@ export function MainLayout({ sx, data, children }) {
          * Style
          *************************************** */
         cssVars={{
-          '--layout-header-mobile-height': '84px',
-          '--layout-header-desktop-height': '104px',
+          '--layout-header-mobile-height': '64px',
+          '--layout-header-desktop-height': '72px',
           '--layout-dashboard-content-pt': settings.compactLayout ? theme.spacing(1) : theme.spacing(2),
           '--layout-dashboard-content-pb': settings.compactLayout ? theme.spacing(8) : theme.spacing(10),
           '--layout-dashboard-content-px': settings.compactLayout ? theme.spacing(5) : theme.spacing(3),

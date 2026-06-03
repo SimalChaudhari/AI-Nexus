@@ -148,7 +148,7 @@ export function HeaderBase({
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            width: { xs: 88, md: 100 },
+            width: { xs: 72, md: 80 },
             transition: 'none',
           },
           ...(isHomeRoute
@@ -247,9 +247,9 @@ export function HeaderBase({
                   isCustomerFacingRoute
                     ? {
                         /* Fixed bounds — avoids full-size logo flash on refresh */
-                        width: { xs: 88, md: 100 },
-                        height: { xs: 40, md: 44 },
-                        maxHeight: 48,
+                        width: { xs: 72, md: 80 },
+                        height: { xs: 32, md: 36 },
+                        maxHeight: 40,
                         display: 'block',
                       }
                     : { pr: 2 }
