@@ -35,6 +35,34 @@ const sectionBackgroundSx = {
 
 const PARTNERS_BG = '#F7F9FA';
 
+/** Scales with viewport; smaller in 2-col mobile grid, larger on tablet/desktop */
+const EMPLOYEE_BENEFIT_CARD_TITLE_SX = {
+  fontFamily: FONT_STACK,
+  color: NAVY,
+  fontWeight: 600,
+  letterSpacing: '-0.01em',
+  wordBreak: 'break-word',
+  fontSize: {
+    xs: 'clamp(0.5625rem, 2.2vw + 0.35rem, 0.6875rem)',
+    sm: FLUID_FONT_SIZES.caption,
+    md: FLUID_FONT_SIZES.body2,
+    lg: FLUID_FONT_SIZES.body1,
+  },
+  lineHeight: { xs: 1.3, sm: 1.35, md: 1.4 },
+};
+
+const EMPLOYEE_BENEFIT_CARD_ICON_SX = {
+  flexShrink: 0,
+  borderRadius: 1.25,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: { xs: 28, sm: 34, md: 38 },
+  height: { xs: 28, sm: 34, md: 38 },
+};
+
+const EMPLOYEE_BENEFIT_CARD_ICON_SIZE = { xs: 14, sm: 17, md: 19 };
+
 function PartnersLogoSection({ heading, logos, secondaryColor }) {
   const shouldScroll = logos.length > 6;
 
@@ -67,7 +95,7 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
                   textAlign: 'center',
                   color: 'secondary.main',
                   fontWeight: 800,
-                  fontSize: FLUID_FONT_SIZES.h5,
+                  fontSize: FLUID_FONT_SIZES.h4,
                   lineHeight: 1.2,
                   letterSpacing: '-0.02em',
                 }}
@@ -190,13 +218,13 @@ function CtaButton({ label, href, variant = 'contained', icon }) {
       fontWeight: 700,
       fontSize: FLUID_FONT_SIZES.caption,
       lineHeight: 1.35,
-      px: { xs: 1.75, md: 2 },
-      py: 0.65,
-      minHeight: 36,
-      borderRadius: 1.15,
+      px: { xs: 1.5, sm: 1.75, md: 2 },
+      py: { xs: 0.55, sm: 0.65 },
+      minHeight: { xs: 34, sm: 36 },
+      borderRadius: 1,
       textTransform: 'none',
       whiteSpace: { xs: 'normal', sm: 'nowrap' },
-      minWidth: { sm: 140 },
+      minWidth: { sm: 120 },
       '& .MuiButton-startIcon, & .MuiButton-endIcon': {
         marginLeft: 0.5,
         marginRight: 0.5,
@@ -306,12 +334,12 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
           sx={{
             display: 'inline-flex',
             alignSelf: 'flex-start',
-            px: 1.25,
-            py: 0.4,
+            px: 1.5,
+            py: 0.5,
             borderRadius: 1,
             fontFamily: FONT_STACK,
             fontWeight: 700,
-            fontSize: FLUID_FONT_SIZES.caption,
+            fontSize: FLUID_FONT_SIZES.overline,
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
             color: 'primary.main',
@@ -330,7 +358,7 @@ function EmployeeSectionHeading({ eyebrow, heading, headingAccent, secondaryColo
             m: 0,
             fontFamily: FONT_STACK,
             fontWeight: 700,
-            fontSize: FLUID_FONT_SIZES.h5,
+            fontSize: FLUID_FONT_SIZES.h4,
             lineHeight: 1.25,
             letterSpacing: '-0.02em',
             color: 'secondary.main',
@@ -375,9 +403,9 @@ function EmployeeBenefitCard({ row, index }) {
         flexDirection: { xs: 'column', sm: 'row' },
         alignItems: { xs: 'center', sm: 'flex-start' },
         textAlign: { xs: 'center', sm: 'left' },
-        gap: { xs: 0.85, sm: 1.15 },
-        p: { xs: 1, sm: 1.15, md: 1.25 },
-        borderRadius: '12px',
+        gap: { xs: 0.5, sm: 0.85, md: 1 },
+        p: { xs: 0.75, sm: 1, md: 1.25 },
+        borderRadius: { xs: 1, sm: 1.25 },
         bgcolor: 'common.white',
         border: `1px solid ${alpha(NAVY, 0.08)}`,
         boxShadow: `0 4px 14px ${alpha(NAVY, 0.05)}`,
@@ -395,33 +423,24 @@ function EmployeeBenefitCard({ row, index }) {
       {row.icon ? (
         <Box
           sx={{
-            flexShrink: 0,
-            width: { xs: 36, sm: 38 },
-            height: { xs: 36, sm: 38 },
-            borderRadius: 1.5,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            ...EMPLOYEE_BENEFIT_CARD_ICON_SX,
             color: iconColor,
             background: `linear-gradient(145deg, ${alpha(iconColor, 0.14)} 0%, ${alpha(iconColor, 0.06)} 100%)`,
             border: `1px solid ${alpha(iconColor, 0.2)}`,
           }}
         >
-          <Iconify icon={row.icon} width={20} />
+          <Iconify icon={row.icon} sx={{ width: EMPLOYEE_BENEFIT_CARD_ICON_SIZE, height: 'auto' }} />
         </Box>
       ) : (
         <Box
           sx={{
-            flexShrink: 0,
-            width: { xs: 36, sm: 38 },
-            height: { xs: 36, sm: 38 },
-            borderRadius: 1.5,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            ...EMPLOYEE_BENEFIT_CARD_ICON_SX,
             fontFamily: FONT_STACK,
             fontWeight: 800,
-            fontSize: FLUID_FONT_SIZES.body2,
+            fontSize: {
+              xs: 'clamp(0.6875rem, 1.8vw + 0.42rem, 0.8125rem)',
+              md: FLUID_FONT_SIZES.caption,
+            },
             color: 'primary.main',
             bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
           }}
@@ -432,16 +451,15 @@ function EmployeeBenefitCard({ row, index }) {
       {row.title ? (
         <Typography
           sx={{
+            ...EMPLOYEE_BENEFIT_CARD_TITLE_SX,
             pt: { xs: 0, sm: 0.35 },
             flex: 1,
             minWidth: 0,
             width: { xs: 1, sm: 'auto' },
-            fontFamily: FONT_STACK,
-            color: NAVY,
-            fontWeight: 600,
-            fontSize: FLUID_FONT_SIZES.caption,
-            lineHeight: { xs: 1.35, sm: 1.45 },
-            letterSpacing: '-0.01em',
+            display: '-webkit-box',
+            WebkitLineClamp: { xs: 3, sm: 5, md: 6 },
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
           }}
         >
           {String(row.title).trim()}
@@ -511,12 +529,12 @@ export function HomeEmployeeSection() {
         component={MotionViewport}
         sx={{
           ...HOME_DASHBOARD_CONTENT_SX,
-          py: { xs: 2.5, md: 3.5 },
+          py: { xs: 3.5, md: 5 },
         }}
       >
         <Grid
           container
-          spacing={{ xs: 2, md: 3 }}
+          spacing={{ xs: 2.5, md: 3.5 }}
           alignItems="center"
           component={m.div}
           variants={varFade({ distance: 20 }).inUp}
@@ -542,7 +560,7 @@ export function HomeEmployeeSection() {
               }}
             >
               <Stack
-                spacing={{ xs: 2, md: 2.25 }}
+                spacing={{ xs: 2.25, md: 2.75 }}
                 sx={{
                   pl: { md: 2 },
                 }}
@@ -561,11 +579,10 @@ export function HomeEmployeeSection() {
                       sx={{
                         fontFamily: FONT_STACK,
                         color: alpha(NAVY, 0.78),
-                        typography: 'body2',
-                        fontSize: FLUID_FONT_SIZES.body2,
-                        lineHeight: 1.55,
-                        '& p': { m: 0 },
-                        '& p + p': { mt: 0.85 },
+                        fontSize: FLUID_FONT_SIZES.body1,
+                        lineHeight: 1.6,
+                        '& p': { m: 0, fontSize: 'inherit' },
+                        '& p + p': { mt: 1 },
                         '& strong': { color: NAVY, fontWeight: 700 },
                       }}
                     />
@@ -573,13 +590,13 @@ export function HomeEmployeeSection() {
                 ) : null}
 
                 {benefits.length > 0 ? (
-                  <Stack spacing={1.5} sx={{ width: 1, pt: { xs: 0.25, md: 0.5 } }}>
+                  <Stack spacing={1.75} sx={{ width: 1, pt: { xs: 0.25, md: 0.5 } }}>
                     {content.benefitsLabel ? (
                       <Typography
                         sx={{
                           fontFamily: FONT_STACK,
                           fontWeight: 700,
-                          fontSize: FLUID_FONT_SIZES.overline,
+                          fontSize: FLUID_FONT_SIZES.caption,
                           letterSpacing: '0.12em',
                           textTransform: 'uppercase',
                           color: alpha(NAVY, 0.55),
@@ -588,7 +605,7 @@ export function HomeEmployeeSection() {
                         {content.benefitsLabel}
                       </Typography>
                     ) : null}
-                    <Grid container spacing={{ xs: 1, sm: 1.25, md: 1.5 }}>
+                    <Grid container spacing={{ xs: 0.75, sm: 1.25, md: 1.5 }}>
                       {benefits.slice(0, 4).map((row, index) => (
                         <Grid key={`employee-hero-benefit-${index}`} xs={6} sm={6}>
                           <EmployeeBenefitCard row={row} index={index} />
@@ -600,7 +617,7 @@ export function HomeEmployeeSection() {
 
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1.15}
+                  spacing={{ xs: 0.85, sm: 1 }}
                   flexWrap="wrap"
                   alignItems={{ xs: 'stretch', sm: 'center' }}
                   sx={{

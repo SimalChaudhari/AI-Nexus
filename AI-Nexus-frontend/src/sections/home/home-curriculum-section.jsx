@@ -140,15 +140,6 @@ export function HomeCurriculumSection() {
               </Typography>
             ) : null}
 
-            {headline ? (
-              <Stack spacing={1.5} alignItems="flex-start" sx={{ width: 1 }}>
-                <Typography component="h2" sx={HOME_SECTION_HEADING_SX}>
-                  {headline}
-                </Typography>
-                <SectionUnderline />
-              </Stack>
-            ) : null}
-
             {subtext ? (
               <RichTextContent
                 html={subtext}
