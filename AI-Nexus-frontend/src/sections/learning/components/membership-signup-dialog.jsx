@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Dialog from '@mui/material/Dialog';
@@ -246,6 +246,10 @@ function getEligibilityOptionsForFlow(state) {
   return ELIGIBILITY_OPTIONS.filter(
     (option) => option.value !== 'scaq-candidate' && option.value !== 'other'
   );
+}
+
+function cloneFlowState(state) {
+  return JSON.parse(JSON.stringify(state));
 }
 
 const HOME_ISCA_SPECIALISATION_OPTIONS = [
@@ -962,6 +966,35 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
 
     setFlowState(nextState);
   }, [open, entrySource]);
+
+  const flowHistoryRef = useRef([]);
+  const skipFlowHistoryRef = useRef(false);
+  const lastFlowSnapshotRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      flowHistoryRef.current = [];
+      lastFlowSnapshotRef.current = null;
+      skipFlowHistoryRef.current = false;
+      return;
+    }
+
+    if (skipFlowHistoryRef.current) {
+      skipFlowHistoryRef.current = false;
+      lastFlowSnapshotRef.current = cloneFlowState(flowState);
+      return;
+    }
+
+    const snapshot = cloneFlowState(flowState);
+    const currentStep = getFlowStep(flowState);
+    if (lastFlowSnapshotRef.current) {
+      const previousStep = getFlowStep(lastFlowSnapshotRef.current);
+      if (previousStep !== currentStep) {
+        flowHistoryRef.current.push(lastFlowSnapshotRef.current);
+      }
+    }
+    lastFlowSnapshotRef.current = snapshot;
+  }, [flowState, open]);
 
   const step = getFlowStep(flowState);
   const result = getOutcome(flowState);
@@ -2254,7 +2287,29 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     other: ['Check SCAQ pathway eligibility or select another eligibility route'],
   };
 
+  const rewindEphemeralUiForStep = (targetStep) => {
+    if (targetStep === 'nric') {
+      resetNricCheckState();
+    }
+    if (targetStep === 'student-membership-check' || targetStep === 'student-fee-payment') {
+      resetStudentVerificationState();
+    }
+    if (targetStep === 'experienced-documents') {
+      resetExperiencedResumeLocalState();
+    }
+  };
+
   const goBack = () => {
+    const previousSnapshot = flowHistoryRef.current.pop();
+    if (previousSnapshot) {
+      skipFlowHistoryRef.current = true;
+      const previousStep = getFlowStep(previousSnapshot);
+      rewindEphemeralUiForStep(previousStep);
+      setFlowState(previousSnapshot);
+      lastFlowSnapshotRef.current = cloneFlowState(previousSnapshot);
+      return;
+    }
+
     if (step === 'member') {
       setFlowState(
         flowState.homeGetStartedFlow ? { ...INITIAL_STATE, homeGetStartedFlow: true } : INITIAL_STATE
@@ -2305,7 +2360,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       return;
     }
     if (step === 'direct-degree-check') {
-      setFlowState((prev) => ({ ...prev, directDegreeRecognised: null, eligibilityVerified: true }));
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityType: '',
+        eligibilityRequirementsAcknowledged: false,
+        directDegreeRecognised: null,
+        eligibilityVerified: null,
+      }));
       return;
     }
     if (step === 'other-cima-check') {
@@ -2485,7 +2546,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       return;
     }
     if (step === 'scaq-associate-optin') {
-      setFlowState((prev) => ({ ...prev, scaqAssociateOptIn: null, eligibilityVerified: null }));
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityType: '',
+        eligibilityRequirementsAcknowledged: false,
+        eligibilityVerified: null,
+        scaqAssociateOptIn: null,
+        scaqCandidateVerified: null,
+        associateMemberAlready: null,
+        homePostOptInFlow: false,
+        homeIscaSpecialisationAnswer: null,
+      }));
       return;
     }
     if (step === 'home-associate-pathway') {
@@ -2500,7 +2571,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
           homeIscaSpecialisationAnswer: null,
         };
         if (prev.eligibilityType === 'scaq-candidate') {
-          return { ...base, scaqAssociateOptIn: null, eligibilityVerified: null };
+          return {
+            ...base,
+            scaqAssociateOptIn: null,
+            eligibilityVerified: null,
+            eligibilityType: '',
+            eligibilityRequirementsAcknowledged: false,
+          };
         }
         if (prev.eligibilityType === 'experienced') {
           if (prev.homeGetStartedFlow) {
@@ -2528,11 +2605,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       return;
     }
     if (step === 'scaq-candidate-verify') {
-      setFlowState((prev) => ({ ...prev, scaqCandidateVerified: null, scaqAssociateOptIn: null, eligibilityVerified: true }));
+      setFlowState((prev) => ({
+        ...prev,
+        scaqCandidateVerified: null,
+        associateMemberAlready: null,
+        eligibilityVerified: true,
+      }));
       return;
     }
     if (step === 'associate-member-check') {
-      setFlowState((prev) => ({ ...prev, associateMemberAlready: null }));
+      setFlowState((prev) => ({
+        ...prev,
+        associateMemberAlready: null,
+        scaqCandidateVerified: null,
+      }));
       return;
     }
     if (step === 'home-student-pathway') {
@@ -2611,6 +2697,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         ...prev,
         salesforceAccountChoice: '',
         salesforceMembershipAccountCreated: false,
+        salesforceSessionReady: false,
+        eligibilityVerified: null,
+        eligibilityRequirementsAcknowledged: false,
       }));
       return;
     }
@@ -2635,7 +2724,24 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       return;
     }
     if (step === 'retry-eligibility') {
-      setFlowState((prev) => ({ ...prev, eligibilityVerified: null, retryDecision: '' }));
+      setFlowState((prev) => ({
+        ...prev,
+        eligibilityType: '',
+        eligibilityRequirementsAcknowledged: false,
+        eligibilityVerified: null,
+        retryDecision: '',
+        scaqAssociateOptIn: null,
+        scaqCandidateVerified: null,
+        associateMemberAlready: null,
+        directDegreeRecognised: null,
+        studentMembershipOptIn: null,
+        studentMembershipApplicationAgreed: false,
+        studentMembershipApplicationDeclined: false,
+        experiencedMembershipApplicationAgreed: false,
+        experiencedMembershipApplicationDeclined: false,
+        homePostOptInFlow: false,
+        homeIscaSpecialisationAnswer: null,
+      }));
       return;
     }
     if (step === 'result') {

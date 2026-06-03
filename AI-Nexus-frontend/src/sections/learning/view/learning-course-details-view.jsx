@@ -46,6 +46,17 @@ import {
   POST_OAUTH_RETURN_TO_KEY,
 } from 'src/utils/membership-eligibility-sso';
 import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
+import {
+  COURSE_DETAIL_META_SX,
+  COURSE_DETAIL_PAGE_TITLE_SX,
+  COURSE_DETAIL_RATING_AVERAGE_SX,
+  COURSE_DETAIL_RICH_TEXT_SX,
+  COURSE_DETAIL_SECTION_HEADING_SX,
+  COURSE_DETAIL_SIDEBAR_PRICE_SX,
+  COURSE_DETAIL_SIDEBAR_SUBPRICE_SX,
+  COURSE_DETAIL_SIDEBAR_EMPHASIS_SX,
+  DETAIL_PAGE_SECTION_TITLE_SX,
+} from 'src/components/page-section-header/detail-page-styles';
 
 // ----------------------------------------------------------------------
 
@@ -547,7 +558,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       label="Bundle"
                       color="secondary"
                       variant="soft"
-                      sx={{ fontWeight: 800 }}
+                      sx={{ fontWeight: 600, fontSize: '0.75rem' }}
                     />
                   )}
                   {unlockedByBundleOnly && (
@@ -557,7 +568,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       label="Via your bundle"
                       color="info"
                       variant="soft"
-                      sx={{ fontWeight: 800 }}
+                      sx={{ fontWeight: 600, fontSize: '0.75rem' }}
                     />
                   )}
                   <Chip
@@ -575,38 +586,35 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                     }
                     color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
                     variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
-                    sx={{ fontWeight: 700 }}
+                    sx={{ fontWeight: 600, fontSize: '0.75rem' }}
                   />
                 </Stack>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
-                  <Iconify icon="solar:star-bold" width={18} sx={{ color: 'warning.main' }} />
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  <Iconify icon="solar:star-bold" width={16} sx={{ color: 'warning.main' }} />
+                  <Typography sx={COURSE_DETAIL_SIDEBAR_EMPHASIS_SX}>
                     {averageRating > 0 ? averageRating.toFixed(1) : 'New'}
                   </Typography>
                 </Stack>
               </Stack>
 
               <Typography
-                variant="h4"
+                component="p"
                 sx={{
-                  fontWeight: 800,
-                  color: 'secondary.main',
-                  mb: 0.5,
+                  ...COURSE_DETAIL_SIDEBAR_PRICE_SX,
                   ...(unlockedByBundleOnly && {
                     textDecoration: 'line-through',
                     opacity: 0.55,
-                    fontSize: '1.35rem',
                   }),
                 }}
               >
                 {price}
               </Typography>
               {unlockedByBundleOnly && (
-                <Typography variant="h6" sx={{ fontWeight: 800, color: 'success.main', mb: 0.5 }}>
+                <Typography component="p" sx={COURSE_DETAIL_SIDEBAR_SUBPRICE_SX}>
                   No extra charge for you
                 </Typography>
               )}
-              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.25 }}>
+              <Typography sx={{ ...COURSE_DETAIL_META_SX, mb: 0.25 }}>
                 {isBundleCourse
                   ? paidCourse
                     ? 'One payment unlocks every program in this bundle'
@@ -617,7 +625,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       ? 'One-time payment with full access'
                       : 'AI Fluency access for this course'}
               </Typography>
-              <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 2 }}>
+              <Typography
+                variant="caption"
+                sx={{ color: 'text.disabled', display: 'block', mb: 2, lineHeight: 1.45 }}
+              >
                 {reviewCount > 0 ? `${reviewCount} review${reviewCount > 1 ? 's' : ''}` : 'Be the first learner to review this course'}
               </Typography>
 
@@ -758,11 +769,9 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                             {item.label}
                           </Typography>
                           <Typography
-                            variant="body2"
                             sx={{
-                              fontWeight: 700,
+                              ...COURSE_DETAIL_SIDEBAR_EMPHASIS_SX,
                               color: 'text.primary',
-                              lineHeight: 1.45,
                               wordBreak: 'break-word',
                             }}
                           >
@@ -778,7 +787,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               <Divider sx={{ my: 2.25 }} />
 
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.25 }}>
+                <Typography sx={{ ...COURSE_DETAIL_SECTION_HEADING_SX, mb: 1.25 }}>
                   {isBundleCourse ? 'This bundle includes' : 'This course includes'}
                 </Typography>
                 <Stack spacing={1}>
@@ -789,7 +798,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                         width={16}
                         sx={{ color: 'success.main', mt: 0.25, flexShrink: 0 }}
                       />
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      <Typography sx={COURSE_DETAIL_META_SX}>
                         {item}
                       </Typography>
                     </Stack>
@@ -806,17 +815,17 @@ export function LearningCourseDetailsView({ course, loading, error }) {
             order: { xs: 2, md: 2 },
           }}
         >
-          <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Typography component="h1" sx={COURSE_DETAIL_PAGE_TITLE_SX}>
             {course.title}
           </Typography>
           <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            <Typography sx={COURSE_DETAIL_META_SX}>
               {courseCode}
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>•</Typography>
+            <Typography sx={COURSE_DETAIL_META_SX}>•</Typography>
             <Stack direction="row" alignItems="center" spacing={0.5}>
               <Iconify icon="solar:global-bold" width={18} sx={{ color: 'text.secondary' }} />
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography sx={COURSE_DETAIL_META_SX}>
                 {languageLabel}
               </Typography>
             </Stack>
@@ -837,7 +846,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               {isBundleCourse && (
                 <Box id="bundle-included" sx={{ scrollMarginTop: 96 }}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }} flexWrap="wrap" gap={1}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    <Typography sx={COURSE_DETAIL_SECTION_HEADING_SX}>
                       Included programs
                     </Typography>
                     {bundleCount > 0 && (
@@ -853,7 +862,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   <Divider sx={{ mb: 2 }} />
                   {bundleIncludedLoading && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
                   {!bundleIncludedLoading && bundleIncludedCourses.length === 0 && (
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    <Typography sx={COURSE_DETAIL_META_SX}>
                       {bundleCount > 0
                         ? 'Program details are loading or temporarily unavailable.'
                         : 'Programs in this bundle will appear here once configured.'}
@@ -919,7 +928,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+                          <Typography sx={{ ...COURSE_DETAIL_SIDEBAR_EMPHASIS_SX, lineHeight: 1.35 }}>
                             {inc.title}
                           </Typography>
                           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.35 }}>
@@ -945,12 +954,12 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               {isBundleCourse && <Divider sx={{ borderStyle: 'dashed' }} />}
 
               <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+              <Typography sx={COURSE_DETAIL_SECTION_HEADING_SX}>
                 {isBundleCourse ? 'Curriculum on this page' : 'Curriculum'}
               </Typography>
               <Divider sx={{ mb: 2 }} />
               {modulesLoading ? (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                <Typography sx={COURSE_DETAIL_META_SX}>
                   Loading curriculum...
                 </Typography>
               ) : courseModules.length > 0 ? (
@@ -1100,7 +1109,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   })}
                 </Stack>
               ) : (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                <Typography sx={COURSE_DETAIL_META_SX}>
                   {isBundleCourse
                     ? "Lessons for each program are inside that program's page. Use the included programs list above to open a course and start learning."
                     : lessonCount !== '—'
@@ -1113,7 +1122,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               <Divider sx={{ borderStyle: 'dashed' }} />
 
               <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+              <Typography sx={COURSE_DETAIL_SECTION_HEADING_SX}>
                 Speaker(s)
               </Typography>
               <Divider sx={{ mb: 2 }} />
@@ -1152,14 +1161,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                             <RichTextContent
                               html={s.about}
                               sx={{
-                                color: 'text.secondary',
+                                ...COURSE_DETAIL_RICH_TEXT_SX,
                                 '& p': { my: 0.5 },
-                                '& h1, & h2, & h3, & h4, & h5, & h6': {
-                                  mt: 0.75,
-                                  mb: 0.5,
-                                  fontSize: '0.95rem',
-                                },
-                                '& ul, & ol': { my: 0.5, pl: 2.5 },
                               }}
                             />
                           </Box>
@@ -1179,7 +1182,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   ))}
                 </Stack>
               ) : (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                <Typography sx={COURSE_DETAIL_META_SX}>
                   Instructor information will be shown here when assigned.
                 </Typography>
               )}
@@ -1188,12 +1191,12 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               <Divider sx={{ borderStyle: 'dashed' }} />
 
               <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+              <Typography sx={COURSE_DETAIL_SECTION_HEADING_SX}>
                 Reviews {reviewCount > 0 ? `(${reviewCount})` : ''}
               </Typography>
               <Divider sx={{ mb: 2 }} />
               {reviewsLoading ? (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                <Typography sx={COURSE_DETAIL_META_SX}>
                   Loading reviews...
                 </Typography>
               ) : (
@@ -1209,7 +1212,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
                         Average rating
                       </Typography>
-                      <Typography variant="h2" sx={{ lineHeight: 1 }}>
+                      <Typography component="p" sx={COURSE_DETAIL_RATING_AVERAGE_SX}>
                         {averageRating > 0 ? Number(averageRating).toFixed(1) : '0'}/5
                       </Typography>
                       <Rating
@@ -1247,7 +1250,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   <Divider sx={{ borderStyle: 'dashed', my: 2 }} />
 
                   {courseReviews.length === 0 ? (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', py: 3 }}>
+                    <Typography sx={{ ...COURSE_DETAIL_META_SX, py: 3 }}>
                       No reviews yet. Be the first to review after completing the course.
                     </Typography>
                   ) : (
@@ -1331,25 +1334,14 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               <Divider sx={{ borderStyle: 'dashed' }} />
 
               <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+              <Typography sx={COURSE_DETAIL_SECTION_HEADING_SX}>
                 Course Description
               </Typography>
               <Divider sx={{ mb: 2 }} />
               <RichTextContent
                 html={course.description || '<p>No description available.</p>'}
                 clampLines={showFullDescription ? undefined : 10}
-                sx={{
-                  color: 'text.secondary',
-                  lineHeight: 1.7,
-                  '& p': { my: 0.6 },
-                  '& ul, & ol': { my: 0.75, pl: 2.5 },
-                  '& li': { mb: 0.4 },
-                  '& h1, & h2, & h3, & h4, & h5, & h6': {
-                    mt: 1,
-                    mb: 0.5,
-                    fontSize: '1rem',
-                  },
-                }}
+                sx={COURSE_DETAIL_RICH_TEXT_SX}
               />
               {plainDesc.length > 260 && (
                 <Button
@@ -1370,7 +1362,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
       {/* Related courses - from single course details payload */}
       {relatedCourses.length > 0 && (
         <Box sx={{ mt: { xs: 4, md: 6 } }}>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+          <Typography component="h2" sx={{ ...DETAIL_PAGE_SECTION_TITLE_SX, mb: 2 }}>
             Related courses
           </Typography>
           <Grid container spacing={2}>
@@ -1421,7 +1413,9 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                         {rel.level || 'Beginner'}
                       </Typography>
-                      <Typography variant="subtitle2" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                      <Typography
+                        sx={{ ...COURSE_DETAIL_SIDEBAR_EMPHASIS_SX, color: 'primary.main' }}
+                      >
                         {formatPrice(isPaidCourse(rel.freeOrPaid), rel.amount)}
                       </Typography>
                     </Stack>
@@ -1454,8 +1448,8 @@ console.log('',);
             sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}
           >
             <Box>
-              <Typography variant="h6">All Reviews</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography sx={COURSE_DETAIL_SECTION_HEADING_SX}>All Reviews</Typography>
+              <Typography sx={COURSE_DETAIL_META_SX}>
                 {courseReviews.length} review{courseReviews.length !== 1 ? 's' : ''} from learners
               </Typography>
             </Box>
