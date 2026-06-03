@@ -195,11 +195,12 @@ export function QuickLinksCommentList({
                 objectFit: 'contain',
                 verticalAlign: 'middle',
                 borderRadius: 1,
+                cursor: 'pointer',
               },
               '& figure': { maxWidth: '100%' },
             }}
           >
-            <RichTextContent html={(comment.content || '').trim()} />
+            <RichTextContent html={(comment.content || '').trim()} clickableImages />
           </Box>
         ) : (
           <Typography variant="body2" sx={{ color: 'text.disabled', lineHeight: 1.6 }}>

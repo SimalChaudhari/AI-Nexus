@@ -481,6 +481,7 @@ export function AnnouncementDetailView() {
           {announcement.description || announcement.content ? (
             <RichTextContent
               html={announcement.description || announcement.content}
+              clickableImages
               sx={{
                 ...DETAIL_PAGE_CONTENT_SX,
                 lineHeight: 1.8,
@@ -493,6 +494,7 @@ export function AnnouncementDetailView() {
                   objectFit: 'contain',
                   verticalAlign: 'middle',
                   borderRadius: 1.5,
+                  cursor: 'pointer',
                 },
                 '& figure': {
                   maxWidth: '100%',

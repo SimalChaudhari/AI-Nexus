@@ -428,6 +428,7 @@ export function AiForumDetailView() {
           {post.description || post.content ? (
             <RichTextContent
               html={post.description || post.content}
+              clickableImages
               sx={{
                 ...DETAIL_PAGE_CONTENT_SX,
                 color: 'text.primary',
@@ -439,6 +440,7 @@ export function AiForumDetailView() {
                   objectFit: 'contain',
                   verticalAlign: 'middle',
                   borderRadius: 1.5,
+                  cursor: 'pointer',
                 },
                 '& figure': {
                   maxWidth: '100%',
