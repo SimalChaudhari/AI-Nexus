@@ -1,8 +1,6 @@
 import { useState, useEffect, forwardRef } from 'react';
 
 import Box from '@mui/material/Box';
-import NoSsr from '@mui/material/NoSsr';
-import { useTheme } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -15,15 +13,22 @@ import { logoClasses } from './classes';
 
 const HOME_PATHS = [paths.home, '/'];
 
+/** Header logo bounds — prevents full-size image flash before Emotion styles load */
+const PUBLIC_LOGO_SX = {
+  width: { xs: 88, md: 100 },
+  maxWidth: 100,
+  height: { xs: 40, md: 44 },
+  maxHeight: 48,
+  overflow: 'hidden',
+  flexShrink: 0,
+};
+
 export const Logo = forwardRef(
   (
     { width = 40, height = 40, disableLink = false, className, href = paths.home, sx, onClick, ...other },
     ref
   ) => {
-    const theme = useTheme();
     const pathname = usePathname();
-
-    const isDark = theme.palette.mode === 'dark';
 
     // Check if we're on a public route (not admin/dashboard)
     const isPublicRoute = !pathname?.startsWith('/admin') && !pathname?.startsWith('/dashboard');
@@ -93,69 +98,54 @@ export const Logo = forwardRef(
      * OR using local (public folder)
      * const logo = ( <Box alt="logo" component="img" src={`${CONFIG.site.basePath}/logo/logo-single.svg`} width={width} height={height} /> );
      */
-    const logo = isPublicRoute ? (
-      <img
+    const logoImg = (
+      <Box
+        component="img"
         alt="logo"
-        src={siteLogoUrl || '/favicon.png'}
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-      />
-    ) : (
-      <img
-        alt="logo"
-        src={siteLogoUrl || (isDark ? '/favicon.png' : '/favicon.png')}
-        style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' }}
+        src={
+          siteLogoUrl || '/favicon.png'
+        }
+        sx={{
+          display: 'block',
+          width: '100%',
+          height: 'auto',
+          maxHeight: '100%',
+          objectFit: 'contain',
+          objectPosition: 'left center',
+        }}
       />
     );
 
-    const publicLogoSx = isPublicRoute
-      ? {
-          width: 'auto',
-          height: 'auto',
-          minHeight: 'unset',
-        }
-      : undefined;
-
     return (
-      <NoSsr
-        fallback={
-          <Box
-            width={isPublicRoute ? 'auto' : width}
-            height={isPublicRoute ? 'auto' : height}
-            className={logoClasses.root.concat(className ? ` ${className}` : '')}
-            sx={{
-              flexShrink: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              verticalAlign: 'middle',
-              ...publicLogoSx,
-              ...sx,
-            }}
-          />
-        }
+      <Box
+        ref={ref}
+        component={RouterLink}
+        href={href}
+        className={logoClasses.root.concat(className ? ` ${className}` : '')}
+        aria-label="logo"
+        onClick={handleLogoClick}
+        sx={{
+          flexShrink: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          verticalAlign: 'middle',
+          ...(isPublicRoute
+            ? PUBLIC_LOGO_SX
+            : {
+                width: 130,
+                height: 72,
+                maxWidth: 130,
+                maxHeight: 72,
+                overflow: 'hidden',
+              }),
+          ...(disableLink && { pointerEvents: 'none' }),
+          ...sx,
+        }}
+        {...other}
       >
-        <Box
-          ref={ref}
-          component={RouterLink}
-          href={href}
-          width={isPublicRoute ? 'auto' : 130}
-          height={isPublicRoute ? 'auto' : 72}
-          className={logoClasses.root.concat(className ? ` ${className}` : '')}
-          aria-label="logo"
-          onClick={handleLogoClick}
-          sx={{
-            flexShrink: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            verticalAlign: 'middle',
-            ...publicLogoSx,
-            ...(disableLink && { pointerEvents: 'none' }),
-            ...sx,
-          }}
-          {...other}
-        >
-          {logo}
-        </Box>
-      </NoSsr>
+        {logoImg}
+      </Box>
     );
   }
 );

@@ -355,7 +355,7 @@ function DesktopTimeline({ phases, primaryColor }) {
         position: 'relative',
         pt: { xs: 1, md: 1.25 },
         pb: { xs: 1, md: 1.25 },
-        // borderRadius: 4,
+        borderRadius: 2,
         background:
           'linear-gradient(165deg, rgba(255,255,255,0.78), rgba(255,255,255,0.48) 55%, rgba(243,246,255,0.72))',
         border: '1px solid rgba(15,39,68,0.08)',

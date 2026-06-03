@@ -246,10 +246,10 @@ export function HeaderBase({
                 sx={
                   isCustomerFacingRoute
                     ? {
-                        /* One size on all breakpoints so branding doesn’t scale when the bar reflows */
+                        /* Fixed bounds — avoids full-size logo flash on refresh */
                         width: { xs: 88, md: 100 },
-                        height: 'auto',
-                        minHeight: 'unset',
+                        height: { xs: 40, md: 44 },
+                        maxHeight: 48,
                         display: 'block',
                       }
                     : { pr: 2 }

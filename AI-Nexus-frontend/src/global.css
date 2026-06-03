@@ -77,6 +77,24 @@ img {
   max-width: 100%;
   vertical-align: middle;
 }
+
+/* Header logo — cap size on first paint (before JS theme styles) */
+.mnl__logo__root {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100px;
+  max-height: 48px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mnl__logo__root img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 48px;
+  object-fit: contain;
+  object-position: left center;
+}
 ul {
   margin: 0;
   padding: 0;
