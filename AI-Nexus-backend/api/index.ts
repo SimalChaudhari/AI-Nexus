@@ -4,6 +4,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { Request, Response } from 'express';
 import { enableAppCors } from '../src/cors.config';
+import { BODY_PARSER_LIMIT } from '../src/common/upload-limits';
 
 let cachedApp: express.Express;
 
@@ -22,8 +23,8 @@ async function bootstrap(): Promise<express.Express> {
     app.use('/assets', express.static(join(process.cwd(), 'assets')));
 
     // Enable JSON body parser with increased limit for large payloads
-    app.use(express.json({ limit: '50mb' }));
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use(express.json({ limit: BODY_PARSER_LIMIT }));
+    app.use(express.urlencoded({ limit: BODY_PARSER_LIMIT, extended: true }));
 
     // Root route handler (before app.init) - returns health check
     expressApp.get('/', (req: Request, res: Response) => {

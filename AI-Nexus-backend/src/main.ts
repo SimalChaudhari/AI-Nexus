@@ -14,6 +14,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { enableAppCors } from './cors.config';
+import { BODY_PARSER_LIMIT } from './common/upload-limits';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -119,7 +120,7 @@ async function bootstrap() {
     // Webhook route needs raw body for signature verification; skip json parser for it
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (req.path === '/api/payments/webhook') return next();
-      express.json({ limit: '50mb' })(req, res, next);
+      express.json({ limit: BODY_PARSER_LIMIT })(req, res, next);
     });
     app.use(
       '/api/payments/webhook',
@@ -137,7 +138,7 @@ async function bootstrap() {
       },
     );
 
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use(express.urlencoded({ limit: BODY_PARSER_LIMIT, extended: true }));
 
     // Root route handler (before app.listen) - returns health check
     const httpAdapter = app.getHttpAdapter();
