@@ -743,9 +743,14 @@ export const courseService = {
       const url = response.data?.data?.url || response.data?.url || '';
       return resolveAssetUrl(url);
     } catch (error) {
+      if (error?.response?.status === 413) {
+        throw new Error(
+          'Video file is too large for the server upload limit (413). Ask ops to raise nginx client_max_body_size on the /api proxy, then rebuild the frontend without :5000 in VITE_SERVER_URL (use https://ainexus.isca.org.sg/api or same-origin /api).'
+        );
+      }
       if (!error?.response) {
         const uploadError = new Error(
-          'Video upload failed (network or CORS). Use the same host for the app and API (https://ainexus.isca.org.sg/api, no :3000 port), or ask ops to raise nginx client_max_body_size for large videos.'
+          'Video upload failed (network or CORS). Use https://ainexus.isca.org.sg/api (no :5000 port), not a direct backend port.'
         );
         uploadError.cause = error;
         throw uploadError;
