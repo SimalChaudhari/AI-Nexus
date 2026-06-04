@@ -29,7 +29,9 @@ If TLS is terminated at nginx on port **5000** (recommended when the SPA uses `:
 | Frontend | `https://ainexus.isca.org.sg` |
 | Backend API | `https://ainexus.isca.org.sg:5000/api` |
 
-**Backend `.env`:** `PORT=5000`, `FRONTEND_URLS=https://ainexus.isca.org.sg` (CORS for the SPA origin).
+**Backend `.env`:** `PORT=5000`, `NODE_ENV=production`, `FRONTEND_URLS=https://ainexus.isca.org.sg` (CORS for the SPA on :443). Restart Node after changing env.
+
+**Login** must hit the same API host as uploads: `https://ainexus.isca.org.sg:5000/api/auth/login` (frontend `VITE_SERVER_URL=...:5000/api`). If login used port 443, cookies are not sent to :5000 and uploads return **401**.
 
 **Frontend build:** `VITE_SERVER_URL=https://ainexus.isca.org.sg:5000/api` or `VITE_API_PORT=5000`.
 
