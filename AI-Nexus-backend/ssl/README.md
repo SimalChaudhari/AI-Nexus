@@ -18,13 +18,26 @@ Optional:
 
 Run production with HTTPS, for example:
 
-`NODE_ENV=production PORT=3000 node dist/main.js` (after `npm run build`).
+`NODE_ENV=production PORT=5000 node dist/main.js` (after `npm run build`).
 
-If TLS is terminated at nginx (or another reverse proxy) and Node should listen on HTTP only, set `SSL_DISABLED=1` or omit/remove the PEM files from `ssl/`.
+If TLS is terminated at nginx on port **5000** (recommended when the SPA uses `:5000/api`), set `SSL_DISABLED=1` on Node and let nginx terminate HTTPS.
+
+## Production layout (SPA on 443, API on 5000)
+
+| Service | URL |
+|--------|-----|
+| Frontend | `https://ainexus.isca.org.sg` |
+| Backend API | `https://ainexus.isca.org.sg:5000/api` |
+
+**Backend `.env`:** `PORT=5000`, `FRONTEND_URLS=https://ainexus.isca.org.sg` (CORS for the SPA origin).
+
+**Frontend build:** `VITE_SERVER_URL=https://ainexus.isca.org.sg:5000/api` or `VITE_API_PORT=5000`.
+
+**nginx:** proxy `listen 5000 ssl` → `127.0.0.1:5000` (see `deploy/nginx.example.conf`).
 
 ## nginx upload size (course section videos)
 
-A **413 Request Entity Too Large** on `upload-video` usually means nginx’s default `client_max_body_size` (1m) is too small. Raise it on **every** server block that proxies to the API (port 443 `/api` and any direct `:5000` listener):
+A **413 Request Entity Too Large** on `upload-video` means nginx’s `client_max_body_size` is too small on the **:5000** server block:
 
 ```nginx
 client_max_body_size 500M;
@@ -32,4 +45,14 @@ proxy_read_timeout 300s;
 proxy_send_timeout 300s;
 ```
 
-Rebuild the frontend with `VITE_SERVER_URL=https://ainexus.isca.org.sg/api` (no `:5000`) or omit `VITE_SERVER_URL` so the SPA uses same-origin `/api`.
+## 404 on `/api/auth/login` at port 443
+
+If the browser calls `https://ainexus.isca.org.sg/api/...` (no port) and gets **404**, either proxy `/api` on 443 to Node or point the frontend at `:5000/api` as above. Test the API port:
+
+```bash
+curl -i -X POST https://ainexus.isca.org.sg:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"wrong"}'
+```
+
+Expect **401** or **400**, not **404**.

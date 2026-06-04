@@ -1,34 +1,25 @@
 /**
- * Resolve API base URL and asset/socket origin for dev vs production.
- * Production builds without VITE_SERVER_URL use same-origin `/api` to avoid CORS.
+ * Resolve API base URL and asset/socket origin.
+ * Production on port 5000: set VITE_SERVER_URL or VITE_API_PORT=5000 at build time.
  */
 
-function useSameOriginApiInBrowser(apiBase) {
-  if (typeof window === 'undefined' || !apiBase || !/^https?:\/\//i.test(apiBase)) {
-    return apiBase;
-  }
-  try {
-    const configured = new URL(apiBase);
-    const page = window.location;
-    const sameHost =
-      configured.hostname === page.hostname &&
-      configured.protocol === page.protocol;
-    const differentPort = configured.port !== page.port;
-    // e.g. SPA on :443 but VITE_SERVER_URL=https://host:5000/api → use /api on page origin
-    if (sameHost && differentPort) {
-      return '/api';
-    }
-  } catch {
-    // keep configured value
-  }
-  return apiBase;
+function buildApiUrlFromPagePort(apiPort) {
+  if (typeof window === 'undefined' || !apiPort) return '';
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:${apiPort}/api`;
 }
 
 export function resolveApiBaseUrl() {
   const fromEnv = (import.meta.env.VITE_SERVER_URL || '').trim();
-  const fallback = import.meta.env.PROD ? '/api' : 'http://localhost:5000/api';
-  const apiBase = fromEnv || fallback;
-  return useSameOriginApiInBrowser(apiBase);
+  if (fromEnv) return fromEnv;
+
+  const apiPort = (import.meta.env.VITE_API_PORT || '').trim();
+  if (apiPort) {
+    const fromPort = buildApiUrlFromPagePort(apiPort);
+    if (fromPort) return fromPort;
+  }
+
+  return import.meta.env.PROD ? '/api' : 'http://localhost:5000/api';
 }
 
 /** Backend origin without /api (for uploads, Socket.IO, static assets). */

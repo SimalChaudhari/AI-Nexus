@@ -69,7 +69,7 @@ async function bootstrap() {
   try {
     const nodeEnv = process.env.NODE_ENV;
     const isDevelopment = nodeEnv === 'development';
-    const port = Number(process.env.PORT) || (isDevelopment ? 5000 : 3000);
+    const port = Number(process.env.PORT) || 5000;
     const host = process.env.APP_HOST?.trim() || 'localhost';
     const bindHost = process.env.APP_BIND_HOST?.trim() || (isDevelopment ? 'localhost' : '0.0.0.0');
     const sslResolution = getSslResolution();
