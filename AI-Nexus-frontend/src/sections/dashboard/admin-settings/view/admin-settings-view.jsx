@@ -1393,6 +1393,9 @@ export function AdminSettingsView() {
     }
     try {
       setCeoLaunchVideoSubmitting(true);
+      if (ceoLaunchVideoFile.size > 900 * 1024) {
+        toast.info('Preparing video for upload…');
+      }
       const updated = await appSettingsService.uploadHomeCeoLaunchVideo(ceoLaunchVideoFile);
       setCeoLaunchContent(resolveCeoLaunchContent(updated?.homeCeoLaunchContent));
       setCeoLaunchVideoFile(null);

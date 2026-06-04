@@ -1,10 +1,12 @@
+import { getProxySafeMaxBytes } from './upload-proxy-limits';
+
 /**
  * Resize/compress raster images before admin upload (keeps payloads under common 1MB proxy limits).
  * SVG files are returned unchanged.
  */
 export async function compressImageFileForUpload(
   file,
-  { maxWidth = 1920, maxHeight = 1920, maxBytes = 900 * 1024, quality = 0.82 } = {}
+  { maxWidth = 1920, maxHeight = 1920, maxBytes = getProxySafeMaxBytes(), quality = 0.82 } = {}
 ) {
   if (!file || typeof File === 'undefined') return file;
   const type = String(file.type || '').toLowerCase();

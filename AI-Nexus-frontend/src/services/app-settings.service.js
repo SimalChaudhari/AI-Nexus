@@ -1,5 +1,8 @@
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
+import { compressImageFileForUpload } from 'src/utils/compress-image-file';
+import { compressCeoLaunchVideoForUpload } from 'src/utils/compress-video-file-for-upload';
+import { multipartUploadConfig } from 'src/utils/multipart-upload-config';
 
 const ASSET_BASE_URL = CONFIG.site.serverUrl.replace(/\/api\/?$/, '');
 
@@ -478,12 +481,15 @@ export const appSettingsService = {
   },
 
   async uploadLogo(file) {
-    const formData = new FormData();
-    formData.append('logo', file);
-
-    const response = await axios.post('/app-settings/logo', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const fileToUpload = await compressImageFileForUpload(file, {
+      maxWidth: 800,
+      maxHeight: 400,
+      maxBytes: 512 * 1024,
     });
+    const formData = new FormData();
+    formData.append('logo', fileToUpload);
+
+    const response = await axios.post('/app-settings/logo', formData, multipartUploadConfig());
 
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
@@ -715,11 +721,14 @@ export const appSettingsService = {
   },
 
   async uploadHomeCeoLaunchPoster(file) {
+    const fileToUpload = await compressImageFileForUpload(file);
     const formData = new FormData();
-    formData.append('poster', file);
-    const response = await axios.post('/app-settings/home-ceo-launch-poster', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    formData.append('poster', fileToUpload);
+    const response = await axios.post(
+      '/app-settings/home-ceo-launch-poster',
+      formData,
+      multipartUploadConfig(),
+    );
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },
@@ -731,11 +740,14 @@ export const appSettingsService = {
   },
 
   async uploadHomeCeoLaunchVideo(file) {
+    const fileToUpload = await compressCeoLaunchVideoForUpload(file);
     const formData = new FormData();
-    formData.append('video', file);
-    const response = await axios.post('/app-settings/home-ceo-launch-video', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    formData.append('video', fileToUpload);
+    const response = await axios.post(
+      '/app-settings/home-ceo-launch-video',
+      formData,
+      multipartUploadConfig(),
+    );
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },
