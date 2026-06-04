@@ -30,8 +30,7 @@ function isUploadPath(path: string): boolean {
   return /\/upload/i.test(path);
 }
 
-function formatMb(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
+function formatLimitLabel(mb: number): string {
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }
 
@@ -41,15 +40,16 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
   const timestamp = new Date().toISOString();
   const upload = isUploadPath(path);
 
-  const multer = exception as { code?: string; field?: string; message?: string };
+  const multer = exception as { code?: string; field?: string };
   if (multer?.code === 'LIMIT_FILE_SIZE') {
-    const maxMb = upload && /ceo-launch-video|upload-video/i.test(path)
-      ? getMaxVideoUploadMb()
-      : getMaxImageUploadMb();
+    const maxMb =
+      upload && /ceo-launch-video|upload-video/i.test(path)
+        ? getMaxVideoUploadMb()
+        : getMaxImageUploadMb();
     return {
       statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       error: 'Payload Too Large',
-      message: `Uploaded file is too large. Maximum allowed size is ${formatMb(maxMb * 1024 * 1024)} for this endpoint.`,
+      message: `This file is too large. Maximum allowed size is ${formatLimitLabel(maxMb)}.`,
       code: 'UPLOAD_FILE_TOO_LARGE',
       path,
       timestamp,
@@ -60,21 +60,21 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
     return {
       statusCode: HttpStatus.BAD_REQUEST,
       error: 'Bad Request',
-      message: `Unexpected file field "${multer.field || 'unknown'}". Check the form field name matches the API (e.g. video, logo, image).`,
+      message: 'Invalid file upload. Please try selecting the file again.',
       code: 'UPLOAD_UNEXPECTED_FIELD',
       path,
       timestamp,
     };
   }
 
-  const entity = exception as { type?: string; status?: number; limit?: number };
+  const entity = exception as { type?: string; status?: number };
   if (entity?.type === 'entity.too.large' || entity?.status === 413) {
     return {
       statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       error: 'Payload Too Large',
       message: upload
-        ? `Request body exceeds the server limit (${formatMb(entity.limit || 50 * 1024 * 1024)}). For large videos, ensure nginx client_max_body_size is high enough (e.g. 500M) on the API port.`
-        : 'Request payload is too large.',
+        ? 'This file is too large. Please upload a smaller video or contact your administrator.'
+        : 'This file is too large.',
       code: 'REQUEST_ENTITY_TOO_LARGE',
       path,
       timestamp,
@@ -83,11 +83,11 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
 
   if (exception instanceof Error) {
     const msg = exception.message || '';
-    if (/unsupported media|file type|mimetype/i.test(msg)) {
+    if (/unsupported media|file type|mimetype|Validation failed/i.test(msg)) {
       return {
         statusCode: HttpStatus.BAD_REQUEST,
         error: 'Bad Request',
-        message: msg,
+        message: 'This file type is not supported. Please use MP4, WebM, MOV, or another allowed format.',
         code: 'UPLOAD_INVALID_FILE_TYPE',
         path,
         timestamp,
@@ -97,7 +97,7 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
       return {
         statusCode: HttpStatus.BAD_REQUEST,
         error: 'Bad Request',
-        message: msg,
+        message: 'Please select a file to upload.',
         code: 'UPLOAD_FILE_REQUIRED',
         path,
         timestamp,
@@ -109,8 +109,8 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
     statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     error: 'Internal Server Error',
     message: upload
-      ? 'Video or file upload failed on the server. Please try again or contact support.'
-      : 'An unexpected error occurred. Please try again.',
+      ? 'Upload failed. Please try again.'
+      : 'Something went wrong. Please try again.',
     code: 'INTERNAL_ERROR',
     path,
     timestamp,
@@ -126,9 +126,7 @@ export function normalizeHttpExceptionBody(
   const timestamp = new Date().toISOString();
   const upload = isUploadPath(path);
 
-  let message = 'Request failed';
-  let code = 'HTTP_ERROR';
-
+  let message = '';
   if (typeof body === 'string') {
     message = body;
   } else if (typeof body === 'object' && body !== null) {
@@ -136,9 +134,6 @@ export function normalizeHttpExceptionBody(
     const raw = record.message;
     if (typeof raw === 'string') message = raw;
     else if (Array.isArray(raw)) message = raw.map(String).join(', ');
-    if (typeof record.error === 'string' && status === HttpStatus.PAYLOAD_TOO_LARGE) {
-      code = 'UPLOAD_FILE_TOO_LARGE';
-    }
   }
 
   if (status === HttpStatus.PAYLOAD_TOO_LARGE || status === 413) {
@@ -147,9 +142,9 @@ export function normalizeHttpExceptionBody(
       statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       error: 'Payload Too Large',
       message:
-        message && message !== 'Payload Too Large'
+        message && !/payload too large/i.test(message)
           ? message
-          : `File is too large. Maximum for video uploads is about ${formatMb(maxMb * 1024 * 1024)}.`,
+          : `This file is too large. Maximum allowed size is ${formatLimitLabel(maxMb)}.`,
       code: 'UPLOAD_FILE_TOO_LARGE',
       path,
       timestamp,
@@ -160,9 +155,7 @@ export function normalizeHttpExceptionBody(
     return {
       statusCode: status,
       error: 'Unauthorized',
-      message: upload
-        ? 'Authentication required. Sign in on the same API host before uploading.'
-        : message || 'Unauthorized',
+      message: 'Your session has expired. Please sign in again.',
       code: 'UNAUTHORIZED',
       path,
       timestamp,
@@ -173,7 +166,7 @@ export function normalizeHttpExceptionBody(
     return {
       statusCode: status,
       error: 'Forbidden',
-      message: message || 'You do not have permission to perform this action.',
+      message: 'You do not have permission to do this.',
       code: 'FORBIDDEN',
       path,
       timestamp,
@@ -184,8 +177,19 @@ export function normalizeHttpExceptionBody(
     return {
       statusCode: status,
       error: 'Bad Request',
-      message: message || 'Invalid upload request.',
+      message: message || 'Upload failed. Please check the file and try again.',
       code: 'UPLOAD_BAD_REQUEST',
+      path,
+      timestamp,
+    };
+  }
+
+  if (status === HttpStatus.NOT_FOUND) {
+    return {
+      statusCode: status,
+      error: 'Not Found',
+      message: 'This action is not available. Please contact your administrator.',
+      code: 'NOT_FOUND',
       path,
       timestamp,
     };
@@ -201,8 +205,8 @@ export function normalizeHttpExceptionBody(
   return {
     statusCode: status,
     error: errorLabel,
-    message,
-    code,
+    message: message || 'Something went wrong. Please try again.',
+    code: 'HTTP_ERROR',
     path,
     timestamp,
   };
