@@ -13,6 +13,7 @@ import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { GlobalExceptionFilter } from './utils/global-exception.filter';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -95,6 +96,7 @@ async function bootstrap() {
     );
 
     app.useWebSocketAdapter(new IoAdapter(app));
+    app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,

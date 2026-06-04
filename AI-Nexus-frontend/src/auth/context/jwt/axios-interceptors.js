@@ -1,5 +1,6 @@
 import { CONFIG } from 'src/config-global';
 import { apiLoading } from 'src/utils/api-loading';
+import { getApiErrorMessage } from 'src/utils/api-error-message';
 import { forceLogout, readCachedUser } from './session';
 
 // ----------------------------------------------------------------------
@@ -68,18 +69,19 @@ export function attachAuthAxiosInterceptors(axiosInstance) {
       }
 
       if (error.code === 'ECONNREFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED')) {
-        const serverHint = (CONFIG.site.serverUrl || 'http://localhost:5000/api').replace(/\/$/, '');
-        const connectionError = new Error(
-          `Unable to connect to server. Please make sure the backend server is running (${serverHint})`
-        );
+        const connectionError = new Error(getApiErrorMessage(error));
         connectionError.code = 'ECONNREFUSED';
         return Promise.reject(connectionError);
       }
 
+      if (error.response?.status === 413) {
+        const tooLarge = new Error(getApiErrorMessage(error));
+        tooLarge.code = 'PAYLOAD_TOO_LARGE';
+        return Promise.reject(tooLarge);
+      }
+
       if (error.message === 'Network Error' || !error.response) {
-        const networkError = new Error(
-          'Network error. Please check your internet connection and ensure the server is running.'
-        );
+        const networkError = new Error(getApiErrorMessage(error));
         networkError.code = 'NETWORK_ERROR';
         return Promise.reject(networkError);
       }
@@ -135,15 +137,7 @@ export function attachAuthAxiosInterceptors(axiosInstance) {
         }
       }
 
-      const data = error.response?.data;
-      let message = error.message || 'Something went wrong!';
-      if (data) {
-        const { message: dataMessage } = data;
-        if (typeof dataMessage === 'string') message = dataMessage;
-        else if (typeof data === 'string') message = data;
-        else if (data instanceof Error) message = dataMessage;
-        else if (typeof data === 'object') message = dataMessage ?? JSON.stringify(data);
-      }
+      const message = getApiErrorMessage(error);
       const finalError =
         error instanceof Error && error.message === message ? error : new Error(message);
       return Promise.reject(finalError);

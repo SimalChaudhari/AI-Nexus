@@ -3,6 +3,7 @@ import { AppModule } from '../src/app.module';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { Request, Response } from 'express';
+import { GlobalExceptionFilter } from '../src/utils/global-exception.filter';
 
 let cachedApp: express.Express;
 
@@ -13,6 +14,8 @@ async function bootstrap(): Promise<express.Express> {
     
     // Set global prefix for all routes
     app.setGlobalPrefix('api');
+
+    app.useGlobalFilters(new GlobalExceptionFilter());
     
     // Enable CORS
     app.enableCors({
