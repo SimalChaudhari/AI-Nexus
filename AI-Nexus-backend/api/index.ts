@@ -4,6 +4,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { Request, Response } from 'express';
 import { GlobalExceptionFilter } from '../src/utils/global-exception.filter';
+import { registerExpressErrorMiddleware } from '../src/utils/express-error.middleware';
 
 let cachedApp: express.Express;
 
@@ -16,7 +17,7 @@ async function bootstrap(): Promise<express.Express> {
     app.setGlobalPrefix('api');
 
     app.useGlobalFilters(new GlobalExceptionFilter());
-    
+
     // Enable CORS
     app.enableCors({
       origin: process.env.FRONTEND_URL || '*',
@@ -31,6 +32,8 @@ async function bootstrap(): Promise<express.Express> {
     // Enable JSON body parser with increased limit for large payloads
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+    registerExpressErrorMiddleware(app);
 
     // Root route handler (before app.init) - returns health check
     expressApp.get('/', (req: Request, res: Response) => {

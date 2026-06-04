@@ -1,7 +1,5 @@
 import axios from 'src/utils/axios';
 import { resolveAssetUrl } from 'src/utils/asset-url';
-import { compressSectionVideoForUpload } from 'src/utils/compress-video-file-for-upload';
-import { multipartUploadConfig } from 'src/utils/multipart-upload-config';
 import {
   buildPaginationParams,
   mapPaginatedResponse,
@@ -734,20 +732,16 @@ export const courseService = {
 
   async uploadSectionVideo(file, onProgress) {
     if (!file) return '';
-    const fileToUpload = await compressSectionVideoForUpload(file);
     const formData = new FormData();
-    formData.append('video', fileToUpload);
-    const response = await axios.post(
-      '/courses/modules/sections/upload-video',
-      formData,
-      multipartUploadConfig({
-        onUploadProgress: (event) => {
-          if (!event?.total) return;
-          const percent = Math.round((event.loaded * 100) / event.total);
-          if (onProgress) onProgress(percent);
-        },
-      }),
-    );
+    formData.append('video', file);
+    const response = await axios.post('/courses/modules/sections/upload-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!event?.total) return;
+        const percent = Math.round((event.loaded * 100) / event.total);
+        if (onProgress) onProgress(percent);
+      },
+    });
     const url = response.data?.data?.url || response.data?.url || '';
     return resolveAssetUrl(url);
   },

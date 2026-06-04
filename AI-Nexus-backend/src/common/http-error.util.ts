@@ -73,7 +73,7 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
       statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       error: 'Payload Too Large',
       message: upload
-        ? 'This file is too large. Please upload a smaller video or contact your administrator.'
+        ? 'This file is too large. Please upload a smaller video or image.'
         : 'This file is too large.',
       code: 'REQUEST_ENTITY_TOO_LARGE',
       path,
@@ -87,7 +87,8 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
       return {
         statusCode: HttpStatus.BAD_REQUEST,
         error: 'Bad Request',
-        message: 'This file type is not supported. Please use MP4, WebM, MOV, or another allowed format.',
+        message:
+          'This file type is not supported. Please use MP4, WebM, MOV, or another allowed format.',
         code: 'UPLOAD_INVALID_FILE_TYPE',
         path,
         timestamp,
@@ -108,9 +109,7 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
   return {
     statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     error: 'Internal Server Error',
-    message: upload
-      ? 'Upload failed. Please try again.'
-      : 'Something went wrong. Please try again.',
+    message: upload ? 'Upload failed. Please try again.' : 'Something went wrong. Please try again.',
     code: 'INTERNAL_ERROR',
     path,
     timestamp,
@@ -137,7 +136,9 @@ export function normalizeHttpExceptionBody(
   }
 
   if (status === HttpStatus.PAYLOAD_TOO_LARGE || status === 413) {
-    const maxMb = getMaxVideoUploadMb();
+    const maxMb = upload && /ceo-launch-video|upload-video/i.test(path)
+      ? getMaxVideoUploadMb()
+      : getMaxImageUploadMb();
     return {
       statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       error: 'Payload Too Large',
@@ -188,7 +189,7 @@ export function normalizeHttpExceptionBody(
     return {
       statusCode: status,
       error: 'Not Found',
-      message: 'This action is not available. Please contact your administrator.',
+      message: message || 'The requested resource was not found.',
       code: 'NOT_FOUND',
       path,
       timestamp,

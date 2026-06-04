@@ -14,6 +14,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './utils/global-exception.filter';
+import { registerExpressErrorMiddleware } from './utils/express-error.middleware';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -210,6 +211,8 @@ async function bootstrap() {
     );
 
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+    registerExpressErrorMiddleware(app);
 
     // Root route handler (before app.listen) - returns health check
     const httpAdapter = app.getHttpAdapter();
