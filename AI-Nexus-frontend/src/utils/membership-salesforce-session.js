@@ -24,6 +24,7 @@ export const MEMBERSHIP_APPLICATION_COURSE_RETURN_KEY = 'membershipApplicationCo
  * @returns {{
  *   accountId: string,
  *   socialToken: string,
+ *   memberClass?: string,
  *   pendingPlatformAccessToken?: string,
  *   platformAccessToken?: string,
  *   savedAt: string,
@@ -43,6 +44,7 @@ export function readMembershipSalesforceSession() {
       accountId,
       applicationId: String(parsed.applicationId || '').trim() || undefined,
       socialToken: String(parsed.socialToken || '').trim(),
+      memberClass: String(parsed.memberClass || '').trim() || undefined,
       pendingPlatformAccessToken,
       platformAccessToken: pendingPlatformAccessToken,
       savedAt: String(parsed.savedAt || ''),
@@ -64,6 +66,9 @@ export function persistMembershipSalesforceSession(payload) {
     accountId,
     ...(payload?.applicationId
       ? { applicationId: String(payload.applicationId).trim() }
+      : {}),
+    ...(payload?.memberClass
+      ? { memberClass: String(payload.memberClass).trim() }
       : {}),
     socialToken: String(payload?.socialToken || '').trim(),
     pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,

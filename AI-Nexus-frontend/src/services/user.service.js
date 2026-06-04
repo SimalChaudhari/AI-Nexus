@@ -66,6 +66,11 @@ const transformUser = (user) => {
     createdAt: user.createdAt || null,
     isSCAQCandidate: user.isSCAQCandidate ?? null,
     isAssociateMember: user.isAssociateMember ?? null,
+    salesforceAccountId: user.salesforceAccountId || '',
+    salesforceAccountType: user.salesforceAccountType || '',
+    salesforceMemberClass: user.salesforceMemberClass || '',
+    salesforceUsername: user.salesforceUsername || '',
+    salesforceSyncedAt: user.salesforceSyncedAt || null,
   };
 };
 

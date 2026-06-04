@@ -7,7 +7,12 @@ import {
   readPendingMembershipApplicationPaymentSession,
 } from './membership-application-billing';
 import { ensureMembershipSalesforceSession } from './membership-salesforce-auth';
-import { MEMBERSHIP_APPLICATION_OUTCOME } from './membership-salesforce-session';
+import {
+  MEMBERSHIP_APPLICATION_ALREADY_SUBMITTED_MESSAGE,
+  MEMBERSHIP_APPLICATION_CA_PENDING_MESSAGE,
+  redirectCaMemberToPlatform,
+  tryCompleteCaMemberPlatformLogin,
+} from './membership-application-ca';
 
 // ----------------------------------------------------------------------
 
@@ -77,6 +82,7 @@ export function parseMembershipApplicationPaymentReturn(search) {
 function isBillingAlreadySubmittedError(error) {
   const message = String(
     error?.response?.data?.message
+      || error?.response?.data?.errorDetails
       || error?.message
       || ''
   ).toLowerCase();
@@ -85,23 +91,17 @@ function isBillingAlreadySubmittedError(error) {
 
   return (
     (message.includes('billing') && message.includes('already'))
+    || (message.includes('billing') && message.includes('submitted'))
     || (message.includes('already') && message.includes('submitted'))
     || (message.includes('already') && message.includes('exist'))
     || message.includes('duplicate')
+    || (message.includes('draft or created') && message.includes('submitted'))
   );
 }
 
-function buildPostPaymentOAuthStartUrl(returnToPath) {
-  const params = new URLSearchParams({
-    returnTo: returnToPath,
-    membershipOutcome: MEMBERSHIP_APPLICATION_OUTCOME,
-    eligibilityType: 'recognition',
-  });
-  return `${paths.auth.oauth.start}?${params.toString()}`;
-}
-
 /**
- * After WooshPay success: record billing in Salesforce, then start eServices SSO.
+ * After WooshPay success: record billing in Salesforce, re-check userinfonexus for CA,
+ * then sign in on the website or return to the application with a status message.
  */
 export async function completeMembershipApplicationPaymentReturn({
   sessionId,
@@ -120,6 +120,8 @@ export async function completeMembershipApplicationPaymentReturn({
     throw new Error('Payment reference was not found.');
   }
 
+  let billingAlreadySubmitted = false;
+
   try {
     await submitMembershipApplicationBilling({
       socialAccessToken: socialToken,
@@ -132,12 +134,41 @@ export async function completeMembershipApplicationPaymentReturn({
     if (!isBillingAlreadySubmittedError(error)) {
       throw error;
     }
+    billingAlreadySubmitted = true;
   }
 
   clearPendingMembershipApplicationPayment();
 
+  const caLogin = await tryCompleteCaMemberPlatformLogin({
+    socialAccessToken: socialToken,
+    redirectTo: paths.learning,
+  });
+
+  if (caLogin.loggedIn && caLogin.redirectTo) {
+    redirectCaMemberToPlatform(caLogin.redirectTo);
+    return {
+      redirectTo: caLogin.redirectTo,
+      message: caLogin.message,
+      isCaMember: true,
+      navigated: true,
+    };
+  }
+
+  const statusMessage = billingAlreadySubmitted
+    ? MEMBERSHIP_APPLICATION_ALREADY_SUBMITTED_MESSAGE
+    : MEMBERSHIP_APPLICATION_CA_PENDING_MESSAGE;
+
+  const params = new URLSearchParams({
+    billing: '1',
+    billingComplete: '1',
+    membershipStatus: billingAlreadySubmitted ? 'submitted' : 'pending',
+  });
+  params.set('statusMessage', statusMessage);
+
   return {
-    redirectTo: buildPostPaymentOAuthStartUrl(paths.learning),
+    redirectTo: `${paths.auth.membership.application}?${params.toString()}`,
+    message: caLogin.message || statusMessage,
+    isCaMember: false,
   };
 }
 

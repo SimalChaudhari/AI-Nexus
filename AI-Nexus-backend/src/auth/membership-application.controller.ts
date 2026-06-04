@@ -20,6 +20,7 @@ import {
 } from './membership-application-document.dto';
 import { CreateMembershipBillingDto } from './membership-application-billing.dto';
 import { CreateResidentialDeclarationDto } from './membership-application-residential-declaration.dto';
+import { MembershipApplicationSocialTokenDto } from './membership-application-character-declaration.dto';
 
 @ApiTags('Membership Application')
 @Controller('auth/membership-application')
@@ -298,6 +299,62 @@ export class MembershipApplicationController {
       success: true,
       message: 'Residential declaration submitted successfully.',
       salesforce,
+    });
+  }
+
+  @Post('user-info')
+  @ApiOperation({
+    summary: 'Load Salesforce nexus user info (userinfonexus) for membership application',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getUserInfo(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const nexusInfo = await this.oauthAuthService.fetchMembershipNexusUserInfoForApplication(
+      dto.socialAccessToken,
+    );
+    const memberClass = String(nexusInfo.memberClass || '').trim() || null;
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Membership status loaded.',
+      memberClass,
+      isCaMember: this.oauthAuthService.isSalesforceCaMemberClass(memberClass),
+      nexusUser: nexusInfo,
+    });
+  }
+
+  @Post('ca-login')
+  @ApiOperation({
+    summary:
+      'When Salesforce memberClass is CA, sync platform user and return access token for establish-session',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async loginIfCaMember(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const result = await this.oauthAuthService.resolveCaMemberLoginFromSocialToken(
+      dto.socialAccessToken,
+    );
+    if (!result.isCaMember) {
+      return response.status(HttpStatus.OK).json({
+        success: true,
+        isCaMember: false,
+        memberClass: result.memberClass,
+        message:
+          'Chartered Accountant (CA) membership is not active yet. Continue your application or check back after processing.',
+        nexusUser: result.nexusInfo,
+      });
+    }
+
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      isCaMember: true,
+      memberClass: result.memberClass,
+      message: 'CA membership confirmed. Signing you in.',
+      accessToken: result.accessToken,
+      nexusUser: result.nexusInfo,
     });
   }
 

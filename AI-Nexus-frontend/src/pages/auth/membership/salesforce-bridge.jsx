@@ -13,6 +13,11 @@ import {
   isRecognitionMembershipApplicationFlow,
 } from 'src/utils/membership-salesforce-session';
 import { clearMembershipApplicationDraftOnSsoReturn } from 'src/utils/membership-salesforce-auth';
+import {
+  redirectCaMemberToPlatform,
+  tryCompleteCaMemberPlatformLogin,
+} from 'src/utils/membership-application-ca';
+import { readSalesforceFlagsFromCallbackParams } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -36,7 +41,12 @@ export default function MembershipSalesforceBridgePage() {
 
     const accountId = (searchParams.get('salesforceAccountId') || '').trim();
     const socialToken = (searchParams.get('socialAccessToken') || '').trim();
-    const pendingPlatformAccessToken = (searchParams.get('accessToken') || '').trim();
+    const pendingPlatformAccessToken = (
+      searchParams.get('pendingPlatformAccessToken')
+      || searchParams.get('accessToken')
+      || ''
+    ).trim();
+    const callbackSf = readSalesforceFlagsFromCallbackParams(searchParams);
     const isRecognitionApplication = isRecognitionMembershipApplicationFlow(searchParams);
 
     if (!accountId) {
@@ -47,6 +57,7 @@ export default function MembershipSalesforceBridgePage() {
     persistMembershipSalesforceSession({
       accountId,
       socialToken,
+      ...(callbackSf.memberClass ? { memberClass: callbackSf.memberClass } : {}),
       ...(isRecognitionApplication && pendingPlatformAccessToken
         ? { pendingPlatformAccessToken }
         : {}),
@@ -55,8 +66,23 @@ export default function MembershipSalesforceBridgePage() {
     clearMembershipApplicationDraftOnSsoReturn();
 
     if (isRecognitionApplication) {
-      setMessage('Salesforce account linked. Opening membership application…');
-      router.replace(paths.auth.membership.application);
+      setMessage('Checking your ISCA membership status…');
+
+      const runRecognition = async () => {
+        try {
+          const caLogin = await tryCompleteCaMemberPlatformLogin({ socialAccessToken: socialToken });
+          if (caLogin.loggedIn && caLogin.redirectTo) {
+            redirectCaMemberToPlatform(caLogin.redirectTo);
+            return;
+          }
+        } catch {
+          // fall through to application form
+        }
+        setMessage('Salesforce account linked. Opening membership application…');
+        router.replace(paths.auth.membership.application);
+      };
+
+      runRecognition();
       return undefined;
     }
 

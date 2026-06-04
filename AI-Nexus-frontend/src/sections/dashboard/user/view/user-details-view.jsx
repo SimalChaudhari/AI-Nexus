@@ -12,7 +12,7 @@ import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 
-import { formatNullableBoolean } from 'src/utils/format-boolean';
+import { buildSalesforceProfileDetailRows } from 'src/components/user-salesforce-profile-fields';
 
 // ----------------------------------------------------------------------
 
@@ -97,9 +97,13 @@ export function UserDetailsView({ user, loading, error }) {
             />
           ),
         },
-        { label: 'SCAQ candidate', value: formatNullableBoolean(user.isSCAQCandidate) },
-        { label: 'Associate member', value: formatNullableBoolean(user.isAssociateMember) },
       ],
+    },
+    {
+      title: 'ISCA eServices',
+      icon: 'solar:cloud-bold-duotone',
+      fullWidth: true,
+      rows: buildSalesforceProfileDetailRows(user),
     },
   ];
 

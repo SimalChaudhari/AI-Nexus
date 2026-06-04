@@ -1162,12 +1162,16 @@ export class OAuthAuthService {
         || '';
       const lower = String(desc).toLowerCase();
 
-      if (
-        lower.includes('billing')
-        && lower.includes('already')
-        && (lower.includes('exist') || lower.includes('submitted'))
-      ) {
-        console.warn('[Salesforce] createBillingNexus: billing already exists, treating as success.', {
+      const billingAlreadyRecorded =
+        (lower.includes('billing')
+          && lower.includes('already')
+          && (lower.includes('exist') || lower.includes('submitted')))
+        || (lower.includes('billing')
+          && lower.includes('submitted')
+          && (lower.includes('current status') || lower.includes('draft or created')));
+
+      if (billingAlreadyRecorded) {
+        console.warn('[Salesforce] createBillingNexus: billing already recorded, treating as success.', {
           applicationId,
           message: desc,
         });
@@ -1307,6 +1311,51 @@ export class OAuthAuthService {
    *
    * Returns null on failure so callers can treat this as best-effort enrichment.
    */
+  /** True when Salesforce nexus userinfo reports Chartered Accountant (CA) member class. */
+  isSalesforceCaMemberClass(memberClass: string | null | undefined): boolean {
+    const normalized = String(memberClass || '').trim().toUpperCase();
+    return normalized === 'CA' || normalized === 'CHARTERED ACCOUNTANT';
+  }
+
+  /**
+   * Membership application: load nexus userinfo with the eServices social token.
+   * Throws when the token is invalid or Salesforce does not return profile data.
+   */
+  async fetchMembershipNexusUserInfoForApplication(
+    socialAccessToken: string,
+  ): Promise<SalesforceNexusUserInfo> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
+    const nexusInfo = await this.fetchSalesforceNexusUserInfo(token);
+    if (!nexusInfo || typeof nexusInfo !== 'object') {
+      throw new BadRequestException(
+        'Could not load your membership status from eServices. Please try signing in again.',
+      );
+    }
+    return nexusInfo;
+  }
+
+  /**
+   * When memberClass is CA, sync the platform user and return a JWT for establish-session.
+   */
+  async resolveCaMemberLoginFromSocialToken(socialAccessToken: string): Promise<{
+    isCaMember: boolean;
+    memberClass: string | null;
+    nexusInfo: SalesforceNexusUserInfo;
+    accessToken?: string;
+  }> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
+    const nexusInfo = await this.fetchMembershipNexusUserInfoForApplication(token);
+    const memberClass = String(nexusInfo.memberClass || '').trim() || null;
+
+    if (!this.isSalesforceCaMemberClass(memberClass)) {
+      return { isCaMember: false, memberClass, nexusInfo };
+    }
+
+    const idpUserInfo = await this.getUserInfo(token);
+    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    return { isCaMember: true, memberClass, nexusInfo, accessToken };
+  }
+
   async fetchSalesforceNexusUserInfo(accessToken: string): Promise<SalesforceNexusUserInfo | null> {
     const url = this.userinfoNexusUrl;
     if (!url || !accessToken) {

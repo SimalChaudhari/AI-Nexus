@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -24,6 +25,13 @@ import {
   redirectToMembershipApplicationSsoLogin,
   readMembershipApplicationSsoRedirectNotice,
 } from 'src/utils/membership-salesforce-auth';
+import { useAuthContext } from 'src/auth/hooks';
+import {
+  isSalesforceCaMemberClass,
+  redirectCaMemberToPlatform,
+  tryCompleteCaMemberPlatformLogin,
+} from 'src/utils/membership-application-ca';
+import { readSalesforceFlagsFromCallbackParams } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -31,9 +39,12 @@ export default function MembershipApplicationPage() {
   const theme = useTheme();
   const { primary, secondary } = theme.palette;
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [searchParams] = useSearchParams();
+  /** 'checking' = CA gate in progress; 'form' = show application; never flash form for CA members. */
+  const [gatePhase, setGatePhase] = useState('checking');
   const [ssoNotice, setSsoNotice] = useState('');
-  const session = readMembershipSalesforceSession();
+  const [statusNotice, setStatusNotice] = useState('');
+  const { authenticated, user } = useAuthContext();
 
   useEffect(() => {
     const notice = readMembershipApplicationSsoRedirectNotice();
@@ -41,18 +52,87 @@ export default function MembershipApplicationPage() {
       setSsoNotice(notice);
     }
 
+    const billingStatusMessage = searchParams.get('statusMessage');
+    if (billingStatusMessage) {
+      try {
+        setStatusNotice(decodeURIComponent(billingStatusMessage));
+      } catch {
+        setStatusNotice(billingStatusMessage);
+      }
+    }
+
+    const session = readMembershipSalesforceSession();
+    const callbackSf = readSalesforceFlagsFromCallbackParams(searchParams);
+    const sessionMemberClass = session?.memberClass || callbackSf.memberClass;
+    const userMemberClass = user?.salesforce?.memberClass;
+
+    if (
+      authenticated
+      && (isSalesforceCaMemberClass(userMemberClass) || isSalesforceCaMemberClass(sessionMemberClass))
+    ) {
+      redirectCaMemberToPlatform(readMembershipApplicationCourseReturn() || paths.learning);
+      return undefined;
+    }
+
     if (!session?.accountId) {
       redirectToMembershipApplicationSsoLogin({ reason: 'missing_session' });
-      return;
+      return undefined;
     }
 
     if (!session?.socialToken?.trim()) {
       redirectToMembershipApplicationSsoLogin({ reason: 'session_expired' });
-      return;
+      return undefined;
     }
 
-    setReady(true);
-  }, [router, session?.accountId, session?.socialToken]);
+    let cancelled = false;
+    setGatePhase('checking');
+
+    const run = async () => {
+      try {
+        const caLogin = await tryCompleteCaMemberPlatformLogin({
+          socialAccessToken: session.socialToken,
+        });
+        if (cancelled) return;
+        if (caLogin.loggedIn && caLogin.redirectTo) {
+          redirectCaMemberToPlatform(caLogin.redirectTo);
+          return;
+        }
+
+        if (
+          isSalesforceCaMemberClass(caLogin.memberClass)
+          || isSalesforceCaMemberClass(sessionMemberClass)
+        ) {
+          setStatusNotice(
+            caLogin.message
+            || 'Your CA membership was confirmed in eServices, but sign-in could not be completed. Please sign in with eServices again.'
+          );
+          setGatePhase('checking');
+          return;
+        }
+
+        setGatePhase('form');
+      } catch (err) {
+        if (cancelled) return;
+        if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
+          return;
+        }
+        if (isSalesforceCaMemberClass(sessionMemberClass)) {
+          setStatusNotice(
+            'Your CA membership was detected, but we could not verify it with eServices. Please sign in again.'
+          );
+          setGatePhase('checking');
+          return;
+        }
+        setGatePhase('form');
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, router, searchParams, user?.salesforce?.memberClass]);
 
   const handleAllTabsSubmitted = async () => {
     await applyDeferredPlatformLoginAfterApplication();
@@ -75,7 +155,7 @@ export default function MembershipApplicationPage() {
     }
   };
 
-  if (!ready) {
+  if (gatePhase !== 'form') {
     return (
       <Box
         sx={{
@@ -90,11 +170,16 @@ export default function MembershipApplicationPage() {
           )} 28%, ${theme.palette.background.default} 55%)`,
         }}
       >
-        <Stack alignItems="center" spacing={2}>
+        <Stack alignItems="center" spacing={2} sx={{ px: 2, maxWidth: 420 }}>
           <LinearProgress sx={{ width: 240, borderRadius: 1 }} />
-          <Typography variant="body2" color="text.secondary">
-            Loading membership application…
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            Checking your ISCA membership status…
           </Typography>
+          {statusNotice && (
+            <Alert severity="warning" sx={{ width: 1 }}>
+              {statusNotice}
+            </Alert>
+          )}
         </Stack>
       </Box>
     );
@@ -173,7 +258,7 @@ export default function MembershipApplicationPage() {
                   application
                 </Box>
               </Typography>
-              {session?.accountId && (
+              {readMembershipSalesforceSession()?.accountId && (
                 <Box
                   component="span"
                   sx={{
@@ -189,7 +274,7 @@ export default function MembershipApplicationPage() {
                 >
                   <Iconify icon="solar:verified-check-bold" width={18} sx={{ color: 'success.main' }} />
                   <Typography component="span" variant="caption" sx={{ fontWeight: 700, color: 'success.dark' }}>
-                    Salesforce linked · …{session.accountId.slice(-6)}
+                    Salesforce linked · …{readMembershipSalesforceSession().accountId.slice(-6)}
                   </Typography>
                 </Box>
               )}
@@ -240,6 +325,15 @@ export default function MembershipApplicationPage() {
         {ssoNotice && (
           <Alert severity="info" sx={{ mx: { xs: 2, md: 4 }, mt: 2 }} onClose={() => setSsoNotice('')}>
             {ssoNotice}
+          </Alert>
+        )}
+        {statusNotice && (
+          <Alert
+            severity={searchParams.get('billingComplete') === '1' ? 'success' : 'info'}
+            sx={{ mx: { xs: 2, md: 4 }, mt: 2 }}
+            onClose={() => setStatusNotice('')}
+          >
+            {statusNotice}
           </Alert>
         )}
         <MembershipApplicationForm onAllTabsSubmitted={handleAllTabsSubmitted} fullPage />

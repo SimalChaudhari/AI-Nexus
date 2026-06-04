@@ -37,21 +37,46 @@ import {
   isRecognitionMembershipApplicationFlow,
   persistMembershipSalesforceSession,
   clearMembershipApplicationPending,
+  readMembershipApplicationCourseReturn,
 } from 'src/utils/membership-salesforce-session';
+import {
+  redirectCaMemberToPlatform,
+  tryCompleteCaMemberPlatformLogin,
+} from 'src/utils/membership-application-ca';
 
 // ----------------------------------------------------------------------
 
-/** Recognition pathway: save Salesforce credentials only; stay on application tab (no website login yet). */
-function finishRecognitionApplicationTab(router, searchParams, payload) {
+/** Recognition pathway: save Salesforce session; CA members sign in — others go to application form. */
+async function finishRecognitionApplicationTab(router, searchParams, payload) {
   const fromQuery = readSalesforceFlagsFromCallbackParams(searchParams);
   const accountId = (payload?.accountId || fromQuery.accountId || '').trim();
   if (!accountId) return false;
 
+  const socialToken = String(
+    payload?.socialToken || searchParams.get('socialAccessToken') || ''
+  ).trim();
+
   persistMembershipSalesforceSession({
     accountId,
-    socialToken: String(payload?.socialToken || searchParams.get('socialAccessToken') || '').trim(),
+    socialToken,
+    memberClass: fromQuery.memberClass || undefined,
     pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
   });
+
+  if (socialToken) {
+    try {
+      const caLogin = await tryCompleteCaMemberPlatformLogin({
+        socialAccessToken: socialToken,
+        redirectTo: readMembershipApplicationCourseReturn() || paths.learning,
+      });
+      if (caLogin.loggedIn && caLogin.redirectTo) {
+        redirectCaMemberToPlatform(caLogin.redirectTo);
+        return true;
+      }
+    } catch {
+      // continue to application form when verification fails
+    }
+  }
 
   router.replace(paths.auth.membership.application);
   return true;
@@ -116,7 +141,7 @@ async function handleNonScaqCandidateAfterSso(
   }
 
   if (recognitionApplicationFlow) {
-    return finishRecognitionApplicationTab(router, searchParams, payload);
+    return await finishRecognitionApplicationTab(router, searchParams, payload);
   }
 
   await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile);

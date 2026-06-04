@@ -22,7 +22,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 
 import { syncApiUserToSession } from 'src/auth/utils/normalize-user-session';
 import { useGetUser, useGetUserProfile } from 'src/actions/user';
-import { formatNullableBoolean } from 'src/utils/format-boolean';
+import { UserSalesforceProfileCard } from 'src/components/user-salesforce-profile-fields';
 import { UserNewEditForm } from '../user-new-edit-form';
 
 // ----------------------------------------------------------------------
@@ -220,23 +220,11 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
                 : '-'}
             </Typography>
           </Grid>
-          <Grid xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              SCAQ candidate
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {formatNullableBoolean(user.isSCAQCandidate)}
-            </Typography>
-          </Grid>
-          <Grid xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Associate member
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {formatNullableBoolean(user.isAssociateMember)}
-            </Typography>
-          </Grid>
         </Grid>
+
+        <Box sx={{ mt: 3 }}>
+          <UserSalesforceProfileCard user={user} layout="wide" />
+        </Box>
       </Card>
     </DashboardContent>
   );

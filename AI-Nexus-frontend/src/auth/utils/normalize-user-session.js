@@ -34,6 +34,11 @@ export function normalizeUserForSession(user) {
     contactNumber: user.contactNumber ?? user.phoneNumber ?? '',
     isSCAQCandidate: user.isSCAQCandidate ?? null,
     isAssociateMember: user.isAssociateMember ?? null,
+    salesforceAccountId: user.salesforceAccountId ?? null,
+    salesforceAccountType: user.salesforceAccountType ?? null,
+    salesforceMemberClass: user.salesforceMemberClass ?? null,
+    salesforceUsername: user.salesforceUsername ?? null,
+    salesforceSyncedAt: user.salesforceSyncedAt ?? null,
   };
 }
 

@@ -28,7 +28,7 @@ export function useMembershipApplicationPaymentReturn() {
 
     const run = async () => {
       try {
-        const { redirectTo } = await completeMembershipApplicationPaymentReturn({
+        const result = await completeMembershipApplicationPaymentReturn({
           sessionId: parsed.sessionId,
           applicationId: parsed.applicationId,
         });
@@ -38,7 +38,9 @@ export function useMembershipApplicationPaymentReturn() {
         )}`;
         window.history.replaceState({}, '', cleanPath);
 
-        router.replace(redirectTo || paths.auth.oauth.start);
+        if (!result?.navigated) {
+          router.replace(result?.redirectTo || paths.learning);
+        }
       } catch (err) {
         if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
           return;

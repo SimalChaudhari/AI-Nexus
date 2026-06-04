@@ -119,3 +119,19 @@ export async function submitMembershipApplicationBilling(payload) {
     return res.data;
   });
 }
+
+/** Load Salesforce userinfonexus for membership application (memberClass, isCaMember). */
+export async function fetchMembershipApplicationUserInfo(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/user-info', payload);
+    return res.data;
+  });
+}
+
+/** When memberClass is CA, sync user and return platform access token. */
+export async function loginMembershipApplicationIfCa(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/ca-login', payload);
+    return res.data;
+  });
+}

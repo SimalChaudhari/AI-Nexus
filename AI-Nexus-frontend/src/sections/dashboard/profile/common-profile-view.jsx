@@ -23,7 +23,8 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { MainContent } from 'src/layouts/main';
 
 import { fDate } from 'src/utils/format-time';
-import { formatNullableBoolean } from 'src/utils/format-boolean';
+import { ProfileSectionCard } from 'src/components/profile-section-card';
+import { UserSalesforceProfileCard } from 'src/components/user-salesforce-profile-fields';
 import { syncApiUserToSession } from 'src/auth/utils/normalize-user-session';
 import { useGetUserProfile, useGetAdminProfile } from 'src/actions/user';
 import { UserNewEditForm } from '../user/user-new-edit-form';
@@ -181,7 +182,7 @@ export function CommonProfileView() {
             My profile
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 900 }}>
-            Your account overview. Edit details anytime, or open Persona & learning to tune course recommendations.
+            Your account overview, platform introduction, and membership details.
           </Typography>
         </Box>
 
@@ -298,187 +299,204 @@ export function CommonProfileView() {
 
             <Divider sx={{ my: { xs: 2.5, sm: 3 } }} />
 
-            <Grid container spacing={{ xs: 2.5, md: 3 }}>
-              <Grid xs={12} md={4}>
-                <Stack spacing={2.5}>
-                  <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1, color: 'text.secondary' }}>
-                    Contact
+            <Grid container spacing={2.5} alignItems="stretch">
+              <Grid xs={12}>
+                <Box
+                  sx={{
+                    position: 'relative',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    p: { xs: 2.5, sm: 3 },
+                    bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1),
+                    border: (t) => `1px solid ${alpha(t.palette.primary.main, 0.22)}`,
+                  }}
+                >
+                  <Typography
+                    variant="h2"
+                    sx={{
+                      position: 'absolute',
+                      right: 16,
+                      top: 8,
+                      fontWeight: 900,
+                      opacity: 0.07,
+                      lineHeight: 1,
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                    }}
+                  >
+                    Welcome
                   </Typography>
 
-                  <Stack spacing={1.75}>
-                    <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                      <Iconify icon="solar:letter-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                            Email
-                          </Typography>
-                          {showEmailVerified && (
-                            <Box
-                              component="span"
-                              aria-label="Verified"
-                              title="Verified"
-                              sx={{ display: 'inline-flex', alignItems: 'center', lineHeight: 0, color: 'success.main' }}
-                            >
-                              <Iconify icon="solar:verified-check-bold" width={18} />
-                            </Box>
-                          )}
-                        </Stack>
-                        <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
-                          {user.email}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                      <Iconify icon="solar:phone-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                            Contact number
-                          </Typography>
-                          {showContactVerified && (
-                            <Box
-                              component="span"
-                              aria-label="Verified"
-                              title="Verified"
-                              sx={{ display: 'inline-flex', alignItems: 'center', lineHeight: 0, color: 'success.main' }}
-                            >
-                              <Iconify icon="solar:verified-check-bold" width={18} />
-                            </Box>
-                          )}
-                        </Stack>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {user.contactNumber || user.phoneNumber || '—'}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                      <Iconify icon="solar:diploma-verified-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 0.25 }}>
-                          SCAQ candidate
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {formatNullableBoolean(user.isSCAQCandidate)}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                      <Iconify icon="solar:users-group-rounded-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 0.25 }}>
-                          Associate member
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {formatNullableBoolean(user.isAssociateMember)}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  </Stack>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    spacing={2.5}
+                    sx={{ position: 'relative' }}
+                  >
+                    <Box
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 1.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        bgcolor: alpha(theme.palette.primary.main, 0.2),
+                      }}
+                    >
+                      <Iconify icon="solar:stars-bold-duotone" width={32} sx={{ color: 'primary.main' }} />
+                    </Box>
 
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1, color: 'primary.dark' }}>
+                        Introduction
+                      </Typography>
+                      <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.25, mt: 0.5 }}>
+                        Welcome to {CONFIG.site.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+                        Your hub for AI-powered learning, community, and personalized experiences. Update your profile
+                        below, open Persona to tune preferences, and view ISCA membership when synced from eServices.
+                      </Typography>
+                    </Box>
+
+                    {!isAdmin && (
+                      <Button
+                        component={RouterLink}
+                        href={paths.home}
+                        variant="contained"
+                        color="primary"
+                        size="medium"
+                        endIcon={<Iconify icon="solar:arrow-right-linear" width={18} />}
+                        sx={{ fontWeight: 700, flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'center' } }}
+                      >
+                        Explore platform
+                      </Button>
+                    )}
+                  </Stack>
+                </Box>
+              </Grid>
+
+              <Grid xs={12} md={6}>
+                <ProfileSectionCard title="Contact" subtitle="Email and phone">
+                  <Grid container spacing={2} sx={{ flex: 1 }}>
+                    <Grid xs={12}>
+                      <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                        <Iconify icon="solar:letter-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                              Email
+                            </Typography>
+                            {showEmailVerified && (
+                              <Box
+                                component="span"
+                                aria-label="Verified"
+                                title="Verified"
+                                sx={{ display: 'inline-flex', lineHeight: 0, color: 'success.main' }}
+                              >
+                                <Iconify icon="solar:verified-check-bold" width={16} />
+                              </Box>
+                            )}
+                          </Stack>
+                          <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                            {user.email}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Grid>
+                    <Grid xs={12}>
+                      <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                        <Iconify icon="solar:phone-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                              Contact number
+                            </Typography>
+                            {showContactVerified && (
+                              <Box
+                                component="span"
+                                aria-label="Verified"
+                                title="Verified"
+                                sx={{ display: 'inline-flex', lineHeight: 0, color: 'success.main' }}
+                              >
+                                <Iconify icon="solar:verified-check-bold" width={16} />
+                              </Box>
+                            )}
+                          </Stack>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {user.contactNumber || user.phoneNumber || '—'}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Grid>
+                  </Grid>
                   <Button
                     fullWidth
                     component={RouterLink}
                     href={paths.contact}
                     variant="contained"
                     color="secondary"
-                    size="large"
-                    startIcon={<Iconify icon="solar:chat-round-dots-bold" width={22} />}
-                    sx={{ borderRadius: 2, py: 1.25, fontWeight: 700 }}
+                    size="medium"
+                    startIcon={<Iconify icon="solar:chat-round-dots-bold" width={20} />}
+                    sx={{ borderRadius: 2, mt: 2, fontWeight: 700 }}
                   >
                     Contact us
                   </Button>
-                </Stack>
+                </ProfileSectionCard>
               </Grid>
 
-              <Grid xs={12} md={8}>
-                <Stack spacing={2.5}>
-                  <Grid container spacing={2}>
-                    <Grid xs={12} md={8}>
+              <Grid xs={12} md={6}>
+                <Box
+                  component={!isAdmin ? RouterLink : 'div'}
+                  href={!isAdmin ? paths.profile.persona : undefined}
+                  sx={{
+                    height: 1,
+                    display: 'block',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    transition: (t) => t.transitions.create(['transform', 'box-shadow']),
+                    ...(!isAdmin && {
+                      '&:hover': { transform: 'translateY(-2px)', boxShadow: theme.shadows[4] },
+                    }),
+                  }}
+                >
+                  <ProfileSectionCard title="Persona" subtitle="Learning preferences">
+                    <Stack spacing={2} sx={{ flex: 1 }}>
                       <Box
                         sx={{
-                          position: 'relative',
-                          borderRadius: 2,
-                          overflow: 'hidden',
-                          minHeight: { xs: 200, sm: 220 },
-                          p: { xs: 2.5, sm: 3 },
-                          bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1),
-                          border: (t) => `1px solid ${alpha(t.palette.primary.main, 0.2)}`,
+                          width: 48,
+                          height: 48,
+                          borderRadius: 1.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: alpha(theme.palette.secondary.main, 0.2),
                         }}
                       >
-                        <Typography
-                          variant="h2"
-                          sx={{
-                            position: 'absolute',
-                            right: 16,
-                            top: 8,
-                            fontWeight: 900,
-                            opacity: 0.08,
-                            lineHeight: 1,
-                            pointerEvents: 'none',
-                            userSelect: 'none',
-                          }}
-                        >
-                          Introduction
-                        </Typography>
-                        <Stack spacing={1.5} sx={{ position: 'relative' }}>
-                          <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                            Welcome to {CONFIG.site.name}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 520 }}>
-                            This is your public-facing profile shell. Keep your details up to date, then use Persona & learning so we can
-                            tailor courses and content to how you work best.
-                          </Typography>
+                        <Iconify icon="solar:widget-4-bold-duotone" width={28} sx={{ color: 'secondary.main' }} />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Goals, tone, and how the platform adapts to you.
+                      </Typography>
+                      {!isAdmin ? (
+                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ fontWeight: 700, color: 'secondary.dark', mt: 'auto' }}>
+                          <span>Open Persona</span>
+                          <Iconify icon="solar:arrow-right-linear" width={18} />
                         </Stack>
-                      </Box>
-                    </Grid>
-                    <Grid xs={12} md={4}>
-                      <Box
-                        component={!isAdmin ? RouterLink : 'div'}
-                        href={!isAdmin ? paths.profile.persona : undefined}
-                        sx={{
-                          display: 'block',
-                          height: 1,
-                          minHeight: { xs: 160, sm: 220 },
-                          p: 2.5,
-                          borderRadius: 2,
-                          textDecoration: 'none',
-                          color: 'inherit',
-                          bgcolor: alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.2 : 0.12),
-                          border: (t) => `1px solid ${alpha(t.palette.secondary.main, 0.28)}`,
-                          transition: (t) => t.transitions.create(['transform', 'box-shadow']),
-                          ...(!isAdmin && {
-                            '&:hover': {
-                              transform: 'translateY(-2px)',
-                              boxShadow: theme.shadows[4],
-                            },
-                          }),
-                        }}
-                      >
-                        <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1, color: 'secondary.darker' }}>
-                          Persona
+                      ) : (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 'auto' }}>
+                          Admin accounts use the dashboard tools.
                         </Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-                          <Iconify icon="solar:widget-4-bold-duotone" width={56} sx={{ color: 'secondary.main', opacity: 0.9 }} />
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                          Goals, tone, and learning preferences.
-                        </Typography>
-                        {!isAdmin && (
-                          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ fontWeight: 700, color: 'secondary.dark' }}>
-                            <span>Open</span>
-                            <Iconify icon="solar:arrow-right-linear" width={18} />
-                          </Stack>
-                        )}
-                        {isAdmin && (
-                          <Typography variant="caption" color="text.secondary">
-                            Admin accounts use the dashboard tools.
-                          </Typography>
-                        )}
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </Stack>
+                      )}
+                    </Stack>
+                  </ProfileSectionCard>
+                </Box>
+              </Grid>
+
+              <Grid xs={12}>
+                <UserSalesforceProfileCard user={user} layout="wide" />
               </Grid>
             </Grid>
           </Box>

@@ -304,7 +304,19 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
     if (openBilling || paymentCanceled) {
       const billingIndex = TABS.findIndex((t) => t.id === 'billing');
-      if (billingIndex >= 0) setActiveTab(billingIndex);
+      if (billingIndex >= 0) {
+        setActiveTab((current) => {
+          const draftNow = loadDraft();
+          const firstOpen = TABS.findIndex((t) => {
+            if (t.id === 'qualification') {
+              return !isQualificationTabComplete(draftNow.submittedTabs);
+            }
+            return !draftNow.submittedTabs?.[t.id];
+          });
+          const maxOpen = firstOpen === -1 ? TABS.length - 1 : firstOpen;
+          return billingIndex <= maxOpen ? billingIndex : current;
+        });
+      }
     }
 
     const paymentError = params.get('paymentError');
@@ -329,12 +341,58 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     }
   }, []);
 
-  const completedCount = useMemo(
-    () => TABS.filter((t) => draft.submittedTabs[t.id]).length,
+  const isTabSubmitted = useCallback(
+    (tabId) => {
+      if (tabId === 'qualification') {
+        return isQualificationTabComplete(draft.submittedTabs);
+      }
+      return Boolean(draft.submittedTabs[tabId]);
+    },
     [draft.submittedTabs]
   );
 
+  const completedCount = useMemo(
+    () => TABS.filter((t) => isTabSubmitted(t.id)).length,
+    [isTabSubmitted]
+  );
+
   const progressValue = Math.round((completedCount / TABS.length) * 100);
+
+  /** First tab that still needs a successful submit; all tabs before it must be done first. */
+  const firstIncompleteTabIndex = useMemo(() => {
+    const idx = TABS.findIndex((t) => !isTabSubmitted(t.id));
+    return idx === -1 ? TABS.length : idx;
+  }, [isTabSubmitted]);
+
+  const isTabAccessible = useCallback(
+    (index) => {
+      if (index < 0 || index >= TABS.length) return false;
+      const tabId = TABS[index].id;
+      if (isTabSubmitted(tabId)) return true;
+      return index === firstIncompleteTabIndex;
+    },
+    [firstIncompleteTabIndex, isTabSubmitted]
+  );
+
+  const handleTabChange = useCallback(
+    (_, newIndex) => {
+      if (isTabAccessible(newIndex)) {
+        setActiveTab(newIndex);
+        return;
+      }
+      setTabMessage(
+        `Submit "${TABS[firstIncompleteTabIndex]?.label || 'the current section'}" before opening another tab.`
+      );
+      setTabMessageSeverity('warning');
+    },
+    [firstIncompleteTabIndex, isTabAccessible]
+  );
+
+  useEffect(() => {
+    if (!isTabAccessible(activeTab)) {
+      setActiveTab(firstIncompleteTabIndex);
+    }
+  }, [activeTab, firstIncompleteTabIndex, isTabAccessible]);
 
   const resolveApplicationId = useCallback(() => {
     const session = readMembershipSalesforceSession();
@@ -663,9 +721,16 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         }
         return Boolean(nextSubmitted[t.id]);
       });
-      if (allDone) {
-        queueMicrotask(() => onAllTabsSubmitted?.());
-      }
+      queueMicrotask(() => {
+        if (allDone) {
+          onAllTabsSubmitted?.();
+        } else if (isQualificationTabComplete(nextSubmitted)) {
+          const qualIndex = TABS.findIndex((t) => t.id === 'qualification');
+          if (qualIndex >= 0 && qualIndex < TABS.length - 1) {
+            setActiveTab(qualIndex + 1);
+          }
+        }
+      });
 
       return next;
     });
@@ -1752,23 +1817,29 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
       <Tabs
         value={activeTab}
-        onChange={(_, v) => setActiveTab(v)}
+        onChange={handleTabChange}
         variant={fullPage ? 'scrollable' : 'scrollable'}
         scrollButtons={fullPage ? 'auto' : 'auto'}
         allowScrollButtonsMobile
         sx={tabsSx}
       >
         {TABS.map((tab, index) => {
-          const done = Boolean(draft.submittedTabs[tab.id]);
+          const done = isTabSubmitted(tab.id);
+          const accessible = isTabAccessible(index);
+          const isCurrent = index === firstIncompleteTabIndex && !done;
           return (
             <Tab
               key={tab.id}
+              disabled={!accessible}
               icon={
                 fullPage ? (
                   <Iconify
                     icon={done ? 'solar:check-circle-bold' : tab.icon}
                     width={22}
-                    sx={{ color: done ? 'success.main' : 'text.secondary', mb: -0.5 }}
+                    sx={{
+                      color: done ? 'success.main' : accessible ? 'text.secondary' : 'action.disabled',
+                      mb: -0.5,
+                    }}
                   />
                 ) : undefined
               }
@@ -1776,9 +1847,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label={done && !fullPage ? `${tab.label} ✓` : tab.label}
               sx={{
                 textTransform: 'none',
-                fontWeight: 600,
+                fontWeight: isCurrent ? 700 : 600,
                 minHeight: fullPage ? 56 : 48,
-                color: done ? 'success.dark' : undefined,
+                color: done ? 'success.dark' : accessible ? undefined : 'text.disabled',
+                opacity: accessible ? 1 : 0.55,
               }}
             />
           );
@@ -1882,8 +1954,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         <Button
           variant="outlined"
           color="secondary"
-          disabled={activeTab === 0}
-          onClick={() => setActiveTab((v) => Math.max(0, v - 1))}
+          disabled={activeTab === 0 || !isTabAccessible(activeTab - 1)}
+          onClick={() => {
+            const prev = activeTab - 1;
+            if (isTabAccessible(prev)) setActiveTab(prev);
+          }}
           startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
           sx={{ textTransform: 'none', fontWeight: 600, borderWidth: 1.5 }}
         >
@@ -1895,7 +1970,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             <Button
               variant="text"
               color="primary"
-              onClick={() => setActiveTab((v) => Math.min(TABS.length - 1, v + 1))}
+              disabled={!isTabAccessible(activeTab + 1)}
+              onClick={() => {
+                const next = activeTab + 1;
+                if (isTabAccessible(next)) setActiveTab(next);
+              }}
               endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
               sx={{ textTransform: 'none', fontWeight: 600 }}
             >
