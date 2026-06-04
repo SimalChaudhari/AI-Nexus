@@ -717,7 +717,9 @@ export const courseService = {
     Array.from(files).forEach((file, i) => {
       formData.append('images', file);
     });
-    const response = await axios.post('/courses/modules/sections/upload-images', formData);
+    const response = await axios.post('/courses/modules/sections/upload-images', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     const urls = response.data?.data?.urls || response.data?.urls || [];
     return urls.map((url) => resolveAssetUrl(url));
   },
@@ -732,31 +734,16 @@ export const courseService = {
     if (!file) return '';
     const formData = new FormData();
     formData.append('video', file);
-    try {
-      const response = await axios.post('/courses/modules/sections/upload-video', formData, {
-        onUploadProgress: (event) => {
-          if (!event?.total) return;
-          const percent = Math.round((event.loaded * 100) / event.total);
-          if (onProgress) onProgress(percent);
-        },
-      });
-      const url = response.data?.data?.url || response.data?.url || '';
-      return resolveAssetUrl(url);
-    } catch (error) {
-      if (error?.response?.status === 413) {
-        throw new Error(
-          'Video file is too large for the server upload limit (413). Ask ops to raise nginx client_max_body_size on the :5000 API server block.'
-        );
-      }
-      if (!error?.response) {
-        const uploadError = new Error(
-          'Video upload failed (network or CORS). Ensure VITE_SERVER_URL=https://ainexus.isca.org.sg:5000/api and FRONTEND_URLS includes https://ainexus.isca.org.sg on the backend.'
-        );
-        uploadError.cause = error;
-        throw uploadError;
-      }
-      throw error;
-    }
+    const response = await axios.post('/courses/modules/sections/upload-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!event?.total) return;
+        const percent = Math.round((event.loaded * 100) / event.total);
+        if (onProgress) onProgress(percent);
+      },
+    });
+    const url = response.data?.data?.url || response.data?.url || '';
+    return resolveAssetUrl(url);
   },
 
   async uploadSectionFiles(files) {
@@ -765,7 +752,9 @@ export const courseService = {
     Array.from(files).forEach((file) => {
       formData.append('files', file);
     });
-    const response = await axios.post('/courses/modules/sections/upload-files', formData);
+    const response = await axios.post('/courses/modules/sections/upload-files', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     const urls = response.data?.data?.urls || response.data?.urls || [];
     return urls.map((url) => resolveAssetUrl(url));
   },
@@ -776,7 +765,9 @@ export const courseService = {
     Array.from(files).forEach((file) => {
       formData.append('files', file);
     });
-    const response = await axios.post('/courses/modules/sections/upload-learning-materials', formData);
+    const response = await axios.post('/courses/modules/sections/upload-learning-materials', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     const urls = response.data?.data?.urls || response.data?.urls || [];
     return urls.map((url) => resolveAssetUrl(url));
   },

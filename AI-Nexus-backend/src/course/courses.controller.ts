@@ -57,7 +57,6 @@ import {
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/paginated-list.util';
-import { multerMemoryOptions, uploadMaxBytesFromMbEnv } from '../common/upload-limits';
 import { randomUUID } from 'crypto';
 import { SpeakerService } from '../speaker/speaker.service';
 import { SpeakerEntity } from '../speaker/speaker.entity';
@@ -112,10 +111,8 @@ const parseEnvPositiveNumber = (value: string | undefined, fallback: number): nu
 
 const IMAGE_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
-const SECTION_VIDEO_LIMIT_BYTES = uploadMaxBytesFromMbEnv(
-    process.env.UPLOAD_SECTION_VIDEO_MAX_MB,
-    500,
-);
+const SECTION_VIDEO_LIMIT_BYTES =
+    parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 20) * 1024 * 1024 * 1024;
 
 const parseOptionalPositiveInteger = (value?: string): number | undefined => {
     if (value === undefined || value === null || value === '') return undefined;
@@ -1373,7 +1370,8 @@ export class CourseController {
     @ApiOperation({ summary: 'Upload single course section video' })
     @UseInterceptors(
         FileInterceptor('video', {
-            ...multerMemoryOptions(SECTION_VIDEO_LIMIT_BYTES),
+            storage: memoryStorage(),
+            limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES },
             fileFilter: (_req, file, cb) => {
                 const allowed = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);
                 cb(null, allowed);

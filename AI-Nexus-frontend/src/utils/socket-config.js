@@ -1,5 +1,3 @@
-import { resolveServerOrigin } from 'src/utils/server-url';
-
 /**
  * Socket.IO client config.
  * Used by useAnnouncementsListSocket, useAiForumListSocket, useAnnouncementCommentsSocket, useAiForumCommentsSocket.
@@ -15,7 +13,8 @@ import { resolveServerOrigin } from 'src/utils/server-url';
  * @returns {string}
  */
 export function getSocketUrl() {
-  return resolveServerOrigin() || 'http://localhost:3000';
+  const apiUrl = import.meta.env.VITE_SERVER_URL || '';
+  return apiUrl.replace(/\/api\/?$/, '') || 'http://localhost:3000';
 }
 
 /**
@@ -28,4 +27,3 @@ export function isSocketEnabled() {
   if (v === undefined || v === '') return true;
   return v === 'true' || v === '1';
 }
-

@@ -13,8 +13,6 @@ import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { enableAppCors } from './cors.config';
-import { BODY_PARSER_LIMIT } from './common/upload-limits';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -70,7 +68,7 @@ async function bootstrap() {
   try {
     const nodeEnv = process.env.NODE_ENV;
     const isDevelopment = nodeEnv === 'development';
-    const port = Number(process.env.PORT) || 5000;
+    const port = Number(process.env.PORT) || (isDevelopment ? 5000 : 3000);
     const host = process.env.APP_HOST?.trim() || 'localhost';
     const bindHost = process.env.APP_BIND_HOST?.trim() || (isDevelopment ? 'localhost' : '0.0.0.0');
     const sslResolution = getSslResolution();
@@ -112,7 +110,78 @@ async function bootstrap() {
 
     app.use(cookieParser());
 
-    enableAppCors(app, bootstrapLogger);
+    // Enable CORS — include Flowise browser origin (often different port than main SPA)
+    const configuredOrigins = (process.env.FRONTEND_URLS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    const extraCorsOrigins = (process.env.CORS_EXTRA_ORIGINS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    const fallbackOrigin = process.env.FRONTEND_URL?.trim();
+    const prodDefaultOrigin = nodeEnv === 'production' ? 'https://ainexus.isca.org.sg' : '';
+    const baseAllowedOrigins = configuredOrigins.length
+      ? configuredOrigins
+      : [fallbackOrigin || prodDefaultOrigin].filter(Boolean);
+
+    const originsFromFlowiseEnv: string[] = [];
+    for (const key of ['FLOWISE_URL', 'VITE_FLOWISE_URL', 'FLOWISE_INTERNAL_URL'] as const) {
+      const raw = process.env[key]?.trim();
+      if (!raw) continue;
+      try {
+        originsFromFlowiseEnv.push(new URL(raw).origin);
+      } catch {
+        // ignore invalid URL
+      }
+    }
+
+    const devLocalOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3030',
+      'http://localhost:8080',
+      'http://localhost:5173',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:3002',
+      'http://127.0.0.1:3030',
+      'http://127.0.0.1:8080',
+      'http://127.0.0.1:5173',
+    ];
+    const configuredFlowisePort = (process.env.FLOWISE_PORT || '3002').trim();
+    const productionFlowiseOrigins = nodeEnv === 'production'
+      ? [
+          `https://${host}:${configuredFlowisePort}`,
+          `http://${host}:${configuredFlowisePort}`,
+        ]
+      : [];
+    const allowedOrigins = Array.from(
+      new Set([
+        ...baseAllowedOrigins,
+        ...extraCorsOrigins,
+        ...originsFromFlowiseEnv,
+        ...productionFlowiseOrigins,
+        ...(nodeEnv === 'production' && prodDefaultOrigin ? [prodDefaultOrigin] : []),
+        ...(isDevelopment ? devLocalOrigins : []),
+      ]),
+    );
+    const allowAnyOrigin = allowedOrigins.length === 0;
+
+    app.enableCors({
+      origin: (origin, callback) => {
+        if (allowAnyOrigin || !origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        bootstrapLogger.warn(`CORS denied for origin: ${origin} (allowed count=${allowedOrigins.length})`);
+        callback(null, false);
+      },
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cookie'],
+      credentials: !allowAnyOrigin,
+    });
 
     // Serve static files from public/uploads directory
     app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
@@ -120,7 +189,7 @@ async function bootstrap() {
     // Webhook route needs raw body for signature verification; skip json parser for it
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (req.path === '/api/payments/webhook') return next();
-      express.json({ limit: BODY_PARSER_LIMIT })(req, res, next);
+      express.json({ limit: '50mb' })(req, res, next);
     });
     app.use(
       '/api/payments/webhook',
@@ -138,7 +207,7 @@ async function bootstrap() {
       },
     );
 
-    app.use(express.urlencoded({ limit: BODY_PARSER_LIMIT, extended: true }));
+    app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
     // Root route handler (before app.listen) - returns health check
     const httpAdapter = app.getHttpAdapter();
