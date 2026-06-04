@@ -1,18 +1,6 @@
-import { CONFIG } from 'src/config-global';
+import { resolveServerOrigin } from 'src/utils/server-url';
 
 const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
-
-function getServerOrigin() {
-  const serverUrl = (CONFIG.site.serverUrl || '').trim();
-  if (!serverUrl) return '';
-
-  try {
-    const parsed = new URL(serverUrl);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return '';
-  }
-}
 
 export function resolveAssetUrl(value) {
   if (!value || typeof value !== 'string') return value || '';
@@ -25,7 +13,7 @@ export function resolveAssetUrl(value) {
     return value;
   }
 
-  const origin = getServerOrigin();
+  const origin = resolveServerOrigin();
   if (!origin) return value;
 
   if (value.startsWith('/uploads/')) {

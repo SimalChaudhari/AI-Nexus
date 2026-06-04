@@ -3,6 +3,7 @@ import { AppModule } from '../src/app.module';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { Request, Response } from 'express';
+import { enableAppCors } from '../src/cors.config';
 
 let cachedApp: express.Express;
 
@@ -14,12 +15,7 @@ async function bootstrap(): Promise<express.Express> {
     // Set global prefix for all routes
     app.setGlobalPrefix('api');
     
-    // Enable CORS
-    app.enableCors({
-      origin: process.env.FRONTEND_URL || '*',
-      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-      credentials: true,
-    });
+    enableAppCors(app);
 
     // Serve static files from assets directory
     const { join } = require('path');
