@@ -1,8 +1,8 @@
 import {
   formatMaxUploadLabel,
-  getCeoVideoMaxBytes,
-  getProxySafeMaxBytes,
-  getSectionVideoMaxBytes,
+  getCeoVideoTargetMaxBytes,
+  getSectionVideoTargetMaxBytes,
+  getVideoCompressAboveBytes,
 } from './upload-proxy-limits';
 
 function fitDimensions(width, height, maxWidth, maxHeight) {
@@ -148,17 +148,18 @@ function transcodeVideoToBlob(file, { maxWidth, maxHeight, mimeType, bitrate }) 
  */
 export async function compressVideoFileForUpload(
   file,
-  { maxBytes = getProxySafeMaxBytes(), maxWidth = 1280, maxHeight = 720 } = {}
+  { maxBytes, maxWidth = 1280, maxHeight = 720, force = false } = {}
 ) {
   if (!file || typeof File === 'undefined') return file;
   const type = String(file.type || '').toLowerCase();
   if (!type.startsWith('video/')) return file;
-  if (file.size <= maxBytes) return file;
+  const targetBytes = maxBytes ?? getVideoCompressAboveBytes();
+  if (!force && file.size <= targetBytes) return file;
 
   const mimeType = getPreferredVideoMimeType();
-  if (!mimeType) throw buildTooLargeError(maxBytes);
+  if (!mimeType) throw buildTooLargeError(targetBytes);
 
-  const bitrate = pickInitialBitrate(file.size, maxBytes);
+  const bitrate = pickInitialBitrate(file.size, targetBytes);
   const attempts = [
     { maxWidth, maxHeight, bitrate },
     { maxWidth: 960, maxHeight: 540, bitrate: Math.min(bitrate, 750_000) },
@@ -168,7 +169,7 @@ export async function compressVideoFileForUpload(
   for (const attempt of attempts) {
     try {
       const blob = await transcodeVideoToBlob(file, { ...attempt, mimeType });
-      if (blob?.size && blob.size <= maxBytes) {
+      if (blob?.size && blob.size <= targetBytes) {
         return blobToFile(blob, file.name, mimeType);
       }
     } catch {
@@ -176,13 +177,23 @@ export async function compressVideoFileForUpload(
     }
   }
 
-  throw buildTooLargeError(maxBytes);
+  throw buildTooLargeError(targetBytes);
+}
+
+function shouldCompressVideo(file, aboveBytes) {
+  return file.size > aboveBytes;
 }
 
 export async function compressCeoLaunchVideoForUpload(file) {
-  return compressVideoFileForUpload(file, { maxBytes: getCeoVideoMaxBytes() });
+  const above = getVideoCompressAboveBytes();
+  const target = getCeoVideoTargetMaxBytes();
+  if (!shouldCompressVideo(file, above)) return file;
+  return compressVideoFileForUpload(file, { maxBytes: target, force: true });
 }
 
 export async function compressSectionVideoForUpload(file) {
-  return compressVideoFileForUpload(file, { maxBytes: getSectionVideoMaxBytes() });
+  const above = getVideoCompressAboveBytes();
+  const target = getSectionVideoTargetMaxBytes();
+  if (!shouldCompressVideo(file, above)) return file;
+  return compressVideoFileForUpload(file, { maxBytes: target, force: true });
 }

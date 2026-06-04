@@ -1,34 +1,59 @@
 /** Same default as compress-image-file.js — fits common ~1MB reverse-proxy body limits. */
 export const DEFAULT_PROXY_SAFE_BYTES = 900 * 1024;
 
+function parseEnvMb(name) {
+  const mb = Number(import.meta.env[name]);
+  return Number.isFinite(mb) && mb > 0 ? mb : null;
+}
+
+function isProxyLimitVerified() {
+  return String(import.meta.env.VITE_UPLOAD_PROXY_VERIFIED || '').trim() === 'true';
+}
+
 /**
- * Max upload bytes before client-side compression (images/videos).
- * Set VITE_UPLOAD_PROXY_MAX_MB to match nginx `client_max_body_size` (e.g. 500).
+ * Bytes we try to fit under after client compression (images + videos).
+ * Large VITE_UPLOAD_PROXY_MAX_MB is ignored until VITE_UPLOAD_PROXY_VERIFIED=true,
+ * so a misconfigured nginx (still ~1MB on :5000) does not skip video compression.
  */
 export function getProxySafeMaxBytes() {
-  const mb = Number(import.meta.env.VITE_UPLOAD_PROXY_MAX_MB);
-  if (Number.isFinite(mb) && mb > 0) {
-    return Math.floor(mb * 1024 * 1024 * 0.9);
+  const proxyMb = parseEnvMb('VITE_UPLOAD_PROXY_MAX_MB');
+  if (isProxyLimitVerified() && proxyMb) {
+    return Math.floor(proxyMb * 1024 * 1024 * 0.9);
   }
   return DEFAULT_PROXY_SAFE_BYTES;
 }
 
-export function getCeoVideoMaxBytes() {
-  const ceoMb = Number(import.meta.env.VITE_UPLOAD_VIDEO_MAX_MB);
+/** Run video compression when the file is larger than this (default: same as images). */
+export function getVideoCompressAboveBytes() {
+  const aboveMb = parseEnvMb('VITE_UPLOAD_COMPRESS_ABOVE_MB');
+  if (aboveMb) return Math.floor(aboveMb * 1024 * 1024);
+  return DEFAULT_PROXY_SAFE_BYTES;
+}
+
+export function getCeoVideoTargetMaxBytes() {
+  const ceoMb = parseEnvMb('VITE_UPLOAD_VIDEO_MAX_MB') ?? 100;
   const proxyCap = getProxySafeMaxBytes();
-  if (Number.isFinite(ceoMb) && ceoMb > 0) {
-    return Math.min(Math.floor(ceoMb * 1024 * 1024 * 0.95), proxyCap);
+  const ceoCap = Math.floor(ceoMb * 1024 * 1024 * 0.95);
+  return Math.min(ceoCap, proxyCap);
+}
+
+export function getSectionVideoTargetMaxBytes() {
+  const gb = parseEnvMb('VITE_UPLOAD_SECTION_VIDEO_MAX_GB');
+  const proxyCap = getProxySafeMaxBytes();
+  if (gb) {
+    return Math.min(Math.floor(gb * 1024 * 1024 * 1024 * 0.95), proxyCap);
   }
   return proxyCap;
 }
 
+/** @deprecated use getCeoVideoTargetMaxBytes */
+export function getCeoVideoMaxBytes() {
+  return getCeoVideoTargetMaxBytes();
+}
+
+/** @deprecated use getSectionVideoTargetMaxBytes */
 export function getSectionVideoMaxBytes() {
-  const gb = Number(import.meta.env.VITE_UPLOAD_SECTION_VIDEO_MAX_GB);
-  const proxyCap = getProxySafeMaxBytes();
-  if (Number.isFinite(gb) && gb > 0) {
-    return Math.min(Math.floor(gb * 1024 * 1024 * 1024 * 0.95), proxyCap);
-  }
-  return proxyCap;
+  return getSectionVideoTargetMaxBytes();
 }
 
 export function formatMaxUploadLabel(bytes) {
