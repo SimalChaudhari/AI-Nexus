@@ -97,6 +97,9 @@ export function validateDeclarationBeforeSubmit(form, applicationId) {
   if (!form.acknowledgeNonRefundableAdmissionFee) {
     return 'You must acknowledge the non-refundable admission fee.';
   }
+  if (!form.transitionalArrangements) {
+    return 'You must confirm transitional arrangements acknowledgement.';
+  }
 
   return '';
 }

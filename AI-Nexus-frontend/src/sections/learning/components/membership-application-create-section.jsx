@@ -19,10 +19,15 @@ export function MembershipApplicationCreateSection({
   application,
   accountId,
   applicationId,
+  fieldErrors = {},
   onUpdate,
 }) {
   const update = (field, value) => onUpdate(field, value);
   const created = Boolean(applicationId?.trim());
+  const fe = (key) => {
+    const msg = fieldErrors[key];
+    return msg ? { error: true, helperText: msg } : {};
+  };
 
   return (
     <Stack spacing={3}>
@@ -74,6 +79,7 @@ export function MembershipApplicationCreateSection({
             disabled={created}
             value={application.accountingQualification}
             onChange={(e) => update('accountingQualification', e.target.value)}
+            {...fe('accountingQualification')}
           >
             {ACCOUNTING_QUALIFICATION_OPTIONS.map((opt) => (
               <MenuItem key={opt} value={opt}>

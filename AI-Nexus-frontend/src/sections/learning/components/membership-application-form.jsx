@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -12,6 +12,7 @@ import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
 import MenuItem from '@mui/material/MenuItem';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import { toast } from 'src/components/snackbar';
 import { MembershipFormTextField } from 'src/components/membership-form-textfield';
 import { MembershipFormPhoneField } from 'src/components/membership-form-phone-field';
 import { MembershipFormCountrySelect } from 'src/components/membership-form-country-select';
@@ -52,6 +53,7 @@ import { ensureMembershipSalesforceSession } from 'src/utils/membership-salesfor
 import {
   EMPTY_PERSONAL_FORM,
   buildPersonalDetailsApiPayload,
+  PERSONAL_MAILING_REQUIRED_KEYS,
   validatePersonalFormBeforeSubmit,
 } from 'src/utils/membership-application-personal';
 import {
@@ -103,6 +105,7 @@ import {
   validateDocumentUploadBeforeSubmit,
 } from 'src/utils/membership-application-document';
 import { EMPTY_BILLING_FORM } from 'src/utils/membership-application-billing';
+import { collectTabFieldErrors } from 'src/utils/membership-form-tab-field-errors';
 import {
   DEFAULT_MEMBERSHIP_COUNTRY,
   DEFAULT_MEMBERSHIP_DIAL_CODE,
@@ -245,6 +248,18 @@ function saveDraft(draft) {
 
 const fieldSize = 'medium';
 
+const MEMBERSHIP_VALIDATION_ERROR = 'MEMBERSHIP_FORM_VALIDATION';
+
+function createValidationError(message) {
+  const err = new Error(message);
+  err.code = MEMBERSHIP_VALIDATION_ERROR;
+  return err;
+}
+
+function isMembershipValidationError(err) {
+  return err?.code === MEMBERSHIP_VALIDATION_ERROR;
+}
+
 // ----------------------------------------------------------------------
 
 export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false }) {
@@ -254,15 +269,96 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   const [activeTab, setActiveTab] = useState(0);
   const [draft, setDraft] = useState(loadDraft);
   const [submittingTab, setSubmittingTab] = useState('');
-  const [tabMessage, setTabMessage] = useState('');
-  const [tabMessageSeverity, setTabMessageSeverity] = useState('info');
   const [documentTypes, setDocumentTypes] = useState([]);
   const [documentFiles, setDocumentFiles] = useState({});
   const [paymentReturnNotice, setPaymentReturnNotice] = useState(null);
+  const formScrollAnchorRef = useRef(null);
+  const formValidationRef = useRef(null);
+  const [tabValidationError, setTabValidationError] = useState('');
+  const [tabFieldErrors, setTabFieldErrors] = useState({});
 
   const currentTabId = TABS[activeTab]?.id || 'personal';
+
+  const scrollFormToTop = useCallback(() => {
+    if (typeof document !== 'undefined') {
+      const el = document.activeElement;
+      if (el && typeof el.blur === 'function') {
+        el.blur();
+      }
+    }
+    queueMicrotask(() => {
+      formScrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+      }
+    });
+  }, []);
   const documentsSubmitted = Boolean(draft.submittedTabs['document-upload']);
+
+  const notifyTabSuccess = useCallback((message) => {
+    const text = String(message || '').trim();
+    if (text) toast.success(text);
+  }, []);
+
+  const clearTabValidationError = useCallback(() => {
+    setTabValidationError('');
+  }, []);
+
+  const clearTabFieldErrors = useCallback(() => {
+    setTabFieldErrors({});
+  }, []);
+
+  const clearFieldError = useCallback((fieldKey) => {
+    if (!fieldKey) return;
+    setTabFieldErrors((prev) => {
+      if (!prev[fieldKey]) return prev;
+      const next = { ...prev };
+      delete next[fieldKey];
+      return next;
+    });
+  }, []);
+
+  const fieldProps = useCallback(
+    (fieldKey) => {
+      const msg = tabFieldErrors[fieldKey];
+      if (!msg) return {};
+      return { error: true, helperText: msg };
+    },
+    [tabFieldErrors]
+  );
+
+  const showTabValidationError = useCallback((message) => {
+    const text = String(message || '').trim();
+    if (!text) return;
+    setTabValidationError(text);
+    queueMicrotask(() => {
+      formValidationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }, []);
+
+  const handleSubmitFailure = useCallback(
+    (err) => {
+      if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
+        return true;
+      }
+      const message = err instanceof Error ? err.message : 'Failed to submit section.';
+      if (isMembershipValidationError(err)) {
+        showTabValidationError(message);
+        return true;
+      }
+      toast.error(message);
+      return true;
+    },
+    [showTabValidationError]
+  );
+
   const residentialDeclarationSubmitted = Boolean(draft.submittedTabs['residential-declaration']);
+
+  useEffect(() => {
+    clearTabValidationError();
+    clearTabFieldErrors();
+    scrollFormToTop();
+  }, [activeTab, clearTabFieldErrors, clearTabValidationError, scrollFormToTop]);
 
   useEffect(() => {
     const session = readMembershipSalesforceSession();
@@ -380,12 +476,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         setActiveTab(newIndex);
         return;
       }
-      setTabMessage(
+      showTabValidationError(
         `Submit "${TABS[firstIncompleteTabIndex]?.label || 'the current section'}" before opening another tab.`
       );
-      setTabMessageSeverity('warning');
     },
-    [firstIncompleteTabIndex, isTabAccessible]
+    [firstIncompleteTabIndex, isTabAccessible, showTabValidationError]
   );
 
   useEffect(() => {
@@ -400,6 +495,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   }, [draft.personal.applicationId]);
 
   const updateSection = useCallback((section, field, value) => {
+    clearFieldError(field);
+    if (section === 'personal' && field === 'copyAddress' && value) {
+      PERSONAL_MAILING_REQUIRED_KEYS.forEach((key) => clearFieldError(key));
+    }
     setDraft((prev) => {
       const next = {
         ...prev,
@@ -408,12 +507,21 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       saveDraft(next);
       return next;
     });
-  }, []);
+  }, [clearFieldError]);
 
   const updateWorkExperienceEntry = useCallback((index, field, value) => {
+    clearFieldError(`experience_${index}_${field}`);
+    clearFieldError('currentEmploymentStatus');
+    if (field === 'isCurrentEmployment' && value) {
+      clearFieldError(`experience_${index}_periodTo`);
+    }
     setDraft((prev) => {
       const experiences = [...(prev.workExperience.experiences || [])];
-      experiences[index] = { ...experiences[index], [field]: value };
+      const updated = { ...experiences[index], [field]: value };
+      if (field === 'isCurrentEmployment' && value) {
+        updated.periodTo = '';
+      }
+      experiences[index] = updated;
       const next = {
         ...prev,
         workExperience: { ...prev.workExperience, experiences },
@@ -421,7 +529,34 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       saveDraft(next);
       return next;
     });
-  }, []);
+  }, [clearFieldError]);
+
+  const applyClientValidation = useCallback(
+    (tabId) => {
+      const { fields, message } = collectTabFieldErrors(tabId, {
+        draft,
+        applicationId: resolveApplicationId(),
+        accountId: readMembershipSalesforceSession()?.accountId || '',
+        documentTypes,
+        documentFiles,
+      });
+      setTabFieldErrors(fields);
+      if (message) {
+        showTabValidationError(message);
+        return false;
+      }
+      clearTabValidationError();
+      return true;
+    },
+    [
+      draft,
+      documentFiles,
+      documentTypes,
+      resolveApplicationId,
+      showTabValidationError,
+      clearTabValidationError,
+    ]
+  );
 
   const addWorkExperienceEntry = () => {
     setDraft((prev) => {
@@ -497,6 +632,8 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
   const handleDocumentFileSelect = (documentType, file) => {
     if (!file) return;
+
+    clearFieldError(`document_${documentType}`);
 
     const typeMeta = documentTypes.find((type) => type.value === documentType);
     const existingEntry = draft.documentUpload?.entries?.[documentType];
@@ -656,7 +793,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       existingId
     );
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const body = buildCreateApplicationApiPayload(draft.application, session.accountId);
@@ -683,12 +820,12 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
     const validationError = validatePersonalFormBeforeSubmit(draft.personal, resolveApplicationId());
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const applicationId = resolveApplicationId();
     if (!applicationId) {
-      throw new Error('Application ID is required. Submit the Application tab first.');
+      throw createValidationError('Application ID is required. Submit the Application tab first.');
     }
 
     const body = buildPersonalDetailsApiPayload(
@@ -737,34 +874,33 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   };
 
   const runQualificationSectionSubmit = async (sectionKey, validate, submitRows, emptySuccessMessage) => {
+    const applicationId = resolveApplicationId();
+    const validationError = validate(draft.qualification, applicationId);
+    if (validationError) {
+      setTabFieldErrors({});
+      showTabValidationError(validationError);
+      return;
+    }
+    clearTabValidationError();
+    clearTabFieldErrors();
+
     setSubmittingTab(sectionKey);
-    setTabMessage('');
-    setTabMessageSeverity('info');
     try {
       const session = ensureMembershipSalesforceSession();
-
-      const applicationId = resolveApplicationId();
-      const validationError = validate(draft.qualification, applicationId);
-      if (validationError) {
-        throw new Error(validationError);
-      }
 
       const token = session.socialToken;
       const count = await submitRows(token, applicationId);
 
       markQualificationSubsectionSubmitted(sectionKey);
-      setTabMessageSeverity('success');
-      setTabMessage(
+      notifyTabSuccess(
         count > 0
           ? `${count} record(s) submitted to Salesforce successfully.`
           : emptySuccessMessage
       );
+      clearTabValidationError();
+      scrollFormToTop();
     } catch (err) {
-      if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
-        return;
-      }
-      setTabMessageSeverity('error');
-      setTabMessage(err instanceof Error ? err.message : 'Failed to submit section.');
+      handleSubmitFailure(err);
     } finally {
       setSubmittingTab('');
     }
@@ -821,7 +957,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       applicationId
     );
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const body = buildCharacterReferenceApiPayload(draft.characterReference, applicationId);
@@ -833,7 +969,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
     const applicationId = resolveApplicationId();
     if (!applicationId) {
-      throw new Error('Application ID is missing. Submit the Application tab first.');
+      throw createValidationError('Application ID is missing. Submit the Application tab first.');
     }
 
     const validationError = validateDocumentUploadBeforeSubmit(
@@ -842,7 +978,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       draft.documentUpload?.entries
     );
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const toUpload = getDocumentsToUpload(
@@ -897,7 +1033,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       applicationId
     );
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const body = buildResidentialDeclarationApiPayload(
@@ -913,7 +1049,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     const applicationId = resolveApplicationId();
     const validationError = validateDeclarationBeforeSubmit(draft.declaration, applicationId);
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const body = buildDeclarationApiPayload(draft.declaration, applicationId);
@@ -926,7 +1062,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     const applicationId = resolveApplicationId();
     const validationError = validateWorkExperienceBeforeSubmit(draft.workExperience, applicationId);
     if (validationError) {
-      throw new Error(validationError);
+      throw createValidationError(validationError);
     }
 
     const body = buildEmploymentDetailsApiPayload(draft.workExperience, applicationId);
@@ -938,77 +1074,83 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   };
 
   const handleTabSubmit = async (tabId) => {
+    if (!applyClientValidation(tabId)) {
+      return;
+    }
+
     setSubmittingTab(tabId);
-    setTabMessage('');
-    setTabMessageSeverity('info');
     try {
       if (tabId === 'application') {
         await submitApplicationTab();
-        setTabMessageSeverity('success');
-        setTabMessage('Application created in Salesforce successfully.');
+        notifyTabSuccess('Application created in Salesforce successfully.');
       } else if (tabId === 'personal') {
         await submitPersonalTab();
-        setTabMessageSeverity('success');
-        setTabMessage('Personal details submitted to Salesforce successfully.');
+        notifyTabSuccess('Personal details submitted to Salesforce successfully.');
       } else if (tabId === 'work-experience') {
         await submitWorkExperienceTab();
-        setTabMessageSeverity('success');
-        setTabMessage('Work experience submitted to Salesforce successfully.');
+        notifyTabSuccess('Work experience submitted to Salesforce successfully.');
       } else if (tabId === 'qualification') {
-        throw new Error(
+        throw createValidationError(
           'Use the Submit button under each qualification section (Academic, Professional, Other Professional Bodies).'
         );
       } else if (tabId === 'character-reference') {
         await submitCharacterReferenceTab();
-        setTabMessageSeverity('success');
-        setTabMessage('Character references submitted to Salesforce successfully.');
+        notifyTabSuccess('Character references submitted to Salesforce successfully.');
       } else if (tabId === 'declaration') {
         await submitDeclarationTab();
-        setTabMessageSeverity('success');
-        setTabMessage('Declaration submitted to Salesforce successfully.');
+        notifyTabSuccess('Declaration submitted to Salesforce successfully.');
       } else if (tabId === 'document-upload') {
         const { uploadedCount, skippedDuplicates } = await submitDocumentUploadTab();
-        setTabMessageSeverity('success');
+        let documentMessage;
         if (uploadedCount > 0 && skippedDuplicates > 0) {
-          setTabMessage(
-            `${uploadedCount} document(s) uploaded. ${skippedDuplicates} document(s) were already on file with ISCA eServices.`
-          );
+          documentMessage = `${uploadedCount} document(s) uploaded. ${skippedDuplicates} document(s) were already on file with ISCA eServices.`;
         } else if (uploadedCount > 0) {
-          setTabMessage(
+          documentMessage =
             uploadedCount === 1
               ? '1 document uploaded to Salesforce successfully.'
-              : `${uploadedCount} documents uploaded to Salesforce successfully.`
-          );
+              : `${uploadedCount} documents uploaded to Salesforce successfully.`;
         } else if (skippedDuplicates > 0) {
-          setTabMessage(
-            'All selected documents are already on file with ISCA eServices. You can continue to the next step.'
-          );
+          documentMessage =
+            'All selected documents are already on file with ISCA eServices. You can continue to the next step.';
         } else {
-          setTabMessage(
-            'All required documents are already on file with ISCA eServices. You can continue to the next step.'
-          );
+          documentMessage =
+            'All required documents are already on file with ISCA eServices. You can continue to the next step.';
         }
+        notifyTabSuccess(documentMessage);
       } else if (tabId === 'residential-declaration') {
         await submitResidentialDeclarationTab();
-        setTabMessageSeverity('success');
-        setTabMessage('Residential declaration submitted to Salesforce successfully.');
+        notifyTabSuccess('Residential declaration submitted to Salesforce successfully.');
       } else if (tabId === 'billing') {
-        throw new Error('Use the Pay button on this tab to complete payment.');
+        throw createValidationError('Use the Pay button on this tab to complete payment.');
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
-        setTabMessage(`${TABS.find((t) => t.id === tabId)?.label || 'Section'} saved.`);
+        notifyTabSuccess(`${TABS.find((t) => t.id === tabId)?.label || 'Section'} saved.`);
       }
+      clearTabValidationError();
+      clearTabFieldErrors();
+      scrollFormToTop();
       advanceAfterTabSuccess(tabId);
     } catch (err) {
-      if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
-        return;
-      }
-      setTabMessageSeverity('error');
-      setTabMessage(err instanceof Error ? err.message : 'Failed to submit section.');
+      handleSubmitFailure(err);
     } finally {
       setSubmittingTab('');
     }
   };
+
+  const renderTabValidationAlert = () =>
+    tabValidationError ? (
+      <Box
+        ref={formValidationRef}
+        sx={{
+          px: fullPage ? { xs: 2, md: 4 } : 0,
+          pb: 1.5,
+        }}
+      >
+        <Alert severity="error" onClose={clearTabValidationError} sx={{ borderRadius: 2 }}>
+          {tabValidationError}
+        </Alert>
+      </Box>
+    ) : null;
 
   const renderSectionTitle = (title, firstSection = false) => (
     <MembershipFormSectionTitle title={title} firstSection={firstSection} />
@@ -1021,6 +1163,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         application={draft.application}
         accountId={session?.accountId || ''}
         applicationId={resolveApplicationId()}
+        fieldErrors={tabFieldErrors}
         onUpdate={(field, value) => updateSection('application', field, value)}
       />
     );
@@ -1047,8 +1190,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Salutation"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.salutation}
           onChange={(e) => updateSection('personal', 'salutation', e.target.value)}
+          {...fieldProps('salutation')}
         >
           {['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Mdm.'].map((o) => (
             <MenuItem key={o} value={o}>
@@ -1065,6 +1210,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           required
           value={draft.personal.firstName}
           onChange={(e) => updateSection('personal', 'firstName', e.target.value)}
+          {...fieldProps('firstName')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={3} lg={4}>
@@ -1075,6 +1221,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           required
           value={draft.personal.lastName}
           onChange={(e) => updateSection('personal', 'lastName', e.target.value)}
+          {...fieldProps('lastName')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -1083,8 +1230,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Gender"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.gender}
           onChange={(e) => updateSection('personal', 'gender', e.target.value)}
+          {...fieldProps('gender')}
         >
           {['Male', 'Female'].map((o) => (
             <MenuItem key={o} value={o}>
@@ -1102,6 +1251,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           value={draft.personal.nameAsPerId}
           onChange={(e) => updateSection('personal', 'nameAsPerId', e.target.value)}
           placeholder="e.g. Tan Zhi Wen"
+          {...fieldProps('nameAsPerId')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={3}>
@@ -1114,6 +1264,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           value={draft.personal.dateOfBirth}
           onChange={(e) => updateSection('personal', 'dateOfBirth', e.target.value)}
           InputLabelProps={{ shrink: true }}
+          {...fieldProps('dateOfBirth')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={3}>
@@ -1122,8 +1273,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Marital status"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.maritalStatus}
           onChange={(e) => updateSection('personal', 'maritalStatus', e.target.value)}
+          {...fieldProps('maritalStatus')}
         >
           {['Single', 'Married', 'Divorced', 'Widowed'].map((o) => (
             <MenuItem key={o} value={o}>
@@ -1141,6 +1294,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           value={draft.personal.nationality}
           onChange={(e) => updateSection('personal', 'nationality', e.target.value)}
           placeholder="Enter nationality"
+          {...fieldProps('nationality')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -1148,9 +1302,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Citizenship"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.citizenship}
           onChange={(e) => updateSection('personal', 'citizenship', e.target.value)}
           placeholder="Enter citizenship"
+          {...fieldProps('citizenship')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -1158,15 +1314,18 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="ID type"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.idType}
           onChange={(e) => updateSection('personal', 'idType', e.target.value)}
           placeholder="e.g. Pink NRIC"
+          {...fieldProps('idType')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={6} lg={3}>
         <MembershipFormPhoneField
           label="Mobile number"
           size={fieldSize}
+          required
           lockDialCode
           countryCode={draft.personal.mobileCountryCode || DEFAULT_MEMBERSHIP_DIAL_CODE}
           number={draft.personal.telMobile}
@@ -1174,12 +1333,14 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             updateSection('personal', 'mobileCountryCode', e.target.value)
           }
           onNumberChange={(e) => updateSection('personal', 'telMobile', e.target.value)}
+          {...fieldProps('telMobile')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={6} lg={3}>
         <MembershipFormPhoneField
           label="Other number"
           size={fieldSize}
+          required
           lockDialCode
           countryCode={draft.personal.otherCountryCode || DEFAULT_MEMBERSHIP_DIAL_CODE}
           number={draft.personal.otherNumber}
@@ -1187,6 +1348,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             updateSection('personal', 'otherCountryCode', e.target.value)
           }
           onNumberChange={(e) => updateSection('personal', 'otherNumber', e.target.value)}
+          {...fieldProps('otherNumber')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={4}>
@@ -1198,6 +1360,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           required
           value={draft.personal.personalEmail}
           onChange={(e) => updateSection('personal', 'personalEmail', e.target.value)}
+          {...fieldProps('personalEmail')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={4}>
@@ -1205,9 +1368,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Email friendly name"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.emailFriendlyName}
           onChange={(e) => updateSection('personal', 'emailFriendlyName', e.target.value)}
           placeholder="Display name for correspondence"
+          {...fieldProps('emailFriendlyName')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={4}>
@@ -1216,8 +1381,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           type="email"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.alternateEmailAddress}
           onChange={(e) => updateSection('personal', 'alternateEmailAddress', e.target.value)}
+          {...fieldProps('alternateEmailAddress')}
         />
       </Grid>
 
@@ -1227,8 +1394,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Address line 1"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.addressLine1}
           onChange={(e) => updateSection('personal', 'addressLine1', e.target.value)}
+          {...fieldProps('addressLine1')}
         />
       </Grid>
       <Grid item xs={12} md={6}>
@@ -1236,8 +1405,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Address line 2"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.addressLine2}
           onChange={(e) => updateSection('personal', 'addressLine2', e.target.value)}
+          {...fieldProps('addressLine2')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={3}>
@@ -1245,8 +1416,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="City"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.city}
           onChange={(e) => updateSection('personal', 'city', e.target.value)}
+          {...fieldProps('city')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={3}>
@@ -1254,18 +1427,22 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="State"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.state}
           onChange={(e) => updateSection('personal', 'state', e.target.value)}
+          {...fieldProps('state')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={3}>
         <MembershipFormCountrySelect
           label="Country"
           size={fieldSize}
+          required
           disabled
           value={draft.personal.country || DEFAULT_MEMBERSHIP_COUNTRY}
           onChange={(e) => updateSection('personal', 'country', e.target.value)}
           placeholder={DEFAULT_MEMBERSHIP_COUNTRY}
+          {...fieldProps('country')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={3}>
@@ -1273,8 +1450,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Postal code"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.postalCode}
           onChange={(e) => updateSection('personal', 'postalCode', e.target.value)}
+          {...fieldProps('postalCode')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4}>
@@ -1282,8 +1461,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Unit number"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.unitNumber}
           onChange={(e) => updateSection('personal', 'unitNumber', e.target.value)}
+          {...fieldProps('unitNumber')}
         />
       </Grid>
       <Grid item xs={12}>
@@ -1306,8 +1487,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label="Mailing address line 1"
               size={fieldSize}
               fullWidth
+              required
               value={draft.personal.mailingaddressLine1}
               onChange={(e) => updateSection('personal', 'mailingaddressLine1', e.target.value)}
+              {...fieldProps('mailingaddressLine1')}
             />
           </Grid>
           <Grid item xs={12} md={6}>
@@ -1315,8 +1498,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label="Mailing address line 2"
               size={fieldSize}
               fullWidth
+              required
               value={draft.personal.mailingaddressLine2}
               onChange={(e) => updateSection('personal', 'mailingaddressLine2', e.target.value)}
+              {...fieldProps('mailingaddressLine2')}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
@@ -1324,8 +1509,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label="Mailing city"
               size={fieldSize}
               fullWidth
+              required
               value={draft.personal.mailingcity}
               onChange={(e) => updateSection('personal', 'mailingcity', e.target.value)}
+              {...fieldProps('mailingcity')}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
@@ -1333,18 +1520,22 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label="Mailing state"
               size={fieldSize}
               fullWidth
+              required
               value={draft.personal.mailingstate}
               onChange={(e) => updateSection('personal', 'mailingstate', e.target.value)}
+              {...fieldProps('mailingstate')}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <MembershipFormCountrySelect
               label="Mailing country"
               size={fieldSize}
+              required
               disabled
               value={draft.personal.mailingcountry || DEFAULT_MEMBERSHIP_COUNTRY}
               onChange={(e) => updateSection('personal', 'mailingcountry', e.target.value)}
               placeholder={DEFAULT_MEMBERSHIP_COUNTRY}
+              {...fieldProps('mailingcountry')}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
@@ -1352,8 +1543,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label="Mailing postal code"
               size={fieldSize}
               fullWidth
+              required
               value={draft.personal.mailingpostalCode}
               onChange={(e) => updateSection('personal', 'mailingpostalCode', e.target.value)}
+              {...fieldProps('mailingpostalCode')}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={4}>
@@ -1361,8 +1554,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               label="Mailing unit number"
               size={fieldSize}
               fullWidth
+              required
               value={draft.personal.mailingunitNumber}
               onChange={(e) => updateSection('personal', 'mailingunitNumber', e.target.value)}
+              {...fieldProps('mailingunitNumber')}
             />
           </Grid>
         </>
@@ -1374,9 +1569,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Subscription preference"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.subscriptionPreference}
           onChange={(e) => updateSection('personal', 'subscriptionPreference', e.target.value)}
           placeholder="Monthly Chartered Accountants Lab;ISCAccountify Bulletin"
+          {...fieldProps('subscriptionPreference')}
         />
       </Grid>
       <Grid item xs={12} md={6}>
@@ -1384,8 +1581,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Communication preference"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.communicationPreference}
           onChange={(e) => updateSection('personal', 'communicationPreference', e.target.value)}
+          {...fieldProps('communicationPreference')}
         />
       </Grid>
       <Grid item xs={12}>
@@ -1393,9 +1592,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Professional interest"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.professionalInterest}
           onChange={(e) => updateSection('personal', 'professionalInterest', e.target.value)}
           placeholder="Risk Management;Taxation"
+          {...fieldProps('professionalInterest')}
         />
       </Grid>
       <Grid item xs={12} sm={4}>
@@ -1404,8 +1605,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Voice calls"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.voiceCalls}
           onChange={(e) => updateSection('personal', 'voiceCalls', e.target.value)}
+          {...fieldProps('voiceCalls')}
         >
           {['Yes', 'No'].map((o) => (
             <MenuItem key={o} value={o}>
@@ -1420,8 +1623,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Text messages"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.textMessages}
           onChange={(e) => updateSection('personal', 'textMessages', e.target.value)}
+          {...fieldProps('textMessages')}
         >
           {['Yes', 'No'].map((o) => (
             <MenuItem key={o} value={o}>
@@ -1436,8 +1641,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           label="Fax messages"
           size={fieldSize}
           fullWidth
+          required
           value={draft.personal.faxMessages}
           onChange={(e) => updateSection('personal', 'faxMessages', e.target.value)}
+          {...fieldProps('faxMessages')}
         >
           {['Yes', 'No'].map((o) => (
             <MenuItem key={o} value={o}>
@@ -1472,6 +1679,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               onChange={(e) =>
                 updateSection('workExperience', 'currentEmploymentStatus', e.target.value)
               }
+              {...fieldProps('currentEmploymentStatus')}
             >
               {['Student', 'Employed', 'Self-employed', 'Unemployed', 'Retired'].map((o) => (
                 <MenuItem key={o} value={o}>
@@ -1544,6 +1752,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   onChange={(e) =>
                     updateWorkExperienceEntry(index, 'organisationName', e.target.value)
                   }
+                  {...fieldProps(`experience_${index}_organisationName`)}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1563,8 +1772,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   label="Industry"
                   size={fieldSize}
                   fullWidth
+                  required
                   value={row.industry}
                   onChange={(e) => updateWorkExperienceEntry(index, 'industry', e.target.value)}
+                  {...fieldProps(`experience_${index}_industry`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
@@ -1572,8 +1783,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   label="Job position"
                   size={fieldSize}
                   fullWidth
+                  required
                   value={row.jobPosition}
                   onChange={(e) => updateWorkExperienceEntry(index, 'jobPosition', e.target.value)}
+                  {...fieldProps(`experience_${index}_jobPosition`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
@@ -1581,9 +1794,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   label="Job level"
                   size={fieldSize}
                   fullWidth
+                  required
                   value={row.jobLevel}
                   onChange={(e) => updateWorkExperienceEntry(index, 'jobLevel', e.target.value)}
                   placeholder="Middle Management"
+                  {...fieldProps(`experience_${index}_jobLevel`)}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1591,9 +1806,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   label="Job function"
                   size={fieldSize}
                   fullWidth
+                  required
                   value={row.jobFunction}
                   onChange={(e) => updateWorkExperienceEntry(index, 'jobFunction', e.target.value)}
                   placeholder="Investment Analysis"
+                  {...fieldProps(`experience_${index}_jobFunction`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -1602,8 +1819,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   type="date"
                   size={fieldSize}
                   fullWidth
+                  required
                   value={row.periodFrom}
                   onChange={(e) => updateWorkExperienceEntry(index, 'periodFrom', e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  {...fieldProps(`experience_${index}_periodFrom`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -1612,9 +1832,12 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   type="date"
                   size={fieldSize}
                   fullWidth
+                  required={!row.isCurrentEmployment}
                   value={row.periodTo}
                   onChange={(e) => updateWorkExperienceEntry(index, 'periodTo', e.target.value)}
                   disabled={row.isCurrentEmployment}
+                  InputLabelProps={{ shrink: true }}
+                  {...fieldProps(`experience_${index}_periodTo`)}
                 />
               </Grid>
               <Grid item xs={12} sx={{ pt: 0.5 }}>
@@ -1636,12 +1859,14 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   label="Job responsibilities"
                   size={fieldSize}
                   fullWidth
+                  required
                   multiline
                   minRows={3}
                   value={row.jobResponsibilities}
                   onChange={(e) =>
                     updateWorkExperienceEntry(index, 'jobResponsibilities', e.target.value)
                   }
+                  {...fieldProps(`experience_${index}_jobResponsibilities`)}
                 />
               </Grid>
             </Grid>
@@ -1693,6 +1918,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationCharacterReferenceSection
       characterReference={draft.characterReference}
       applicationId={resolveApplicationId()}
+      fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('characterReference', field, value)}
     />
   );
@@ -1701,6 +1927,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationDeclarationSection
       declaration={draft.declaration}
       applicationId={resolveApplicationId()}
+      fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('declaration', field, value)}
     />
   );
@@ -1710,6 +1937,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       applicationId={resolveApplicationId()}
       documentUpload={draft.documentUpload}
       documentFiles={documentFiles}
+      fieldErrors={tabFieldErrors}
       onFileSelect={handleDocumentFileSelect}
       onFileRemove={handleDocumentFileRemove}
       onOtherDetailsChange={handleDocumentOtherDetailsChange}
@@ -1721,6 +1949,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationResidentialDeclarationSection
       residentialDeclaration={draft.residentialDeclaration}
       applicationId={resolveApplicationId()}
+      fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('residentialDeclaration', field, value)}
     />
   );
@@ -1858,6 +2087,16 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       </Tabs>
 
       <Box
+        ref={formScrollAnchorRef}
+        sx={{
+          scrollMarginTop: { xs: 72, md: 96 },
+          height: 0,
+          overflow: 'hidden',
+        }}
+        aria-hidden
+      />
+
+      <Box
         sx={{
           px: fullPage ? { xs: 2, md: 4 } : 0,
           py: fullPage ? { xs: 3, md: 4 } : 1,
@@ -1907,16 +2146,6 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               </Stack>
 
               {sectionRenderers[currentTabId]?.()}
-
-              {tabMessage && (
-                <Alert
-                  severity={tabMessageSeverity}
-                  onClose={() => setTabMessage('')}
-                  sx={{ mt: 3, borderRadius: 2 }}
-                >
-                  {tabMessage}
-                </Alert>
-              )}
             </Paper>
           ) : (
             <>
@@ -1927,19 +2156,12 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                 Step {activeTab + 1} of {TABS.length} — fill in the details below, then submit this section.
               </Typography>
               {sectionRenderers[currentTabId]?.()}
-              {tabMessage && (
-                <Alert
-                  severity={tabMessageSeverity}
-                  onClose={() => setTabMessage('')}
-                  sx={{ mt: 3 }}
-                >
-                  {tabMessage}
-                </Alert>
-              )}
             </>
           )}
         </Box>
       </Box>
+
+      {renderTabValidationAlert()}
 
       <Box
         sx={{
@@ -1983,8 +2205,8 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           )}
           {currentTabId === 'qualification' ? (
             <Typography variant="body2" sx={{ maxWidth: 360, textAlign: 'right', color: 'text.primary' }}>
-              Submit each section above using its own button. Professional and Other Professional
-              Bodies are required.
+              Submit each section above using its own button. Professional and Other Professional Bodies are
+              required.
             </Typography>
           ) : currentTabId === 'billing' ? (
             <Typography variant="body2" sx={{ maxWidth: 360, textAlign: 'right', color: 'text.primary' }}>

@@ -3,11 +3,14 @@ import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Checkbox from '@mui/material/Checkbox';
 import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import FormHelperText from '@mui/material/FormHelperText';
 import { MembershipFormTextField } from 'src/components/membership-form-textfield';
 import { MembershipFormSectionTitleBlock } from 'src/components/membership-form-section-title';
 import Typography from '@mui/material/Typography';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
+import { RequiredMark } from 'src/utils/membership-form-required-mark';
 import { YES_NO_OPTIONS } from 'src/utils/membership-application-declaration';
 
 // ----------------------------------------------------------------------
@@ -52,12 +55,35 @@ function YesNoField({ label, value, onChange }) {
   );
 }
 
+function AcknowledgementField({ checked, onChange, label, error }) {
+  return (
+    <FormControl error={Boolean(error)} sx={{ width: 1 }}>
+      <FormControlLabel
+        control={<Checkbox checked={checked} onChange={onChange} />}
+        label={
+          <Typography variant="body2" component="span">
+            {label}
+            <RequiredMark />
+          </Typography>
+        }
+        sx={acknowledgementLabelSx}
+      />
+      {error ? <FormHelperText sx={{ ml: 4.5, mt: -0.5 }}>{error}</FormHelperText> : null}
+    </FormControl>
+  );
+}
+
 export function MembershipApplicationDeclarationSection({
   declaration,
   applicationId,
+  fieldErrors = {},
   onUpdate,
 }) {
   const update = (field, value) => onUpdate(field, value);
+  const fe = (key) => {
+    const msg = fieldErrors[key];
+    return msg ? { error: true, helperText: msg } : {};
+  };
 
   return (
     <Stack spacing={3} sx={{ width: 1 }}>
@@ -84,6 +110,7 @@ export function MembershipApplicationDeclarationSection({
           fullWidth
           value={declaration.criminalConvictionDetails}
           onChange={(e) => update('criminalConvictionDetails', e.target.value)}
+          {...fe('criminalConvictionDetails')}
         />
       )}
 
@@ -102,6 +129,7 @@ export function MembershipApplicationDeclarationSection({
           fullWidth
           value={declaration.bankruptcyDetails}
           onChange={(e) => update('bankruptcyDetails', e.target.value)}
+          {...fe('bankruptcyDetails')}
         />
       )}
 
@@ -120,6 +148,7 @@ export function MembershipApplicationDeclarationSection({
           fullWidth
           value={declaration.investigationDetails}
           onChange={(e) => update('investigationDetails', e.target.value)}
+          {...fe('investigationDetails')}
         />
       )}
 
@@ -138,6 +167,7 @@ export function MembershipApplicationDeclarationSection({
           fullWidth
           value={declaration.refusedEntryProfessionalBodyDetails}
           onChange={(e) => update('refusedEntryProfessionalBodyDetails', e.target.value)}
+          {...fe('refusedEntryProfessionalBodyDetails')}
         />
       )}
 
@@ -156,6 +186,7 @@ export function MembershipApplicationDeclarationSection({
           fullWidth
           value={declaration.previousISCAembershipDetails}
           onChange={(e) => update('previousISCAembershipDetails', e.target.value)}
+          {...fe('previousISCAembershipDetails')}
         />
       )}
 
@@ -174,69 +205,38 @@ export function MembershipApplicationDeclarationSection({
           fullWidth
           value={declaration.reasonForNonComplianceOther}
           onChange={(e) => update('reasonForNonComplianceOther', e.target.value)}
+          {...fe('reasonForNonComplianceOther')}
         />
       )}
 
       <Box sx={{ pt: 1 }}>
         <MembershipFormSectionTitleBlock title="Acknowledgements" />
         <Stack spacing={1.5}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={Boolean(declaration.pdpaPolicy)}
-                onChange={(e) => update('pdpaPolicy', e.target.checked)}
-              />
-            }
-            label={
-              <Typography variant="body2" component="span">
-                I agree to the PDPA policy
-              </Typography>
-            }
-            sx={acknowledgementLabelSx}
+          <AcknowledgementField
+            checked={Boolean(declaration.pdpaPolicy)}
+            onChange={(e) => update('pdpaPolicy', e.target.checked)}
+            label="I agree to the PDPA policy"
+            error={fieldErrors.pdpaPolicy}
           />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={Boolean(declaration.infoIsTrueAndComplete)}
-                onChange={(e) => update('infoIsTrueAndComplete', e.target.checked)}
-              />
-            }
-            label={
-              <Typography variant="body2" component="span">
-                I declare that the information provided is true and complete
-              </Typography>
-            }
-            sx={acknowledgementLabelSx}
+          <AcknowledgementField
+            checked={Boolean(declaration.infoIsTrueAndComplete)}
+            onChange={(e) => update('infoIsTrueAndComplete', e.target.checked)}
+            label="I declare that the information provided is true and complete"
+            error={fieldErrors.infoIsTrueAndComplete}
           />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={Boolean(declaration.acknowledgeNonRefundableAdmissionFee)}
-                onChange={(e) =>
-                  update('acknowledgeNonRefundableAdmissionFee', e.target.checked)
-                }
-              />
+          <AcknowledgementField
+            checked={Boolean(declaration.acknowledgeNonRefundableAdmissionFee)}
+            onChange={(e) =>
+              update('acknowledgeNonRefundableAdmissionFee', e.target.checked)
             }
-            label={
-              <Typography variant="body2" component="span">
-                I acknowledge the non-refundable admission fee
-              </Typography>
-            }
-            sx={acknowledgementLabelSx}
+            label="I acknowledge the non-refundable admission fee"
+            error={fieldErrors.acknowledgeNonRefundableAdmissionFee}
           />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={Boolean(declaration.transitionalArrangements)}
-                onChange={(e) => update('transitionalArrangements', e.target.checked)}
-              />
-            }
-            label={
-              <Typography variant="body2" component="span">
-                I am applying under transitional arrangements
-              </Typography>
-            }
-            sx={acknowledgementLabelSx}
+          <AcknowledgementField
+            checked={Boolean(declaration.transitionalArrangements)}
+            onChange={(e) => update('transitionalArrangements', e.target.checked)}
+            label="I am applying under transitional arrangements"
+            error={fieldErrors.transitionalArrangements}
           />
         </Stack>
       </Box>

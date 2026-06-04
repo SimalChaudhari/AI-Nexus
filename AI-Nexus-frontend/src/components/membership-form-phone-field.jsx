@@ -42,13 +42,14 @@ export function MembershipFormPhoneField({
   size = 'medium',
   fullWidth = true,
   lockDialCode = false,
+  error = false,
   helperText,
   sx,
 }) {
   const dialValue =
     findDialOptionByCode(countryCode) || findDialOptionByCode('65');
   const limits = getNationalPhoneLimits(countryCode);
-  const displayHelper = helperText ?? limits.hint;
+  const displayHelper = error && helperText ? helperText : helperText ?? limits.hint;
 
   const emitNumberChange = (rawValue) => {
     const sanitized = sanitizeNationalPhoneNumber(rawValue, countryCode);
@@ -119,13 +120,14 @@ export function MembershipFormPhoneField({
     <MembershipFormTextField
       label={label}
       required={required}
+      error={error}
+      helperText={displayHelper}
       type={numberType === 'number' ? 'tel' : numberType}
       value={number ?? ''}
       onChange={(e) => emitNumberChange(e.target.value)}
       size={size}
       fullWidth={fullWidth}
       placeholder={`${limits.max} digits`}
-      helperText={displayHelper}
       inputProps={{
         inputMode: 'numeric',
         pattern: '[0-9]*',

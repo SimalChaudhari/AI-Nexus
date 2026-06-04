@@ -20,6 +20,47 @@ export const EMPTY_WORK_EXPERIENCE_FORM = {
   experiences: [{ ...EMPTY_WORK_EXPERIENCE_ENTRY }],
 };
 
+const WORK_EXPERIENCE_TRACKED_FIELDS = [
+  'organisationName',
+  'organisationType',
+  'industry',
+  'jobPosition',
+  'jobLevel',
+  'jobFunction',
+  'jobResponsibilities',
+  'periodFrom',
+  'periodTo',
+];
+
+export function isWorkExperienceRowStarted(row) {
+  if (!row || typeof row !== 'object') {
+    return false;
+  }
+  return WORK_EXPERIENCE_TRACKED_FIELDS.some((key) => String(row[key] ?? '').trim());
+}
+
+function isWorkExperiencePeriodComplete(row) {
+  if (!String(row?.periodFrom ?? '').trim()) {
+    return false;
+  }
+  if (row?.isCurrentEmployment) {
+    return true;
+  }
+  return Boolean(String(row?.periodTo ?? '').trim());
+}
+
+export function isWorkExperienceRowComplete(row) {
+  return (
+    Boolean(String(row?.organisationName ?? '').trim()) &&
+    Boolean(String(row?.industry ?? '').trim()) &&
+    Boolean(String(row?.jobPosition ?? '').trim()) &&
+    Boolean(String(row?.jobLevel ?? '').trim()) &&
+    Boolean(String(row?.jobFunction ?? '').trim()) &&
+    Boolean(String(row?.jobResponsibilities ?? '').trim()) &&
+    isWorkExperiencePeriodComplete(row)
+  );
+}
+
 export function buildEmploymentDetailsApiPayload(workExperience, applicationId) {
   const experiences = Array.isArray(workExperience?.experiences)
     ? workExperience.experiences
@@ -40,7 +81,17 @@ export function buildEmploymentDetailsApiPayload(workExperience, applicationId) 
       periodTo: formatDateForSalesforceApi(row.periodTo || row.endDate),
       isCurrentEmployment: Boolean(row.isCurrentEmployment),
     }))
-    .filter((row) => row.organisationName || row.jobPosition);
+    .filter(
+      (row) =>
+        row.organisationName &&
+        row.industry &&
+        row.jobPosition &&
+        row.jobLevel &&
+        row.jobFunction &&
+        row.jobResponsibilities &&
+        row.periodFrom &&
+        (row.periodTo || row.isCurrentEmployment)
+    );
 
   return {
     applicationId: String(applicationId || '').trim(),
@@ -57,9 +108,23 @@ export function validateWorkExperienceBeforeSubmit(workExperience, applicationId
     return 'Current employment status is required.';
   }
 
-  const payload = buildEmploymentDetailsApiPayload(workExperience, applicationId);
-  if (!payload.previousWorkExperience.length) {
-    return 'Add at least one work experience entry with organisation name or job position.';
+  const experiences = Array.isArray(workExperience?.experiences) ? workExperience.experiences : [];
+  let hasCompleteEntry = false;
+
+  for (let index = 0; index < experiences.length; index += 1) {
+    const row = experiences[index];
+    const mustValidate = index === 0 || isWorkExperienceRowStarted(row);
+    if (!mustValidate) {
+      continue;
+    }
+    if (!isWorkExperienceRowComplete(row)) {
+      return 'Please complete all required work experience fields, including period from and period to (unless this is current employment).';
+    }
+    hasCompleteEntry = true;
+  }
+
+  if (!hasCompleteEntry) {
+    return 'Add at least one complete work experience entry with all required fields.';
   }
   return '';
 }

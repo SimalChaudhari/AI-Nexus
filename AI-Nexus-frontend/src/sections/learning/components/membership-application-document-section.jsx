@@ -11,6 +11,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { MembershipFormTextField } from 'src/components/membership-form-textfield';
+import { RequiredMark } from 'src/utils/membership-form-required-mark';
 import { fetchAvailableDocumentTypes } from 'src/api/membership-application';
 import { ensureMembershipSalesforceSession } from 'src/utils/membership-salesforce-auth';
 import {
@@ -25,6 +26,7 @@ export function MembershipApplicationDocumentSection({
   applicationId,
   documentUpload,
   documentFiles,
+  fieldErrors = {},
   onFileSelect,
   onFileRemove,
   onOtherDetailsChange,
@@ -171,6 +173,7 @@ export function MembershipApplicationDocumentSection({
             documentFiles,
             documentUpload?.entries
           );
+          const fieldError = fieldErrors[`document_${type.value}`];
 
           return (
             <Grid item xs={12} key={type.value}>
@@ -193,6 +196,7 @@ export function MembershipApplicationDocumentSection({
                 <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
                     {type.label}
+                    {type.isMandatory ? <RequiredMark /> : null}
                   </Typography>
                   {isUploadedToIsca ? (
                     <Chip
@@ -294,6 +298,11 @@ export function MembershipApplicationDocumentSection({
                     <Typography variant="caption" color="text.secondary">
                       Accepted: PDF, DOC, DOCX, or image
                     </Typography>
+                    {fieldError ? (
+                      <Typography variant="caption" color="error.main" sx={{ fontWeight: 600 }}>
+                        {fieldError}
+                      </Typography>
+                    ) : null}
                   </>
                 )}
 

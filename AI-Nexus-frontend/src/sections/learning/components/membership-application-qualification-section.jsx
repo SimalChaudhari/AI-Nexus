@@ -17,11 +17,12 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { MembershipFormCountrySelect } from 'src/components/membership-form-country-select';
-import { DEFAULT_MEMBERSHIP_COUNTRY } from 'src/utils/membership-form-ui';
 import {
+  DEFAULT_MEMBERSHIP_COUNTRY,
   getMembershipFormSubmitButtonSx,
   getMembershipQualificationTableSx,
 } from 'src/utils/membership-form-ui';
+import { RequiredMark } from 'src/utils/membership-form-required-mark';
 import {
   EMPTY_ACADEMIC_ENTRY,
   EMPTY_PROFESSIONAL_ENTRY,
@@ -176,12 +177,24 @@ export function MembershipApplicationQualificationSection({
               <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
                 <TableCell width={48}>No.</TableCell>
                 <TableCell sx={{ minWidth: 120 }}>Country</TableCell>
-                <TableCell sx={{ minWidth: 180 }}>Institution Name</TableCell>
+                <TableCell sx={{ minWidth: 180 }}>
+                  Institution Name
+                  <RequiredMark />
+                </TableCell>
                 <TableCell sx={{ minWidth: 140 }}>Other Institution</TableCell>
-                <TableCell sx={{ minWidth: 160 }}>Academic Qualification</TableCell>
+                <TableCell sx={{ minWidth: 160 }}>
+                  Academic Qualification
+                  <RequiredMark />
+                </TableCell>
                 <TableCell sx={{ minWidth: 140 }}>Other Qualification</TableCell>
-                <TableCell sx={{ minWidth: 150 }}>Course Commencement</TableCell>
-                <TableCell sx={{ minWidth: 130 }}>Graduation Date</TableCell>
+                <TableCell sx={{ minWidth: 150 }}>
+                  Course Commencement
+                  <RequiredMark />
+                </TableCell>
+                <TableCell sx={{ minWidth: 130 }}>
+                  Graduation Date
+                  <RequiredMark />
+                </TableCell>
                 <TableCell width={72} align="center">
                   Action
                 </TableCell>
@@ -207,6 +220,7 @@ export function MembershipApplicationQualificationSection({
                       <TextField
                         size={fieldSize}
                         fullWidth
+                        required
                         value={row.institutionName ?? ''}
                         onChange={(e) =>
                           onUpdateAcademic(index, 'institutionName', e.target.value)
@@ -227,6 +241,7 @@ export function MembershipApplicationQualificationSection({
                       <TextField
                         size={fieldSize}
                         fullWidth
+                        required
                         value={row.academicQualification ?? ''}
                         onChange={(e) =>
                           onUpdateAcademic(index, 'academicQualification', e.target.value)
@@ -248,6 +263,7 @@ export function MembershipApplicationQualificationSection({
                         size={fieldSize}
                         type="date"
                         fullWidth
+                        required
                         InputLabelProps={{ shrink: true }}
                         value={row.dateOfCourseCommencement ?? ''}
                         onChange={(e) =>
@@ -260,6 +276,7 @@ export function MembershipApplicationQualificationSection({
                         size={fieldSize}
                         type="date"
                         fullWidth
+                        required
                         InputLabelProps={{ shrink: true }}
                         value={row.dateOfGraduation ?? ''}
                         onChange={(e) =>
@@ -308,9 +325,18 @@ export function MembershipApplicationQualificationSection({
             <TableHead>
               <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
                 <TableCell width={48}>No.</TableCell>
-                <TableCell>Name of Professional Body/Qualification</TableCell>
-                <TableCell>Date of Course Commencement</TableCell>
-                <TableCell>Expected / Completion Date</TableCell>
+                <TableCell>
+                  Name of Professional Body/Qualification
+                  <RequiredMark />
+                </TableCell>
+                <TableCell>
+                  Date of Course Commencement
+                  <RequiredMark />
+                </TableCell>
+                <TableCell>
+                  Expected / Completion Date
+                  <RequiredMark />
+                </TableCell>
                 <TableCell width={72} align="center">
                   Action
                 </TableCell>
@@ -339,6 +365,7 @@ export function MembershipApplicationQualificationSection({
                         size={fieldSize}
                         type="date"
                         fullWidth
+                        required
                         InputLabelProps={{ shrink: true }}
                         value={row.dateOfCourseCommencement}
                         onChange={(e) =>
@@ -351,6 +378,7 @@ export function MembershipApplicationQualificationSection({
                         size={fieldSize}
                         type="date"
                         fullWidth
+                        required
                         InputLabelProps={{ shrink: true }}
                         value={row.dateOfGraduation}
                         onChange={(e) =>
@@ -399,7 +427,10 @@ export function MembershipApplicationQualificationSection({
             <TableHead>
               <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
                 <TableCell width={48}>No.</TableCell>
-                <TableCell>Name of Institution</TableCell>
+                <TableCell>
+                  Name of Institution
+                  <RequiredMark />
+                </TableCell>
                 <TableCell>Membership Status</TableCell>
                 <TableCell>Date of Admission as Full Member</TableCell>
                 <TableCell>Membership No.</TableCell>
