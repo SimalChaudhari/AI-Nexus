@@ -15,6 +15,8 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { courseService } from 'src/services/course.service';
 import {
@@ -81,6 +83,7 @@ export function MyProgress({ onNavigateToCertificates }) {
   const { authenticated } = useAuthContext();
   const [progressRows, setProgressRows] = useState([]);
   const [page, setPage] = useState(1);
+  const [progressTab, setProgressTab] = useState('in-progress');
   const [progressLoading, setProgressLoading] = useState(true);
 
   useEffect(() => {
@@ -174,15 +177,26 @@ export function MyProgress({ onNavigateToCertificates }) {
     return visibleCourses;
   }, [progressRows, authenticated]);
 
-  // Reset to page 1 when list shrinks
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(myCourses.length / COURSES_PER_PAGE));
-    if (page > maxPage) setPage(1);
-  }, [myCourses.length, page]);
-
-  const completedCount = myCourses.filter((c) => c.progress === 100).length;
+  const inProgressCourses = useMemo(
+    () => myCourses.filter((c) => c.progress < 100),
+    [myCourses]
+  );
+  const completedCourses = useMemo(
+    () => myCourses.filter((c) => c.progress === 100),
+    [myCourses]
+  );
+  const completedCount = completedCourses.length;
   const certificatesCount = completedCount > 0 ? completedCount : 0;
-  const completedCourses = myCourses.filter((c) => c.progress === 100);
+  const activeTabCourses = progressTab === 'completed' ? completedCourses : inProgressCourses;
+
+  useEffect(() => {
+    setPage(1);
+  }, [progressTab]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(activeTabCourses.length / COURSES_PER_PAGE));
+    if (page > maxPage) setPage(1);
+  }, [activeTabCourses.length, page]);
 
   const totalWatchSeconds = useMemo(
     () =>
@@ -302,32 +316,52 @@ export function MyProgress({ onNavigateToCertificates }) {
         </Grid>
       </Grid>
 
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 800,
-            whiteSpace: 'nowrap',
-            letterSpacing: 0.2,
-            fontSize: { xs: '1.08rem', md: '1.2rem' },
-          }}
-        >
-          In progress ({myCourses.length})
-        </Typography>
-        <Box
-          sx={{
-            flexGrow: 1,
-            height: 2,
-            borderRadius: 999,
-            background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
-          }}
-        />
-      </Stack>
+      <Tabs
+        value={progressTab}
+        onChange={(_, value) => setProgressTab(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
+        sx={{
+          mb: 2,
+          minHeight: 40,
+          '& .MuiTab-root': {
+            minHeight: 40,
+            textTransform: 'none',
+            fontWeight: 700,
+            fontSize: { xs: '0.82rem', sm: '0.9rem' },
+            px: { xs: 1.25, sm: 2 },
+          },
+        }}
+      >
+        <Tab value="in-progress" label={`In progress (${inProgressCourses.length})`} />
+        <Tab value="completed" label={`Completed (${completedCourses.length})`} />
+      </Tabs>
 
       <Stack spacing={2}>
             {(() => {
-              const pageCount = Math.max(1, Math.ceil(myCourses.length / COURSES_PER_PAGE));
-              const displayedCourses = myCourses.slice(
+              if (!activeTabCourses.length) {
+                return (
+                  <Box sx={{ textAlign: 'center', py: 6 }}>
+                    <Iconify
+                      icon={progressTab === 'completed' ? 'solar:medal-ribbons-star-bold' : 'solar:play-circle-bold'}
+                      width={48}
+                      sx={{ color: 'text.disabled', mx: 'auto', mb: 1.5 }}
+                    />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {progressTab === 'completed' ? 'No completed courses yet' : 'No courses in progress'}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {progressTab === 'completed'
+                        ? 'Finish a course to see it here.'
+                        : 'Continue learning from All Courses or My Courses.'}
+                    </Typography>
+                  </Box>
+                );
+              }
+
+              const pageCount = Math.max(1, Math.ceil(activeTabCourses.length / COURSES_PER_PAGE));
+              const displayedCourses = activeTabCourses.slice(
                 (page - 1) * COURSES_PER_PAGE,
                 page * COURSES_PER_PAGE
               );
@@ -448,7 +482,7 @@ export function MyProgress({ onNavigateToCertificates }) {
       </Stack>
 
       {/* Earned certificates – completed courses */}
-      {completedCourses.length > 0 && (
+      {progressTab === 'completed' && completedCourses.length > 0 && (
         <Box sx={{ mt: { xs: 3, md: 4 } }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
             <Typography

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -26,7 +26,6 @@ import { appSettingsService } from 'src/services/app-settings.service';
 import { toast } from 'src/components/snackbar';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 import { ENV_DEFAULT_COURSE_IMAGE, getCourseDefaultImage } from 'src/utils/course-default-image';
-import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { Divider } from '@mui/material';
 import { CoursesLoaderOverlay } from './components/courses-loader-overlay';
 import { LearningBundlePill, LearningBundleRibbon } from './components/course-bundle-badge';
@@ -45,6 +44,45 @@ import { clearMembershipApplicationPending } from 'src/utils/membership-salesfor
 
 const ROWS_PER_PAGE = 8;
 const SEARCH_DEBOUNCE_MS = 450;
+/** Room for card hover lift + border glow inside scroll snap pages */
+const GROUP_SCROLL_PAGE_SX = {
+  scrollSnapAlign: 'start',
+  scrollSnapStop: 'always',
+  flexShrink: 0,
+  pt: 1.25,
+  pb: 0.75,
+  px: 0.5,
+  overflow: 'visible',
+};
+const getGroupScrollSx = (theme, pageHeight) => ({
+  overflowY: 'scroll',
+  overflowX: 'clip',
+  ...(pageHeight ? { height: pageHeight } : {}),
+  scrollSnapType: 'y mandatory',
+  WebkitOverflowScrolling: 'touch',
+  pr: 0.75,
+  scrollbarGutter: 'stable',
+  scrollbarWidth: 'thin',
+  scrollbarColor: `${theme.palette.primary.main} ${alpha(theme.palette.grey[500], 0.14)}`,
+  '&::-webkit-scrollbar': { width: 6 },
+  '&::-webkit-scrollbar-track': {
+    bgcolor: alpha(theme.palette.grey[500], 0.12),
+    borderRadius: 999,
+  },
+  '&::-webkit-scrollbar-thumb': {
+    bgcolor: 'primary.main',
+    borderRadius: 999,
+    minHeight: 48,
+  },
+});
+
+function chunkGroupItems(items = [], size = ROWS_PER_PAGE) {
+  const pages = [];
+  for (let index = 0; index < items.length; index += size) {
+    pages.push(items.slice(index, index + size));
+  }
+  return pages;
+}
 const DEFAULT_PAGINATION = {
   page: 1,
   limit: ROWS_PER_PAGE,
@@ -99,6 +137,127 @@ const getCourseProgressStatus = (status, courseProgress) => {
 };
 
 const shouldShowTitleTooltip = (title) => String(title || '').trim().length > 42;
+
+function CourseGroupScrollBox({
+  group,
+  onLoadMore,
+  paginatingGroupKey,
+  renderPage,
+}) {
+  const theme = useTheme();
+  const scrollRef = useRef(null);
+  const firstPageRef = useRef(null);
+  const loadLockRef = useRef(false);
+  const [snapPageHeight, setSnapPageHeight] = useState(null);
+  const items = group.items || [];
+  const pages = useMemo(() => chunkGroupItems(items), [items]);
+  const totalItems = group.pagination?.totalItems || 0;
+  const hasPagination = totalItems > ROWS_PER_PAGE;
+  const isGroupLoading = paginatingGroupKey === group.groupKey;
+  const needsMoreData =
+    items.length < totalItems || Boolean(group.pagination?.hasNextPage);
+
+  const measurePageHeight = useCallback(() => {
+    const node = firstPageRef.current;
+    if (!node) return;
+    const nextHeight = Math.ceil(node.getBoundingClientRect().height);
+    if (nextHeight > 0) {
+      setSnapPageHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!hasPagination) {
+      setSnapPageHeight(null);
+      return undefined;
+    }
+
+    measurePageHeight();
+
+    const node = firstPageRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return undefined;
+
+    const observer = new ResizeObserver(measurePageHeight);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasPagination, measurePageHeight, pages.length, items.length]);
+
+  const tryLoadMore = useCallback(() => {
+    if (loadLockRef.current || isGroupLoading || !needsMoreData) return;
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const pageHeight = snapPageHeight || el.clientHeight;
+    if (pageHeight <= 0) return;
+
+    const currentPage = Math.round(el.scrollTop / pageHeight);
+    const onLastPage = currentPage >= pages.length - 1;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+
+    if (onLastPage && nearBottom) {
+      loadLockRef.current = true;
+      onLoadMore();
+    }
+  }, [isGroupLoading, needsMoreData, onLoadMore, pages.length, snapPageHeight]);
+
+  useEffect(() => {
+    loadLockRef.current = false;
+  }, [items.length, isGroupLoading]);
+
+  useEffect(() => {
+    if (!hasPagination || !snapPageHeight) return undefined;
+
+    const el = scrollRef.current;
+    if (!el) return undefined;
+
+    const onScroll = () => tryLoadMore();
+    const onWheel = (event) => {
+      if (event.deltaY > 0 && pages.length <= 1 && needsMoreData) {
+        tryLoadMore();
+      }
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [hasPagination, needsMoreData, pages.length, snapPageHeight, tryLoadMore]);
+
+  if (!hasPagination) {
+    return (
+      <Box sx={{ position: 'relative', pt: 1.25, px: 0.5, overflow: 'visible' }}>
+        {renderPage(items)}
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ position: 'relative' }}>
+      <Box
+        ref={scrollRef}
+        sx={{
+          position: 'relative',
+          visibility: snapPageHeight ? 'visible' : 'hidden',
+          ...getGroupScrollSx(theme, snapPageHeight),
+        }}
+      >
+        {pages.map((pageItems, pageIndex) => (
+          <Box
+            key={`${group.groupKey}-page-${pageIndex}`}
+            ref={pageIndex === 0 ? firstPageRef : undefined}
+            sx={GROUP_SCROLL_PAGE_SX}
+          >
+            {renderPage(pageItems)}
+          </Box>
+        ))}
+      </Box>
+      {isGroupLoading && <CoursesLoaderOverlay size={32} zIndex={2} />}
+    </Box>
+  );
+}
 
 export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
   const theme = useTheme();
@@ -221,7 +380,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
 
   const fetchCoursesPage = useCallback(
     async (options = {}) => {
-      const { onlyGroupKey, pagesOverride } = options;
+      const { onlyGroupKey, pagesOverride, append = false } = options;
       const nextRequestId = latestRequestRef.current + 1;
       latestRequestRef.current = nextRequestId;
       if (!onlyGroupKey) {
@@ -276,8 +435,19 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
             if (!incomingGroup) return prev;
             let merged = [...prev];
             const index = merged.findIndex((group) => resolveGroupKey(group) === onlyGroupKey);
+            const currentPage = pages[onlyGroupKey] || 1;
             if (index >= 0) {
-              merged[index] = incomingGroup;
+              if (append && currentPage > 1) {
+                const existing = merged[index];
+                const existingIds = new Set((existing.items || []).map((course) => course.id));
+                const newItems = (incomingGroup.items || []).filter((course) => !existingIds.has(course.id));
+                merged[index] = {
+                  ...incomingGroup,
+                  items: [...(existing.items || []), ...newItems],
+                };
+              } else {
+                merged[index] = incomingGroup;
+              }
             } else if (onlyGroupKey === 'recommended') {
               merged = [incomingGroup, ...merged];
             } else {
@@ -362,14 +532,27 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
     [authenticated, debouncedSearchQuery, enrolledOnly, resolveGroupKey]
   );
 
-  const handleGroupPageChange = useCallback(
-    (groupKey, value) => {
-      const nextPages = { ...groupPages, [groupKey]: value };
+  const handleGroupLoadMore = useCallback(
+    (groupKey) => {
+      if (paginatingGroupKey) return;
+
+      const group = groupedResult.find((item) => resolveGroupKey(item) === groupKey);
+      const loadedCount = group?.items?.length || 0;
+      const totalItems = group?.pagination?.totalItems || 0;
+      const currentPage = groupPages[groupKey] || 1;
+      const hasMore =
+        loadedCount < totalItems ||
+        group?.pagination?.hasNextPage ||
+        currentPage < (group?.pagination?.totalPages || 1);
+
+      if (!hasMore) return;
+
+      const nextPages = { ...groupPages, [groupKey]: currentPage + 1 };
       skipNextFullFetchRef.current = true;
       setGroupPages(nextPages);
-      fetchCoursesPage({ onlyGroupKey: groupKey, pagesOverride: nextPages });
+      fetchCoursesPage({ onlyGroupKey: groupKey, pagesOverride: nextPages, append: true });
     },
-    [fetchCoursesPage, groupPages]
+    [fetchCoursesPage, groupPages, groupedResult, paginatingGroupKey, resolveGroupKey]
   );
 
   useEffect(() => {
@@ -763,14 +946,18 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                           }}
                         />
                       </Stack>
-                      <Box sx={{ position: 'relative', overflow: 'visible' }}>
+                      <CourseGroupScrollBox
+                        group={group}
+                        paginatingGroupKey={paginatingGroupKey}
+                        onLoadMore={() => handleGroupLoadMore(group.groupKey)}
+                        renderPage={(pageItems) => (
                         <Grid
                           container
-                          spacing={{ xs: 1.25, sm: 1.5, md: 2 }}
+                          spacing={{ xs: 1.75, sm: 1.5, md: 2 }}
                           columns={{ xs: 2, sm: 2, md: 4, lg: 4, xl: 4 }}
                           sx={{ overflow: 'visible' }}
                         >
-                          {group.items.map((course) => {
+                          {pageItems.map((course) => {
                             const { moduleCount, sectionCount } = getCourseContentMeta(course);
                             const progressRow = courseProgressById[course.id] || {};
                             const courseProgress = Number.isFinite(progressRow.completionPercent)
@@ -780,7 +967,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                             const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
                             const courseIsFavorite = favorites.has(course.id) || course.isFavorite;
                             return (
-                              <Grid key={course.id} xs={1}>
+                              <Grid key={course.id} xs={1} sx={{ overflow: 'visible', display: 'flex' }}>
                                 <LearningCourseGridCard
                                   course={course}
                                   defaultCourseImage={defaultCourseImage}
@@ -794,6 +981,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                   favoriteLoading={favoriteLoading.has(course.id)}
                                   isEnrolled={isEnrolled(course.id)}
                                   isInCart={isInCart(course.id)}
+                                  showFavorite={authenticated}
                                   detailsHref={getCourseDetailsPath(course.id)}
                                   onImageClick={handleCourseImageClick}
                                   onFavorite={handleFavorite}
@@ -804,25 +992,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                             );
                           })}
                         </Grid>
-                        {paginatingGroupKey === group.groupKey && (
-                          <CoursesLoaderOverlay size={32} zIndex={2} />
                         )}
-                      </Box>
-                      {(group.pagination?.totalPages || 0) > 1 && (
-                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                          <Pagination
-                            count={Math.max(1, group.pagination.totalPages || 1)}
-                            page={groupPages[group.groupKey] || 1}
-                            onChange={(_, value) => handleGroupPageChange(group.groupKey, value)}
-                            disabled={paginatingGroupKey === group.groupKey}
-                            color="primary"
-                            shape="rounded"
-                            showFirstButton
-                            showLastButton
-                            sx={{ [`& .${paginationClasses.ul}`]: { justifyContent: 'flex-end' } }}
-                          />
-                        </Box>
-                      )}
+                      />
                     </Box>
                   ))}
 
@@ -857,9 +1028,13 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                             }}
                           />
                         </Stack>
-                        <Box sx={{ position: 'relative' }}>
+                        <CourseGroupScrollBox
+                          group={group}
+                          paginatingGroupKey={paginatingGroupKey}
+                          onLoadMore={() => handleGroupLoadMore(group.groupKey)}
+                          renderPage={(pageItems) => (
                           <Stack spacing={2}>
-                            {group.items.map((course) => {
+                            {pageItems.map((course) => {
                               const { moduleCount, sectionCount } = getCourseContentMeta(course);
                               const progressRow = courseProgressById[course.id] || {};
                               const courseProgress = Number.isFinite(progressRow.completionPercent)
@@ -1154,7 +1329,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                               }}
                                             >
                                               {course.accessViaBundle
-                                                ? 'Included in bundle'
+                                                ? 'In bundle'
                                                 : 'Purchased'}
                                             </Typography>
                                           </Stack>
@@ -1240,27 +1415,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                               );
                             })}
                           </Stack>
-                          {paginatingGroupKey === group.groupKey && (
-                            <CoursesLoaderOverlay size={32} zIndex={2} />
                           )}
-                        </Box>
-                        {(group.pagination?.totalPages || 0) > 1 && (
-                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                            <Pagination
-                              count={Math.max(1, group.pagination.totalPages || 1)}
-                              page={groupPages[group.groupKey] || 1}
-                              onChange={(_, value) => handleGroupPageChange(group.groupKey, value)}
-                              disabled={paginatingGroupKey === group.groupKey}
-                              color="primary"
-                              shape="rounded"
-                              showFirstButton
-                              showLastButton
-                              sx={{
-                                [`& .${paginationClasses.ul}`]: { justifyContent: 'flex-end' },
-                              }}
-                            />
-                          </Box>
-                        )}
+                        />
                       </Box>
                     ))}
                   </Stack>
