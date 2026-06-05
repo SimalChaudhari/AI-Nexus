@@ -14,6 +14,7 @@ export function InfinitePagination({
   totalCount,
   itemLabel = 'items',
   disabled = false,
+  scrollRootRef,
   sentinelSx,
   footerSx,
 }) {
@@ -28,7 +29,10 @@ export function InfinitePagination({
           onLoadMore();
         }
       },
-      { threshold: 0.1 }
+      {
+        threshold: 0.1,
+        root: scrollRootRef?.current || null,
+      }
     );
 
     const currentTarget = observerTarget.current;
@@ -42,7 +46,7 @@ export function InfinitePagination({
         observer.unobserve(currentTarget);
       }
     };
-  }, [disabled, hasMore, loading, onLoadMore]);
+  }, [disabled, hasMore, loading, onLoadMore, scrollRootRef]);
 
   return (
     <>

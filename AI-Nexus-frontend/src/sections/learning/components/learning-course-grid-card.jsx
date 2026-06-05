@@ -1,195 +1,136 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
-import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { RouterLink } from 'src/routes/components';
-import { RichTextContent } from 'src/components/html-content';
-import { htmlToPlainText, isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
-import { fServerDate } from 'src/utils/format-time';
+import { LearningBundleRibbon } from './course-bundle-badge';
 
-import { LearningBundlePill, LearningBundleRibbon } from './course-bundle-badge';
-
+const CARD_META_ROW_HEIGHT = 18;
+const CARD_STATUS_ROW_HEIGHT = 30;
+const CARD_PROGRESS_SLOT_HEIGHT = 30;
 const CARD_TITLE_LINE_HEIGHT = 1.35;
-const CARD_DESC_LINE_HEIGHT = 1.45;
-const CARD_META_ROW_HEIGHT = 20;
-const CARD_PRICE_ROW_HEIGHT = 34;
-const CARD_PROGRESS_BLOCK_HEIGHT = 36;
+const CARD_TITLE_LINES = 2;
+const CARD_IMAGE_RATIO = '16/10';
 
 // ----------------------------------------------------------------------
 
-const LEARNING_CARD_HOVER_RICH_TEXT_SX = {
-  color: 'text.secondary',
-  fontSize: '0.8125rem',
-  lineHeight: 1.55,
-  '& p': { my: 0.45, fontSize: 'inherit' },
-  '& ul, & ol': { my: 0.5, pl: 2.25 },
-  '& li': { mb: 0.35 },
-  '& h1, & h2, & h3, & h4, & h5, & h6': {
-    mt: 0.75,
-    mb: 0.35,
-    fontSize: '0.8125rem',
-    fontWeight: 600,
-    lineHeight: 1.4,
-  },
-  '& a': { color: 'primary.main' },
-  '& blockquote': {
-    my: 0.5,
-    pl: 1.25,
-    borderLeft: '3px solid',
-    borderColor: 'divider',
-  },
-};
+const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
 
-function getDescriptionPreview(description, maxLen = 160) {
-  const text = htmlToPlainText(description || '').replace(/\s+/g, ' ').trim();
-  if (!text) return 'No description available for this course yet.';
-  if (text.length <= maxLen) return text;
-  return `${text.slice(0, maxLen).trim()}…`;
+function getCourseAccessLabel(course) {
+  if (course.isBundle) return 'Bundle';
+  return isPaidCourse(course.freeOrPaid) ? 'Premium' : 'AI Fluency';
 }
 
 function formatCoursePrice(course) {
-  if (!course.freeOrPaid) return 'AI Fluency';
+  if (!isPaidCourse(course.freeOrPaid)) return 'AI Fluency';
   return `${Number(course.amount || 0).toFixed(2)} SGD`;
 }
 
-function formatCourseMonthYear(value) {
-  if (!value) return null;
-  const formatted = fServerDate(value, 'MMMM YYYY');
-  if (!formatted || formatted === 'Invalid time value') return null;
-  return formatted;
-}
-
-function getCardFooterMetaHighlight({ course, moduleCount, sectionCount, updatedMonthLabel, compact = false }) {
-  if (sectionCount > 0) {
-    return {
-      icon: 'solar:play-circle-bold',
-      label: compact
-        ? `${sectionCount} lesson${sectionCount === 1 ? '' : 's'}`
-        : `${sectionCount} lesson${sectionCount === 1 ? '' : 's'}`,
-      tone: 'info',
-    };
-  }
-  if (moduleCount > 0) {
-    return {
-      icon: 'solar:widget-5-bold',
-      label: `${moduleCount} module${moduleCount === 1 ? '' : 's'}`,
-      tone: 'info',
-    };
-  }
-  if (course.level) {
-    return { icon: 'solar:chart-bold', label: course.level, tone: 'secondary' };
-  }
-  if (updatedMonthLabel) {
-    return {
-      icon: 'solar:calendar-mark-bold',
-      label: compact ? updatedMonthLabel : `Updated ${updatedMonthLabel}`,
-      tone: 'success',
-    };
-  }
-  if (course.isBundle) {
-    return { icon: 'solar:box-bold', label: compact ? 'Bundle' : 'Bundle course', tone: 'info' };
-  }
-  if (course.freeOrPaid) {
-    return { icon: 'solar:star-bold', label: compact ? 'Premium' : 'Premium course', tone: 'secondary' };
-  }
-  return { icon: 'solar:leaf-bold', label: compact ? 'AI Fluency' : 'AI Fluency course', tone: 'success' };
-}
-
-function CourseModulesSectionsRow({ moduleCount, sectionCount, size = 'compact', sx }) {
-  const theme = useTheme();
-  const isHover = size === 'hover';
-  const iconSize = isHover ? 13 : 12;
-  const fontSize = isHover
-    ? { xs: '0.68rem', sm: '0.72rem' }
-    : { xs: '0.62rem', sm: '0.68rem' };
-
+function CardMetaItemMobile({ icon, label, iconColor, isPlaceholder, iconOnly = false, sx }) {
   return (
     <Stack
       direction="row"
-      spacing={0.5}
       alignItems="center"
-      flexWrap="wrap"
-      sx={{
-        ...(isHover
-          ? { mb: 1 }
-          : {
-              height: { xs: 18, sm: CARD_META_ROW_HEIGHT },
-              minHeight: { xs: 18, sm: CARD_META_ROW_HEIGHT },
-              flexShrink: 0,
-              overflow: 'hidden',
-            }),
-        ...sx,
-      }}
+      justifyContent="center"
+      spacing={0.3}
+      sx={{ flex: 1, minWidth: 0, px: 0.1, ...sx }}
     >
-      {moduleCount > 0 || sectionCount > 0 ? (
-        <>
-          {moduleCount > 0 && (
-            <Stack
-              direction="row"
-              spacing={0.35}
-              alignItems="center"
-              sx={{
-                px: isHover ? 0.75 : 0.65,
-                py: isHover ? 0.25 : 0.15,
-                borderRadius: 1,
-                bgcolor: alpha(theme.palette.info.main, 0.1),
-              }}
-            >
-              <Iconify icon="solar:widget-5-bold" width={iconSize} sx={{ color: 'info.main' }} />
-              <Typography
-                variant="caption"
-                sx={{ color: 'info.main', fontWeight: 700, fontSize, lineHeight: 1 }}
-              >
-                {moduleCount} Modules
-              </Typography>
-            </Stack>
-          )}
-          {sectionCount > 0 && (
-            <Stack
-              direction="row"
-              spacing={0.35}
-              alignItems="center"
-              sx={{
-                px: isHover ? 0.75 : 0.65,
-                py: isHover ? 0.25 : 0.15,
-                borderRadius: 1,
-                bgcolor: alpha(theme.palette.warning.main, 0.12),
-              }}
-            >
-              <Iconify icon="solar:document-text-bold" width={iconSize} sx={{ color: 'warning.main' }} />
-              <Typography
-                variant="caption"
-                sx={{ color: 'warning.main', fontWeight: 700, fontSize, lineHeight: 1 }}
-              >
-                {sectionCount} Sections
-              </Typography>
-            </Stack>
-          )}
-        </>
-      ) : (
+      <Iconify
+        icon={icon}
+        width={iconOnly ? 15 : 13}
+        sx={{ color: iconColor || 'text.secondary', flexShrink: 0 }}
+      />
+      {iconOnly ? null : (
         <Typography
           variant="caption"
+          noWrap
           sx={{
-            color: 'text.disabled',
-            fontStyle: 'italic',
-            fontSize,
-            lineHeight: 1,
+            color: isPlaceholder ? 'text.disabled' : 'text.primary',
+            fontWeight: 700,
+            fontSize: '0.62rem',
+            lineHeight: 1.15,
+            minWidth: 0,
           }}
         >
-          Modules & Sections not available
+          {label}
         </Typography>
       )}
     </Stack>
+  );
+}
+
+function CardMetaItem({ icon, label, iconColor, isPlaceholder, align = 'flex-start' }) {
+  return (
+    <Stack
+      direction="row"
+      spacing={0.45}
+      alignItems="center"
+      justifyContent={align}
+      sx={{ minWidth: 0, width: '100%' }}
+    >
+      <Iconify
+        icon={icon}
+        width={14}
+        sx={{ color: iconColor || 'info.main', flexShrink: 0 }}
+      />
+      <Typography
+        variant="caption"
+        noWrap
+        sx={{
+          color: isPlaceholder ? 'text.disabled' : 'text.primary',
+          fontWeight: 700,
+          fontSize: '0.75rem',
+          lineHeight: 1.2,
+        }}
+      >
+        {label}
+      </Typography>
+    </Stack>
+  );
+}
+
+function LearningCourseEnrolledStatusRow({ course, isPaid, purchasedLabel }) {
+  return (
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={0.75}
+        sx={{ width: '100%', minWidth: 0, flexWrap: 'nowrap' }}
+      >
+        {isPaid ? (
+          <Typography
+            variant="caption"
+            noWrap
+            sx={{
+              color: 'text.disabled',
+              fontWeight: 700,
+              fontSize: '0.8125rem',
+              textDecoration: 'line-through',
+              flexShrink: 0,
+            }}
+          >
+            {formatCoursePrice(course)}
+          </Typography>
+        ) : null}
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0, minWidth: 0 }}>
+          <Iconify icon="solar:verified-check-bold" width={14} sx={{ color: 'success.main', flexShrink: 0 }} />
+          <Typography
+            variant="caption"
+            noWrap
+            sx={{ color: 'success.main', fontWeight: 700, fontSize: '0.8125rem' }}
+          >
+            {purchasedLabel}
+          </Typography>
+        </Stack>
+      </Stack>
   );
 }
 
@@ -208,6 +149,7 @@ export function LearningCourseGridCard({
   favoriteLoading = false,
   isEnrolled = false,
   isInCart = false,
+  showFavorite = true,
   detailsHref,
   onImageClick,
   onFavorite,
@@ -215,68 +157,92 @@ export function LearningCourseGridCard({
   onViewDetails,
 }) {
   const theme = useTheme();
-  const isCompactCard = useMediaQuery(theme.breakpoints.down('sm'));
   const bundleCount = Array.isArray(course.bundleCourseIds) ? course.bundleCourseIds.length : 0;
-  const showRecommendedBadge = groupKey !== 'recommended' && course.isRecommended;
-  const priceLabel = formatCoursePrice(course);
-  const cardDescriptionPreview = getDescriptionPreview(course.description, 96);
-  const showAddToCart = (course.freeOrPaid || isInCart) && !isEnrolled;
-  const showMobileCartAction = (course.freeOrPaid || isInCart) && !isEnrolled;
+  const showPopularBadge =
+    groupKey === 'recommended' || (groupKey !== 'recommended' && course.isRecommended);
+  const isPaid = isPaidCourse(course.freeOrPaid);
+  const courseAccessLabel = getCourseAccessLabel(course);
+  const showAccessLabel = !isEnrolled && !course.isBundle;
+  const showAddToCart = (isPaid || isInCart) && !isEnrolled;
+  const showProgressSlot = showCourseProgress || showAddToCart;
+  const showStatusAccessLabel = showAccessLabel;
+  const showAccessInProgressSlot = showStatusAccessLabel && !showProgressSlot && !isEnrolled;
+  const showStatusRow = isEnrolled || (showStatusAccessLabel && showProgressSlot);
 
-  const updatedMonthLabel = formatCourseMonthYear(course.updatedAt || course.createdAt);
-  const hoverDescriptionHtml = isEffectivelyEmptyHtml(course.description)
-    ? '<p>No description available for this course yet.</p>'
-    : course.description;
-  const courseTypeLabel = course.isBundle ? 'Bundle' : course.freeOrPaid ? 'Premium' : 'AI Fluency';
-  const courseTypeColor = course.isBundle ? 'info' : course.freeOrPaid ? 'secondary' : 'success';
-  const purchasedLabel = course.accessViaBundle ? 'Included in bundle' : 'Purchased';
-  const cardFooterHighlight = getCardFooterMetaHighlight({
-    course,
-    moduleCount,
-    sectionCount,
-    updatedMonthLabel,
-    compact: isCompactCard,
-  });
+  const levelLabel = course.level || 'All levels';
+  const durationLabel =
+    sectionCount > 0
+      ? `${sectionCount} lesson${sectionCount === 1 ? '' : 's'}`
+      : moduleCount > 0
+        ? `${moduleCount} module${moduleCount === 1 ? '' : 's'}`
+        : '—';
+  const reviewCount = Number(course?.reviewStats?.reviewCount || 0);
+  const averageRating = Number(course?.reviewStats?.averageRating || 0);
+  const ratingLabel = reviewCount > 0 ? averageRating.toFixed(1) : '—';
+  const primaryActionLabel = isEnrolled
+    ? courseProgress >= 100
+      ? 'Review Course'
+      : courseProgress > 0
+        ? 'Continue Learning'
+        : 'View Course'
+    : 'View Course';
+  const purchasedLabel = course.accessViaBundle ? 'In bundle' : 'Purchased';
 
   return (
-    <Box
-      sx={{
-        position: 'relative',
-        height: '100%',
-        zIndex: 0,
-        '@media (hover: hover)': {
-          '&:hover': { zIndex: theme.zIndex.tooltip },
-          '&:hover .learning-course-hover-panel': {
-            opacity: 1,
-            visibility: 'visible',
-            pointerEvents: 'auto',
-            transform: 'translateY(0)',
-          },
-          '&:hover .learning-course-card-root': {
-            boxShadow: theme.customShadows.z20,
-          },
-        },
-      }}
-    >
       <Card
         className="learning-course-card-root"
         sx={{
+          width: '100%',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          borderRadius: 1.5,
-          boxShadow: theme.customShadows.z4,
+          position: 'relative',
+          zIndex: 0,
+          borderRadius: 2,
+          border: showFavorite
+            ? `1.5px solid ${alpha(theme.palette.primary.main, 0.28)}`
+            : `1px solid ${alpha(theme.palette.grey[500], 0.18)}`,
+          boxShadow: 'none',
+          bgcolor: 'background.paper',
           overflow: 'hidden',
           color: 'inherit',
-          transition: 'box-shadow 0.22s ease',
+          p: { xs: 1.15, sm: 1.25 },
+          transition: 'box-shadow 0.28s ease, transform 0.28s ease, border-color 0.28s ease',
+          ...(showFavorite
+            ? {
+                animation: 'learningCourseCardBorderPulse 3s ease-in-out infinite',
+                '@keyframes learningCourseCardBorderPulse': {
+                  '0%, 100%': {
+                    borderColor: alpha(theme.palette.primary.main, 0.22),
+                    boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}`,
+                  },
+                  '50%': {
+                    borderColor: alpha(theme.palette.primary.main, 0.48),
+                    boxShadow: `0 0 16px -3px ${alpha(theme.palette.primary.main, 0.22)}`,
+                  },
+                },
+              }
+            : {}),
+          '@media (hover: hover)': {
+            '&:hover': {
+              zIndex: 1,
+              animation: 'none',
+              transform: 'translateY(-4px)',
+              borderColor: theme.palette.primary.main,
+              boxShadow: `0 10px 28px -8px ${alpha(theme.palette.primary.main, 0.34)}`,
+            },
+          },
         }}
       >
         <Box
           onClick={(e) => onImageClick?.(e, course)}
           sx={{
             position: 'relative',
-            height: { xs: 96, sm: 108 },
-            bgcolor: 'grey.100',
+            mb: 1,
+            borderRadius: 1.5,
+            overflow: 'hidden',
+            bgcolor: alpha(theme.palette.primary.main, 0.06),
+            width: '100%',
             flexShrink: 0,
             cursor: 'pointer',
           }}
@@ -284,306 +250,181 @@ export function LearningCourseGridCard({
           <Image
             alt={course.title}
             src={course.image || defaultCourseImage}
-            sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+            ratio={CARD_IMAGE_RATIO}
+            sx={{ width: '100%', display: 'block' }}
             onError={(e) => {
               e.target.src = defaultCourseImage;
             }}
           />
-          <Box
-            className="learning-course-play-hint"
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              bgcolor: alpha(theme.palette.common.black, 0.28),
-              opacity: 0,
-              transition: 'opacity 0.2s ease',
-              '@media (hover: hover)': {
-                '.learning-course-card-root:hover &': { opacity: 1 },
-              },
-            }}
-          >
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                bgcolor: alpha(theme.palette.common.white, 0.95),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Iconify icon="solar:play-bold" width={20} sx={{ color: 'primary.main', ml: 0.2 }} />
-            </Box>
-          </Box>
           {course.isBundle ? <LearningBundleRibbon count={bundleCount} /> : null}
-          {showRecommendedBadge ? (
+          {showPopularBadge ? (
             <Chip
               size="small"
-              label="Recommended"
-              color="warning"
+              label="Popular"
               sx={{
                 position: 'absolute',
-                top: 6,
-                left: 6,
-                height: 20,
+                top: 10,
+                left: 10,
+                height: 22,
                 fontSize: '0.65rem',
                 fontWeight: 600,
                 zIndex: 2,
+                bgcolor: alpha(theme.palette.success.main, 0.92),
+                color: 'common.white',
+                '& .MuiChip-label': { px: 0.85 },
               }}
             />
           ) : null}
-          <IconButton
-            size="small"
-            onClick={(e) => onFavorite?.(e, course.id)}
-            disabled={favoriteLoading}
-            sx={{
-              position: 'absolute',
-              top: 6,
-              right: 6,
-              width: 30,
-              height: 30,
-              bgcolor: alpha(theme.palette.common.white, 0.98),
-              color: isFavorite ? 'error.main' : 'grey.600',
-              boxShadow: theme.shadows[4],
-              '&:hover': { bgcolor: 'common.white' },
-              opacity: favoriteLoading ? 0.6 : 1,
-            }}
-            aria-label="Favorite"
-          >
-            <Iconify icon={isFavorite ? 'solar:heart-bold' : 'solar:heart-outline'} width={18} />
-          </IconButton>
+          {showFavorite ? (
+            <IconButton
+              size="small"
+              onClick={(e) => onFavorite?.(e, course.id)}
+              disabled={favoriteLoading}
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 32,
+                height: 32,
+                bgcolor: alpha(theme.palette.common.white, 0.96),
+                color: isFavorite ? 'error.main' : 'grey.600',
+                boxShadow: theme.shadows[2],
+                '&:hover': { bgcolor: 'common.white' },
+                opacity: favoriteLoading ? 0.6 : 1,
+              }}
+              aria-label="Favorite"
+            >
+              <Iconify icon={isFavorite ? 'solar:heart-bold' : 'solar:heart-outline'} width={18} />
+            </IconButton>
+          ) : null}
         </Box>
 
         <Box
           sx={{
-            p: { xs: 1, sm: 1.15, md: 1.25 },
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            gap: { xs: 0.5, sm: 0.65 },
+            gap: { xs: 0.85, sm: 0.65 },
             minHeight: 0,
           }}
         >
           <Typography
-            variant="subtitle2"
+            variant="subtitle1"
             component={RouterLink}
             to={detailsHref}
             sx={{
               fontWeight: 600,
-              fontSize: { xs: '0.8125rem', sm: '0.875rem', md: '0.9rem' },
+              fontSize: { xs: '0.85rem', sm: '0.9rem' },
               lineHeight: CARD_TITLE_LINE_HEIGHT,
-              minHeight: {
-                xs: `calc(0.8125rem * ${CARD_TITLE_LINE_HEIGHT} * 2)`,
-                sm: `calc(0.875rem * ${CARD_TITLE_LINE_HEIGHT} * 2)`,
-                md: `calc(0.9rem * ${CARD_TITLE_LINE_HEIGHT} * 2)`,
-              },
+              letterSpacing: -0.01,
+              minHeight: `${CARD_TITLE_LINES * CARD_TITLE_LINE_HEIGHT}em`,
+              flexShrink: 0,
               display: '-webkit-box',
-              WebkitLineClamp: 2,
+              WebkitLineClamp: CARD_TITLE_LINES,
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               wordBreak: 'break-word',
               color: 'text.primary',
               textDecoration: 'none',
-              flexShrink: 0,
               '&:hover': { color: 'primary.main' },
             }}
           >
             {course.title}
           </Typography>
 
-          <CourseModulesSectionsRow moduleCount={moduleCount} sectionCount={sectionCount} />
-
-          <Typography
-            variant="caption"
+          <Box
             sx={{
-              color: 'text.secondary',
-              fontSize: { xs: '0.7rem', sm: '0.72rem', md: '0.75rem' },
-              lineHeight: CARD_DESC_LINE_HEIGHT,
-              minHeight: {
-                xs: `calc(0.7rem * ${CARD_DESC_LINE_HEIGHT})`,
-                sm: `calc(0.72rem * ${CARD_DESC_LINE_HEIGHT})`,
-                md: `calc(0.75rem * ${CARD_DESC_LINE_HEIGHT})`,
-              },
-              display: '-webkit-box',
-              WebkitLineClamp: 1,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
+              display: { xs: 'flex', sm: 'none' },
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 0.5,
+              minHeight: 22,
               flexShrink: 0,
+              width: '100%',
             }}
           >
-            {cardDescriptionPreview}
-          </Typography>
-
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            spacing={0.5}
-            sx={{
-              minHeight: { xs: 32, sm: CARD_PRICE_ROW_HEIGHT },
-              height: { xs: 32, sm: CARD_PRICE_ROW_HEIGHT },
-              flexShrink: 0,
-            }}
-          >
-            <Stack
-              direction="row"
-              alignItems="center"
-              spacing={0.5}
-              sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
-            >
-              <Typography
-                variant="caption"
-                noWrap
-                sx={{
-                  fontWeight: 700,
-                  fontSize: { xs: '0.72rem', sm: '0.78rem', md: '0.8125rem' },
-                  color: course.freeOrPaid ? (isEnrolled ? 'text.disabled' : 'secondary.main') : 'success.main',
-                  textDecoration: course.freeOrPaid && isEnrolled ? 'line-through' : 'none',
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {priceLabel}
-              </Typography>
-              {isEnrolled ? (
-                isCompactCard ? (
-                  <Box
-                    title={purchasedLabel}
-                    aria-label={purchasedLabel}
-                    sx={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      bgcolor: alpha(theme.palette.success.main, 0.14),
-                      color: 'success.main',
-                      border: `1px solid ${alpha(theme.palette.success.main, 0.35)}`,
-                    }}
-                  >
-                    <Iconify icon="solar:verified-check-bold" width={14} />
-                  </Box>
-                ) : (
-                  <Chip
-                    size="small"
-                    label={purchasedLabel}
-                    color="success"
-                    variant="soft"
-                    icon={<Iconify icon="solar:verified-check-bold" width={12} />}
-                    sx={{
-                      height: 20,
-                      fontSize: '0.65rem',
-                      fontWeight: 700,
-                      maxWidth: '58%',
-                      flexShrink: 1,
-                      '& .MuiChip-icon': { color: 'inherit', ml: 0.35, width: 12, height: 12 },
-                      '& .MuiChip-label': { px: 0.75, overflow: 'hidden', textOverflow: 'ellipsis' },
-                    }}
-                  />
-                )
-              ) : null}
-            </Stack>
-            {showMobileCartAction ? (
-              <IconButton
-                size="small"
-                onClick={(e) => onAddToCart?.(e, course)}
-                disabled={isEnrolled}
-                aria-label={isEnrolled ? 'Purchased' : 'Add to cart'}
-                sx={{
-                  display: { xs: 'inline-flex', md: 'none' },
-                  flexShrink: 0,
-                  width: { xs: 30, sm: 34 },
-                  height: { xs: 30, sm: 34 },
-                  bgcolor: isEnrolled
-                    ? 'common.white'
-                    : isInCart
-                      ? 'primary.main'
-                      : 'warning.main',
-                  color:
-                    isEnrolled || isInCart
-                      ? isEnrolled
-                        ? 'success.main'
-                        : 'primary.contrastText'
-                      : 'warning.contrastText',
-                  boxShadow: theme.shadows[4],
-                  border: `1px solid ${
-                    isEnrolled
-                      ? alpha(theme.palette.success.main, 0.45)
-                      : isInCart
-                        ? alpha(theme.palette.primary.main, 0.4)
-                        : alpha(theme.palette.common.white, 0.24)
-                  }`,
-                  '&:hover': {
-                    bgcolor: isEnrolled
-                      ? alpha(theme.palette.success.main, 0.08)
-                      : isInCart
-                        ? 'primary.dark'
-                        : 'warning.dark',
-                  },
-                  opacity: isEnrolled ? 0.9 : 1,
-                }}
-              >
-                <Iconify
-                  icon={
-                    isEnrolled
-                      ? 'solar:verified-check-bold'
-                      : isInCart
-                        ? 'solar:cart-check-bold'
-                        : 'solar:cart-plus-bold'
-                  }
-                  width={18}
-                  sx={
-                    isEnrolled || isInCart
-                      ? { color: isEnrolled ? 'success.main' : 'primary.contrastText' }
-                      : undefined
-                  }
-                />
-              </IconButton>
-            ) : null}
-          </Stack>
+            <CardMetaItemMobile
+              icon="solar:chart-2-bold"
+              label={levelLabel}
+              iconColor="secondary.main"
+              sx={{ flex: 1, minWidth: 0, justifyContent: 'flex-start' }}
+            />
+            <CardMetaItemMobile
+              icon="solar:star-bold"
+              label={ratingLabel}
+              iconColor="warning.main"
+              isPlaceholder={ratingLabel === '—'}
+              sx={{ flex: 'unset', justifyContent: 'flex-end' }}
+            />
+          </Box>
 
           <Box
             sx={{
-              minHeight: { xs: 32, sm: CARD_PROGRESS_BLOCK_HEIGHT },
-              height: { xs: 32, sm: CARD_PROGRESS_BLOCK_HEIGHT },
+              display: { xs: 'none', sm: 'grid' },
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              columnGap: 1.25,
+              alignItems: 'center',
+              minHeight: CARD_META_ROW_HEIGHT,
               flexShrink: 0,
-              display: 'flex',
+              width: '100%',
+            }}
+          >
+            <CardMetaItem
+              icon="solar:chart-2-bold"
+              label={levelLabel}
+              iconColor="secondary.main"
+              align="flex-start"
+            />
+            <CardMetaItem
+              icon="solar:clock-circle-bold"
+              label={durationLabel}
+              iconColor="info.main"
+              isPlaceholder={durationLabel === '—'}
+              align="center"
+            />
+            <CardMetaItem
+              icon="solar:star-bold"
+              label={ratingLabel}
+              iconColor="warning.main"
+              isPlaceholder={ratingLabel === '—'}
+              align="flex-end"
+            />
+          </Box>
+
+          <Box
+            sx={{
+              width: '100%',
+              minHeight: showProgressSlot || showAccessInProgressSlot ? CARD_PROGRESS_SLOT_HEIGHT : 0,
+              flexShrink: 0,
+              display: showProgressSlot || showAccessInProgressSlot ? 'flex' : 'none',
               flexDirection: 'column',
-              justifyContent: 'flex-end',
+              justifyContent: 'center',
             }}
           >
             {showCourseProgress ? (
-              <Box sx={{ width: '100%' }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.25 }}>
+              <>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  sx={{ mb: 0.35 }}
+                >
                   <Chip
                     size="small"
                     label={progressStatus.label}
                     color={progressStatus.color}
                     variant="soft"
                     sx={{
-                      height: { xs: 20, sm: 22 },
-                      maxWidth: '72%',
-                      fontSize: { xs: '0.65rem', sm: '0.72rem' },
+                      height: { xs: 18, sm: 20 },
+                      fontSize: { xs: '0.62rem', sm: '0.68rem' },
                       fontWeight: 600,
-                      '& .MuiChip-label': { px: 0.75, overflow: 'hidden', textOverflow: 'ellipsis' },
+                      maxWidth: { xs: '72%', sm: 'none' },
+                      '& .MuiChip-label': { px: { xs: 0.65, sm: 0.85 } },
                     }}
                   />
                   <Typography
                     variant="caption"
-                    sx={{
-                      color: 'primary.main',
-                      fontWeight: 700,
-                      fontSize: { xs: '0.68rem', sm: '0.75rem' },
-                      flexShrink: 0,
-                    }}
+                    sx={{ color: 'primary.main', fontWeight: 700, fontSize: { xs: '0.68rem', sm: '0.75rem' } }}
                   >
                     {courseProgress}%
                   </Typography>
@@ -592,203 +433,191 @@ export function LearningCourseGridCard({
                   variant="determinate"
                   value={Math.max(0, Math.min(100, courseProgress))}
                   color={progressStatus.color === 'success' ? 'success' : 'warning'}
-                  sx={{ height: { xs: 4, sm: 5 }, borderRadius: 999 }}
+                  sx={{ height: 4, borderRadius: 999 }}
                 />
-              </Box>
-            ) : (
-              <Box
+              </>
+            ) : showAddToCart ? (
+              <Stack
+                direction="row"
+                alignItems="center"
+                spacing={{ xs: 0.65, sm: 0.85 }}
+                onClick={(e) => onAddToCart?.(e, course)}
+                role="button"
+                tabIndex={0}
+                aria-label={
+                  isInCart
+                    ? `In your cart, ${formatCoursePrice(course)}`
+                    : `Add to cart, ${formatCoursePrice(course)}`
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onAddToCart?.(e, course);
+                  }
+                }}
                 sx={{
                   width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  px: { xs: 0.65, sm: 0.85, md: 1 },
+                  px: 0.85,
+                  py: 0.45,
+                  minHeight: CARD_STATUS_ROW_HEIGHT,
                   borderRadius: 1,
-                  bgcolor: (paletteTheme) => paletteTheme.palette[cardFooterHighlight.tone].main,
-                  color: (paletteTheme) => paletteTheme.palette[cardFooterHighlight.tone].contrastText,
-                  boxShadow: `inset 0 -1px 0 ${alpha(theme.palette.common.black, 0.08)}`,
+                  cursor: 'pointer',
+                  justifyContent: { xs: 'space-between', sm: 'flex-start' },
+                  bgcolor: alpha(theme.palette.grey[500], 0.05),
+                  border: `1px solid ${alpha(theme.palette.grey[500], 0.1)}`,
+                  transition: theme.transitions.create(['background-color', 'border-color', 'box-shadow'], {
+                    duration: 180,
+                  }),
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.04),
+                    borderColor: alpha(theme.palette.primary.main, 0.16),
+                    boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.06)}`,
+                  },
                 }}
               >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  spacing={0.45}
-                  sx={{ width: '100%', minWidth: 0, justifyContent: 'center' }}
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0 }}>
+                  <Box
+                    sx={{
+                      width: { xs: 28, sm: 24 },
+                      height: { xs: 28, sm: 24 },
+                      borderRadius: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      bgcolor: alpha(isInCart ? theme.palette.primary.main : theme.palette.warning.main, 0.12),
+                      color: isInCart ? 'primary.main' : 'warning.dark',
+                    }}
+                  >
+                    <Iconify
+                      icon={isInCart ? 'solar:cart-check-bold' : 'solar:cart-plus-bold'}
+                      width={15}
+                    />
+                  </Box>
+                </Stack>
+                <Box
+                  sx={{
+                    flex: { xs: 'unset', sm: 1 },
+                    minWidth: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: { xs: 'flex-end', sm: 'space-between' },
+                    gap: 0.75,
+                  }}
                 >
-                  <Iconify
-                    icon={cardFooterHighlight.icon}
-                    width={isCompactCard ? 12 : 14}
-                    sx={{ flexShrink: 0, opacity: 0.95 }}
-                  />
                   <Typography
                     variant="caption"
                     noWrap
-                    title={cardFooterHighlight.label}
                     sx={{
-                      fontSize: { xs: '0.64rem', sm: '0.68rem', md: '0.72rem' },
-                      fontWeight: 700,
-                      lineHeight: 1.2,
-                      letterSpacing: '0.01em',
+                      display: { xs: 'none', sm: 'block' },
+                      flex: 1,
                       minWidth: 0,
+                      fontSize: '0.8125rem',
+                      lineHeight: 1.3,
+                      color: isInCart ? 'primary.main' : 'text.primary',
+                      fontWeight: 700,
                     }}
                   >
-                    {cardFooterHighlight.label}
+                    {isInCart ? 'In your cart' : 'Add to cart'}
                   </Typography>
-                </Stack>
-              </Box>
-            )}
+                  <Typography
+                    variant="caption"
+                    noWrap
+                    sx={{
+                      flexShrink: 0,
+                      fontSize: { xs: '0.78rem', sm: '0.8125rem' },
+                      lineHeight: 1.3,
+                      fontWeight: 800,
+                      color: isInCart ? 'primary.main' : 'success.main',
+                    }}
+                  >
+                    {isInCart ? (
+                      <>
+                        <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>
+                          {formatCoursePrice(course)}
+                        </Box>
+                        <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                          Checkout
+                        </Box>
+                      </>
+                    ) : (
+                      formatCoursePrice(course)
+                    )}
+                  </Typography>
+                </Box>
+              </Stack>
+            ) : showAccessInProgressSlot ? (
+              <Chip
+                size="small"
+                label={courseAccessLabel}
+                sx={{
+                  alignSelf: 'flex-start',
+                  height: 22,
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                  letterSpacing: 0.15,
+                  bgcolor: alpha(theme.palette.success.main, 0.12),
+                  color: 'success.dark',
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.28)}`,
+                  '& .MuiChip-label': { px: 0.85 },
+                }}
+              />
+            ) : null}
           </Box>
-        </Box>
-      </Card>
 
-      {/* Udemy-style hover detail panel */}
-      <Paper
-        className="learning-course-hover-panel"
-        elevation={12}
-        onClick={(e) => e.stopPropagation()}
-        sx={{
-          position: 'absolute',
-          top: { xs: 'calc(100% + 8px)', md: 0 },
-          left: { xs: 0, md: 'calc(100% + 10px)' },
-          right: { xs: 0, md: 'auto' },
-          width: { xs: 'min(100%, 300px)', md: 340 },
-          maxWidth: { xs: '100%', md: 360 },
-          zIndex: theme.zIndex.tooltip,
-          p: 2,
-          borderRadius: 1.5,
-          border: `1px solid ${theme.palette.divider}`,
-          bgcolor: 'background.paper',
-          boxShadow: theme.customShadows.z24,
-          opacity: 0,
-          visibility: 'hidden',
-          pointerEvents: 'none',
-          transform: { xs: 'translateY(6px)', md: 'translateX(-6px)' },
-          transition: theme.transitions.create(['opacity', 'transform', 'visibility'], {
-            duration: 220,
-            easing: theme.transitions.easing.easeOut,
-          }),
-          '@media (hover: none)': {
-            display: 'none',
-          },
-        }}
-      >
-        <Typography
-          variant="subtitle1"
-          component={RouterLink}
-          to={detailsHref}
-          onClick={(e) => onViewDetails?.(e, course.id)}
-          sx={{
-            fontWeight: 800,
-            fontSize: '1rem',
-            lineHeight: 1.35,
-            mb: 1,
-            display: 'block',
-            color: 'text.primary',
-            textDecoration: 'none',
-            '&:hover': { color: 'primary.main' },
-          }}
-        >
-          {course.title}
-        </Typography>
-
-        <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-          <Chip
-            size="small"
-            icon={<Iconify icon="solar:verified-check-bold" width={14} />}
-            label={courseTypeLabel}
-            color={courseTypeColor}
+          <Box
             sx={{
-              height: 26,
-              fontWeight: 700,
-              fontSize: '0.75rem',
-              '& .MuiChip-icon': { color: 'inherit', ml: 0.5 },
-            }}
-          />
-          {isEnrolled ? (
-            <Chip
-              size="small"
-              icon={<Iconify icon="solar:verified-check-bold" width={14} />}
-              label={purchasedLabel}
-              color="success"
-              sx={{
-                height: 26,
-                fontWeight: 700,
-                fontSize: '0.75rem',
-                '& .MuiChip-icon': { color: 'inherit', ml: 0.5 },
-              }}
-            />
-          ) : null}
-          {updatedMonthLabel ? (
-            <Typography
-              variant="caption"
-              sx={{ color: 'success.main', fontWeight: 600, fontSize: '0.8125rem', lineHeight: 1.2 }}
-            >
-              Updated {updatedMonthLabel}
-            </Typography>
-          ) : null}
-        </Stack>
-
-        <CourseModulesSectionsRow moduleCount={moduleCount} sectionCount={sectionCount} size="hover" />
-
-        {course.isBundle ? <LearningBundlePill count={bundleCount} sx={{ mb: 1 }} /> : null}
-
-        <Box
-          sx={{
-            mb: 1.5,
-            maxHeight: 320,
-            overflowY: 'auto',
-            pr: 0.25,
-            scrollbarWidth: 'thin',
-          }}
-        >
-          <RichTextContent
-            html={hoverDescriptionHtml}
-            listPreview
-            sx={LEARNING_CARD_HOVER_RICH_TEXT_SX}
-          />
-        </Box>
-
-        {showAddToCart ? (
-          <Button
-            variant="contained"
-            fullWidth
-            color="secondary"
-            onClick={(e) => onAddToCart?.(e, course)}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 700,
-              fontSize: '0.9375rem',
-              py: 1.1,
-              minHeight: 42,
-              borderRadius: 1,
-              boxShadow: theme.customShadows?.z8,
+              minHeight: showStatusRow ? CARD_STATUS_ROW_HEIGHT : 0,
+              flexShrink: 0,
+              width: '100%',
+              display: showStatusRow ? 'flex' : 'none',
+              alignItems: 'center',
             }}
           >
-            {isInCart ? 'Go to cart' : 'Add to cart'}
-          </Button>
-        ) : (
+            {isEnrolled ? (
+              <LearningCourseEnrolledStatusRow
+                course={course}
+                isPaid={isPaid}
+                purchasedLabel={purchasedLabel}
+              />
+            ) : showStatusAccessLabel ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'success.main',
+                  fontWeight: 800,
+                  fontSize: '0.8125rem',
+                  lineHeight: 1.2,
+                  letterSpacing: 0.15,
+                }}
+              >
+                {courseAccessLabel}
+              </Typography>
+            ) : null}
+          </Box>
+
           <Button
-            variant="contained"
-            color="secondary"
-            fullWidth
             component={RouterLink}
             to={detailsHref}
+            variant="contained"
+            color="primary"
+            fullWidth
             onClick={(e) => onViewDetails?.(e, course.id)}
             sx={{
+              mt: 'auto',
               textTransform: 'none',
-              fontWeight: 700,
-              fontSize: '0.9375rem',
-              py: 1.1,
-              minHeight: 42,
+              fontWeight: 600,
+              fontSize: { xs: '0.78rem', md: '0.8125rem' },
+              letterSpacing: 0.05,
+              py: { xs: 0.55, md: 0.65 },
+              minHeight: { xs: 32, md: 34 },
               borderRadius: 1,
-              boxShadow: theme.customShadows?.z8,
+              boxShadow: 'none',
             }}
           >
-            View course
+            {primaryActionLabel}
           </Button>
-        )}
-      </Paper>
-    </Box>
+        </Box>
+      </Card>
   );
 }

@@ -357,10 +357,10 @@ export function MyFavorites() {
               }}
             />
           </Stack>
-          <Box sx={{ position: 'relative', overflow: 'visible' }}>
+          <Box sx={{ position: 'relative', pt: 1.25, px: 0.5, overflow: 'visible' }}>
             <Grid
               container
-              spacing={{ xs: 1.25, sm: 1.5, md: 2 }}
+              spacing={{ xs: 1.75, sm: 1.5, md: 2 }}
               columns={{ xs: 2, sm: 2, md: 4, lg: 4, xl: 4 }}
               sx={{ overflow: 'visible' }}
             >
@@ -374,7 +374,7 @@ export function MyFavorites() {
                 const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
 
                 return (
-                  <Grid key={course.id} xs={1}>
+                  <Grid key={course.id} xs={1} sx={{ overflow: 'visible', display: 'flex' }}>
                     <LearningCourseGridCard
                       course={course}
                       defaultCourseImage={DEFAULT_COURSE_IMAGE}
