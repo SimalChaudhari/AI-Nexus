@@ -37,6 +37,7 @@ import {
   LearningModulePracticeIntro,
   LearningModulePracticeQuiz,
 } from 'src/sections/learning/components/learning-module-practice-panel';
+import { LearningModuleAssignmentsPanel } from 'src/sections/learning/components/learning-module-assignments-panel';
 import { createCourseReview, createSpeakerReview } from 'src/services/review.service';
 import { useAuthContext } from 'src/auth/hooks';
 import {
@@ -52,21 +53,13 @@ import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import courseLessonNotesIcon from 'src/assets/course/notes.png';
 import courseLearningMaterialsIcon from 'src/assets/course/material.png';
 import {
-  LESSON_FRAME_HEIGHT,
+  LESSON_MEDIA_FRAME_HEIGHT,
   playerFluidType,
   playerLessonNotesSx,
   playerPracticePanelSx,
   playerScrollPanelSx,
   playerTabIconSx,
 } from 'src/sections/learning/utils/player-responsive-type';
-
-const VIDEO_FRAME_HEIGHT = {
-  xs: 240,
-  sm: 300,
-  md: 'clamp(210px, 30vh, 320px)',
-  lg: 'clamp(230px, 31vh, 360px)',
-  xl: 'clamp(250px, 30vh, 400px)',
-};
 
 const isPaidCourse = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
@@ -539,6 +532,8 @@ const FEEDBACK_LESSON_ID = '__feedback__';
 const FEEDBACK_SECTION_ID = 'section-feedback';
 /** Pseudo lesson id: `${MODULE_PRACTICE_PREFIX}${courseModuleUuid}` — main area shows module assessment flow. */
 const MODULE_PRACTICE_PREFIX = '__mp__';
+/** Pseudo lesson id: `${MODULE_ASSIGNMENT_PREFIX}${courseModuleUuid}` — main area shows module assignments. */
+const MODULE_ASSIGNMENT_PREFIX = '__ma__';
 
 function getModuleIdFromPracticeLessonId(lessonId) {
   if (!lessonId || typeof lessonId !== 'string' || !lessonId.startsWith(MODULE_PRACTICE_PREFIX)) {
@@ -546,6 +541,18 @@ function getModuleIdFromPracticeLessonId(lessonId) {
   }
   const rest = lessonId.slice(MODULE_PRACTICE_PREFIX.length);
   return isUuid(rest) ? rest : null;
+}
+
+function getModuleIdFromAssignmentLessonId(lessonId) {
+  if (!lessonId || typeof lessonId !== 'string' || !lessonId.startsWith(MODULE_ASSIGNMENT_PREFIX)) {
+    return null;
+  }
+  const rest = lessonId.slice(MODULE_ASSIGNMENT_PREFIX.length);
+  return isUuid(rest) ? rest : null;
+}
+
+function getModuleIdFromPseudoLessonId(lessonId) {
+  return getModuleIdFromPracticeLessonId(lessonId) || getModuleIdFromAssignmentLessonId(lessonId);
 }
 const swrOptions = {
   revalidateIfStale: true,
@@ -795,7 +802,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       const courseId = courseIdRef.current;
       const sectionId = activeLessonIdRef.current;
       if (!courseId || !sectionId || sectionId === FEEDBACK_LESSON_ID) return;
-      if (getModuleIdFromPracticeLessonId(sectionId)) return;
+      if (getModuleIdFromPseudoLessonId(sectionId)) return;
       if (!force && viewedSectionIdsRef.current.includes(sectionId)) return;
 
       let lastPosition = 0;
@@ -880,10 +887,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     swrOptions
   );
 
-  const questionCountByModuleId = useMemo(() => {
+  const quizCountByModuleId = useMemo(() => {
     const m = {};
     (questionBankList || []).forEach((q) => {
-      if (!q?.moduleId) return;
+      if (!q?.moduleId || q.questionType === 'assignment') return;
+      m[q.moduleId] = (m[q.moduleId] || 0) + 1;
+    });
+    return m;
+  }, [questionBankList]);
+
+  const assignmentCountByModuleId = useMemo(() => {
+    const m = {};
+    (questionBankList || []).forEach((q) => {
+      if (!q?.moduleId || q.questionType !== 'assignment') return;
       m[q.moduleId] = (m[q.moduleId] || 0) + 1;
     });
     return m;
@@ -894,10 +910,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [activeLessonId]
   );
 
+  const moduleAssignmentModuleId = useMemo(
+    () => getModuleIdFromAssignmentLessonId(activeLessonId),
+    [activeLessonId]
+  );
+
   const modulePracticeQuestions = useMemo(() => {
     if (!modulePracticeModuleId) return [];
-    return (questionBankList || []).filter((q) => q?.moduleId === modulePracticeModuleId);
+    return (questionBankList || []).filter(
+      (q) => q?.moduleId === modulePracticeModuleId && q?.questionType !== 'assignment'
+    );
   }, [questionBankList, modulePracticeModuleId]);
+
+  const moduleAssignmentQuestions = useMemo(() => {
+    if (!moduleAssignmentModuleId) return [];
+    return (questionBankList || []).filter(
+      (q) => q?.moduleId === moduleAssignmentModuleId && q?.questionType === 'assignment'
+    );
+  }, [questionBankList, moduleAssignmentModuleId]);
 
   useEffect(() => {
     if (!practiceQuizOn) return;
@@ -923,6 +953,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (!modulePracticeModuleId) return null;
     return modules.find((m) => m.id === modulePracticeModuleId) || null;
   }, [modules, modulePracticeModuleId]);
+
+  const moduleAssignmentModuleMeta = useMemo(() => {
+    if (!moduleAssignmentModuleId) return null;
+    return modules.find((m) => m.id === moduleAssignmentModuleId) || null;
+  }, [modules, moduleAssignmentModuleId]);
 
   const flatLessons = useMemo(
     () =>
@@ -978,7 +1013,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   useEffect(() => {
     if (!activeLessonId || activeLessonId === FEEDBACK_LESSON_ID) return undefined;
-    if (getModuleIdFromPracticeLessonId(activeLessonId)) return undefined;
+    if (getModuleIdFromPseudoLessonId(activeLessonId)) return undefined;
     const hasVideo = flatLessons.some((l) => l.id === activeLessonId && l.videoUrl);
     if (!hasVideo) return undefined;
     const id = window.setInterval(() => {
@@ -1300,6 +1335,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }
     }
 
+    if (
+      typeof sectionIdFromUrl === 'string' &&
+      sectionIdFromUrl.startsWith(MODULE_ASSIGNMENT_PREFIX)
+    ) {
+      const mid = sectionIdFromUrl.slice(MODULE_ASSIGNMENT_PREFIX.length);
+      if (isUuid(mid) && modules.some((m) => m.id === mid)) {
+        setActiveLessonId(sectionIdFromUrl);
+        setExpandedSection(mid);
+        urlSectionProcessedRef.current = processedKey;
+        return;
+      }
+    }
+
     if (lessonIds.includes(sectionIdFromUrl)) {
       // Find which section (module) contains this lesson
       const sectionWithLesson = modules.find((s) =>
@@ -1344,7 +1392,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (!sectionIdFromUrl) {
       const lessonExistsInCurrentModules = activeLessonId
         ? modules.some((s) => (s.lessons || []).some((l) => l.id === activeLessonId)) ||
-          Boolean(getModuleIdFromPracticeLessonId(activeLessonId))
+          Boolean(getModuleIdFromPseudoLessonId(activeLessonId))
         : false;
       if (initialSectionAutoOpenDoneRef.current && lessonExistsInCurrentModules) return;
       const firstModuleWithLesson = modules.find((s) => (s.lessons || []).length > 0);
@@ -1367,7 +1415,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     const sectionWithActiveLesson = modules.find(
       (s) =>
         (s.lessons || []).some((l) => l.id === activeLessonId) ||
-        activeLessonId === `${MODULE_PRACTICE_PREFIX}${s.id}`
+        activeLessonId === `${MODULE_PRACTICE_PREFIX}${s.id}` ||
+        activeLessonId === `${MODULE_ASSIGNMENT_PREFIX}${s.id}`
     );
     if (sectionWithActiveLesson) {
       setExpandedSection(sectionWithActiveLesson.id);
@@ -1894,7 +1943,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           kind: 'lesson',
         });
       });
-      if ((questionCountByModuleId[module.id] || 0) > 0) {
+      if ((quizCountByModuleId[module.id] || 0) > 0) {
         steps.push({
           id: `${MODULE_PRACTICE_PREFIX}${module.id}`,
           sectionId: module.id,
@@ -1902,9 +1951,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           kind: 'practice',
         });
       }
+      if ((assignmentCountByModuleId[module.id] || 0) > 0) {
+        steps.push({
+          id: `${MODULE_ASSIGNMENT_PREFIX}${module.id}`,
+          sectionId: module.id,
+          videoUrl: null,
+          kind: 'assignment',
+        });
+      }
     });
     return steps;
-  }, [modules, questionCountByModuleId]);
+  }, [modules, quizCountByModuleId, assignmentCountByModuleId]);
 
   const currentIndex = activeLessonIndex;
   const currentStepIndex = useMemo(
@@ -2010,7 +2067,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const activeModuleLessons = activeModuleForNav?.lessons || [];
   const isOnLastLessonOfActiveModule =
     Boolean(activeLesson) &&
-    !getModuleIdFromPracticeLessonId(activeLessonId) &&
+    !getModuleIdFromPseudoLessonId(activeLessonId) &&
     activeModuleLessons.length > 0 &&
     activeModuleLessons[activeModuleLessons.length - 1]?.id === activeLessonId;
   if (isOnLastLessonOfActiveModule) {
@@ -2018,9 +2075,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     canGoNextLesson = false;
   }
   if (nextLesson && flatLessons.length > 0) {
-    const nextPracticeModuleId = getModuleIdFromPracticeLessonId(nextLesson.id);
-    if (nextPracticeModuleId) {
-      const targetModule = modules.find((m) => m.id === nextPracticeModuleId);
+    const nextPseudoModuleId = getModuleIdFromPseudoLessonId(nextLesson.id);
+    if (nextPseudoModuleId) {
+      const targetModule = modules.find((m) => m.id === nextPseudoModuleId);
       const targetLessons = targetModule?.lessons || [];
       const allDone =
         targetLessons.length > 0 &&
@@ -2232,7 +2289,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const activeVideoLessonForSidebar =
     activeLessonId &&
     activeLessonId !== FEEDBACK_LESSON_ID &&
-    !getModuleIdFromPracticeLessonId(activeLessonId)
+    !getModuleIdFromPseudoLessonId(activeLessonId)
       ? flatLessons.find((l) => l.id === activeLessonId && l.videoUrl)
       : null;
   void sidebarPlaybackTick;
@@ -2429,9 +2486,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         <>
           {modules.map((section, sectionIndex) => {
             const modulePracticeRowId = `${MODULE_PRACTICE_PREFIX}${section.id}`;
+            const moduleAssignmentRowId = `${MODULE_ASSIGNMENT_PREFIX}${section.id}`;
             const sectionHasActiveLesson =
               (section.lessons || []).some((l) => l.id === activeLessonId) ||
-              activeLessonId === modulePracticeRowId;
+              activeLessonId === modulePracticeRowId ||
+              activeLessonId === moduleAssignmentRowId;
             const sectionStats = moduleProgressById[section.id] || {
               total: (section.lessons || []).length,
               completed: 0,
@@ -2751,7 +2810,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     })}
 
                     {(() => {
-                      const modPracticeCount = questionCountByModuleId[section.id] || 0;
+                      const modPracticeCount = quizCountByModuleId[section.id] || 0;
                       if (modPracticeCount === 0) return null;
                       const stats = moduleProgressById[section.id];
                       const moduleDone =
@@ -2761,8 +2820,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         <Tooltip
                           title={
                             moduleDone
-                              ? `Open ${modPracticeCount} practice question${modPracticeCount !== 1 ? 's' : ''} for this module`
-                              : 'Complete every lesson in this module to unlock module practice'
+                              ? `Open quiz (${modPracticeCount} question${modPracticeCount !== 1 ? 's' : ''})`
+                              : 'Complete every lesson in this module to unlock quiz'
                           }
                           placement="left"
                           arrow
@@ -2774,7 +2833,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             onClick={() => {
                               if (!moduleDone) {
                                 toast.info(
-                                  'Complete every lesson in this module to unlock module practice'
+                                  'Complete every lesson in this module to unlock quiz'
                                 );
                                 return;
                               }
@@ -2853,14 +2912,140 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               </Box>
                               <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                                  {section.title}
+                                  Quiz
                                 </Typography>
                                 <Typography
                                   variant="caption"
                                   sx={{ color: 'info.dark', fontWeight: 700 }}
                                   noWrap
                                 >
-                                  Non-graded · practice
+                                  {modPracticeCount} question{modPracticeCount !== 1 ? 's' : ''}
+                                </Typography>
+                              </Stack>
+                              {!moduleDone && (
+                                <Iconify
+                                  icon="solar:lock-keyhole-bold"
+                                  width={14}
+                                  sx={{ color: 'text.disabled', flexShrink: 0 }}
+                                />
+                              )}
+                            </Stack>
+                          </Stack>
+                        </Tooltip>
+                      );
+                    })()}
+
+                    {(() => {
+                      const modAssignmentCount = assignmentCountByModuleId[section.id] || 0;
+                      if (modAssignmentCount === 0) return null;
+                      const stats = moduleProgressById[section.id];
+                      const moduleDone =
+                        stats && stats.total > 0 && stats.completed >= stats.total;
+                      const assignmentUnlockedStyle = moduleDone;
+                      return (
+                        <Tooltip
+                          title={
+                            moduleDone
+                              ? `Open assignment (${modAssignmentCount} item${modAssignmentCount !== 1 ? 's' : ''})`
+                              : 'Complete every lesson in this module to unlock assignment'
+                          }
+                          placement="left"
+                          arrow
+                        >
+                          <Stack
+                            direction="row"
+                            alignItems="center"
+                            justifyContent="flex-start"
+                            onClick={() => {
+                              if (!moduleDone) {
+                                toast.info(
+                                  'Complete every lesson in this module to unlock assignment'
+                                );
+                                return;
+                              }
+                              setActiveLessonId(moduleAssignmentRowId);
+                              setExpandedSection(section.id);
+                              setSearchParams({ section: moduleAssignmentRowId }, { replace: true });
+                              setSidebarOpen(false);
+                            }}
+                            sx={{
+                              width: 1,
+                              py: 1.35,
+                              px: 1.5,
+                              borderRadius: 1.5,
+                              cursor: moduleDone ? 'pointer' : 'not-allowed',
+                              opacity: moduleDone ? 1 : 0.55,
+                              bgcolor:
+                                moduleDone && activeLessonId === moduleAssignmentRowId
+                                  ? alpha(sidebarAccent, 0.1)
+                                  : assignmentUnlockedStyle
+                                    ? alpha(theme.palette.warning.main, 0.06)
+                                    : alpha(theme.palette.grey[500], 0.04),
+                              border: `1px solid ${
+                                moduleDone && activeLessonId === moduleAssignmentRowId
+                                  ? alpha(sidebarAccent, 0.4)
+                                  : assignmentUnlockedStyle
+                                    ? alpha(theme.palette.warning.main, 0.25)
+                                    : sidebarMutedBorder
+                              }`,
+                              boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
+                              color:
+                                moduleDone && activeLessonId === moduleAssignmentRowId
+                                  ? 'primary.dark'
+                                  : assignmentUnlockedStyle
+                                    ? 'warning.dark'
+                                    : 'text.primary',
+                              '&:hover': {
+                                bgcolor: moduleDone
+                                  ? activeLessonId === moduleAssignmentRowId
+                                    ? alpha(sidebarAccent, 0.14)
+                                    : alpha(theme.palette.warning.main, 0.1)
+                                  : alpha(theme.palette.grey[500], 0.06),
+                              },
+                            }}
+                          >
+                            <Stack
+                              direction="row"
+                              alignItems="center"
+                              spacing={1.5}
+                              sx={{ minWidth: 0, flex: 1 }}
+                            >
+                              <Box
+                                sx={{
+                                  width: 64,
+                                  height: 40,
+                                  borderRadius: 1,
+                                  overflow: 'hidden',
+                                  border: `1px solid ${
+                                    moduleDone && activeLessonId === moduleAssignmentRowId
+                                      ? sidebarAccent
+                                      : assignmentUnlockedStyle
+                                        ? alpha(theme.palette.warning.main, 0.5)
+                                        : sidebarMutedBorder
+                                  }`,
+                                  bgcolor: alpha(theme.palette.warning.dark, 0.85),
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Iconify
+                                  icon="solar:document-add-bold"
+                                  width={22}
+                                  sx={{ color: 'common.white' }}
+                                />
+                              </Box>
+                              <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                                  Assignment
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: 'warning.dark', fontWeight: 700 }}
+                                  noWrap
+                                >
+                                  {modAssignmentCount} item{modAssignmentCount !== 1 ? 's' : ''}
                                 </Typography>
                               </Stack>
                               {!moduleDone && (
@@ -3188,16 +3373,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     </Box>
   );
 
-  const isModulePracticeView = Boolean(
+  const isModulePracticePanelView = Boolean(
     activeLessonId !== FEEDBACK_LESSON_ID && modulePracticeModuleId && course?.id
   );
-  const isModulePracticeQuiz = isModulePracticeView && practiceQuizOn;
-  /** Practice intro + quiz share one panel; lessons scroll separately. */
-  const isScrollableLessonPanel = !isModulePracticeView;
+  const isModuleAssignmentView = Boolean(
+    activeLessonId !== FEEDBACK_LESSON_ID && moduleAssignmentModuleId && course?.id
+  );
+  const isModulePanelView = isModulePracticePanelView || isModuleAssignmentView;
+  const isModulePracticeQuiz = isModulePracticePanelView && practiceQuizOn;
+  /** Quiz + assignment fill panel; lessons scroll separately. */
+  const isScrollableLessonPanel = !isModulePanelView;
   const showLessonDetailPanel = Boolean(
     activeLesson &&
       activeLessonId !== FEEDBACK_LESSON_ID &&
-      !modulePracticeModuleId
+      !modulePracticeModuleId &&
+      !moduleAssignmentModuleId
   );
 
   const handleLessonDetailTabChange = (_, value) => {
@@ -3283,9 +3473,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             order: { xs: 1, md: 2 },
             display: 'flex',
             flexDirection: 'column',
-            p: isModulePracticeView ? 0 : { xs: 2, sm: 3, md: 4 },
-            pt: isModulePracticeView ? 0 : { xs: 2, sm: 3, md: 4 },
-            pb: isModulePracticeView ? 0 : { xs: 3, md: 5 },
+            p: isModulePanelView ? 0 : { xs: 2, sm: 3, md: 4 },
+            pt: isModulePanelView ? 0 : { xs: 2, sm: 3, md: 4 },
+            pb: isModulePanelView ? 0 : { xs: 3, md: 5 },
           }}
         >
           <Box
@@ -3296,14 +3486,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               flex: '1 1 0%',
               minHeight: 0,
               width: 1,
-              ...(isModulePracticeView
+              ...(isModulePanelView
                 ? playerPracticePanelSx
                 : isScrollableLessonPanel
                   ? playerRightScrollPanelSx
                   : {}),
             }}
           >
-          {!isModulePracticeView ? (
+          {!isModulePanelView ? (
             <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 2, flexShrink: 0 }}>
             <Button
               size="medium"
@@ -3326,7 +3516,38 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           </Box>
           ) : null}
 
-          {activeLessonId === FEEDBACK_LESSON_ID ? null : modulePracticeModuleId && course?.id ? (
+          {activeLessonId === FEEDBACK_LESSON_ID ? null : moduleAssignmentModuleId && course?.id ? (
+            playerLoading || modules.length === 0 ? (
+              <Box sx={{ py: 6, textAlign: 'center' }}>
+                <Typography color="text.secondary">Loading module…</Typography>
+              </Box>
+            ) : !moduleAssignmentModuleMeta ? (
+              <Box sx={{ py: 6, textAlign: 'center' }}>
+                <Typography color="text.secondary">This module could not be found.</Typography>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  width: '100%',
+                  ...playerPracticeFillSx,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  bgcolor: 'background.paper',
+                  borderRadius: 0,
+                  boxShadow: 'none',
+                  border: 'none',
+                }}
+              >
+                <LearningModuleAssignmentsPanel
+                  courseId={course.id}
+                  moduleTitle={moduleAssignmentModuleMeta.title || 'Module'}
+                  assignments={moduleAssignmentQuestions}
+                  fillContainer
+                />
+              </Box>
+            )
+          ) : modulePracticeModuleId && course?.id ? (
             playerLoading || modules.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
                 <Typography color="text.secondary">Loading module…</Typography>
@@ -3340,13 +3561,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 sx={{
                   width: '100%',
                   ...playerPracticeFillSx,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
                   bgcolor: practiceQuizOn ? 'background.paper' : 'transparent',
                   borderRadius: 0,
                   boxShadow: 'none',
                   border: 'none',
                 }}
               >
-                {practiceQuizOn ? (
+                {practiceQuizOn && modulePracticeQuestions.length > 0 ? (
                   <LearningModulePracticeQuiz
                     key={modulePracticeModuleId}
                     courseId={course.id}
@@ -3358,7 +3582,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       setSearchParams({ section: activeLessonId }, { replace: true });
                     }}
                   />
-                ) : (
+                ) : modulePracticeQuestions.length > 0 ? (
                   <LearningModulePracticeIntro
                     fillContainer
                     moduleTitle={modulePracticeModuleMeta.title || 'Module'}
@@ -3367,6 +3591,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       setSearchParams({ section: activeLessonId, practiceQuiz: '1' }, { replace: true })
                     }
                   />
+                ) : (
+                  <Box sx={{ py: 6, textAlign: 'center' }}>
+                    <Typography color="text.secondary">No practice questions for this module.</Typography>
+                  </Box>
                 )}
               </Box>
             )
@@ -3417,39 +3645,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 )}
               </Stack>
             </Box>
-          ) : hasImages ? (
-            <LessonImageViewer
-              images={activeLesson.images}
-              currentIndex={sectionImageIndex}
-              onPrev={() => setSectionImageIndex((i) => Math.max(0, i - 1))}
-              onNext={() =>
-                setSectionImageIndex((i) =>
-                  Math.min(activeLesson.images.length - 1, i + 1)
-                )
-              }
-              canPrev={!activeLessonGateBlocked && sectionImageIndex > 0}
-              canNext={
-                !activeLessonGateBlocked &&
-                sectionImageIndex < activeLesson.images.length - 1
-              }
-              lockedOverlay={lessonLockOverlay}
-              frameHeight={VIDEO_FRAME_HEIGHT}
-            />
-          ) : hasAttachments && !hasVideo ? (
-            <LessonDocumentViewer
-              lesson={activeLesson}
-              lessonId={activeLessonId}
-              locked={activeLessonGateBlocked}
-              viewedSectionIds={viewedSectionIds}
-              setViewedSectionIds={setViewedSectionIds}
-              frameHeight={LESSON_FRAME_HEIGHT}
-            />
-          ) : hasTextContent && !hasVideo ? (
-            <LessonTextViewer
-              html={activeLesson?.content || ''}
-              lockedOverlay={lessonLockOverlay}
-              frameHeight={LESSON_FRAME_HEIGHT}
-            />
           ) : hasVideo ? (
             <LessonVideoPlayer
               key={`video-${activeLessonId || ''}-${embedUrl || ''}-${videoSrc || ''}`}
@@ -3459,6 +3654,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               videoRef={videoRef}
               youtubeContainerRef={youtubeContainerRef}
               lockedOverlay={lessonLockOverlay}
+              frameHeight={LESSON_MEDIA_FRAME_HEIGHT}
               floatingOverlay={
                 autoNextCountdown > 0 && nextLesson ? (
                   <Stack
@@ -3477,7 +3673,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     }}
                   >
                     <CircularProgress
-                      variant="determinate"
+                      variant="determinate"jo queixz ki sreen 
                       size={40}
                       thickness={4}
                       value={((AUTO_NEXT_SECONDS - autoNextCountdown) / AUTO_NEXT_SECONDS) * 100}
@@ -3489,7 +3685,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   </Stack>
                 ) : null
               }
-              frameHeight={LESSON_FRAME_HEIGHT}
               onLoadedMetadata={() => {
                 const v = videoRef.current;
                 if (!v) return;
@@ -3739,6 +3934,39 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 }
               }}
             />
+          ) : hasImages ? (
+            <LessonImageViewer
+              images={activeLesson.images}
+              currentIndex={sectionImageIndex}
+              onPrev={() => setSectionImageIndex((i) => Math.max(0, i - 1))}
+              onNext={() =>
+                setSectionImageIndex((i) =>
+                  Math.min(activeLesson.images.length - 1, i + 1)
+                )
+              }
+              canPrev={!activeLessonGateBlocked && sectionImageIndex > 0}
+              canNext={
+                !activeLessonGateBlocked &&
+                sectionImageIndex < activeLesson.images.length - 1
+              }
+              lockedOverlay={lessonLockOverlay}
+              frameHeight={LESSON_MEDIA_FRAME_HEIGHT}
+            />
+          ) : hasAttachments ? (
+            <LessonDocumentViewer
+              lesson={activeLesson}
+              lessonId={activeLessonId}
+              lockedOverlay={lessonLockOverlay}
+              viewedSectionIds={viewedSectionIds}
+              setViewedSectionIds={setViewedSectionIds}
+              frameHeight={LESSON_MEDIA_FRAME_HEIGHT}
+            />
+          ) : hasTextContent ? (
+            <LessonTextViewer
+              html={activeLesson?.content || ''}
+              lockedOverlay={lessonLockOverlay}
+              frameHeight={LESSON_MEDIA_FRAME_HEIGHT}
+            />
           ) : (
             <Box
               sx={{
@@ -3746,7 +3974,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 px: 3,
                 textAlign: 'center',
                 borderStyle: 'dashed',
-                height: LESSON_FRAME_HEIGHT,
+                height: LESSON_MEDIA_FRAME_HEIGHT,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -3774,6 +4002,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           {activeLesson &&
           activeLessonId !== FEEDBACK_LESSON_ID &&
           !modulePracticeModuleId &&
+          !moduleAssignmentModuleId &&
           activeLessonSubtitle ? (
             <Box sx={{ mt: 2 }}>
               <Typography

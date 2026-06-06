@@ -312,6 +312,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
   const [favoriteLoading, setFavoriteLoading] = useState(new Set());
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
   const [courseProgressById, setCourseProgressById] = useState({});
+  const [assignmentSummaryByCourseId, setAssignmentSummaryByCourseId] = useState({});
   const enrolledCourseIds = useMemo(
     () => new Set(courses.filter((course) => course.isEnrolled).map((course) => course.id)),
     [courses]
@@ -617,6 +618,34 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
       }
     };
     loadProgressOverview();
+    return () => {
+      active = false;
+    };
+  }, [authenticated, refreshSignal]);
+
+  useEffect(() => {
+    let active = true;
+    if (!authenticated) {
+      setAssignmentSummaryByCourseId({});
+      return () => {
+        active = false;
+      };
+    }
+    const loadAssignmentSummary = async () => {
+      try {
+        const rows = await courseService.getMyAssignmentSummary();
+        if (!active) return;
+        const nextMap = (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+          if (!row?.courseId) return acc;
+          acc[String(row.courseId)] = row;
+          return acc;
+        }, {});
+        setAssignmentSummaryByCourseId(nextMap);
+      } catch (_error) {
+        if (active) setAssignmentSummaryByCourseId({});
+      }
+    };
+    loadAssignmentSummary();
     return () => {
       active = false;
     };
@@ -966,6 +995,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                             const showCourseProgress = authenticated && (!course.freeOrPaid || isEnrolled(course.id));
                             const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
                             const courseIsFavorite = favorites.has(course.id) || course.isFavorite;
+                            const assignmentSummary = assignmentSummaryByCourseId[course.id] || null;
                             return (
                               <Grid key={course.id} xs={1} sx={{ overflow: 'visible', display: 'flex' }}>
                                 <LearningCourseGridCard
@@ -981,6 +1011,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                   favoriteLoading={favoriteLoading.has(course.id)}
                                   isEnrolled={isEnrolled(course.id)}
                                   isInCart={isInCart(course.id)}
+                                  assignmentSummary={assignmentSummary}
                                   showFavorite={authenticated}
                                   detailsHref={getCourseDetailsPath(course.id)}
                                   onImageClick={handleCourseImageClick}

@@ -1,5 +1,10 @@
 import Box from '@mui/material/Box';
-import { alpha } from '@mui/material/styles';
+import { useTheme } from '@mui/material/styles';
+
+import {
+  getLessonMediaFrameSx,
+  LESSON_MEDIA_FRAME_HEIGHT,
+} from 'src/sections/learning/utils/player-responsive-type';
 
 export function LessonVideoPlayer({
   embedUrl,
@@ -8,7 +13,7 @@ export function LessonVideoPlayer({
   videoRef,
   youtubeContainerRef,
   lockedOverlay,
-  frameHeight,
+  frameHeight = LESSON_MEDIA_FRAME_HEIGHT,
   onLoadedMetadata,
   onPlay,
   onPause,
@@ -18,21 +23,10 @@ export function LessonVideoPlayer({
   onSeeked,
   floatingOverlay,
 }) {
+  const theme = useTheme();
+
   return (
-    <Box
-      sx={{
-        position: 'relative',
-        overflow: 'hidden',
-        bgcolor: 'grey.900',
-        width: '100%',
-        aspectRatio: '16 / 9',
-        height: 'auto',
-        maxHeight: frameHeight,
-        borderRadius: 0,
-        boxShadow: (theme) => `0 12px 40px ${alpha(theme.palette.common.black, 0.14)}`,
-        border: (theme) => `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
-      }}
-    >
+    <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
       {embedUrl ? (
         <Box ref={youtubeContainerRef} sx={{ width: '100%', height: '100%' }} />
       ) : videoSrc ? (
@@ -53,7 +47,6 @@ export function LessonVideoPlayer({
           onSeeking={onSeeking}
           onSeeked={onSeeked}
           onKeyDown={(event) => {
-            // Block keyboard-based seeking (arrow keys, Home/End, J/L shortcuts).
             const code = String(event.code || '').toLowerCase();
             const key = String(event.key || '').toLowerCase();
             const blocked =

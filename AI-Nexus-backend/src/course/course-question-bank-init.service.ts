@@ -27,6 +27,7 @@ export class CourseQuestionBankInitService implements OnModuleInit {
             "correctIndex" int,
             "correctAnswer" text,
             "explanation" text,
+            "assignedUserIds" jsonb,
             "sortOrder" int NOT NULL DEFAULT 0,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -73,6 +74,13 @@ export class CourseQuestionBankInitService implements OnModuleInit {
             ADD CONSTRAINT "FK_course_question_bank_module"
             FOREIGN KEY ("moduleId") REFERENCES "course_modules"("id") ON DELETE SET NULL
           `);
+        } catch (e) {
+          if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+        }
+        try {
+          await queryRunner.query(
+            `ALTER TABLE "course_question_bank" ADD COLUMN "assignedUserIds" jsonb`,
+          );
         } catch (e) {
           if (e instanceof Error && !e.message?.includes('already exists')) throw e;
         }

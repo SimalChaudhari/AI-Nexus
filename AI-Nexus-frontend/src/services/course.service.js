@@ -1054,4 +1054,56 @@ export const courseService = {
       throw error;
     }
   },
+
+  async uploadAssignmentSubmission(courseId, questionId, file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/upload`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error uploading assignment:', error);
+      throw error;
+    }
+  },
+
+  async deleteAssignmentSubmission(courseId, questionId, params = {}) {
+    try {
+      const response = await axios.delete(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/submission`,
+        { params }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting assignment submission:', error);
+      throw error;
+    }
+  },
+
+  async getAssignmentSubmissions(courseId, params = {}) {
+    try {
+      const response = await axios.get(
+        `/courses/${courseId}/question-bank/assignments/submissions`,
+        { params }
+      );
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    } catch (error) {
+      console.error('Error fetching assignment submissions:', error);
+      throw error;
+    }
+  },
+
+  async getMyAssignmentSummary() {
+    try {
+      const response = await axios.get('/courses/assignments/my-summary');
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    } catch (error) {
+      console.error('Error fetching assignment summary:', error);
+      throw error;
+    }
+  },
 };

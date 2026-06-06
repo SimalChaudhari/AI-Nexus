@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   CourseQuestionBankEntity,
   CourseQuestionType,
@@ -14,6 +15,7 @@ import {
   UpdateCourseQuestionBankDto,
 } from './course-question-bank.dto';
 import { CourseService } from './courses.service';
+import { CourseEnrollmentService } from './course-enrollment.service';
 import { CourseModuleEntity } from './course-module.entity';
 import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from './courses.entity';
@@ -21,6 +23,8 @@ import {
   CourseQuestionBankAttemptEntity,
   CourseQuestionAttemptStatus,
 } from './course-question-bank-attempt.entity';
+import { CourseQuestionAssignmentSubmissionEntity } from './course-question-assignment-submission.entity';
+import { UserRole } from '../user/users.entity';
 
 function normalizeTrueFalse(value: string): 'true' | 'false' {
   const v = String(value).trim().toLowerCase();
@@ -66,6 +70,26 @@ export type CourseQuestionAttemptAdminReportResponse = {
   page: number;
   limit: number;
 };
+export type CourseQuestionAssignmentSubmissionRow = {
+  id: string;
+  questionId: string;
+  courseId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  questionPrompt: string;
+  moduleId: string | null;
+  moduleTitle: string | null;
+  fileUrl: string;
+  originalFileName: string;
+  uploadedAt: Date;
+};
+export type CourseAssignmentSummaryRow = {
+  courseId: string;
+  totalAssignments: number;
+  submittedCount: number;
+  pendingCount: number;
+};
 
 @Injectable()
 export class CourseQuestionBankService {
@@ -74,6 +98,8 @@ export class CourseQuestionBankService {
     private readonly repo: Repository<CourseQuestionBankEntity>,
     @InjectRepository(CourseQuestionBankAttemptEntity)
     private readonly attemptRepo: Repository<CourseQuestionBankAttemptEntity>,
+    @InjectRepository(CourseQuestionAssignmentSubmissionEntity)
+    private readonly assignmentSubmissionRepo: Repository<CourseQuestionAssignmentSubmissionEntity>,
     @InjectRepository(CourseModuleEntity)
     private readonly moduleRepo: Repository<CourseModuleEntity>,
     @InjectRepository(CourseEntity)
@@ -81,6 +107,7 @@ export class CourseQuestionBankService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly courseService: CourseService,
+    private readonly courseEnrollmentService: CourseEnrollmentService,
   ) {}
 
   private async assertModuleBelongsToCourse(
@@ -92,6 +119,23 @@ export class CourseQuestionBankService {
     if (mod.courseId !== courseId) {
       throw new BadRequestException('Module does not belong to this course');
     }
+  }
+
+  private normalizeAssignedUserIds(value?: string[] | null): string[] | null {
+    if (!Array.isArray(value)) return null;
+    const ids = [...new Set(value.map((id) => String(id).trim()).filter(Boolean))];
+    return ids.length ? ids : null;
+  }
+
+  isAssignmentVisibleToUser(
+    row: Pick<CourseQuestionBankEntity, 'questionType' | 'assignedUserIds'>,
+    userId?: string | null,
+  ): boolean {
+    if (row.questionType !== CourseQuestionType.Assignment) return true;
+    const assigned = this.normalizeAssignedUserIds(row.assignedUserIds);
+    if (!assigned?.length) return true;
+    if (!userId) return false;
+    return assigned.includes(userId);
   }
 
   private validatePayload(
@@ -121,25 +165,80 @@ export class CourseQuestionBankService {
       if (correctAnswer == null || !String(correctAnswer).trim()) {
         throw new BadRequestException('short_text requires correctAnswer');
       }
+      return;
+    }
+    if (questionType === CourseQuestionType.Assignment) {
+      return;
     }
   }
 
   toPublicRow(row: CourseQuestionBankEntity): CourseQuestionBankPublic {
-    const { correctIndex: _c, correctAnswer: _a, explanation: _e, ...rest } = row;
+    const {
+      correctIndex: _c,
+      correctAnswer: _a,
+      explanation: _e,
+      assignedUserIds: _u,
+      ...rest
+    } = row;
     return rest;
   }
 
   async findByCourseId(
     courseId: string,
     includeAnswers: boolean,
+    userId?: string | null,
   ): Promise<CourseQuestionBankEntity[] | CourseQuestionBankPublic[]> {
     await this.courseService.getById(courseId);
     const rows = await this.repo.find({
       where: { courseId },
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
-    if (includeAnswers) return rows;
-    return rows.map((r) => this.toPublicRow(r));
+    let visibleRows = rows;
+    if (!includeAnswers && userId) {
+      visibleRows = rows.filter((r) => this.isAssignmentVisibleToUser(r, userId));
+    } else if (!includeAnswers && !userId) {
+      visibleRows = rows.filter(
+        (r) => r.questionType !== CourseQuestionType.Assignment || !this.normalizeAssignedUserIds(r.assignedUserIds)?.length,
+      );
+    }
+
+    const submissionByQuestionId = new Map<string, CourseQuestionAssignmentSubmissionEntity>();
+    if (userId) {
+      const assignmentIds = visibleRows
+        .filter((r) => r.questionType === CourseQuestionType.Assignment)
+        .map((r) => r.id);
+      if (assignmentIds.length) {
+        const submissions = await this.assignmentSubmissionRepo.find({
+          where: { userId, questionId: In(assignmentIds) },
+        });
+        submissions.forEach((s) => submissionByQuestionId.set(s.questionId, s));
+      }
+    }
+
+    if (includeAnswers) return visibleRows;
+
+    return visibleRows.map((r) => {
+      const publicRow = this.toPublicRow(r) as CourseQuestionBankPublic & {
+        mySubmission?: {
+          id: string;
+          fileUrl: string;
+          originalFileName: string;
+          uploadedAt: Date;
+        } | null;
+      };
+      if (r.questionType === CourseQuestionType.Assignment) {
+        const sub = submissionByQuestionId.get(r.id);
+        publicRow.mySubmission = sub
+          ? {
+              id: sub.id,
+              fileUrl: sub.fileUrl,
+              originalFileName: sub.originalFileName,
+              uploadedAt: sub.uploadedAt,
+            }
+          : null;
+      }
+      return publicRow;
+    });
   }
 
   async create(
@@ -183,6 +282,10 @@ export class CourseQuestionBankService {
       correctIndex,
       correctAnswer,
       explanation: dto.explanation ?? null,
+      assignedUserIds:
+        questionType === CourseQuestionType.Assignment
+          ? this.normalizeAssignedUserIds(dto.assignedUserIds)
+          : null,
       sortOrder,
     });
     return this.repo.save(entity);
@@ -215,6 +318,15 @@ export class CourseQuestionBankService {
       if (dto.options === undefined) options = null;
       if (dto.correctIndex === undefined) correctIndex = null;
     }
+    if (
+      dto.questionType !== undefined &&
+      dto.questionType !== CourseQuestionType.TrueFalse &&
+      dto.questionType !== CourseQuestionType.ShortText
+    ) {
+      if (dto.correctAnswer === undefined && nextType !== CourseQuestionType.Mcq) {
+        correctAnswer = null;
+      }
+    }
     if (dto.questionType === CourseQuestionType.Mcq && dto.options !== undefined) {
       options = dto.options;
     }
@@ -229,11 +341,19 @@ export class CourseQuestionBankService {
     if (dto.questionType !== undefined) row.questionType = dto.questionType;
     if (dto.explanation !== undefined) row.explanation = dto.explanation ?? null;
     if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
+    if (dto.assignedUserIds !== undefined) {
+      row.assignedUserIds =
+        nextType === CourseQuestionType.Assignment
+          ? this.normalizeAssignedUserIds(dto.assignedUserIds)
+          : null;
+    } else if (nextType !== CourseQuestionType.Assignment) {
+      row.assignedUserIds = null;
+    }
 
     row.options = nextType === CourseQuestionType.Mcq ? options ?? [] : null;
     row.correctIndex = nextType === CourseQuestionType.Mcq ? correctIndex ?? null : null;
     row.correctAnswer =
-      nextType === CourseQuestionType.Mcq
+      nextType === CourseQuestionType.Mcq || nextType === CourseQuestionType.Assignment
         ? null
         : nextType === CourseQuestionType.TrueFalse && correctAnswer != null
           ? normalizeTrueFalse(correctAnswer)
@@ -278,6 +398,9 @@ export class CourseQuestionBankService {
     payload: { selectedIndex?: number; answer?: string },
   ): boolean {
     const type = row.questionType as CourseQuestionType;
+    if (type === CourseQuestionType.Assignment) {
+      throw new BadRequestException('Assignment questions cannot be auto-checked');
+    }
     if (type === CourseQuestionType.Mcq) {
       if (payload.selectedIndex == null || Number.isNaN(Number(payload.selectedIndex))) {
         throw new BadRequestException('selectedIndex is required for MCQ');
@@ -355,7 +478,8 @@ export class CourseQuestionBankService {
       where,
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
-    const byId = new Map(bank.map((q) => [q.id, q]));
+    const scorableBank = bank.filter((q) => q.questionType !== CourseQuestionType.Assignment);
+    const byId = new Map(scorableBank.map((q) => [q.id, q]));
     const answerRows: Record<string, unknown>[] = [];
     let correctAnswers = 0;
     for (const item of answers || []) {
@@ -374,7 +498,7 @@ export class CourseQuestionBankService {
       });
     }
     const answeredQuestions = answerRows.length;
-    const totalQuestions = bank.length;
+    const totalQuestions = scorableBank.length;
     const scorePercent = totalQuestions > 0 ? Number(((correctAnswers / totalQuestions) * 100).toFixed(2)) : 0;
     attempt.status = CourseQuestionAttemptStatus.Completed;
     attempt.completedAt = new Date();
@@ -519,5 +643,195 @@ export class CourseQuestionBankService {
       message: deletedCount > 0 ? 'Attempts deleted successfully' : 'No attempts matched filters',
       deletedCount,
     };
+  }
+
+  async uploadAssignmentSubmission(
+    userId: string,
+    courseId: string,
+    questionId: string,
+    file: Express.Multer.File,
+    saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
+  ): Promise<CourseQuestionAssignmentSubmissionEntity> {
+    await this.courseService.getById(courseId);
+    const question = await this.repo.findOne({ where: { id: questionId, courseId } });
+    if (!question) throw new NotFoundException('Question not found');
+    if (question.questionType !== CourseQuestionType.Assignment) {
+      throw new BadRequestException('This question is not an assignment');
+    }
+    if (!this.isAssignmentVisibleToUser(question, userId)) {
+      throw new ForbiddenException('This assignment is not assigned to you');
+    }
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    const fileUrl = await saveFile(file, 'course-assignment-submissions');
+    const originalFileName = String(file.originalname || 'submission').trim();
+
+    const existing = await this.assignmentSubmissionRepo.findOne({
+      where: { questionId, userId },
+    });
+    if (existing) {
+      existing.fileUrl = fileUrl;
+      existing.originalFileName = originalFileName;
+      return this.assignmentSubmissionRepo.save(existing);
+    }
+
+    const row = this.assignmentSubmissionRepo.create({
+      questionId,
+      courseId,
+      userId,
+      fileUrl,
+      originalFileName,
+    });
+    return this.assignmentSubmissionRepo.save(row);
+  }
+
+  async deleteAssignmentSubmission(
+    requesterId: string,
+    requesterRole: string | undefined,
+    courseId: string,
+    questionId: string,
+    targetUserId?: string,
+    deleteFile?: (fileUrl: string) => Promise<void>,
+  ): Promise<{ message: string }> {
+    await this.courseService.getById(courseId);
+    const question = await this.repo.findOne({ where: { id: questionId, courseId } });
+    if (!question) throw new NotFoundException('Question not found');
+    if (question.questionType !== CourseQuestionType.Assignment) {
+      throw new BadRequestException('This question is not an assignment');
+    }
+
+    const isAdmin = requesterRole === UserRole.Admin;
+    const effectiveUserId = isAdmin && targetUserId ? targetUserId : requesterId;
+
+    if (!isAdmin && targetUserId && targetUserId !== requesterId) {
+      throw new ForbiddenException('You can only delete your own submission');
+    }
+    if (!isAdmin && !this.isAssignmentVisibleToUser(question, requesterId)) {
+      throw new ForbiddenException('This assignment is not assigned to you');
+    }
+
+    const existing = await this.assignmentSubmissionRepo.findOne({
+      where: { questionId, userId: effectiveUserId, courseId },
+    });
+    if (!existing) throw new NotFoundException('Submission not found');
+
+    const fileUrl = existing.fileUrl;
+    await this.assignmentSubmissionRepo.remove(existing);
+    if (deleteFile && fileUrl) {
+      await deleteFile(fileUrl).catch(() => undefined);
+    }
+
+    return { message: 'Assignment submission deleted successfully' };
+  }
+
+  async listAssignmentSubmissions(
+    requesterId: string,
+    requesterRole: string | undefined,
+    courseId: string,
+    filterUserId?: string,
+  ): Promise<CourseQuestionAssignmentSubmissionRow[]> {
+    await this.courseService.getById(courseId);
+    const isAdmin = requesterRole === UserRole.Admin;
+    const effectiveUserId = isAdmin ? filterUserId || undefined : requesterId;
+
+    const where: { courseId: string; userId?: string } = { courseId };
+    if (effectiveUserId) {
+      where.userId = effectiveUserId;
+    } else if (!isAdmin) {
+      where.userId = requesterId;
+    }
+
+    const submissions = await this.assignmentSubmissionRepo.find({
+      where,
+      order: { uploadedAt: 'DESC' },
+    });
+    if (!submissions.length) return [];
+
+    const questionIds = [...new Set(submissions.map((s) => s.questionId))];
+    const userIds = [...new Set(submissions.map((s) => s.userId))];
+    const questions = await this.repo.find({
+      where: questionIds.map((id) => ({ id })),
+    });
+    const users = await this.userRepo.find({
+      where: userIds.map((id) => ({ id })),
+      select: ['id', 'firstname', 'lastname', 'email', 'username'],
+    });
+    const moduleIds = [
+      ...new Set(questions.map((q) => q.moduleId).filter(Boolean)),
+    ] as string[];
+    const modules = moduleIds.length
+      ? await this.moduleRepo.find({
+          where: moduleIds.map((id) => ({ id })),
+          select: ['id', 'title'],
+        })
+      : [];
+    const questionById = new Map(questions.map((q) => [q.id, q]));
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const moduleById = new Map(modules.map((m) => [m.id, m]));
+
+    return submissions.map((s) => {
+      const q = questionById.get(s.questionId);
+      const u = userById.get(s.userId);
+      const first = String(u?.firstname || '').trim();
+      const last = String(u?.lastname || '').trim();
+      const full = `${first} ${last}`.trim();
+      const mod = q?.moduleId ? moduleById.get(q.moduleId) : null;
+      return {
+        id: s.id,
+        questionId: s.questionId,
+        courseId: s.courseId,
+        userId: s.userId,
+        userName: full || u?.username || 'Unknown user',
+        userEmail: u?.email || '',
+        questionPrompt: q?.prompt || '',
+        moduleId: q?.moduleId ?? null,
+        moduleTitle: mod?.title ?? null,
+        fileUrl: s.fileUrl,
+        originalFileName: s.originalFileName,
+        uploadedAt: s.uploadedAt,
+      };
+    });
+  }
+
+  async getMyAssignmentSummary(userId: string): Promise<CourseAssignmentSummaryRow[]> {
+    const enrolledIds = await this.courseEnrollmentService.getEffectiveEnrolledCourseIdSet(userId);
+    if (!enrolledIds.size) return [];
+
+    const courseIds = [...enrolledIds];
+    const assignmentQuestions = await this.repo.find({
+      where: { courseId: In(courseIds), questionType: CourseQuestionType.Assignment },
+    });
+    const visibleByCourse = new Map<string, CourseQuestionBankEntity[]>();
+    assignmentQuestions.forEach((q) => {
+      if (!this.isAssignmentVisibleToUser(q, userId)) return;
+      const list = visibleByCourse.get(q.courseId) || [];
+      list.push(q);
+      visibleByCourse.set(q.courseId, list);
+    });
+
+    const visibleQuestionIds = [...visibleByCourse.values()].flat().map((q) => q.id);
+    const submissions = visibleQuestionIds.length
+      ? await this.assignmentSubmissionRepo.find({
+          where: { userId, questionId: In(visibleQuestionIds) },
+        })
+      : [];
+    const submittedQuestionIds = new Set(submissions.map((s) => s.questionId));
+
+    return courseIds
+      .map((courseId) => {
+        const assignments = visibleByCourse.get(courseId) || [];
+        const totalAssignments = assignments.length;
+        if (!totalAssignments) return null;
+        const submittedCount = assignments.filter((q) => submittedQuestionIds.has(q.id)).length;
+        return {
+          courseId,
+          totalAssignments,
+          submittedCount,
+          pendingCount: totalAssignments - submittedCount,
+        };
+      })
+      .filter((row): row is CourseAssignmentSummaryRow => Boolean(row));
   }
 }

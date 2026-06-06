@@ -673,10 +673,12 @@ export class CourseController {
         @Res() response: Response,
     ) {
         const role = (request as any).user?.role;
+        const userId = (request as any).user?.id;
         const includeAnswers = role === UserRole.Admin;
         const data = await this.courseQuestionBankService.findByCourseId(
             courseId,
             includeAnswers,
+            userId,
         );
         return response.status(HttpStatus.OK).json({ data });
     }
@@ -849,6 +851,117 @@ export class CourseController {
         @Res() response: Response,
     ) {
         const result = await this.courseQuestionBankService.delete(questionId);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Get(':courseId/question-bank/assignments/submissions')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary: 'List assignment file submissions (Admin: all learners; User: own files only)',
+    })
+    async listAssignmentSubmissions(
+        @Param('courseId') courseId: string,
+        @Query('userId') filterUserId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const role = (request as any).user?.role;
+        const data = await this.courseQuestionBankService.listAssignmentSubmissions(
+            userId,
+            role,
+            courseId,
+            filterUserId || undefined,
+        );
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
+    @Post(':courseId/question-bank/:questionId/assignment/upload')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiConsumes('multipart/form-data')
+    @ApiOperation({ summary: 'Upload assignment file for a question (learner)' })
+    @UseInterceptors(
+        FileInterceptor('file', {
+            storage: memoryStorage(),
+            limits: { fileSize: IMAGE_LIMIT_BYTES },
+            fileFilter: (_req, file, cb) => {
+                const name = String(file.originalname || '').toLowerCase();
+                const allowedExt = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|zip|rar|png|jpg|jpeg|webp)$/i.test(name);
+                const allowedMime =
+                    /^application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation|presentationml\.slideshow)|vnd\.ms-excel|vnd\.ms-powerpoint|zip|x-zip-compressed|x-rar-compressed|x-rar)$/i.test(
+                        file.mimetype,
+                    ) ||
+                    /^text\/(plain|csv)$/i.test(file.mimetype) ||
+                    /^image\/(png|jpeg|jpg|webp)$/i.test(file.mimetype);
+                cb(null, Boolean(allowedExt || allowedMime));
+            },
+        }),
+    )
+    async uploadAssignmentSubmission(
+        @Param('courseId') courseId: string,
+        @Param('questionId') questionId: string,
+        @UploadedFile() file: Express.Multer.File,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        if (!file) {
+            return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
+        }
+        const data = await this.courseQuestionBankService.uploadAssignmentSubmission(
+            userId,
+            courseId,
+            questionId,
+            file,
+            (uploadFile, folder) => {
+                const original = String(uploadFile.originalname || 'submission').trim();
+                const ext = original.includes('.') ? original.slice(original.lastIndexOf('.')) : '';
+                const base = ext ? original.slice(0, -ext.length) : original;
+                return this.localStorageService.saveFile(uploadFile, folder, {
+                    fileName: `${Date.now()}-${base}`,
+                });
+            },
+        );
+        return response.status(HttpStatus.OK).json({
+            message: 'Assignment uploaded successfully',
+            data,
+        });
+    }
+
+    @Delete(':courseId/question-bank/:questionId/assignment/submission')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary: 'Delete assignment submission (learner: own file; admin: optional userId query)',
+    })
+    async deleteAssignmentSubmission(
+        @Param('courseId') courseId: string,
+        @Param('questionId') questionId: string,
+        @Query('userId') targetUserId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const role = (request as any).user?.role;
+        const result = await this.courseQuestionBankService.deleteAssignmentSubmission(
+            userId,
+            role,
+            courseId,
+            questionId,
+            targetUserId || undefined,
+            (fileUrl) => this.localStorageService.deleteFileByUrl(fileUrl),
+        );
         return response.status(HttpStatus.OK).json(result);
     }
 
@@ -1044,6 +1157,22 @@ export class CourseController {
         }
         const courseIds = await this.courseEnrollmentService.getEnrolledCourseIds(userId);
         return response.status(HttpStatus.OK).json({ data: { courseIds } });
+    }
+
+    @Get('assignments/my-summary')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Assignment submission summary for enrolled courses (current user)' })
+    async getMyAssignmentSummary(
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const data = await this.courseQuestionBankService.getMyAssignmentSummary(userId);
+        return response.status(HttpStatus.OK).json({ data });
     }
 
     @Get(':courseId/enrolled')

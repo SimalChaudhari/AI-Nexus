@@ -10,6 +10,7 @@ export enum CourseQuestionType {
   Mcq = 'mcq',
   TrueFalse = 'true_false',
   ShortText = 'short_text',
+  Assignment = 'assignment',
 }
 
 @Entity('course_question_bank')
@@ -44,6 +45,10 @@ export class CourseQuestionBankEntity {
 
   @Column({ type: 'text', nullable: true })
   explanation?: string | null;
+
+  /** assignment: optional list of user ids; empty/null means all enrolled learners */
+  @Column({ type: 'jsonb', nullable: true })
+  assignedUserIds?: string[] | null;
 
   @Column({ type: 'int', default: 0 })
   sortOrder!: number;

@@ -19,8 +19,10 @@ import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import Chip from '@mui/material/Chip';
 import LoadingButton from '@mui/lab/LoadingButton';
+import Autocomplete from '@mui/material/Autocomplete';
 
 import { courseService } from 'src/services/course.service';
+import { userService } from 'src/services/user.service';
 import { Iconify } from 'src/components/iconify';
 import { toast } from 'src/components/snackbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
@@ -31,7 +33,15 @@ const QUESTION_TYPES = [
   { value: 'mcq', label: 'Multiple choice' },
   { value: 'true_false', label: 'True / False' },
   { value: 'short_text', label: 'Short text' },
+  { value: 'assignment', label: 'Assignment (file upload)' },
 ];
+
+function questionTypeChipLabel(type) {
+  if (type === 'true_false') return 'T/F';
+  if (type === 'short_text') return 'Text';
+  if (type === 'assignment') return 'Assignment';
+  return 'MCQ';
+}
 
 function truncate(str, n = 72) {
   const s = String(str || '');
@@ -55,6 +65,9 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
   const [formCorrectIndex, setFormCorrectIndex] = useState(0);
   const [formTfCorrect, setFormTfCorrect] = useState('true');
   const [formShortCorrect, setFormShortCorrect] = useState('');
+  const [formAssignedUsers, setFormAssignedUsers] = useState([]);
+  const [userOptions, setUserOptions] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
 
   const loadAll = useCallback(async () => {
     if (!courseId) return;
@@ -82,6 +95,40 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
     loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    if (!dialogOpen || formType !== 'assignment') return;
+    let active = true;
+    setUsersLoading(true);
+    userService
+      .getAllUsers({ limit: 200 })
+      .then((result) => {
+        if (!active) return;
+        const list = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+        setUserOptions(list);
+      })
+      .catch(() => {
+        if (active) setUserOptions([]);
+      })
+      .finally(() => {
+        if (active) setUsersLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [dialogOpen, formType]);
+
+  useEffect(() => {
+    if (!editing || editing.questionType !== 'assignment') return;
+    const ids = Array.isArray(editing.assignedUserIds) ? editing.assignedUserIds : [];
+    if (!ids.length) {
+      setFormAssignedUsers([]);
+      return;
+    }
+    setFormAssignedUsers(
+      ids.map((id) => userOptions.find((u) => u.id === id) || { id, name: id, email: '' })
+    );
+  }, [editing, userOptions]);
+
   const moduleLabelById = useMemo(() => {
     const m = new Map();
     moduleChoices.forEach((mod) => m.set(mod.id, mod.label));
@@ -98,7 +145,16 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
     setFormCorrectIndex(0);
     setFormTfCorrect('true');
     setFormShortCorrect('');
+    setFormAssignedUsers([]);
     setDialogOpen(true);
+  };
+
+  const resolveAssignedUsersFromRow = (row) => {
+    const ids = Array.isArray(row.assignedUserIds) ? row.assignedUserIds : [];
+    if (!ids.length) return [];
+    return ids
+      .map((id) => userOptions.find((u) => u.id === id) || { id, name: id, email: '' })
+      .filter(Boolean);
   };
 
   const openEdit = (row) => {
@@ -116,6 +172,8 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
       );
     } else if (t === 'true_false') {
       setFormTfCorrect(row.correctAnswer === 'false' ? 'false' : 'true');
+    } else if (t === 'assignment') {
+      setFormAssignedUsers(resolveAssignedUsersFromRow(row));
     } else {
       setFormShortCorrect(row.correctAnswer || '');
     }
@@ -154,6 +212,14 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
         ...base,
         questionType: 'true_false',
         correctAnswer: formTfCorrect,
+      };
+    }
+    if (formType === 'assignment') {
+      const assignedUserIds = formAssignedUsers.map((u) => u.id).filter(Boolean);
+      return {
+        ...base,
+        questionType: 'assignment',
+        assignedUserIds: assignedUserIds.length ? assignedUserIds : null,
       };
     }
     if (!formShortCorrect.trim()) {
@@ -235,7 +301,8 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
 
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Link questions to a <strong>module</strong> (one bank per module). Learners use “Module practice” after
-        finishing all lessons in that module. Correct answers are not included in the list API for non-admins.
+        finishing all lessons in that module. Use <strong>Assignment</strong> for file uploads assigned to specific
+        learners (or all enrolled learners if none are selected).
       </Typography>
 
       {loading ? (
@@ -244,7 +311,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
         </Typography>
       ) : questions.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          No questions yet. Add MCQ, true/false, or short-text items.
+          No questions yet. Add MCQ, true/false, short-text, or assignment items.
         </Typography>
       ) : (
         <Table size="small">
@@ -264,7 +331,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
                 <TableCell>
                   <Chip
                     size="small"
-                    label={q.questionType === 'true_false' ? 'T/F' : q.questionType === 'short_text' ? 'Text' : 'MCQ'}
+                    label={questionTypeChipLabel(q.questionType)}
                     variant="soft"
                   />
                 </TableCell>
@@ -436,8 +503,36 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
                 />
               )}
 
+              {formType === 'assignment' && (
+                <>
+                  <Typography variant="caption" color="text.secondary">
+                    Assign to specific learners (optional). Leave empty to allow all enrolled learners.
+                  </Typography>
+                  <Autocomplete
+                    multiple
+                    loading={usersLoading}
+                    options={userOptions}
+                    value={formAssignedUsers}
+                    onChange={(_e, value) => setFormAssignedUsers(value)}
+                    getOptionLabel={(option) =>
+                      option?.name
+                        ? `${option.name}${option.email ? ` (${option.email})` : ''}`
+                        : option?.email || option?.id || ''
+                    }
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Assigned learners" placeholder="Search learners" />
+                    )}
+                  />
+                </>
+              )}
+
               <TextField
-                label="Explanation (shown after check)"
+                label={
+                  formType === 'assignment'
+                    ? 'Instructions (optional)'
+                    : 'Explanation (shown after check)'
+                }
                 value={formExplanation}
                 onChange={(e) => setFormExplanation(e.target.value)}
                 multiline

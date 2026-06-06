@@ -33,6 +33,8 @@ import { CourseQuestionBankService } from './course-question-bank.service';
 import { CourseQuestionBankInitService } from './course-question-bank-init.service';
 import { CourseQuestionBankAttemptEntity } from './course-question-bank-attempt.entity';
 import { CourseQuestionBankAttemptInitService } from './course-question-bank-attempt-init.service';
+import { CourseQuestionAssignmentSubmissionEntity } from './course-question-assignment-submission.entity';
+import { CourseQuestionAssignmentInitService } from './course-question-assignment-init.service';
 import { SpeakerModule } from '../speaker/speaker.module';
 import { LanguageModule } from '../language/language.module';
 import { ReviewModule } from '../review/review.module';
@@ -50,13 +52,13 @@ import { ReviewEntity } from '../review/review.entity';
         LanguageModule,
         ReviewModule,
         AppSettingsModule,
-        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseCertificateEntity, CategoryEntity, CourseOptionEntity, ReviewEntity]),
+        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseQuestionAssignmentSubmissionEntity, CourseCertificateEntity, CategoryEntity, CourseOptionEntity, ReviewEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService],
     controllers: [CourseController],
     exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService],
 })

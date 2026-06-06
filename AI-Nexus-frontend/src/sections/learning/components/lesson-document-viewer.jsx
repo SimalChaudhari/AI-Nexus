@@ -3,17 +3,24 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import { useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import {
+  getLessonMediaFrameInnerSx,
+  getLessonMediaFrameSx,
+  LESSON_MEDIA_FRAME_HEIGHT,
+} from 'src/sections/learning/utils/player-responsive-type';
 
 export function LessonDocumentViewer({
   lesson,
   lessonId,
-  locked,
+  lockedOverlay,
   viewedSectionIds,
   setViewedSectionIds,
-  frameHeight = { xs: 260, sm: 320, md: 580 },
+  frameHeight = LESSON_MEDIA_FRAME_HEIGHT,
 }) {
+  const theme = useTheme();
   const [activeIndex, setActiveIndex] = useState(0);
   const openedMapRef = useRef({});
 
@@ -41,30 +48,10 @@ export function LessonDocumentViewer({
 
   if (!hasAttachments) return null;
 
-  const isViewed = viewedSectionIds.includes(lessonId);
-
   return (
-    <Box sx={{ position: 'relative' }}>
-      <Box
-        sx={{
-          bgcolor: 'background.paper',
-          boxShadow: (theme) => theme.customShadows.z8,
-          overflow: 'hidden',
-          border: (theme) => `1px solid ${theme.palette.divider}`,
-        }}
-      >
-        <Box
-          sx={{
-            position: 'relative',
-            bgcolor: 'grey.100',
-            width: '100%',
-            height: frameHeight,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
+    <Box sx={{ width: '100%' }}>
+      <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
+        <Box sx={getLessonMediaFrameInnerSx()}>
           {currentUrl ? (
             isPdf ? (
               <Box
@@ -76,6 +63,7 @@ export function LessonDocumentViewer({
                   height: '100%',
                   border: 0,
                   display: 'block',
+                  bgcolor: 'background.paper',
                 }}
                 onLoad={() => {
                   const id = lessonId;
@@ -93,11 +81,13 @@ export function LessonDocumentViewer({
                 sx={{
                   p: 2,
                   height: '100%',
+                  width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
                   textAlign: 'center',
+                  bgcolor: 'background.paper',
                 }}
               >
                 <Iconify
@@ -131,81 +121,50 @@ export function LessonDocumentViewer({
               </Box>
             )
           ) : (
-            <Box
-              sx={{
-                p: 2,
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                textAlign: 'center',
-              }}
-            >
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Document not available.
-              </Typography>
-            </Box>
-          )}
-          {locked && (
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1.5,
-                px: 2,
-                bgcolor: (theme) => theme.palette.grey[900] + 'b8',
-              }}
-            >
-              <Iconify icon="solar:lock-keyhole-bold" width={40} sx={{ color: 'common.white' }} />
-              <Typography
-                variant="subtitle2"
-                sx={{ color: 'common.white', fontWeight: 600, textAlign: 'center' }}
-              >
-                Complete the previous lesson to unlock this content
-              </Typography>
-            </Box>
+            <Typography variant="body2" sx={{ color: 'grey.400' }}>
+              Document not available.
+            </Typography>
           )}
         </Box>
-
-        {attachments.length > 1 && (
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            spacing={2}
-            sx={{ p: 1.5, borderTop: 1, borderColor: 'divider' }}
-          >
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
-              onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
-              disabled={currentIndex <= 0}
-            >
-              Previous
-            </Button>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-              {currentIndex + 1} / {attachments.length}
-            </Typography>
-            <Button
-              size="small"
-              variant="outlined"
-              endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
-              onClick={() => setActiveIndex((i) => Math.min(attachments.length - 1, i + 1))}
-              disabled={currentIndex >= attachments.length - 1}
-            >
-              Next
-            </Button>
-          </Stack>
-        )}
-
+        {lockedOverlay}
       </Box>
+
+      {attachments.length > 1 && (
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          spacing={2}
+          sx={{
+            p: 1.5,
+            bgcolor: 'background.paper',
+            border: (t) => `1px solid ${t.palette.divider}`,
+            borderTop: 0,
+          }}
+        >
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
+            onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
+            disabled={currentIndex <= 0}
+          >
+            Previous
+          </Button>
+          <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+            {currentIndex + 1} / {attachments.length}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
+            onClick={() => setActiveIndex((i) => Math.min(attachments.length - 1, i + 1))}
+            disabled={currentIndex >= attachments.length - 1}
+          >
+            Next
+          </Button>
+        </Stack>
+      )}
     </Box>
   );
 }
-

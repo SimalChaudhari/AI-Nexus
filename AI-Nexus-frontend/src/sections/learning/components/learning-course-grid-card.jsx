@@ -149,6 +149,7 @@ export function LearningCourseGridCard({
   favoriteLoading = false,
   isEnrolled = false,
   isInCart = false,
+  assignmentSummary = null,
   showFavorite = true,
   detailsHref,
   onImageClick,
@@ -187,6 +188,9 @@ export function LearningCourseGridCard({
         : 'View Course'
     : 'View Course';
   const purchasedLabel = course.accessViaBundle ? 'In bundle' : 'Purchased';
+  const pendingAssignments = Number(assignmentSummary?.pendingCount || 0);
+  const totalAssignments = Number(assignmentSummary?.totalAssignments || 0);
+  const showAssignmentChip = isEnrolled && totalAssignments > 0;
 
   return (
       <Card
@@ -435,6 +439,26 @@ export function LearningCourseGridCard({
                   color={progressStatus.color === 'success' ? 'success' : 'warning'}
                   sx={{ height: 4, borderRadius: 999 }}
                 />
+                {showAssignmentChip ? (
+                  <Chip
+                    size="small"
+                    icon={<Iconify icon="solar:document-add-bold" width={14} />}
+                    label={
+                      pendingAssignments > 0
+                        ? `${pendingAssignments} assignment${pendingAssignments !== 1 ? 's' : ''} pending`
+                        : `${totalAssignments} assignment${totalAssignments !== 1 ? 's' : ''} submitted`
+                    }
+                    color={pendingAssignments > 0 ? 'warning' : 'success'}
+                    variant="soft"
+                    sx={{
+                      mt: 0.75,
+                      height: 22,
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      alignSelf: 'flex-start',
+                    }}
+                  />
+                ) : null}
               </>
             ) : showAddToCart ? (
               <Stack

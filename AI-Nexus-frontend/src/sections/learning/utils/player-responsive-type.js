@@ -1,5 +1,7 @@
 // Fluid font sizes for course player — scales smoothly between mobile and desktop.
 
+import { alpha } from '@mui/material/styles';
+
 export const playerFluidType = {
   body: {
     xs: 'clamp(0.8125rem, 0.72rem + 0.35vw, 0.9375rem)',
@@ -76,14 +78,43 @@ export const playerTabIconSx = {
   flexShrink: 0,
 };
 
-/** Lesson / practice hero height — capped on laptop so notes/materials need less scroll. */
-export const LESSON_FRAME_HEIGHT = {
+/** Shared lesson media frame height — same as video player (video, image, document, text). */
+export const LESSON_MEDIA_FRAME_HEIGHT = {
   xs: 260,
   sm: 320,
   md: 'clamp(240px, 34vh, 380px)',
   lg: 'clamp(280px, 36vh, 440px)',
   xl: 580,
 };
+
+/** @deprecated Use LESSON_MEDIA_FRAME_HEIGHT */
+export const LESSON_FRAME_HEIGHT = LESSON_MEDIA_FRAME_HEIGHT;
+
+export function getLessonMediaFrameSx(theme, frameHeight = LESSON_MEDIA_FRAME_HEIGHT) {
+  return {
+    position: 'relative',
+    overflow: 'hidden',
+    bgcolor: 'grey.900',
+    width: '100%',
+    aspectRatio: '16 / 9',
+    height: 'auto',
+    maxHeight: frameHeight,
+    borderRadius: 0,
+    boxShadow: `0 12px 40px ${alpha(theme.palette.common.black, 0.14)}`,
+    border: `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
+  };
+}
+
+export function getLessonMediaFrameInnerSx() {
+  return {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  };
+}
 
 /** Practice intro + quiz — flex child fills remaining panel height (no overflow). */
 export const playerPracticePanelSx = {

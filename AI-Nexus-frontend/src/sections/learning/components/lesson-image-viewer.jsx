@@ -2,8 +2,14 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import { useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import {
+  getLessonMediaFrameInnerSx,
+  getLessonMediaFrameSx,
+  LESSON_MEDIA_FRAME_HEIGHT,
+} from 'src/sections/learning/utils/player-responsive-type';
 
 export function LessonImageViewer({
   images,
@@ -11,54 +17,39 @@ export function LessonImageViewer({
   onPrev,
   onNext,
   lockedOverlay,
-  frameHeight,
+  frameHeight = LESSON_MEDIA_FRAME_HEIGHT,
   canPrev,
   canNext,
 }) {
+  const theme = useTheme();
   const hasImages = Array.isArray(images) && images.length > 0;
   const safeIndex = hasImages
     ? Math.min(Math.max(currentIndex, 0), images.length - 1)
     : 0;
 
   return (
-    <Box
-      sx={{
-        bgcolor: 'background.paper',
-        boxShadow: (theme) => theme.customShadows.z8,
-        overflow: 'hidden',
-        border: (theme) => `1px solid ${theme.palette.divider}`,
-      }}
-    >
-      <Box
-        sx={{
-          position: 'relative',
-          bgcolor: 'grey.100',
-          width: '100%',
-          height: frameHeight,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-        }}
-      >
-        {hasImages ? (
-          <Box
-            component="img"
-            key={images[safeIndex]}
-            src={images[safeIndex]}
-            alt=""
-            sx={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              display: 'block',
-            }}
-          />
-        ) : (
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            No images for this lesson.
-          </Typography>
-        )}
+    <Box sx={{ width: '100%' }}>
+      <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
+        <Box sx={getLessonMediaFrameInnerSx()}>
+          {hasImages ? (
+            <Box
+              component="img"
+              key={images[safeIndex]}
+              src={images[safeIndex]}
+              alt=""
+              sx={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          ) : (
+            <Typography variant="body2" sx={{ color: 'grey.400' }}>
+              No images for this lesson.
+            </Typography>
+          )}
+        </Box>
         {lockedOverlay}
       </Box>
       {hasImages && images.length > 1 && (
@@ -67,7 +58,12 @@ export function LessonImageViewer({
           alignItems="center"
           justifyContent="space-between"
           spacing={2}
-          sx={{ p: 1.5, borderTop: 1, borderColor: 'divider' }}
+          sx={{
+            p: 1.5,
+            bgcolor: 'background.paper',
+            border: (t) => `1px solid ${t.palette.divider}`,
+            borderTop: 0,
+          }}
         >
           <Button
             size="small"
@@ -95,4 +91,3 @@ export function LessonImageViewer({
     </Box>
   );
 }
-

@@ -47,6 +47,12 @@ export class CreateCourseQuestionBankDto {
   @IsNotEmpty()
   correctAnswer?: string;
 
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  assignedUserIds?: string[];
+
   @IsOptional()
   @IsString()
   explanation?: string;
@@ -86,6 +92,11 @@ export class UpdateCourseQuestionBankDto {
   @IsOptional()
   @IsString()
   correctAnswer?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  assignedUserIds?: string[] | null;
 
   @IsOptional()
   @IsString()
