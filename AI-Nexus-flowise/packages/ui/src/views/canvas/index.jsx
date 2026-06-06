@@ -208,7 +208,7 @@ const Canvas = () => {
         }
     }
 
-    const handleSaveFlow = async (chatflowName) => {
+    const handleSaveFlow = async (chatflowName, templateVisibility = 'public') => {
         if (reactFlowInstance) {
             const nodes = reactFlowInstance.getNodes().map((node) => {
                 const nodeData = cloneDeep(node.data)
@@ -233,7 +233,8 @@ const Canvas = () => {
                     deployed: false,
                     isPublic: false,
                     flowData,
-                    type: isAgentCanvas ? 'MULTIAGENT' : 'CHATFLOW'
+                    type: isAgentCanvas ? 'MULTIAGENT' : 'CHATFLOW',
+                    aiNexusTemplateVisibility: templateVisibility,
                 }
                 createNewChatflowApi.request(newChatflowBody)
             } else {

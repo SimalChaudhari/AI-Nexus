@@ -26,6 +26,7 @@ import axios from 'src/utils/axios';
 import { fetchWorkflows } from 'src/store/slices/workflowSlice';
 import { flowiseTemplateService } from 'src/services/flowise-template.service';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { useAuthContext } from 'src/auth/hooks';
 
 // ----------------------------------------------------------------------
 
@@ -92,54 +93,38 @@ const PITCH_FALLBACK_ICONS = [
 export function Templates() {
   const dispatch = useDispatch();
   const router = useRouter();
+  const { user } = useAuthContext();
   const { workflows } = useSelector((state) => state.workflows);
   const [flowiseTemplates, setFlowiseTemplates] = useState([]);
   const [flowiseTemplatesLoading, setFlowiseTemplatesLoading] = useState(true);
+  const [visibilityUpdatingId, setVisibilityUpdatingId] = useState('');
   const [pitchIntro, setPitchIntro] = useState(null);
   const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
   const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
-  const fallbackTemplate = {
-    id: 'default-fallback-template',
-    title: 'No Templates Found',
-    description: 'Template data was not found. Create a new workflow to get started.',
-    source: 'fallback',
-    label: { title: 'Not Found' },
-    tags: ['Getting Started'],
-    isFallback: true,
-  };
+
+  const loadFlowiseTemplates = useCallback(async () => {
+    setFlowiseTemplatesLoading(true);
+    try {
+      const items = await flowiseTemplateService.getFlowiseTemplates();
+      setFlowiseTemplates(
+        items.filter((item) =>
+          ['AGENTFLOW', 'MULTIAGENT', 'AGENTFLOWV2'].includes(String(item?.flowiseType || '').toUpperCase())
+        )
+      );
+    } catch {
+      setFlowiseTemplates([]);
+    } finally {
+      setFlowiseTemplatesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     dispatch(fetchWorkflows());
   }, [dispatch]);
 
   useEffect(() => {
-    let mounted = true;
-    setFlowiseTemplatesLoading(true);
-    (async () => {
-      try {
-        const items = await flowiseTemplateService.getFlowiseTemplates();
-        if (mounted) {
-          // Show Flowise-origin templates: community + my templates + workspace flows.
-          // Keep agent-style categories so UI stays aligned with original Flowise agent section.
-          setFlowiseTemplates(
-            items.filter((item) => ['AGENTFLOW', 'MULTIAGENT', 'AGENTFLOWV2'].includes(String(item?.flowiseType || '').toUpperCase()))
-          );
-        }
-      } catch (error) {
-        if (mounted) {
-          setFlowiseTemplates([]);
-        }
-      } finally {
-        if (mounted) {
-          setFlowiseTemplatesLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    loadFlowiseTemplates();
+  }, [loadFlowiseTemplates]);
 
   useEffect(() => {
     let mounted = true;
@@ -204,6 +189,35 @@ export function Templates() {
     [flowiseEntryUrl, flowiseUrl]
   );
 
+  const isOwnedFlowiseTemplate = useCallback(
+    (template) =>
+      template?.source === 'flowise' &&
+      template?.flowiseTemplateSource === 'workspace_flow' &&
+      Boolean(template?.flowiseId) &&
+      String(template?.creatorId || '') === String(user?.id || ''),
+    [user?.id]
+  );
+
+  const handleToggleTemplateVisibility = useCallback(
+    async (template) => {
+      if (!template?.flowiseId || !isOwnedFlowiseTemplate(template)) return;
+
+      const nextVisibility = template.templateVisibility === 'private' ? 'public' : 'private';
+      setVisibilityUpdatingId(template.id);
+      try {
+        await flowiseTemplateService.updateTemplateVisibility(template.flowiseId, nextVisibility);
+        setFlowiseTemplates((prev) =>
+          prev.map((item) =>
+            item.id === template.id ? { ...item, templateVisibility: nextVisibility } : item
+          )
+        );
+      } finally {
+        setVisibilityUpdatingId('');
+      }
+    },
+    [isOwnedFlowiseTemplate]
+  );
+
   const templates = [...(workflows || []), ...(flowiseTemplates || [])].sort((a, b) => {
     const aPreviewRank = a?.isPreviewOnly ? 1 : 0;
     const bPreviewRank = b?.isPreviewOnly ? 1 : 0;
@@ -211,8 +225,7 @@ export function Templates() {
   });
   const hasWorkflowTemplates = (workflows || []).length > 0;
   const showFlowiseServerWait = flowiseTemplatesLoading && !hasWorkflowTemplates;
-  const templatesToRender =
-    templates.length > 0 ? templates : showFlowiseServerWait ? [] : [fallbackTemplate];
+  const showEmptyTemplates = !showFlowiseServerWait && templates.length === 0;
 
   return (
     <Box>
@@ -457,9 +470,89 @@ export function Templates() {
               Loading templates from Flowise…
             </Typography>
           </Box>
+        ) : showEmptyTemplates ? (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              py: { xs: 8, md: 12 },
+              px: { xs: 2.5, sm: 4 },
+              minHeight: { xs: 280, md: 360 },
+              borderRadius: 3,
+              border: (theme) =>
+                `1px dashed ${alpha(theme.palette.secondary.main, theme.palette.mode === 'dark' ? 0.28 : 0.18)}`,
+              bgcolor: (theme) =>
+                alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.06 : 0.03),
+            }}
+          >
+            <Box
+              sx={{
+                width: { xs: 72, md: 88 },
+                height: { xs: 72, md: 88 },
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mb: 3,
+                background: (theme) =>
+                  `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.28 : 0.14)} 0%, ${alpha(
+                    theme.palette.secondary.main,
+                    theme.palette.mode === 'dark' ? 0.22 : 0.1
+                  )} 100%)`,
+                border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+              }}
+            >
+              <Iconify
+                icon="solar:folder-open-bold-duotone"
+                width={{ xs: 36, md: 44 }}
+                sx={{ color: 'primary.main' }}
+              />
+            </Box>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 700,
+                color: 'text.primary',
+                letterSpacing: '-0.02em',
+                fontSize: { xs: 'clamp(1.125rem, 4vw + 0.35rem, 1.375rem)', md: '1.5rem' },
+                mb: 1.25,
+                ...mobileWordWrap,
+              }}
+            >
+              No templates found
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                maxWidth: 480,
+                mb: 3,
+                lineHeight: 1.6,
+                fontSize: { xs: 'clamp(0.8125rem, 2.6vw + 0.45rem, 0.9375rem)', md: '0.9375rem' },
+                ...mobileWordWrap,
+              }}
+            >
+              Template data was not found. Create a new workflow in Flowise to get started.
+            </Typography>
+            <GradientButton
+              size="medium"
+              onClick={handleCreateWorkflow}
+              icon="solar:add-circle-bold-duotone"
+              sx={{
+                px: 3,
+                py: 1.1,
+                fontSize: { xs: '0.875rem', md: '0.9375rem' },
+              }}
+            >
+              Create Workflow
+            </GradientButton>
+          </Box>
         ) : (
         <Grid container spacing={{ xs: 2, sm: 2.5, lg: 2 }}>
-          {templatesToRender.map((template) => {
+          {templates.map((template) => {
             const flowiseBase = resolveFlowisePublicBaseUrl();
             const useFlowiseIframe =
               Boolean(flowiseBase) &&
@@ -469,6 +562,8 @@ export function Templates() {
               !useFlowiseIframe && shouldRenderWorkflowMiniPreview(template.image, template.flowData);
             const flowNodes = template.flowData?.nodes;
             const flowEdges = template.flowData?.edges;
+            const isOwnedTemplate = isOwnedFlowiseTemplate(template);
+            const isPrivateTemplate = template.templateVisibility === 'private';
 
             return (
             <Grid key={template.id} xs={12} sm={6} lg={3}>
@@ -563,6 +658,8 @@ export function Templates() {
                       left: { xs: 12, lg: 'auto' },
                       zIndex: 2,
                       display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 0.75,
                       justifyContent: { xs: 'flex-start', lg: 'flex-end' },
                       maxWidth: { xs: '100%', lg: 'min(85%, 280px)' },
                     }}
@@ -592,6 +689,24 @@ export function Templates() {
                         },
                       })}
                     />
+                    {isOwnedTemplate && (
+                      <Chip
+                        label={isPrivateTemplate ? 'Private' : 'Public'}
+                        size="small"
+                        sx={(theme) => ({
+                          ml: 0.75,
+                          height: 'auto',
+                          minHeight: 24,
+                          bgcolor: alpha(
+                            isPrivateTemplate ? theme.palette.warning.main : theme.palette.success.main,
+                            theme.palette.mode === 'dark' ? 0.88 : 0.92
+                          ),
+                          color: theme.palette.common.white,
+                          fontWeight: 600,
+                          backdropFilter: 'blur(6px)',
+                        })}
+                      />
+                    )}
                   </Box>
                 </Box>
                 <Box
@@ -647,30 +762,49 @@ export function Templates() {
                   >
                     {toPlainDescription(template.description) || 'No description available'}
                   </Typography>
-                  {!template.isFallback && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: 'text.secondary',
-                        mb: { xs: 1, lg: 0.75 },
-                        fontSize: {
-                          xs: 'clamp(0.65625rem, 2vw + 0.42rem, 0.75rem)',
-                          sm: '0.75rem',
-                          lg: '0.7rem',
-                        },
-                        lineHeight: 1.45,
-                        ...mobileWordWrap,
-                      }}
-                    >
-                      {isTemplateCreatedByUser(template.createdBy)
-                        ? `Created by: ${String(template.createdBy).trim()}`
-                        : 'System-generated template'}
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                      mb: { xs: 1, lg: 0.75 },
+                      fontSize: {
+                        xs: 'clamp(0.65625rem, 2vw + 0.42rem, 0.75rem)',
+                        sm: '0.75rem',
+                        lg: '0.7rem',
+                      },
+                      lineHeight: 1.45,
+                      ...mobileWordWrap,
+                    }}
+                  >
+                    {isTemplateCreatedByUser(template.createdBy)
+                      ? `Created by: ${String(template.createdBy).trim()}`
+                      : 'System-generated template'}
+                  </Typography>
                   <Stack direction="row" spacing={1}>
+                    {isOwnedTemplate && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color={isPrivateTemplate ? 'warning' : 'success'}
+                        disabled={visibilityUpdatingId === template.id}
+                        onClick={() => handleToggleTemplateVisibility(template)}
+                        sx={{
+                          flex: 1,
+                          textTransform: 'none',
+                          fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+                          whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                        }}
+                      >
+                        {visibilityUpdatingId === template.id
+                          ? 'Saving…'
+                          : isPrivateTemplate
+                            ? 'Make public'
+                            : 'Make private'}
+                      </Button>
+                    )}
                     <GradientButton
                       size="small"
-                      onClick={template.isFallback ? handleCreateWorkflow : () => handleOpenTemplate(template)}
+                      onClick={() => handleOpenTemplate(template)}
                       sx={{
                         flex: 1,
                         fontSize: { xs: 'clamp(0.6875rem, 2.2vw + 0.42rem, 0.8125rem)', sm: '0.875rem' },
@@ -681,13 +815,11 @@ export function Templates() {
                         minHeight: { xs: 36, sm: 'auto' },
                       }}
                     >
-                      {template.isFallback
-                        ? 'Create Workflow'
-                        : template.source === 'flowise' && template.isPreviewOnly
-                          ? 'Preview Template'
-                          : template.source === 'flowise'
-                            ? 'Open in Flowise'
-                            : 'View Template'}
+                      {template.source === 'flowise' && template.isPreviewOnly
+                        ? 'Preview Template'
+                        : template.source === 'flowise'
+                          ? 'Open in Flowise'
+                          : 'View Template'}
                     </GradientButton>
                   </Stack>
                 </Box>

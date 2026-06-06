@@ -178,7 +178,8 @@ export class UserService {
             authProvider: AuthProvider.LOCAL,
             role: createUserDto.role || UserRole.User,
             status: createUserDto.status || UserStatus.Active,
-            isVerified: false,
+            // Admin-provisioned accounts receive credentials by email; skip self-signup verification.
+            isVerified: true,
         });
 
         await this.userRepository.save(user);

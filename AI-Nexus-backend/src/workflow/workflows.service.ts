@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { WorkflowEntity } from './workflows.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -269,9 +269,45 @@ export class WorkflowService {
         return { message: 'Workflow deleted successfully' };
     }
 
-    async getFlowiseTemplates(accessToken: string): Promise<any[]> {
-        if (!accessToken) return [];
+    private parseFlowiseAnalytic(analytic: unknown): Record<string, any> {
+        if (typeof analytic === 'string' && analytic.trim()) {
+            try {
+                const parsed = JSON.parse(analytic);
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch {
+                return {};
+            }
+        }
+        if (analytic && typeof analytic === 'object') {
+            return analytic as Record<string, any>;
+        }
+        return {};
+    }
 
+    private getFlowiseTemplateVisibility(row: any): 'public' | 'private' {
+        const visibility = String(this.parseFlowiseAnalytic(row?.analytic)?.aiNexusTemplateVisibility || 'public')
+            .trim()
+            .toLowerCase();
+        return visibility === 'private' ? 'private' : 'public';
+    }
+
+    private getFlowiseTemplateCreatorId(row: any): string {
+        return String(this.parseFlowiseAnalytic(row?.analytic)?.aiNexusCreator?.id || '').trim();
+    }
+
+    private canViewFlowiseTemplate(row: any, currentUserId: string): boolean {
+        const templateSource = String(row?.templateSource || '');
+        if (templateSource === 'community_template') return true;
+
+        const visibility = this.getFlowiseTemplateVisibility(row);
+        if (visibility === 'public') return true;
+
+        const creatorId = this.getFlowiseTemplateCreatorId(row);
+        if (!creatorId || !currentUserId) return false;
+        return creatorId === currentUserId;
+    }
+
+    private buildFlowiseClient() {
         const backendHost = (process.env.APP_HOST || 'localhost').trim();
         const flowisePort = (process.env.FLOWISE_PORT || '3002').trim();
         const envBases = [
@@ -305,9 +341,25 @@ export class WorkflowService {
             httpsAgent: new https.Agent({ rejectUnauthorized: tlsRejectUnauthorized }),
         });
 
+        return { client, flowiseBases };
+    }
+
+    private async establishFlowiseSession(accessToken: string): Promise<{
+        client: ReturnType<typeof axios.create>;
+        activeFlowiseBase: string;
+        requestConfig: {
+            headers: { Cookie: string; 'x-request-from': string };
+            params: { page: number; limit: number };
+            validateStatus: (status: number) => boolean;
+        };
+    } | null> {
+        if (!accessToken) return null;
+
+        const { client, flowiseBases } = this.buildFlowiseClient();
         let loginResponse: { headers: Record<string, any> } | null = null;
         let activeFlowiseBase = '';
         const connectionErrors: string[] = [];
+
         for (const base of flowiseBases) {
             try {
                 const candidateLoginResponse = await client.get(`${base}/api/v1/auth/external-login`, {
@@ -322,7 +374,6 @@ export class WorkflowService {
                 }
             } catch {
                 connectionErrors.push(base);
-                // Try next candidate URL.
             }
         }
 
@@ -332,7 +383,7 @@ export class WorkflowService {
                     `[WorkflowService] Flowise template bridge failed for all candidates: ${connectionErrors.join(', ')}`,
                 );
             }
-            return [];
+            return null;
         }
 
         const setCookieHeader = loginResponse.headers['set-cookie'] as string[] | undefined;
@@ -340,16 +391,27 @@ export class WorkflowService {
             ? setCookieHeader.map((cookie: string) => cookie.split(';')[0]).join('; ')
             : '';
 
-        if (!cookieHeader) return [];
+        if (!cookieHeader) return null;
 
-        const requestConfig = {
-            headers: {
-                Cookie: cookieHeader,
-                'x-request-from': 'internal',
+        return {
+            client,
+            activeFlowiseBase,
+            requestConfig: {
+                headers: {
+                    Cookie: cookieHeader,
+                    'x-request-from': 'internal',
+                },
+                params: { page: 1, limit: 200 },
+                validateStatus: (status: number) => status >= 200 && status < 500,
             },
-            params: { page: 1, limit: 200 },
-            validateStatus: (status: number) => status >= 200 && status < 500,
         };
+    }
+
+    async getFlowiseTemplates(accessToken: string, currentUserId = ''): Promise<any[]> {
+        const session = await this.establishFlowiseSession(accessToken);
+        if (!session) return [];
+
+        const { client, activeFlowiseBase, requestConfig } = session;
 
         const [agentflowsRes, chatflowsRes, communityTemplatesRes, myTemplatesRes] = await Promise.all([
             client.get(`${activeFlowiseBase}/api/v1/chatflows`, { ...requestConfig, params: { ...requestConfig.params, type: 'AGENTFLOW' } }),
@@ -377,7 +439,55 @@ export class WorkflowService {
             const stableId = row?.id || `${row?.templateSource}:${row?.type || 'template'}:${row?.templateName || row?.name || ''}`;
             if (stableId) byId.set(String(stableId), { ...row, id: stableId });
         });
-        return [...byId.values()];
+
+        return [...byId.values()].filter((row) => this.canViewFlowiseTemplate(row, currentUserId));
+    }
+
+    async updateFlowiseTemplateVisibility(
+        accessToken: string,
+        currentUserId: string,
+        flowiseId: string,
+        visibility: 'public' | 'private',
+    ): Promise<{ message: string; visibility: 'public' | 'private' }> {
+        if (!currentUserId) {
+            throw new ForbiddenException('You must be signed in to update template visibility');
+        }
+
+        const normalizedFlowiseId = String(flowiseId || '').trim();
+        if (!normalizedFlowiseId) {
+            throw new NotFoundException('Flowise template not found');
+        }
+
+        const session = await this.establishFlowiseSession(accessToken);
+        if (!session) {
+            throw new NotFoundException('Unable to connect to Flowise');
+        }
+
+        const { client, activeFlowiseBase, requestConfig } = session;
+        const chatflowRes = await client.get(`${activeFlowiseBase}/api/v1/chatflows/${normalizedFlowiseId}`, requestConfig);
+        const chatflow = chatflowRes.data;
+        if (!chatflow?.id) {
+            throw new NotFoundException('Flowise template not found');
+        }
+
+        const creatorId = this.getFlowiseTemplateCreatorId(chatflow);
+        if (creatorId && creatorId !== currentUserId) {
+            throw new ForbiddenException('Only the template creator can change visibility');
+        }
+
+        const analytic = this.parseFlowiseAnalytic(chatflow.analytic);
+        analytic.aiNexusTemplateVisibility = visibility;
+
+        await client.put(
+            `${activeFlowiseBase}/api/v1/chatflows/${normalizedFlowiseId}`,
+            { analytic: JSON.stringify(analytic) },
+            requestConfig,
+        );
+
+        return {
+            message: `Template is now ${visibility}`,
+            visibility,
+        };
     }
 }
 

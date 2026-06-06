@@ -108,6 +108,11 @@ const mapFlowiseFlowToTemplate = (flow) => {
   const analytic = parseAnalytic(flow.analytic);
   const creator = analytic?.aiNexusCreator || {};
   const creatorName = creator.name || creator.email || 'Unknown user';
+  const creatorId = String(creator.id || '').trim();
+  const templateVisibility =
+    String(analytic?.aiNexusTemplateVisibility || 'public').trim().toLowerCase() === 'private'
+      ? 'private'
+      : 'public';
   const createdAt = flow.createdDate || flow.updatedDate || new Date().toISOString();
   const parsedFlowData = parseFlowData(flow.flowData);
   const normalizedSource = flow?.templateSource || 'workspace_flow';
@@ -136,6 +141,8 @@ const mapFlowiseFlowToTemplate = (flow) => {
     createdAt,
     updatedAt: flow.updatedDate || createdAt,
     createdBy: creatorName,
+    creatorId,
+    templateVisibility,
     isPreviewOnly: normalizedSource !== 'workspace_flow',
   };
 };
@@ -181,6 +188,12 @@ export const flowiseTemplateService = {
   async getFlowiseTemplateById(flowiseTemplateId) {
     const all = await this.getFlowiseTemplates();
     return all.find((item) => item.id === flowiseTemplateId) || null;
+  },
+  async updateTemplateVisibility(flowiseId, visibility) {
+    const response = await axios.patch(`/workflows/flowise-templates/${encodeURIComponent(flowiseId)}/visibility`, {
+      visibility,
+    });
+    return response?.data;
   },
 };
 

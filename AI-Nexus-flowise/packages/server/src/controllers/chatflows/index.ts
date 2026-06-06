@@ -14,7 +14,11 @@ import { QueryRunner } from 'typeorm'
 import { GeneralErrorMessage } from '../../utils/constants'
 import { sanitizeFlowDataForPublicEndpoint } from '../../utils/sanitizeFlowData'
 
-const withCreatorMetadata = (analytic: unknown, user?: Request['user']) => {
+const withCreatorMetadata = (
+    analytic: unknown,
+    user?: Request['user'],
+    templateVisibility?: unknown,
+) => {
     let parsedAnalytic: Record<string, any> = {}
     if (typeof analytic === 'string' && analytic.trim()) {
         try {
@@ -33,6 +37,12 @@ const withCreatorMetadata = (analytic: unknown, user?: Request['user']) => {
             email: user.email || ''
         }
     }
+
+    const normalizedVisibility = String(templateVisibility || parsedAnalytic.aiNexusTemplateVisibility || 'public')
+        .trim()
+        .toLowerCase()
+    parsedAnalytic.aiNexusTemplateVisibility =
+        normalizedVisibility === 'private' ? 'private' : 'public'
 
     return JSON.stringify(parsedAnalytic)
 }
@@ -169,7 +179,8 @@ const saveChatflow = async (req: Request, res: Response, next: NextFunction) => 
         }
         const subscriptionId = req.user?.activeOrganizationSubscriptionId || ''
         const body = req.body
-        body.analytic = withCreatorMetadata(body.analytic, req.user)
+        body.analytic = withCreatorMetadata(body.analytic, req.user, body.aiNexusTemplateVisibility)
+        delete body.aiNexusTemplateVisibility
 
         const existingChatflowCount = await chatflowsService.getAllChatflowsCountByOrganization(body.type, orgId)
         const newChatflowCount = 1
@@ -219,6 +230,16 @@ const updateChatflow = async (req: Request, res: Response, next: NextFunction) =
         const body = req.body
         const updateChatFlow = new ChatFlow()
         Object.assign(updateChatFlow, body)
+
+        if (body.aiNexusTemplateVisibility || body.analytic) {
+            const existingAnalytic = chatflow.analytic
+            updateChatFlow.analytic = withCreatorMetadata(
+                body.analytic ?? existingAnalytic,
+                req.user,
+                body.aiNexusTemplateVisibility,
+            )
+        }
+        delete (updateChatFlow as any).aiNexusTemplateVisibility
 
         updateChatFlow.id = chatflow.id
         const rateLimiterManager = RateLimiterManager.getInstance()

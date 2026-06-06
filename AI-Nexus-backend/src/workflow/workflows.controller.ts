@@ -6,6 +6,7 @@ import {
     Post,
     Delete,
     Put,
+    Patch,
     Body,
     Res,
     Req,
@@ -21,7 +22,7 @@ import { memoryStorage } from 'multer';
 import { UserRole } from '../user/users.entity';
 import { Response } from 'express';
 import { WorkflowService } from './workflows.service';
-import { CreateWorkflowDto, UpdateWorkflowDto } from './workflows.dto';
+import { CreateWorkflowDto, UpdateFlowiseTemplateVisibilityDto, UpdateWorkflowDto } from './workflows.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
@@ -63,11 +64,33 @@ export class WorkflowController {
     @ApiOperation({ summary: 'List Flowise templates for logged-in user' })
     async getFlowiseTemplates(@Req() request: Request, @Res() response: Response) {
         const accessToken = extractAccessTokenFromRequest(request) || '';
-        const templates = await this.workflowService.getFlowiseTemplates(accessToken);
+        const currentUserId = String((request as Request & { user?: { id?: string } }).user?.id || '').trim();
+        const templates = await this.workflowService.getFlowiseTemplates(accessToken, currentUserId);
         return response.status(HttpStatus.OK).json({
             length: templates.length,
             data: templates,
         });
+    }
+
+    @Patch('flowise-templates/:flowiseId/visibility')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Set public/private visibility for a Flowise workspace template' })
+    async updateFlowiseTemplateVisibility(
+        @Req() request: Request,
+        @Param('flowiseId') flowiseId: string,
+        @Body() body: UpdateFlowiseTemplateVisibilityDto,
+        @Res() response: Response,
+    ) {
+        const accessToken = extractAccessTokenFromRequest(request) || '';
+        const currentUserId = String((request as Request & { user?: { id?: string } }).user?.id || '').trim();
+        const result = await this.workflowService.updateFlowiseTemplateVisibility(
+            accessToken,
+            currentUserId,
+            flowiseId,
+            body.visibility,
+        );
+        return response.status(HttpStatus.OK).json(result);
     }
 
     @Get(':id')

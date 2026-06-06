@@ -218,10 +218,10 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
         else setFlowDialogOpen(true)
     }
 
-    const onConfirmSaveName = (flowName) => {
+    const onConfirmSaveName = (flowName, options) => {
         setFlowDialogOpen(false)
         setSavePermission(isAgentCanvas ? 'agentflows:update' : 'chatflows:update')
-        handleSaveFlow(flowName)
+        handleSaveFlow(flowName, options?.templateVisibility)
     }
 
     useEffect(() => {
@@ -464,6 +464,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
             />
             <SaveChatflowDialog
                 show={flowDialogOpen}
+                showTemplateVisibility
                 dialogProps={{
                     title: `Save New ${title}`,
                     confirmButtonName: 'Save',

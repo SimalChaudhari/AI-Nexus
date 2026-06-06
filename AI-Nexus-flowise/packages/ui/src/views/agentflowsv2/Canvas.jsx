@@ -216,7 +216,7 @@ const AgentflowCanvas = () => {
         }
     }
 
-    const handleSaveFlow = (chatflowName) => {
+    const handleSaveFlow = (chatflowName, templateVisibility = 'public') => {
         if (reactFlowInstance) {
             const nodes = reactFlowInstance.getNodes().map((node) => {
                 const nodeData = cloneDeep(node.data)
@@ -242,7 +242,8 @@ const AgentflowCanvas = () => {
                     deployed: false,
                     isPublic: false,
                     flowData,
-                    type: 'AGENTFLOW'
+                    type: 'AGENTFLOW',
+                    aiNexusTemplateVisibility: templateVisibility,
                 }
                 createNewChatflowApi.request(newChatflowBody)
             } else {

@@ -1,4 +1,10 @@
-import { IsOptional, IsNotEmpty, IsString, IsArray } from 'class-validator';
+import { IsIn, IsOptional, IsNotEmpty, IsString, IsArray } from 'class-validator';
+
+export class UpdateFlowiseTemplateVisibilityDto {
+    @IsString()
+    @IsIn(['public', 'private'])
+    visibility!: 'public' | 'private';
+}
 
 // For creating workflow
 export class CreateWorkflowDto {
