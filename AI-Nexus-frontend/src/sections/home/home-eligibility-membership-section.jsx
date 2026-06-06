@@ -1,6 +1,6 @@
 import { m } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -16,10 +16,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { CONFIG } from 'src/config-global';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { useAuthContext } from 'src/auth/hooks';
-import {
-  MembershipSignupDialog,
-  MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
-} from 'src/sections/learning/components/membership-signup-dialog';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 import { shouldOpenEligibilityModal } from './eligibility-membership-defaults';
@@ -398,13 +394,11 @@ function PanelCtaButton({ label, href, variant = 'contained', onEligibilityClick
 
 // ----------------------------------------------------------------------
 
-export function HomeEligibilityMembershipSection() {
+export function HomeEligibilityMembershipSection({ onOpenMembershipSignup }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { authenticated } = useAuthContext();
 
   const [content, setContent] = useState(null);
-  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -428,7 +422,7 @@ export function HomeEligibilityMembershipSection() {
 
   const openEligibilityFlow = useCallback(() => {
     if (!authenticated) {
-      setMembershipSignupOpen(true);
+      onOpenMembershipSignup?.();
       return;
     }
     const href = String(content?.leftPanel?.ctaHref || '').trim();
@@ -439,9 +433,9 @@ export function HomeEligibilityMembershipSection() {
         navigate(normalizeAppPath(href));
       }
     } else {
-      setMembershipSignupOpen(true);
+      onOpenMembershipSignup?.();
     }
-  }, [authenticated, content?.leftPanel?.ctaHref, navigate]);
+  }, [authenticated, content?.leftPanel?.ctaHref, navigate, onOpenMembershipSignup]);
 
   if (!hasEligibilityMembershipContentNoDefaults(content)) return null;
 
@@ -455,7 +449,6 @@ export function HomeEligibilityMembershipSection() {
   const leftHeading = String(left.heading || '').trim();
   const leftSubtitle = String(left.subtitle || '').trim();
   const leftCtaLabel = String(left.ctaLabel || '').trim();
-  const returnPath = `${location.pathname}${location.search || ''}`;
 
   return (
     <>
@@ -751,22 +744,6 @@ export function HomeEligibilityMembershipSection() {
           </Grid>
         </DashboardContent>
       </Box>
-
-      <MembershipSignupDialog
-        entrySource={MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED}
-        open={membershipSignupOpen}
-        onClose={() => {
-          clearMembershipEligibilityDraftOnModalClose();
-          setMembershipSignupOpen(false);
-        }}
-        onContinue={() => {
-          setMembershipSignupOpen(false);
-          continueMembershipSignupDialog({
-            navigate,
-            returnPath,
-          });
-        }}
-      />
     </>
   );
 }

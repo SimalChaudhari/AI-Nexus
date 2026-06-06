@@ -1,3 +1,6 @@
+import { useCallback, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 
@@ -5,6 +8,15 @@ import { ScrollProgress, useScrollProgress } from 'src/components/animate/scroll
 import { HomeFooter } from 'src/layouts/main/footer';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
+import { useAuthContext } from 'src/auth/hooks';
+import {
+  MembershipSignupDialog,
+  MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
+} from 'src/sections/learning/components/membership-signup-dialog';
+import {
+  clearMembershipEligibilityDraftOnModalClose,
+  continueMembershipSignupDialog,
+} from 'src/utils/membership-eligibility-sso';
 
 import { ContactSection } from 'src/sections/contact/view/contact-view';
 
@@ -24,9 +36,23 @@ import { HomeFaqsSection } from '../home-faqs-section';
 // ----------------------------------------------------------------------
 
 export function HomeView() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { authenticated } = useAuthContext();
   const pageProgress = useScrollProgress();
   const footerReady = useHomePageApisReady();
   useMembershipApplicationPaymentReturn();
+  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
+  const returnPath = `${location.pathname}${location.search || ''}`;
+
+  const handleOpenMembershipSignup = useCallback(() => {
+    setMembershipSignupOpen(true);
+  }, []);
+
+  const handleCloseMembershipSignup = useCallback(() => {
+    clearMembershipEligibilityDraftOnModalClose();
+    setMembershipSignupOpen(false);
+  }, []);
 
   return (
     <Box
@@ -51,11 +77,11 @@ export function HomeView() {
         sx={{ position: 'fixed' }}
       />
 
-      <HomeHeroSection />
+      <HomeHeroSection onOpenMembershipSignup={handleOpenMembershipSignup} />
 
       <HomeProgrammeStructureSection />
 
-      <HomeEligibilityMembershipSection />
+      <HomeEligibilityMembershipSection onOpenMembershipSignup={handleOpenMembershipSignup} />
 
       <HomeCeoLaunchSection />
 
@@ -71,6 +97,21 @@ export function HomeView() {
       </Stack>
 
       {footerReady ? <HomeFooter sx={{ mt: 0 }} /> : null}
+
+      <MembershipSignupDialog
+        entrySource={MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED}
+        open={membershipSignupOpen}
+        onClose={handleCloseMembershipSignup}
+        onContinue={(payload) => {
+          setMembershipSignupOpen(false);
+          continueMembershipSignupDialog({
+            navigate,
+            returnPath,
+            authenticated,
+            payload,
+          });
+        }}
+      />
     </Box>
   );
 }

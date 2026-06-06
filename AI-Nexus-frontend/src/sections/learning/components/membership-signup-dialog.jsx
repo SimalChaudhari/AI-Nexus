@@ -51,6 +51,18 @@ import {
   isHomeSpecialisationPathwayFlow,
   openHomePathwayExternalUrl,
 } from './home-pathway-content';
+import {
+  HOME_FLUENCY_BACKGROUND,
+  HOME_FLUENCY_INITIAL_FIELDS,
+  HOME_FLUENCY_PATHWAY,
+  HOME_FLUENCY_USER_TYPE,
+  getHomeFluencyExperiencedMemberOptions,
+  getHomeFluencyFlowStep,
+  getHomeFluencyOutcome,
+  getHomeFluencyPathwayDisplay,
+  getHomeFluencyPathwayOptions,
+  getHomeFluencyProgressSteps,
+} from './home-fluency-flow';
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
 export const MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED = 'home-get-started';
@@ -182,6 +194,7 @@ const INITIAL_STATE = {
   homeIscaSpecialisationAnswer: null,
   homeStudentPathwayPending: false,
   homeGetStartedFlow: false,
+  ...HOME_FLUENCY_INITIAL_FIELDS,
 };
 
 function isHomeGetStartedFlow(state) {
@@ -201,6 +214,7 @@ function stripHomeOnlyFlowState(flow) {
     homePostOptInFlow: false,
     homeIscaSpecialisationAnswer: null,
     homeStudentPathwayPending: false,
+    ...HOME_FLUENCY_INITIAL_FIELDS,
   };
 
   if (!wasHome) {
@@ -234,7 +248,7 @@ function resolveFlowStateOnOpen(storedFlow, fromHomeGetStarted) {
     ...(storedFlow && typeof storedFlow === 'object' ? storedFlow : {}),
   };
   if (fromHomeGetStarted) {
-    return { ...merged, homeGetStartedFlow: true };
+    return { ...merged, homeGetStartedFlow: true, ...HOME_FLUENCY_INITIAL_FIELDS };
   }
   return stripHomeOnlyFlowState(merged);
 }
@@ -258,23 +272,21 @@ const HOME_ISCA_SPECIALISATION_OPTIONS = [
 ];
 
 function getFlowStep(state) {
-  const home = isHomeGetStartedFlow(state);
+  if (isHomeGetStartedFlow(state)) {
+    return getHomeFluencyFlowStep(state);
+  }
 
-  if (!home && state.isSingaporePr === null) return 'residency';
+  if (state.isSingaporePr === null) return 'residency';
   if (state.isIscaMember === null) return 'member';
   if (state.isIscaMember === true) return 'result';
 
-  if (!home) {
-    if (state.isSingaporePr === true && !state.nricUploadAcknowledged) return 'nric';
-    if (state.isSingaporePr === true && state.spPrVerified === true) return 'result';
-    if (state.wantsIscaMembership === null) return 'membership-choice';
-    if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) {
-      return 'membership-choice';
-    }
-    if (state.wantsIscaMembership === false) return 'result';
-  } else if (!state.eligibilityType) {
-    return 'eligibility';
+  if (state.isSingaporePr === true && !state.nricUploadAcknowledged) return 'nric';
+  if (state.isSingaporePr === true && state.spPrVerified === true) return 'result';
+  if (state.wantsIscaMembership === null) return 'membership-choice';
+  if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) {
+    return 'membership-choice';
   }
+  if (state.wantsIscaMembership === false) return 'result';
 
   if (!state.eligibilityType) return 'eligibility';
   if (
@@ -456,6 +468,11 @@ function getFlowStep(state) {
 }
 
 function getOutcome(state) {
+  if (isHomeGetStartedFlow(state)) {
+    const fluencyOutcome = getHomeFluencyOutcome(state);
+    if (fluencyOutcome) return fluencyOutcome;
+  }
+
   if (state.isIscaMember === true) {
     return {
       outcome: 'isca-login',
@@ -576,10 +593,6 @@ function getOutcome(state) {
 }
 
 function getRequirementLabel(state, step) {
-  if (state.isIscaMember === false && step !== 'member') {
-    return 'Are you already an ISCA member? No';
-  }
-
   const labelsByStep = {
     residency: 'Required before course access',
     member: 'Are you already an ISCA member?',
@@ -606,6 +619,15 @@ function getRequirementLabel(state, step) {
     'home-isca-specialisation': 'ISCA specialisation qualification',
     'home-associate-pathway': 'About this pathway',
     'home-student-pathway': 'About this pathway',
+    'home-user-type': 'Which best describes you?',
+    'home-student-final-year': 'Final-year Accountancy student check',
+    'home-student-isca-membership': 'ISCA Student or Associate Member check',
+    'home-professional-isca-member': 'ISCA member check',
+    'home-educational-background': 'Educational background',
+    'home-pathway-selection': 'Select your membership pathway',
+    'home-experienced-member-type': 'Experienced professional member type',
+    'home-fluency-pathway-info': 'Membership pathway details',
+    'home-fluency-student-pathway': 'ISCA Student Membership',
     'retry-eligibility': 'Choose next step after ineligible result',
     'student-membership-agreement': 'Student membership application agreement',
     'student-membership-check': 'Student membership decision',
@@ -620,6 +642,17 @@ function getRequirementLabel(state, step) {
     'membership-application': 'Membership application form',
     result: 'Review and continue',
   };
+
+  if (isHomeGetStartedFlow(state)) {
+    if (step === 'home-fluency-student-pathway' && state.homeStudentOrAssociateMember === false) {
+      return 'Are you already an ISCA member? No';
+    }
+    return labelsByStep[step] || 'AI Fluency eligibility check';
+  }
+
+  if (state.isIscaMember === false && step !== 'member') {
+    return 'Are you already an ISCA member? No';
+  }
 
   return labelsByStep[step] || 'Required before course access';
 }
@@ -685,14 +718,7 @@ function getProgressMeta(state, step) {
   const home = isHomeGetStartedFlow(state);
 
   if (home) {
-    const steps = ['member'];
-    if (state.isIscaMember === true) {
-      steps.push('result');
-    } else {
-      steps.push('eligibility');
-      appendHomeEligibilityProgressSteps(steps, state);
-    }
-    const uniqueSteps = [...new Set(steps)];
+    const uniqueSteps = getHomeFluencyProgressSteps(state);
     const currentIndex = uniqueSteps.indexOf(step);
     return {
       currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
@@ -1123,6 +1149,98 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       studentFeePaymentCompleted: false,
       studentMembershipApplicationAgreed: false,
     }));
+  };
+
+  const selectHomeFluencyUserType = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      homeFluencyUserType: value,
+      homeFinalYearAccountancyStudent: null,
+      homeStudentOrAssociateMember: null,
+      homeEducationalBackground: '',
+      homeSelectedPathway: '',
+      homeExperiencedMemberType: '',
+      homeFluencyPathwayAcknowledged: false,
+      homeFluencyEligible: false,
+      isIscaMember: null,
+    }));
+  };
+
+  const selectHomeFinalYearAccountancy = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      homeFinalYearAccountancyStudent: value,
+      homeFluencyEligible: value === true,
+      homeStudentOrAssociateMember: null,
+      homeFluencyPathwayAcknowledged: false,
+    }));
+  };
+
+  const selectHomeStudentOrAssociateMember = (value) => {
+    if (value === false) {
+      resetStudentVerificationState();
+    }
+    setFlowState((prev) => ({
+      ...prev,
+      homeStudentOrAssociateMember: value,
+      homeFluencyEligible: value === true,
+      homeFluencyPathwayAcknowledged: false,
+      ...(value === false
+        ? {
+            eligibilityVerified: null,
+            studentSchoolName: '',
+            studentGraduationDate: '',
+            studentSchoolEmail: '',
+            studentEmailPinSent: false,
+            studentEmailPinVerified: false,
+            studentVerificationFailed: false,
+            studentFailureAcknowledged: false,
+          }
+        : {}),
+    }));
+  };
+
+  const selectHomeProfessionalIscaMember = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      isIscaMember: value,
+      homeFluencyEligible: value === true,
+      homeEducationalBackground: '',
+      homeSelectedPathway: '',
+      homeExperiencedMemberType: '',
+      homeFluencyPathwayAcknowledged: false,
+    }));
+  };
+
+  const selectHomeEducationalBackground = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      homeEducationalBackground: value,
+      homeSelectedPathway: '',
+      homeExperiencedMemberType: '',
+      homeFluencyPathwayAcknowledged: false,
+    }));
+  };
+
+  const selectHomeFluencyPathway = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      homeSelectedPathway: value,
+      homeExperiencedMemberType: value === HOME_FLUENCY_PATHWAY.EXPERIENCED ? '' : prev.homeExperiencedMemberType,
+      homeFluencyPathwayAcknowledged: false,
+    }));
+  };
+
+  const selectHomeExperiencedMemberType = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      homeExperiencedMemberType: value,
+      homeFluencyPathwayAcknowledged: false,
+    }));
+  };
+
+  const acknowledgeHomeFluencyPathway = () => {
+    setFlowState((prev) => ({ ...prev, homeFluencyPathwayAcknowledged: true }));
   };
 
   const selectWantsMembership = (value) => {
@@ -2312,8 +2430,95 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
 
     if (step === 'member') {
       setFlowState(
-        flowState.homeGetStartedFlow ? { ...INITIAL_STATE, homeGetStartedFlow: true } : INITIAL_STATE
+        flowState.homeGetStartedFlow
+          ? { ...INITIAL_STATE, homeGetStartedFlow: true, ...HOME_FLUENCY_INITIAL_FIELDS }
+          : INITIAL_STATE
       );
+      return;
+    }
+    if (step === 'home-user-type') {
+      setFlowState({ ...INITIAL_STATE, homeGetStartedFlow: true, ...HOME_FLUENCY_INITIAL_FIELDS });
+      return;
+    }
+    if (step === 'home-student-final-year') {
+      setFlowState((prev) => ({
+        ...prev,
+        homeFluencyUserType: '',
+        homeFinalYearAccountancyStudent: null,
+        homeFluencyEligible: false,
+      }));
+      return;
+    }
+    if (step === 'home-student-isca-membership') {
+      setFlowState((prev) => ({
+        ...prev,
+        homeFinalYearAccountancyStudent: null,
+        homeStudentOrAssociateMember: null,
+        homeFluencyEligible: false,
+        homeFluencyPathwayAcknowledged: false,
+      }));
+      return;
+    }
+    if (step === 'home-fluency-student-pathway') {
+      resetStudentVerificationState();
+      setFlowState((prev) => ({
+        ...prev,
+        homeStudentOrAssociateMember: null,
+        homeFluencyPathwayAcknowledged: false,
+        eligibilityVerified: null,
+        studentSchoolName: '',
+        studentGraduationDate: '',
+        studentSchoolEmail: '',
+        studentEmailPinSent: false,
+        studentEmailPinVerified: false,
+        studentVerificationFailed: false,
+        studentFailureAcknowledged: false,
+      }));
+      return;
+    }
+    if (step === 'home-professional-isca-member') {
+      setFlowState((prev) => ({
+        ...prev,
+        homeFluencyUserType: '',
+        isIscaMember: null,
+        homeFluencyEligible: false,
+        homeEducationalBackground: '',
+        homeSelectedPathway: '',
+        homeExperiencedMemberType: '',
+        homeFluencyPathwayAcknowledged: false,
+      }));
+      return;
+    }
+    if (step === 'home-educational-background') {
+      setFlowState((prev) => ({
+        ...prev,
+        isIscaMember: null,
+        homeEducationalBackground: '',
+        homeSelectedPathway: '',
+        homeExperiencedMemberType: '',
+        homeFluencyPathwayAcknowledged: false,
+      }));
+      return;
+    }
+    if (step === 'home-pathway-selection') {
+      setFlowState((prev) => ({
+        ...prev,
+        homeSelectedPathway: '',
+        homeExperiencedMemberType: '',
+        homeFluencyPathwayAcknowledged: false,
+      }));
+      return;
+    }
+    if (step === 'home-experienced-member-type') {
+      setFlowState((prev) => ({
+        ...prev,
+        homeExperiencedMemberType: '',
+        homeFluencyPathwayAcknowledged: false,
+      }));
+      return;
+    }
+    if (step === 'home-fluency-pathway-info') {
+      setFlowState((prev) => ({ ...prev, homeFluencyPathwayAcknowledged: false }));
       return;
     }
     if (step === 'membership-choice') {
@@ -2745,6 +2950,44 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       return;
     }
     if (step === 'result') {
+      if (flowState.homeGetStartedFlow) {
+        if (flowState.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.STUDENT) {
+          if (flowState.homeFinalYearAccountancyStudent === true) {
+            setFlowState((prev) => ({
+              ...prev,
+              homeFinalYearAccountancyStudent: null,
+              homeFluencyEligible: false,
+            }));
+            return;
+          }
+          if (flowState.homeStudentOrAssociateMember === true) {
+            setFlowState((prev) => ({
+              ...prev,
+              homeStudentOrAssociateMember: null,
+              homeFluencyEligible: false,
+            }));
+            return;
+          }
+          if (flowState.homeFluencyPathwayAcknowledged) {
+            setFlowState((prev) => ({ ...prev, homeFluencyPathwayAcknowledged: false }));
+            return;
+          }
+        }
+        if (flowState.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.PROFESSIONAL) {
+          if (flowState.isIscaMember === true) {
+            setFlowState((prev) => ({
+              ...prev,
+              isIscaMember: null,
+              homeFluencyEligible: false,
+            }));
+            return;
+          }
+          if (flowState.homeFluencyPathwayAcknowledged) {
+            setFlowState((prev) => ({ ...prev, homeFluencyPathwayAcknowledged: false }));
+            return;
+          }
+        }
+      }
       if (flowState.isSingaporePr === false) {
         if (flowState.wantsIscaMembership === false) {
           setFlowState((prev) => ({ ...prev, wantsIscaMembership: null }));
@@ -2777,14 +3020,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     }
   };
 
+  const handleDismiss = () => {
+    onClose?.();
+  };
+
   return (
     <Dialog
       open={open}
       disableScrollLock
-      onClose={(_, reason) => {
-        if (reason === 'backdropClick' || reason === 'escapeKeyDown') return;
-        onClose();
-      }}
+      onClose={handleDismiss}
       slotProps={{
         backdrop: {
           sx: {
@@ -2803,7 +3047,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       }}
     >
       <DialogTitle sx={{ px: 3, pt: 2, pb: 1.25 }}>
-        {step !== 'residency' && !(flowState.homeGetStartedFlow && step === 'member') && (
+        {step !== 'residency' && step !== 'home-user-type' && !(flowState.homeGetStartedFlow && step === 'member') && (
           <IconButton
             size="small"
             onClick={goBack}
@@ -2824,7 +3068,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
           variant="text"
           color="inherit"
           size="small"
-          onClick={onClose}
+          type="button"
+          onClick={handleDismiss}
           sx={{
             position: 'absolute',
             top: 10,
@@ -2842,7 +3087,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
           sx={{
             fontWeight: 700,
             lineHeight: 1.2,
-            pl: step !== 'residency' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
+            pl: step !== 'residency' && step !== 'home-user-type' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
             pr: 5,
           }}
         >
@@ -2854,7 +3099,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             mt: 0.75,
             color: 'text.secondary',
             display: 'block',
-            pl: step !== 'residency' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
+            pl: step !== 'residency' && step !== 'home-user-type' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
             pr: 5,
           }}
         >
@@ -2914,6 +3159,214 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             </Stack>
           </Stack>
         )}
+        {step === 'home-user-type' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Which best describes you?
+            </Typography>
+            <Stack spacing={1}>
+              <Paper
+                variant="outlined"
+                onClick={() => selectHomeFluencyUserType(HOME_FLUENCY_USER_TYPE.STUDENT)}
+                sx={(theme) => ({
+                  p: 1.25,
+                  cursor: 'pointer',
+                  borderRadius: 1.5,
+                  '&:hover': { borderColor: theme.palette.text.primary },
+                })}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Student
+                </Typography>
+              </Paper>
+              <Paper
+                variant="outlined"
+                onClick={() => selectHomeFluencyUserType(HOME_FLUENCY_USER_TYPE.PROFESSIONAL)}
+                sx={(theme) => ({
+                  p: 1.25,
+                  cursor: 'pointer',
+                  borderRadius: 1.5,
+                  '&:hover': { borderColor: theme.palette.text.primary },
+                })}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Working Professional
+                </Typography>
+              </Paper>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-student-final-year' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Are you a final-year Accountancy student from one of the five Singapore local universities or polytechnics?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+              If yes, you are eligible to register for the ISCA AI Fluency programme for free.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectHomeFinalYearAccountancy(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => selectHomeFinalYearAccountancy(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-student-isca-membership' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Are you currently an ISCA Student Member or Associate Member?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectHomeStudentOrAssociateMember(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => selectHomeStudentOrAssociateMember(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-professional-isca-member' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Are you an ISCA member?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectHomeProfessionalIscaMember(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => selectHomeProfessionalIscaMember(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-educational-background' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              What is your educational background?
+            </Typography>
+            <Stack spacing={1}>
+              <Paper
+                variant="outlined"
+                onClick={() => selectHomeEducationalBackground(HOME_FLUENCY_BACKGROUND.ACCOUNTING)}
+                sx={(theme) => ({
+                  p: 1.25,
+                  cursor: 'pointer',
+                  borderRadius: 1.5,
+                  '&:hover': { borderColor: theme.palette.text.primary },
+                })}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Accounting Graduate
+                </Typography>
+              </Paper>
+              <Paper
+                variant="outlined"
+                onClick={() => selectHomeEducationalBackground(HOME_FLUENCY_BACKGROUND.NON_ACCOUNTING)}
+                sx={(theme) => ({
+                  p: 1.25,
+                  cursor: 'pointer',
+                  borderRadius: 1.5,
+                  '&:hover': { borderColor: theme.palette.text.primary },
+                })}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Non-Accounting Graduate
+                </Typography>
+              </Paper>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-pathway-selection' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Select your pathway
+            </Typography>
+            <Stack spacing={1}>
+              {getHomeFluencyPathwayOptions(flowState.homeEducationalBackground).map((option) => (
+                <Paper
+                  key={option.value}
+                  variant="outlined"
+                  onClick={() => selectHomeFluencyPathway(option.value)}
+                  sx={(theme) => ({
+                    p: 1.25,
+                    cursor: 'pointer',
+                    borderRadius: 1.5,
+                    borderColor:
+                      flowState.homeSelectedPathway === option.value
+                        ? theme.palette.text.primary
+                        : theme.palette.divider,
+                    bgcolor:
+                      flowState.homeSelectedPathway === option.value
+                        ? alpha(theme.palette.text.primary, 0.05)
+                        : 'background.paper',
+                  })}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: flowState.homeSelectedPathway === option.value ? 700 : 500 }}
+                  >
+                    {option.label}
+                  </Typography>
+                </Paper>
+              ))}
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-experienced-member-type' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Select your experienced professional member type
+            </Typography>
+            <Stack spacing={1}>
+              {getHomeFluencyExperiencedMemberOptions().map((option) => (
+                <Paper
+                  key={option.value}
+                  variant="outlined"
+                  onClick={() => selectHomeExperiencedMemberType(option.value)}
+                  sx={(theme) => ({
+                    p: 1.25,
+                    cursor: 'pointer',
+                    borderRadius: 1.5,
+                    borderColor:
+                      flowState.homeExperiencedMemberType === option.value
+                        ? theme.palette.text.primary
+                        : theme.palette.divider,
+                  })}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {option.label}
+                  </Typography>
+                </Paper>
+              ))}
+            </Stack>
+          </Stack>
+        )}
+        {step === 'home-fluency-pathway-info' && (() => {
+          const pathwayDisplay = getHomeFluencyPathwayDisplay(flowState);
+          return (
+            <Stack spacing={1.25}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                {pathwayDisplay?.title || 'Membership pathway'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65, whiteSpace: 'pre-line' }}>
+                {pathwayDisplay?.description}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+                {pathwayDisplay?.footerNote}
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                <Button variant="contained" onClick={acknowledgeHomeFluencyPathway}>
+                  Continue
+                </Button>
+              </Stack>
+            </Stack>
+          );
+        })()}
         {step === 'member' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -4237,8 +4690,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             />
           );
         })()}
-        {step === 'student-membership-check' && (
+        {(step === 'student-membership-check' || step === 'home-fluency-student-pathway') && (
           <Stack spacing={1.5}>
+            {step === 'home-fluency-student-pathway' && (
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+                Sign up for ISCA Student Membership. Once membership is approved, you may register for the ISCA AI Fluency programme.
+              </Typography>
+            )}
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                 Student member verification details
@@ -4527,7 +4985,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
               </Box>
             )}
 
-            {flowState.studentEmailPinVerified && flowState.eligibilityVerified === true && (
+            {step === 'student-membership-check' && flowState.studentEmailPinVerified && flowState.eligibilityVerified === true && (
               <Box>
                 <Divider sx={{ mb: 1.25 }} />
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
@@ -4543,6 +5001,28 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
                 </Stack>
               </Box>
             )}
+
+            {step === 'home-fluency-student-pathway'
+              && flowState.studentEmailPinVerified
+              && flowState.eligibilityVerified === true && (() => {
+                const studentPathwayUrls = getHomeStudentPathwayUrls();
+                return (
+                  <Stack spacing={2}>
+                    <Divider />
+                    <HomePathwayCard
+                      content={HOME_STUDENT_PATHWAY_CONTENT}
+                      applicationPortalUrl={studentPathwayUrls.applicationPortal}
+                      readPathwayPageUrl={studentPathwayUrls.readPathwayPage}
+                      onOpenLink={handleHomePathwayExternalLink}
+                    />
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                      <Button variant="contained" onClick={acknowledgeHomeFluencyPathway}>
+                        Continue
+                      </Button>
+                    </Stack>
+                  </Stack>
+                );
+              })()}
           </Stack>
         )}
         {step === 'student-fee-payment' && (
@@ -4763,7 +5243,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         {step === 'result' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              {(result.outcome === 'sp-pr-verified-login' || salesforceAccountReady) && (
+              {(result.outcome === 'sp-pr-verified-login'
+                || result.outcome === 'ai-fluency-eligible'
+                || salesforceAccountReady) && (
                 <Iconify icon="solar:verified-check-bold" width={20} style={{ color: '#16a34a' }} />
               )}
               {result.title}

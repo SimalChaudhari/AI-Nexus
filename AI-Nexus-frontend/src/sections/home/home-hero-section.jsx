@@ -1,6 +1,6 @@
 import { m } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -14,14 +14,6 @@ import { RichTextContent } from 'src/components/html-content';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { RouterLink } from 'src/routes/components';
 import { appSettingsService } from 'src/services/app-settings.service';
-import {
-  MembershipSignupDialog,
-  MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
-} from 'src/sections/learning/components/membership-signup-dialog';
-import {
-  clearMembershipEligibilityDraftOnModalClose,
-  continueMembershipSignupDialog,
-} from 'src/utils/membership-eligibility-sso';
 import { useAuthContext } from 'src/auth/hooks';
 
 import { resolveHomeHeroData } from './home-hero-defaults';
@@ -597,11 +589,9 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
 
 // ----------------------------------------------------------------------
 
-export function HomeHeroSection() {
+export function HomeHeroSection({ onOpenMembershipSignup }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { authenticated } = useAuthContext();
-  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
   const [hero, setHero] = useState(() => resolveHomeHeroData({}));
 
   useEffect(() => {
@@ -638,15 +628,13 @@ export function HomeHeroSection() {
     return rows;
   }, [hero.cta, hero.secondaryCtas]);
 
-  const returnPath = `${location.pathname}${location.search || ''}`;
-
   const handleJoinClick = useCallback(() => {
     if (!authenticated) {
-      setMembershipSignupOpen(true);
+      onOpenMembershipSignup?.();
       return;
     }
     navigate('/learning');
-  }, [authenticated, navigate]);
+  }, [authenticated, navigate, onOpenMembershipSignup]);
 
   const handleEligibilityScroll = useCallback(() => {
     const target = document.getElementById('eligibility-membership');
@@ -818,24 +806,6 @@ export function HomeHeroSection() {
           </Box>
         </DashboardContent>
       </Box>
-
-      <MembershipSignupDialog
-        entrySource={MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED}
-        open={membershipSignupOpen}
-        onClose={() => {
-          clearMembershipEligibilityDraftOnModalClose();
-          setMembershipSignupOpen(false);
-        }}
-        onContinue={(payload) => {
-          setMembershipSignupOpen(false);
-          continueMembershipSignupDialog({
-            navigate,
-            returnPath,
-            authenticated,
-            payload,
-          });
-        }}
-      />
     </>
   );
 }
