@@ -20,6 +20,10 @@ import { RouterLink } from 'src/routes/components';
 import { Iconify } from 'src/components/iconify';
 import { DashboardContent } from 'src/layouts/dashboard';
 import {
+  AI_PLAYBOOKS_PROMPT_LABEL,
+  AI_PLAYBOOKS_PROMPTS_TITLE,
+} from 'src/sections/workflows/ai-playbooks-labels';
+import {
   getProviderPromptDetail,
   PROMPT_PROVIDER_IDS,
   PROMPT_PROVIDERS,
@@ -134,7 +138,7 @@ export default function PromptDetailsPage() {
       }),
     [provider, staticProvider, config?.color, config?.bgColor]
   );
-  const metadata = { title: `${config?.title || 'Prompts'} | ${CONFIG.site.name}` };
+  const metadata = { title: `${config?.title || AI_PLAYBOOKS_PROMPTS_TITLE} | ${CONFIG.site.name}` };
 
   const backToPromptsHref = useMemo(() => {
     const params = new URLSearchParams();
@@ -156,7 +160,7 @@ export default function PromptDetailsPage() {
           setConfig(providerConfig || null);
         }
       } catch (error) {
-        toast.error(error?.message || 'Failed to load prompt pack');
+        toast.error(error?.message || 'Failed to load AI playbook prompts');
         if (mounted) setConfig(null);
       } finally {
         if (mounted) setLoading(false);
@@ -235,7 +239,7 @@ export default function PromptDetailsPage() {
 
     try {
       await navigator.clipboard.writeText(plainText);
-      showToast('Prompt copied — direct URL auto-fill not available for this prompt length');
+      showToast('AI playbook prompt copied — direct URL auto-fill not available for this length');
     } catch {
       // no-op
     }
@@ -296,11 +300,11 @@ export default function PromptDetailsPage() {
               color="inherit"
               startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
             >
-              Back to Prompts
+              Back to {AI_PLAYBOOKS_PROMPTS_TITLE}
             </Button>
           </Box>
           {!config && !loading ? (
-            <Alert severity="warning">No prompt data found for this provider.</Alert>
+            <Alert severity="warning">No AI playbook prompt data found for this provider.</Alert>
           ) : null}
           <Card
             elevation={0}
@@ -408,7 +412,7 @@ export default function PromptDetailsPage() {
                           <Box>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.4 }}>
                               <Typography variant="caption" sx={{ color: brand.accentStrong, display: 'block', fontWeight: 700 }}>
-                                Prompt
+                                {AI_PLAYBOOKS_PROMPT_LABEL}
                               </Typography>
                               <IconButton
                                 size="small"
@@ -420,7 +424,7 @@ export default function PromptDetailsPage() {
                                   e.stopPropagation();
                                   copyPrompt(promptText);
                                 }}
-                                aria-label="Copy prompt"
+                                aria-label="Copy AI playbook prompt"
                                 sx={{
                                   color: brand.accent,
                                   '&:hover': { bgcolor: brand.accentMuted },

@@ -18,7 +18,8 @@ export function AuthCenteredLayout({ sx, children, showHeader = true }) {
   const pathname = usePathname();
 
   const layoutQuery = 'md';
-  const isWideDesktopSignupPage = pathname === paths.auth.simple.signUp;
+  const isWideDesktopSignupPage =
+    pathname === paths.auth.simple.signUp || pathname === paths.auth.simple.corporateSignUp;
 
   return (
     <LayoutSection

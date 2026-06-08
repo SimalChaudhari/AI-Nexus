@@ -108,6 +108,7 @@ export const paths = {
     simple: {
       signIn: `${ROOTS.AUTH}/sign-in`,
       signUp: `${ROOTS.AUTH}/sign-up`,
+      corporateSignUp: `${ROOTS.AUTH}/corporate-sign-up`,
       forgotPassword: `${ROOTS.AUTH}/forgot-password`,
       resetPassword: `${ROOTS.AUTH}/reset-password`,
       verify: `${ROOTS.AUTH}/verify`,

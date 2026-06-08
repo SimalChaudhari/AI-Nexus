@@ -18,7 +18,10 @@ import { appSettingsService } from 'src/services/app-settings.service';
 import { useAuthContext } from 'src/auth/hooks';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
-import { shouldOpenEligibilityModal } from './eligibility-membership-defaults';
+import {
+  resolveMembershipExploreHref,
+  shouldOpenEligibilityModal,
+} from './eligibility-membership-defaults';
 
 // ----------------------------------------------------------------------
 
@@ -449,6 +452,7 @@ export function HomeEligibilityMembershipSection({ onOpenMembershipSignup }) {
   const leftHeading = String(left.heading || '').trim();
   const leftSubtitle = String(left.subtitle || '').trim();
   const leftCtaLabel = String(left.ctaLabel || '').trim();
+  const membershipExploreHref = resolveMembershipExploreHref(right.primaryCtaHref);
 
   return (
     <>
@@ -555,14 +559,15 @@ export function HomeEligibilityMembershipSection({ onOpenMembershipSignup }) {
                   sx={{
                     flex: 1,
                     minWidth: 0,
-                    justifyContent: 'center',
+                    height: 1,
+                    justifyContent: 'flex-start',
                     px: CARD_CONTENT_PX,
                     py: CARD_CONTENT_PY,
                     position: 'relative',
                     alignItems: 'stretch',
                   }}
                 >
-                  <Box sx={{ width: 1 }}>
+                  <Box sx={{ width: 1, flex: 1 }}>
                     <Typography
                       component="h2"
                       sx={{
@@ -605,23 +610,24 @@ export function HomeEligibilityMembershipSection({ onOpenMembershipSignup }) {
                         ))}
                       </Grid>
                     ) : null}
+                  </Box>
 
-                    <Box
-                      sx={{
-                        mt: { xs: 0.85, sm: 1 },
-                        display: 'flex',
-                        justifyContent: 'center',
-                        width: 1,
-                      }}
-                    >
-                      <PanelCtaButton
-                        label={leftCtaLabel}
-                        href={left.ctaHref}
-                        variant="eligibility"
-                        onEligibilityClick={openEligibilityFlow}
-                        sx={{ width: 'auto', minWidth: { xs: 180, sm: 200 } }}
-                      />
-                    </Box>
+                  <Box
+                    sx={{
+                      mt: 'auto',
+                      pt: { xs: 0.85, sm: 1 },
+                      display: 'flex',
+                      justifyContent: 'center',
+                      width: 1,
+                    }}
+                  >
+                    <PanelCtaButton
+                      label={leftCtaLabel}
+                      href={left.ctaHref}
+                      variant="eligibility"
+                      onEligibilityClick={openEligibilityFlow}
+                      sx={{ width: 'auto', minWidth: { xs: 180, sm: 200 } }}
+                    />
                   </Box>
                 </Stack>
               </Stack>
@@ -650,94 +656,83 @@ export function HomeEligibilityMembershipSection({ onOpenMembershipSignup }) {
                   px: CARD_CONTENT_PX,
                   py: CARD_CONTENT_PY,
                   justifyContent: 'flex-start',
-                  alignItems: 'center',
+                  alignItems: 'stretch',
                 }}
               >
-                <Stack spacing={0.35} sx={{ width: 1, mx: 'auto' }}>
-                  <Typography
-                    sx={{
-                      m: 0,
-                      fontWeight: 600,
-                      fontSize: FLUID_FONT_SIZES.caption,
-                      color: NAVY,
-                      textAlign: 'left',
-                    }}
-                  >
-                    {rightEyebrow}
-                  </Typography>
+                <Box sx={{ width: 1, flex: 1 }}>
+                  <Stack spacing={0.35} sx={{ width: 1 }}>
+                    <Typography
+                      sx={{
+                        m: 0,
+                        fontWeight: 600,
+                        fontSize: FLUID_FONT_SIZES.caption,
+                        color: NAVY,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {rightEyebrow}
+                    </Typography>
 
-                  <Typography
-                    component="h3"
-                    sx={{
-                      ...PANEL_TITLE_SX,
-                      color: NAVY,
-                      textAlign: 'left',
-                    }}
-                  >
-                    {rightHeading}
-                  </Typography>
-                </Stack>
-
-                {benefits.length > 0 ? (
-                  <Stack
-                    direction="row"
-                    spacing={0}
-                    sx={{
-                      width: 1,
-                      maxWidth: 820,
-                      mx: 'auto',
-                      flexWrap: { xs: 'wrap', md: 'nowrap' },
-                      justifyContent: { xs: 'center', md: 'space-between' },
-                      gap: { xs: 1, md: 0 },
-                      py: { xs: 0.15, md: 0.25 },
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    {benefits.map((b, index) => (
-                      <MembershipBenefit
-                        key={b.id || `b-${index}`}
-                        benefit={b}
-                        showDivider={index > 0}
-                      />
-                    ))}
+                    <Typography
+                      component="h3"
+                      sx={{
+                        ...PANEL_TITLE_SX,
+                        color: NAVY,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {rightHeading}
+                    </Typography>
                   </Stack>
-                ) : null}
 
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1}
+                  {benefits.length > 0 ? (
+                    <Stack
+                      direction="row"
+                      spacing={0}
+                      sx={{
+                        width: 1,
+                        maxWidth: 820,
+                        mx: 'auto',
+                        flexWrap: { xs: 'wrap', md: 'nowrap' },
+                        justifyContent: { xs: 'center', md: 'space-between' },
+                        gap: { xs: 1, md: 0 },
+                        py: { xs: 0.15, md: 0.25 },
+                        mt: { xs: 0.85, sm: 1 },
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      {benefits.map((b, index) => (
+                        <MembershipBenefit
+                          key={b.id || `b-${index}`}
+                          benefit={b}
+                          showDivider={index > 0}
+                        />
+                      ))}
+                    </Stack>
+                  ) : null}
+                </Box>
+
+                <Box
                   sx={{
-                    width: 1,
-                    maxWidth: { sm: 520, lg: '100%' },
-                    mx: 'auto',
-                    mt: 0.25,
+                    mt: 'auto',
+                    pt: { xs: 0.85, sm: 1 },
+                    display: 'flex',
                     justifyContent: 'center',
-                    alignItems: { xs: 'stretch', sm: 'center' },
+                    width: 1,
                   }}
                 >
                   <PanelCtaButton
                     label={right.primaryCtaLabel}
-                    href={right.primaryCtaHref}
+                    href={membershipExploreHref}
                     variant="contained"
                     onEligibilityClick={openEligibilityFlow}
                     sx={{
-                      width: { xs: 1, sm: 'auto' },
-                      minWidth: { sm: 240 },
-                      px: { sm: 2.5 },
+                      width: 'auto',
+                      minWidth: { xs: 180, sm: 200 },
+                      px: { xs: 1.8, sm: 2.25 },
                     }}
                   />
-                  <PanelCtaButton
-                    label={right.secondaryCtaLabel}
-                    href={right.secondaryCtaHref}
-                    variant="outlined"
-                    onEligibilityClick={openEligibilityFlow}
-                    sx={{
-                      width: { xs: 1, sm: 'auto' },
-                      minWidth: { sm: 150 },
-                      px: { sm: 2.5 },
-                    }}
-                  />
-                </Stack>
+                </Box>
               </Stack>
             </Box>
             </Grid>

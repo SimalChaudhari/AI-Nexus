@@ -74,6 +74,13 @@ export const AuthSignUpSchema = zod.object({
     .min(6, { message: 'Password must be at least 6 characters!' }),
 });
 
+export const CorporateSignUpSchema = AuthSignUpSchema.extend({
+  companyCode: zod
+    .string()
+    .min(1, { message: 'Organization name is required!' })
+    .max(64, { message: 'Organization name must be less than 64 characters!' }),
+});
+
 /**
  * User validation schema for create and update operations
  */

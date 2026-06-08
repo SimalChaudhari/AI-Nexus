@@ -1,11 +1,12 @@
-import { paths } from 'src/routes/paths';
-
 // ----------------------------------------------------------------------
 
 export const ELIGIBILITY_MEMBERSHIP_QUESTIONS_MAX = 4;
 export const ELIGIBILITY_MEMBERSHIP_BENEFITS_MAX = 4;
 
 export const ELIGIBILITY_MEMBERSHIP_CTA_ELIGIBILITY = '#eligibility-check';
+
+export const ELIGIBILITY_MEMBERSHIP_EXPLORE_URL =
+  'https://isca.org.sg/membership/become-a-member';
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -85,7 +86,7 @@ export const DEFAULT_ELIGIBILITY_MEMBERSHIP_CONTENT = {
       },
     ],
     primaryCtaLabel: 'Explore Membership Options',
-    primaryCtaHref: paths.auth.membership.application,
+    primaryCtaHref: ELIGIBILITY_MEMBERSHIP_EXPLORE_URL,
     secondaryCtaLabel: 'Learn More',
     secondaryCtaHref: '',
   },
@@ -191,4 +192,14 @@ export function resolveEligibilityMembershipContent(source) {
 export function shouldOpenEligibilityModal(href) {
   const h = String(href || '').trim().toLowerCase();
   return !h || h === ELIGIBILITY_MEMBERSHIP_CTA_ELIGIBILITY || h === '#eligibility-check';
+}
+
+/** Resolve Explore Membership CTA — replaces legacy in-app membership application links. */
+export function resolveMembershipExploreHref(href) {
+  const trimmed = String(href || '').trim();
+  if (!trimmed) return ELIGIBILITY_MEMBERSHIP_EXPLORE_URL;
+  if (/\/auth\/membership\/application\/?$/i.test(trimmed)) {
+    return ELIGIBILITY_MEMBERSHIP_EXPLORE_URL;
+  }
+  return trimmed;
 }

@@ -24,6 +24,12 @@ export const navData = [
     iconColor: '#00A76F',
   },
   {
+    title: 'Partner with ISCA',
+    path: paths.auth.simple.corporateSignUp,
+    icon: 'solar:hand-shake-bold-duotone',
+    iconColor: '#00A76F',
+  },
+  {
     title: 'AI Forum',
     path: paths.aiForum.root,
     // Keep nav active on detail routes (e.g. /ai-forum/:id)

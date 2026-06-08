@@ -11,6 +11,7 @@ import promptsTabIcon from 'src/assets/ai/chat.webp';
 import { Templates } from './templates';
 import { MyWorkflows } from './my-workflows';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
+import { AI_PLAYBOOKS_PROMPTS_TITLE } from './ai-playbooks-labels';
 import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
 
 // ----------------------------------------------------------------------
@@ -24,7 +25,7 @@ const WORKFLOW_MAIN_TABS = [
   },
   {
     id: 'resources',
-    label: 'Prompts',
+    label: AI_PLAYBOOKS_PROMPTS_TITLE,
     icon: 'simple-icons:openai',
     imageSrc: null,
   },

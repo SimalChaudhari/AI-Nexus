@@ -18,6 +18,10 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
+import {
+  AI_PLAYBOOKS_PROMPTS_TITLE,
+  formatPlaybookPromptCount,
+} from 'src/sections/workflows/ai-playbooks-labels';
 import { getProviderPromptDetail, PROMPT_PROVIDERS, PROMPT_PROVIDER_IDS } from 'src/sections/workflows/data/prompt-providers';
 import { ProviderPromptIcon } from 'src/sections/workflows/provider-prompt-icon';
 import { Iconify } from 'src/components/iconify';
@@ -64,7 +68,7 @@ export function MyWorkflows() {
         setActiveProviderDetail(detail);
       } catch (error) {
         if (mounted) {
-          toast.error(error?.message || 'Failed to load provider prompts');
+          toast.error(error?.message || 'Failed to load AI playbook prompts');
           setActiveProviderDetail(null);
         }
       } finally {
@@ -322,7 +326,7 @@ export function MyWorkflows() {
               lineHeight: 1.25,
             }}
           >
-            AI resource prompts
+            {AI_PLAYBOOKS_PROMPTS_TITLE}
           </Typography>
           <Box
             sx={{
@@ -345,8 +349,8 @@ export function MyWorkflows() {
               lineHeight: 1.55,
             }}
           >
-            Curated prompt libraries for finance workflows — pick a provider, browse categories, and open full prompt
-            packs in one click.
+            Curated AI playbook prompt libraries for finance workflows — pick a provider, browse categories, and open
+            full playbook packs in one click.
           </Typography>
         </Box>
 
@@ -363,7 +367,7 @@ export function MyWorkflows() {
           />
           <Chip
             size="small"
-            label={`${totalPromptsForProvider} prompts`}
+            label={formatPlaybookPromptCount(totalPromptsForProvider)}
             sx={{
               fontWeight: 600,
               bgcolor: getProviderSurfaceBg(selectedProvider),
@@ -553,7 +557,7 @@ export function MyWorkflows() {
                     {selectedProvider?.title || 'ChatGPT'} library
                   </Typography>
                   <Typography variant="caption" sx={{ color: activeBrandColor, fontWeight: 600 }}>
-                    {totalPromptsForProvider} prompts · {totalCategoriesForProvider} categories
+                    {formatPlaybookPromptCount(totalPromptsForProvider)} · {totalCategoriesForProvider} categories
                   </Typography>
                 </Box>
               </Stack>
@@ -621,7 +625,7 @@ export function MyWorkflows() {
                 >
                   <CircularProgress size={36} thickness={4} sx={{ color: activeBrandColor }} />
                   <Typography variant="body2" color="text.secondary">
-                    Loading prompts…
+                    Loading AI playbook prompts…
                   </Typography>
                 </Box>
               ) : (
@@ -753,7 +757,7 @@ export function MyWorkflows() {
                                       overflow: 'hidden',
                                     }}
                                   >
-                                    {item.useCase || `Prompt ${index + 1}`}
+                                    {item.useCase || `Playbook prompt ${index + 1}`}
                                   </Typography>
                                 </Stack>
                               ) : (
@@ -770,7 +774,7 @@ export function MyWorkflows() {
                                 visibility: hasMoreItems ? 'visible' : 'hidden',
                               }}
                             >
-                              +{Math.max(0, sectionItems.length - visibleItemsPerCard)} more prompts
+                              +{Math.max(0, sectionItems.length - visibleItemsPerCard)} more playbook prompts
                             </Typography>
                           </Stack>
 
@@ -791,7 +795,7 @@ export function MyWorkflows() {
                               ...viewAllPromptsButtonSx,
                             }}
                           >
-                            View all prompts
+                            View all playbook prompts
                           </Button>
                         </Card>
                       </Grid>

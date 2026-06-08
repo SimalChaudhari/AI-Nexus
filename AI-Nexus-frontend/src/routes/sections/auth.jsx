@@ -352,6 +352,7 @@ const authOauth = {
 const Simple = {
   SignInPage: lazy(() => import('src/pages/auth/simple/sign-in')),
   SignUpPage: lazy(() => import('src/pages/auth/simple/sign-up')),
+  CorporateSignUpPage: lazy(() => import('src/pages/auth/simple/corporate-sign-up')),
   ForgotPasswordPage: lazy(() => import('src/pages/auth/simple/forgot-password')),
   ResetPasswordPage: lazy(() => import('src/pages/auth/simple/reset-password')),
   VerifyPage: lazy(() => import('src/pages/auth/simple/verify')),
@@ -378,6 +379,14 @@ const authSimple = {
       element: (
         <GuestGuard>
           <Simple.SignUpPage />
+        </GuestGuard>
+      ),
+    },
+    {
+      path: 'corporate-sign-up',
+      element: (
+        <GuestGuard>
+          <Simple.CorporateSignUpPage />
         </GuestGuard>
       ),
     },

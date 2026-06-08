@@ -64,7 +64,7 @@ export async function getProviderMetadataList() {
   return PROMPT_PROVIDERS.map((provider) => ({
     id: provider.id,
     title: provider.title,
-    description: `${provider.title} prompt pack`,
+    description: `${provider.title} AI playbook prompts pack`,
     color: provider.color || '',
     bgColor: provider.bgColor || '',
     icon: provider.icon,
