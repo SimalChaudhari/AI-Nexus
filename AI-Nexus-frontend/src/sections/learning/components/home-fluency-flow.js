@@ -183,46 +183,103 @@ export function getHomeFluencyFlowStep(state) {
   return 'home-user-type';
 }
 
+/** Longest home fluency path (professional → experienced) — used before user type is chosen. */
+const HOME_FLUENCY_MAX_PROGRESS_STEPS = [
+  'home-user-type',
+  'home-professional-isca-member',
+  'home-educational-background',
+  'home-pathway-selection',
+  'home-experienced-member-type',
+  'home-fluency-pathway-info',
+  'result',
+];
+
+function resolveStudentProgressSteps(state) {
+  const steps = ['home-user-type', 'home-student-final-year'];
+
+  if (state.homeFinalYearAccountancyStudent === true) {
+    return [...steps, 'result'];
+  }
+
+  if (state.homeFinalYearAccountancyStudent === null) {
+    return [...steps, 'home-student-isca-membership', 'home-fluency-student-pathway', 'result'];
+  }
+
+  steps.push('home-student-isca-membership');
+
+  if (state.homeStudentOrAssociateMember === true) {
+    return [...steps, 'result'];
+  }
+
+  steps.push('home-fluency-student-pathway');
+  return [...steps, 'result'];
+}
+
+function resolveProfessionalProgressSteps(state) {
+  const steps = ['home-user-type', 'home-professional-isca-member'];
+
+  if (state.isIscaMember === true) {
+    return [...steps, 'result'];
+  }
+
+  if (state.isIscaMember === null) {
+    return [
+      ...steps,
+      'home-educational-background',
+      'home-pathway-selection',
+      'home-experienced-member-type',
+      'home-fluency-pathway-info',
+      'result',
+    ];
+  }
+
+  steps.push('home-educational-background', 'home-pathway-selection');
+
+  const pathway = state.homeSelectedPathway;
+  if (!pathway) {
+    return [
+      ...steps,
+      'home-experienced-member-type',
+      'home-fluency-pathway-info',
+      'result',
+    ];
+  }
+
+  if (pathway === HOME_FLUENCY_PATHWAY.EXPERIENCED) {
+    steps.push('home-experienced-member-type', 'home-fluency-pathway-info');
+  } else {
+    steps.push('home-fluency-pathway-info');
+  }
+
+  return [...steps, 'result'];
+}
+
 export function getHomeFluencyProgressSteps(state) {
-  const steps = ['home-user-type'];
+  if (!state.homeFluencyUserType) {
+    return HOME_FLUENCY_MAX_PROGRESS_STEPS;
+  }
 
   if (state.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.STUDENT) {
-    steps.push('home-student-final-year');
-    if (state.homeFinalYearAccountancyStudent === false) {
-      steps.push('home-student-isca-membership');
-      if (state.homeStudentOrAssociateMember === false) {
-        steps.push('home-fluency-student-pathway');
-      }
-    }
-    steps.push('result');
-    return [...new Set(steps)];
+    return resolveStudentProgressSteps(state);
   }
 
   if (state.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.PROFESSIONAL) {
-    steps.push('home-professional-isca-member');
-    if (state.isIscaMember === false) {
-      steps.push('home-educational-background');
-      if (state.homeEducationalBackground) {
-        steps.push('home-pathway-selection');
-        if (state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED) {
-          steps.push('home-experienced-member-type');
-        }
-        if (
-          state.homeSelectedPathway
-          && (
-            state.homeSelectedPathway !== HOME_FLUENCY_PATHWAY.EXPERIENCED
-            || state.homeExperiencedMemberType
-          )
-        ) {
-          steps.push('home-fluency-pathway-info');
-        }
-      }
-    }
-    steps.push('result');
-    return [...new Set(steps)];
+    return resolveProfessionalProgressSteps(state);
   }
 
-  return steps;
+  return HOME_FLUENCY_MAX_PROGRESS_STEPS;
+}
+
+export function getHomeFluencyProgressMeta(state, currentStepId) {
+  const steps = getHomeFluencyProgressSteps(state);
+  const currentIndex = steps.indexOf(currentStepId);
+  const totalSteps = steps.length || 1;
+  const currentStep = currentIndex >= 0 ? currentIndex + 1 : 1;
+  const progressValue = totalSteps <= 1
+    ? 100
+    : Math.round((currentStep / totalSteps) * 100);
+
+  return { currentStep, totalSteps, progressValue };
 }
 
 export function getHomeFluencyOutcome(state) {

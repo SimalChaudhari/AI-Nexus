@@ -61,7 +61,7 @@ import {
   getHomeFluencyOutcome,
   getHomeFluencyPathwayDisplay,
   getHomeFluencyPathwayOptions,
-  getHomeFluencyProgressSteps,
+  getHomeFluencyProgressMeta,
 } from './home-fluency-flow';
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
@@ -644,9 +644,6 @@ function getRequirementLabel(state, step) {
   };
 
   if (isHomeGetStartedFlow(state)) {
-    if (step === 'home-fluency-student-pathway' && state.homeStudentOrAssociateMember === false) {
-      return 'Are you already an ISCA member? No';
-    }
     return labelsByStep[step] || 'AI Fluency eligibility check';
   }
 
@@ -718,12 +715,7 @@ function getProgressMeta(state, step) {
   const home = isHomeGetStartedFlow(state);
 
   if (home) {
-    const uniqueSteps = getHomeFluencyProgressSteps(state);
-    const currentIndex = uniqueSteps.indexOf(step);
-    return {
-      currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
-      totalSteps: uniqueSteps.length || 1,
-    };
+    return getHomeFluencyProgressMeta(state, step);
   }
 
   const steps = ['residency', 'member'];
@@ -1025,8 +1017,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   const step = getFlowStep(flowState);
   const result = getOutcome(flowState);
   const requirementLabel = getRequirementLabel(flowState, step);
-  const { currentStep, totalSteps } = getProgressMeta(flowState, step);
-  const progressValue = Math.round((currentStep / totalSteps) * 100);
+  const progressMeta = getProgressMeta(flowState, step);
+  const { currentStep, totalSteps } = progressMeta;
+  const progressValue = progressMeta.progressValue ?? Math.round((currentStep / totalSteps) * 100);
   const isSalesforceCreateOutcome = isSalesforceMembershipCreateOutcomeKey(result?.outcome);
   const salesforceAccountReady =
     flowState.salesforceMembershipAccountCreated && isSalesforceCreateOutcome;
