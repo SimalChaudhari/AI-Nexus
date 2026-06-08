@@ -1,6 +1,6 @@
-/** User-facing copy for the AI Resources → playbooks prompts area. */
+/** User-facing copy for the AI Resources → AI Playbook Prompts area. */
 
-export const AI_PLAYBOOKS_PROMPTS_TITLE = 'AI Playbooks Prompts';
+export const AI_PLAYBOOKS_PROMPTS_TITLE = 'AI Playbook Prompts';
 
 export const AI_PLAYBOOKS_PROMPT_LABEL = 'AI Playbook Prompt';
 
