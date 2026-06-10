@@ -521,6 +521,7 @@ export function PartnerWithIscaSettingsCard({
                     </Button>
                   </Stack>
                   <TextField size="small" label="Title" value={stat.title || ''} onChange={(e) => updateListItem('stats', index, 'title', e.target.value)} fullWidth />
+                  <TextField size="small" label="Subtitle" value={stat.label || ''} onChange={(e) => updateListItem('stats', index, 'label', e.target.value)} fullWidth />
                 </Stack>
               </FieldBox>
             </Grid>

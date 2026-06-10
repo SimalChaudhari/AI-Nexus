@@ -46,6 +46,7 @@ import {
   PARTNER_MOCKUP_TAB_SX,
   PARTNER_SECTION_TITLE_LEFT_SX,
   PARTNER_SECTION_TITLE_SX,
+  PARTNER_STAT_LABEL_SX,
   PARTNER_STAT_VALUE_SX,
   PARTNER_STEP_BODY_SX,
   PARTNER_STEP_TITLE_SX,
@@ -362,6 +363,11 @@ function StatsBar({ stats }) {
               <Typography sx={{ ...PARTNER_STAT_VALUE_SX, color: '#fff' }}>
                 {stat.title}
               </Typography>
+              {stat.label ? (
+                <Typography sx={{ ...PARTNER_STAT_LABEL_SX, color: 'rgba(255,255,255,0.72)' }}>
+                  {stat.label}
+                </Typography>
+              ) : null}
             </Box>
           </Stack>
         ))}
