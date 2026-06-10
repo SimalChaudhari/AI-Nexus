@@ -44,7 +44,6 @@ import {
   PARTNER_MOCKUP_PILL_SX,
   PARTNER_MOCKUP_STAT_VALUE_SX,
   PARTNER_MOCKUP_TAB_SX,
-  PARTNER_SECTION_TITLE_LEFT_SX,
   PARTNER_SECTION_TITLE_SX,
   PARTNER_STAT_LABEL_SX,
   PARTNER_STAT_VALUE_SX,
@@ -398,8 +397,12 @@ function BenefitsSection({ section }) {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' },
-          gap: 2.5,
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, minmax(0, 1fr))',
+            md: 'repeat(3, minmax(0, 1fr))',
+          },
+          gap: { xs: 2, sm: 'clamp(1rem, 0.75rem + 1vw, 1.5rem)' },
         }}
       >
         {items.map((item) => {
@@ -409,10 +412,11 @@ function BenefitsSection({ section }) {
             <Box
               key={item.title}
               sx={{
+                minWidth: 0,
                 bgcolor: '#fff',
                 border: `1.5px solid ${ISCA_BORDER}`,
-                borderRadius: '12px',
-                p: 3.5,
+                borderRadius: { xs: '10px', md: '12px' },
+                p: { xs: 2.5, sm: 'clamp(1.25rem, 1rem + 0.8vw, 1.75rem)' },
                 transition: 'border-color 0.15s, transform 0.15s',
                 '&:hover': {
                   borderColor: ISCA_RED,
@@ -422,18 +426,25 @@ function BenefitsSection({ section }) {
             >
               <Box
                 sx={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '12px',
+                  width: 'clamp(2.5rem, 2.2rem + 1vw, 3rem)',
+                  height: 'clamp(2.5rem, 2.2rem + 1vw, 3rem)',
+                  borderRadius: { xs: '10px', md: '12px' },
                   bgcolor: tone.bg,
                   color: tone.color,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  mb: 2,
+                  mb: { xs: 1.5, md: 2 },
+                  flexShrink: 0,
                 }}
               >
-                <Iconify icon={item.icon} width={22} />
+                <Iconify
+                  icon={item.icon}
+                  sx={{
+                    width: 'clamp(1.125rem, 1rem + 0.45vw, 1.375rem)',
+                    height: 'clamp(1.125rem, 1rem + 0.45vw, 1.375rem)',
+                  }}
+                />
               </Box>
               <Typography component="h3" sx={PARTNER_CARD_TITLE_SX}>
                 {item.title}
@@ -856,9 +867,9 @@ function DashboardSection({ section }) {
       >
         <Box sx={{ minWidth: 0 }}>
           <Eyebrow align="left">{section?.eyebrow}</Eyebrow>
-          <Typography component="h2" sx={PARTNER_SECTION_TITLE_LEFT_SX}>
+          <SectionTitle align="left" sx={{ mb: 1.5 }}>
             {section?.title}
-          </Typography>
+          </SectionTitle>
           <RichTextContent
             html={section?.description}
             sx={{
@@ -924,15 +935,12 @@ function HowItWorksSection({ section }) {
       >
             <Typography
               sx={{
-                ...PARTNER_EYEBROW_SX,
+                ...PARTNER_BODY_SX,
                 position: { xs: 'static', md: 'absolute' },
                 top: 20,
                 right: 24,
                 mb: { xs: 2, md: 0 },
                 textAlign: { xs: 'center', md: 'right' },
-                fontSize: 12,
-                letterSpacing: 'normal',
-                textTransform: 'none',
                 fontWeight: 600,
               }}
             >
@@ -988,7 +996,6 @@ function HowItWorksSection({ section }) {
                       py: 0.25,
                       borderRadius: '10px',
                       mb: 1.25,
-                      letterSpacing: '0.1em',
                     }}
                   >
                     {step.badge}
@@ -1088,6 +1095,7 @@ function CtaSection({ section }) {
       >
         <Box sx={{ maxWidth: 640, mx: 'auto' }}>
           <Box
+            component="span"
             sx={{
               ...PARTNER_EYEBROW_SX,
               display: 'inline-flex',
@@ -1097,16 +1105,15 @@ function CtaSection({ section }) {
               px: 1.75,
               py: 0.5,
               borderRadius: '20px',
-              letterSpacing: '0.1em',
               mb: 2.5,
             }}
           >
             {section?.eyebrow}
           </Box>
 
-          <Typography component="h2" sx={PARTNER_CTA_TITLE_SX}>
+          <SectionTitle sx={{ ...PARTNER_CTA_TITLE_SX, mb: 1.75 }}>
             {section?.title}
-          </Typography>
+          </SectionTitle>
 
           <RichTextContent
             html={section?.description}
@@ -1129,16 +1136,32 @@ function CtaSection({ section }) {
             <Button
               component={RouterLink}
               href={buttonHref}
-              endIcon={<Iconify icon="solar:arrow-right-linear" width={16} />}
+              endIcon={
+                <Iconify
+                  icon="solar:arrow-right-linear"
+                  sx={{
+                    width: { xs: 'clamp(0.875rem, 0.8rem + 0.3vw, 1rem)', md: 16 },
+                    height: { xs: 'clamp(0.875rem, 0.8rem + 0.3vw, 1rem)', md: 16 },
+                  }}
+                />
+              }
               sx={{
                 textTransform: 'none',
                 ...PARTNER_BUTTON_TEXT_SX,
-                py: 1.75,
-                px: 3.5,
+                width: { xs: '100%', sm: 'auto' },
+                maxWidth: 1,
+                minWidth: 0,
+                whiteSpace: { xs: 'normal', md: 'nowrap' },
+                py: { xs: 1.5, md: 1.75 },
+                px: { xs: 2, sm: 2.5, md: 3.5 },
                 borderRadius: '7px',
                 bgcolor: ISCA_RED,
                 color: '#fff',
                 border: `2px solid ${ISCA_RED}`,
+                '& .MuiButton-endIcon': {
+                  flexShrink: 0,
+                  ml: { xs: 0.75, md: 1 },
+                },
                 '&:hover': {
                   bgcolor: ISCA_RED_DARK,
                   borderColor: ISCA_RED_DARK,
