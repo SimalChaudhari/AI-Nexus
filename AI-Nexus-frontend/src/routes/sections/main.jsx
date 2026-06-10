@@ -29,6 +29,7 @@ const LearningCoursePlayerPage = lazy(() => import('src/pages/learning/course-pl
 const LearningInstructorDetailsPage = lazy(() => import('src/pages/learning/instructor-details'));
 const WorkflowsPage = lazy(() => import('src/pages/workflows'));
 const AiAuditFuturesPage = lazy(() => import('src/pages/ai-audit-futures'));
+const PartnerWithIscaPage = lazy(() => import('src/pages/partner-with-isca'));
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
 const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
@@ -144,6 +145,10 @@ export const mainRoutes = [
           {
             path: 'ai-audit-futures',
             element: <AiAuditFuturesPage />,
+          },
+          {
+            path: 'partner-with-isca',
+            element: <PartnerWithIscaPage />,
           },
           {
             path: 'ai-resources/agent-flow',

@@ -33,6 +33,8 @@ export function MainLayout({ sx, data, children }) {
   const settings = useSettingsContext();
 
   const homePage = pathname === '/home';
+  const partnerWithIscaPage = pathname === paths.partnerWithIsca;
+  const marketingLandingPage = homePage || partnerWithIscaPage;
   const isAdminRoute = pathname?.startsWith('/admin');
   const isDashboardRoute = pathname?.startsWith('/dashboard');
   const isCustomerFacingRoute = !isAdminRoute && !isDashboardRoute;
@@ -101,7 +103,7 @@ export function MainLayout({ sx, data, children }) {
          * Footer (stats + dynamic contact + links)
          *************************************** */
         footerSection={
-          homePage || hideFooterOnLearning ? null : <Footer layoutQuery={layoutQuery} />
+          marketingLandingPage || hideFooterOnLearning ? null : <Footer layoutQuery={layoutQuery} />
         }
         /** **************************************
          * Style
@@ -130,7 +132,7 @@ export function MainLayout({ sx, data, children }) {
             [`& .${layoutClasses.header}`]: { flexShrink: 0 },
             [`& .${layoutClasses.main}`]: { flex: '1 1 0%', minHeight: 0 },
           }),
-          ...(homePage && { bgcolor: '#ffffff' }),
+          ...(marketingLandingPage && { bgcolor: '#ffffff' }),
           ...sx,
         }}
       >
@@ -143,7 +145,7 @@ export function MainLayout({ sx, data, children }) {
                   display: 'flex',
                   flexDirection: 'column',
                 }
-              : homePage
+              : marketingLandingPage
                 ? {
                     flex: '1 1 auto',
                     bgcolor: '#ffffff',
@@ -153,7 +155,7 @@ export function MainLayout({ sx, data, children }) {
         >
           {children}
         </Main>
-        {homePage ? <ChatbotWidget title="AI Nexus Chatbot" /> : null}
+        {marketingLandingPage ? <ChatbotWidget title="AI Nexus Chatbot" /> : null}
       </LayoutSection>
     </>
   );

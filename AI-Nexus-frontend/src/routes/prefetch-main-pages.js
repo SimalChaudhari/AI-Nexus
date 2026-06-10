@@ -5,6 +5,7 @@ const MAIN_PAGE_LOADERS = {
   learning: () => import('src/pages/learning'),
   workflows: () => import('src/pages/workflows'),
   aiAuditFutures: () => import('src/pages/ai-audit-futures'),
+  partnerWithIsca: () => import('src/pages/partner-with-isca'),
   aiForum: () => import('src/pages/ai-forum'),
   announcements: () => import('src/pages/announcements'),
 };

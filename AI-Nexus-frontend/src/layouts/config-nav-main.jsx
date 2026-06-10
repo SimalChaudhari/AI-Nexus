@@ -25,7 +25,7 @@ export const navData = [
   },
   {
     title: 'Partner with ISCA',
-    path: paths.auth.simple.corporateSignUp,
+    path: paths.partnerWithIsca,
     icon: 'solar:hand-shake-bold-duotone',
     iconColor: '#00A76F',
   },
