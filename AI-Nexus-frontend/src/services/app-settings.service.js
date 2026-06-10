@@ -1,4 +1,5 @@
 import axios from 'src/utils/axios';
+import { normalizePartnerWithIscaContent } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
 import { CONFIG } from 'src/config-global';
 
 const ASSET_BASE_URL = CONFIG.site.serverUrl.replace(/\/api\/?$/, '');
@@ -237,6 +238,18 @@ function transformEligibilityMembershipContent(source) {
   };
 }
 
+function transformPartnerWithIscaContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const normalized = normalizePartnerWithIscaContent(source);
+  return {
+    ...normalized,
+    hero: {
+      ...normalized.hero,
+      heroImageUrl: normalizeAssetUrl(normalized.hero?.heroImageUrl || ''),
+    },
+  };
+}
+
 function transformEmployerContent(source) {
   if (!source || typeof source !== 'object') return null;
   const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
@@ -463,6 +476,7 @@ function transformSettings(settings) {
       settings?.homeEligibilityMembershipContent
     ),
     homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
+    partnerWithIscaContent: transformPartnerWithIscaContent(settings?.partnerWithIscaContent),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -856,6 +870,28 @@ export const appSettingsService = {
 
   async removeWorkflowTemplatesPitchIcon(slot) {
     const response = await axios.delete(`/app-settings/workflow-templates-pitch-icon/${slot}`);
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updatePartnerWithIscaContent(payload) {
+    const response = await axios.put('/app-settings/partner-with-isca-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadPartnerWithIscaHero(file) {
+    const formData = new FormData();
+    formData.append('hero', file);
+    const response = await axios.post('/app-settings/partner-with-isca-hero', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removePartnerWithIscaHero() {
+    const response = await axios.delete('/app-settings/partner-with-isca-hero');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

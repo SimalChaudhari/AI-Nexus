@@ -1101,4 +1101,61 @@ export class AppSettingsController {
     const result = await this.appSettingsService.removeWorkflowTemplatesPitchIcon(slot);
     return response.status(HttpStatus.OK).json(result);
   }
+
+  @Put('partner-with-isca-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update Partner with ISCA landing page content' })
+  async updatePartnerWithIscaContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updatePartnerWithIscaContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('partner-with-isca-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload hero image for Partner with ISCA landing page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadPartnerWithIscaHero(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadPartnerWithIscaHeroImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('partner-with-isca-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove hero image for Partner with ISCA landing page' })
+  async removePartnerWithIscaHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removePartnerWithIscaHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
 }

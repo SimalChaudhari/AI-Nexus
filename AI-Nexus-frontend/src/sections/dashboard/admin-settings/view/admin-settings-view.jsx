@@ -51,6 +51,7 @@ import { FeesSettingsCard } from './components/fees-settings-card';
 import { CurriculumSettingsCard } from './components/curriculum-settings-card';
 import { TestimonialsSettingsCard } from './components/testimonials-settings-card';
 import { EmployerSettingsCard } from './components/employer-settings-card';
+import { PartnerWithIscaSettingsCard } from './components/partner-with-isca-settings-card';
 import { ProgrammeStructureSettingsCard } from './components/programme-structure-settings-card';
 import { FundingEligibilitySettingsCard } from './components/funding-eligibility-settings-card';
 import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
@@ -66,6 +67,7 @@ import {
   resolveEmployerContent,
   normalizeEmployerContent,
 } from 'src/sections/home/employer-defaults';
+import { normalizePartnerWithIscaContent } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
 import {
   normalizeCurriculumContent,
 } from 'src/sections/home/curriculum-defaults';
@@ -265,6 +267,12 @@ export function AdminSettingsView() {
   const [employerHeroFile, setEmployerHeroFile] = useState(null);
   const [employerHeroSubmitting, setEmployerHeroSubmitting] = useState(false);
   const [employerLogoUploadingIndex, setEmployerLogoUploadingIndex] = useState(null);
+  const [partnerWithIscaContent, setPartnerWithIscaContent] = useState(() =>
+    normalizePartnerWithIscaContent(null)
+  );
+  const [partnerWithIscaContentSubmitting, setPartnerWithIscaContentSubmitting] = useState(false);
+  const [partnerWithIscaHeroFile, setPartnerWithIscaHeroFile] = useState(null);
+  const [partnerWithIscaHeroSubmitting, setPartnerWithIscaHeroSubmitting] = useState(false);
   const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
@@ -552,6 +560,9 @@ export function AdminSettingsView() {
       );
       setCeoLaunchContent(resolveCeoLaunchContent(appSettings.homeCeoLaunchContent));
       setEmployerContent(resolveEmployerContent(appSettings.homeEmployerContent));
+      setPartnerWithIscaContent(
+        normalizePartnerWithIscaContent(appSettings.partnerWithIscaContent)
+      );
       const remoteJoin = appSettings.homeJoinContent || {};
       setJoinContent({
         heading: String(remoteJoin?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
@@ -1446,6 +1457,71 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleSavePartnerWithIscaContent = async () => {
+    try {
+      setPartnerWithIscaContentSubmitting(true);
+      const updated = await appSettingsService.updatePartnerWithIscaContent(partnerWithIscaContent);
+      setPartnerWithIscaContent(
+        normalizePartnerWithIscaContent(updated?.partnerWithIscaContent)
+      );
+      toast.success('Partner with ISCA page updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update Partner with ISCA page');
+    } finally {
+      setPartnerWithIscaContentSubmitting(false);
+    }
+  };
+
+  const handleDropPartnerWithIscaHero = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) setPartnerWithIscaHeroFile(file);
+  }, []);
+
+  const handleClearPartnerWithIscaHeroSelection = () => {
+    setPartnerWithIscaHeroFile(null);
+  };
+
+  const handleUploadPartnerWithIscaHero = async () => {
+    if (!partnerWithIscaHeroFile) {
+      toast.error('Please select an image first');
+      return;
+    }
+    try {
+      setPartnerWithIscaHeroSubmitting(true);
+      const fileToUpload = await compressImageFileForUpload(partnerWithIscaHeroFile);
+      const updated = await appSettingsService.uploadPartnerWithIscaHero(fileToUpload);
+      setPartnerWithIscaContent(
+        normalizePartnerWithIscaContent(updated?.partnerWithIscaContent)
+      );
+      setPartnerWithIscaHeroFile(null);
+      toast.success('Partner with ISCA hero image updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload hero image');
+    } finally {
+      setPartnerWithIscaHeroSubmitting(false);
+    }
+  };
+
+  const handleRemovePartnerWithIscaHero = async () => {
+    if (partnerWithIscaHeroFile) {
+      setPartnerWithIscaHeroFile(null);
+      return;
+    }
+    if (!String(partnerWithIscaContent?.hero?.heroImageUrl || '').trim()) return;
+    try {
+      setPartnerWithIscaHeroSubmitting(true);
+      const updated = await appSettingsService.removePartnerWithIscaHero();
+      setPartnerWithIscaContent(
+        normalizePartnerWithIscaContent(updated?.partnerWithIscaContent)
+      );
+      toast.success('Partner with ISCA hero image removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove hero image');
+    } finally {
+      setPartnerWithIscaHeroSubmitting(false);
+    }
+  };
+
   const handleSaveEmployerContent = async () => {
     try {
       setEmployerContentSubmitting(true);
@@ -1847,6 +1923,13 @@ export function AdminSettingsView() {
       description: 'Home learners / employer block — hero image, copy, benefits, and CTAs.',
     },
     {
+      key: 'partner-with-isca',
+      badge: 'PI',
+      icon: 'solar:handshake-bold-duotone',
+      title: 'Partner with ISCA',
+      description: 'Manage the full Partner with ISCA employer landing page.',
+    },
+    {
       key: 'faq',
       badge: 'FAQ',
       icon: 'solar:question-circle-bold-duotone',
@@ -1884,6 +1967,7 @@ export function AdminSettingsView() {
     'ceo-launch',
     'testimonials',
     'employer',
+    'partner-with-isca',
     'faq',
     'curriculum',
     'header-visibility',
@@ -2307,6 +2391,26 @@ export function AdminSettingsView() {
       setContent={setTestimonialsContent}
       submitting={testimonialsContentSubmitting}
       onSave={handleSaveTestimonialsContent}
+    />
+  );
+
+  const renderPartnerWithIscaSettings = (
+    <PartnerWithIscaSettingsCard
+      content={partnerWithIscaContent}
+      setContent={setPartnerWithIscaContent}
+      submitting={partnerWithIscaContentSubmitting}
+      onSave={handleSavePartnerWithIscaContent}
+      heroFile={partnerWithIscaHeroFile}
+      heroUrl={partnerWithIscaContent?.hero?.heroImageUrl || ''}
+      heroSubmitting={partnerWithIscaHeroSubmitting}
+      onHeroDrop={handleDropPartnerWithIscaHero}
+      onHeroDelete={handleRemovePartnerWithIscaHero}
+      onHeroSave={handleUploadPartnerWithIscaHero}
+      onHeroClearOrRemove={
+        partnerWithIscaHeroFile
+          ? handleClearPartnerWithIscaHeroSelection
+          : handleRemovePartnerWithIscaHero
+      }
     />
   );
 
@@ -2863,6 +2967,7 @@ export function AdminSettingsView() {
         {activeSection === 'ceo-launch' && renderCeoLaunchSettings}
         {activeSection === 'testimonials' && renderTestimonialsSettings}
         {activeSection === 'employer' && renderEmployerSettings}
+        {activeSection === 'partner-with-isca' && renderPartnerWithIscaSettings}
         {activeSection === 'faq' && renderFaqSettings}
         {activeSection === 'curriculum' && renderCurriculumSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}

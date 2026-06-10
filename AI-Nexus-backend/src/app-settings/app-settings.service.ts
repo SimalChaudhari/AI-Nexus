@@ -309,6 +309,101 @@ const EMPLOYER_LOGOS_MAX = 50;
 const EMPLOYEE_BENEFITS_MAX = 6;
 const EMPLOYEE_LOGOS_MAX = 12;
 const EMPLOYEE_STATS_MAX = 6;
+const PARTNER_STATS_MAX = 4;
+const PARTNER_BENEFITS_MAX = 6;
+const PARTNER_DASHBOARD_FEATURES_MAX = 8;
+const PARTNER_STEPS_MAX = 3;
+const PARTNER_FAQS_MAX = 20;
+const PARTNER_HERO_ACTIONS_MAX = 4;
+const PARTNER_MOCKUP_TABS_MAX = 5;
+const PARTNER_MOCKUP_SUMMARY_STATS_MAX = 3;
+const PARTNER_MOCKUP_STAFF_ROWS_MAX = 8;
+
+type PartnerWithIscaContentPayload = {
+  hero?: {
+    eyebrow?: string;
+    headline?: string;
+    headlineAccent?: string;
+    description?: string;
+    heroImageUrl?: string;
+    placeholderText?: string;
+    actions?: Array<{
+      label?: string;
+      variant?: string;
+      scrollTo?: string;
+      href?: string;
+    }>;
+  };
+  stats?: Array<{ icon?: string; title?: string; label?: string }>;
+  benefits?: {
+    eyebrow?: string;
+    title?: string;
+    items?: Array<{
+      icon?: string;
+      iconTone?: string;
+      title?: string;
+      description?: string;
+    }>;
+  };
+  dashboard?: {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    features?: Array<{ title?: string; description?: string }>;
+    mockup?: {
+      companyLogoText?: string;
+      companyName?: string;
+      companySub?: string;
+      companyCode?: string;
+      tabs?: string[];
+      summaryStats?: Array<{
+        label?: string;
+        value?: string;
+        sub?: string;
+        valueTone?: string;
+        subColor?: string;
+      }>;
+      overallCompletionLabel?: string;
+      overallCompletionSubtitle?: string;
+      overallCompletionPercent?: string;
+      staffActivityLabel?: string;
+      staffRows?: Array<{
+        initials?: string;
+        name?: string;
+        role?: string;
+        progress?: number;
+        progressColor?: string;
+        status?: string;
+        statusTone?: string;
+        cert?: string | null;
+      }>;
+    };
+  };
+  howItWorks?: {
+    eyebrow?: string;
+    title?: string;
+    note?: string;
+    steps?: Array<{
+      icon?: string;
+      badge?: string;
+      title?: string;
+      description?: string;
+      done?: boolean;
+    }>;
+  };
+  faq?: {
+    eyebrow?: string;
+    title?: string;
+    items?: Array<{ question?: string; answer?: string }>;
+  };
+  cta?: {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    buttonLabel?: string;
+    buttonHref?: string;
+  };
+};
 
 @Injectable()
 export class AppSettingsService {
@@ -326,6 +421,7 @@ export class AppSettingsService {
   private homeFundingEligibilityColumnChecked = false;
   private homeEligibilityMembershipColumnChecked = false;
   private homeCeoLaunchColumnChecked = false;
+  private partnerWithIscaColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -458,6 +554,14 @@ export class AppSettingsService {
     this.homeCeoLaunchColumnChecked = true;
   }
 
+  private async ensurePartnerWithIscaColumn(): Promise<void> {
+    if (this.partnerWithIscaColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "partnerWithIscaContent" jsonb'
+    );
+    this.partnerWithIscaColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
@@ -473,6 +577,7 @@ export class AppSettingsService {
     await this.ensureHomeFundingEligibilityColumn();
     await this.ensureHomeEligibilityMembershipColumn();
     await this.ensureHomeCeoLaunchColumn();
+    await this.ensurePartnerWithIscaColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -1286,6 +1391,125 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizePartnerWithIscaContent(input: unknown): PartnerWithIscaContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const hero = source.hero && typeof source.hero === 'object' ? source.hero : {};
+    const benefits = source.benefits && typeof source.benefits === 'object' ? source.benefits : {};
+    const dashboard = source.dashboard && typeof source.dashboard === 'object' ? source.dashboard : {};
+    const mockup =
+      dashboard.mockup && typeof dashboard.mockup === 'object' ? dashboard.mockup : {};
+    const howItWorks =
+      source.howItWorks && typeof source.howItWorks === 'object' ? source.howItWorks : {};
+    const faq = source.faq && typeof source.faq === 'object' ? source.faq : {};
+    const cta = source.cta && typeof source.cta === 'object' ? source.cta : {};
+
+    const rawStats = Array.isArray(source.stats) ? source.stats : [];
+    const rawActions = Array.isArray(hero.actions) ? hero.actions : [];
+    const rawBenefits = Array.isArray(benefits.items) ? benefits.items : [];
+    const rawFeatures = Array.isArray(dashboard.features) ? dashboard.features : [];
+    const rawTabs = Array.isArray(mockup.tabs) ? mockup.tabs : [];
+    const rawSummaryStats = Array.isArray(mockup.summaryStats) ? mockup.summaryStats : [];
+    const rawStaffRows = Array.isArray(mockup.staffRows) ? mockup.staffRows : [];
+    const rawSteps = Array.isArray(howItWorks.steps) ? howItWorks.steps : [];
+    const rawFaqs = Array.isArray(faq.items) ? faq.items : [];
+
+    return {
+      hero: {
+        eyebrow: this.cleanText(hero.eyebrow, 120),
+        headline: this.cleanText(hero.headline, 160),
+        headlineAccent: this.cleanText(hero.headlineAccent, 160),
+        description: this.cleanText(hero.description, 2000),
+        heroImageUrl: this.cleanText(hero.heroImageUrl, 500),
+        placeholderText: this.cleanText(hero.placeholderText, 500),
+        actions: rawActions.slice(0, PARTNER_HERO_ACTIONS_MAX).map((row: any) => ({
+          label: this.cleanText(row?.label, 80),
+          variant: this.cleanText(row?.variant, 20) === 'red' ? 'red' : 'outline',
+          scrollTo: this.cleanText(row?.scrollTo, 80),
+          href: this.cleanText(row?.href, 240),
+        })),
+      },
+      stats: rawStats.slice(0, PARTNER_STATS_MAX).map((row: any) => ({
+        icon: this.cleanText(row?.icon, 120),
+        title: this.cleanText(row?.title, 80),
+        label: this.cleanText(row?.label, 160),
+      })),
+      benefits: {
+        eyebrow: this.cleanText(benefits.eyebrow, 120),
+        title: this.cleanText(benefits.title, 240),
+        items: rawBenefits.slice(0, PARTNER_BENEFITS_MAX).map((row: any) => ({
+          icon: this.cleanText(row?.icon, 120),
+          iconTone: this.cleanText(row?.iconTone, 20),
+          title: this.cleanText(row?.title, 160),
+          description: this.cleanText(row?.description, 1000),
+        })),
+      },
+      dashboard: {
+        eyebrow: this.cleanText(dashboard.eyebrow, 120),
+        title: this.cleanText(dashboard.title, 240),
+        description: this.cleanText(dashboard.description, 2000),
+        features: rawFeatures.slice(0, PARTNER_DASHBOARD_FEATURES_MAX).map((row: any) => ({
+          title: this.cleanText(row?.title, 160),
+          description: this.cleanText(row?.description, 500),
+        })),
+        mockup: {
+          companyLogoText: this.cleanText(mockup.companyLogoText, 40),
+          companyName: this.cleanText(mockup.companyName, 120),
+          companySub: this.cleanText(mockup.companySub, 120),
+          companyCode: this.cleanText(mockup.companyCode, 40),
+          tabs: rawTabs.slice(0, PARTNER_MOCKUP_TABS_MAX).map((tab: any) => this.cleanText(tab, 40)),
+          summaryStats: rawSummaryStats.slice(0, PARTNER_MOCKUP_SUMMARY_STATS_MAX).map((row: any) => ({
+            label: this.cleanText(row?.label, 80),
+            value: this.cleanText(row?.value, 40),
+            sub: this.cleanText(row?.sub, 80),
+            valueTone: this.cleanText(row?.valueTone, 20),
+            subColor: this.cleanText(row?.subColor, 40),
+          })),
+          overallCompletionLabel: this.cleanText(mockup.overallCompletionLabel, 80),
+          overallCompletionSubtitle: this.cleanText(mockup.overallCompletionSubtitle, 120),
+          overallCompletionPercent: this.cleanText(mockup.overallCompletionPercent, 20),
+          staffActivityLabel: this.cleanText(mockup.staffActivityLabel, 80),
+          staffRows: rawStaffRows.slice(0, PARTNER_MOCKUP_STAFF_ROWS_MAX).map((row: any) => ({
+            initials: this.cleanText(row?.initials, 4),
+            name: this.cleanText(row?.name, 80),
+            role: this.cleanText(row?.role, 80),
+            progress: Math.max(0, Math.min(100, Number(row?.progress) || 0)),
+            progressColor: this.cleanText(row?.progressColor, 20),
+            status: this.cleanText(row?.status, 40),
+            statusTone: this.cleanText(row?.statusTone, 20),
+            cert: row?.cert === 'download' ? 'download' : null,
+          })),
+        },
+      },
+      howItWorks: {
+        eyebrow: this.cleanText(howItWorks.eyebrow, 120),
+        title: this.cleanText(howItWorks.title, 240),
+        note: this.cleanText(howItWorks.note, 160),
+        steps: rawSteps.slice(0, PARTNER_STEPS_MAX).map((row: any) => ({
+          icon: this.cleanText(row?.icon, 120),
+          badge: this.cleanText(row?.badge, 80),
+          title: this.cleanText(row?.title, 160),
+          description: this.cleanText(row?.description, 1000),
+          done: Boolean(row?.done),
+        })),
+      },
+      faq: {
+        eyebrow: this.cleanText(faq.eyebrow, 120),
+        title: this.cleanText(faq.title, 240),
+        items: rawFaqs.slice(0, PARTNER_FAQS_MAX).map((row: any) => ({
+          question: this.cleanText(row?.question, FAQ_QUESTION_MAX_LENGTH),
+          answer: this.cleanText(row?.answer),
+        })),
+      },
+      cta: {
+        eyebrow: this.cleanText(cta.eyebrow, 120),
+        title: this.cleanText(cta.title, 240),
+        description: this.cleanText(cta.description, 1000),
+        buttonLabel: this.cleanText(cta.buttonLabel, 80),
+        buttonHref: this.cleanText(cta.buttonHref, 240),
+      },
+    };
+  }
+
   private sanitizeContactHeroContent(input: unknown): ContactHeroContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const contacts = Array.isArray(source.contacts) ? source.contacts : [];
@@ -1816,6 +2040,59 @@ export class AppSettingsService {
     };
   }
 
+  async updatePartnerWithIscaContent(
+    payload: PartnerWithIscaContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.partnerWithIscaContent = this.sanitizePartnerWithIscaContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner with ISCA content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadPartnerWithIscaHeroImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('partner-with-isca-hero');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'partner-with-isca-hero', {
+      fileName: 'hero',
+    });
+    const existing = this.sanitizePartnerWithIscaContent(settings.partnerWithIscaContent || {});
+    settings.partnerWithIscaContent = this.sanitizePartnerWithIscaContent({
+      ...existing,
+      hero: {
+        ...existing.hero,
+        heroImageUrl: relativeUrl,
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner with ISCA hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removePartnerWithIscaHeroImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('partner-with-isca-hero');
+    const existing = this.sanitizePartnerWithIscaContent(settings.partnerWithIscaContent || {});
+    settings.partnerWithIscaContent = this.sanitizePartnerWithIscaContent({
+      ...existing,
+      hero: {
+        ...existing.hero,
+        heroImageUrl: '',
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner with ISCA hero image removed successfully',
+      settings: saved,
+    };
+  }
+
   async uploadHomeEmployerHeroImage(
     file: Express.Multer.File
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -2133,6 +2410,7 @@ export class AppSettingsService {
     homeFundingEligibilityContent: HomeFundingEligibilityContentPayload | null;
     homeEligibilityMembershipContent: HomeEligibilityMembershipContentPayload | null;
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
+    partnerWithIscaContent: PartnerWithIscaContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -2184,6 +2462,9 @@ export class AppSettingsService {
         : null,
       homeCeoLaunchContent: settings.homeCeoLaunchContent
         ? this.sanitizeHomeCeoLaunchContent(settings.homeCeoLaunchContent)
+        : null,
+      partnerWithIscaContent: settings.partnerWithIscaContent
+        ? this.sanitizePartnerWithIscaContent(settings.partnerWithIscaContent)
         : null,
       totalCourseEnrollments,
     };

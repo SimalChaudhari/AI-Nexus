@@ -187,6 +187,92 @@ export type HomeEmployerContent = {
   ctaHref?: string;
 };
 
+export type PartnerWithIscaContent = {
+  hero?: {
+    eyebrow?: string;
+    headline?: string;
+    headlineAccent?: string;
+    description?: string;
+    heroImageUrl?: string;
+    placeholderText?: string;
+    actions?: Array<{
+      label?: string;
+      variant?: string;
+      scrollTo?: string;
+      href?: string;
+    }>;
+  };
+  stats?: Array<{ icon?: string; title?: string; label?: string }>;
+  benefits?: {
+    eyebrow?: string;
+    title?: string;
+    items?: Array<{
+      icon?: string;
+      iconTone?: string;
+      title?: string;
+      description?: string;
+    }>;
+  };
+  dashboard?: {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    features?: Array<{ title?: string; description?: string }>;
+    mockup?: {
+      companyLogoText?: string;
+      companyName?: string;
+      companySub?: string;
+      companyCode?: string;
+      tabs?: string[];
+      summaryStats?: Array<{
+        label?: string;
+        value?: string;
+        sub?: string;
+        valueTone?: string;
+        subColor?: string;
+      }>;
+      overallCompletionLabel?: string;
+      overallCompletionSubtitle?: string;
+      overallCompletionPercent?: string;
+      staffActivityLabel?: string;
+      staffRows?: Array<{
+        initials?: string;
+        name?: string;
+        role?: string;
+        progress?: number;
+        progressColor?: string;
+        status?: string;
+        statusTone?: string;
+        cert?: string | null;
+      }>;
+    };
+  };
+  howItWorks?: {
+    eyebrow?: string;
+    title?: string;
+    note?: string;
+    steps?: Array<{
+      icon?: string;
+      badge?: string;
+      title?: string;
+      description?: string;
+      done?: boolean;
+    }>;
+  };
+  faq?: {
+    eyebrow?: string;
+    title?: string;
+    items?: Array<{ question?: string; answer?: string }>;
+  };
+  cta?: {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    buttonLabel?: string;
+    buttonHref?: string;
+  };
+};
+
 export type HomeEmployeeContent = {
   eyebrow?: string;
   heading?: string;
@@ -312,6 +398,10 @@ export class AppSettingsEntity {
   /** Home page CEO launch video section. */
   @Column({ type: 'jsonb', nullable: true })
   homeCeoLaunchContent?: HomeCeoLaunchContent | null;
+
+  /** Partner with ISCA employer landing page content. */
+  @Column({ type: 'jsonb', nullable: true })
+  partnerWithIscaContent?: PartnerWithIscaContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })
