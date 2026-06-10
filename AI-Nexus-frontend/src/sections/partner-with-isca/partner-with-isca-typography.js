@@ -65,16 +65,21 @@ export const PARTNER_FEATURE_TITLE_SX = {
 
 export const PARTNER_STAT_VALUE_SX = {
   m: 0,
-  fontSize: 20,
+  fontSize: 'clamp(0.75rem, 0.65rem + 0.55vw, 1.125rem)',
   fontWeight: 800,
-  lineHeight: 1.2,
+  lineHeight: 1.25,
+  overflowWrap: 'break-word',
+  wordBreak: 'break-word',
 };
 
 export const PARTNER_STAT_LABEL_SX = {
   m: 0,
   mt: 0.25,
-  fontSize: 13,
+  fontSize: 'clamp(0.625rem, 0.56rem + 0.32vw, 0.75rem)',
+  lineHeight: 1.35,
   color: 'text.secondary',
+  overflowWrap: 'break-word',
+  wordBreak: 'break-word',
 };
 
 export const PARTNER_MOCKUP_LABEL_SX = {

@@ -328,27 +328,31 @@ function StatsBar({ stats }) {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
-          gap: { xs: 2, lg: 0 },
+          gridTemplateColumns: {
+            xs: 'repeat(2, minmax(0, 1fr))',
+            md: 'repeat(4, minmax(0, 1fr))',
+          },
+          gap: { xs: 2.5, md: 0 },
         }}
       >
         {rows.map((stat, index) => (
           <Stack
             key={`${stat.title}-${index}`}
-            direction="row"
-            spacing={2}
-            alignItems="center"
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={{ xs: 1, md: 1.5 }}
+            alignItems={{ xs: 'center', md: 'flex-start' }}
             sx={{
-              px: { lg: index === 0 ? 0 : 3.5 },
+              minWidth: 0,
+              px: { md: index === 0 ? 0 : 2, lg: index === 0 ? 0 : 3 },
               borderRight: {
-                lg: index < rows.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
+                md: index < rows.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
               },
             }}
           >
             <Box
               sx={{
-                width: 46,
-                height: 46,
+                width: 'clamp(2.125rem, 1.9rem + 1.2vw, 2.875rem)',
+                height: 'clamp(2.125rem, 1.9rem + 1.2vw, 2.875rem)',
                 borderRadius: '10px',
                 bgcolor: 'rgba(255,255,255,0.1)',
                 display: 'flex',
@@ -357,9 +361,16 @@ function StatsBar({ stats }) {
                 flexShrink: 0,
               }}
             >
-              <Iconify icon={stat.icon} width={22} sx={{ color: '#fff' }} />
+              <Iconify
+                icon={stat.icon}
+                sx={{
+                  color: '#fff',
+                  width: 'clamp(1rem, 0.9rem + 0.55vw, 1.375rem)',
+                  height: 'clamp(1rem, 0.9rem + 0.55vw, 1.375rem)',
+                }}
+              />
             </Box>
-            <Box>
+            <Box sx={{ minWidth: 0, width: '100%', flex: 1, textAlign: { xs: 'center', md: 'left' } }}>
               <Typography sx={{ ...PARTNER_STAT_VALUE_SX, color: '#fff' }}>
                 {stat.title}
               </Typography>
