@@ -318,6 +318,8 @@ const PARTNER_HERO_ACTIONS_MAX = 4;
 const PARTNER_MOCKUP_TABS_MAX = 5;
 const PARTNER_MOCKUP_SUMMARY_STATS_MAX = 3;
 const PARTNER_MOCKUP_STAFF_ROWS_MAX = 8;
+const FOOTER_STATS_MAX = 4;
+const FOOTER_LINKS_MAX = 8;
 
 type PartnerWithIscaContentPayload = {
   hero?: {
@@ -405,6 +407,23 @@ type PartnerWithIscaContentPayload = {
   };
 };
 
+type FooterContentPayload = {
+  stats?: Array<{
+    value?: string;
+    label?: string;
+    icon?: string;
+    useLiveEnrollment?: boolean;
+  }>;
+  domainLine?: string;
+  copyrightText?: string;
+  links?: Array<{
+    label?: string;
+    path?: string;
+    external?: boolean;
+    icon?: string;
+  }>;
+};
+
 @Injectable()
 export class AppSettingsService {
   private homeCardsColumnChecked = false;
@@ -422,6 +441,7 @@ export class AppSettingsService {
   private homeEligibilityMembershipColumnChecked = false;
   private homeCeoLaunchColumnChecked = false;
   private partnerWithIscaColumnChecked = false;
+  private footerColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -562,6 +582,14 @@ export class AppSettingsService {
     this.partnerWithIscaColumnChecked = true;
   }
 
+  private async ensureFooterColumn(): Promise<void> {
+    if (this.footerColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "footerContent" jsonb'
+    );
+    this.footerColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
@@ -578,6 +606,7 @@ export class AppSettingsService {
     await this.ensureHomeEligibilityMembershipColumn();
     await this.ensureHomeCeoLaunchColumn();
     await this.ensurePartnerWithIscaColumn();
+    await this.ensureFooterColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -1510,6 +1539,87 @@ export class AppSettingsService {
     };
   }
 
+  private defaultFooterContent(): FooterContentPayload {
+    return {
+      stats: [
+        {
+          value: '12K+',
+          label: 'Learners enrolled in courses',
+          icon: 'solar:book-bookmark-bold-duotone',
+          useLiveEnrollment: true,
+        },
+        {
+          value: '180+',
+          label: 'AI resources',
+          icon: 'solar:library-bold-duotone',
+          useLiveEnrollment: false,
+        },
+        {
+          value: '40+',
+          label: 'Expert mentors',
+          icon: 'solar:users-group-rounded-bold-duotone',
+          useLiveEnrollment: false,
+        },
+        {
+          value: '24/7',
+          label: 'Community access',
+          icon: 'solar:chat-round-dots-bold-duotone',
+          useLiveEnrollment: false,
+        },
+      ],
+      domainLine: 'ainexus.com · AI learning & community',
+      copyrightText: '© {year} AI Nexus. All rights reserved.',
+      links: [
+        { label: 'Home', path: '/home', external: false, icon: 'solar:home-bold' },
+        { label: 'Learning', path: '/learning', external: false, icon: 'solar:book-2-bold' },
+        { label: 'AI Resources', path: '/ai-resources', external: false, icon: 'solar:widget-bold' },
+        { label: 'AI Forum', path: '/ai-forum', external: false, icon: 'solar:chat-round-bold' },
+        { label: 'Contact', path: '/contact-us', external: false, icon: 'solar:map-point-bold' },
+      ],
+    };
+  }
+
+  private sanitizeFooterContent(input: unknown): FooterContentPayload {
+    const defaults = this.defaultFooterContent();
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawStats = Array.isArray(source.stats) ? source.stats : defaults.stats || [];
+    const rawLinks = Array.isArray(source.links) ? source.links : defaults.links || [];
+
+    return {
+      domainLine:
+        this.cleanText(source.domainLine, 160) || this.cleanText(defaults.domainLine, 160),
+      copyrightText:
+        this.cleanText(source.copyrightText, 200) || this.cleanText(defaults.copyrightText, 200),
+      stats: Array.from({ length: FOOTER_STATS_MAX }, (_, index) => {
+        const row = rawStats[index] && typeof rawStats[index] === 'object' ? rawStats[index] : {};
+        const fallback =
+          Array.isArray(defaults.stats) && defaults.stats[index]
+            ? defaults.stats[index]
+            : defaults.stats?.[0] || {};
+        return {
+          value: this.cleanText(row?.value, 40) || this.cleanText(fallback?.value, 40),
+          label: this.cleanText(row?.label, 120) || this.cleanText(fallback?.label, 120),
+          icon: this.cleanText(row?.icon, 120) || this.cleanText(fallback?.icon, 120),
+          useLiveEnrollment: Boolean(row?.useLiveEnrollment ?? fallback?.useLiveEnrollment),
+        };
+      }),
+      links: (rawLinks.length ? rawLinks : defaults.links || [])
+        .slice(0, FOOTER_LINKS_MAX)
+        .map((item: any, index: number) => {
+          const fallback =
+            Array.isArray(defaults.links) && defaults.links[index]
+              ? defaults.links[index]
+              : defaults.links?.[0] || {};
+          return {
+            label: this.cleanText(item?.label, 80) || this.cleanText(fallback?.label, 80),
+            path: this.cleanText(item?.path, 240) || this.cleanText(fallback?.path, 240),
+            external: Boolean(item?.external ?? fallback?.external),
+            icon: this.cleanText(item?.icon, 120) || this.cleanText(fallback?.icon, 120),
+          };
+        }),
+    };
+  }
+
   private sanitizeContactHeroContent(input: unknown): ContactHeroContentPayload {
     const source = input && typeof input === 'object' ? (input as any) : {};
     const contacts = Array.isArray(source.contacts) ? source.contacts : [];
@@ -2052,6 +2162,18 @@ export class AppSettingsService {
     };
   }
 
+  async updateFooterContent(
+    payload: FooterContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.footerContent = this.sanitizeFooterContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Footer content updated successfully',
+      settings: saved,
+    };
+  }
+
   async uploadPartnerWithIscaHeroImage(
     file: Express.Multer.File
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -2411,6 +2533,7 @@ export class AppSettingsService {
     homeEligibilityMembershipContent: HomeEligibilityMembershipContentPayload | null;
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     partnerWithIscaContent: PartnerWithIscaContentPayload | null;
+    footerContent: FooterContentPayload | null;
     /** Total rows in course_enrollments (direct course enrollments). */
     totalCourseEnrollments: number;
   }> {
@@ -2466,6 +2589,9 @@ export class AppSettingsService {
       partnerWithIscaContent: settings.partnerWithIscaContent
         ? this.sanitizePartnerWithIscaContent(settings.partnerWithIscaContent)
         : null,
+      footerContent: settings.footerContent
+        ? this.sanitizeFooterContent(settings.footerContent)
+        : this.sanitizeFooterContent(null),
       totalCourseEnrollments,
     };
   }

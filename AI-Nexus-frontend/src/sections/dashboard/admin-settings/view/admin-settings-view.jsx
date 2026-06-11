@@ -52,6 +52,7 @@ import { CurriculumSettingsCard } from './components/curriculum-settings-card';
 import { TestimonialsSettingsCard } from './components/testimonials-settings-card';
 import { EmployerSettingsCard } from './components/employer-settings-card';
 import { PartnerWithIscaSettingsCard } from './components/partner-with-isca-settings-card';
+import { FooterSettingsCard } from './components/footer-settings-card';
 import { ProgrammeStructureSettingsCard } from './components/programme-structure-settings-card';
 import { FundingEligibilitySettingsCard } from './components/funding-eligibility-settings-card';
 import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
@@ -68,6 +69,7 @@ import {
   normalizeEmployerContent,
 } from 'src/sections/home/employer-defaults';
 import { normalizePartnerWithIscaContent } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
+import { normalizeFooterContent } from 'src/layouts/main/footer-defaults';
 import {
   normalizeCurriculumContent,
 } from 'src/sections/home/curriculum-defaults';
@@ -273,6 +275,8 @@ export function AdminSettingsView() {
   const [partnerWithIscaContentSubmitting, setPartnerWithIscaContentSubmitting] = useState(false);
   const [partnerWithIscaHeroFile, setPartnerWithIscaHeroFile] = useState(null);
   const [partnerWithIscaHeroSubmitting, setPartnerWithIscaHeroSubmitting] = useState(false);
+  const [footerContent, setFooterContent] = useState(() => normalizeFooterContent(null));
+  const [footerContentSubmitting, setFooterContentSubmitting] = useState(false);
   const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
@@ -563,6 +567,7 @@ export function AdminSettingsView() {
       setPartnerWithIscaContent(
         normalizePartnerWithIscaContent(appSettings.partnerWithIscaContent)
       );
+      setFooterContent(normalizeFooterContent(appSettings.footerContent));
       const remoteJoin = appSettings.homeJoinContent || {};
       setJoinContent({
         heading: String(remoteJoin?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
@@ -1472,6 +1477,19 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleSaveFooterContent = async () => {
+    try {
+      setFooterContentSubmitting(true);
+      const updated = await appSettingsService.updateFooterContent(footerContent);
+      setFooterContent(normalizeFooterContent(updated?.footerContent));
+      toast.success('Footer updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update footer');
+    } finally {
+      setFooterContentSubmitting(false);
+    }
+  };
+
   const handleDropPartnerWithIscaHero = useCallback((acceptedFiles) => {
     const [file] = acceptedFiles || [];
     if (file) setPartnerWithIscaHeroFile(file);
@@ -1944,6 +1962,13 @@ export function AdminSettingsView() {
       description: 'Add courses to the home page curriculum — each course’s modules are shown automatically.',
     },
     {
+      key: 'footer',
+      badge: 'FT',
+      icon: 'solar:layers-minimalistic-bold-duotone',
+      title: 'Footer',
+      description: 'Manage footer stats, links, domain line, and copyright text.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       iconSrc: settingsTabHeader,
@@ -1970,6 +1995,7 @@ export function AdminSettingsView() {
     'partner-with-isca',
     'faq',
     'curriculum',
+    'footer',
     'header-visibility',
   ];
 
@@ -2411,6 +2437,15 @@ export function AdminSettingsView() {
           ? handleClearPartnerWithIscaHeroSelection
           : handleRemovePartnerWithIscaHero
       }
+    />
+  );
+
+  const renderFooterSettings = (
+    <FooterSettingsCard
+      content={footerContent}
+      setContent={setFooterContent}
+      submitting={footerContentSubmitting}
+      onSave={handleSaveFooterContent}
     />
   );
 
@@ -2970,6 +3005,7 @@ export function AdminSettingsView() {
         {activeSection === 'partner-with-isca' && renderPartnerWithIscaSettings}
         {activeSection === 'faq' && renderFaqSettings}
         {activeSection === 'curriculum' && renderCurriculumSettings}
+        {activeSection === 'footer' && renderFooterSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

@@ -1102,6 +1102,16 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Put('footer-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update public site footer content' })
+  async updateFooterContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateFooterContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('partner-with-isca-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
