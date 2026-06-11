@@ -1,4 +1,5 @@
 import * as nodemailer from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { Injectable } from '@nestjs/common';
 import {
     buildBrandTemplate,
@@ -11,42 +12,32 @@ import {
 @Injectable()
 export class EmailService {
     private transporter: nodemailer.Transporter;
+    private fromEmail: string;
 
     constructor() {
+        const host = process.env.SMTP_HOST || '127.0.0.1';
+        const port = Number(process.env.SMTP_PORT || 25);
+        const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+        const user = process.env.SMTP_USER || '';
+        const pass = process.env.SMTP_PASS || '';
+        const rejectUnauthorized = String(process.env.SMTP_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
 
-        //  const host = '192.168.6.4'; //process.env.SMTP_HOST;
-        // const port = 25; //process.env.SMTP_PORT;
-        // const secure = false; //process.env.SMTP_SECURE;
-        // const user = process.env.FROM_EMAIL;
-        // const pass = ""; //process.env.SMTP_PASS;
+        this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
-        // const transportOptions: nodemailer.TransportOptions = {
-        //     host,
-        //     port,
-        //     secure,
-        // } as nodemailer.TransportOptions;
-
-        // if (user && pass) {
-        //     (transportOptions as any).auth = { user, pass };
-        // }
-
-        // this.transporter = nodemailer.createTransport(transportOptions);
-        this.transporter = nodemailer.createTransport({
-            service: 'Gmail', // Use your email service
-            auth: {
-              user: process.env.FROM_EMAIL,
-              pass: process.env.SMTP_PASS,
+        const transportOptions: SMTPTransport.Options = {
+            host,
+            port,
+            secure,
+            tls: {
+                rejectUnauthorized,
             },
-          });
+        };
 
-    
-        this.transporter = nodemailer.createTransport({
-            service: 'Gmail', // Use your email service
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            },
-        });
+        if (user && pass) {
+            transportOptions.auth = { user, pass };
+        }
+
+        this.transporter = nodemailer.createTransport(transportOptions);
     }
 
     private resolveFrontendBaseUrl(): string {
@@ -71,7 +62,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: email,
             subject: 'Verify Your Email Address',
             text: `Hello ${name},\n\nPlease verify your email address by clicking the "Verify Email Address" button in this email.\n\nIf the button does not open, copy the button link location directly from your mail client and open it in your browser.`,
@@ -100,7 +91,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: email,
             subject: 'Reset Your Password',
             text: `Hello ${name},\n\nPlease reset your password by clicking the "Reset Password" button in this email.`,
@@ -144,7 +135,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: email,
             subject: 'Your AI Nexus student verification PIN',
             text: `Hello ${schoolName || 'Student'},\n\nYour AI Nexus student verification PIN is: ${pin}\n\nThis PIN expires in 10 minutes.\n`,
@@ -185,7 +176,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: email,
             subject: 'Your AI Nexus account credentials',
             text: `Hello ${name},\n\nAn administrator created an account for you.\n\nUsername: ${username}\nTemporary password: ${plainPassword}\n\nSign in: ${loginUrl}\n\nPlease change your password after first login.\n`,
@@ -226,7 +217,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: toEmail,
             subject: `New reply on your forum thread: ${postTitle}`,
             text: `Hello ${threadStarterName},\n\n${replierName} replied to your thread "${postTitle}".\n\nReply preview:\n${replyPreview}\n\nOpen thread: ${postUrl}\n`,
@@ -279,7 +270,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: toEmail,
             subject: 'Your AI Nexus payment receipt',
             text: `Hello ${customerName},\n\nThank you for your payment.\nOrder ID: ${orderId}\nItem: ${itemLabel}\nAmount Paid: ${currency} ${amount}\n\nYour PDF receipt is attached to this email.\n`,
