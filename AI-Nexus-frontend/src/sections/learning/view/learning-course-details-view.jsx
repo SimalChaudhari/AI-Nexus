@@ -39,14 +39,6 @@ import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
 import { LearningBundleHighlight } from '../components/course-bundle-badge';
 import { LearningCourseGridCard } from '../components/learning-course-grid-card';
-import { MembershipSignupDialog } from '../components/membership-signup-dialog';
-import {
-  buildScaqAssociateOptInOAuthStartUrl,
-  clearMembershipEligibilityDraftOnModalClose,
-  clearMembershipEligibilitySessionStorage,
-  POST_OAUTH_RETURN_TO_KEY,
-} from 'src/utils/membership-eligibility-sso';
-import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
 import {
   COURSE_DETAIL_META_SX,
   COURSE_DETAIL_PAGE_TITLE_SX,
@@ -145,7 +137,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
   const [receiptDownloading, setReceiptDownloading] = useState(false);
   const [reviewsDrawerOpen, setReviewsDrawerOpen] = useState(false);
-  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
   const [relatedFavoriteOverrides, setRelatedFavoriteOverrides] = useState({});
   const [relatedFavoriteLoading, setRelatedFavoriteLoading] = useState(() => new Set());
   const [relatedProgressById, setRelatedProgressById] = useState({});
@@ -239,13 +230,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
     };
   }, [course?.id, course?.isBundle, course?.bundleCourseIds]);
 
-  useEffect(() => {
-    if (!location.state?.promptMembershipSignup) return undefined;
-    setMembershipSignupOpen(true);
-    navigate('.', { replace: true, state: null });
-    return undefined;
-  }, [location.state, navigate]);
-
   const relatedCourses = useMemo(
     () => (Array.isArray(course?.relatedCourses) ? course.relatedCourses : []),
     [course?.relatedCourses]
@@ -317,7 +301,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
 
     if (rel.isEnrolled) return;
     if (!authenticated) {
-      promptMembershipSignUp();
+      redirectToSignIn();
       return;
     }
 
@@ -372,8 +356,9 @@ export function LearningCourseDetailsView({ course, loading, error }) {
     document.getElementById('bundle-included')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const promptMembershipSignUp = () => {
-    setMembershipSignupOpen(true);
+  const redirectToSignIn = () => {
+    const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
+    navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`);
   };
 
   const handleToggleFavorite = async () => {
@@ -624,7 +609,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   onClick={(e) => {
                     if (!authenticated) {
                       e.preventDefault();
-                      promptMembershipSignUp();
+                      redirectToSignIn();
                       return;
                     }
                     if (!hasAccess && !enrolledLoading) {
@@ -819,7 +804,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   }
                   if (!authenticated) {
                     e.preventDefault();
-                    promptMembershipSignUp();
+                    redirectToSignIn();
                     return;
                   }
                   if (!hasAccess && !enrolledLoading) {
@@ -1658,66 +1643,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
           </Box>
         </Stack>
       </Drawer>
-      <MembershipSignupDialog
-        open={membershipSignupOpen}
-        onClose={() => {
-          clearMembershipEligibilityDraftOnModalClose();
-          setMembershipSignupOpen(false);
-        }}
-        onContinue={(payload) => {
-          setMembershipSignupOpen(false);
-          const outcome = payload?.result?.outcome || '';
-          const actionTarget = payload?.result?.actionTarget || '';
-          const signupAccessToken = payload?.signupAccessToken || '';
-          const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
-
-          if (actionTarget === 'scaq-salesforce-auto' && payload?.flow) {
-            const returnPath = `${location.pathname}${location.search || ''}`;
-            navigate(
-              buildScaqAssociateOptInOAuthStartUrl(payload.flow, returnPath, paths.auth.oauth.start)
-            );
-            return;
-          }
-
-          if ((actionTarget === 'signUp' || isScaqCandidateFlow) && payload?.flow) {
-            sessionStorage.setItem(
-              'membershipEligibilityFlow',
-              JSON.stringify({
-                membershipOutcome: outcome,
-                flow: payload.flow,
-                savedAt: new Date().toISOString(),
-              })
-            );
-          }
-
-          if (actionTarget === 'salesforce') {
-            try {
-              const courseReturn = `${location.pathname}${location.search || ''}`;
-              sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
-              if (payload?.flow?.eligibilityType !== 'recognition') {
-                clearMembershipApplicationPending();
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          if (isScaqCandidateFlow && authenticated) {
-            navigate(`${location.pathname}${location.search || ''}`);
-            return;
-          }
-
-          const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
-          const membershipOutcome = encodeURIComponent(outcome);
-          const targetPath = actionTarget === 'signUp'
-            ? paths.auth.simple.signUp
-            : actionTarget === 'salesforce'
-              ? paths.auth.oauth.start
-              : paths.auth.simple.signIn;
-          const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}`;
-          navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
-        }}
-      />
     </DashboardContent>
   );
 }

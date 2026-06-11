@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -35,7 +35,13 @@ export function SimpleSignInView() {
   const searchParams = useSearchParams();
   const { checkUserSession } = useAuthContext();
   const membershipPaymentConfirmed = searchParams.get('membershipPaymentConfirmed') === '1';
+  const returnTo = searchParams.get('returnTo') || '';
   const prefilledEmail = searchParams.get('email') || '';
+  const paidSignUpHref = useMemo(() => {
+    const params = new URLSearchParams({ membershipOutcome: 'paid-signup' });
+    if (returnTo) params.set('returnTo', returnTo);
+    return `${paths.auth.simple.signUp}?${params.toString()}`;
+  }, [returnTo]);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isResending, setIsResending] = useState(false);
@@ -165,15 +171,14 @@ export function SimpleSignInView() {
         Access your dashboard, courses, and AI tools securely.
       </Typography>
 
-      {/* <Stack direction="row" spacing={0.5}>
+      <Stack direction="row" spacing={0.5} justifyContent="center">
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {`Don't have an account?`}
-        </Typography> */}
-
-        {/* <Link component={RouterLink} href={paths.auth.simple.signUp} variant="subtitle2">
-          Get started11
-        </Link> */}
-      {/* </Stack> */}
+          Don&apos;t have an account?
+        </Typography>
+        <Link component={RouterLink} href={paidSignUpHref} variant="subtitle2">
+          Sign up
+        </Link>
+      </Stack>
     </Stack>
   );
 
@@ -247,7 +252,6 @@ export function SimpleSignInView() {
         size="large"
         variant="outlined"
         color="inherit"
-        // disabled
         component={RouterLink}
         href={paths.auth.oauth.start}
         startIcon={<Iconify icon="solar:login-3-bold-duotone" />}

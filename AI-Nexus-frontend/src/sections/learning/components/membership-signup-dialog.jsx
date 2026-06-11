@@ -62,6 +62,7 @@ import {
   getHomeFluencyPathwayDisplay,
   getHomeFluencyPathwayOptions,
   getHomeFluencyProgressMeta,
+  isHomeCaDirectSalesforceFlow,
 } from './home-fluency-flow';
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
@@ -644,6 +645,12 @@ function getRequirementLabel(state, step) {
   };
 
   if (isHomeGetStartedFlow(state)) {
+    if (
+      state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
+      && step === 'salesforce-account-choice'
+    ) {
+      return 'Chartered Accountant (CA) Pathway';
+    }
     return labelsByStep[step] || 'AI Fluency eligibility check';
   }
 
@@ -1074,7 +1081,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   };
 
   const selectSalesforceAccountChoice = (choice) => {
-    if (flowState.eligibilityType === 'recognition') {
+    if (flowState.eligibilityType === 'recognition' || isHomeCaDirectSalesforceFlow(flowState)) {
       openSalesforceMembershipTab(choice);
       return;
     }
@@ -2914,8 +2921,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     if (step === 'salesforce-account-choice') {
       setFlowState((prev) => ({
         ...prev,
-        eligibilityType: '',
-        eligibilityVerified: null,
+        ...(prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
+          ? { homeSelectedPathway: '' }
+          : { eligibilityType: '', eligibilityVerified: null }),
         salesforceAccountChoice: '',
         salesforceSessionReady: false,
       }));
@@ -5205,10 +5213,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         {step === 'salesforce-account-choice' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Salesforce membership account
+              {isHomeCaDirectSalesforceFlow(flowState)
+                ? 'Chartered Accountant (CA) Pathway'
+                : 'Salesforce membership account'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
-              Create a new ISCA Salesforce membership account, or sign in if you already have one.
+              {isHomeCaDirectSalesforceFlow(flowState)
+                ? 'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your CA membership application.'
+                : 'Create a new ISCA Salesforce membership account, or sign in if you already have one.'}
             </Typography>
             {flowState.salesforceSessionReady && (
               <Alert severity="success">

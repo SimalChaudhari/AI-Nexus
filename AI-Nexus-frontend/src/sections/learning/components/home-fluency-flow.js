@@ -78,6 +78,23 @@ const PATHWAY_COPY = {
   },
 };
 
+/** Home eligibility modal: professional → CA → direct Salesforce (no chartered sub-flow). */
+export function isHomeCaDirectSalesforceFlow(state) {
+  return Boolean(
+    state?.homeGetStartedFlow
+    && state?.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.PROFESSIONAL
+    && state?.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
+  );
+}
+
+const HOME_CA_DIRECT_SALESFORCE_PROGRESS_STEPS = [
+  'home-user-type',
+  'home-professional-isca-member',
+  'home-educational-background',
+  'home-pathway-selection',
+  'salesforce-account-choice',
+];
+
 export function isHomeFluencyEligible(state) {
   if (!state?.homeGetStartedFlow) return false;
   if (state.homeFluencyEligible) return true;
@@ -173,6 +190,9 @@ export function getHomeFluencyFlowStep(state) {
     if (state.isIscaMember === true) return 'result';
     if (!state.homeEducationalBackground) return 'home-educational-background';
     if (!state.homeSelectedPathway) return 'home-pathway-selection';
+    if (state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA) {
+      return 'salesforce-account-choice';
+    }
     if (state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED && !state.homeExperiencedMemberType) {
       return 'home-experienced-member-type';
     }
@@ -245,6 +265,11 @@ function resolveProfessionalProgressSteps(state) {
     ];
   }
 
+  if (pathway === HOME_FLUENCY_PATHWAY.CA) {
+    steps.push('salesforce-account-choice');
+    return steps;
+  }
+
   if (pathway === HOME_FLUENCY_PATHWAY.EXPERIENCED) {
     steps.push('home-experienced-member-type', 'home-fluency-pathway-info');
   } else {
@@ -271,7 +296,9 @@ export function getHomeFluencyProgressSteps(state) {
 }
 
 export function getHomeFluencyProgressMeta(state, currentStepId) {
-  const steps = getHomeFluencyProgressSteps(state);
+  const steps = isHomeCaDirectSalesforceFlow(state)
+    ? HOME_CA_DIRECT_SALESFORCE_PROGRESS_STEPS
+    : getHomeFluencyProgressSteps(state);
   const currentIndex = steps.indexOf(currentStepId);
   const totalSteps = steps.length || 1;
   const currentStep = currentIndex >= 0 ? currentIndex + 1 : 1;
