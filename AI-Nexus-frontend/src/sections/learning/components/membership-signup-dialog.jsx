@@ -52,6 +52,7 @@ import {
   openHomePathwayExternalUrl,
 } from './home-pathway-content';
 import {
+  HOME_FINAL_YEAR_ACCOUNTANCY_INSTITUTIONS,
   HOME_FLUENCY_BACKGROUND,
   HOME_FLUENCY_INITIAL_FIELDS,
   HOME_FLUENCY_PATHWAY,
@@ -3200,11 +3201,50 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         {step === 'home-student-final-year' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you a final-year Accountancy student from one of the five Singapore local universities or polytechnics?
+              Are you a final-year Accountancy student from one of the following Singapore local
+              universities or polytechnics?
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
-              If yes, you are eligible to register for the ISCA AI Fluency programme for free.
-            </Typography>
+            <Box
+              sx={(theme) => ({
+                px: 1.75,
+                py: 1.25,
+                borderRadius: 1.5,
+                border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                bgcolor: alpha(theme.palette.grey[500], 0.06),
+              })}
+            >
+              <Stack component="ul" spacing={0.75} sx={{ m: 0, pl: 0.5, listStyle: 'none' }}>
+                {HOME_FINAL_YEAR_ACCOUNTANCY_INSTITUTIONS.map((institution) => (
+                  <Box
+                    key={institution}
+                    component="li"
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 1.25,
+                      pl: 0.5,
+                    }}
+                  >
+                    <Box
+                      component="span"
+                      aria-hidden
+                      sx={{
+                        width: 6,
+                        height: 6,
+                        mt: '0.55em',
+                        borderRadius: '50%',
+                        bgcolor: 'primary.main',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ flex: 1, lineHeight: 1.65 }}>
+                      {institution}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={() => selectHomeFinalYearAccountancy(true)}>
                 Yes

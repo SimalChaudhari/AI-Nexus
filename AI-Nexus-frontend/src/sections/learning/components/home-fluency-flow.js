@@ -23,6 +23,19 @@ export const HOME_EXPERIENCED_MEMBER_TYPE = {
   PUBLIC_SECTOR: 'public-sector',
 };
 
+export const HOME_FINAL_YEAR_ACCOUNTANCY_INSTITUTIONS = [
+  'National University of Singapore (NUS)',
+  'Nanyang Technological University (NTU)',
+  'Singapore Management University (SMU)',
+  'Singapore University of Social Sciences (SUSS)',
+  'Singapore Institute of Technology (SIT)',
+  'Singapore Polytechnic (SP)',
+  'Ngee Ann Polytechnic (NP)',
+  'Nanyang Polytechnic (NYP)',
+  'Temasek Polytechnic (TP)',
+  'Republic Polytechnic (RP)',
+];
+
 export const HOME_FLUENCY_INITIAL_FIELDS = {
   homeFluencyUserType: '',
   homeFinalYearAccountancyStudent: null,
