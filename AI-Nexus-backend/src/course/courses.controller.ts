@@ -1375,15 +1375,18 @@ export class CourseController {
         const courseRow = await this.courseService.getById(id);
         const speakers = await orderedSpeakersForCourse(this.speakerService, courseRow.speakerIds);
         const languages = await orderedLanguagesForCourse(this.languageService, courseRow.languageIds);
+        const userId = (request as any).user?.id;
+        let recommendedCourseIds: string[] = [];
+        if (userId) {
+            const recommendation = await this.appSettingsService.getRecommendationsForUser(userId);
+            recommendedCourseIds = Array.isArray(recommendation?.courseIds) ? recommendation.courseIds : [];
+        }
         const relatedRows = await this.courseService.findRelatedCourses(id, courseRow.level, 4);
-        const relatedCourses = relatedRows.map((row) => ({
-            id: row.id,
-            title: row.title,
-            image: row.image,
-            level: row.level,
-            freeOrPaid: row.freeOrPaid,
-            amount: row.amount,
-        }));
+        const relatedCourses = await this.courseService.enrichCoursesForCards(
+            relatedRows,
+            userId,
+            recommendedCourseIds,
+        );
         const reviews = await this.reviewService.findAll({ courseId: id });
         const reviewCount = reviews.length;
         const ratingTotal = reviews.reduce((acc, row) => acc + Number(row.rating || 0), 0);
@@ -1397,8 +1400,6 @@ export class CourseController {
             reviewStats: { averageRating, reviewCount },
             reviews,
         };
-        const userId = (request as any).user?.id;
-        
         // If user is authenticated, include favorite status
         if (userId) {
             const isFavorite = await this.courseFavoriteService.isFavorite(userId, id);

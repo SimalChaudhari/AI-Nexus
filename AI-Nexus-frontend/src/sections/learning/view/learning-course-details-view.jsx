@@ -38,14 +38,7 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
 import { LearningBundleHighlight } from '../components/course-bundle-badge';
-import { MembershipSignupDialog } from '../components/membership-signup-dialog';
-import {
-  buildScaqAssociateOptInOAuthStartUrl,
-  clearMembershipEligibilityDraftOnModalClose,
-  clearMembershipEligibilitySessionStorage,
-  POST_OAUTH_RETURN_TO_KEY,
-} from 'src/utils/membership-eligibility-sso';
-import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
+import { LearningCourseGridCard } from '../components/learning-course-grid-card';
 import {
   COURSE_DETAIL_META_SX,
   COURSE_DETAIL_PAGE_TITLE_SX,
@@ -96,6 +89,22 @@ const parseMarketData = (marketData) => {
   }
 };
 
+const getCourseContentMeta = (course = {}) => {
+  const modulesCount = Number(course.modulesCount ?? course.moduleCount ?? 0);
+  const sectionsCount = Number(course.sectionsCount ?? course.sectionCount ?? 0);
+
+  return {
+    moduleCount: Number.isFinite(modulesCount) && modulesCount > 0 ? modulesCount : 0,
+    sectionCount: Number.isFinite(sectionsCount) && sectionsCount > 0 ? sectionsCount : 0,
+  };
+};
+
+const getCourseProgressStatus = (status, courseProgress) => {
+  if (status === 'completed' || courseProgress >= 100) return { label: 'Completed', color: 'success' };
+  if (status === 'in_progress' || courseProgress > 0) return { label: 'In Progress', color: 'warning' };
+  return { label: 'Not Started', color: 'default' };
+};
+
 export function LearningCourseDetailsView({ course, loading, error }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -128,7 +137,9 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const [bundleIncludedLoading, setBundleIncludedLoading] = useState(false);
   const [receiptDownloading, setReceiptDownloading] = useState(false);
   const [reviewsDrawerOpen, setReviewsDrawerOpen] = useState(false);
-  const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
+  const [relatedFavoriteOverrides, setRelatedFavoriteOverrides] = useState({});
+  const [relatedFavoriteLoading, setRelatedFavoriteLoading] = useState(() => new Set());
+  const [relatedProgressById, setRelatedProgressById] = useState({});
 
   // Speaker rows come from course API (`speakers`) — no GET /speakers
   const speakerMap = useMemo(
@@ -219,19 +230,135 @@ export function LearningCourseDetailsView({ course, loading, error }) {
     };
   }, [course?.id, course?.isBundle, course?.bundleCourseIds]);
 
+  const relatedCourses = useMemo(
+    () => (Array.isArray(course?.relatedCourses) ? course.relatedCourses : []),
+    [course?.relatedCourses]
+  );
+
   useEffect(() => {
-    if (!location.state?.promptMembershipSignup) return undefined;
-    setMembershipSignupOpen(true);
-    navigate('.', { replace: true, state: null });
-    return undefined;
-  }, [location.state, navigate]);
+    setRelatedFavoriteOverrides({});
+    setRelatedFavoriteLoading(new Set());
+  }, [course?.id]);
+
+  useEffect(() => {
+    if (!authenticated || relatedCourses.length === 0) {
+      setRelatedProgressById({});
+      return undefined;
+    }
+
+    let cancelled = false;
+    const relatedIds = new Set(relatedCourses.map((rel) => rel.id).filter(Boolean));
+
+    courseService
+      .getMyProgressOverview()
+      .then((rows) => {
+        if (cancelled) return;
+        const nextProgressMap = (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+          const courseId = row?.course?.id ? String(row.course.id) : '';
+          if (!courseId || !relatedIds.has(courseId)) return acc;
+          const progress = row?.progress && typeof row.progress === 'object' ? row.progress : {};
+          acc[courseId] = {
+            completionPercent: Math.max(0, Math.min(100, Number(progress.completionPercent ?? 0))),
+            status: String(progress.status || '').toLowerCase(),
+          };
+          return acc;
+        }, {});
+        setRelatedProgressById(nextProgressMap);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedProgressById({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, relatedCourses]);
+
+  const getRelatedIsFavorite = (rel) => {
+    if (Object.prototype.hasOwnProperty.call(relatedFavoriteOverrides, rel.id)) {
+      return relatedFavoriteOverrides[rel.id];
+    }
+    return Boolean(rel.isFavorite);
+  };
+
+  const handleRelatedCourseImageClick = (event, rel) => {
+    event.preventDefault();
+    event.stopPropagation();
+    navigate(
+      rel.isEnrolled ? paths.learningCourse.learn(rel.id) : paths.learningCourse.details(rel.id)
+    );
+  };
+
+  const handleRelatedGoToDetails = (event, courseId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    navigate(paths.learningCourse.details(courseId));
+  };
+
+  const handleRelatedAddToCart = (event, rel) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (rel.isEnrolled) return;
+    if (!authenticated) {
+      redirectToSignIn();
+      return;
+    }
+
+    if (!isInCart(rel.id)) {
+      addCourseToCart({
+        id: rel.id,
+        title: rel.title,
+        image: rel.image,
+        amount: rel.amount,
+        freeOrPaid: rel.freeOrPaid,
+      });
+      toast.success('Added to cart');
+      return;
+    }
+    toast.info('Already in cart');
+  };
+
+  const handleRelatedFavorite = async (event, courseId) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!authenticated) {
+      toast.info('Please sign in to favorite courses');
+      return;
+    }
+
+    const rel = relatedCourses.find((item) => item.id === courseId);
+    const wasFavorite = getRelatedIsFavorite(rel || { id: courseId, isFavorite: false });
+
+    setRelatedFavoriteOverrides((prev) => ({ ...prev, [courseId]: !wasFavorite }));
+    setRelatedFavoriteLoading((prev) => new Set(prev).add(courseId));
+
+    try {
+      const result = await courseService.toggleCourseFavorite(courseId);
+      setRelatedFavoriteOverrides((prev) => ({ ...prev, [courseId]: result.isFavorite }));
+      toast.success(
+        result.isFavorite ? 'Course added to favorites' : 'Course removed from favorites'
+      );
+    } catch (err) {
+      setRelatedFavoriteOverrides((prev) => ({ ...prev, [courseId]: wasFavorite }));
+      toast.error(err?.response?.data?.message || 'Failed to update favorite');
+    } finally {
+      setRelatedFavoriteLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(courseId);
+        return next;
+      });
+    }
+  };
 
   const scrollToBundlePrograms = () => {
     document.getElementById('bundle-included')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const promptMembershipSignUp = () => {
-    setMembershipSignupOpen(true);
+  const redirectToSignIn = () => {
+    const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
+    navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`);
   };
 
   const handleToggleFavorite = async () => {
@@ -356,6 +483,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const hasAccess = !paidCourse || isEnrolled;
   /** Included course: user paid for / unlocked a bundle — no second payment for this program. */
   const unlockedByBundleOnly = hasAccess && paidCourse && accessViaBundle && !isBundleCourse;
+  const showSidebarStatusChips = isBundleCourse || unlockedByBundleOnly || !hasAccess;
   const hasCourseContent = sectionCount > 0;
   const canStartCourse = hasAccess && hasCourseContent;
   const updatedLabel = course.updatedAt
@@ -400,7 +528,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
 
   const showBrowseBundlePrograms =
     hasAccess && !hasCourseContent && isBundleCourse && bundleCount > 0;
-  const relatedCourses = Array.isArray(course?.relatedCourses) ? course.relatedCourses : [];
   const previewReviews = courseReviews.slice(0, REVIEW_PREVIEW_COUNT);
 
   return (
@@ -482,7 +609,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   onClick={(e) => {
                     if (!authenticated) {
                       e.preventDefault();
-                      promptMembershipSignUp();
+                      redirectToSignIn();
                       return;
                     }
                     if (!hasAccess && !enrolledLoading) {
@@ -504,17 +631,18 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                 >
                   <Iconify
                     icon={
-                      hasAccess
+                      hasAccess || !paidCourse || !authenticated
                         ? 'solar:play-bold'
-                        : !paidCourse
-                          ? 'solar:play-bold'
-                          : isInCart(course.id)
-                            ? 'solar:cart-check-bold'
-                            : 'solar:cart-plus-bold'
+                        : isInCart(course.id)
+                          ? 'solar:cart-check-bold'
+                          : 'solar:cart-plus-bold'
                     }
                     width={32}
                     sx={{
-                      color: isInCart(course.id) ? 'success.main' : 'primary.main',
+                      color:
+                        authenticated && !hasAccess && paidCourse && isInCart(course.id)
+                          ? 'success.main'
+                          : 'primary.main',
                       ml: hasAccess ? 0.5 : 0,
                     }}
                   />
@@ -541,16 +669,14 @@ export function LearningCourseDetailsView({ course, loading, error }) {
             <Typography variant="caption" sx={{ display: 'block', px: 2, pt: 1.25, color: 'text.secondary', fontWeight: 600 }}>
               Course preview
             </Typography>
-            <Box sx={{ px: 2, py: 2.25 }}>
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                spacing={1}
-                flexWrap="wrap"
-                sx={{ mb: 1.5, gap: 0.75 }}
-              >
-                <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" sx={{ gap: 0.75 }}>
+            <Box sx={{ px: 2, py: 1.75 }}>
+              {showSidebarStatusChips && (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  flexWrap="wrap"
+                  sx={{ mb: 0.75, gap: 0.75 }}
+                >
                   {isBundleCourse && (
                     <Chip
                       size="small"
@@ -571,44 +697,63 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       sx={{ fontWeight: 600, fontSize: '0.75rem' }}
                     />
                   )}
-                  <Chip
-                    size="small"
-                    label={
-                      hasAccess
-                        ? unlockedByBundleOnly
+                  {(!hasAccess || unlockedByBundleOnly) && (
+                    <Chip
+                      size="small"
+                      label={
+                        hasAccess
                           ? 'Full access'
-                          : 'Purchased'
-                        : isInCart(course.id)
-                          ? 'In Cart'
-                          : paidCourse
-                            ? 'Paid Course'
-                            : 'AI Fluency Course'
-                    }
-                    color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
-                    variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
-                    sx={{ fontWeight: 600, fontSize: '0.75rem' }}
-                  />
+                          : authenticated && isInCart(course.id)
+                            ? 'In Cart'
+                            : paidCourse
+                              ? 'Paid Course'
+                              : 'AI Fluency Course'
+                      }
+                      color={
+                        hasAccess
+                          ? 'success'
+                          : authenticated && isInCart(course.id)
+                            ? 'primary'
+                            : paidCourse
+                              ? 'secondary'
+                              : 'success'
+                      }
+                      variant={hasAccess || (authenticated && isInCart(course.id)) ? 'filled' : 'soft'}
+                      sx={{ fontWeight: 600, fontSize: '0.75rem' }}
+                    />
+                  )}
                 </Stack>
-                <Stack direction="row" alignItems="center" spacing={0.5}>
+              )}
+
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ mb: 0.5, width: 1, gap: 0.75 }}
+              >
+                <Typography
+                  component="p"
+                  sx={{
+                    ...COURSE_DETAIL_SIDEBAR_PRICE_SX,
+                    mb: 0,
+                    minWidth: 0,
+                    flex: 1,
+                    ...(unlockedByBundleOnly && {
+                      textDecoration: 'line-through',
+                      opacity: 0.55,
+                    }),
+                  }}
+                >
+                  {price}
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0, ml: 'auto' }}>
                   <Iconify icon="solar:star-bold" width={16} sx={{ color: 'warning.main' }} />
                   <Typography sx={COURSE_DETAIL_SIDEBAR_EMPHASIS_SX}>
                     {averageRating > 0 ? averageRating.toFixed(1) : 'New'}
                   </Typography>
                 </Stack>
               </Stack>
-
-              <Typography
-                component="p"
-                sx={{
-                  ...COURSE_DETAIL_SIDEBAR_PRICE_SX,
-                  ...(unlockedByBundleOnly && {
-                    textDecoration: 'line-through',
-                    opacity: 0.55,
-                  }),
-                }}
-              >
-                {price}
-              </Typography>
               {unlockedByBundleOnly && (
                 <Typography component="p" sx={COURSE_DETAIL_SIDEBAR_SUBPRICE_SX}>
                   No extra charge for you
@@ -627,7 +772,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: 'text.disabled', display: 'block', mb: 2, lineHeight: 1.45 }}
+                sx={{ color: 'text.disabled', display: 'block', mb: 1.5, lineHeight: 1.45 }}
               >
                 {reviewCount > 0 ? `${reviewCount} review${reviewCount > 1 ? 's' : ''}` : 'Be the first learner to review this course'}
               </Typography>
@@ -659,7 +804,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                   }
                   if (!authenticated) {
                     e.preventDefault();
-                    promptMembershipSignUp();
+                    redirectToSignIn();
                     return;
                   }
                   if (!hasAccess && !enrolledLoading) {
@@ -688,20 +833,20 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                         : 'No content added'
                     : 'Purchase to watch'}
               </Button>
-              {paidCourse && (
+              {authenticated && paidCourse && !hasAccess && (
                 <Button
-                  variant={hasAccess ? 'soft' : isInCart(course.id) ? 'soft' : 'outlined'}
-                  color={hasAccess ? 'success' : isInCart(course.id) ? 'success' : 'primary'}
+                  variant={isInCart(course.id) ? 'soft' : 'outlined'}
+                  color={isInCart(course.id) ? 'success' : 'primary'}
                   fullWidth
-                  disabled={enrolledLoading || hasAccess}
-                  startIcon={<Iconify icon={hasAccess ? 'solar:check-circle-bold' : isInCart(course.id) ? 'solar:cart-check-bold' : 'solar:cart-plus-bold'} width={20} />}
+                  disabled={enrolledLoading}
+                  startIcon={
+                    <Iconify
+                      icon={isInCart(course.id) ? 'solar:cart-check-bold' : 'solar:cart-plus-bold'}
+                      width={20}
+                    />
+                  }
                   sx={{ mt: 1.5, py: 1.25, fontWeight: 600 }}
                   onClick={() => {
-                  if (!authenticated) {
-                    promptMembershipSignUp();
-                    return;
-                  }
-                    if (hasAccess) return;
                     if (isInCart(course.id)) {
                       toast.info('Already in cart');
                     } else {
@@ -716,7 +861,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                     }
                   }}
                 >
-                  {hasAccess ? 'Purchased' : isInCart(course.id) ? 'In cart' : 'Add to cart'}
+                  {isInCart(course.id) ? 'In cart' : 'Add to cart'}
                 </Button>
               )}
 
@@ -1359,70 +1504,53 @@ export function LearningCourseDetailsView({ course, loading, error }) {
         </Grid>
       </Grid>
 
-      {/* Related courses - from single course details payload */}
+      {/* Related courses — same card UI as All Courses grid */}
       {relatedCourses.length > 0 && (
         <Box sx={{ mt: { xs: 4, md: 6 } }}>
           <Typography component="h2" sx={{ ...DETAIL_PAGE_SECTION_TITLE_SX, mb: 2 }}>
             Related courses
           </Typography>
-          <Grid container spacing={2}>
-            {relatedCourses.map((rel) => (
-              <Grid key={rel.id} xs={12} sm={6} md={3}>
-                <Card
-                  component={RouterLink}
-                  to={paths.learningCourse.details(rel.id)}
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    boxShadow: theme.customShadows.z4,
-                    transition: 'box-shadow 0.25s ease',
-                    '&:hover': { boxShadow: theme.customShadows.z16 },
-                  }}
-                >
-                  <Box sx={{ position: 'relative', height: 170 }}>
-                    <Image
-                      alt={rel.title}
-                      src={rel.image || DEFAULT_COURSE_IMAGE}
-                      onError={(e) => {
-                        e.currentTarget.src = DEFAULT_COURSE_IMAGE;
-                      }}
-                      sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  </Box>
-                  <Box sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <Typography
-                      variant="subtitle2"
-                      sx={{
-                        fontWeight: 600,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        lineHeight: 1.4,
-                        minHeight: 40,
-                      }}
-                    >
-                      {rel.title}
-                    </Typography>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 'auto', pt: 1 }}>
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        {rel.level || 'Beginner'}
-                      </Typography>
-                      <Typography
-                        sx={{ ...COURSE_DETAIL_SIDEBAR_EMPHASIS_SX, color: 'primary.main' }}
-                      >
-                        {formatPrice(isPaidCourse(rel.freeOrPaid), rel.amount)}
-                      </Typography>
-                    </Stack>
-                  </Box>
-                </Card>
-              </Grid>
-            ))}
+          <Grid
+            container
+            spacing={{ xs: 1.75, sm: 1.5, md: 2 }}
+            columns={{ xs: 2, sm: 2, md: 4, lg: 4, xl: 4 }}
+            sx={{ overflow: 'visible' }}
+          >
+            {relatedCourses.map((rel) => {
+              const { moduleCount, sectionCount } = getCourseContentMeta(rel);
+              const progressRow = relatedProgressById[rel.id] || {};
+              const courseProgress = Number.isFinite(progressRow.completionPercent)
+                ? progressRow.completionPercent
+                : 0;
+              const showCourseProgress =
+                authenticated && (!rel.freeOrPaid || rel.isEnrolled);
+              const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
+
+              return (
+                <Grid key={rel.id} xs={1} sx={{ overflow: 'visible', display: 'flex' }}>
+                  <LearningCourseGridCard
+                    course={rel}
+                    defaultCourseImage={DEFAULT_COURSE_IMAGE}
+                    groupKey="related"
+                    moduleCount={moduleCount}
+                    sectionCount={sectionCount}
+                    showCourseProgress={showCourseProgress}
+                    courseProgress={courseProgress}
+                    progressStatus={progressStatus}
+                    isFavorite={getRelatedIsFavorite(rel)}
+                    favoriteLoading={relatedFavoriteLoading.has(rel.id)}
+                    isEnrolled={Boolean(rel.isEnrolled)}
+                    isInCart={isInCart(rel.id)}
+                    showFavorite={authenticated}
+                    detailsHref={paths.learningCourse.details(rel.id)}
+                    onImageClick={handleRelatedCourseImageClick}
+                    onFavorite={handleRelatedFavorite}
+                    onAddToCart={handleRelatedAddToCart}
+                    onViewDetails={handleRelatedGoToDetails}
+                  />
+                </Grid>
+              );
+            })}
           </Grid>
         </Box>
       )}
@@ -1439,8 +1567,6 @@ export function LearningCourseDetailsView({ course, loading, error }) {
         }}
       >
         <Stack sx={{ height: '100%' }}>
-
-console.log('',);
           <Stack
             direction="row"
             alignItems="center"
@@ -1517,66 +1643,6 @@ console.log('',);
           </Box>
         </Stack>
       </Drawer>
-      <MembershipSignupDialog
-        open={membershipSignupOpen}
-        onClose={() => {
-          clearMembershipEligibilityDraftOnModalClose();
-          setMembershipSignupOpen(false);
-        }}
-        onContinue={(payload) => {
-          setMembershipSignupOpen(false);
-          const outcome = payload?.result?.outcome || '';
-          const actionTarget = payload?.result?.actionTarget || '';
-          const signupAccessToken = payload?.signupAccessToken || '';
-          const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
-
-          if (actionTarget === 'scaq-salesforce-auto' && payload?.flow) {
-            const returnPath = `${location.pathname}${location.search || ''}`;
-            navigate(
-              buildScaqAssociateOptInOAuthStartUrl(payload.flow, returnPath, paths.auth.oauth.start)
-            );
-            return;
-          }
-
-          if ((actionTarget === 'signUp' || isScaqCandidateFlow) && payload?.flow) {
-            sessionStorage.setItem(
-              'membershipEligibilityFlow',
-              JSON.stringify({
-                membershipOutcome: outcome,
-                flow: payload.flow,
-                savedAt: new Date().toISOString(),
-              })
-            );
-          }
-
-          if (actionTarget === 'salesforce') {
-            try {
-              const courseReturn = `${location.pathname}${location.search || ''}`;
-              sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
-              if (payload?.flow?.eligibilityType !== 'recognition') {
-                clearMembershipApplicationPending();
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          if (isScaqCandidateFlow && authenticated) {
-            navigate(`${location.pathname}${location.search || ''}`);
-            return;
-          }
-
-          const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
-          const membershipOutcome = encodeURIComponent(outcome);
-          const targetPath = actionTarget === 'signUp'
-            ? paths.auth.simple.signUp
-            : actionTarget === 'salesforce'
-              ? paths.auth.oauth.start
-              : paths.auth.simple.signIn;
-          const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}`;
-          navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
-        }}
-      />
     </DashboardContent>
   );
 }

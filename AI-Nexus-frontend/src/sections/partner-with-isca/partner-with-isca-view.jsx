@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
@@ -20,6 +21,7 @@ import { HomeFooter } from 'src/layouts/main/footer';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
 import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles';
+import { FLUID_FONT_SIZES, FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 import {
   PARTNER_BODY_MD_SX,
   PARTNER_BODY_SX,
@@ -45,8 +47,6 @@ import {
   PARTNER_MOCKUP_STAT_VALUE_SX,
   PARTNER_MOCKUP_TAB_SX,
   PARTNER_SECTION_TITLE_SX,
-  PARTNER_STAT_LABEL_SX,
-  PARTNER_STAT_VALUE_SX,
   PARTNER_STEP_BODY_SX,
   PARTNER_STEP_TITLE_SX,
 } from './partner-with-isca-typography';
@@ -67,6 +67,32 @@ import {
 
 const ASSET_BASE_URL = CONFIG.site.serverUrl.replace(/\/api\/?$/, '');
 
+const HERO_NAVY = '#1C4270';
+const HERO_RED = '#E32B24';
+const HERO_BORDER_BLUE = '#5C7AA1';
+const HERO_IMAGE_WIDTH = '58%';
+const HERO_EASE = [0.19, 1, 0.22, 1];
+const HERO_IMAGE_ANIMATION = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  transition: { duration: 1.4, ease: HERO_EASE, delay: 0.08 },
+};
+const HERO_IMAGE_REVEAL_ANIMATION = {
+  initial: { clipPath: 'inset(0 0 0 100%)', opacity: 0.92 },
+  animate: { clipPath: 'inset(0 0 0 0)', opacity: 1 },
+  transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
+};
+const HERO_TEXT_ANIMATION = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 1.1, ease: HERO_EASE, delay: 0.68 },
+};
+const HERO_FOOTER_ANIMATION = {
+  initial: { opacity: 0.92, clipPath: 'inset(0 100% 0 0)' },
+  animate: { opacity: 1, clipPath: 'inset(0 0 0 0)' },
+  transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
+};
+
 const MOCKUP_VALUE_TONE_COLORS = {
   navy: 'secondary.main',
   green: '#0F6E56',
@@ -85,6 +111,289 @@ function scrollToSection(id) {
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+}
+
+function isLikelyImagePath(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  if (/^https?:\/\//i.test(s) || s.startsWith('/')) return true;
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(s);
+}
+
+function HeroMobileImage({ imageSrc }) {
+  const src = String(imageSrc || '').trim();
+  if (!src) return null;
+
+  return (
+    <Box
+      sx={{
+        display: { xs: 'block', md: 'none' },
+        width: '100%',
+        borderRadius: '20px',
+        overflow: 'hidden',
+        aspectRatio: '16 / 10',
+        maxHeight: 240,
+        boxShadow: `0 20px 40px ${alpha(HERO_NAVY, 0.14)}, 0 4px 12px ${alpha(HERO_NAVY, 0.06)}`,
+        border: `1px solid ${alpha(HERO_NAVY, 0.08)}`,
+      }}
+    >
+      <Box
+        component="img"
+        src={src}
+        alt=""
+        loading="eager"
+        decoding="async"
+        sx={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          objectPosition: '65% 40%',
+          display: 'block',
+        }}
+      />
+    </Box>
+  );
+}
+
+function HeroFullWidthBackdrop({ imageSrc, overlayHeader = false }) {
+  const src = String(imageSrc || '').trim();
+  if (!src) return null;
+
+  return (
+    <Box
+      aria-hidden
+      component={m.div}
+      initial={HERO_IMAGE_ANIMATION.initial}
+      animate={HERO_IMAGE_ANIMATION.animate}
+      transition={HERO_IMAGE_ANIMATION.transition}
+      sx={{
+        display: { xs: 'none', md: 'block' },
+        position: 'absolute',
+        inset: 0,
+        zIndex: 0,
+        width: '100%',
+        overflow: 'hidden',
+        bgcolor: '#ffffff',
+        willChange: 'opacity, transform',
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: { xs: '100%', md: '50%' },
+          background: {
+            xs: '#ffffff',
+            md: `
+              linear-gradient(
+                90deg,
+                #ffffff 0%,
+                #ffffff 78%,
+                rgba(255, 255, 255, 0.92) 88%,
+                rgba(255, 255, 255, 0.55) 96%,
+                rgba(255, 255, 255, 0) 100%
+              )
+            `,
+          },
+        }}
+      />
+
+      <Box
+        component={m.div}
+        initial={HERO_IMAGE_REVEAL_ANIMATION.initial}
+        animate={HERO_IMAGE_REVEAL_ANIMATION.animate}
+        transition={HERO_IMAGE_REVEAL_ANIMATION.transition}
+        sx={{
+          position: 'absolute',
+          top: overlayHeader ? { xs: 52, md: 76 } : 0,
+          right: 0,
+          bottom: overlayHeader ? { xs: 40, sm: 44, md: 48 } : { md: 24 },
+          width: HERO_IMAGE_WIDTH,
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          component="img"
+          src={src}
+          alt=""
+          loading="eager"
+          decoding="async"
+          sx={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: { xs: '72% 68%', md: '68% 70%' },
+            display: 'block',
+          }}
+        />
+
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background: `
+              linear-gradient(
+                180deg,
+                #ffffff 0%,
+                rgba(255, 255, 255, 0.9) 5%,
+                rgba(255, 255, 255, 0.45) 12%,
+                transparent 24%
+              ),
+              linear-gradient(
+                90deg,
+                #ffffff 0%,
+                rgba(255, 255, 255, 0.98) 6%,
+                rgba(255, 255, 255, 0.82) 14%,
+                rgba(255, 255, 255, 0.45) 24%,
+                rgba(255, 255, 255, 0.12) 34%,
+                transparent 46%
+              ),
+              linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.7) 0%,
+                rgba(255, 255, 255, 0.22) 10%,
+                transparent 18%
+              )
+            `,
+          }}
+        />
+
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            boxShadow: `
+              inset 0 32px 40px -14px rgba(255, 255, 255, 0.95),
+              inset 48px 0 56px -20px rgba(255, 255, 255, 0.9),
+              inset 0 -18px 24px -10px rgba(255, 255, 255, 0.5)
+            `,
+          }}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+function HeroStatIcon({ icon, size = 26 }) {
+  const value = String(icon || '').trim();
+  if (!value) return null;
+  const desktopSize = Math.max(16, Math.min(56, Number(size) || 26));
+  const tabletSize = Math.max(15, Math.min(48, Math.round(desktopSize * 0.88)));
+  const mobileSize = Math.max(14, Math.min(40, Math.round(desktopSize * 0.76)));
+  if (isLikelyImagePath(value)) {
+    return (
+      <Box
+        component="img"
+        src={value}
+        alt=""
+        sx={{
+          width: { xs: mobileSize, sm: tabletSize, md: desktopSize },
+          height: { xs: mobileSize, sm: tabletSize, md: desktopSize },
+          objectFit: 'contain',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <Iconify
+      icon={value}
+      sx={{
+        color: '#fff',
+        flexShrink: 0,
+        width: { xs: mobileSize, sm: tabletSize, md: desktopSize },
+        height: { xs: mobileSize, sm: tabletSize, md: desktopSize },
+      }}
+    />
+  );
+}
+
+function HeroStatsBar({ stats = [], iconSize = 26 }) {
+  const rows = (stats || []).filter(
+    (row) => String(row?.title || row?.value || '').trim() || String(row?.label || '').trim()
+  );
+  if (!rows.length) return null;
+
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        borderRadius: { xs: '18px', sm: '22px', md: '26px' },
+        bgcolor: '#06144D',
+        backgroundImage: `linear-gradient(135deg, ${alpha('#153A96', 0.5)} 0%, ${alpha('#001A70', 0.92)} 48%, ${alpha('#000C39', 0.92)} 100%)`,
+        flexShrink: 0,
+        overflow: 'hidden',
+        border: 'none',
+        boxShadow: 'none',
+      }}
+    >
+      <Grid container>
+        {rows.map((row, index) => (
+          <Grid
+            key={`partner-hero-stat-${index}`}
+            xs={6}
+            md={3}
+            sx={{
+              position: 'relative',
+              px: { xs: 1.5, sm: 2.5, md: 3.5 },
+              py: { xs: 2, sm: 2.75, md: 3.8 },
+              minHeight: { xs: 0, md: 96 },
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1, md: 1.5 },
+              borderBottom: {
+                xs: index < 2 && rows.length > 2 ? `1px solid ${alpha('#fff', 0.16)}` : 'none',
+                md: 'none',
+              },
+              borderRight: {
+                xs: index % 2 === 0 && rows.length > 1 ? `1px solid ${alpha('#fff', 0.16)}` : 'none',
+                md: 'none',
+              },
+              ...(index < rows.length - 1 && {
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '18%',
+                  right: 0,
+                  width: '1px',
+                  height: '64%',
+                  bgcolor: alpha('#fff', 0.24),
+                  display: { xs: 'none', md: 'block' },
+                },
+              }),
+            }}
+          >
+            <HeroStatIcon icon={row.icon} size={iconSize} />
+            <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+              <Typography
+                sx={{
+                  color: '#fff',
+                  ...FLUID_TYPOGRAPHY.statLabel,
+                  letterSpacing: '-0.015em',
+                }}
+              >
+                {row.title || row.value}
+              </Typography>
+              <Typography
+                sx={{
+                  color: alpha('#fff', 0.88),
+                  ...FLUID_TYPOGRAPHY.micro,
+                }}
+              >
+                {row.label}
+              </Typography>
+            </Stack>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
 }
 
 /** Home-page content width only — does not change section visual design. */
@@ -112,277 +421,252 @@ function SectionTitle({ children, align = 'center', sx }) {
   );
 }
 
-const HERO_ACTION_BUTTON_SX = {
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  textAlign: 'left',
-  textTransform: 'none',
-  width: 1,
-  height: 1,
-  minHeight: { xs: 48, md: 52 },
-  minWidth: 0,
-  overflow: 'hidden',
-  ...PARTNER_BUTTON_TEXT_SX,
-  lineHeight: 1.25,
-  py: 1.5,
-  px: { xs: 1.5, md: 1.75 },
-  borderRadius: '8px',
-  boxShadow: 'none',
-  border: '1.5px solid',
-  '& .MuiButton-endIcon': {
-    flexShrink: 0,
-    ml: 1,
-  },
-};
+function HeroCtaButton({ children, variant = 'red', href, onClick, component, ...other }) {
+  const isPrimary = variant === 'red';
 
-function ActionButton({ children, variant = 'red', href, onClick, component, ...other }) {
-  const isRed = variant === 'red';
+  const baseSx = {
+    width: '100%',
+    justifyContent: 'center',
+    position: 'relative',
+    borderRadius: '8px',
+    fontWeight: 700,
+    fontSize: FLUID_FONT_SIZES.button,
+    textTransform: 'none',
+    boxShadow: 'none',
+    gap: 0,
+    whiteSpace: 'normal',
+    minHeight: { xs: 48, sm: 50, md: 52 },
+    px: { xs: 1.5, sm: 1.5, md: 2 },
+    py: { xs: 1.25, sm: 1.15, md: 1.35 },
+    pr: { xs: 4, sm: 4.25, md: 4.75 },
+  };
+
+  const variantSx = isPrimary
+    ? {
+        bgcolor: HERO_RED,
+        color: '#fff',
+        border: 'none',
+        '&:hover': { bgcolor: '#C4241E', boxShadow: 'none' },
+      }
+    : {
+        bgcolor: '#fff',
+        color: HERO_NAVY,
+        border: `1.5px solid ${HERO_BORDER_BLUE}`,
+        '&:hover': { bgcolor: alpha(HERO_NAVY, 0.04), borderColor: HERO_NAVY, boxShadow: 'none' },
+      };
 
   return (
     <Button
       component={component}
       href={href}
       onClick={onClick}
-      fullWidth
-      endIcon={<Iconify icon="solar:arrow-right-linear" width={15} />}
-      sx={{
-        ...HERO_ACTION_BUTTON_SX,
-        borderColor: isRed ? 'primary.main' : (theme) => alpha(theme.palette.secondary.main, 0.45),
-        bgcolor: isRed ? 'primary.main' : '#fff',
-        color: isRed ? 'primary.contrastText' : 'secondary.main',
-        '&:hover': {
-          bgcolor: isRed ? 'primary.dark' : (theme) => alpha(theme.palette.secondary.main, 0.04),
-          borderColor: isRed ? 'primary.dark' : 'secondary.main',
-          boxShadow: 'none',
-        },
-      }}
+      variant={isPrimary ? 'contained' : 'outlined'}
+      size="large"
+      sx={{ ...baseSx, ...variantSx }}
       {...other}
     >
+      <Box component="span" sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}>
+        {children}
+      </Box>
       <Box
-        component="span"
         sx={{
-          minWidth: 0,
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          position: 'absolute',
+          right: { xs: 14, sm: 16, md: 18 },
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: 18,
+          height: 18,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
         }}
       >
-        {children}
+        <Iconify icon="solar:arrow-right-linear" width={18} />
       </Box>
     </Button>
   );
 }
 
-function HeroSection({ hero }) {
+function HeroSection({ hero, stats }) {
   const heroImageUrl = resolveAssetUrl(hero?.heroImageUrl);
-  const hasHeroImage = Boolean(heroImageUrl);
-  const placeholderLines = String(hero?.placeholderText || '')
-    .split('\n')
-    .filter(Boolean);
+  const heroActions = (hero?.actions || []).filter((action) => String(action?.label || '').trim());
 
   return (
     <Box
       component="section"
       sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-        alignItems: { md: hasHeroImage ? 'stretch' : 'stretch' },
-        minHeight: hasHeroImage ? 'auto' : { xs: 'auto', md: 520 },
+        position: 'relative',
+        width: '100%',
+        maxWidth: '100%',
         overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'clip',
+        isolation: 'isolate',
+        bgcolor: '#ffffff',
+        minHeight: { xs: 'auto', md: 560 },
+        background: {
+          xs: `linear-gradient(180deg, ${alpha(HERO_NAVY, 0.04)} 0%, #ffffff 28%)`,
+          md: '#ffffff',
+        },
       }}
     >
-      <Box
-        sx={{
-          py: { xs: 5, md: 9 },
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-        }}
-      >
-        <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, py: 0 }}>
-          <Stack spacing={{ xs: 2, md: 2.5 }}>
-            <Typography component="span" sx={PARTNER_HERO_EYEBROW_SX}>
-              {hero?.eyebrow}
-            </Typography>
-
-            <Typography component="h1" sx={PARTNER_HERO_TITLE_SX}>
-              <Box component="span" sx={{ display: 'block' }}>
-                {hero?.headline}
-              </Box>
-              <Box component="span" sx={{ display: 'block', color: 'primary.main' }}>
-                {hero?.headlineAccent}
-              </Box>
-            </Typography>
-
-            <RichTextContent
-              html={hero?.description}
-              sx={{
-                ...PARTNER_HERO_BODY_SX,
-                '& p': { m: 0 },
-              }}
-            />
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
-                gap: 1.5,
-                width: 1,
-                maxWidth: 540,
-                pt: 0.5,
-                alignItems: 'stretch',
-              }}
-            >
-              {(hero?.actions || []).map((action) => {
-                const label = String(action?.label || '').trim();
-                if (!label) return null;
-
-                const scrollTo = String(action?.scrollTo || '').trim();
-                const href = String(action?.href || '').trim();
-                const variant = action?.variant === 'red' ? 'red' : 'outline';
-
-                if (scrollTo) {
-                  return (
-                    <ActionButton
-                      key={`${label}-${scrollTo}`}
-                      variant={variant}
-                      onClick={() => scrollToSection(scrollTo)}
-                    >
-                      {label}
-                    </ActionButton>
-                  );
-                }
-
-                if (href) {
-                  return (
-                    <ActionButton
-                      key={`${label}-${href}`}
-                      variant={variant}
-                      component={RouterLink}
-                      href={href}
-                    >
-                      {label}
-                    </ActionButton>
-                  );
-                }
-
-                return null;
-              })}
-            </Box>
-          </Stack>
-        </DashboardContent>
-      </Box>
-
-      <Box
+      <DashboardContent
+        variant="fullWidth"
         sx={{
           position: 'relative',
+          zIndex: 1,
+          minHeight: { xs: 'auto', md: 560 },
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+          maxWidth: '100%',
           overflow: 'hidden',
-          bgcolor: hasHeroImage ? 'transparent' : '#dde8f5',
-          alignSelf: 'stretch',
-          minHeight: hasHeroImage ? 'auto' : { xs: 320, md: 520 },
-          display: hasHeroImage ? 'block' : 'flex',
-          alignItems: hasHeroImage ? undefined : 'center',
-          justifyContent: hasHeroImage ? undefined : 'center',
-          lineHeight: hasHeroImage ? 0 : undefined,
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
+          px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
+          pt: { xs: 2.5, md: 4 },
+          pb: { xs: 2.5, md: 0 },
         }}
       >
-        {hasHeroImage ? (
-          <Box
-            component="img"
-            src={heroImageUrl}
-            alt=""
-            sx={{
-              display: 'block',
-              width: 1,
-              height: { xs: 'auto', md: '100%' },
-              minHeight: { md: '100%' },
-              maxHeight: { xs: 420, md: 'none' },
-              objectFit: 'cover',
-              objectPosition: 'center',
-            }}
-          />
-        ) : (
-          <Stack spacing={1.5} alignItems="center" sx={{ p: 6, textAlign: 'center', color: '#7a9abc' }}>
-            <Iconify icon="solar:gallery-bold-duotone" width={56} sx={{ opacity: 0.4 }} />
-            <Typography sx={{ ...PARTNER_BODY_MD_SX, opacity: 0.7, textAlign: 'center' }}>
-              {placeholderLines.map((line, index) => (
-                <Box key={`${line}-${index}`} component="span" sx={{ display: 'block' }}>
-                  {line}
-                </Box>
-              ))}
-            </Typography>
-          </Stack>
-        )}
-      </Box>
-    </Box>
-  );
-}
+        <HeroFullWidthBackdrop imageSrc={heroImageUrl} overlayHeader={false} />
 
-function StatsBar({ stats }) {
-  const rows = Array.isArray(stats) ? stats : [];
-
-  return (
-    <PartnerLayoutSection sx={{ bgcolor: ISCA_DARK_NAVY, py: 3.5, scrollMarginTop: 0 }}>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: 'repeat(2, minmax(0, 1fr))',
-            md: 'repeat(4, minmax(0, 1fr))',
-          },
-          gap: { xs: 2.5, md: 0 },
-        }}
-      >
-        {rows.map((stat, index) => (
-          <Stack
-            key={`${stat.title}-${index}`}
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={{ xs: 1, md: 1.5 }}
-            alignItems={{ xs: 'center', md: 'flex-start' }}
-            sx={{
-              minWidth: 0,
-              px: { md: index === 0 ? 0 : 2, lg: index === 0 ? 0 : 3 },
-              borderRight: {
-                md: index < rows.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
-              },
-            }}
+        <Box
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            flex: 1,
+            display: 'flex',
+            alignItems: { xs: 'flex-start', md: 'flex-start' },
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden',
+            pb: { xs: 2, md: 4 },
+            pt: { md: 0 },
+          }}
+        >
+          <Grid
+            component={m.div}
+            initial={HERO_TEXT_ANIMATION.initial}
+            animate={HERO_TEXT_ANIMATION.animate}
+            transition={HERO_TEXT_ANIMATION.transition}
+            container
+            alignItems={{ xs: 'flex-start', md: 'flex-start' }}
+            sx={{ width: '100%', maxWidth: '100%', m: 0, willChange: 'opacity, transform' }}
           >
-            <Box
-              sx={{
-                width: 'clamp(2.125rem, 1.9rem + 1.2vw, 2.875rem)',
-                height: 'clamp(2.125rem, 1.9rem + 1.2vw, 2.875rem)',
-                borderRadius: '10px',
-                bgcolor: 'rgba(255,255,255,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Iconify
-                icon={stat.icon}
-                sx={{
-                  color: '#fff',
-                  width: 'clamp(1rem, 0.9rem + 0.55vw, 1.375rem)',
-                  height: 'clamp(1rem, 0.9rem + 0.55vw, 1.375rem)',
-                }}
-              />
-            </Box>
-            <Box sx={{ minWidth: 0, width: '100%', flex: 1, textAlign: { xs: 'center', md: 'left' } }}>
-              <Typography sx={{ ...PARTNER_STAT_VALUE_SX, color: '#fff' }}>
-                {stat.title}
-              </Typography>
-              {stat.label ? (
-                <Typography sx={{ ...PARTNER_STAT_LABEL_SX, color: 'rgba(255,255,255,0.72)' }}>
-                  {stat.label}
+            <Grid xs={12} md={6} lg={5} sx={{ minWidth: 0, pr: { md: 2 }, maxWidth: { md: 'none' } }}>
+              <Stack spacing={{ xs: 2, sm: 2.5, md: 3 }} sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                {hero?.eyebrow?.trim() ? (
+                  <Typography component="span" sx={PARTNER_HERO_EYEBROW_SX}>
+                    {hero.eyebrow}
+                  </Typography>
+                ) : null}
+
+                <Typography
+                  component="h1"
+                  sx={{
+                    ...PARTNER_HERO_TITLE_SX,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: { xs: 0.5, sm: 0.625, md: 0.75 },
+                  }}
+                >
+                  {hero?.headline?.trim() ? (
+                    <Box component="span" sx={{ display: 'block', color: 'secondary.main' }}>
+                      {hero.headline}
+                    </Box>
+                  ) : null}
+                  {hero?.headlineAccent?.trim() ? (
+                    <Box component="span" sx={{ display: 'block', color: 'primary.main' }}>
+                      {hero.headlineAccent}
+                    </Box>
+                  ) : null}
                 </Typography>
-              ) : null}
-            </Box>
-          </Stack>
-        ))}
-      </Box>
-    </PartnerLayoutSection>
+
+                {hero?.description ? (
+                  <RichTextContent
+                    html={hero.description}
+                    sx={{
+                      ...PARTNER_HERO_BODY_SX,
+                      maxWidth: '100%',
+                      '& p': { m: 0 },
+                      '& p + p': { mt: 1 },
+                    }}
+                  />
+                ) : null}
+
+                <HeroMobileImage imageSrc={heroImageUrl} />
+
+                {heroActions.length ? (
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                      gap: { xs: 1.25, sm: 1.25, md: 1.5 },
+                      width: '100%',
+                      maxWidth: '100%',
+                      pt: { xs: 0.25, md: 0.5 },
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    {heroActions.map((action) => {
+                      const label = String(action?.label || '').trim();
+                      const scrollTo = String(action?.scrollTo || '').trim();
+                      const href = String(action?.href || '').trim();
+                      const variant = action?.variant === 'red' ? 'red' : 'outline';
+
+                      if (scrollTo) {
+                        return (
+                          <HeroCtaButton
+                            key={`${label}-${scrollTo}`}
+                            variant={variant}
+                            onClick={() => scrollToSection(scrollTo)}
+                          >
+                            {label}
+                          </HeroCtaButton>
+                        );
+                      }
+
+                      if (href) {
+                        return (
+                          <HeroCtaButton
+                            key={`${label}-${href}`}
+                            variant={variant}
+                            component={RouterLink}
+                            href={href}
+                          >
+                            {label}
+                          </HeroCtaButton>
+                        );
+                      }
+
+                      return null;
+                    })}
+                  </Box>
+                ) : null}
+              </Stack>
+            </Grid>
+          </Grid>
+        </Box>
+
+        <Box
+          component={m.div}
+          initial={HERO_FOOTER_ANIMATION.initial}
+          animate={HERO_FOOTER_ANIMATION.animate}
+          transition={HERO_FOOTER_ANIMATION.transition}
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            mt: { xs: 2.5, md: 'auto' },
+            pt: { xs: 0, md: 3 },
+            willChange: 'opacity, transform',
+          }}
+        >
+          <HeroStatsBar stats={stats} />
+        </Box>
+      </DashboardContent>
+    </Box>
   );
 }
 
@@ -1219,9 +1503,7 @@ export function PartnerWithIscaView() {
         [`& .${layoutClasses.content}`]: frontendContentSx,
       }}
     >
-      <HeroSection hero={content.hero} />
-
-      <StatsBar stats={content.stats} />
+      <HeroSection hero={content.hero} stats={content.stats} />
       <BenefitsSection section={content.benefits} />
       <DashboardSection section={content.dashboard} />
       <HowItWorksSection section={content.howItWorks} />

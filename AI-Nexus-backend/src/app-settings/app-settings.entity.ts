@@ -319,6 +319,23 @@ export type ContactHeroContent = {
   }>;
 };
 
+export type FooterContent = {
+  stats?: Array<{
+    value?: string;
+    label?: string;
+    icon?: string;
+    useLiveEnrollment?: boolean;
+  }>;
+  domainLine?: string;
+  copyrightText?: string;
+  links?: Array<{
+    label?: string;
+    path?: string;
+    external?: boolean;
+    icon?: string;
+  }>;
+};
+
 @Entity('app_settings')
 export class AppSettingsEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -402,6 +419,10 @@ export class AppSettingsEntity {
   /** Partner with ISCA employer landing page content. */
   @Column({ type: 'jsonb', nullable: true })
   partnerWithIscaContent?: PartnerWithIscaContent | null;
+
+  /** Public site footer — stats band, links, and copyright. */
+  @Column({ type: 'jsonb', nullable: true })
+  footerContent?: FooterContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

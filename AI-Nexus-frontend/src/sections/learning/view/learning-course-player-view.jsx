@@ -1035,10 +1035,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   useEffect(() => {
     if (!course?.id || loading || playerLoading) return undefined;
     if (!authenticated) {
-      navigate(paths.learningCourse.details(course.id), {
-        replace: true,
-        state: { promptMembershipSignup: true },
-      });
+      const returnTo = encodeURIComponent(paths.learningCourse.details(course.id));
+      navigate(`${paths.auth.simple.signIn}?returnTo=${returnTo}`, { replace: true });
       return undefined;
     }
     const paidCourse = isPaidCourse(course.freeOrPaid);

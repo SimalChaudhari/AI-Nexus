@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { Iconify } from 'src/components/iconify';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { paths } from 'src/routes/paths';
+import { useAuthContext } from 'src/auth/hooks';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 import { toast } from 'src/components/snackbar';
 
@@ -23,9 +24,11 @@ export function LearningTopBar({
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { authenticated } = useAuthContext();
   const checkout = useCheckoutContext();
   const cartCount = checkout.totalItems;
   const hasItems = cartCount > 0;
+  const showCartIcon = showCart && authenticated;
 
   return (
     <Box
@@ -225,7 +228,7 @@ export function LearningTopBar({
             justifyContent={{ xs: 'space-between', md: 'flex-end' }}
             sx={{ flexShrink: 0, order: { xs: 1, md: 2 } }}
           >
-            {showCart && (
+            {showCartIcon && (
               <Box
                 component="button"
                 type="button"
@@ -244,6 +247,7 @@ export function LearningTopBar({
                   });
                 }}
                 sx={{
+                  // Header already shows cart below md; avoid duplicate icon in this bar.
                   display: { xs: 'none', md: 'flex' },
                   alignItems: 'center',
                   justifyContent: 'center',

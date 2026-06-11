@@ -369,6 +369,32 @@ function transformHomeHeroContent(sourceContent) {
   };
 }
 
+function transformFooterContent(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+
+  const rawStats = Array.isArray(source.stats) ? source.stats : [];
+  const rawLinks = Array.isArray(source.links) ? source.links : [];
+
+  return {
+    domainLine: source.domainLine != null ? String(source.domainLine) : '',
+    copyrightText: source.copyrightText != null ? String(source.copyrightText) : '',
+    stats: rawStats.slice(0, 4).map((row) => ({
+      value: row?.value != null ? String(row.value) : '',
+      label: row?.label != null ? String(row.label) : '',
+      icon: row?.icon != null ? String(row.icon) : '',
+      useLiveEnrollment: Boolean(row?.useLiveEnrollment),
+    })),
+    links: rawLinks.slice(0, 8).map((row) => ({
+      label: row?.label != null ? String(row.label) : '',
+      path: row?.path != null ? String(row.path) : '',
+      external: Boolean(row?.external),
+      icon: row?.icon != null ? String(row.icon) : '',
+    })),
+  };
+}
+
 function transformSettings(settings) {
   const sourceContent = settings?.homeHeroContent;
   const sourceCards = settings?.homeCardsContent;
@@ -477,6 +503,7 @@ function transformSettings(settings) {
     ),
     homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
     partnerWithIscaContent: transformPartnerWithIscaContent(settings?.partnerWithIscaContent),
+    footerContent: transformFooterContent(settings?.footerContent),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -876,6 +903,12 @@ export const appSettingsService = {
 
   async updatePartnerWithIscaContent(payload) {
     const response = await axios.put('/app-settings/partner-with-isca-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateFooterContent(payload) {
+    const response = await axios.put('/app-settings/footer-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

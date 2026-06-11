@@ -14,7 +14,6 @@ import { ThemeProvider } from 'src/theme/theme-provider';
 
 import { Snackbar } from 'src/components/snackbar';
 import { ProgressBar } from 'src/components/progress-bar';
-import { BackToTop } from 'src/components/animate/back-to-top';
 import { MotionLazy } from 'src/components/animate/motion-lazy';
 import { SettingsDrawer, defaultSettings, SettingsProvider } from 'src/components/settings';
 
@@ -51,7 +50,6 @@ export default function App() {
                   <ProgressBar />
                   <SettingsDrawer />
                   <Router />
-                  <BackToTop />
                 </CheckoutProvider>
               </MotionLazy>
             </ThemeProvider>

@@ -98,6 +98,28 @@ function shouldSyncRemoteCart(pathname) {
   return true;
 }
 
+function normalizeGuestCartItem(item) {
+  if (!item?.id) return null;
+  return {
+    id: item.id,
+    name: item.name,
+    coverUrl: item.coverUrl,
+    price: Number(item.price) || 0,
+    quantity: 1,
+  };
+}
+
+async function filterEnrolledCartItems(items, discount) {
+  const enrolledIds = await courseService.getEnrolledCourseIds();
+  if (!Array.isArray(enrolledIds)) return items;
+  const enrolledSet = new Set(enrolledIds);
+  const filtered = items.filter((item) => !enrolledSet.has(item.id));
+  if (filtered.length < items.length) {
+    await setCart(filtered, discount).catch(() => {});
+  }
+  return filtered;
+}
+
 // ----------------------------------------------------------------------
 
 export function CheckoutProvider({ children }) {
@@ -119,7 +141,7 @@ function Container({ children }) {
 
   const [state, setState] = useState(initialState);
   const [deletingItemIds, setDeletingItemIds] = useState(new Set());
-  const prevAuthenticatedRef = useRef(authenticated);
+  const prevAuthenticatedRef = useRef(false);
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
   /** Previous pathname (for cart sync). Used to avoid GET /cart on every in-app navigation between learning/catalog pages. */
@@ -152,45 +174,81 @@ function Container({ children }) {
     }
   }, [setField, state.discount]);
 
-  // Guest cart: clear only on logout; hydrate from localStorage when not logged in
+  const syncRemoteCart = useCallback(async (guestItems = []) => {
+    if (!shouldSyncRemoteCart(pathnameRef.current)) return null;
+
+    const data = await getCart();
+    let items = Array.isArray(data?.items) ? data.items : [];
+    let discount = typeof data?.discount === 'number' ? data.discount : 0;
+
+    const pendingGuestItems = (Array.isArray(guestItems) ? guestItems : [])
+      .map(normalizeGuestCartItem)
+      .filter(Boolean);
+    if (pendingGuestItems.length > 0) {
+      const ids = new Set(items.map((item) => item.id));
+      const toAdd = pendingGuestItems.filter((item) => !ids.has(item.id));
+      if (toAdd.length > 0) {
+        const merged = await setCart([...items, ...toAdd], discount);
+        items = Array.isArray(merged?.items) ? merged.items : [...items, ...toAdd];
+        discount = typeof merged?.discount === 'number' ? merged.discount : discount;
+      }
+    }
+
+    items = await filterEnrolledCartItems(items, discount);
+    return { items, discount };
+  }, []);
+
+  const loadCartFromApi = useCallback(() => {
+    if (!authenticated) return;
+    syncRemoteCart()
+      .then((next) => {
+        if (!next) return;
+        setState((prev) => ({ ...prev, items: next.items, discount: next.discount }));
+      })
+      .catch(() => {});
+  }, [authenticated, syncRemoteCart]);
+
+  // Guest cart: hydrate when logged out; on login merge guest items then load server cart
   useEffect(() => {
     if (authenticated) {
-      clearGuestCart();
+      const wasGuest = prevAuthenticatedRef.current !== true;
       prevAuthenticatedRef.current = true;
-      return;
+
+      if (!wasGuest) {
+        clearGuestCart();
+        return undefined;
+      }
+
+      const guest = getGuestCart();
+      const guestItems = guest?.items || [];
+      clearGuestCart();
+
+      let cancelled = false;
+      syncRemoteCart(guestItems)
+        .then((next) => {
+          if (cancelled || !next) return;
+          setState((prev) => ({ ...prev, items: next.items, discount: next.discount }));
+        })
+        .catch(() => {});
+
+      return () => {
+        cancelled = true;
+      };
     }
+
     if (prevAuthenticatedRef.current === true) {
       setState(initialState);
       clearGuestCart();
       prevAuthenticatedRef.current = false;
-      return;
+      return undefined;
     }
+
     const guest = getGuestCart();
     if (guest && (guest.items.length > 0 || guest.discount !== 0)) {
       setState((prev) => (prev.items.length === 0 ? { ...prev, ...guest } : prev));
     }
-  }, [authenticated]);
-
-  const loadCartFromApi = useCallback(() => {
-    if (!authenticated) return;
-    if (!shouldSyncRemoteCart(pathnameRef.current)) return;
-    getCart()
-      .then((data) => {
-        const items = Array.isArray(data?.items) ? data.items : [];
-        const discount = typeof data?.discount === 'number' ? data.discount : 0;
-        setState((prev) => ({ ...prev, items, discount }));
-        courseService.getEnrolledCourseIds().then((enrolledIds) => {
-          if (!Array.isArray(enrolledIds)) return;
-          const enrolledSet = new Set(enrolledIds);
-          const filtered = items.filter((item) => !enrolledSet.has(item.id));
-          if (filtered.length < items.length) {
-            setCart(filtered, discount).catch(() => {});
-            setState((prev) => ({ ...prev, items: filtered }));
-          }
-        });
-      })
-      .catch(() => {});
-  }, [authenticated]);
+    return undefined;
+  }, [authenticated, syncRemoteCart]);
 
   // Load cart from API only when entering the customer-facing shell (first load, from admin, after login),
   // not on every route change (e.g. course list → course detail). Mutations use POST/DELETE responses to update state.
@@ -215,27 +273,16 @@ function Container({ children }) {
     }
 
     let cancelled = false;
-    getCart()
-      .then((data) => {
-        if (cancelled) return;
-        const items = Array.isArray(data?.items) ? data.items : [];
-        const discount = typeof data?.discount === 'number' ? data.discount : 0;
-        setState((prev) => ({ ...prev, items, discount }));
-        courseService.getEnrolledCourseIds().then((enrolledIds) => {
-          if (cancelled || !Array.isArray(enrolledIds)) return;
-          const enrolledSet = new Set(enrolledIds);
-          const filtered = items.filter((item) => !enrolledSet.has(item.id));
-          if (filtered.length < items.length) {
-            setCart(filtered, discount).catch(() => {});
-            setState((prev) => ({ ...prev, items: filtered }));
-          }
-        });
+    syncRemoteCart()
+      .then((next) => {
+        if (cancelled || !next) return;
+        setState((prev) => ({ ...prev, items: next.items, discount: next.discount }));
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [authenticated, pathname]);
+  }, [authenticated, pathname, syncRemoteCart]);
 
   // Re-fetch cart when user returns to the page (e.g. browser back from WooshPay) so cart shows without refresh
   useEffect(() => {

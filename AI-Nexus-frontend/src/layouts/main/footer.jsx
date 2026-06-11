@@ -7,12 +7,12 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
 import { RouterLink } from 'src/routes/components';
-import { paths } from 'src/routes/paths';
 import { Iconify } from 'src/components/iconify';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
 import { FLUID_FONT_SIZES } from 'src/theme/fluid-typography';
 import { DashboardContent } from '../dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { resolveFooterContent } from './footer-defaults';
 
 // ----------------------------------------------------------------------
 
@@ -22,19 +22,6 @@ function formatEnrollmentDisplay(count) {
   const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(count);
   return `${compact}+`;
 }
-
-/** First stat: live course enrollment count from API; remaining stats static until CMS wires them. */
-const FOOTER_STATS_STATIC_TAIL = [
-  { value: '180+', label: 'AI resources', icon: 'solar:library-bold-duotone' },
-  { value: '40+', label: 'Expert mentors', icon: 'solar:users-group-rounded-bold-duotone' },
-  { value: '24/7', label: 'Community access', icon: 'solar:chat-round-dots-bold-duotone' },
-];
-
-const ENROLLMENT_LABEL = 'Learners enrolled in courses';
-const ENROLLMENT_FALLBACK_VALUE = '12K+';
-
-/** Static domain line (replace with env later) */
-const FOOTER_DOMAIN_LINE = 'ainexus.com · AI learning & community';
 
 const FOOTER_STAT_VALUE_SX = {
   fontSize: FLUID_FONT_SIZES.h5,
@@ -50,42 +37,67 @@ const FOOTER_STAT_LABEL_SX = {
   lineHeight: 1.4,
 };
 
-const FOOTER_LINKS = [
-  { label: 'Home', path: paths.home, external: false, icon: 'solar:home-bold' },
-  { label: 'Learning', path: paths.learning, external: false, icon: 'solar:book-2-bold' },
-  { label: 'AI Resources', path: paths.workflows, external: false, icon: 'solar:widget-bold' },
-  { label: 'AI Forum', path: paths.aiForum.root, external: false, icon: 'solar:chat-round-bold' },
-  { label: 'Contact', path: paths.contact, external: false, icon: 'solar:map-point-bold' },
-];
-
-function FooterStatsBand() {
-  const [enrollmentDisplay, setEnrollmentDisplay] = useState(ENROLLMENT_FALLBACK_VALUE);
+function useFooterContent() {
+  const [content, setContent] = useState(() => resolveFooterContent(null));
+  const [enrollmentDisplay, setEnrollmentDisplay] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         const settings = await appSettingsService.getPublic();
+        if (cancelled) return;
+        setContent(resolveFooterContent(settings?.footerContent));
         const formatted = formatEnrollmentDisplay(settings?.totalCourseEnrollments);
-        if (!cancelled && formatted) {
+        if (formatted) {
           setEnrollmentDisplay(formatted);
         }
       } catch {
-        /* keep fallback */
+        /* keep defaults */
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
   const footerStats = useMemo(
-    () => [
-      { value: enrollmentDisplay, label: ENROLLMENT_LABEL, icon: 'solar:book-bookmark-bold-duotone' },
-      ...FOOTER_STATS_STATIC_TAIL,
-    ],
-    [enrollmentDisplay]
+    () =>
+      (content.stats || [])
+        .map((stat) => ({
+          ...stat,
+          value:
+            stat.useLiveEnrollment && enrollmentDisplay
+              ? enrollmentDisplay
+              : stat.value || '',
+        }))
+        .filter((stat) => String(stat.label || '').trim() || String(stat.value || '').trim()),
+    [content.stats, enrollmentDisplay]
   );
+
+  const footerLinks = useMemo(
+    () => (content.links || []).filter((item) => String(item.label || '').trim() && String(item.path || '').trim()),
+    [content.links]
+  );
+
+  const copyrightText = useMemo(() => {
+    const template = String(content.copyrightText || '').trim();
+    if (!template) return '';
+    return template.replace('{year}', String(new Date().getFullYear()));
+  }, [content.copyrightText]);
+
+  return {
+    content,
+    footerStats,
+    footerLinks,
+    copyrightText,
+  };
+}
+
+function FooterStatsBand({ stats, domainLine }) {
+  if (!stats.length) return null;
 
   return (
     <Box
@@ -100,8 +112,8 @@ function FooterStatsBand() {
     >
       <DashboardContent sx={{ py: { xs: 2.5, md: 3.5 } }}>
         <Grid container spacing={{ xs: 1, sm: 1.5, md: 2 }}>
-          {footerStats.map((stat) => (
-            <Grid item xs={6} md={3} key={stat.label}>
+          {stats.map((stat) => (
+            <Grid item xs={6} md={3} key={`${stat.label}-${stat.icon}`}>
               <Stack
                 spacing={0.5}
                 sx={{
@@ -146,7 +158,7 @@ function FooterStatsBand() {
                       color: 'primary.main',
                     }}
                   >
-                    <Iconify icon={stat.icon} width={18} />
+                    <Iconify icon={stat.icon || 'solar:star-bold-duotone'} width={18} />
                   </Box>
                 </Stack>
                 <Typography
@@ -172,18 +184,20 @@ function FooterStatsBand() {
           ))}
         </Grid>
 
-        <Typography
-          variant="body2"
-          align="center"
-          sx={{
-            mt: { xs: 2.75, md: 3.5 },
-            color: (t) => alpha(t.palette.text.secondary, 0.8),
-            ...HERO_TYPOGRAPHY.footerMetaText,
-            letterSpacing: '0.03em',
-          }}
-        >
-          {FOOTER_DOMAIN_LINE}
-        </Typography>
+        {domainLine ? (
+          <Typography
+            variant="body2"
+            align="center"
+            sx={{
+              mt: { xs: 2.75, md: 3.5 },
+              color: (t) => alpha(t.palette.text.secondary, 0.8),
+              ...HERO_TYPOGRAPHY.footerMetaText,
+              letterSpacing: '0.03em',
+            }}
+          >
+            {domainLine}
+          </Typography>
+        ) : null}
       </DashboardContent>
     </Box>
   );
@@ -209,61 +223,48 @@ function FooterLink({ label, path, external, icon }) {
       transform: 'translateY(-1px)',
     },
   };
+
+  const content = (
+    <Stack direction="row" spacing={1.1} alignItems="center">
+      {icon ? (
+        <Box
+          sx={{
+            width: 34,
+            height: 34,
+            borderRadius: 2,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
+            color: 'primary.main',
+            flexShrink: 0,
+          }}
+        >
+          <Iconify icon={icon} width={20} />
+        </Box>
+      ) : null}
+      <Box component="span">{label}</Box>
+    </Stack>
+  );
+
   if (external) {
     return (
       <Link href={path} target="_blank" rel="noopener noreferrer" sx={sx}>
-        <Stack direction="row" spacing={1.1} alignItems="center">
-          {icon ? (
-            <Box
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 2,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
-                color: 'primary.main',
-                flexShrink: 0,
-              }}
-            >
-              <Iconify icon={icon} width={20} />
-            </Box>
-          ) : null}
-          <Box component="span">{label}</Box>
-        </Stack>
+        {content}
       </Link>
     );
   }
+
   return (
     <Link component={RouterLink} href={path} sx={sx}>
-      <Stack direction="row" spacing={1.1} alignItems="center">
-        {icon ? (
-          <Box
-            sx={{
-              width: 34,
-              height: 34,
-              borderRadius: 2,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
-              color: 'primary.main',
-              flexShrink: 0,
-            }}
-          >
-            <Iconify icon={icon} width={20} />
-          </Box>
-        ) : null}
-        <Box component="span">{label}</Box>
-      </Stack>
+      {content}
     </Link>
   );
 }
 
-function FooterBottomLinksAndBrand({ currentYear, useContainer }) {
-  const inner = (
-    <>
+function FooterBottomLinksAndBrand({ links, copyrightText }) {
+  return (
+    <DashboardContent sx={{ py: 4 }}>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         justifyContent="space-between"
@@ -287,87 +288,58 @@ function FooterBottomLinksAndBrand({ currentYear, useContainer }) {
           flexWrap="wrap"
           sx={{ mb: { xs: 2, md: 0 }, gap: 1, justifyContent: { xs: 'center', md: 'flex-start' } }}
         >
-          {FOOTER_LINKS.map((item) => (
-            <FooterLink key={item.label} {...item} />
+          {links.map((item) => (
+            <FooterLink key={`${item.label}-${item.path}`} {...item} />
           ))}
         </Stack>
 
-        <Typography
-          variant="body2"
-          sx={{
-            color: (t) => alpha(t.palette.text.secondary, 0.92),
-            textAlign: { xs: 'center', md: 'right' },
-            ...HERO_TYPOGRAPHY.footerMetaText,
-          }}
-        >
-          © {currentYear} AI Nexus. All rights reserved.
-        </Typography>
+        {copyrightText ? (
+          <Typography
+            variant="body2"
+            sx={{
+              color: (t) => alpha(t.palette.text.secondary, 0.92),
+              textAlign: { xs: 'center', md: 'right' },
+              ...HERO_TYPOGRAPHY.footerMetaText,
+            }}
+          >
+            {copyrightText}
+          </Typography>
+        ) : null}
       </Stack>
-    </>
-  );
-
-  if (useContainer) {
-    return (
-      <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3 }, py: 4 }}>
-        {inner}
-      </Container>
-    );
-  }
-  return (
-    <DashboardContent sx={{ py: 4 }}>
-      {inner}
     </DashboardContent>
+  );
+}
+
+function SiteFooterBody({ sx }) {
+  const { content, footerStats, footerLinks, copyrightText } = useFooterContent();
+
+  return (
+    <Box
+      component="footer"
+      sx={{
+        mt: 8,
+        bgcolor: (t) => (t.palette.mode === 'dark' ? alpha(t.palette.secondary.dark, 0.42) : alpha(t.palette.secondary.light, 0.2)),
+        backgroundImage: (t) =>
+          t.palette.mode === 'dark'
+            ? `radial-gradient(1200px 450px at 20% -20%, ${alpha(t.palette.secondary.main, 0.28)}, transparent 60%), radial-gradient(900px 380px at 90% 0%, ${alpha(t.palette.secondary.light, 0.22)}, transparent 55%)`
+            : `radial-gradient(1200px 450px at 10% -10%, ${alpha(t.palette.secondary.main, 0.2)}, transparent 60%), radial-gradient(900px 380px at 90% 0%, ${alpha(t.palette.secondary.dark, 0.14)}, transparent 55%)`,
+        borderTop: '1px solid',
+        borderColor: (t) => alpha(t.palette.common.white, t.palette.mode === 'dark' ? 0.08 : 0.85),
+        ...sx,
+      }}
+    >
+      <FooterStatsBand stats={footerStats} domainLine={content.domainLine} />
+      <FooterBottomLinksAndBrand links={footerLinks} copyrightText={copyrightText} />
+    </Box>
   );
 }
 
 // ----------------------------------------------------------------------
 
 export function Footer({ layoutQuery, sx }) {
-  const currentYear = new Date().getFullYear();
-
-  return (
-    <Box
-      component="footer"
-      sx={{
-        mt: 8,
-        bgcolor: (t) => (t.palette.mode === 'dark' ? alpha(t.palette.secondary.dark, 0.42) : alpha(t.palette.secondary.light, 0.2)),
-        backgroundImage: (t) =>
-          t.palette.mode === 'dark'
-            ? `radial-gradient(1200px 450px at 20% -20%, ${alpha(t.palette.secondary.main, 0.28)}, transparent 60%), radial-gradient(900px 380px at 90% 0%, ${alpha(t.palette.secondary.light, 0.22)}, transparent 55%)`
-            : `radial-gradient(1200px 450px at 10% -10%, ${alpha(t.palette.secondary.main, 0.2)}, transparent 60%), radial-gradient(900px 380px at 90% 0%, ${alpha(t.palette.secondary.dark, 0.14)}, transparent 55%)`,
-        borderTop: '1px solid',
-        borderColor: (t) => alpha(t.palette.common.white, t.palette.mode === 'dark' ? 0.08 : 0.85),
-        ...sx,
-      }}
-    >
-      <FooterStatsBand />
-      <FooterBottomLinksAndBrand currentYear={currentYear} useContainer={false} />
-    </Box>
-  );
+  return <SiteFooterBody sx={sx} />;
 }
 
-// ----------------------------------------------------------------------
-
 export function HomeFooter({ sx }) {
-  const currentYear = new Date().getFullYear();
-
-  return (
-    <Box
-      component="footer"
-      sx={{
-        mt: 8,
-        bgcolor: (t) => (t.palette.mode === 'dark' ? alpha(t.palette.secondary.dark, 0.42) : alpha(t.palette.secondary.light, 0.2)),
-        backgroundImage: (t) =>
-          t.palette.mode === 'dark'
-            ? `radial-gradient(1200px 450px at 20% -20%, ${alpha(t.palette.secondary.main, 0.28)}, transparent 60%), radial-gradient(900px 380px at 90% 0%, ${alpha(t.palette.secondary.light, 0.22)}, transparent 55%)`
-            : `radial-gradient(1200px 450px at 10% -10%, ${alpha(t.palette.secondary.main, 0.2)}, transparent 60%), radial-gradient(900px 380px at 90% 0%, ${alpha(t.palette.secondary.dark, 0.14)}, transparent 55%)`,
-        borderTop: '1px solid',
-        borderColor: (t) => alpha(t.palette.common.white, t.palette.mode === 'dark' ? 0.08 : 0.85),
-        ...sx,
-      }}
-    >
-      <FooterStatsBand />
-      <FooterBottomLinksAndBrand currentYear={currentYear} useContainer={false} />
-    </Box>
-  );
+  return <SiteFooterBody sx={sx} />;
 }
