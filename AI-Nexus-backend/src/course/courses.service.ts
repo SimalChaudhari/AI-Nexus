@@ -819,6 +819,70 @@ export class CourseService {
         return [...sameLevel, ...rest];
     }
 
+    /** Card/list fields for related courses on the course details page. */
+    async enrichCoursesForCards(
+        courses: CourseEntity[],
+        userId?: string,
+        recommendedCourseIds: string[] = [],
+    ): Promise<any[]> {
+        if (!Array.isArray(courses) || courses.length === 0) {
+            return [];
+        }
+
+        const recommendedSet = new Set(
+            (Array.isArray(recommendedCourseIds) ? recommendedCourseIds : []).filter(Boolean),
+        );
+        let rows: any[] = courses.map((course) => ({ ...course }));
+        rows = await this.attachCourseContentCounts(rows);
+        rows = await this.attachReviewStats(rows);
+
+        const courseIds = rows.map((row) => row.id).filter(Boolean);
+        let favoriteSet = new Set<string>();
+        let enrolledSet = new Set<string>();
+        const accessViaBundleById = new Map<string, boolean>();
+
+        if (userId && courseIds.length > 0) {
+            enrolledSet = await this.courseEnrollmentService.getEffectiveEnrolledCourseIdSet(userId);
+            const favoriteRows = await this.courseFavoriteRepository.find({
+                where: { userId, courseId: In(courseIds) },
+                select: ['courseId'],
+            });
+            favoriteSet = new Set(favoriteRows.map((row) => row.courseId));
+            const breakdowns = await Promise.all(
+                courseIds.map((courseId) =>
+                    this.courseEnrollmentService
+                        .getEnrollmentBreakdown(userId, courseId)
+                        .then((breakdown) => ({ courseId, accessViaBundle: breakdown.accessViaBundle })),
+                ),
+            );
+            breakdowns.forEach(({ courseId, accessViaBundle }) => {
+                accessViaBundleById.set(courseId, accessViaBundle);
+            });
+        }
+
+        return rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            image: row.image,
+            level: row.level,
+            freeOrPaid: row.freeOrPaid,
+            amount: row.amount,
+            isBundle: row.isBundle ?? false,
+            bundleCourseIds: Array.isArray(row.bundleCourseIds) ? row.bundleCourseIds : [],
+            isRecommended: recommendedSet.has(row.id),
+            modulesCount: row.modulesCount ?? 0,
+            sectionsCount: row.sectionsCount ?? 0,
+            reviewStats: row.reviewStats ?? { averageRating: 0, reviewCount: 0 },
+            ...(userId
+                ? {
+                      isFavorite: favoriteSet.has(row.id),
+                      isEnrolled: enrolledSet.has(row.id),
+                      accessViaBundle: accessViaBundleById.get(row.id) ?? false,
+                  }
+                : {}),
+        }));
+    }
+
     /** Returns which of the given ids exist. Used e.g. for checkout validation. */
     async findExistingIds(ids: string[]): Promise<{ existing: string[]; missing: string[] }> {
         const unique = [...new Set(ids)].filter(Boolean);

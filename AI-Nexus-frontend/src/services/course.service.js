@@ -68,6 +68,21 @@ const transformCourse = (course) => {
         level: rel?.level || 'Beginner',
         freeOrPaid: rel?.freeOrPaid ?? false,
         amount: rel?.amount != null ? Number(rel.amount) : 0,
+        isBundle: rel?.isBundle ?? false,
+        bundleCourseIds: Array.isArray(rel?.bundleCourseIds) ? rel.bundleCourseIds : [],
+        isRecommended: rel?.isRecommended ?? false,
+        isFavorite: rel?.isFavorite ?? false,
+        isEnrolled: rel?.isEnrolled ?? false,
+        accessViaBundle: rel?.accessViaBundle ?? false,
+        modulesCount: Number(rel?.modulesCount ?? rel?.moduleCount ?? 0),
+        sectionsCount: Number(rel?.sectionsCount ?? rel?.sectionCount ?? 0),
+        reviewStats:
+          rel?.reviewStats && typeof rel.reviewStats === 'object'
+            ? {
+                averageRating: Number(rel.reviewStats.averageRating || 0),
+                reviewCount: Number(rel.reviewStats.reviewCount || 0),
+              }
+            : { averageRating: 0, reviewCount: 0 },
       }))
     : [];
   const reviewStatsRaw = course.reviewStats && typeof course.reviewStats === 'object' ? course.reviewStats : {};
