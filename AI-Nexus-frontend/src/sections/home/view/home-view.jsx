@@ -88,7 +88,7 @@ export function HomeView() {
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
         <HomeCurriculumSection />
         <HomeProgrammeFeesSection />
-        <HomeTestimonialsSection />
+        {/* <HomeTestimonialsSection /> */}
         <HomeEmployeeSection />
        
         <ContactSection hideWhenEmpty />

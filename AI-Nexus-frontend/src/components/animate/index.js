@@ -1,7 +1,5 @@
 export * from './variants';
 
-export * from './back-to-top';
-
 export * from './animate-text';
 
 export * from './animate-logo';

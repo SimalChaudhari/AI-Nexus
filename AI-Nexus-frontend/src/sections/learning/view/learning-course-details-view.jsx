@@ -356,6 +356,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
   const hasAccess = !paidCourse || isEnrolled;
   /** Included course: user paid for / unlocked a bundle — no second payment for this program. */
   const unlockedByBundleOnly = hasAccess && paidCourse && accessViaBundle && !isBundleCourse;
+  const showSidebarStatusChips = isBundleCourse || unlockedByBundleOnly || !hasAccess;
   const hasCourseContent = sectionCount > 0;
   const canStartCourse = hasAccess && hasCourseContent;
   const updatedLabel = course.updatedAt
@@ -541,16 +542,14 @@ export function LearningCourseDetailsView({ course, loading, error }) {
             <Typography variant="caption" sx={{ display: 'block', px: 2, pt: 1.25, color: 'text.secondary', fontWeight: 600 }}>
               Course preview
             </Typography>
-            <Box sx={{ px: 2, py: 2.25 }}>
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                spacing={1}
-                flexWrap="wrap"
-                sx={{ mb: 1.5, gap: 0.75 }}
-              >
-                <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" sx={{ gap: 0.75 }}>
+            <Box sx={{ px: 2, py: 1.75 }}>
+              {showSidebarStatusChips && (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  flexWrap="wrap"
+                  sx={{ mb: 0.75, gap: 0.75 }}
+                >
                   {isBundleCourse && (
                     <Chip
                       size="small"
@@ -571,44 +570,55 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                       sx={{ fontWeight: 600, fontSize: '0.75rem' }}
                     />
                   )}
-                  <Chip
-                    size="small"
-                    label={
-                      hasAccess
-                        ? unlockedByBundleOnly
+                  {(!hasAccess || unlockedByBundleOnly) && (
+                    <Chip
+                      size="small"
+                      label={
+                        hasAccess
                           ? 'Full access'
-                          : 'Purchased'
-                        : isInCart(course.id)
-                          ? 'In Cart'
-                          : paidCourse
-                            ? 'Paid Course'
-                            : 'AI Fluency Course'
-                    }
-                    color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
-                    variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
-                    sx={{ fontWeight: 600, fontSize: '0.75rem' }}
-                  />
+                          : isInCart(course.id)
+                            ? 'In Cart'
+                            : paidCourse
+                              ? 'Paid Course'
+                              : 'AI Fluency Course'
+                      }
+                      color={hasAccess ? 'success' : isInCart(course.id) ? 'primary' : paidCourse ? 'secondary' : 'success'}
+                      variant={hasAccess || isInCart(course.id) ? 'filled' : 'soft'}
+                      sx={{ fontWeight: 600, fontSize: '0.75rem' }}
+                    />
+                  )}
                 </Stack>
-                <Stack direction="row" alignItems="center" spacing={0.5}>
+              )}
+
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ mb: 0.5, width: 1, gap: 0.75 }}
+              >
+                <Typography
+                  component="p"
+                  sx={{
+                    ...COURSE_DETAIL_SIDEBAR_PRICE_SX,
+                    mb: 0,
+                    minWidth: 0,
+                    flex: 1,
+                    ...(unlockedByBundleOnly && {
+                      textDecoration: 'line-through',
+                      opacity: 0.55,
+                    }),
+                  }}
+                >
+                  {price}
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0, ml: 'auto' }}>
                   <Iconify icon="solar:star-bold" width={16} sx={{ color: 'warning.main' }} />
                   <Typography sx={COURSE_DETAIL_SIDEBAR_EMPHASIS_SX}>
                     {averageRating > 0 ? averageRating.toFixed(1) : 'New'}
                   </Typography>
                 </Stack>
               </Stack>
-
-              <Typography
-                component="p"
-                sx={{
-                  ...COURSE_DETAIL_SIDEBAR_PRICE_SX,
-                  ...(unlockedByBundleOnly && {
-                    textDecoration: 'line-through',
-                    opacity: 0.55,
-                  }),
-                }}
-              >
-                {price}
-              </Typography>
               {unlockedByBundleOnly && (
                 <Typography component="p" sx={COURSE_DETAIL_SIDEBAR_SUBPRICE_SX}>
                   No extra charge for you
@@ -627,7 +637,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: 'text.disabled', display: 'block', mb: 2, lineHeight: 1.45 }}
+                sx={{ color: 'text.disabled', display: 'block', mb: 1.5, lineHeight: 1.45 }}
               >
                 {reviewCount > 0 ? `${reviewCount} review${reviewCount > 1 ? 's' : ''}` : 'Be the first learner to review this course'}
               </Typography>
