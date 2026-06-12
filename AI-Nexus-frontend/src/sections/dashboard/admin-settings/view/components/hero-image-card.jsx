@@ -51,7 +51,7 @@ export function HeroImageCard({
           }}
           maxSize={5 * 1024 * 1024}
           disabled={heroLoading || heroSubmitting}
-          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Max 5 MB (auto-compressed on save if larger)."
+          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Files are stored at original size."
         />
 
         <Stack direction="row" spacing={1.5}>
