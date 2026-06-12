@@ -31,6 +31,10 @@ import { AuthSignUpSchema } from 'src/validations/user.validation';
 
 import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp } from 'src/auth/context/jwt';
 import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
+import {
+  isApprovedSalesforceStudentMember,
+  startStudentMemberSsoLogin,
+} from 'src/utils/membership-application-student';
 
 function buildEligibilityDataFromFlow(flow, membershipOutcome) {
   if (!flow || typeof flow !== 'object' || Array.isArray(flow)) {
@@ -303,6 +307,12 @@ export function SimpleSignUpView() {
       const parsed = JSON.parse(stored);
       if (parsed?.membershipOutcome !== membershipOutcome || !parsed?.values) return;
 
+      if (isPaidMembershipFlow && isApprovedSalesforceStudentMember(parsed?.salesforce)) {
+        sessionStorage.removeItem(membershipDraftFormStorageKey);
+        startStudentMemberSsoLogin(returnTo || paths.learning);
+        return;
+      }
+
       if (parsed?.flow) {
         setEligibilityData(buildEligibilityDataFromFlow(parsed.flow, membershipOutcome));
       } else if (parsed?.eligibility) {
@@ -330,7 +340,15 @@ export function SimpleSignUpView() {
     } catch {
       // Ignore invalid cached draft payloads.
     }
-  }, [isMembershipFeeFlow, membershipDraftFormStorageKey, membershipOutcome, membershipPaymentConsentKey, reset]);
+  }, [
+    isMembershipFeeFlow,
+    isPaidMembershipFlow,
+    membershipDraftFormStorageKey,
+    membershipOutcome,
+    membershipPaymentConsentKey,
+    returnTo,
+    reset,
+  ]);
 
   useEffect(() => {
     if (!isMembershipFeeFlow || paymentState !== 'canceled') return;

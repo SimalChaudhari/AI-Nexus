@@ -38,7 +38,11 @@ import {
   clearMembershipEligibilitySessionStorage,
   POST_OAUTH_RETURN_TO_KEY,
 } from 'src/utils/membership-eligibility-sso';
-import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
+import {
+  clearMembershipApplicationPending,
+  saveMembershipApplicationCourseReturn,
+  setStudentMembershipApplicationPending,
+} from 'src/utils/membership-salesforce-session';
 
 // ----------------------------------------------------------------------
 
@@ -1503,11 +1507,25 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
             );
           }
 
-          if (actionTarget === 'salesforce') {
+          if (actionTarget === 'student-application') {
+            try {
+              const courseReturn = `${location.pathname}${location.search || ''}`;
+              saveMembershipApplicationCourseReturn(courseReturn);
+            } catch {
+              // ignore
+            }
+            navigate(paths.auth.membership.studentApplication);
+            return;
+          }
+
+          if (actionTarget === 'salesforce' || actionTarget === 'student-salesforce') {
             try {
               const courseReturn = `${location.pathname}${location.search || ''}`;
               sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
-              if (payload?.flow?.eligibilityType !== 'recognition') {
+              if (actionTarget === 'student-salesforce') {
+                setStudentMembershipApplicationPending();
+                saveMembershipApplicationCourseReturn(courseReturn);
+              } else if (payload?.flow?.eligibilityType !== 'recognition') {
                 clearMembershipApplicationPending();
               }
             } catch {
@@ -1524,10 +1542,14 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
           const membershipOutcome = encodeURIComponent(outcome);
           const targetPath = actionTarget === 'signUp'
             ? paths.auth.simple.signUp
-            : actionTarget === 'salesforce'
+            : actionTarget === 'salesforce' || actionTarget === 'student-salesforce'
               ? paths.auth.oauth.start
               : paths.auth.simple.signIn;
-          const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}`;
+          const eligibilityType =
+            actionTarget === 'student-salesforce'
+              ? '&eligibilityType=student'
+              : '';
+          const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}${eligibilityType}`;
           navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
         }}
       />

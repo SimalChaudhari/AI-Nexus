@@ -280,6 +280,7 @@ const OAuthCallbackPage = lazy(() => import('src/pages/auth/oauth/callback'));
 const MembershipSalesforceCreatePage = lazy(() => import('src/pages/auth/membership/salesforce-create'));
 const MembershipSalesforceBridgePage = lazy(() => import('src/pages/auth/membership/salesforce-bridge'));
 const MembershipApplicationPage = lazy(() => import('src/pages/auth/membership/application'));
+const StudentMembershipApplicationPage = lazy(() => import('src/pages/auth/membership/student-application'));
 
 const authMembershipCentered = {
   path: 'membership',
@@ -317,6 +318,14 @@ const authMembershipApplication = {
       element: (
         <GuestGuard>
           <MembershipApplicationPage />
+        </GuestGuard>
+      ),
+    },
+    {
+      path: 'student-application',
+      element: (
+        <GuestGuard>
+          <StudentMembershipApplicationPage />
         </GuestGuard>
       ),
     },

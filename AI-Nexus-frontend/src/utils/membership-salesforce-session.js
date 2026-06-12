@@ -9,6 +9,13 @@ export const MEMBERSHIP_SALESFORCE_SESSION_KEY = 'membershipSalesforceSession';
 
 export const MEMBERSHIP_APPLICATION_OUTCOME = 'membership-application';
 
+export const STUDENT_MEMBERSHIP_APPLICATION_OUTCOME = 'student-membership-application';
+
+/** After student application submit — SSO login to verify Student member class. */
+export const STUDENT_MEMBER_LOGIN_OUTCOME = 'student-member-login';
+
+const STUDENT_MEMBER_LOGIN_PENDING_KEY = 'studentMemberLoginPending';
+
 /** postMessage type when a child tab finishes Salesforce create/login */
 export const MEMBERSHIP_SALESFORCE_SESSION_READY = 'MEMBERSHIP_SALESFORCE_SESSION_READY';
 
@@ -151,6 +158,66 @@ export function isMembershipApplicationOAuthOutcome(searchParams) {
   return outcome === MEMBERSHIP_APPLICATION_OUTCOME;
 }
 
+export function isStudentMembershipApplicationOAuthOutcome(searchParams) {
+  const outcome = searchParams?.get?.('membershipOutcome');
+  return outcome === STUDENT_MEMBERSHIP_APPLICATION_OUTCOME;
+}
+
+export function setStudentMemberLoginPending() {
+  try {
+    sessionStorage.setItem(STUDENT_MEMBER_LOGIN_PENDING_KEY, 'true');
+  } catch {
+    // ignore
+  }
+}
+
+export function clearStudentMemberLoginPending() {
+  try {
+    sessionStorage.removeItem(STUDENT_MEMBER_LOGIN_PENDING_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function isStudentMemberLoginPending() {
+  try {
+    return sessionStorage.getItem(STUDENT_MEMBER_LOGIN_PENDING_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function isStudentMemberLoginOAuthOutcome(searchParams) {
+  const outcome = searchParams?.get?.('membershipOutcome');
+  if (outcome === STUDENT_MEMBER_LOGIN_OUTCOME) return true;
+  return isStudentMemberLoginPending();
+}
+
+export function isStudentMembershipApplicationFlow(searchParams) {
+  if (isStudentMembershipApplicationOAuthOutcome(searchParams)) return true;
+  try {
+    return sessionStorage.getItem('studentMembershipApplicationPending') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setStudentMembershipApplicationPending() {
+  try {
+    sessionStorage.setItem('studentMembershipApplicationPending', 'true');
+  } catch {
+    // ignore
+  }
+}
+
+export function clearStudentMembershipApplicationPending() {
+  try {
+    sessionStorage.removeItem('studentMembershipApplicationPending');
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Remember where to send the user after the recognition application form is done.
  * @param {string} returnPath — e.g. /learning/course/123/learn
@@ -185,9 +252,24 @@ export function clearMembershipApplicationCourseReturn() {
  * @param {string} oauthStartPath
  * @param {string} bridgePath — page that receives OAuth redirect and saves session
  */
-export function buildMembershipApplicationOAuthStartUrl(oauthStartPath, bridgePath) {
+export function buildMembershipApplicationOAuthStartUrl(
+  oauthStartPath,
+  bridgePath,
+  options = {},
+) {
   const returnTo = encodeURIComponent(bridgePath);
-  return `${oauthStartPath}?returnTo=${returnTo}&membershipOutcome=${encodeURIComponent(MEMBERSHIP_APPLICATION_OUTCOME)}&eligibilityType=recognition`;
+  const membershipOutcome = encodeURIComponent(
+    options.membershipOutcome || MEMBERSHIP_APPLICATION_OUTCOME
+  );
+  const eligibilityType = encodeURIComponent(options.eligibilityType || 'recognition');
+  return `${oauthStartPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}&eligibilityType=${eligibilityType}`;
+}
+
+export function buildStudentMembershipApplicationOAuthStartUrl(oauthStartPath, bridgePath) {
+  return buildMembershipApplicationOAuthStartUrl(oauthStartPath, bridgePath, {
+    membershipOutcome: STUDENT_MEMBERSHIP_APPLICATION_OUTCOME,
+    eligibilityType: 'student',
+  });
 }
 
 /**
@@ -240,6 +322,16 @@ export function buildMembershipSalesforceCreateUrl(createPagePath) {
   return `${createPagePath}?${params.toString()}`;
 }
 
+export function buildStudentMembershipSalesforceCreateUrl(createPagePath) {
+  const bridgePath = '/auth/membership/salesforce-bridge';
+  const params = new URLSearchParams({
+    returnTo: bridgePath,
+    membershipOutcome: STUDENT_MEMBERSHIP_APPLICATION_OUTCOME,
+    eligibilityType: 'student',
+  });
+  return `${createPagePath}?${params.toString()}`;
+}
+
 /**
  * Navigate to the full-page membership application (recognition path) in the current tab.
  */
@@ -257,4 +349,8 @@ export function openRecognitionMembershipApplicationPage(applicationPath) {
 
   window.location.assign(url);
   return window;
+}
+
+export function openStudentMembershipApplicationPage(applicationPath) {
+  return openRecognitionMembershipApplicationPage(applicationPath);
 }

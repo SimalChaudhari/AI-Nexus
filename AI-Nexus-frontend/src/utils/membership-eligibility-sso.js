@@ -4,7 +4,11 @@
 // ----------------------------------------------------------------------
 
 import { paths } from 'src/routes/paths';
-import { clearMembershipApplicationPending } from 'src/utils/membership-salesforce-session';
+import {
+  clearMembershipApplicationPending,
+  saveMembershipApplicationCourseReturn,
+  setStudentMembershipApplicationPending,
+} from 'src/utils/membership-salesforce-session';
 
 export const MEMBERSHIP_ELIGIBILITY_FLOW_KEY = 'membershipEligibilityFlow';
 
@@ -178,6 +182,7 @@ export function readSalesforceFlagsFromCallbackParams(searchParams) {
     accountId: (searchParams.get('salesforceAccountId') || '').trim(),
     accountType: (searchParams.get('salesforceAccountType') || '').trim(),
     memberClass: (searchParams.get('salesforceMemberClass') || '').trim(),
+    membershipStatus: (searchParams.get('salesforceMembershipStatus') || '').trim(),
   };
 }
 
@@ -257,6 +262,7 @@ export function readSalesforceFlagsFromSessionUser(user) {
       accountId: '',
       accountType: '',
       memberClass: '',
+      membershipStatus: '',
     };
   }
   return {
@@ -271,6 +277,7 @@ export function readSalesforceFlagsFromSessionUser(user) {
     accountId: nested.accountId != null ? String(nested.accountId) : '',
     accountType: nested.accountType != null ? String(nested.accountType) : '',
     memberClass: nested.memberClass != null ? String(nested.memberClass) : '',
+    membershipStatus: nested.membershipStatus != null ? String(nested.membershipStatus) : '',
   };
 }
 
@@ -452,6 +459,16 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
   const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
   const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
 
+  if (actionTarget === 'student-application') {
+    try {
+      saveMembershipApplicationCourseReturn(safeReturnPath);
+    } catch {
+      // ignore
+    }
+    navigate(paths.auth.membership.studentApplication);
+    return;
+  }
+
   if (actionTarget === 'scaq-salesforce-auto' && payload?.flow) {
     navigate(buildScaqAssociateOptInOAuthStartUrl(payload.flow, safeReturnPath, paths.auth.oauth.start));
     return;
@@ -472,10 +489,13 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
     }
   }
 
-  if (actionTarget === 'salesforce') {
+  if (actionTarget === 'salesforce' || actionTarget === 'student-salesforce') {
     try {
       sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, safeReturnPath);
-      if (payload?.flow?.eligibilityType !== 'recognition') {
+      if (actionTarget === 'student-salesforce') {
+        setStudentMembershipApplicationPending();
+        saveMembershipApplicationCourseReturn(safeReturnPath);
+      } else if (payload?.flow?.eligibilityType !== 'recognition') {
         clearMembershipApplicationPending();
       }
     } catch {
@@ -493,9 +513,13 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
   const targetPath =
     actionTarget === 'signUp'
       ? paths.auth.simple.signUp
-      : actionTarget === 'salesforce'
+      : actionTarget === 'salesforce' || actionTarget === 'student-salesforce'
         ? paths.auth.oauth.start
         : paths.auth.simple.signIn;
-  const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}`;
+  const eligibilityType =
+    actionTarget === 'student-salesforce'
+      ? '&eligibilityType=student'
+      : '';
+  const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}${eligibilityType}`;
   navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
 }

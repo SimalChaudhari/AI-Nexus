@@ -122,6 +122,7 @@ export const paths = {
       salesforceCreate: `${ROOTS.AUTH}/membership/salesforce-create`,
       salesforceBridge: `${ROOTS.AUTH}/membership/salesforce-bridge`,
       application: `${ROOTS.AUTH}/membership/application`,
+      studentApplication: `${ROOTS.AUTH}/membership/student-application`,
     },
   },
   authDemo: {

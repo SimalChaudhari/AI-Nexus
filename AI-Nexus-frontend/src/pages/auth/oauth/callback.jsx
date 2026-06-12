@@ -35,14 +35,23 @@ import {
 } from 'src/utils/membership-eligibility-sso';
 import {
   isRecognitionMembershipApplicationFlow,
+  isStudentMembershipApplicationFlow,
+  isStudentMemberLoginOAuthOutcome,
   persistMembershipSalesforceSession,
   clearMembershipApplicationPending,
+  clearStudentMembershipApplicationPending,
+  clearStudentMemberLoginPending,
+  isStudentMemberLoginPending,
   readMembershipApplicationCourseReturn,
 } from 'src/utils/membership-salesforce-session';
 import {
   redirectCaMemberToPlatform,
   tryCompleteCaMemberPlatformLogin,
 } from 'src/utils/membership-application-ca';
+import {
+  redirectStudentMemberToPlatform,
+  tryCompleteStudentMemberPlatformLogin,
+} from 'src/utils/membership-application-student';
 
 // ----------------------------------------------------------------------
 
@@ -82,6 +91,78 @@ async function finishRecognitionApplicationTab(router, searchParams, payload) {
   return true;
 }
 
+/** After student application submit — verify Student member class and sign into platform. */
+async function finishStudentMemberLoginTab(searchParams, payload) {
+  const socialToken = String(
+    payload?.socialToken || searchParams.get('socialAccessToken') || ''
+  ).trim();
+  if (!socialToken) {
+    return {
+      handled: true,
+      error: 'eServices session is missing. Please try signing in again.',
+    };
+  }
+
+  try {
+    const studentLogin = await tryCompleteStudentMemberPlatformLogin({
+      socialAccessToken: socialToken,
+      platformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
+      redirectTo: readMembershipApplicationCourseReturn() || paths.learning,
+    });
+    if (studentLogin.loggedIn && studentLogin.redirectTo) {
+      redirectStudentMemberToPlatform(studentLogin.redirectTo);
+      return { handled: true };
+    }
+
+    const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+    if (sf.accountId && socialToken) {
+      persistMembershipSalesforceSession({
+        accountId: sf.accountId,
+        socialToken,
+        memberClass: studentLogin.memberClass || sf.memberClass,
+        pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
+      });
+    }
+
+    return {
+      handled: true,
+      error:
+        studentLogin.message
+        || 'Student membership was not confirmed in eServices. Please try again after approval.',
+    };
+  } catch (err) {
+    return {
+      handled: true,
+      error:
+        err instanceof Error
+          ? err.message
+          : 'Student membership sign-in could not be completed. Please try again.',
+    };
+  }
+}
+
+/** Student membership pathway: save Salesforce session and open student application form. */
+async function finishStudentApplicationTab(router, searchParams, payload) {
+  const fromQuery = readSalesforceFlagsFromCallbackParams(searchParams);
+  const accountId = (payload?.accountId || fromQuery.accountId || '').trim();
+  if (!accountId) return false;
+
+  const socialToken = String(
+    payload?.socialToken || searchParams.get('socialAccessToken') || ''
+  ).trim();
+
+  persistMembershipSalesforceSession({
+    accountId,
+    socialToken,
+    memberClass: fromQuery.memberClass || undefined,
+    pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
+  });
+
+  clearStudentMembershipApplicationPending();
+  router.replace(paths.auth.membership.studentApplication);
+  return true;
+}
+
 function resolvePostLoginPath(searchParams) {
   const fromQuery = searchParams.get('returnTo');
   if (fromQuery) {
@@ -103,7 +184,35 @@ function resolvePostLoginPath(searchParams) {
   return null;
 }
 
-async function rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile = {}) {
+async function rejectScaqAndRedirectToPaidSignup(
+  router,
+  checkUserSession,
+  profile = {},
+  options = {},
+) {
+  const socialToken = String(
+    options.socialToken || options.socialAccessToken || ''
+  ).trim();
+
+  if (socialToken) {
+    try {
+      const studentLogin = await tryCompleteStudentMemberPlatformLogin({
+        socialAccessToken: socialToken,
+        platformAccessToken: String(options.pendingPlatformAccessToken || '').trim() || undefined,
+        redirectTo:
+          (options.searchParams ? resolvePostLoginPath(options.searchParams) : null)
+          || readMembershipApplicationCourseReturn()
+          || paths.learning,
+      });
+      if (studentLogin.loggedIn && studentLogin.redirectTo) {
+        redirectStudentMemberToPlatform(studentLogin.redirectTo);
+        return;
+      }
+    } catch {
+      // Not an approved student member — continue to paid signup.
+    }
+  }
+
   persistPaidSignupPrefillAfterScaqReject(profile);
 
   let returnTo = '';
@@ -134,17 +243,31 @@ async function handleNonScaqCandidateAfterSso(
   router,
   checkUserSession,
   searchParams,
-  { isSCAQCandidate, recognitionApplicationFlow, profile = {}, payload = {} }
+  {
+    isSCAQCandidate,
+    recognitionApplicationFlow,
+    studentApplicationFlow,
+    profile = {},
+    payload = {},
+  }
 ) {
   if (!shouldScaqRejectToPaidSignup(isSCAQCandidate)) {
     return false;
+  }
+
+  if (studentApplicationFlow) {
+    return await finishStudentApplicationTab(router, searchParams, payload);
   }
 
   if (recognitionApplicationFlow) {
     return await finishRecognitionApplicationTab(router, searchParams, payload);
   }
 
-  await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile);
+  await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile, {
+    socialToken: payload?.socialToken,
+    pendingPlatformAccessToken: payload?.pendingPlatformAccessToken,
+    searchParams,
+  });
   return true;
 }
 
@@ -194,23 +317,28 @@ export default function OAuthCallbackPage() {
 
       const scaqFlow = isScaqMembershipSsoFlow(searchParams);
       const recognitionApplicationFlow = isRecognitionMembershipApplicationFlow(searchParams);
+      const studentApplicationFlow = isStudentMembershipApplicationFlow(searchParams);
+      const studentMemberLoginFlow = isStudentMemberLoginOAuthOutcome(searchParams);
       const scaqProfileOnly = searchParams.get('scaqProfileOnly') === 'true';
 
       try {
         if (scaqProfileOnly) {
           const sf = readSalesforceFlagsFromCallbackParams(searchParams);
-          await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-            email: searchParams.get('email'),
-            firstName: searchParams.get('firstName'),
-            lastName: searchParams.get('lastName'),
-            salesforce: {
-              isSCAQCandidate: sf.isSCAQCandidate,
-              isAssociateMember: sf.isAssociateMember,
-              accountId: sf.accountId,
-              accountType: sf.accountType,
-              memberClass: sf.memberClass,
+          await rejectScaqAndRedirectToPaidSignup(
+            router,
+            checkUserSession,
+            {
+              email: searchParams.get('email'),
+              firstName: searchParams.get('firstName'),
+              lastName: searchParams.get('lastName'),
+              salesforce: sf,
             },
-          });
+            {
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken: searchParams.get('pendingPlatformAccessToken') || '',
+              searchParams,
+            }
+          );
           return;
         }
 
@@ -233,6 +361,20 @@ export default function OAuthCallbackPage() {
           const { user } = exchangeResult;
           const sf = readSalesforceFlagsFromSessionUser(user);
 
+          if (studentMemberLoginFlow) {
+            const studentLoginResult = await finishStudentMemberLoginTab(searchParams, {
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken: exchangeResult.accessToken || '',
+            });
+            if (studentLoginResult.handled) {
+              if (studentLoginResult.error) {
+                setError(studentLoginResult.error);
+                setLoading(false);
+              }
+              return;
+            }
+          }
+
           const handledNonScaq = await handleNonScaqCandidateAfterSso(
             router,
             checkUserSession,
@@ -240,6 +382,7 @@ export default function OAuthCallbackPage() {
             {
               isSCAQCandidate: sf.isSCAQCandidate,
               recognitionApplicationFlow,
+              studentApplicationFlow,
               profile: {
                 email: user?.email,
                 firstName: user?.firstname,
@@ -275,6 +418,20 @@ export default function OAuthCallbackPage() {
 
           const sf = readSalesforceFlagsFromCallbackParams(searchParams);
 
+          if (studentMemberLoginFlow) {
+            const studentLoginResult = await finishStudentMemberLoginTab(searchParams, {
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken: pendingToken,
+            });
+            if (studentLoginResult.handled) {
+              if (studentLoginResult.error) {
+                setError(studentLoginResult.error);
+                setLoading(false);
+              }
+              return;
+            }
+          }
+
           const handledNonScaq = await handleNonScaqCandidateAfterSso(
             router,
             checkUserSession,
@@ -282,6 +439,7 @@ export default function OAuthCallbackPage() {
             {
               isSCAQCandidate: sf.isSCAQCandidate,
               recognitionApplicationFlow,
+              studentApplicationFlow,
               profile: {
                 email: searchParams.get('email'),
                 firstName: searchParams.get('firstName'),
@@ -353,12 +511,22 @@ export default function OAuthCallbackPage() {
         }
 
         if (shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate)) {
-          await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-            email: searchParams.get('email'),
-            firstName: searchParams.get('firstName'),
-            lastName: searchParams.get('lastName'),
-            salesforce: sfAfterLogin,
-          });
+          await rejectScaqAndRedirectToPaidSignup(
+            router,
+            checkUserSession,
+            {
+              email: searchParams.get('email'),
+              firstName: searchParams.get('firstName'),
+              lastName: searchParams.get('lastName'),
+              salesforce: sfAfterLogin,
+            },
+            {
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken:
+                searchParams.get('pendingPlatformAccessToken') || accessToken || '',
+              searchParams,
+            }
+          );
           return;
         }
 
@@ -379,12 +547,21 @@ export default function OAuthCallbackPage() {
         if (scaqFlowOnError) {
           const sfOnError = readScaqFlagsFromOAuthCallback(searchParams);
           if (shouldScaqRejectToPaidSignup(sfOnError.isSCAQCandidate)) {
-            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-              email: searchParams.get('email'),
-              firstName: searchParams.get('firstName'),
-              lastName: searchParams.get('lastName'),
-              salesforce: sfOnError,
-            });
+            await rejectScaqAndRedirectToPaidSignup(
+              router,
+              checkUserSession,
+              {
+                email: searchParams.get('email'),
+                firstName: searchParams.get('firstName'),
+                lastName: searchParams.get('lastName'),
+                salesforce: sfOnError,
+              },
+              {
+                socialToken: searchParams.get('socialAccessToken') || '',
+                pendingPlatformAccessToken: searchParams.get('pendingPlatformAccessToken') || '',
+                searchParams,
+              }
+            );
             return;
           }
           try {
@@ -421,12 +598,30 @@ export default function OAuthCallbackPage() {
   }
 
   if (error) {
+    const studentLoginPending = isStudentMemberLoginPending();
     return (
-      <Stack spacing={2} sx={{ maxWidth: 480, mx: 'auto', mt: 8, p: 3 }}>
+      <Stack spacing={2} sx={{ maxWidth: 520, mx: 'auto', mt: 8, p: 3 }}>
         <Alert severity="error">{error}</Alert>
-        <Button component={RouterLink} href={paths.auth.simple.signIn} variant="contained" size="medium">
-          Back to sign in
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          {studentLoginPending && (
+            <Button
+              component={RouterLink}
+              href={paths.auth.membership.studentApplication}
+              variant="contained"
+              size="medium"
+            >
+              Back to student application
+            </Button>
+          )}
+          <Button
+            component={RouterLink}
+            href={paths.auth.simple.signIn}
+            variant={studentLoginPending ? 'outlined' : 'contained'}
+            size="medium"
+          >
+            Go to sign in page
+          </Button>
+        </Stack>
       </Stack>
     );
   }

@@ -28,8 +28,11 @@ import { paths } from 'src/routes/paths';
 import {
   readMembershipSalesforceSession,
   buildMembershipApplicationOAuthStartUrl,
+  buildStudentMembershipApplicationOAuthStartUrl,
   buildMembershipSalesforceCreateUrl,
+  buildStudentMembershipSalesforceCreateUrl,
   openRecognitionMembershipApplicationPage,
+  openStudentMembershipApplicationPage,
   MEMBERSHIP_SALESFORCE_SESSION_READY,
   MEMBERSHIP_SALESFORCE_SESSION_KEY,
   clearMembershipApplicationPending,
@@ -64,6 +67,7 @@ import {
   getHomeFluencyPathwayOptions,
   getHomeFluencyProgressMeta,
   isHomeCaDirectSalesforceFlow,
+  isHomeStudentMembershipApplicationFlow,
 } from './home-fluency-flow';
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
@@ -652,6 +656,9 @@ function getRequirementLabel(state, step) {
     ) {
       return 'Chartered Accountant (CA) Pathway';
     }
+    if (isHomeStudentMembershipApplicationFlow(state) && step === 'salesforce-account-choice') {
+      return 'ISCA Student Membership';
+    }
     return labelsByStep[step] || 'AI Fluency eligibility check';
   }
 
@@ -1036,7 +1043,23 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     setFlowState((prev) => ({ ...prev, salesforceMembershipAccountCreated: true }));
   };
 
+  const openStudentMembershipApplicationFromDialog = () => {
+    try {
+      const courseReturn = `${window.location.pathname}${window.location.search || ''}`;
+      saveMembershipApplicationCourseReturn(courseReturn);
+    } catch {
+      // ignore
+    }
+    onClose?.();
+    openStudentMembershipApplicationPage(paths.auth.membership.studentApplication);
+  };
+
   const handleResultAction = () => {
+    if (result?.actionTarget === 'student-application') {
+      openStudentMembershipApplicationFromDialog();
+      onContinue?.({ flow: flowState, result });
+      return;
+    }
     onContinue?.({ flow: flowState, result });
   };
 
@@ -1065,13 +1088,21 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       // ignore
     }
 
+    const isStudentMembershipFlow = isHomeStudentMembershipApplicationFlow(flowState);
     const url =
       choice === 'create'
-        ? buildMembershipSalesforceCreateUrl(paths.auth.membership.salesforceCreate)
-        : buildMembershipApplicationOAuthStartUrl(
-            paths.auth.oauth.start,
-            paths.auth.membership.salesforceBridge
-          );
+        ? (isStudentMembershipFlow
+          ? buildStudentMembershipSalesforceCreateUrl(paths.auth.membership.salesforceCreate)
+          : buildMembershipSalesforceCreateUrl(paths.auth.membership.salesforceCreate))
+        : (isStudentMembershipFlow
+          ? buildStudentMembershipApplicationOAuthStartUrl(
+              paths.auth.oauth.start,
+              paths.auth.membership.salesforceBridge
+            )
+          : buildMembershipApplicationOAuthStartUrl(
+              paths.auth.oauth.start,
+              paths.auth.membership.salesforceBridge
+            ));
 
     setFlowState((prev) => ({
       ...prev,
@@ -1082,6 +1113,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   };
 
   const selectSalesforceAccountChoice = (choice) => {
+    if (isHomeStudentMembershipApplicationFlow(flowState)) {
+      openStudentMembershipApplicationFromDialog();
+      return;
+    }
     if (flowState.eligibilityType === 'recognition' || isHomeCaDirectSalesforceFlow(flowState)) {
       openSalesforceMembershipTab(choice);
       return;
@@ -1096,6 +1131,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   const resultCtaLabel = salesforceAccountReady ? 'Login with Eservices' : result.ctaLabel;
 
   const openMembershipApplicationPage = () => {
+    if (isHomeStudentMembershipApplicationFlow(flowState)) {
+      openStudentMembershipApplicationPage(paths.auth.membership.studentApplication);
+      return;
+    }
     openRecognitionMembershipApplicationPage(paths.auth.membership.application);
   };
 
@@ -1181,6 +1220,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     if (value === false) {
       resetStudentVerificationState();
     }
+
+    const isHomeStudentApplication =
+      value === false
+      && entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED
+      && flowState.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.STUDENT
+      && flowState.homeFinalYearAccountancyStudent === false;
+
     setFlowState((prev) => ({
       ...prev,
       homeStudentOrAssociateMember: value,
@@ -1199,6 +1245,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
           }
         : {}),
     }));
+
+    if (isHomeStudentApplication) {
+      try {
+        const courseReturn = `${window.location.pathname}${window.location.search || ''}`;
+        saveMembershipApplicationCourseReturn(courseReturn);
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const selectHomeProfessionalIscaMember = (value) => {
@@ -5253,16 +5308,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         {step === 'salesforce-account-choice' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              {isHomeCaDirectSalesforceFlow(flowState)
-                ? 'Chartered Accountant (CA) Pathway'
-                : 'Salesforce membership account'}
+              {isHomeStudentMembershipApplicationFlow(flowState)
+                ? 'ISCA Student Membership'
+                : isHomeCaDirectSalesforceFlow(flowState)
+                  ? 'Chartered Accountant (CA) Pathway'
+                  : 'Salesforce membership account'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
-              {isHomeCaDirectSalesforceFlow(flowState)
-                ? 'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your CA membership application.'
-                : 'Create a new ISCA Salesforce membership account, or sign in if you already have one.'}
+              {isHomeStudentMembershipApplicationFlow(flowState)
+                ? 'Apply for ISCA Student Membership. Once membership is approved, you may register for the ISCA AI Fluency programme.'
+                : isHomeCaDirectSalesforceFlow(flowState)
+                  ? 'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your CA membership application.'
+                  : 'Create a new ISCA Salesforce membership account, or sign in if you already have one.'}
             </Typography>
-            {flowState.salesforceSessionReady && (
+            {flowState.salesforceSessionReady && !isHomeStudentMembershipApplicationFlow(flowState) && (
               <Alert severity="success">
                 Salesforce account linked. Continue to the membership application using the button below.
               </Alert>
@@ -5313,7 +5372,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, pt: 1, justifyContent: 'flex-end', gap: 1 }}>
-        {step === 'salesforce-account-choice' && !flowState.salesforceSessionReady && (
+        {step === 'salesforce-account-choice' && isHomeStudentMembershipApplicationFlow(flowState) && (
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={openStudentMembershipApplicationFromDialog}
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            Open student membership application
+          </Button>
+        )}
+        {step === 'salesforce-account-choice'
+          && !isHomeStudentMembershipApplicationFlow(flowState)
+          && !flowState.salesforceSessionReady && (
           <>
             <Button
               variant="contained"
@@ -5335,7 +5407,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             </Button>
           </>
         )}
-        {step === 'salesforce-account-choice' && flowState.salesforceSessionReady && (
+        {step === 'salesforce-account-choice'
+          && !isHomeStudentMembershipApplicationFlow(flowState)
+          && flowState.salesforceSessionReady && (
           <Button
             variant="contained"
             color="primary"
@@ -5343,7 +5417,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             onClick={openMembershipApplicationPage}
             sx={{ textTransform: 'none', fontWeight: 700 }}
           >
-            Open membership application
+            {isHomeStudentMembershipApplicationFlow(flowState)
+              ? 'Open student membership application'
+              : 'Open membership application'}
           </Button>
         )}
         {step === 'result' && (

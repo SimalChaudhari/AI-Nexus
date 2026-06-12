@@ -12,8 +12,14 @@ import { getOAuthAuthUrl } from 'src/auth/context/jwt';
 import { POST_OAUTH_RETURN_TO_KEY, setScaqSsoVerificationPending } from 'src/utils/membership-eligibility-sso';
 import {
   MEMBERSHIP_APPLICATION_OUTCOME,
+  STUDENT_MEMBERSHIP_APPLICATION_OUTCOME,
+  STUDENT_MEMBER_LOGIN_OUTCOME,
   setMembershipApplicationPending,
   clearMembershipApplicationPending,
+  setStudentMembershipApplicationPending,
+  clearStudentMembershipApplicationPending,
+  setStudentMemberLoginPending,
+  clearStudentMemberLoginPending,
   saveMembershipApplicationCourseReturn,
 } from 'src/utils/membership-salesforce-session';
 
@@ -36,15 +42,37 @@ export default function OAuthStartPage() {
         const isRecognitionApplication =
           membershipOutcome === MEMBERSHIP_APPLICATION_OUTCOME
           || params.get('eligibilityType') === 'recognition';
+        const isStudentApplication =
+          membershipOutcome === STUDENT_MEMBERSHIP_APPLICATION_OUTCOME
+          || (params.get('eligibilityType') === 'student'
+            && membershipOutcome !== STUDENT_MEMBER_LOGIN_OUTCOME);
+        const isStudentMemberLogin = membershipOutcome === STUDENT_MEMBER_LOGIN_OUTCOME;
+        const isDeferredMembershipApplication =
+          isRecognitionApplication || isStudentApplication || isStudentMemberLogin;
 
-        if (isRecognitionApplication) {
+        if (isStudentMemberLogin) {
+          setStudentMemberLoginPending();
+          clearStudentMembershipApplicationPending();
+          clearMembershipApplicationPending();
+        } else if (isStudentApplication) {
+          clearStudentMemberLoginPending();
+          setStudentMembershipApplicationPending();
+          clearMembershipApplicationPending();
+        } else if (isRecognitionApplication) {
           setMembershipApplicationPending();
+          clearStudentMembershipApplicationPending();
+          clearStudentMemberLoginPending();
+        } else {
+          clearMembershipApplicationPending();
+          clearStudentMembershipApplicationPending();
+          clearStudentMemberLoginPending();
+        }
+
+        if (isDeferredMembershipApplication) {
           const existingCourseReturn = sessionStorage.getItem(POST_OAUTH_RETURN_TO_KEY) || '';
           if (existingCourseReturn && !existingCourseReturn.includes('/salesforce-bridge')) {
             saveMembershipApplicationCourseReturn(existingCourseReturn);
           }
-        } else {
-          clearMembershipApplicationPending();
         }
 
         const returnTo = params.get('returnTo');
@@ -57,7 +85,7 @@ export default function OAuthStartPage() {
         }
 
         const scaqVerify = params.get('membershipOutcome') === 'scaq-sso-verify';
-        const { authUrl } = await getOAuthAuthUrl({ scaqVerify, deferredAuth: isRecognitionApplication });
+        const { authUrl } = await getOAuthAuthUrl({ scaqVerify, deferredAuth: isDeferredMembershipApplication });
         if (cancelled) return;
         if (authUrl && (authUrl.startsWith('http://') || authUrl.startsWith('https://'))) {
           window.location.href = authUrl;

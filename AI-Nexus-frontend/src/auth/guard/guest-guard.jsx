@@ -41,6 +41,7 @@ export function GuestGuard({ children }) {
       // Recognition membership tab: stay on application form; do not redirect to /home.
       if (
         pathname?.includes('/auth/membership/application')
+        || pathname?.includes('/auth/membership/student-application')
         || pathname?.includes('/auth/membership/salesforce-bridge')
         || pathname?.includes('/auth/membership/salesforce-create')
         || isMembershipApplicationPending()

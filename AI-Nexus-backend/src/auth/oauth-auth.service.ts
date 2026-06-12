@@ -10,6 +10,10 @@ import {
   buildOAuthApplicationApiUrl,
   type OAuthApplicationApiRouteKey,
 } from '../config/oauth-application-api.config';
+import {
+  buildOAuthStudentMembershipApiUrl,
+  type OAuthStudentMembershipApiRouteKey,
+} from '../config/oauth-student-membership-api.config';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -41,6 +45,7 @@ export interface SalesforceMemberClassUpdateResult {
 export interface SalesforceNexusUserInfo {
   username?: string;
   memberClass?: string;
+  membershipStatus?: string;
   lastName?: string;
   firstName?: string;
   accountType?: string;
@@ -73,6 +78,7 @@ export interface OAuthProfileOnlyResult {
   salesforceAccountId: string;
   salesforceAccountType: string;
   salesforceMemberClass: string;
+  salesforceMembershipStatus: string;
 }
 
 export type OAuthCallbackResolution =
@@ -267,6 +273,155 @@ export class OAuthAuthService {
     return this.resolveApplicationApiUrl('createBilling');
   }
 
+  private resolveStudentMembershipApiUrl(
+    route: OAuthStudentMembershipApiRouteKey,
+    applicationId?: string,
+  ): string {
+    return buildOAuthStudentMembershipApiUrl(route, {
+      siteBaseUrl: process.env.OAUTH_INSTANCE_URL?.trim(),
+      integrationBaseUrl: this.integrationApiBaseUrl,
+      applicationId,
+    });
+  }
+
+  private async resolveStudentMembershipBearerToken(socialAccessToken?: string): Promise<string> {
+    const social = String(socialAccessToken || '').trim();
+    if (social) return social;
+    return this.getIntegrationAccessToken();
+  }
+
+  private async callSalesforceStudentMembershipApi(
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+    url: string,
+    socialAccessToken: string | undefined,
+    body: Record<string, unknown> | undefined,
+    logLabel: string,
+    errorMessage: string,
+  ): Promise<Record<string, unknown>> {
+    const token = await this.resolveStudentMembershipBearerToken(socialAccessToken);
+
+    console.log(`[Salesforce] ${logLabel}:`, { url, method, applicationId: body?.applicationId });
+
+    try {
+      const res = await axios.request<Record<string, unknown>>({
+        method,
+        url,
+        data: body,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error(`[Salesforce] ${logLabel} failed:`, {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        this.throwMappedSalesforceApplicationApiError(err, errorMessage);
+      }
+      throw err;
+    }
+  }
+
+  /** POST student-membership/application — create student membership application. */
+  async createStudentMembershipApplication(
+    socialAccessToken: string | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const url = this.resolveStudentMembershipApiUrl('application');
+    return this.callSalesforceStudentMembershipApi(
+      'POST',
+      url,
+      socialAccessToken,
+      payload,
+      'createStudentMembershipApplication',
+      'Failed to create student membership application in Salesforce.',
+    );
+  }
+
+  /** PUT student-membership/updateapplication/{id} */
+  async updateStudentMembershipApplication(
+    socialAccessToken: string | undefined,
+    applicationId: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const id = String(applicationId || '').trim();
+    if (!id) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    const url = this.resolveStudentMembershipApiUrl('updateApplication', id);
+    return this.callSalesforceStudentMembershipApi(
+      'PUT',
+      url,
+      socialAccessToken,
+      payload,
+      'updateStudentMembershipApplication',
+      'Failed to update student membership application in Salesforce.',
+    );
+  }
+
+  /** PATCH student-membership/applicationsubmit/{id} */
+  async submitStudentMembershipApplication(
+    socialAccessToken: string | undefined,
+    applicationId: string,
+    payload: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
+    const id = String(applicationId || '').trim();
+    if (!id) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    const url = this.resolveStudentMembershipApiUrl('submitApplication', id);
+    return this.callSalesforceStudentMembershipApi(
+      'PATCH',
+      url,
+      socialAccessToken,
+      Object.keys(payload).length ? payload : undefined,
+      'submitStudentMembershipApplication',
+      'Failed to submit student membership application in Salesforce.',
+    );
+  }
+
+  /** POST student-membership/usercheck */
+  async checkStudentMembershipUser(
+    socialAccessToken: string | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const url = this.resolveStudentMembershipApiUrl('userCheck');
+    return this.callSalesforceStudentMembershipApi(
+      'POST',
+      url,
+      socialAccessToken,
+      payload,
+      'checkStudentMembershipUser',
+      'Failed to check student membership user in Salesforce.',
+    );
+  }
+
+  /** GET student-membership/getapplicationdetails/{id} */
+  async getStudentMembershipApplicationDetails(
+    socialAccessToken: string | undefined,
+    applicationId: string,
+  ): Promise<Record<string, unknown>> {
+    const id = String(applicationId || '').trim();
+    if (!id) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    const url = this.resolveStudentMembershipApiUrl('getApplicationDetails', id);
+    return this.callSalesforceStudentMembershipApi(
+      'GET',
+      url,
+      socialAccessToken,
+      undefined,
+      'getStudentMembershipApplicationDetails',
+      'Failed to load student membership application details from Salesforce.',
+    );
+  }
+
   /** Token endpoint for integration (password grant); defaults to OAUTH_INSTANCE_URL + path. */
   private get integrationTokenUrl(): string {
     const explicit = process.env.OAUTH_INTEGRATION_TOKEN_URL?.trim();
@@ -405,6 +560,7 @@ export class OAuthAuthService {
           salesforceAccountId: nexusInfo?.accountID || '',
           salesforceAccountType: nexusInfo?.accountType || '',
           salesforceMemberClass: nexusInfo?.memberClass || '',
+          salesforceMembershipStatus: String(nexusInfo?.membershipStatus || '').trim(),
         },
       };
     }
@@ -425,6 +581,7 @@ export class OAuthAuthService {
       salesforceAccountId: profile.salesforceAccountId,
       salesforceAccountType: profile.salesforceAccountType,
       salesforceMemberClass: profile.salesforceMemberClass,
+      salesforceMembershipStatus: profile.salesforceMembershipStatus,
       isSCAQCandidate: profile.isSCAQCandidate === null ? '' : String(profile.isSCAQCandidate),
       isAssociateMember: profile.isAssociateMember === null ? '' : String(profile.isAssociateMember),
     };
@@ -834,6 +991,37 @@ export class OAuthAuthService {
     );
   }
 
+  private extractSalesforceErrorDescription(data: unknown, fallbackMessage: string): string {
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0] as Record<string, unknown>;
+      const message = String(first?.message || '').trim();
+      if (message) {
+        const picklistMatch = message.match(
+          /INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST,\s*([^:]+):\s*bad value for restricted picklist field:\s*([^:\[]+)/i,
+        );
+        if (picklistMatch) {
+          const field = picklistMatch[1].trim();
+          const value = picklistMatch[2].trim();
+          return `${field}: "${value}" is not a valid option. Please update the form and try again.`;
+        }
+        return message;
+      }
+    }
+
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const record = data as Record<string, unknown>;
+      return String(
+        record.message
+          || record.errorDetails
+          || record.error_description
+          || record.error
+          || '',
+      ).trim();
+    }
+
+    return fallbackMessage;
+  }
+
   private throwMappedSalesforceApplicationApiError(
     err: unknown,
     fallbackMessage: string,
@@ -842,12 +1030,9 @@ export class OAuthAuthService {
       throw err;
     }
 
-    const data = err.response?.data as Record<string, unknown> | undefined;
+    const data = err.response?.data;
     const description = String(
-      data?.message
-        || data?.errorDetails
-        || data?.error_description
-        || data?.error
+      this.extractSalesforceErrorDescription(data, '')
         || err.message
         || '',
     ).trim();
@@ -1317,6 +1502,27 @@ export class OAuthAuthService {
     return normalized === 'CA' || normalized === 'CHARTERED ACCOUNTANT';
   }
 
+  /** True when Salesforce nexus userinfo reports ISCA Student Member class. */
+  isSalesforceStudentMemberClass(memberClass: string | null | undefined): boolean {
+    const normalized = String(memberClass || '').trim().toUpperCase();
+    if (!normalized || normalized.includes('NON')) return false;
+    return normalized === 'STUDENT MEMBER' || normalized.includes('STUDENT');
+  }
+
+  isSalesforceMembershipStatusApproved(membershipStatus: string | null | undefined): boolean {
+    return String(membershipStatus || '').trim().toLowerCase() === 'approved';
+  }
+
+  isApprovedSalesforceStudentMember(nexusInfo: SalesforceNexusUserInfo | null | undefined): boolean {
+    if (!nexusInfo || typeof nexusInfo !== 'object') return false;
+    const memberClass = String(nexusInfo.memberClass || '').trim();
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim();
+    return (
+      this.isSalesforceStudentMemberClass(memberClass)
+      && this.isSalesforceMembershipStatusApproved(membershipStatus)
+    );
+  }
+
   /**
    * Membership application: load nexus userinfo with the eServices social token.
    * Throws when the token is invalid or Salesforce does not return profile data.
@@ -1354,6 +1560,30 @@ export class OAuthAuthService {
     const idpUserInfo = await this.getUserInfo(token);
     const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
     return { isCaMember: true, memberClass, nexusInfo, accessToken };
+  }
+
+  /**
+   * When memberClass is Student, sync the platform user and return a JWT for establish-session.
+   */
+  async resolveStudentMemberLoginFromSocialToken(socialAccessToken: string): Promise<{
+    isStudentMember: boolean;
+    memberClass: string | null;
+    membershipStatus?: string | null;
+    nexusInfo: SalesforceNexusUserInfo;
+    accessToken?: string;
+  }> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
+    const nexusInfo = await this.fetchMembershipNexusUserInfoForApplication(token);
+    const memberClass = String(nexusInfo.memberClass || '').trim() || null;
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim() || null;
+
+    if (!this.isApprovedSalesforceStudentMember(nexusInfo)) {
+      return { isStudentMember: false, memberClass, nexusInfo, membershipStatus };
+    }
+
+    const idpUserInfo = await this.getUserInfo(token);
+    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    return { isStudentMember: true, memberClass, nexusInfo, accessToken, membershipStatus };
   }
 
   async fetchSalesforceNexusUserInfo(accessToken: string): Promise<SalesforceNexusUserInfo | null> {

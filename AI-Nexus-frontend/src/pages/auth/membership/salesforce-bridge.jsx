@@ -11,6 +11,8 @@ import {
   persistMembershipSalesforceSession,
   notifyMembershipSalesforceSessionReady,
   isRecognitionMembershipApplicationFlow,
+  isStudentMembershipApplicationFlow,
+  clearStudentMembershipApplicationPending,
 } from 'src/utils/membership-salesforce-session';
 import { clearMembershipApplicationDraftOnSsoReturn } from 'src/utils/membership-salesforce-auth';
 import {
@@ -48,6 +50,7 @@ export default function MembershipSalesforceBridgePage() {
     ).trim();
     const callbackSf = readSalesforceFlagsFromCallbackParams(searchParams);
     const isRecognitionApplication = isRecognitionMembershipApplicationFlow(searchParams);
+    const isStudentApplication = isStudentMembershipApplicationFlow(searchParams);
 
     if (!accountId) {
       setMessage('Salesforce account ID was not returned. Go back and try signing in again.');
@@ -64,6 +67,13 @@ export default function MembershipSalesforceBridgePage() {
     });
 
     clearMembershipApplicationDraftOnSsoReturn();
+
+    if (isStudentApplication) {
+      setMessage('Salesforce account linked. Opening student membership application…');
+      clearStudentMembershipApplicationPending();
+      router.replace(paths.auth.membership.studentApplication);
+      return undefined;
+    }
 
     if (isRecognitionApplication) {
       setMessage('Checking your ISCA membership status…');
