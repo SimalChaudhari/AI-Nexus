@@ -31,6 +31,7 @@ import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
 import { LocalStorageService } from '../service/local-storage.service';
+import { SpotlightrService } from '../service/spotlightr.service';
 import { CourseModuleService } from './course-module.service';
 import { CreateCourseModuleDto, UpdateCourseModuleDto } from './course-module.dto';
 import { CourseModuleSectionService } from './course-module-section.service';
@@ -240,6 +241,7 @@ export class CourseController {
     constructor(
         private readonly courseService: CourseService,
         private readonly localStorageService: LocalStorageService,
+        private readonly spotlightrService: SpotlightrService,
         private readonly courseModuleService: CourseModuleService,
         private readonly courseModuleSectionService: CourseModuleSectionService,
         private readonly courseWatchProgressService: CourseWatchProgressService,
@@ -1517,8 +1519,15 @@ export class CourseController {
                 message: 'No video uploaded',
             });
         }
-        const url = await this.localStorageService.saveFile(file, 'course-section-video');
-        return response.status(HttpStatus.OK).json({ data: { url } });
+        try {
+            const url = this.spotlightrService.isConfigured()
+                ? await this.spotlightrService.uploadVideo(file)
+                : await this.localStorageService.saveFile(file, 'course-section-video');
+            return response.status(HttpStatus.OK).json({ data: { url } });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Video upload failed';
+            return response.status(HttpStatus.BAD_GATEWAY).json({ message });
+        }
     }
 
     @Post('modules/sections/upload-files')

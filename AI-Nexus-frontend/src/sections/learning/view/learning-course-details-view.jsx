@@ -34,6 +34,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import { toast } from 'src/components/snackbar';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
+import { isSpotlightrUrl } from 'src/utils/spotlightr';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
@@ -1163,6 +1164,10 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                                   section.videoUrl
                                   && (section.videoUrl.includes('youtube.com') || section.videoUrl.includes('youtu.be'))
                                 );
+                                const isSpotlightrVideo = Boolean(
+                                  section.videoUrl && isSpotlightrUrl(section.videoUrl)
+                                );
+                                const isEmbeddedVideo = isYouTubeVideo || isSpotlightrVideo;
                                 const fallbackPreviewImage = course?.image || DEFAULT_COURSE_IMAGE;
                                 const previewImage = hasImages ? section.images[0] : fallbackPreviewImage;
                                 const mediaLabel = hasVideo
@@ -1218,7 +1223,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                                     flexShrink: 0,
                                   }}
                                 >
-                                  {hasVideo && !isYouTubeVideo ? (
+                                  {hasVideo && !isEmbeddedVideo ? (
                                     <Box
                                       component="video"
                                       src={section.videoUrl}
@@ -1226,6 +1231,11 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                                       preload="metadata"
                                       sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     />
+                                  ) : hasVideo && isEmbeddedVideo ? (
+                                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                                      <Iconify icon="solar:video-frame-bold" width={16} sx={{ color: 'common.white' }} />
+                                      <Iconify icon="solar:play-bold" width={14} sx={{ color: 'common.white' }} />
+                                    </Stack>
                                   ) : (
                                     <Box
                                       component="img"

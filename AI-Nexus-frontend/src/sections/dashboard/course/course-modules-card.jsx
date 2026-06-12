@@ -28,6 +28,10 @@ import { Editor } from 'src/components/editor';
 import { Upload } from 'src/components/upload';
 import { RichTextContent } from 'src/components/html-content';
 import { courseService } from 'src/services/course.service';
+import { SpotlightrVideoIframe } from 'src/components/spotlightr-video-iframe/spotlightr-video-iframe';
+import { isSpotlightrUrl } from 'src/utils/spotlightr';
+import { getVideoSourceKind } from 'src/utils/video-source';
+import { getYouTubeEmbedUrl } from 'src/utils/youtube';
 
 function nextTempId() {
   return `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -62,14 +66,6 @@ function getSectionPreviewType(section) {
   if (Array.isArray(section?.images) && section.images.length > 0) return 'images';
   if (Array.isArray(section?.attachments) && section.attachments.length > 0) return 'files';
   return 'text';
-}
-
-function getYouTubeEmbedUrl(url) {
-  if (!url || typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  if (!trimmed.includes('youtube.com') && !trimmed.includes('youtu.be')) return null;
-  const match = trimmed.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/)([^&?]+)/);
-  return match ? `https://www.youtube-nocookie.com/embed/${match[1]}` : null;
 }
 
 function normalizeWatchtime(value) {
@@ -155,6 +151,7 @@ function SectionPreviewContent({ section }) {
   if (type === 'video') {
     const url = (section.videoUrl || '').trim();
     const embedUrl = getYouTubeEmbedUrl(url);
+    const spotlightr = isSpotlightrUrl(url);
 
     return (
       <Stack spacing={0}>
@@ -185,6 +182,16 @@ function SectionPreviewContent({ section }) {
               }}
             />
           </Box>
+        ) : spotlightr ? (
+          <SpotlightrVideoIframe
+            url={url}
+            title="Video preview"
+            framed
+            sx={{
+              borderRadius: 1,
+              border: '1px solid rgba(255,255,255,0.12)',
+            }}
+          />
         ) : url ? (
           <Box
             component="video"
@@ -502,6 +509,13 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
         return;
       }
 
+      if (isSpotlightrUrl(trimmedUrl)) {
+        setDetectingVideoDuration(false);
+        setDetectedVideoDurationSeconds(null);
+        setVideoDurationError('Duration auto-detect is unavailable for Spotlightr links. Set watchtime manually.');
+        return;
+      }
+
       setDetectingVideoDuration(true);
       setVideoDurationError('');
       try {
@@ -777,6 +791,16 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
       toast.error('Enter a video URL or upload a video file');
       return;
     }
+    const trimmedVideoUrl = (sectionVideoUrl || '').trim();
+    if (
+      sectionMediaType === 'video' &&
+      trimmedVideoUrl &&
+      (trimmedVideoUrl.includes('youtube') || trimmedVideoUrl.includes('youtu.be')) &&
+      !getYouTubeEmbedUrl(trimmedVideoUrl)
+    ) {
+      toast.error('Invalid YouTube URL. Use https://www.youtube.com/watch?v=VIDEO_ID');
+      return;
+    }
     if (sectionMediaType === 'content' && !(sectionContent || '').trim()) {
       toast.error('Add some content or switch to Video URL');
       return;
@@ -807,11 +831,21 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
             ? learningMaterials
             : undefined,
       };
-      if (sectionMediaType === 'video' && sectionVideoFile instanceof File) {
+      const pastedVideoUrl = (sectionVideoUrl || '').trim();
+      const pastedIsExternal =
+        pastedVideoUrl && (getYouTubeEmbedUrl(pastedVideoUrl) || isSpotlightrUrl(pastedVideoUrl));
+
+      if (
+        sectionMediaType === 'video' &&
+        sectionVideoFile instanceof File &&
+        !pastedIsExternal
+      ) {
         payload.videoUrl = await courseService.uploadSectionVideo(sectionVideoFile);
         if (!payload.videoUrl) {
           throw new Error('Video upload failed. Please try again.');
         }
+      } else if (sectionMediaType === 'video' && pastedVideoUrl) {
+        payload.videoUrl = pastedVideoUrl;
       }
       if (sectionMediaType === 'video') {
         const combinedWatchtime =
@@ -1112,7 +1146,9 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                                   openPreview(sec);
                                 }}
                               >
-                                {sec.videoUrl && !getYouTubeEmbedUrl(sec.videoUrl) ? (
+                                {sec.videoUrl
+                                && !getYouTubeEmbedUrl(sec.videoUrl)
+                                && !isSpotlightrUrl(sec.videoUrl) ? (
                                   <Box
                                     component="video"
                                     src={sec.videoUrl}
@@ -1120,7 +1156,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                                     preload="metadata"
                                     sx={{ width: '100%', height: '100%', objectFit: 'contain', bgcolor: 'common.black' }}
                                   />
-                                ) : sec.videoUrl && getYouTubeEmbedUrl(sec.videoUrl) ? (
+                                ) : sec.videoUrl
+                                && (getYouTubeEmbedUrl(sec.videoUrl) || isSpotlightrUrl(sec.videoUrl)) ? (
                                   <Iconify icon="solar:video-frame-bold" width={22} sx={{ color: 'common.white' }} />
                                 ) : Array.isArray(sec.images) && sec.images[0] ? (
                                   <Box
@@ -1409,6 +1446,27 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                           }}
                         />
                       </Box>
+                    ) : isSpotlightrUrl(sectionVideoUrl.trim()) ? (
+                      <Box sx={{ position: 'absolute', inset: 0 }}>
+                        <SpotlightrVideoIframe url={sectionVideoUrl.trim()} title="Section video preview" />
+                      </Box>
+                    ) : (sectionVideoUrl.trim().includes('youtube') || sectionVideoUrl.trim().includes('youtu.be')) ? (
+                      <Stack
+                        alignItems="center"
+                        justifyContent="center"
+                        sx={{
+                          position: 'absolute',
+                          inset: 0,
+                          px: 2,
+                          bgcolor: 'grey.900',
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ color: 'common.white', textAlign: 'center' }}>
+                          Could not preview this YouTube link. Use format:
+                          {' '}
+                          https://www.youtube.com/watch?v=VIDEO_ID
+                        </Typography>
+                      </Stack>
                     ) : (
                       <Box
                         component="video"
@@ -1429,9 +1487,24 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                 <TextField
                   label="Video URL"
                   value={sectionVideoUrl}
-                  onChange={(e) => setSectionVideoUrl(e.target.value)}
-                  placeholder="Optional: YouTube or video URL"
-                  disabled={Boolean(editingSection && (sectionVideoPreviewUrl || sectionVideoUrl.trim()))}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setSectionVideoUrl(next);
+                    if (next.trim()) {
+                      setSectionVideoFile(null);
+                    }
+                  }}
+                  placeholder="YouTube link, Spotlightr watch link, or leave empty to upload a file"
+                  helperText={
+                    sectionVideoUrl.trim()
+                      ? {
+                          youtube: 'YouTube link — plays in the course player with progress tracking.',
+                          spotlightr: 'Spotlightr link — plays in the embedded Spotlightr player.',
+                          native: 'Direct video URL — plays as MP4 in the course player.',
+                        }[getVideoSourceKind(sectionVideoUrl)] || 'Video URL'
+                      : 'Paste a YouTube or Spotlightr watch URL, or upload a video file below (uploads go to Spotlightr when configured).'
+                  }
+                  disabled={Boolean(editingSection && sectionVideoPreviewUrl)}
                   fullWidth
                 />
                 <Box
@@ -1451,7 +1524,10 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                         accept=".mp4,.webm,.mov,.avi,.mkv,video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska"
                         onChange={(event) => {
                           const file = event.target.files?.[0];
-                          if (file) setSectionVideoFile(file);
+                          if (file) {
+                            setSectionVideoFile(file);
+                            setSectionVideoUrl('');
+                          }
                           event.target.value = '';
                         }}
                       />

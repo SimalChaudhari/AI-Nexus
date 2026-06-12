@@ -8,6 +8,8 @@ import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
 
+import { SpotlightrVideoIframe } from 'src/components/spotlightr-video-iframe/spotlightr-video-iframe';
+import { isSpotlightrUrl } from 'src/utils/spotlightr';
 import { getYouTubeEmbedUrl } from 'src/utils/youtube';
 
 // ----------------------------------------------------------------------
@@ -21,6 +23,7 @@ import { getYouTubeEmbedUrl } from 'src/utils/youtube';
  */
 export function CourseVideoDialog({ open, onClose, title, videoUrl }) {
   const embedUrl = videoUrl ? getYouTubeEmbedUrl(videoUrl) : null;
+  const spotlightr = videoUrl ? isSpotlightrUrl(videoUrl) : false;
 
   return (
     <Dialog
@@ -76,6 +79,8 @@ export function CourseVideoDialog({ open, onClose, title, videoUrl }) {
               allowFullScreen
             />
           </Box>
+        ) : spotlightr ? (
+          <SpotlightrVideoIframe url={videoUrl} title="Course video" framed />
         ) : (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>

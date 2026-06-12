@@ -3,15 +3,18 @@ import { useTheme } from '@mui/material/styles';
 
 import {
   getLessonMediaFrameSx,
+  getLessonVideoSurfaceSx,
   LESSON_MEDIA_FRAME_HEIGHT,
 } from 'src/sections/learning/utils/player-responsive-type';
 
 export function LessonVideoPlayer({
   embedUrl,
+  spotlightrMeta,
   videoSrc,
   videoPoster,
   videoRef,
   youtubeContainerRef,
+  spotlightrContainerRef,
   lockedOverlay,
   frameHeight = LESSON_MEDIA_FRAME_HEIGHT,
   onLoadedMetadata,
@@ -28,7 +31,9 @@ export function LessonVideoPlayer({
   return (
     <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
       {embedUrl ? (
-        <Box ref={youtubeContainerRef} sx={{ width: '100%', height: '100%' }} />
+        <Box ref={youtubeContainerRef} sx={getLessonVideoSurfaceSx()} />
+      ) : spotlightrMeta ? (
+        <Box ref={spotlightrContainerRef} sx={getLessonVideoSurfaceSx()} />
       ) : videoSrc ? (
         <Box
           component="video"
@@ -65,7 +70,10 @@ export function LessonVideoPlayer({
               event.stopPropagation();
             }
           }}
-          sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          sx={{
+            ...getLessonVideoSurfaceSx(),
+            objectFit: 'contain',
+          }}
         >
           <source src={videoSrc} type="video/mp4" />
         </Box>

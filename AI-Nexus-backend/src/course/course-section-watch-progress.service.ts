@@ -1,10 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, QueryFailedError } from 'typeorm';
 import { CourseSectionWatchProgressEntity } from './course-section-watch-progress.entity';
 import { CourseModuleSectionEntity } from './course-module-section.entity';
 import { CourseModuleEntity } from './course-module.entity';
 import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-progress.dto';
+
+function isSectionProgressFkViolation(error: unknown): boolean {
+  if (!(error instanceof QueryFailedError)) return false;
+  const driver = (error as QueryFailedError & { driverError?: { code?: string; constraint?: string } })
+    .driverError;
+  const code = driver?.code ?? (error as { code?: string }).code;
+  const constraint = String(driver?.constraint ?? (error as { constraint?: string }).constraint ?? '');
+  return code === '23503' && constraint.includes('section');
+}
 
 function parseWatchtimeToSeconds(value?: string | null): number {
   const text = String(value || '').trim();
@@ -92,6 +101,8 @@ function coverageMeasureSeconds(ranges: [number, number][], duration: number): n
 
 @Injectable()
 export class CourseSectionWatchProgressService {
+  private readonly logger = new Logger(CourseSectionWatchProgressService.name);
+
   constructor(
     @InjectRepository(CourseSectionWatchProgressEntity)
     private readonly sectionProgressRepository: Repository<CourseSectionWatchProgressEntity>,
@@ -445,6 +456,20 @@ export class CourseSectionWatchProgressService {
     if (!isUuid(sectionId)) {
       return this.getSectionProgress(userId, courseId, sectionId);
     }
+    const section = await this.sectionRepository.findOne({
+      where: { id: sectionId },
+      select: ['id', 'moduleId'],
+    });
+    if (!section) {
+      return this.getSectionProgress(userId, courseId, sectionId);
+    }
+    const sectionModule = await this.moduleRepository.findOne({
+      where: { id: section.moduleId },
+      select: ['id', 'courseId'],
+    });
+    if (!sectionModule || sectionModule.courseId !== courseId) {
+      return this.getSectionProgress(userId, courseId, sectionId);
+    }
     const existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
@@ -516,29 +541,39 @@ export class CourseSectionWatchProgressService {
       finalDuration > 0 ? Number(((finalWatched / finalDuration) * 100).toFixed(2)) : 0;
 
     // Atomic upsert prevents duplicate-key races when multiple progress updates arrive together.
-    await this.sectionProgressRepository.upsert(
-      {
-        ...(existing?.id ? { id: existing.id } : {}),
-        userId,
-        courseId,
-        sectionId,
-        lastPositionSeconds: finalLastPosition,
-        watchedSeconds: finalWatched,
-        watchedCoverageRanges: dtoHasRanges ? nextCoverageColumn : (existing?.watchedCoverageRanges ?? null),
-        durationSeconds: finalDuration,
-        videoDurationSeconds: Math.max(
-          existing?.videoDurationSeconds ?? 0,
-          incomingDuration,
-          resolvedTiming.durationTimeSeconds,
-          finalDuration,
-        ),
-        remainingSeconds: finalRemaining,
-        completionPercent: finalPercent,
-        isCompleted,
-        lastAccessedAt: now,
-      },
-      ['userId', 'courseId', 'sectionId'],
-    );
+    try {
+      await this.sectionProgressRepository.upsert(
+        {
+          ...(existing?.id ? { id: existing.id } : {}),
+          userId,
+          courseId,
+          sectionId,
+          lastPositionSeconds: finalLastPosition,
+          watchedSeconds: finalWatched,
+          watchedCoverageRanges: dtoHasRanges ? nextCoverageColumn : (existing?.watchedCoverageRanges ?? null),
+          durationSeconds: finalDuration,
+          videoDurationSeconds: Math.max(
+            existing?.videoDurationSeconds ?? 0,
+            incomingDuration,
+            resolvedTiming.durationTimeSeconds,
+            finalDuration,
+          ),
+          remainingSeconds: finalRemaining,
+          completionPercent: finalPercent,
+          isCompleted,
+          lastAccessedAt: now,
+        },
+        ['userId', 'courseId', 'sectionId'],
+      );
+    } catch (error) {
+      if (isSectionProgressFkViolation(error)) {
+        this.logger.warn(
+          `Skipped section progress upsert — section ${sectionId} not found (course ${courseId})`,
+        );
+        return this.getSectionProgress(userId, courseId, sectionId);
+      }
+      throw error;
+    }
     return this.getSectionProgress(userId, courseId, sectionId);
   }
 }
