@@ -78,12 +78,11 @@ export const playerTabIconSx = {
   flexShrink: 0,
 };
 
-/** Shared lesson media frame height — same as video player (video, image, document, text). */
+/** Max height cap from `sm` up; on xs the frame uses full width + 16:9 aspect ratio only. */
 export const LESSON_MEDIA_FRAME_HEIGHT = {
-  xs: 260,
-  sm: 320,
-  md: 'clamp(240px, 34vh, 380px)',
-  lg: 'clamp(280px, 36vh, 440px)',
+  sm: 360,
+  md: 'clamp(280px, 38vh, 420px)',
+  lg: 'clamp(300px, 40vh, 480px)',
   xl: 580,
 };
 
@@ -96,12 +95,33 @@ export function getLessonMediaFrameSx(theme, frameHeight = LESSON_MEDIA_FRAME_HE
     overflow: 'hidden',
     bgcolor: 'grey.900',
     width: '100%',
+    maxWidth: '100%',
     aspectRatio: '16 / 9',
     height: 'auto',
     maxHeight: frameHeight,
+    margin: '0 auto',
     borderRadius: 0,
     boxShadow: `0 12px 40px ${alpha(theme.palette.common.black, 0.14)}`,
     border: `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
+  };
+}
+
+/** Fill the lesson media frame (YouTube / Spotlightr / native video). */
+export function getLessonVideoSurfaceSx() {
+  return {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+    '& iframe, & video, & > div': {
+      position: 'absolute',
+      inset: 0,
+      width: '100% !important',
+      height: '100% !important',
+      maxWidth: '100%',
+      border: 0,
+    },
   };
 }
 

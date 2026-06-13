@@ -24,6 +24,7 @@ import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-p
 import { LearningSectionHeader } from './components/learning-section-header';
 import { LearningCourseGridCard } from './components/learning-course-grid-card';
 import { MembershipSignupDialog } from './components/membership-signup-dialog';
+import { continueMembershipSignupDialog } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -604,6 +605,15 @@ export function MyFavorites() {
         open={membershipSignupOpen}
         onClose={() => setMembershipSignupOpen(false)}
         entrySource="learning-favorites"
+        onContinue={(payload) => {
+          setMembershipSignupOpen(false);
+          continueMembershipSignupDialog({
+            navigate,
+            returnPath: `${window.location.pathname}${window.location.search || ''}`,
+            authenticated,
+            payload,
+          });
+        }}
       />
     </>
   );

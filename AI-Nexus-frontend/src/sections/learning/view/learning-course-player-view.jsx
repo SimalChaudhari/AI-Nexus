@@ -28,6 +28,9 @@ import { LoadingScreen } from 'src/components/loading-screen';
 import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-document-viewer';
 import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
+import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
+import { isSpotlightrUrl, parseSpotlightrUrl } from 'src/utils/spotlightr';
+import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
 import { LessonImageViewer } from 'src/sections/learning/components/lesson-image-viewer';
 import { LessonTextViewer } from 'src/sections/learning/components/lesson-text-viewer';
 import { Iconify } from 'src/components/iconify';
@@ -208,20 +211,32 @@ function buildVideoCoveragePayloadFromRef(rangesRef, lastPosition, durationSecon
 function mergeServerProgressIntoMap(prev, data) {
   if (!data || typeof data !== 'object') return prev || {};
   const next = { ...(prev || {}) };
-  const keys = [
+  const monotonicKeys = [
     'lastPositionSeconds',
     'watchedSeconds',
     'durationSeconds',
     'completionPercent',
-    'isCompleted',
-    'isWatched',
-    'isLocked',
-    'remainingSeconds',
-    'watchedCoverageRanges',
   ];
-  keys.forEach((k) => {
+  monotonicKeys.forEach((k) => {
+    if (data[k] === undefined || data[k] === null) return;
+    const incoming = Number(data[k]);
+    const existing = Number(next[k] || 0);
+    if (Number.isFinite(incoming)) {
+      next[k] = Math.max(existing, incoming);
+    }
+  });
+  if (data.isCompleted !== undefined && data.isCompleted !== null) {
+    next.isCompleted = Boolean(next.isCompleted) || Boolean(data.isCompleted);
+  }
+  if (data.isWatched !== undefined && data.isWatched !== null) {
+    next.isWatched = Boolean(next.isWatched) || Boolean(data.isWatched);
+  }
+  ['isLocked', 'remainingSeconds'].forEach((k) => {
     if (data[k] !== undefined && data[k] !== null) next[k] = data[k];
   });
+  if (data.watchedCoverageRanges !== undefined && data.watchedCoverageRanges !== null) {
+    next.watchedCoverageRanges = data.watchedCoverageRanges;
+  }
   return next;
 }
 
@@ -229,7 +244,91 @@ function mergeProgressForSidebar(lesson, liveById) {
   const live = liveById?.[lesson.id];
   const sp = lesson.sectionProgress || {};
   if (!live) return { ...sp };
-  return { ...sp, ...live };
+  const merged = { ...sp, ...live };
+  merged.lastPositionSeconds = Math.max(
+    Number(sp.lastPositionSeconds || 0),
+    Number(live.lastPositionSeconds || 0)
+  );
+  merged.watchedSeconds = Math.max(
+    Number(sp.watchedSeconds || 0),
+    Number(live.watchedSeconds || 0)
+  );
+  merged.durationSeconds = Math.max(
+    Number(sp.durationSeconds || 0),
+    Number(live.durationSeconds || 0)
+  );
+  const pctSp = Number(sp.completionPercent ?? 0);
+  const pctLive = Number(live.completionPercent ?? 0);
+  if (Number.isFinite(pctSp) || Number.isFinite(pctLive)) {
+    merged.completionPercent = Math.max(
+      Number.isFinite(pctSp) ? pctSp : 0,
+      Number.isFinite(pctLive) ? pctLive : 0
+    );
+  }
+  return merged;
+}
+
+/** Sidebar total length — prefer admin duration; reject inflated player duration from lesson-switch bugs. */
+function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
+  const fromStr =
+    parseWatchtimeToSeconds(String(lesson?.durationTime || '').trim()) ??
+    parseWatchtimeToSeconds(String(lesson?.duration || '').trim());
+  const fromSp = Math.max(
+    0,
+    Number(merged?.durationSeconds || lesson?.sectionProgress?.durationSeconds || 0)
+  );
+  const fromPlayback =
+    playback && Number.isFinite(playback.durationSec) && playback.durationSec > 0
+      ? Math.round(playback.durationSec)
+      : 0;
+
+  let total = Math.max(fromSp, fromStr || 0, fromPlayback);
+
+  const lastPos = Math.max(
+    0,
+    Number(merged?.lastPositionSeconds || 0),
+    Number(merged?.watchedSeconds || 0)
+  );
+  const done =
+    merged?.isCompleted === true ||
+    merged?.isWatched === true ||
+    lesson?.sectionProgress?.isCompleted === true ||
+    lesson?.sectionProgress?.isWatched === true;
+
+  if (fromStr > 0 && total > fromStr * 1.25) total = fromStr;
+  if (done && lastPos > 0 && total > lastPos + 15) {
+    total = Math.max(lastPos, fromStr || lastPos);
+  }
+  return total;
+}
+
+function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById, viewedIds) {
+  if (!payload || !sectionId) return payload;
+  const lesson = (flatLessons || []).find((l) => l.id === sectionId);
+  if (!lesson) return payload;
+
+  const adminDur = lessonFallbackDurationSeconds(lesson, liveById);
+  const lastPos = Math.max(0, Number(payload.lastPositionSeconds || 0));
+  const watched = Math.max(0, Number(payload.watchedSeconds || 0));
+  const pos = Math.max(lastPos, watched);
+  let dur = Math.max(0, Number(payload.durationSeconds || 0));
+
+  if (adminDur > 0) {
+    dur = Math.min(dur, adminDur);
+  } else if (pos > 0 && dur > pos + 15) {
+    dur = Math.max(pos, Math.min(dur, pos + 5));
+  }
+
+  const merged = mergeProgressForSidebar(lesson, liveById);
+  const done =
+    viewedIds?.includes(sectionId) ||
+    merged.isCompleted === true ||
+    merged.isWatched === true;
+  if (done && pos > 0 && dur > pos + 10) {
+    dur = Math.max(pos, adminDur > 0 ? adminDur : pos);
+  }
+
+  return { ...payload, durationSeconds: Math.round(dur) };
 }
 
 /**
@@ -252,6 +351,14 @@ function isLessonDoneForUi(lesson, liveById, viewedIds) {
   const progressed = Math.max(watched, lastPos);
   if (dur > 0 && progressed >= dur - 1) return true;
   return false;
+}
+
+function isSectionLessonComplete(sectionId, flatLessons, liveById, viewedIds) {
+  if (!sectionId) return false;
+  if (Array.isArray(viewedIds) && viewedIds.includes(sectionId)) return true;
+  const lesson = (flatLessons || []).find((l) => l.id === sectionId);
+  if (!lesson) return false;
+  return isLessonDoneForUi(lesson, liveById, viewedIds);
 }
 
 function lessonWatchtimeSeconds(lesson) {
@@ -283,7 +390,21 @@ function lessonFallbackDurationSeconds(lesson, liveById) {
  * `fallbackDurationSec` clips coverage when the player has not reported duration yet (YouTube load).
  * Returns null when nothing useful is available yet.
  */
-function computeSidebarPlaybackSnapshot(videoRef, youtubeRef, rangesRef, fallbackDurationSec = 0) {
+function computeSidebarPlaybackSnapshot(
+  videoRef,
+  youtubeRef,
+  spotlightrRef,
+  rangesRef,
+  fallbackDurationSec = 0,
+  spotlightrProgressRef = null,
+  lessonId = null,
+  coverageLessonIdRef = null
+) {
+  const coverageLessonId = coverageLessonIdRef?.current ?? null;
+  const playerDataMatchesLesson =
+    lessonId && coverageLessonId && String(coverageLessonId) === String(lessonId);
+  if (!playerDataMatchesLesson) return null;
+
   let currentSec = 0;
   let durationSec = 0;
   const nv = videoRef?.current;
@@ -306,75 +427,101 @@ function computeSidebarPlaybackSnapshot(videoRef, youtubeRef, rangesRef, fallbac
       // ignore YT API errors during teardown
     }
   }
-  const durRounded = Math.round(durationSec);
+  const spotlightr = spotlightrRef?.current;
+  if (spotlightr && typeof spotlightr.getCurrentTime === 'function') {
+    try {
+      const ct = Number(spotlightr.getCurrentTime());
+      if (Number.isFinite(ct) && ct >= 0) currentSec = Math.max(currentSec, ct);
+      if (typeof spotlightr.getDuration === 'function') {
+        const dur = Number(spotlightr.getDuration());
+        if (Number.isFinite(dur) && dur > 0) durationSec = Math.max(durationSec, dur);
+      }
+    } catch {
+      // ignore Spotlightr API errors during teardown
+    }
+  }
+  const spProg = spotlightrProgressRef?.current;
+  if (spProg) {
+    const ct = Math.max(0, Number(spProg.lastTime) || 0);
+    if (ct > 0) currentSec = Math.max(currentSec, ct);
+    const rawDur = Math.max(0, Number(spProg.duration) || 0);
+    if (rawDur > 0) durationSec = Math.max(durationSec, rawDur);
+  }
   const fallback = Math.max(0, Math.round(Number(fallbackDurationSec) || 0));
-  const clipForCoverage = durRounded > 0 ? durRounded : fallback;
+  const effectiveDuration = Math.max(Math.round(durationSec), fallback);
+  const clipForCoverage = effectiveDuration > 0 ? effectiveDuration : 0;
   const watchedCoverageSec =
     clipForCoverage > 0
       ? coverageMeasurePlayer(rangesRef?.current, clipForCoverage)
       : coverageMeasurePlayer(rangesRef?.current, 0);
-  if (durRounded <= 0 && currentSec <= 0 && fallback <= 0) return null;
-  return { currentSec, durationSec, watchedCoverageSec };
+  if (effectiveDuration <= 0 && currentSec <= 0) return null;
+  return { currentSec, durationSec: effectiveDuration, watchedCoverageSec };
+}
+
+/** Sidebar progress — saved server state wins over stale player bleed after lesson navigation. */
+function resolveSidebarVideoProgress(lesson, liveById, playback, viewedIds) {
+  const merged = mergeProgressForSidebar(lesson, liveById);
+  const totalSec = resolveLessonVideoTotalSeconds(lesson, merged, playback);
+  const watched = Math.max(0, Number(merged.watchedSeconds || 0));
+  const lastPos = Math.max(0, Number(merged.lastPositionSeconds || 0));
+  const savedProgress = Math.max(watched, lastPos);
+  const doneForUi = isLessonDoneForUi(lesson, liveById, viewedIds);
+
+  let liveCurrent =
+    playback && Number.isFinite(playback.currentSec) ? Math.max(0, playback.currentSec) : null;
+  let watchedLive =
+    playback && Number.isFinite(playback.watchedCoverageSec)
+      ? Math.max(watched, playback.watchedCoverageSec)
+      : watched;
+
+  if (
+    !doneForUi &&
+    totalSec > 0 &&
+    savedProgress < totalSec - 2 &&
+    ((liveCurrent != null && liveCurrent >= totalSec - 1) || watchedLive >= totalSec - 1)
+  ) {
+    if (liveCurrent != null) liveCurrent = Math.min(liveCurrent, savedProgress);
+    watchedLive = Math.min(watchedLive, savedProgress);
+  }
+
+  const positionishRaw =
+    liveCurrent != null
+      ? Math.max(watchedLive, lastPos, liveCurrent)
+      : Math.max(watched, lastPos);
+  const positionish = totalSec > 0 ? Math.min(totalSec, positionishRaw) : positionishRaw;
+
+  return { merged, totalSec, savedProgress, doneForUi, liveCurrent, positionish };
 }
 
 /**
  * Sidebar video row: `MM:SS / MM:SS • N%` (no "Duration" label).
  * Progress % is always vs full video length (duration). Watchtime only affects when the backend marks complete.
  */
-function getLessonVideoSidebarCaption(lesson, liveById, playback) {
-  const merged = mergeProgressForSidebar(lesson, liveById);
-  const totalFromSp = Math.max(
-    0,
-    Number(merged.durationSeconds || lesson.sectionProgress?.durationSeconds || 0)
+function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
+  const { merged, totalSec, doneForUi, liveCurrent, positionish } = resolveSidebarVideoProgress(
+    lesson,
+    liveById,
+    playback,
+    viewedIds
   );
-  const totalFromStr =
-    parseWatchtimeToSeconds(String(lesson.durationTime || '').trim()) ??
-    parseWatchtimeToSeconds(String(lesson.duration || '').trim());
-  let totalSec = Math.max(totalFromSp, totalFromStr || 0);
 
-  if (playback && Number.isFinite(playback.durationSec) && playback.durationSec > 0) {
-    totalSec = Math.max(totalSec, Math.round(playback.durationSec));
-  }
-
-  const watched = Math.max(0, Number(merged.watchedSeconds || 0));
-  const lastPos = Math.max(0, Number(merged.lastPositionSeconds || 0));
-
-  const liveCurrent =
-    playback && Number.isFinite(playback.currentSec) ? Math.max(0, playback.currentSec) : null;
-  const watchedLive =
-    playback && Number.isFinite(playback.watchedCoverageSec)
-      ? Math.max(watched, playback.watchedCoverageSec)
-      : watched;
-
-  const positionish =
-    liveCurrent != null
-      ? Math.max(watchedLive, lastPos, liveCurrent)
-      : Math.max(watched, lastPos);
-
-  const doneByBackend =
-    lesson.sectionProgress?.isWatched === true ||
-    lesson.sectionProgress?.isCompleted === true ||
-    merged.isWatched === true ||
-    merged.isCompleted === true;
-  // UI must follow full video duration, not watchtime completion threshold.
-  const doneByFullDuration = totalSec > 0 && positionish >= totalSec - 1;
-
-  const pctRaw = merged.completionPercent;
   let pct;
-  if (doneByFullDuration) {
+  if (doneForUi) {
     pct = 100;
   } else if (totalSec > 0) {
-    const numer = Math.min(totalSec, positionish);
-    pct = Math.min(100, Math.round((100 * numer) / totalSec));
-  } else if (!doneByBackend && Number.isFinite(Number(pctRaw)) && Number(pctRaw) >= 0) {
-    pct = Math.min(100, Math.round(Number(pctRaw)));
-  } else if (doneByBackend) {
-    pct = 100;
+    pct = Math.min(99, Math.round((100 * positionish) / totalSec));
   } else {
-    pct = 0;
+    const pctRaw = Number(merged.completionPercent ?? 0);
+    pct =
+      doneForUi && Number.isFinite(pctRaw) && pctRaw > 0
+        ? Math.min(100, Math.round(pctRaw))
+        : 0;
   }
 
   if (totalSec <= 0) {
+    if (liveCurrent != null && liveCurrent > 0) {
+      return `${formatSecondsToClock(liveCurrent)}`;
+    }
     const dt = String(lesson?.durationTime || '').trim();
     if (dt) return dt;
     const durField = String(lesson?.duration || '').trim();
@@ -382,41 +529,26 @@ function getLessonVideoSidebarCaption(lesson, liveById, playback) {
     return null;
   }
 
-  const left = doneByFullDuration
+  const left = doneForUi
     ? totalSec
     : Math.min(totalSec, liveCurrent != null ? liveCurrent : positionish);
   return `${formatSecondsToClock(left)} / ${formatSecondsToClock(totalSec)} • ${pct}%`;
 }
 
-function getLessonVideoSidebarPercent(lesson, liveById, playback) {
-  const merged = mergeProgressForSidebar(lesson, liveById);
-  const totalFromSp = Math.max(
-    0,
-    Number(merged.durationSeconds || lesson.sectionProgress?.durationSeconds || 0)
+function getLessonVideoSidebarPercent(lesson, liveById, playback, viewedIds) {
+  const { totalSec, doneForUi, liveCurrent, positionish } = resolveSidebarVideoProgress(
+    lesson,
+    liveById,
+    playback,
+    viewedIds
   );
-  const totalFromStr =
-    parseWatchtimeToSeconds(String(lesson.durationTime || '').trim()) ??
-    parseWatchtimeToSeconds(String(lesson.duration || '').trim());
-  let totalSec = Math.max(totalFromSp, totalFromStr || 0);
-  if (playback && Number.isFinite(playback.durationSec) && playback.durationSec > 0) {
-    totalSec = Math.max(totalSec, Math.round(playback.durationSec));
+
+  if (doneForUi) return 100;
+  if (totalSec <= 0) {
+    if (liveCurrent != null && liveCurrent > 0) return 1;
+    return 0;
   }
-
-  const watched = Math.max(0, Number(merged.watchedSeconds || 0));
-  const lastPos = Math.max(0, Number(merged.lastPositionSeconds || 0));
-  const liveCurrent =
-    playback && Number.isFinite(playback.currentSec) ? Math.max(0, playback.currentSec) : null;
-  const watchedLive =
-    playback && Number.isFinite(playback.watchedCoverageSec)
-      ? Math.max(watched, playback.watchedCoverageSec)
-      : watched;
-  const positionish =
-    liveCurrent != null
-      ? Math.max(watchedLive, lastPos, liveCurrent)
-      : Math.max(watched, lastPos);
-
-  if (totalSec <= 0) return 0;
-  return Math.min(100, Math.round((100 * Math.min(totalSec, positionish)) / totalSec));
+  return Math.min(99, Math.round((100 * positionish) / totalSec));
 }
 
 function getNextLessonFromModules(modules, currentLessonId) {
@@ -591,15 +723,41 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const initialSectionAutoOpenDoneRef = useRef(false);
   const saveProgressTimeoutRef = useRef(null);
   const activeLessonIdRef = useRef(activeLessonId);
+  /** Section id tied to the mounted player — used when flushing on lesson switch. */
+  const playerFlushSectionIdRef = useRef(null);
+  /** Section id that owns `videoCoverageRangesRef` — prevents sidebar % bleed on lesson switch. */
+  const videoCoverageLessonIdRef = useRef(null);
+  /** Per-section playback snapshot — survives lesson switch before refs are reset. */
+  const sectionPlayerSnapshotRef = useRef({});
+  const updateSectionPlayerSnapshotRef = useRef(() => {});
+  const captureActiveLessonProgressRef = useRef(() => {});
+  /** True while lesson is incomplete — Spotlightr must keep disableForwardSeeking on. */
+  const shouldBlockForwardSeekRef = useRef(() => true);
+  const flatLessonsRef = useRef([]);
+  const liveSectionProgressMapRef = useRef(liveSectionProgressMap);
   const urlSectionProcessedRef = useRef(null);
   const videoRef = useRef(null);
   const videoWatchedEnoughRef = useRef(null);
   const youtubePlayerRef = useRef(null);
   const youtubeContainerRef = useRef(null);
+  const spotlightrPlayerRef = useRef(null);
+  const spotlightrContainerRef = useRef(null);
+  const spotlightrProgressRef = useRef({
+    watchedSeconds: 0,
+    pendingDeltaSeconds: 0,
+    lastTime: 0,
+    duration: 0,
+    maxWatchedTimeline: 0,
+    isPlaying: false,
+    markedComplete: false,
+  });
   const viewedSectionIdsRef = useRef(viewedSectionIds);
   const courseIdRef = useRef(course?.id || null);
   const flushSectionProgressRef = useRef(() => {});
+  /** Real section UUIDs from API — reject stale URL/mock ids before progress PUT. */
+  const apiSectionIdsRef = useRef([]);
   const lastProgressPayloadRef = useRef({ key: '', at: 0 });
+  const lastFlushPayloadRef = useRef({ key: '', at: 0 });
   const completedSectionIdsRef = useRef(new Set());
   const autoPlayNextRef = useRef(false);
   const autoNextTimerRef = useRef(null);
@@ -646,6 +804,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   ]);
   activeLessonIdRef.current = activeLessonId;
   courseIdRef.current = course?.id || null;
+  liveSectionProgressMapRef.current = liveSectionProgressMap;
 
   /** Keeps sidebar locks + module % in sync when the player marks a lesson done before SWR refetch. */
   const appendViewedSectionId = useCallback((sectionId) => {
@@ -660,12 +819,35 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const sendProgressUpdate = useCallback((courseId, sectionId, payload, useKeepalive = false, force = false) => {
     if (!courseId || !sectionId || !payload) return Promise.resolve(null);
+    if (!isUuid(sectionId) || sectionId === FEEDBACK_LESSON_ID) return Promise.resolve(null);
+    const knownSectionIds = apiSectionIdsRef.current;
+    if (knownSectionIds.length > 0 && !knownSectionIds.includes(sectionId)) {
+      return Promise.resolve(null);
+    }
+    const cappedPayload = capProgressDurationForLesson(
+      sectionId,
+      payload,
+      flatLessonsRef.current,
+      liveSectionProgressMapRef.current,
+      viewedSectionIdsRef.current
+    );
     // markCompleted / minimal payloads are not video timeline updates — do not apply video "full watched" short-circuit.
     const isMarkCompletedOnly =
       Boolean(payload.markCompleted) &&
       !Array.isArray(payload.watchedCoverageRanges) &&
       !(Number(payload.watchedSeconds) > 0) &&
       !(Number(payload.lastPositionSeconds) > 0);
+    if (
+      !isMarkCompletedOnly &&
+      isSectionLessonComplete(
+        sectionId,
+        flatLessonsRef.current,
+        liveSectionProgressMapRef.current,
+        viewedSectionIdsRef.current
+      )
+    ) {
+      return Promise.resolve(null);
+    }
     if (!force && !isMarkCompletedOnly) {
       const live = liveSectionProgressMap?.[sectionId] || {};
       const knownDuration = Math.max(0, Number(live.durationSeconds || 0));
@@ -674,11 +856,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         Number(live.watchedSeconds || 0),
         Number(live.lastPositionSeconds || 0)
       );
-      const payloadDuration = Math.max(0, Number(payload.durationSeconds || 0));
+      const payloadDuration = Math.max(0, Number(cappedPayload.durationSeconds || 0));
       const payloadProgress = Math.max(
         0,
-        Number(payload.watchedSeconds || 0),
-        Number(payload.lastPositionSeconds || 0)
+        Number(cappedPayload.watchedSeconds || 0),
+        Number(cappedPayload.lastPositionSeconds || 0)
       );
       const fullDuration = Math.max(knownDuration, payloadDuration);
       const progressed = Math.max(knownProgress, payloadProgress);
@@ -693,11 +875,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     const key = [
       courseId,
       sectionId,
-      Number(payload.watchedDeltaSeconds || 0),
-      Number(payload.watchedSeconds ?? -1),
-      Number(payload.lastPositionSeconds || 0),
-      Number(payload.durationSeconds || 0),
-      Boolean(payload.markCompleted),
+      Number(cappedPayload.watchedDeltaSeconds || 0),
+      Number(cappedPayload.watchedSeconds ?? -1),
+      Number(cappedPayload.lastPositionSeconds || 0),
+      Number(cappedPayload.durationSeconds || 0),
+      Boolean(cappedPayload.markCompleted),
       rangeLen,
     ].join('|');
     const now = Date.now();
@@ -710,11 +892,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     }
     lastProgressPayloadRef.current = { key, at: now };
     if (useKeepalive) {
-      courseService.updateSectionProgressOnUnload(courseId, sectionId, payload);
+      courseService.updateSectionProgressOnUnload(courseId, sectionId, cappedPayload);
       return Promise.resolve(null);
     }
     return courseService
-      .updateSectionProgress(courseId, sectionId, payload)
+      .updateSectionProgress(courseId, sectionId, cappedPayload)
       .then((data) => {
         if (data && typeof data === 'object' && sectionId) {
           setLiveSectionProgressMap((prev) => ({
@@ -798,15 +980,138 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [setSearchParams]);
 
   useEffect(() => {
-    const flushSectionProgress = (useKeepalive = false, force = false) => {
-      const courseId = courseIdRef.current;
-      const sectionId = activeLessonIdRef.current;
-      if (!courseId || !sectionId || sectionId === FEEDBACK_LESSON_ID) return;
-      if (getModuleIdFromPseudoLessonId(sectionId)) return;
-      if (!force && viewedSectionIdsRef.current.includes(sectionId)) return;
+    shouldBlockForwardSeekRef.current = () => {
+      const sid = activeLessonIdRef.current;
+      if (!sid || !isUuid(sid)) return false;
+      if (spotlightrProgressRef.current?.markedComplete) return false;
+      if (viewedSectionIdsRef.current.includes(sid)) return false;
+      const lesson = flatLessonsRef.current.find((l) => l.id === sid);
+      if (!lesson) return true;
+      const merged = mergeProgressForSidebar(lesson, liveSectionProgressMapRef.current);
+      if (merged.isWatched === true || merged.isCompleted === true) return false;
+      return true;
+    };
 
-      let lastPosition = 0;
-      let duration = 0;
+    updateSectionPlayerSnapshotRef.current = (sectionId, data) => {
+      if (!sectionId || !isUuid(sectionId)) return;
+      const prev = sectionPlayerSnapshotRef.current[sectionId] || {};
+      sectionPlayerSnapshotRef.current[sectionId] = {
+        ...prev,
+        ...data,
+        lastPositionSeconds: Math.max(
+          Number(prev.lastPositionSeconds || 0),
+          Number(data?.lastPositionSeconds || 0)
+        ),
+        watchedSeconds: Math.max(
+          Number(prev.watchedSeconds || 0),
+          Number(data?.watchedSeconds || 0)
+        ),
+        durationSeconds: Math.max(
+          Number(prev.durationSeconds || 0),
+          Number(data?.durationSeconds || 0)
+        ),
+      };
+    };
+
+    const captureLessonProgressToLiveMap = (sectionId) => {
+      if (!sectionId || !isUuid(sectionId) || sectionId === FEEDBACK_LESSON_ID) return;
+      if (videoCoverageLessonIdRef.current !== sectionId) return;
+
+      const spotlightrProg = spotlightrProgressRef.current;
+      const nativeVideo = videoRef.current;
+      const ytPlayer = youtubePlayerRef.current;
+      let lastPosition = Math.max(
+        Number(spotlightrProg?.lastTime || 0),
+        Number(spotlightrProg?.maxWatchedTimeline || 0),
+        Number(nativeVideo?.currentTime || 0),
+        Number(youtubeProgressRef.current?.lastTime || 0)
+      );
+      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        try {
+          lastPosition = Math.max(lastPosition, Number(ytPlayer.getCurrentTime() || 0));
+        } catch {
+          // ignore
+        }
+      }
+      const priorLive = liveSectionProgressMapRef.current[sectionId];
+      lastPosition = Math.max(
+        lastPosition,
+        Number(priorLive?.lastPositionSeconds || 0),
+        Number(priorLive?.watchedSeconds || 0),
+        maxCoverageEndPlayer(videoCoverageRangesRef.current)
+      );
+      if (!(lastPosition > 0)) return;
+
+      let duration = Math.max(
+        Number(spotlightrProg?.duration || 0),
+        Number(nativeVideo?.duration || 0),
+        Number(priorLive?.durationSeconds || 0)
+      );
+      if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
+        try {
+          duration = Math.max(duration, Number(ytPlayer.getDuration() || 0));
+        } catch {
+          // ignore
+        }
+      }
+      const durRounded = Math.round(duration || 0);
+      const watchedSeconds =
+        durRounded > 0
+          ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
+          : 0;
+      const watchedCoverageRanges = mergeCoverageRangesPlayer(
+        parseCoverageRangePairs(videoCoverageRangesRef.current)
+      ).map(([s, e]) => [Math.round(s * 100) / 100, Math.round(e * 100) / 100]);
+      const payload = {
+        lastPositionSeconds: Math.round(lastPosition),
+        durationSeconds: durRounded,
+        watchedSeconds: Math.max(watchedSeconds, Math.round(lastPosition)),
+        watchedCoverageRanges,
+      };
+      updateSectionPlayerSnapshotRef.current(sectionId, payload);
+      setLiveSectionProgressMap((prev) => ({
+        ...prev,
+        [sectionId]: mergeServerProgressIntoMap(prev[sectionId], payload),
+      }));
+    };
+
+    captureActiveLessonProgressRef.current = () => {
+      captureLessonProgressToLiveMap(activeLessonIdRef.current);
+    };
+
+    const flushSectionProgress = (useKeepalive = false, force = false, sectionIdOverride = null) => {
+      if (sectionIdOverride) {
+        captureLessonProgressToLiveMap(sectionIdOverride);
+      }
+      const courseId = courseIdRef.current;
+      const sectionId =
+        sectionIdOverride || playerFlushSectionIdRef.current || activeLessonIdRef.current;
+      if (!courseId || !sectionId || sectionId === FEEDBACK_LESSON_ID) return;
+      if (!isUuid(sectionId)) return;
+      if (getModuleIdFromPseudoLessonId(sectionId)) return;
+      const knownSectionIds = apiSectionIdsRef.current;
+      if (knownSectionIds.length > 0 && !knownSectionIds.includes(sectionId)) return;
+      if (
+        isSectionLessonComplete(
+          sectionId,
+          flatLessonsRef.current,
+          liveSectionProgressMapRef.current,
+          viewedSectionIdsRef.current
+        )
+      ) {
+        return undefined;
+      }
+
+      const snapshot = sectionPlayerSnapshotRef.current[sectionId] || null;
+      const mountedSectionId = playerFlushSectionIdRef.current || activeLessonIdRef.current;
+      const snapshotRangesRef = { current: parseCoverageRangePairs(snapshot?.watchedCoverageRanges) };
+      const coverageRef =
+        sectionId !== mountedSectionId && snapshotRangesRef.current.length > 0
+          ? snapshotRangesRef
+          : videoCoverageRangesRef;
+
+      let lastPosition = Math.max(0, Number(snapshot?.lastPositionSeconds || 0));
+      let duration = Math.max(0, Number(snapshot?.durationSeconds || 0));
 
       const nativeVideo = videoRef.current;
       if (nativeVideo) {
@@ -826,11 +1131,38 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         }
       }
 
+      const spotlightrPlayer = spotlightrPlayerRef.current;
+      const spotlightrProg = spotlightrProgressRef.current;
+      if (spotlightrPlayer && typeof spotlightrPlayer.getCurrentTime === 'function') {
+        try {
+          lastPosition = Math.max(lastPosition, Number(spotlightrPlayer.getCurrentTime() || 0));
+          if (typeof spotlightrPlayer.getDuration === 'function') {
+            duration = Math.max(duration, Number(spotlightrPlayer.getDuration() || 0));
+          }
+        } catch {
+          // ignore Spotlightr runtime errors during unload
+        }
+      }
+
       const nativeProg = nativeVideoProgressRef.current;
       const ytProg = youtubeProgressRef.current;
+      const priorLive = liveSectionProgressMapRef.current[sectionId];
+      lastPosition = Math.max(
+        lastPosition,
+        Number(nativeProg?.lastTime || 0),
+        Number(nativeProg?.maxWatchedTimeline || 0),
+        Number(ytProg?.lastTime || 0),
+        Number(ytProg?.maxWatchedTimeline || 0),
+        Number(spotlightrProg?.lastTime || 0),
+        Number(spotlightrProg?.maxWatchedTimeline || 0),
+        maxCoverageEndPlayer(coverageRef.current),
+        Number(priorLive?.lastPositionSeconds || 0),
+        Number(priorLive?.watchedSeconds || 0)
+      );
+
       if (nativeProg?.isPlaying && nativeVideo) {
         appendCoverageSlicePlayer(
-          videoCoverageRangesRef,
+          coverageRef,
           nativeProg.lastTime,
           nativeVideo.currentTime,
           Math.round(duration || 0)
@@ -839,7 +1171,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       if (ytProg?.isPlaying && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
         try {
           appendCoverageSlicePlayer(
-            videoCoverageRangesRef,
+            coverageRef,
             ytProg.lastTime,
             ytPlayer.getCurrentTime(),
             Math.round(duration || 0)
@@ -848,28 +1180,103 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           // ignore
         }
       }
+      if (spotlightrPlayer && spotlightrProg) {
+        try {
+          const durRoundedForSlice = Math.round(duration || 0);
+          const currentSpotlightr = Math.max(
+            0,
+            Number(spotlightrPlayer.getCurrentTime?.() || spotlightrProg.lastTime || 0)
+          );
+          if (spotlightrProg.isPlaying) {
+            appendCoverageSlicePlayer(
+              coverageRef,
+              spotlightrProg.lastTime,
+              currentSpotlightr,
+              durRoundedForSlice
+            );
+          } else if (currentSpotlightr > 0) {
+            const covEnd = maxCoverageEndPlayer(coverageRef.current);
+            if (currentSpotlightr > covEnd + 0.25) {
+              appendCoverageSlicePlayer(
+                coverageRef,
+                Math.max(0, covEnd),
+                currentSpotlightr,
+                durRoundedForSlice
+              );
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       const durRounded = Math.round(duration || 0);
-      const payload = buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, lastPosition, durRounded);
+      let payload = buildVideoCoveragePayloadFromRef(coverageRef, lastPosition, durRounded);
+      payload = capProgressDurationForLesson(
+        sectionId,
+        payload,
+        flatLessonsRef.current,
+        liveSectionProgressMapRef.current,
+        viewedSectionIdsRef.current
+      );
       if (payload.watchedSeconds <= 0 && payload.lastPositionSeconds <= 0) return;
 
-      const req = sendProgressUpdate(courseId, sectionId, payload, useKeepalive, force);
+      const flushKey = [
+        sectionId,
+        payload.lastPositionSeconds,
+        payload.watchedSeconds,
+        payload.durationSeconds,
+        Array.isArray(payload.watchedCoverageRanges) ? payload.watchedCoverageRanges.length : 0,
+      ].join('|');
+      const flushNow = Date.now();
+      if (
+        flushNow - lastFlushPayloadRef.current.at < 1500 &&
+        lastFlushPayloadRef.current.key === flushKey
+      ) {
+        return undefined;
+      }
+      lastFlushPayloadRef.current = { key: flushKey, at: flushNow };
+
+      sectionPlayerSnapshotRef.current[sectionId] = {
+        lastPositionSeconds: payload.lastPositionSeconds,
+        durationSeconds: payload.durationSeconds,
+        watchedSeconds: payload.watchedSeconds,
+        watchedCoverageRanges: payload.watchedCoverageRanges,
+      };
+
+      if (!useKeepalive) {
+        setLiveSectionProgressMap((prev) => ({
+          ...prev,
+          [sectionId]: mergeServerProgressIntoMap(prev[sectionId], payload),
+        }));
+      }
+
+      const req = sendProgressUpdate(courseId, sectionId, payload, useKeepalive, useKeepalive);
 
       nativeVideoProgressRef.current.pendingDeltaSeconds = 0;
       youtubeProgressRef.current.pendingDeltaSeconds = 0;
+      spotlightrProgressRef.current.pendingDeltaSeconds = 0;
       return req;
     };
     flushSectionProgressRef.current = flushSectionProgress;
 
-    const handlePageHide = () => flushSectionProgress(true);
-    const handleBeforeUnload = () => flushSectionProgress(true);
+    const handlePageHide = () => flushSectionProgress(true, true);
+    const handleBeforeUnload = () => flushSectionProgress(true, true);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushSectionProgress(true, true);
+      }
+    };
 
     window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      flushSectionProgress(true, true);
       window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [sendProgressUpdate]);
 
@@ -939,6 +1346,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   useEffect(() => {
     setLiveSectionProgressMap({});
+    sectionPlayerSnapshotRef.current = {};
   }, [course?.id]);
 
   const apiModules = playerContext?.modules || [];
@@ -966,6 +1374,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       ),
     [modules]
   );
+  flatLessonsRef.current = flatLessons;
 
   const markLessonCompletedOnly = useCallback(
     (lessonId) => {
@@ -1030,6 +1439,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       .map((s) => s.id)
       .filter((id) => isUuid(id));
   }, [apiModules]);
+  apiSectionIdsRef.current = apiSectionIdsForProgress;
 
   // Guard: require membership login before taking any course.
   useEffect(() => {
@@ -1058,14 +1468,22 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     return undefined;
   }, [course?.id, course?.freeOrPaid, loading, playerLoading, playerContext, authenticated, navigate]);
 
-  const sectionProgressData =
-    authenticated &&
-    activeLessonId &&
-    activeLessonId !== FEEDBACK_LESSON_ID &&
-    isUuid(activeLessonId) &&
-    flatLessons.length > 0
-      ? flatLessons.find((l) => l.id === activeLessonId)?.sectionProgress || null
-      : null;
+  const sectionProgressData = useMemo(() => {
+    if (
+      !authenticated ||
+      !activeLessonId ||
+      activeLessonId === FEEDBACK_LESSON_ID ||
+      !isUuid(activeLessonId) ||
+      flatLessons.length === 0
+    ) {
+      return null;
+    }
+    const base = flatLessons.find((l) => l.id === activeLessonId)?.sectionProgress || null;
+    const live = liveSectionProgressMap[activeLessonId];
+    if (!base && !live) return null;
+    if (!live) return base;
+    return mergeServerProgressIntoMap(base, live);
+  }, [authenticated, activeLessonId, flatLessons, liveSectionProgressMap]);
 
   const sectionProgressCoverageSig = useMemo(() => {
     if (!sectionProgressData) return '';
@@ -1158,47 +1576,83 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     setAutoNextCountdown(0);
     setSectionImageIndex(0);
     setLessonDetailTab(0);
-    nativeVideoProgressRef.current = {
-      watchedSeconds: 0,
-      pendingDeltaSeconds: 0,
-      lastTime: 0,
-      maxWatchedTimeline: 0,
-      isPlaying: false,
-      markedComplete: false,
-    };
     fullDurationSyncRef.current = { sectionId: activeLessonId || null, sent: false };
     imageSectionMarkedRef.current = false;
   }, [activeLessonId]);
 
+  // Save progress only when switching lessons — not when live/server progress updates (avoids flush loops).
+  useLayoutEffect(() => {
+    const lessonId = activeLessonId;
+    if (!lessonId || lessonId === FEEDBACK_LESSON_ID || !isUuid(lessonId)) {
+      return undefined;
+    }
+    return () => {
+      flushSectionProgressRef.current?.(false, false, lessonId);
+    };
+  }, [activeLessonId]);
+
   // Hydrate before paint so mobile playback is not clamped to 0 before server progress applies.
   useLayoutEffect(() => {
-    if (!activeLessonId || activeLessonId === FEEDBACK_LESSON_ID || !isUuid(activeLessonId)) return;
+    if (!activeLessonId || activeLessonId === FEEDBACK_LESSON_ID || !isUuid(activeLessonId)) {
+      playerFlushSectionIdRef.current = null;
+      videoCoverageLessonIdRef.current = null;
+      return undefined;
+    }
     const lesson = flatLessons.find((l) => l.id === activeLessonId);
-    if (!lesson) return;
+    if (!lesson) return undefined;
+    videoCoverageLessonIdRef.current = activeLessonId;
+    playerFlushSectionIdRef.current = activeLessonId;
+    spotlightrPlayerRef.current = null;
     const sp = sectionProgressData;
+    const snap = sectionPlayerSnapshotRef.current[activeLessonId] || null;
     const watchtimeSec = parseWatchtimeToSeconds(lesson.watchtime || '');
-    const d = Math.max(Number(sp?.durationSeconds || 0), watchtimeSec || 0);
+    const d = Math.max(
+      Number(sp?.durationSeconds || 0),
+      Number(snap?.durationSeconds || 0),
+      watchtimeSec || 0
+    );
     let ranges = [];
     if (sp && Array.isArray(sp.watchedCoverageRanges) && sp.watchedCoverageRanges.length > 0) {
       ranges = parseCoverageRangePairs(sp.watchedCoverageRanges);
+    } else if (snap && Array.isArray(snap.watchedCoverageRanges) && snap.watchedCoverageRanges.length > 0) {
+      ranges = parseCoverageRangePairs(snap.watchedCoverageRanges);
     } else if (sp && (sp.watchedSeconds || 0) > 0 && d > 0) {
       ranges = [[0, Math.min(sp.watchedSeconds, d)]];
+    } else if (snap && (snap.watchedSeconds || 0) > 0 && d > 0) {
+      ranges = [[0, Math.min(snap.watchedSeconds, d)]];
     }
     videoCoverageRangesRef.current =
       d > 0 ? clipCoverageRangesPlayer(mergeCoverageRangesPlayer(ranges), d) : mergeCoverageRangesPlayer(ranges);
     const covMax = maxCoverageEndPlayer(videoCoverageRangesRef.current);
-    const lastPos = Number(sp?.lastPositionSeconds || 0);
+    const lastPos = Math.max(
+      Number(sp?.lastPositionSeconds || 0),
+      Number(snap?.lastPositionSeconds || 0)
+    );
     const maxTimeline = Math.max(covMax, lastPos);
     nativeVideoProgressRef.current.maxWatchedTimeline = maxTimeline;
     nativeVideoProgressRef.current.markedComplete = Boolean(sp?.isCompleted);
-    youtubeProgressRef.current.maxWatchedTimeline = Math.max(
-      youtubeProgressRef.current.maxWatchedTimeline || 0,
-      maxTimeline
+    nativeVideoProgressRef.current.lastTime = lastPos;
+    youtubeProgressRef.current.maxWatchedTimeline = maxTimeline;
+    youtubeProgressRef.current.markedComplete = Boolean(sp?.isCompleted || sp?.isWatched);
+    youtubeProgressRef.current.lastTime = lastPos;
+    youtubeProgressRef.current.isPlaying = false;
+    spotlightrProgressRef.current.maxWatchedTimeline = maxTimeline;
+    spotlightrProgressRef.current.markedComplete = Boolean(
+      sp?.isCompleted || sp?.isWatched
     );
-    if (maxTimeline > 2) {
-      markVideoSeekClampGrace();
-    }
-  }, [activeLessonId, sectionProgressCoverageSig, flatLessons, markVideoSeekClampGrace]);
+    spotlightrProgressRef.current.lastTime = lastPos;
+    spotlightrProgressRef.current.isPlaying = false;
+    spotlightrProgressRef.current.watchedSeconds = 0;
+    spotlightrProgressRef.current.pendingDeltaSeconds = 0;
+    const lessonVideoDur = lessonFallbackDurationSeconds(lesson, liveSectionProgressMap);
+    spotlightrProgressRef.current.duration = Math.max(
+      Number(sp?.durationSeconds || 0),
+      Number(snap?.durationSeconds || 0),
+      lessonVideoDur || 0
+    );
+    setSidebarPlaybackTick((n) => n + 1);
+    return undefined;
+  }, [activeLessonId, sectionProgressCoverageSig, flatLessons, markVideoSeekClampGrace, liveSectionProgressMap]);
 
   // Speakers from player-context course payload (`speakers`); legacy fallback if ids exist but list empty
   useEffect(() => {
@@ -1431,29 +1885,43 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   // Derived once from activeLesson so useEffects can use them (must be before YouTube useEffect)
   const sectionVideoUrlForEmbed = activeLesson?.videoUrl?.trim() || null;
-  const embedVideoId =
-    sectionVideoUrlForEmbed &&
-    (sectionVideoUrlForEmbed.includes('youtube.com') ||
-      sectionVideoUrlForEmbed.includes('youtu.be'))
-      ? sectionVideoUrlForEmbed.match(
-          /(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/)([^&?]+)/
-        )?.[1] ?? null
-      : null;
+  const embedVideoId = sectionVideoUrlForEmbed ? getYouTubeVideoId(sectionVideoUrlForEmbed) : null;
+  const spotlightrMeta = useMemo(
+    () =>
+      sectionVideoUrlForEmbed && !embedVideoId
+        ? parseSpotlightrUrl(sectionVideoUrlForEmbed)
+        : null,
+    [sectionVideoUrlForEmbed, embedVideoId]
+  );
   const watchtimeSeconds = activeLesson ? parseWatchtimeToSeconds(activeLesson.watchtime) : null;
 
   useEffect(() => {
-    if (!sectionProgressData || !activeLessonId) return;
-    const resumeSeconds = Number(sectionProgressData.lastPositionSeconds || 0);
-    resumeSeekAppliedRef.current = {
-      sectionId: activeLessonId,
-      seconds: resumeSeconds > 2 ? resumeSeconds : 0,
-      applied: false,
-    };
+    if (!activeLessonId) return;
+    const lessonDone =
+      sectionProgressData?.isCompleted === true || sectionProgressData?.isWatched === true;
+    const resumeSeconds = lessonDone
+      ? 0
+      : sectionProgressData
+        ? Number(sectionProgressData.lastPositionSeconds || 0)
+        : 0;
+    const prev = resumeSeekAppliedRef.current;
+    if (prev.sectionId !== activeLessonId) {
+      resumeSeekAppliedRef.current = {
+        sectionId: activeLessonId,
+        seconds: resumeSeconds > 2 ? resumeSeconds : 0,
+        applied: false,
+      };
+      return;
+    }
+    if (!lessonDone && resumeSeconds > prev.seconds) {
+      resumeSeekAppliedRef.current.seconds = resumeSeconds;
+    }
   }, [sectionProgressData, activeLessonId]);
 
   // If section progress arrives after player mounted, seek immediately.
   useEffect(() => {
     if (!sectionProgressData || !activeLessonId) return;
+    if (sectionProgressData.isCompleted === true || sectionProgressData.isWatched === true) return;
     const resumeSeconds = Number(sectionProgressData.lastPositionSeconds || 0);
     if (!(resumeSeconds > 2)) return;
 
@@ -1480,16 +1948,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         ytPlayer.seekTo(resumeSeconds, true);
         youtubeProgressRef.current.lastTime = resumeSeconds;
         resumeMeta.applied = true;
+        return;
       } catch {
         // ignore seek errors
       }
     }
-  }, [sectionProgressData, activeLessonId, markVideoSeekClampGrace]);
+
+    // Spotlightr resume is applied in useSpotlightrLessonPlayer (incomplete lessons only).
+  }, [sectionProgressData, activeLessonId, markVideoSeekClampGrace, spotlightrMeta]);
 
   /** Roll back native video to the furthest watched point (iOS-safe, debounced). */
   const clampNativeVideoSeek = useCallback(
     (video) => {
-      if (!video || embedVideoId) return false;
+      if (!video || embedVideoId || spotlightrMeta) return false;
       const prog = nativeVideoProgressRef.current;
       if (sectionProgressData?.isCompleted || prog.markedComplete) return false;
       if (isVideoSeekClampGraceActive()) return false;
@@ -1534,7 +2005,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }
       return true;
     },
-    [embedVideoId, sectionProgressData, isVideoSeekClampGraceActive]
+    [embedVideoId, spotlightrMeta, sectionProgressData, isVideoSeekClampGraceActive]
   );
 
   // Images section: set progress only when user has viewed all images (reached last image and stayed briefly)
@@ -1594,11 +2065,22 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           // ignore
         }
       }
+      const spotlightr = spotlightrPlayerRef.current;
+      if (spotlightr && typeof spotlightr.getCurrentTime === 'function') {
+        try {
+          last = Math.max(last, Number(spotlightr.getCurrentTime() || 0));
+          const d = typeof spotlightr.getDuration === 'function' ? spotlightr.getDuration() : 0;
+          if (d > 0) dur = Math.max(dur, d);
+        } catch {
+          // ignore
+        }
+      }
       const payload = buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, last, dur);
       sendProgressUpdate(courseId, sectionId, { ...payload, markCompleted: true }).then((data) => {
         if (data?.isCompleted || data?.isWatched) {
           nativeVideoProgressRef.current.markedComplete = true;
           youtubeProgressRef.current.markedComplete = true;
+          spotlightrProgressRef.current.markedComplete = true;
         }
         // Client already met watch rules; unlock next lesson even if the API body omits isWatched/isCompleted.
         if (data && typeof data === 'object') {
@@ -1653,9 +2135,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       // Use a div we create ourselves so YouTube can replace it with an iframe without breaking React's DOM tree
       const container = document.createElement('div');
       container.setAttribute('id', 'youtube-player-learn');
-      container.style.width = '100%';
-      container.style.height = '100%';
-      container.style.minHeight = '320px';
+      container.style.cssText =
+        'position:absolute;inset:0;width:100%;height:100%;max-width:100%;overflow:hidden';
       wrapper.appendChild(container);
 
       const isCoarsePointer =
@@ -1709,6 +2190,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           },
           events: {
             onReady: () => {
+              fitYoutubeToFrame();
               const resumeMeta = resumeSeekAppliedRef.current;
               if (
                 resumeMeta.sectionId === activeLessonId &&
@@ -1797,6 +2279,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 console.log('[Video] Play');
               } else if (e.data === 2) {
                 prog.isPlaying = false;
+                const pauseLessonId = activeLessonIdRef.current;
+                if (
+                  prog.markedComplete ||
+                  isSectionLessonComplete(
+                    pauseLessonId,
+                    flatLessonsRef.current,
+                    liveSectionProgressMapRef.current,
+                    viewedSectionIdsRef.current
+                  )
+                ) {
+                  console.log('[Video] Pause');
+                  return;
+                }
                 if (course?.id && activeLessonId && player && typeof player.getCurrentTime === 'function') {
                   try {
                     const current = player.getCurrentTime();
@@ -1895,6 +2390,25 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }
     };
 
+    const fitYoutubeToFrame = () => {
+      const wrapper = youtubeContainerRef.current;
+      if (!wrapper) return;
+      const w = Math.max(1, Math.round(wrapper.clientWidth));
+      const h = Math.max(1, Math.round(wrapper.clientHeight));
+      if (player && typeof player.setSize === 'function') {
+        try {
+          player.setSize(w, h);
+        } catch {
+          // ignore resize errors
+        }
+      }
+      const iframe = wrapper.querySelector('iframe');
+      if (iframe) {
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+      }
+    };
+
     if (window.YT && window.YT.Player) {
       createPlayer();
     } else {
@@ -1908,7 +2422,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }
     }
 
+    window.addEventListener('resize', fitYoutubeToFrame);
+    window.addEventListener('orientationchange', fitYoutubeToFrame);
+
     return () => {
+      window.removeEventListener('resize', fitYoutubeToFrame);
+      window.removeEventListener('orientationchange', fitYoutubeToFrame);
       if (intervalId) clearInterval(intervalId);
       if (player && typeof player.destroy === 'function') player.destroy();
       youtubePlayerRef.current = null;
@@ -1929,6 +2448,46 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     markVideoSeekClampGrace,
     isVideoSeekClampGraceActive,
   ]);
+
+  useSpotlightrLessonPlayer({
+    spotlightrMeta,
+    activeLessonId,
+    activeLessonGateBlocked,
+    watchtimeSeconds,
+    sectionProgressData,
+    resumeSeekAppliedRef,
+    videoCoverageRangesRef,
+    spotlightrContainerRef,
+    spotlightrPlayerRef,
+    spotlightrProgressRef,
+    nativeVideoProgressRef,
+    autoPlayNextRef,
+    activeLessonIdRef,
+    courseIdRef,
+    flushSectionProgressRef,
+    updateSectionPlayerSnapshotRef,
+    shouldBlockForwardSeekRef,
+    sectionPlayerSnapshotRef,
+    videoWatchedEnoughRef,
+    feedbackLessonId: FEEDBACK_LESSON_ID,
+    markVideoSeekClampGrace,
+    effectiveRequiredSeconds,
+    appendCoverageSlicePlayer,
+    coverageMeasurePlayer,
+    syncProgressOnFullDuration,
+    buildVideoCoveragePayloadFromRef,
+    sendProgressUpdate,
+    completeSection,
+    getNextLessonFromModules,
+    startAutoNextCountdown,
+    appendViewedSectionId,
+    computeMaxAllowedTimeline,
+    isVideoSeekClampGraceActive,
+    lessonFallbackDurationSeconds,
+    modules,
+    flatLessons,
+    liveSectionProgressMap,
+  });
 
   const navigationSteps = useMemo(() => {
     const steps = [];
@@ -1978,6 +2537,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const goToPrevLesson = () => {
     if (prevLesson) {
+      captureActiveLessonProgressRef.current?.();
       const prevIsPractice = Boolean(getModuleIdFromPracticeLessonId(prevLesson.id));
       setActiveLessonId(prevLesson.id);
       setExpandedSection(prevLesson.sectionId);
@@ -2010,10 +2570,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             0
         );
         if (!Number.isFinite(currentPercent) || currentPercent < 100) {
-          if (currentFlatLesson?.videoUrl) {
-            // Video lesson: flush latest playhead/coverage snapshot right before navigation.
-            await flushSectionProgressRef.current?.(false, true);
-          } else {
+          if (!currentFlatLesson?.videoUrl) {
             // Text/images/files lesson: send a normal progress heartbeat on Next click.
             const lastPos = Math.max(
               0,
@@ -2046,6 +2603,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         }
       }
 
+      captureActiveLessonProgressRef.current?.();
       const nextIsPractice = Boolean(getModuleIdFromPracticeLessonId(nextLesson.id));
       autoPlayNextRef.current = !nextIsPractice && Boolean(nextLesson.videoUrl);
       setActiveLessonId(nextLesson.id);
@@ -2230,13 +2788,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   // Only show video when this section has a video URL — do not use course.video/course.image for sections without video
   const sectionVideoUrl = activeLesson?.videoUrl?.trim() || null;
   const videoSrc = sectionVideoUrl || null;
-  const isYouTube = videoSrc && (videoSrc.includes('youtube.com') || videoSrc.includes('youtu.be'));
-  let embedUrl = null;
-  if (isYouTube && videoSrc) {
-    const match = videoSrc.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=)([^&?]+)/);
-    embedUrl = match ? `https://www.youtube-nocookie.com/embed/${match[1]}` : null;
-  }
-  const hasVideo = !!(embedUrl || (videoSrc && !isYouTube));
+  const embedUrl = videoSrc ? getYouTubeEmbedUrl(videoSrc) : null;
+  const isSpotlightr = Boolean(spotlightrMeta);
+  const hasVideo = !!(embedUrl || isSpotlightr || (videoSrc && !embedUrl && !isSpotlightr));
   const hasTextContent = !!(
     activeLesson?.content &&
     activeLesson.content.trim() &&
@@ -2295,8 +2849,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     ? computeSidebarPlaybackSnapshot(
         videoRef,
         youtubePlayerRef,
+        spotlightrPlayerRef,
         videoCoverageRangesRef,
-        lessonFallbackDurationSeconds(activeVideoLessonForSidebar, liveSectionProgressMap)
+        lessonFallbackDurationSeconds(activeVideoLessonForSidebar, liveSectionProgressMap),
+        spotlightrProgressRef,
+        activeVideoLessonForSidebar.id,
+        videoCoverageLessonIdRef
       )
     : null;
 
@@ -2613,9 +3171,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
                       const lessonHasVideo = Boolean(lesson.videoUrl);
                       const lessonHasImages = Array.isArray(lesson.images) && lesson.images.length > 0;
-                      const isYouTubeLesson =
-                        lessonHasVideo &&
-                        (lesson.videoUrl.includes('youtube.com') || lesson.videoUrl.includes('youtu.be'));
+                      const isYouTubeLesson = lessonHasVideo && isYouTubeUrl(lesson.videoUrl);
+                      const isSpotlightrLesson =
+                        lessonHasVideo && isSpotlightrUrl(lesson.videoUrl);
                       const lessonPreviewImage = lessonHasImages
                         ? lesson.images[0]
                         : course?.image || DEFAULT_COURSE_IMAGE;
@@ -2629,6 +3187,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             if (isLocked) {
                               toast.info('Complete previous lesson to unlock this lesson');
                               return;
+                            }
+                            if (
+                              activeLessonIdRef.current &&
+                              activeLessonIdRef.current !== lesson.id
+                            ) {
+                              captureActiveLessonProgressRef.current?.();
                             }
                             setActiveLessonId(lesson.id);
                             setExpandedSection(section.id);
@@ -2695,7 +3259,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                 flexShrink: 0,
                               }}
                             >
-                              {lessonHasVideo && !isYouTubeLesson ? (
+                              {lessonHasVideo && !isYouTubeLesson && !isSpotlightrLesson ? (
                                 <Box
                                   component="video"
                                   src={lesson.videoUrl}
@@ -2703,7 +3267,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   preload="metadata"
                                   sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
-                              ) : lessonHasVideo && isYouTubeLesson ? (
+                              ) : lessonHasVideo && (isYouTubeLesson || isSpotlightrLesson) ? (
                                 <Stack direction="row" alignItems="center" spacing={0.5}>
                                   <Iconify icon="solar:video-frame-bold" width={16} sx={{ color: 'common.white' }} />
                                   <Iconify icon="solar:play-bold" width={14} sx={{ color: 'common.white' }} />
@@ -2736,7 +3300,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                         liveSectionProgressMap,
                                         lesson.id === activeLessonId
                                           ? activeLessonSidebarPlayback
-                                          : null
+                                          : null,
+                                        viewedSectionIds
                                       ) || 'Video lesson'
                                     );
                                   }
@@ -2756,7 +3321,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                     value={getLessonVideoSidebarPercent(
                                       lesson,
                                       liveSectionProgressMap,
-                                      lesson.id === activeLessonId ? activeLessonSidebarPlayback : null
+                                      lesson.id === activeLessonId ? activeLessonSidebarPlayback : null,
+                                      viewedSectionIds
                                     )}
                                     sx={{
                                       flex: 1,
@@ -3645,12 +4211,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Box>
           ) : hasVideo ? (
             <LessonVideoPlayer
-              key={`video-${activeLessonId || ''}-${embedUrl || ''}-${videoSrc || ''}`}
+              key={`video-${activeLessonId || ''}-${embedUrl || ''}-${spotlightrMeta?.videoId || ''}-${videoSrc || ''}`}
               embedUrl={!activeLessonGateBlocked ? embedUrl : null}
-              videoSrc={!embedUrl && !activeLessonGateBlocked ? videoSrc : null}
+              spotlightrMeta={!activeLessonGateBlocked && !embedUrl ? spotlightrMeta : null}
+              videoSrc={!embedUrl && !spotlightrMeta && !activeLessonGateBlocked ? videoSrc : null}
               videoPoster={videoPoster}
               videoRef={videoRef}
               youtubeContainerRef={youtubeContainerRef}
+              spotlightrContainerRef={spotlightrContainerRef}
               lockedOverlay={lessonLockOverlay}
               frameHeight={LESSON_MEDIA_FRAME_HEIGHT}
               floatingOverlay={
@@ -3671,7 +4239,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     }}
                   >
                     <CircularProgress
-                      variant="determinate"jo queixz ki sreen 
+                      variant="determinate"
                       size={40}
                       thickness={4}
                       value={((AUTO_NEXT_SECONDS - autoNextCountdown) / AUTO_NEXT_SECONDS) * 100}
@@ -3733,6 +4301,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 prog.isPlaying = false;
                 // Avoid duplicate pause save after ended; onEnded handles final persist.
                 if (v?.ended) return;
+                if (
+                  prog.markedComplete ||
+                  isSectionLessonComplete(
+                    activeLessonId,
+                    flatLessons,
+                    liveSectionProgressMap,
+                    viewedSectionIds
+                  )
+                ) {
+                  return;
+                }
                 if (v && course?.id && activeLessonId) {
                   appendCoverageSlicePlayer(
                     videoCoverageRangesRef,

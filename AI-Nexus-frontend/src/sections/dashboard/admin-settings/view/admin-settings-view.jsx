@@ -85,7 +85,6 @@ import {
 import {
   resolveEligibilityMembershipContent,
 } from 'src/sections/home/eligibility-membership-defaults';
-import { compressImageFileForUpload } from 'src/utils/compress-image-file';
 
 const CONTACT_DETAIL_KEYS = ['address', 'phone', 'email', 'whatsapp', 'website'];
 const CONTACT_ICON_KEY_BY_FIELD = {
@@ -698,8 +697,7 @@ export function AdminSettingsView() {
 
     try {
       setHeroSubmitting(true);
-      const fileToUpload = await compressImageFileForUpload(heroFile);
-      const updatedSettings = await appSettingsService.uploadHomeHero(fileToUpload);
+      const updatedSettings = await appSettingsService.uploadHomeHero(heroFile);
       setHeroUrl(updatedSettings.homeHeroImageUrl || '');
       setHeroFile(null);
       toast.success('Home hero background updated');
@@ -1251,8 +1249,7 @@ export function AdminSettingsView() {
     }
     try {
       setEligibilityMembershipHeroSubmitting(true);
-      const fileToUpload = await compressImageFileForUpload(eligibilityMembershipHeroFile);
-      const updated = await appSettingsService.uploadHomeEligibilityMembershipHero(fileToUpload);
+      const updated = await appSettingsService.uploadHomeEligibilityMembershipHero(eligibilityMembershipHeroFile);
       setEligibilityMembershipContent(
         resolveEligibilityMembershipContent(updated?.homeEligibilityMembershipContent)
       );
@@ -1506,8 +1503,7 @@ export function AdminSettingsView() {
     }
     try {
       setPartnerWithIscaHeroSubmitting(true);
-      const fileToUpload = await compressImageFileForUpload(partnerWithIscaHeroFile);
-      const updated = await appSettingsService.uploadPartnerWithIscaHero(fileToUpload);
+      const updated = await appSettingsService.uploadPartnerWithIscaHero(partnerWithIscaHeroFile);
       setPartnerWithIscaContent(
         normalizePartnerWithIscaContent(updated?.partnerWithIscaContent)
       );
@@ -1569,8 +1565,7 @@ export function AdminSettingsView() {
     }
     try {
       setEmployerHeroSubmitting(true);
-      const fileToUpload = await compressImageFileForUpload(employerHeroFile);
-      const updated = await appSettingsService.uploadHomeEmployerHero(fileToUpload);
+      const updated = await appSettingsService.uploadHomeEmployerHero(employerHeroFile);
       setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
       setEmployerHeroFile(null);
       toast.success('Employer section image updated');
@@ -1610,12 +1605,7 @@ export function AdminSettingsView() {
     if (!file) return;
     try {
       setEmployerLogoUploadingIndex(index);
-      const fileToUpload = await compressImageFileForUpload(file, {
-        maxWidth: 800,
-        maxHeight: 400,
-        maxBytes: 512 * 1024,
-      });
-      const updated = await appSettingsService.uploadHomeEmployerLogo(index, fileToUpload);
+      const updated = await appSettingsService.uploadHomeEmployerLogo(index, file);
       setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
       toast.success('Employer logo uploaded');
     } catch (error) {

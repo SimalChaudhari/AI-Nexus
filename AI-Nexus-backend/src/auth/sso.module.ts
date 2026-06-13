@@ -6,6 +6,7 @@ import { UserEntity } from '../user/users.entity';
 import { OAuthAuthService } from './oauth-auth.service';
 import { OAuthAuthController } from './oauth-auth.controller';
 import { MembershipApplicationController } from './membership-application.controller';
+import { StudentMembershipApplicationController } from './student-membership-application.controller';
 import { SsoSyncService } from './sso-sync.service';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
@@ -19,7 +20,11 @@ import { AuthTokenService } from './auth-token.service';
     }),
   ],
   providers: [OAuthAuthService, SsoSyncService, AuthTokenService],
-  controllers: [OAuthAuthController, MembershipApplicationController],
+  controllers: [
+    OAuthAuthController,
+    MembershipApplicationController,
+    StudentMembershipApplicationController,
+  ],
   exports: [OAuthAuthService],
 })
 export class SsoModule {}

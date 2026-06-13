@@ -5,6 +5,7 @@ import {
   persistMembershipSalesforceSession,
   readMembershipSalesforceSession,
   setMembershipApplicationPending,
+  setStudentMembershipApplicationPending,
 } from './membership-salesforce-session';
 
 // ----------------------------------------------------------------------
@@ -75,11 +76,19 @@ export function redirectToMembershipApplicationSsoLogin(options = {}) {
     });
   }
 
-  setMembershipApplicationPending();
+  if (options.membershipOutcome === 'student-membership-application') {
+    setStudentMembershipApplicationPending();
+  } else {
+    setMembershipApplicationPending();
+  }
 
   const oauthUrl = buildMembershipApplicationOAuthStartUrl(
     paths.auth.oauth.start,
-    paths.auth.membership.salesforceBridge
+    paths.auth.membership.salesforceBridge,
+    {
+      membershipOutcome: options.membershipOutcome,
+      eligibilityType: options.eligibilityType,
+    }
   );
 
   window.location.assign(oauthUrl);

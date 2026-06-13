@@ -100,6 +100,16 @@ export function isHomeCaDirectSalesforceFlow(state) {
   );
 }
 
+/** Home eligibility modal: student → not ISCA member → student membership application form. */
+export function isHomeStudentMembershipApplicationFlow(state) {
+  return Boolean(
+    state?.homeGetStartedFlow
+    && state?.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.STUDENT
+    && state?.homeFinalYearAccountancyStudent === false
+    && state?.homeStudentOrAssociateMember === false
+  );
+}
+
 const HOME_CA_DIRECT_SALESFORCE_PROGRESS_STEPS = [
   'home-user-type',
   'home-professional-isca-member',
@@ -192,9 +202,6 @@ export function getHomeFluencyFlowStep(state) {
     if (state.homeFinalYearAccountancyStudent === null) return 'home-student-final-year';
     if (state.homeFinalYearAccountancyStudent === true) return 'result';
     if (state.homeStudentOrAssociateMember === null) return 'home-student-isca-membership';
-    if (state.homeStudentOrAssociateMember === true) return 'result';
-    if (state.studentVerificationFailed && state.studentFailureAcknowledged) return 'result';
-    if (!state.homeFluencyPathwayAcknowledged) return 'home-fluency-student-pathway';
     return 'result';
   }
 
@@ -235,17 +242,11 @@ function resolveStudentProgressSteps(state) {
   }
 
   if (state.homeFinalYearAccountancyStudent === null) {
-    return [...steps, 'home-student-isca-membership', 'home-fluency-student-pathway', 'result'];
+    return [...steps, 'home-student-isca-membership', 'result'];
   }
 
-  steps.push('home-student-isca-membership');
-
-  if (state.homeStudentOrAssociateMember === true) {
-    return [...steps, 'result'];
-  }
-
-  steps.push('home-fluency-student-pathway');
-  return [...steps, 'result'];
+  steps.push('home-student-isca-membership', 'result');
+  return steps;
 }
 
 function resolveProfessionalProgressSteps(state) {
@@ -333,18 +334,14 @@ export function getHomeFluencyOutcome(state) {
     };
   }
 
-  if (
-    state.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.STUDENT
-    && state.homeStudentOrAssociateMember === false
-    && state.homeFluencyPathwayAcknowledged
-  ) {
+  if (isHomeStudentMembershipApplicationFlow(state)) {
     return {
-      outcome: 'student-membership-signup',
+      outcome: 'student-membership-application',
       title: 'Sign up for ISCA Student Membership',
       summary:
         'Apply for ISCA Student Membership. Once membership is approved, you may register for the ISCA AI Fluency programme.',
-      ctaLabel: 'Proceed to membership application',
-      actionTarget: 'salesforce',
+      ctaLabel: 'Open student membership application',
+      actionTarget: 'student-application',
     };
   }
 

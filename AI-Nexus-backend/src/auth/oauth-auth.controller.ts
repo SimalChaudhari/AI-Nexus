@@ -91,6 +91,7 @@ export class OAuthAuthController {
           accountId: profile.salesforceAccountId,
           accountType: profile.salesforceAccountType,
           memberClass: profile.salesforceMemberClass,
+          membershipStatus: profile.salesforceMembershipStatus,
           isSCAQCandidate: profile.isSCAQCandidate,
           isAssociateMember: profile.isAssociateMember,
         },
@@ -121,6 +122,11 @@ export class OAuthAuthController {
           accountId: user.salesforceAccountId,
           accountType: user.salesforceAccountType,
           memberClass: user.salesforceMemberClass,
+          membershipStatus:
+            user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+              ? String((user.salesforceUserInfoRaw as Record<string, unknown>).membershipStatus || '').trim()
+              || undefined
+              : undefined,
           username: user.salesforceUsername,
           isSCAQCandidate: user.isSCAQCandidate,
           isAssociateMember: user.isAssociateMember,
@@ -202,6 +208,10 @@ export class OAuthAuthController {
         salesforceAccountId: user.salesforceAccountId || '',
         salesforceAccountType: user.salesforceAccountType || '',
         salesforceMemberClass: user.salesforceMemberClass || '',
+        salesforceMembershipStatus:
+          user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+            ? String((user.salesforceUserInfoRaw as Record<string, unknown>).membershipStatus || '').trim()
+            : '',
         isSCAQCandidate: user.isSCAQCandidate === null ? '' : String(user.isSCAQCandidate),
         isAssociateMember: user.isAssociateMember === null ? '' : String(user.isAssociateMember),
         requiresPaidSignup: needsPaidSignup ? 'true' : 'false',
