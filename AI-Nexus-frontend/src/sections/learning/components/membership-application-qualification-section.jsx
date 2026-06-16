@@ -27,8 +27,10 @@ import {
   EMPTY_ACADEMIC_ENTRY,
   EMPTY_PROFESSIONAL_ENTRY,
   EMPTY_ATO_ENTRY,
+  EMPTY_OPB_ENTRY,
   QUALIFICATION_SUBMIT_KEYS,
 } from 'src/utils/membership-application-qualification';
+import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
 
 // ----------------------------------------------------------------------
 
@@ -133,26 +135,33 @@ function SectionHeader({ title, required, onAdd, secondaryColor, primaryColor })
 export function MembershipApplicationQualificationSection({
   qualification,
   applicationId,
+  pathway,
   submittedTabs = {},
   submittingSection = '',
   onUpdateAcademic,
   onUpdateProfessional,
   onUpdateAto,
+  onUpdateOpb,
   onAddAcademic,
   onAddProfessional,
   onAddAto,
+  onAddOpb,
   onRemoveAcademic,
   onRemoveProfessional,
   onRemoveAto,
+  onRemoveOpb,
   onSubmitAcademic,
   onSubmitProfessional,
   onSubmitAto,
+  onSubmitOpb,
 }) {
   const theme = useTheme();
   const { primary, secondary } = theme.palette;
+  const isExperienced = isExperiencedMembershipApplicationPathway(pathway);
   const academic = qualification.academic || [];
   const professional = qualification.professional || [];
   const ato = qualification.ato || [];
+  const opb = qualification.opb || [];
 
   const tablePaperSx = getMembershipQualificationTableSx(theme);
 
@@ -166,6 +175,7 @@ export function MembershipApplicationQualificationSection({
         <Box sx={{ px: 2, pt: 2 }}>
           <SectionHeader
             title="Academic Qualification"
+            required={isExperienced}
             onAdd={onAddAcademic}
             secondaryColor={secondary.main}
             primaryColor={primary.main}
@@ -302,7 +312,7 @@ export function MembershipApplicationQualificationSection({
         </TableContainer>
         <SectionSubmitBar
           theme={theme}
-          label="Submit Academic Qualification"
+          label="Submit"
           loading={submittingSection === QUALIFICATION_SUBMIT_KEYS.academic}
           submittedAt={submittedTabs[QUALIFICATION_SUBMIT_KEYS.academic]}
           optionalHint="Optional — leave empty and submit to skip, or add rows then submit."
@@ -405,110 +415,314 @@ export function MembershipApplicationQualificationSection({
         </TableContainer>
         <SectionSubmitBar
           theme={theme}
-          label="Submit Professional Qualification"
+          label="Submit"
           loading={submittingSection === QUALIFICATION_SUBMIT_KEYS.professional}
           submittedAt={submittedTabs[QUALIFICATION_SUBMIT_KEYS.professional]}
           onSubmit={onSubmitProfessional}
         />
       </Box>
 
-      <Box sx={tablePaperSx}>
-        <Box sx={{ px: 2, pt: 2 }}>
-          <SectionHeader
-            title="Membership of Other Professional Bodies"
-            required
-            onAdd={onAddAto}
-            secondaryColor={secondary.main}
-            primaryColor={primary.main}
+      {isExperienced ? (
+        <Box sx={tablePaperSx}>
+          <Box sx={{ px: 2, pt: 2 }}>
+            <SectionHeader
+              title="Membership of Other Professional Bodies"
+              required
+              onAdd={onAddOpb}
+              secondaryColor={secondary.main}
+              primaryColor={primary.main}
+            />
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
+                  <TableCell width={48}>No.</TableCell>
+                  <TableCell>
+                    Institution name
+                    <RequiredMark />
+                  </TableCell>
+                  <TableCell>
+                    Membership status
+                    <RequiredMark />
+                  </TableCell>
+                  <TableCell>
+                    Membership ID
+                    <RequiredMark />
+                  </TableCell>
+                  <TableCell width={72} align="center">
+                    Action
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {opb.length === 0 ? (
+                  <EmptyTableRow colSpan={5} />
+                ) : (
+                  opb.map((row, index) => (
+                    <TableRow key={`opb-${index}`}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>
+                        <TextField
+                          size={fieldSize}
+                          fullWidth
+                          required
+                          value={row.institutionName}
+                          onChange={(e) =>
+                            onUpdateOpb(index, 'institutionName', e.target.value)
+                          }
+                          placeholder="Chartered Institute of Management Accountants (CIMA)"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size={fieldSize}
+                          fullWidth
+                          required
+                          value={row.membershipStatus}
+                          onChange={(e) =>
+                            onUpdateOpb(index, 'membershipStatus', e.target.value)
+                          }
+                          placeholder="Fellow"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size={fieldSize}
+                          fullWidth
+                          required
+                          value={row.membershipId}
+                          onChange={(e) => onUpdateOpb(index, 'membershipId', e.target.value)}
+                          placeholder="CIMA12345"
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => onRemoveOpb(index)}
+                          disabled={opb.length <= 1}
+                          aria-label="Remove"
+                        >
+                          <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <SectionSubmitBar
+            theme={theme}
+            label="Submit"
+            loading={submittingSection === QUALIFICATION_SUBMIT_KEYS.opb}
+            submittedAt={submittedTabs[QUALIFICATION_SUBMIT_KEYS.opb]}
+            onSubmit={onSubmitOpb}
           />
         </Box>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
-                <TableCell width={48}>No.</TableCell>
-                <TableCell>
-                  Name of Institution
-                  <RequiredMark />
-                </TableCell>
-                <TableCell>Membership Status</TableCell>
-                <TableCell>Date of Admission as Full Member</TableCell>
-                <TableCell>Membership No.</TableCell>
-                <TableCell width={72} align="center">
-                  Action
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {ato.length === 0 ? (
-                <EmptyTableRow colSpan={6} />
-              ) : (
-                ato.map((row, index) => (
-                  <TableRow key={`ato-${index}`}>
-                    <TableCell>{index + 1}</TableCell>
+      ) : (
+        <>
+          <Box sx={tablePaperSx}>
+            <Box sx={{ px: 2, pt: 2 }}>
+              <SectionHeader
+                title="Approved Training Organisation (ATO)"
+                required
+                onAdd={onAddAto}
+                secondaryColor={secondary.main}
+                primaryColor={primary.main}
+              />
+            </Box>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
+                    <TableCell width={48}>No.</TableCell>
                     <TableCell>
-                      <TextField
-                        size={fieldSize}
-                        fullWidth
-                        required
-                        value={row.atoName}
-                        onChange={(e) => onUpdateAto(index, 'atoName', e.target.value)}
-                        placeholder="e.g. K LINE PTE LTD"
-                      />
+                      ATO Name
+                      <RequiredMark />
                     </TableCell>
-                    <TableCell>
-                      <TextField
-                        size={fieldSize}
-                        fullWidth
-                        value={row.membershipStatus}
-                        onChange={(e) => onUpdateAto(index, 'membershipStatus', e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size={fieldSize}
-                        type="date"
-                        fullWidth
-                        InputLabelProps={{ shrink: true }}
-                        value={row.dateOfAdmissionAsFullMember}
-                        onChange={(e) =>
-                          onUpdateAto(index, 'dateOfAdmissionAsFullMember', e.target.value)
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size={fieldSize}
-                        fullWidth
-                        value={row.membershipNo}
-                        onChange={(e) => onUpdateAto(index, 'membershipNo', e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => onRemoveAto(index)}
-                        disabled={ato.length <= 1}
-                        aria-label="Remove"
-                      >
-                        <Iconify icon="solar:trash-bin-trash-bold" width={18} />
-                      </IconButton>
+                    <TableCell>Membership Status</TableCell>
+                    <TableCell>Date of Admission as Full Member</TableCell>
+                    <TableCell>Membership No.</TableCell>
+                    <TableCell width={72} align="center">
+                      Action
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <SectionSubmitBar
-          theme={theme}
-          label="Submit Other Professional Bodies"
-          loading={submittingSection === QUALIFICATION_SUBMIT_KEYS.ato}
-          submittedAt={submittedTabs[QUALIFICATION_SUBMIT_KEYS.ato]}
-          onSubmit={onSubmitAto}
-        />
-      </Box>
+                </TableHead>
+                <TableBody>
+                  {ato.length === 0 ? (
+                    <EmptyTableRow colSpan={6} />
+                  ) : (
+                    ato.map((row, index) => (
+                      <TableRow key={`ato-${index}`}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            fullWidth
+                            required
+                            value={row.atoName}
+                            onChange={(e) => onUpdateAto(index, 'atoName', e.target.value)}
+                            placeholder="e.g. K LINE PTE LTD"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            fullWidth
+                            value={row.membershipStatus}
+                            onChange={(e) =>
+                              onUpdateAto(index, 'membershipStatus', e.target.value)
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            type="date"
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            value={row.dateOfAdmissionAsFullMember}
+                            onChange={(e) =>
+                              onUpdateAto(index, 'dateOfAdmissionAsFullMember', e.target.value)
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            fullWidth
+                            value={row.membershipNo}
+                            onChange={(e) => onUpdateAto(index, 'membershipNo', e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => onRemoveAto(index)}
+                            disabled={ato.length <= 1}
+                            aria-label="Remove"
+                          >
+                            <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <SectionSubmitBar
+              theme={theme}
+              label="Submit"
+              loading={submittingSection === QUALIFICATION_SUBMIT_KEYS.ato}
+              submittedAt={submittedTabs[QUALIFICATION_SUBMIT_KEYS.ato]}
+              onSubmit={onSubmitAto}
+            />
+          </Box>
+
+          <Box sx={tablePaperSx}>
+            <Box sx={{ px: 2, pt: 2 }}>
+              <SectionHeader
+                title="Membership of Other Professional Bodies"
+                required
+                onAdd={onAddOpb}
+                secondaryColor={secondary.main}
+                primaryColor={primary.main}
+              />
+            </Box>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: alpha(theme.palette.grey[500], 0.08) }}>
+                    <TableCell width={48}>No.</TableCell>
+                    <TableCell>
+                      Institution name
+                      <RequiredMark />
+                    </TableCell>
+                    <TableCell>
+                      Membership status
+                      <RequiredMark />
+                    </TableCell>
+                    <TableCell>
+                      Membership ID
+                      <RequiredMark />
+                    </TableCell>
+                    <TableCell width={72} align="center">
+                      Action
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {opb.length === 0 ? (
+                    <EmptyTableRow colSpan={5} />
+                  ) : (
+                    opb.map((row, index) => (
+                      <TableRow key={`opb-${index}`}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            fullWidth
+                            required
+                            value={row.institutionName}
+                            onChange={(e) =>
+                              onUpdateOpb(index, 'institutionName', e.target.value)
+                            }
+                            placeholder="Chartered Institute of Management Accountants (CIMA)"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            fullWidth
+                            required
+                            value={row.membershipStatus}
+                            onChange={(e) =>
+                              onUpdateOpb(index, 'membershipStatus', e.target.value)
+                            }
+                            placeholder="Fellow"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size={fieldSize}
+                            fullWidth
+                            required
+                            value={row.membershipId}
+                            onChange={(e) => onUpdateOpb(index, 'membershipId', e.target.value)}
+                            placeholder="CIMA12345"
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => onRemoveOpb(index)}
+                            disabled={opb.length <= 1}
+                            aria-label="Remove"
+                          >
+                            <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <SectionSubmitBar
+              theme={theme}
+              label="Submit"
+              loading={submittingSection === QUALIFICATION_SUBMIT_KEYS.opb}
+              submittedAt={submittedTabs[QUALIFICATION_SUBMIT_KEYS.opb]}
+              onSubmit={onSubmitOpb}
+            />
+          </Box>
+        </>
+      )}
     </Stack>
   );
 }

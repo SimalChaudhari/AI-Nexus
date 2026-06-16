@@ -18,6 +18,8 @@ import { CONFIG } from 'src/config-global';
 import { Iconify } from 'src/components/iconify';
 import { useNavItem } from 'src/components/nav-section/hooks';
 
+import { NARROW_DESKTOP_NAV_QUERY } from './nav-desktop.constants';
+
 // ----------------------------------------------------------------------
 
 export const NavItem = forwardRef(
@@ -25,6 +27,7 @@ export const NavItem = forwardRef(
     const pathname = usePathname();
     const { offsetTop: headerScrolled } = useScrollOffSetTop();
     const isHomeNarrowSolidHeader = useMediaQuery('(max-width:1080px)');
+    const isNarrowDesktopNav = useMediaQuery(NARROW_DESKTOP_NAV_QUERY);
     const navItem = useNavItem({ path, hasChild, externalLink });
     const isCustomerFacingRoute =
       !pathname?.startsWith('/admin') && !pathname?.startsWith('/dashboard');
@@ -45,6 +48,7 @@ export const NavItem = forwardRef(
         subItem={subItem}
         customerHeader={isCustomerFacingRoute}
         lightNav={lightNav}
+        narrowDesktopNav={isNarrowDesktopNav}
         {...navItem.baseProps}
         {...other}
       >
@@ -62,7 +66,13 @@ export const NavItem = forwardRef(
                 }),
               transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
               color:
-                open || active ? (lightNav ? 'secondary.light' : 'primary.main') : 'inherit',
+                open || active
+                  ? isNarrowDesktopNav || lightNav
+                    ? 'secondary.light'
+                    : 'primary.main'
+                  : isNarrowDesktopNav
+                    ? 'secondary.main'
+                    : 'inherit',
             }}
           />
         )}
@@ -79,8 +89,9 @@ const StyledNavItem = styled(ButtonBase, {
     prop !== 'open' &&
     prop !== 'subItem' &&
     prop !== 'customerHeader' &&
-    prop !== 'lightNav',
-})(({ active, open, subItem, customerHeader, lightNav, theme }) => {
+    prop !== 'lightNav' &&
+    prop !== 'narrowDesktopNav',
+})(({ active, open, subItem, customerHeader, lightNav, narrowDesktopNav, theme }) => {
   const rootItem = !subItem;
 
   const baseStyles = {
@@ -102,25 +113,39 @@ const StyledNavItem = styled(ButtonBase, {
       height: '100%',
       position: 'relative',
       color: customerHeader
-        ? lightNav
+        ? narrowDesktopNav || lightNav
           ? theme.vars.palette.secondary.main
           : theme.vars.palette.common.black
         : theme.vars.palette.text.primary,
-      fontSize: customerHeader ? theme.typography.pxToRem(14) : undefined,
-      letterSpacing: customerHeader ? '0.08em' : undefined,
+      fontSize: customerHeader
+        ? narrowDesktopNav
+          ? theme.typography.pxToRem(11.5)
+          : theme.typography.pxToRem(14)
+        : undefined,
+      letterSpacing: customerHeader
+        ? narrowDesktopNav
+          ? '0.04em'
+          : '0.08em'
+        : undefined,
       textTransform: customerHeader ? 'uppercase' : undefined,
       lineHeight: 1,
+      ...(narrowDesktopNav && {
+        flexShrink: 0,
+        whiteSpace: 'nowrap',
+      }),
       '&:hover': {
         opacity: 1,
         color: customerHeader
-          ? lightNav
-            ? theme.vars.palette.secondary.light
-            : theme.vars.palette.primary.main
+          ? narrowDesktopNav
+            ? theme.vars.palette.secondary.dark
+            : lightNav
+              ? theme.vars.palette.secondary.light
+              : theme.vars.palette.primary.main
           : undefined,
       },
       ...(active && {
         color: customerHeader
-          ? lightNav
+          ? narrowDesktopNav || lightNav
             ? theme.vars.palette.secondary.dark
             : theme.vars.palette.primary.main
           : theme.vars.palette.primary.main,
@@ -128,9 +153,11 @@ const StyledNavItem = styled(ButtonBase, {
       ...(open && {
         opacity: 1,
         color: customerHeader
-          ? lightNav
+          ? narrowDesktopNav
             ? theme.vars.palette.secondary.light
-            : theme.vars.palette.primary.main
+            : lightNav
+              ? theme.vars.palette.secondary.light
+              : theme.vars.palette.primary.main
           : undefined,
       }),
     }),

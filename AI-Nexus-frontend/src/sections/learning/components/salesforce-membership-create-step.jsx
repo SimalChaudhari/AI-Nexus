@@ -42,11 +42,23 @@ const EMPTY_REGISTER_FORM = {
   email: '',
 };
 
-function buildEligibilityPayloadFromFlow(flow, membershipOutcome, salesforceUsername) {
+function buildEligibilityPayloadFromFlow(flow, membershipOutcome, salesforceUsername, registerForm = null) {
   if (!flow || typeof flow !== 'object') {
     return {
       eligibilityType: 'student',
-      snapshot: { membershipOutcome, salesforceUsername },
+      snapshot: {
+        membershipOutcome,
+        salesforceUsername,
+        ...(registerForm
+          ? {
+              firstName: String(registerForm.firstName || '').trim(),
+              lastName: String(registerForm.lastName || '').trim(),
+              email: String(registerForm.email || '').trim(),
+              nameAsPerId: String(registerForm.nameAsPerId || '').trim(),
+              salutation: String(registerForm.salutation || '').trim(),
+            }
+          : {}),
+      },
     };
   }
   return {
@@ -60,6 +72,15 @@ function buildEligibilityPayloadFromFlow(flow, membershipOutcome, salesforceUser
       membershipOutcome: membershipOutcome || '',
       salesforceUsername,
       salesforceMembershipCompletedAt: new Date().toISOString(),
+      ...(registerForm
+        ? {
+            firstName: String(registerForm.firstName || '').trim(),
+            lastName: String(registerForm.lastName || '').trim(),
+            email: String(registerForm.email || '').trim(),
+            nameAsPerId: String(registerForm.nameAsPerId || '').trim(),
+            salutation: String(registerForm.salutation || '').trim(),
+          }
+        : {}),
     },
   };
 }
@@ -221,7 +242,8 @@ export function SalesforceMembershipCreateStep({
       const eligibility = buildEligibilityPayloadFromFlow(
         flowState,
         membershipOutcome,
-        username.trim()
+        username.trim(),
+        registerForm
       );
       if (flowState) {
         await saveSalesforceMembershipRecord({

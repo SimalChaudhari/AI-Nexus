@@ -1,4 +1,5 @@
 import { formatDateForSalesforceApi } from 'src/utils/membership-application-personal';
+import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
 
 // ----------------------------------------------------------------------
 
@@ -25,10 +26,17 @@ export const EMPTY_ATO_ENTRY = {
   membershipNo: '',
 };
 
+export const EMPTY_OPB_ENTRY = {
+  institutionName: '',
+  membershipStatus: '',
+  membershipId: '',
+};
+
 export const EMPTY_QUALIFICATION_FORM = {
   academic: [],
   professional: [],
   ato: [],
+  opb: [],
 };
 
 export function hasAcademicRowData(row) {
@@ -83,10 +91,20 @@ export function buildAtoMembershipPayload(row, applicationId) {
   };
 }
 
+export function buildOpbMembershipPayload(row, applicationId) {
+  return {
+    applicationId: String(applicationId || '').trim(),
+    institutionName: row.institutionName?.trim() || '',
+    membershipStatus: row.membershipStatus?.trim() || '',
+    membershipId: row.membershipId?.trim() || '',
+  };
+}
+
 export const QUALIFICATION_SUBMIT_KEYS = {
   academic: 'qualification-academic',
   professional: 'qualification-professional',
   ato: 'qualification-ato',
+  opb: 'qualification-opb',
 };
 
 function requireApplicationId(applicationId) {
@@ -96,13 +114,16 @@ function requireApplicationId(applicationId) {
   return '';
 }
 
-export function validateAcademicQualificationBeforeSubmit(qualification, applicationId) {
+export function validateAcademicQualificationBeforeSubmit(qualification, applicationId, pathway) {
   const appErr = requireApplicationId(applicationId);
   if (appErr) return appErr;
 
   const rows = (qualification.academic || []).filter(hasAcademicRowData);
   if (!rows.length) {
-    return ''; // optional — empty is allowed (skip API)
+    if (isExperiencedMembershipApplicationPathway(pathway)) {
+      return 'Add at least one academic qualification.';
+    }
+    return '';
   }
 
   for (let i = 0; i < rows.length; i += 1) {
@@ -144,23 +165,56 @@ export function validateAtoMembershipBeforeSubmit(qualification, applicationId) 
 
   const ato = (qualification.ato || []).filter((row) => row.atoName?.trim());
   if (!ato.length) {
-    return 'Add at least one membership of other professional bodies (institution name).';
+    return 'Add at least one Approved Training Organisation (ATO) with ATO name.';
   }
   return '';
 }
 
-export function isQualificationTabComplete(submittedTabs) {
+export function validateOpbMembershipBeforeSubmit(qualification, applicationId) {
+  const appErr = requireApplicationId(applicationId);
+  if (appErr) return appErr;
+
+  const opb = (qualification.opb || []).filter((row) => row.institutionName?.trim());
+  if (!opb.length) {
+    return 'Add at least one other professional body membership with institution name.';
+  }
+  for (let i = 0; i < opb.length; i += 1) {
+    const row = opb[i];
+    if (!row.membershipStatus?.trim()) {
+      return `OPB row ${i + 1}: membership status is required.`;
+    }
+    if (!row.membershipId?.trim()) {
+      return `OPB row ${i + 1}: membership ID is required.`;
+    }
+  }
+  return '';
+}
+
+export function isQualificationTabComplete(submittedTabs, pathway) {
+  if (isExperiencedMembershipApplicationPathway(pathway)) {
+    return Boolean(
+      submittedTabs?.[QUALIFICATION_SUBMIT_KEYS.academic]
+      && submittedTabs?.[QUALIFICATION_SUBMIT_KEYS.professional]
+      && submittedTabs?.[QUALIFICATION_SUBMIT_KEYS.opb]
+    );
+  }
   return Boolean(
     submittedTabs?.[QUALIFICATION_SUBMIT_KEYS.professional]
     && submittedTabs?.[QUALIFICATION_SUBMIT_KEYS.ato]
+    && submittedTabs?.[QUALIFICATION_SUBMIT_KEYS.opb]
   );
 }
 
 /** @deprecated Use section-specific validators */
-export function validateQualificationBeforeSubmit(qualification, applicationId) {
+export function validateQualificationBeforeSubmit(qualification, applicationId, pathway) {
   const pro = validateProfessionalQualificationBeforeSubmit(qualification, applicationId);
   if (pro) return pro;
-  return validateAtoMembershipBeforeSubmit(qualification, applicationId);
+  if (isExperiencedMembershipApplicationPathway(pathway)) {
+    return validateOpbMembershipBeforeSubmit(qualification, applicationId);
+  }
+  const ato = validateAtoMembershipBeforeSubmit(qualification, applicationId);
+  if (ato) return ato;
+  return validateOpbMembershipBeforeSubmit(qualification, applicationId);
 }
 
 export function getQualificationSubmitPlan(qualification, applicationId) {
@@ -176,5 +230,9 @@ export function getQualificationSubmitPlan(qualification, applicationId) {
     .filter((row) => row.atoName?.trim())
     .map((row) => buildAtoMembershipPayload(row, applicationId));
 
-  return { academic, professional, ato };
+  const opb = (qualification.opb || [])
+    .filter((row) => row.institutionName?.trim())
+    .map((row) => buildOpbMembershipPayload(row, applicationId));
+
+  return { academic, professional, ato, opb };
 }

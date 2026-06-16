@@ -245,6 +245,10 @@ export class OAuthAuthService {
     return this.resolveApplicationApiUrl('ato');
   }
 
+  get applicationOpbUrl(): string {
+    return this.resolveApplicationApiUrl('opb');
+  }
+
   get applicationCharacterReferenceUrl(): string {
     return this.resolveApplicationApiUrl('characterReference');
   }
@@ -803,9 +807,11 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as { message?: string; error?: string; error_description?: string };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
+        const rawDescription = this.extractSalesforceErrorDescription(
+          err.response?.data,
+          err.message,
+        );
+        const desc = this.mapSetNexusPasswordErrorMessage(rawDescription);
         throw new BadRequestException(desc || 'Failed to set Salesforce password.');
       }
       throw err;
@@ -833,7 +839,14 @@ export class OAuthAuthService {
     }
 
     const accountingQualification = String(payload.accountingQualification || '').trim();
-    if (!accountingQualification) {
+    const experiencedMemberType = String(payload.experiencedMemberType || '').trim();
+    const normalizedRecordType = recordTypeName.toLowerCase();
+    const isExperiencedRecord =
+      recordTypeName === 'Member_Application'
+      || normalizedRecordType.includes('experienced')
+      || Boolean(experiencedMemberType);
+
+    if (!accountingQualification && !isExperiencedRecord) {
       throw new BadRequestException('accountingQualification is required.');
     }
 
@@ -841,7 +854,8 @@ export class OAuthAuthService {
     const body: Record<string, unknown> = {
       accountId,
       recordTypeName,
-      accountingQualification,
+      ...(accountingQualification ? { accountingQualification } : {}),
+      ...(experiencedMemberType ? { experiencedMemberType } : {}),
     };
 
     console.log('[Salesforce] createApplicationNexus:', {
@@ -944,6 +958,15 @@ export class OAuthAuthService {
     const url = this.applicationEmploymentDetailsUrl;
     const body: Record<string, unknown> = { ...payload, applicationId };
 
+    if (Array.isArray(body.currentWorkExperience)) {
+      body.currentWorkExperience = (body.currentWorkExperience as Record<string, unknown>[]).map(
+        (row) => {
+          const { periodTo: _periodTo, ...rest } = row;
+          return { ...rest, isCurrentEmployment: true };
+        },
+      );
+    }
+
     const previousWorkExperience = body.previousWorkExperience;
     console.log('[Salesforce] createEmploymentDetailsNexus:', {
       url,
@@ -989,6 +1012,24 @@ export class OAuthAuthService {
       && (/token|session|eservices|idp|salesforce|social|unauthorized|invalid/.test(text)
         || /sign in again/.test(text))
     );
+  }
+
+  private mapSetNexusPasswordErrorMessage(description: string): string {
+    const text = String(description || '').trim();
+    const lower = text.toLowerCase();
+
+    if (lower.includes('invalid repeated password') || lower.includes('repeated password')) {
+      return 'This password was used before. Please choose a different password.';
+    }
+
+    // Strip Apex stack trace noise from other Salesforce password errors.
+    const withoutStack = text.split('\n')[0]?.trim();
+    if (withoutStack && withoutStack !== text) {
+      const apexPrefix = /^System\.\w+Exception:\s*/;
+      return withoutStack.replace(apexPrefix, '').replace(/^UNKNOWN_EXCEPTION:\s*/i, '').trim() || text;
+    }
+
+    return text;
   }
 
   private extractSalesforceErrorDescription(data: unknown, fallbackMessage: string): string {
@@ -1126,7 +1167,7 @@ export class OAuthAuthService {
     );
   }
 
-  /** Membership of other professional bodies (ATO) — one record per POST. */
+  /** CA pathway — Approved Training Organisation (createATONexus); one record per POST. */
   async createATONexus(
     socialAccessToken: string,
     payload: Record<string, unknown>,
@@ -1141,6 +1182,24 @@ export class OAuthAuthService {
       { ...payload, applicationId },
       'createATONexus',
       'Failed to submit professional body membership to Salesforce.',
+    );
+  }
+
+  /** Other professional body membership (Experienced pathway) — one record per POST. */
+  async createMembershipForOPBNexus(
+    socialAccessToken: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const applicationId = String(payload.applicationId || '').trim();
+    if (!applicationId) {
+      throw new BadRequestException('applicationId is required.');
+    }
+    return this.postSalesforceApplicationApi(
+      this.applicationOpbUrl,
+      socialAccessToken,
+      { ...payload, applicationId },
+      'createMembershipForOPBNexus',
+      'Failed to submit other professional body membership to Salesforce.',
     );
   }
 
@@ -1523,6 +1582,25 @@ export class OAuthAuthService {
     );
   }
 
+  /** True when Salesforce nexus userinfo reports ISCA Member (Experienced Professional pathway). */
+  isSalesforceIscaMemberClass(memberClass: string | null | undefined): boolean {
+    const normalized = String(memberClass || '').trim().toUpperCase();
+    if (!normalized || normalized.includes('NON')) return false;
+    if (this.isSalesforceCaMemberClass(memberClass)) return false;
+    if (this.isSalesforceStudentMemberClass(memberClass)) return false;
+    return normalized === 'MEMBER';
+  }
+
+  isApprovedSalesforceMember(nexusInfo: SalesforceNexusUserInfo | null | undefined): boolean {
+    if (!nexusInfo || typeof nexusInfo !== 'object') return false;
+    const memberClass = String(nexusInfo.memberClass || '').trim();
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim();
+    return (
+      this.isSalesforceIscaMemberClass(memberClass)
+      && this.isSalesforceMembershipStatusApproved(membershipStatus)
+    );
+  }
+
   /**
    * Membership application: load nexus userinfo with the eServices social token.
    * Throws when the token is invalid or Salesforce does not return profile data.
@@ -1560,6 +1638,36 @@ export class OAuthAuthService {
     const idpUserInfo = await this.getUserInfo(token);
     const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
     return { isCaMember: true, memberClass, nexusInfo, accessToken };
+  }
+
+  /**
+   * When memberClass is Member and membershipStatus is Approved, sync platform user and return JWT.
+   */
+  async resolveApprovedMemberLoginFromSocialToken(socialAccessToken: string): Promise<{
+    isApprovedMember: boolean;
+    memberClass: string | null;
+    membershipStatus?: string | null;
+    nexusInfo: SalesforceNexusUserInfo;
+    accessToken?: string;
+  }> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
+    const nexusInfo = await this.fetchMembershipNexusUserInfoForApplication(token);
+    const memberClass = String(nexusInfo.memberClass || '').trim() || null;
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim() || null;
+
+    if (!this.isApprovedSalesforceMember(nexusInfo)) {
+      return { isApprovedMember: false, memberClass, nexusInfo, membershipStatus };
+    }
+
+    const idpUserInfo = await this.getUserInfo(token);
+    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    return {
+      isApprovedMember: true,
+      memberClass,
+      nexusInfo,
+      accessToken,
+      membershipStatus,
+    };
   }
 
   /**

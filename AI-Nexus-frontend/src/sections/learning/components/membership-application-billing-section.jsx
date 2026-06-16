@@ -23,6 +23,10 @@ import {
   formatMembershipCurrency,
   normalizeCheckoutDetailsResponse,
 } from 'src/utils/membership-application-checkout';
+import {
+  isExperiencedMembershipApplicationPathway,
+  readMembershipApplicationPathway,
+} from 'src/utils/membership-application-pathway';
 
 // ----------------------------------------------------------------------
 
@@ -83,7 +87,9 @@ export function MembershipApplicationBillingSection({
   residentialDeclarationSubmitted,
   customerEmail,
   paymentReturnNotice,
+  paymentProcessing = false,
   onClearPaymentReturnNotice,
+  onBeforePayRedirect,
 }) {
   const theme = useTheme();
   const { primary } = theme.palette;
@@ -172,6 +178,10 @@ export function MembershipApplicationBillingSection({
     const checkoutUrls = buildMembershipApplicationPaymentUrls();
     const successUrl = new URL(checkoutUrls.successUrl);
     successUrl.searchParams.set('applicationId', applicationId.trim());
+    const pathway = readMembershipApplicationPathway();
+    if (isExperiencedMembershipApplicationPathway(pathway)) {
+      successUrl.searchParams.set('pathway', pathway);
+    }
 
     try {
       const checkoutEmail = String(billingInformation.email || customerEmail || '').trim();
@@ -194,6 +204,7 @@ export function MembershipApplicationBillingSection({
         persistPendingMembershipApplicationPayment({
           sessionId: data.sessionId || data.wooshPayReferenceNo,
         });
+        onBeforePayRedirect?.();
         window.location.href = data.url;
         return;
       }
@@ -208,6 +219,15 @@ export function MembershipApplicationBillingSection({
 
   return (
     <Stack spacing={1.75}>
+      {paymentProcessing && (
+        <Stack alignItems="center" spacing={1.5} sx={{ py: 4 }}>
+          <CircularProgress size={32} />
+          <Typography variant="body2" color="text.secondary">
+            Confirming payment and updating billing status...
+          </Typography>
+        </Stack>
+      )}
+
       {!documentsSubmitted && (
         <Alert severity="warning">
           Complete and submit the Document Upload section before payment.
@@ -251,7 +271,7 @@ export function MembershipApplicationBillingSection({
         </Stack>
       )}
 
-      {!loading && checkout && (
+      {!paymentProcessing && !loading && checkout && (
         <>
           <Grid container spacing={1.25}>
             <Grid item xs={12} md={6}>

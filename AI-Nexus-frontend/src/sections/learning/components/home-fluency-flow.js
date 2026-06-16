@@ -91,6 +91,16 @@ const PATHWAY_COPY = {
   },
 };
 
+/** Home eligibility modal: professional → Experienced → membership application form. */
+export function isHomeExperiencedMembershipApplicationFlow(state) {
+  return Boolean(
+    state?.homeGetStartedFlow
+    && state?.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.PROFESSIONAL
+    && state?.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED
+    && state?.homeExperiencedMemberType
+  );
+}
+
 /** Home eligibility modal: professional → CA → direct Salesforce (no chartered sub-flow). */
 export function isHomeCaDirectSalesforceFlow(state) {
   return Boolean(
@@ -117,6 +127,68 @@ const HOME_CA_DIRECT_SALESFORCE_PROGRESS_STEPS = [
   'home-pathway-selection',
   'salesforce-account-choice',
 ];
+
+const HOME_EXPERIENCED_SALESFORCE_PROGRESS_STEPS = [
+  'home-user-type',
+  'home-professional-isca-member',
+  'home-educational-background',
+  'home-pathway-selection',
+  'home-experienced-member-type',
+  'home-fluency-pathway-info',
+  'salesforce-account-choice',
+];
+
+/** Home eligibility modal: professional → Experienced → Salesforce account step. */
+export function isHomeExperiencedDirectSalesforceFlow(state) {
+  return Boolean(
+    isHomeExperiencedMembershipApplicationFlow(state) && state?.homeFluencyPathwayAcknowledged
+  );
+}
+
+export function isHomeMembershipApplicationSalesforceFlow(state) {
+  return (
+    isHomeCaDirectSalesforceFlow(state)
+    || isHomeExperiencedDirectSalesforceFlow(state)
+    || isHomeStudentMembershipApplicationFlow(state)
+  );
+}
+
+export function getHomeSalesforceAccountChoiceCopy(state) {
+  if (isHomeStudentMembershipApplicationFlow(state)) {
+    return {
+      badge: 'ISCA Student Membership',
+      title: 'ISCA Student Membership',
+      description:
+        'Apply for ISCA Student Membership. Once membership is approved, you may register for the ISCA AI Fluency programme.',
+    };
+  }
+
+  if (isHomeCaDirectSalesforceFlow(state)) {
+    return {
+      badge: 'Chartered Accountant (CA) Pathway',
+      title: 'Chartered Accountant (CA) Pathway',
+      description:
+        'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your CA membership application.',
+    };
+  }
+
+  if (isHomeExperiencedDirectSalesforceFlow(state)) {
+    const display = getHomeFluencyPathwayDisplay(state);
+    return {
+      badge: 'Experienced Professional Pathway',
+      title: display?.title || 'Experienced Professional Pathway',
+      description:
+        'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your Experienced Professional membership application.',
+    };
+  }
+
+  return {
+    badge: 'Salesforce membership account',
+    title: 'Salesforce membership account',
+    description:
+      'Create a new ISCA Salesforce membership account, or sign in if you already have one.',
+  };
+}
 
 export function isHomeFluencyEligible(state) {
   if (!state?.homeGetStartedFlow) return false;
@@ -213,8 +285,10 @@ export function getHomeFluencyFlowStep(state) {
     if (state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA) {
       return 'salesforce-account-choice';
     }
-    if (state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED && !state.homeExperiencedMemberType) {
-      return 'home-experienced-member-type';
+    if (state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED) {
+      if (!state.homeExperiencedMemberType) return 'home-experienced-member-type';
+      if (!state.homeFluencyPathwayAcknowledged) return 'home-fluency-pathway-info';
+      return 'salesforce-account-choice';
     }
     if (!state.homeFluencyPathwayAcknowledged) return 'home-fluency-pathway-info';
     return 'result';
@@ -285,11 +359,11 @@ function resolveProfessionalProgressSteps(state) {
   }
 
   if (pathway === HOME_FLUENCY_PATHWAY.EXPERIENCED) {
-    steps.push('home-experienced-member-type', 'home-fluency-pathway-info');
-  } else {
-    steps.push('home-fluency-pathway-info');
+    steps.push('home-experienced-member-type', 'home-fluency-pathway-info', 'salesforce-account-choice');
+    return steps;
   }
 
+  steps.push('home-fluency-pathway-info');
   return [...steps, 'result'];
 }
 
@@ -312,7 +386,9 @@ export function getHomeFluencyProgressSteps(state) {
 export function getHomeFluencyProgressMeta(state, currentStepId) {
   const steps = isHomeCaDirectSalesforceFlow(state)
     ? HOME_CA_DIRECT_SALESFORCE_PROGRESS_STEPS
-    : getHomeFluencyProgressSteps(state);
+    : isHomeExperiencedDirectSalesforceFlow(state)
+      ? HOME_EXPERIENCED_SALESFORCE_PROGRESS_STEPS
+      : getHomeFluencyProgressSteps(state);
   const currentIndex = steps.indexOf(currentStepId);
   const totalSteps = steps.length || 1;
   const currentStep = currentIndex >= 0 ? currentIndex + 1 : 1;
@@ -342,6 +418,40 @@ export function getHomeFluencyOutcome(state) {
         'Apply for ISCA Student Membership. Once membership is approved, you may register for the ISCA AI Fluency programme.',
       ctaLabel: 'Open student membership application',
       actionTarget: 'student-application',
+    };
+  }
+
+  if (
+    state.homeFluencyPathwayAcknowledged
+    && state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
+  ) {
+    return {
+      outcome: 'membership-application',
+      applicationPathway: 'ca',
+      title: getHomeFluencyPathwayDisplay(state)?.title || 'Chartered Accountant (CA) Pathway',
+      summary:
+        getHomeFluencyPathwayDisplay(state)?.description
+        || 'Apply for the CA qualification pathway, then register for ISCA AI Fluency once approved.',
+      ctaLabel: 'Proceed to membership application',
+      actionTarget: 'salesforce',
+    };
+  }
+
+  if (
+    state.homeFluencyPathwayAcknowledged
+    && state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED
+    && state.homeExperiencedMemberType
+  ) {
+    return {
+      outcome: 'membership-application',
+      applicationPathway: 'experienced',
+      experiencedMemberType: state.homeExperiencedMemberType,
+      title: getHomeFluencyPathwayDisplay(state)?.title || 'Experienced Professional Pathway',
+      summary:
+        getHomeFluencyPathwayDisplay(state)?.description
+        || 'Apply for the Experienced Professional pathway, then register for ISCA AI Fluency once approved.',
+      ctaLabel: 'Proceed to membership application',
+      actionTarget: 'salesforce',
     };
   }
 

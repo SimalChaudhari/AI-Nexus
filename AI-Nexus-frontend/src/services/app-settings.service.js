@@ -337,7 +337,7 @@ function transformHomeHeroContent(sourceContent) {
     : [];
 
   return {
-    badge: sourceContent.badge != null ? String(sourceContent.badge) : '',
+    badgeLogoUrl: normalizeAssetUrl(sourceContent.badgeLogoUrl || ''),
     headline: sourceContent.headline != null ? String(sourceContent.headline) : '',
     headlineAccent: sourceContent.headlineAccent != null ? String(sourceContent.headlineAccent) : '',
     headlineColor: sourceContent.headlineColor != null ? String(sourceContent.headlineColor) : '',
@@ -600,6 +600,22 @@ export const appSettingsService = {
     const response = await axios.post(`/app-settings/home-hero-stat-icon/${index}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeHeroBadgeLogo(file) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await axios.post('/app-settings/home-hero-badge-logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeHeroBadgeLogo() {
+    const response = await axios.delete('/app-settings/home-hero-badge-logo');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

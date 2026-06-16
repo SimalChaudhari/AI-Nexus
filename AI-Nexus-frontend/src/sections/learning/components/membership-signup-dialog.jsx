@@ -66,17 +66,61 @@ import {
   getHomeFluencyPathwayDisplay,
   getHomeFluencyPathwayOptions,
   getHomeFluencyProgressMeta,
+  getHomeSalesforceAccountChoiceCopy,
   isHomeCaDirectSalesforceFlow,
+  isHomeExperiencedDirectSalesforceFlow,
+  isHomeExperiencedMembershipApplicationFlow,
   isHomeStudentMembershipApplicationFlow,
 } from './home-fluency-flow';
+import {
+  MEMBERSHIP_APPLICATION_PATHWAY,
+  persistMembershipApplicationPathway,
+} from 'src/utils/membership-application-pathway';
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
 export const MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED = 'home-get-started';
+
+function getSalesforceAccountChoiceCopy(state) {
+  if (isHomeGetStartedFlow(state)) {
+    return getHomeSalesforceAccountChoiceCopy(state);
+  }
+
+  if (state?.eligibilityType === 'recognition') {
+    return {
+      badge: 'Chartered Accountant (CA) Pathway',
+      title: 'Chartered Accountant (CA) Pathway',
+      description:
+        'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your CA membership application.',
+    };
+  }
+
+  if (state?.eligibilityType === 'experienced') {
+    return {
+      badge: 'Experienced Professional Pathway',
+      title: 'Experienced Professional Pathway',
+      description:
+        'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your Experienced Professional membership application.',
+    };
+  }
+
+  return getHomeSalesforceAccountChoiceCopy(state);
+}
 
 // ----------------------------------------------------------------------
 
 function isRecognitionMembershipFlow(state) {
   return state?.eligibilityType === 'recognition';
+}
+
+function shouldOpenExperiencedApplicationPage(state) {
+  if (isHomeGetStartedFlow(state)) {
+    return false;
+  }
+  return (
+    state?.eligibilityType === 'experienced'
+    && getFlowStep(state) === 'salesforce-account-choice'
+    && state.salesforceSessionReady
+  );
 }
 
 function shouldOpenRecognitionApplicationPage(state) {
@@ -464,6 +508,14 @@ function getFlowStep(state) {
     if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) return 'retry-eligibility';
     return 'experienced-documents';
   }
+  if (
+    state.eligibilityType === 'experienced'
+    && state.experiencedVerificationStatus === true
+    && state.experiencedVerificationAcknowledged
+    && !isHomeGetStartedFlow(state)
+  ) {
+    return 'salesforce-account-choice';
+  }
   if (state.eligibilityType === 'scaq-candidate' && state.scaqAssociateOptIn === false) {
     return 'retry-eligibility';
   }
@@ -550,6 +602,21 @@ function getOutcome(state) {
       summary: 'Check other eligibility options, SCAQ pathway, or continue as paid user.',
       ctaLabel: 'Continue',
       actionTarget: 'signIn',
+    };
+  }
+  if (
+    state.eligibilityType === 'experienced'
+    && state.experiencedVerificationStatus === true
+    && state.experiencedVerificationAcknowledged
+  ) {
+    return {
+      outcome: 'membership-application',
+      applicationPathway: MEMBERSHIP_APPLICATION_PATHWAY.EXPERIENCED,
+      title: 'Experienced Professional membership application',
+      summary:
+        'Resume verification passed. Sign in with eServices to complete your Experienced Professional membership application.',
+      ctaLabel: 'Proceed to membership application',
+      actionTarget: 'salesforce',
     };
   }
   if (state.eligibilityVerified === true) {
@@ -650,16 +717,14 @@ function getRequirementLabel(state, step) {
   };
 
   if (isHomeGetStartedFlow(state)) {
-    if (
-      state.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
-      && step === 'salesforce-account-choice'
-    ) {
-      return 'Chartered Accountant (CA) Pathway';
-    }
-    if (isHomeStudentMembershipApplicationFlow(state) && step === 'salesforce-account-choice') {
-      return 'ISCA Student Membership';
+    if (step === 'salesforce-account-choice') {
+      return getHomeSalesforceAccountChoiceCopy(state).badge;
     }
     return labelsByStep[step] || 'AI Fluency eligibility check';
+  }
+
+  if (step === 'salesforce-account-choice') {
+    return getSalesforceAccountChoiceCopy(state).badge;
   }
 
   if (state.isIscaMember === false && step !== 'member') {
@@ -709,7 +774,7 @@ function appendHomeEligibilityProgressSteps(steps, state) {
         && state.experiencedVerificationStatus === true
         && state.experiencedVerificationAcknowledged
       ) {
-        pushMembershipFinalStep(steps, state);
+        steps.push('salesforce-account-choice');
       }
       if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) {
         steps.push('retry-eligibility');
@@ -807,7 +872,7 @@ function getProgressMeta(state, step) {
                 && state.experiencedVerificationStatus === true
                 && state.experiencedVerificationAcknowledged
               ) {
-                pushMembershipFinalStep(steps, state);
+                steps.push('salesforce-account-choice');
               }
               if (state.experiencedVerificationStatus === false && state.experiencedVerificationAcknowledged) {
                 steps.push('retry-eligibility');
@@ -931,8 +996,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         salesforceAccountChoice: prev.salesforceAccountChoice || 'create',
       };
 
-      if (shouldOpenRecognitionApplicationPage(next)) {
+      if (shouldOpenRecognitionApplicationPage(next) || shouldOpenExperiencedApplicationPage(next)) {
         queueMicrotask(() => {
+          persistMembershipApplicationPathway(
+            next.eligibilityType === 'experienced'
+              ? MEMBERSHIP_APPLICATION_PATHWAY.EXPERIENCED
+              : MEMBERSHIP_APPLICATION_PATHWAY.CA
+          );
           openRecognitionMembershipApplicationPage(paths.auth.membership.application);
         });
       }
@@ -1089,6 +1159,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     }
 
     const isStudentMembershipFlow = isHomeStudentMembershipApplicationFlow(flowState);
+    const isExperiencedMembershipFlow =
+      isHomeExperiencedDirectSalesforceFlow(flowState)
+      || isHomeExperiencedMembershipApplicationFlow(flowState)
+      || flowState.eligibilityType === 'experienced';
+
+    if (isExperiencedMembershipFlow) {
+      persistMembershipApplicationPathway(MEMBERSHIP_APPLICATION_PATHWAY.EXPERIENCED);
+    } else if (
+      flowState.eligibilityType === 'recognition'
+      || isHomeCaDirectSalesforceFlow(flowState)
+    ) {
+      persistMembershipApplicationPathway(MEMBERSHIP_APPLICATION_PATHWAY.CA);
+    }
+
     const url =
       choice === 'create'
         ? (isStudentMembershipFlow
@@ -1101,7 +1185,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             )
           : buildMembershipApplicationOAuthStartUrl(
               paths.auth.oauth.start,
-              paths.auth.membership.salesforceBridge
+              paths.auth.membership.salesforceBridge,
+              {
+                eligibilityType: isExperiencedMembershipFlow ? 'experienced' : 'recognition',
+              }
             ));
 
     setFlowState((prev) => ({
@@ -1117,7 +1204,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       openStudentMembershipApplicationFromDialog();
       return;
     }
-    if (flowState.eligibilityType === 'recognition' || isHomeCaDirectSalesforceFlow(flowState)) {
+    if (
+      flowState.eligibilityType === 'recognition'
+      || isHomeCaDirectSalesforceFlow(flowState)
+      || flowState.eligibilityType === 'experienced'
+      || isHomeExperiencedMembershipApplicationFlow(flowState)
+      || isHomeExperiencedDirectSalesforceFlow(flowState)
+    ) {
       openSalesforceMembershipTab(choice);
       return;
     }
@@ -1135,6 +1228,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       openStudentMembershipApplicationPage(paths.auth.membership.studentApplication);
       return;
     }
+    persistMembershipApplicationPathway(
+      flowState.eligibilityType === 'experienced'
+      || isHomeExperiencedDirectSalesforceFlow(flowState)
+        ? MEMBERSHIP_APPLICATION_PATHWAY.EXPERIENCED
+        : MEMBERSHIP_APPLICATION_PATHWAY.CA
+    );
     openRecognitionMembershipApplicationPage(paths.auth.membership.application);
   };
 
@@ -2979,7 +3078,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         ...prev,
         ...(prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
           ? { homeSelectedPathway: '' }
-          : { eligibilityType: '', eligibilityVerified: null }),
+          : prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED
+            ? { homeFluencyPathwayAcknowledged: false }
+            : { eligibilityType: '', eligibilityVerified: null }),
         salesforceAccountChoice: '',
         salesforceSessionReady: false,
       }));
@@ -5305,21 +5406,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             </Stack>
           </Stack>
         )}
-        {step === 'salesforce-account-choice' && (
+        {step === 'salesforce-account-choice' && (() => {
+          const salesforceCopy = getSalesforceAccountChoiceCopy(flowState);
+          return (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              {isHomeStudentMembershipApplicationFlow(flowState)
-                ? 'ISCA Student Membership'
-                : isHomeCaDirectSalesforceFlow(flowState)
-                  ? 'Chartered Accountant (CA) Pathway'
-                  : 'Salesforce membership account'}
+              {salesforceCopy.title}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
-              {isHomeStudentMembershipApplicationFlow(flowState)
-                ? 'Apply for ISCA Student Membership. Once membership is approved, you may register for the ISCA AI Fluency programme.'
-                : isHomeCaDirectSalesforceFlow(flowState)
-                  ? 'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your CA membership application.'
-                  : 'Create a new ISCA Salesforce membership account, or sign in if you already have one.'}
+              {salesforceCopy.description}
             </Typography>
             {flowState.salesforceSessionReady && !isHomeStudentMembershipApplicationFlow(flowState) && (
               <Alert severity="success">
@@ -5327,7 +5422,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
               </Alert>
             )}
           </Stack>
-        )}
+          );
+        })()}
         {step === 'salesforce-membership-create' && (
           <SalesforceMembershipCreateStep
             title={result.title}

@@ -41,12 +41,12 @@ export function resolveHomeHeroData(appSettings = {}) {
     String(remote?.headline || '').trim() ||
     String(remote?.headlineAccent || '').trim() ||
     String(remote?.description || '').trim() ||
-    String(remote?.badge || '').trim();
+    String(remote?.badgeLogoUrl || '').trim();
 
   const imageFromSettings = appSettings?.homeHeroImageUrl?.trim() || '';
 
   return {
-    badge: remote?.badge?.trim() || '',
+    badgeLogoUrl: remote?.badgeLogoUrl?.trim() || '',
     headline: remote?.headline?.trim() || '',
     headlineAccent: remote?.headlineAccent?.trim() || '',
     headlineColor: remote?.headlineColor?.trim() || '',

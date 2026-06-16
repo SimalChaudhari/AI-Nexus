@@ -61,6 +61,11 @@ export default function MembershipSalesforceBridgePage() {
       accountId,
       socialToken,
       ...(callbackSf.memberClass ? { memberClass: callbackSf.memberClass } : {}),
+      ...(searchParams.get('firstName')
+        ? { firstName: searchParams.get('firstName') }
+        : {}),
+      ...(searchParams.get('lastName') ? { lastName: searchParams.get('lastName') } : {}),
+      ...(searchParams.get('email') ? { email: searchParams.get('email') } : {}),
       ...(isRecognitionApplication && pendingPlatformAccessToken
         ? { pendingPlatformAccessToken }
         : {}),

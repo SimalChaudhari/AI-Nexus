@@ -70,6 +70,9 @@ async function finishRecognitionApplicationTab(router, searchParams, payload) {
     socialToken,
     memberClass: fromQuery.memberClass || undefined,
     pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
+    ...(searchParams.get('firstName') ? { firstName: searchParams.get('firstName') } : {}),
+    ...(searchParams.get('lastName') ? { lastName: searchParams.get('lastName') } : {}),
+    ...(searchParams.get('email') ? { email: searchParams.get('email') } : {}),
   });
 
   if (socialToken) {

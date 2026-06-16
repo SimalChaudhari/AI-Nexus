@@ -227,6 +227,8 @@ export function AdminSettingsView() {
   const [workflowPitchIconSlotLoading, setWorkflowPitchIconSlotLoading] = useState(null);
   const emptyHeroStatsRow = () => ({ value: '', label: '', icon: '' });
   const [heroStatIconUploadingIndex, setHeroStatIconUploadingIndex] = useState(null);
+  const [heroBadgeLogoFile, setHeroBadgeLogoFile] = useState(null);
+  const [heroBadgeLogoSubmitting, setHeroBadgeLogoSubmitting] = useState(false);
   const [visibleStatsCount, setVisibleStatsCount] = useState(0);
   const [cardsContentSubmitting, setCardsContentSubmitting] = useState(false);
   const [faqContentSubmitting, setFaqContentSubmitting] = useState(false);
@@ -309,7 +311,7 @@ export function AdminSettingsView() {
   );
 
   const [heroContent, setHeroContent] = useState({
-    badge: '',
+    badgeLogoUrl: '',
     headline: '',
     headlineAccent: '',
     description: '',
@@ -493,7 +495,7 @@ export function AdminSettingsView() {
         buttonTextColor: item?.buttonTextColor != null ? String(item.buttonTextColor) : '',
       }));
       setHeroContent({
-        badge: remoteHero?.badge || '',
+        badgeLogoUrl: remoteHero?.badgeLogoUrl || '',
         headline: remoteHero?.headline || '',
         headlineAccent: remoteHero?.headlineAccent || '',
         description: remoteHero?.description || '',
@@ -897,6 +899,56 @@ export function AdminSettingsView() {
     setVisibleStatsCount((prev) => Math.max(1, prev - 1));
   };
 
+  const handleDropHeroBadgeLogo = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) {
+      setHeroBadgeLogoFile(file);
+    }
+  }, []);
+
+  const handleClearHeroBadgeLogoSelection = () => {
+    setHeroBadgeLogoFile(null);
+  };
+
+  const handleUploadHeroBadgeLogo = async () => {
+    if (!heroBadgeLogoFile) {
+      toast.error('Please select a logo first');
+      return;
+    }
+
+    try {
+      setHeroBadgeLogoSubmitting(true);
+      const updated = await appSettingsService.uploadHomeHeroBadgeLogo(heroBadgeLogoFile);
+      const nextUrl = updated?.homeHeroContent?.badgeLogoUrl || '';
+      setHeroContent((prev) => ({ ...prev, badgeLogoUrl: nextUrl }));
+      setHeroBadgeLogoFile(null);
+      toast.success('Hero badge logo updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload hero badge logo');
+    } finally {
+      setHeroBadgeLogoSubmitting(false);
+    }
+  };
+
+  const handleRemoveHeroBadgeLogo = async () => {
+    if (heroBadgeLogoFile) {
+      setHeroBadgeLogoFile(null);
+      return;
+    }
+
+    try {
+      setHeroBadgeLogoSubmitting(true);
+      await appSettingsService.removeHomeHeroBadgeLogo();
+      setHeroContent((prev) => ({ ...prev, badgeLogoUrl: '' }));
+      setHeroBadgeLogoFile(null);
+      toast.success('Hero badge logo removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove hero badge logo');
+    } finally {
+      setHeroBadgeLogoSubmitting(false);
+    }
+  };
+
   const handleUploadHeroStatIcon = async (index, file) => {
     try {
       setHeroStatIconUploadingIndex(index);
@@ -921,7 +973,7 @@ export function AdminSettingsView() {
     try {
       setHeroContentSubmitting(true);
       const payload = {
-        badge: heroContent.badge || '',
+        badgeLogoUrl: heroContent.badgeLogoUrl || '',
         headline: heroContent.headline,
         headlineAccent: heroContent.headlineAccent || '',
         description: heroContent.description,
@@ -957,7 +1009,7 @@ export function AdminSettingsView() {
         }));
         const nextSecondary = Array.isArray(next.secondaryCtas) ? next.secondaryCtas : [];
         setHeroContent({
-          badge: next.badge || '',
+          badgeLogoUrl: next.badgeLogoUrl || '',
           headline: next.headline || '',
           headlineAccent: next.headlineAccent || '',
           description: next.description || '',
@@ -2119,7 +2171,16 @@ export function AdminSettingsView() {
 
   const renderHomeHeroContentSettings = (
     <Stack spacing={3}>
-      <HeroTextCard heroContent={heroContent} onFieldChange={updateHeroField} />
+      <HeroTextCard
+        heroContent={heroContent}
+        onFieldChange={updateHeroField}
+        badgeLogoFile={heroBadgeLogoFile}
+        badgeLogoSubmitting={heroBadgeLogoSubmitting}
+        onDropBadgeLogo={handleDropHeroBadgeLogo}
+        onSaveBadgeLogo={handleUploadHeroBadgeLogo}
+        onRemoveBadgeLogo={handleRemoveHeroBadgeLogo}
+        onClearBadgeLogoSelection={handleClearHeroBadgeLogoSelection}
+      />
       <EventAndStatsCard
         heroContent={heroContent}
         updateHeroStat={updateHeroStat}

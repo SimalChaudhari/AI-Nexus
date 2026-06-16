@@ -59,9 +59,17 @@ export async function submitProfessionalQualification(payload) {
   });
 }
 
+/** CA pathway — Salesforce ApplicationAPI createATONexus ({ applicationId, atoName }). */
 export async function submitAtoMembership(payload) {
   return callMembershipApplicationApi(async () => {
     const res = await axios.post('/auth/membership-application/ato-membership', payload);
+    return res.data;
+  });
+}
+
+export async function submitOpbMembership(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/opb-membership', payload);
     return res.data;
   });
 }

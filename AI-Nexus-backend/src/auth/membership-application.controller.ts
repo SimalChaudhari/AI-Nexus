@@ -8,6 +8,7 @@ import { CreateApplicationEmploymentDetailsDto } from './membership-application-
 import {
   CreateAcademicQualificationDto,
   CreateAtoMembershipDto,
+  CreateOpbMembershipDto,
   CreateProfessionalQualificationDto,
 } from './membership-application-qualification.dto';
 import {
@@ -147,7 +148,7 @@ export class MembershipApplicationController {
   }
 
   @Post('ato-membership')
-  @ApiOperation({ summary: 'Submit one other professional body (ATO) membership record' })
+  @ApiOperation({ summary: 'Submit one CA Approved Training Organisation (createATONexus)' })
   @ApiBody({ type: CreateAtoMembershipDto })
   async createAtoMembership(
     @Res() response: Response,
@@ -161,6 +162,27 @@ export class MembershipApplicationController {
     return response.status(HttpStatus.OK).json({
       success: true,
       message: 'Professional body membership submitted successfully.',
+      salesforce,
+    });
+  }
+
+  @Post('opb-membership')
+  @ApiOperation({
+    summary: 'Submit one other professional body membership record (Experienced pathway)',
+  })
+  @ApiBody({ type: CreateOpbMembershipDto })
+  async createOpbMembership(
+    @Res() response: Response,
+    @Body() dto: CreateOpbMembershipDto,
+  ) {
+    const { socialAccessToken, ...rest } = dto;
+    const salesforce = await this.oauthAuthService.createMembershipForOPBNexus(
+      socialAccessToken,
+      rest as Record<string, unknown>,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Other professional body membership submitted successfully.',
       salesforce,
     });
   }
@@ -315,11 +337,14 @@ export class MembershipApplicationController {
       dto.socialAccessToken,
     );
     const memberClass = String(nexusInfo.memberClass || '').trim() || null;
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim() || null;
     return response.status(HttpStatus.OK).json({
       success: true,
       message: 'Membership status loaded.',
       memberClass,
+      membershipStatus,
       isCaMember: this.oauthAuthService.isSalesforceCaMemberClass(memberClass),
+      isApprovedMember: this.oauthAuthService.isApprovedSalesforceMember(nexusInfo),
       nexusUser: nexusInfo,
     });
   }
@@ -353,6 +378,44 @@ export class MembershipApplicationController {
       isCaMember: true,
       memberClass: result.memberClass,
       message: 'CA membership confirmed. Signing you in.',
+      accessToken: result.accessToken,
+      nexusUser: result.nexusInfo,
+    });
+  }
+
+  @Post('member-login')
+  @ApiOperation({
+    summary:
+      'When Salesforce memberClass is Member and membershipStatus is Approved, sync platform user and return access token for establish-session',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async loginIfApprovedMember(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const result = await this.oauthAuthService.resolveApprovedMemberLoginFromSocialToken(
+      dto.socialAccessToken,
+    );
+    const membershipStatus = String(result.membershipStatus || '').trim();
+
+    if (!result.isApprovedMember) {
+      return response.status(HttpStatus.OK).json({
+        success: true,
+        isApprovedMember: false,
+        memberClass: result.memberClass,
+        membershipStatus,
+        message:
+          'ISCA Member status is not active yet in eServices. Continue your application or check back after processing.',
+        nexusUser: result.nexusInfo,
+      });
+    }
+
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      isApprovedMember: true,
+      memberClass: result.memberClass,
+      membershipStatus,
+      message: 'ISCA membership confirmed. Signing you in.',
       accessToken: result.accessToken,
       nexusUser: result.nexusInfo,
     });

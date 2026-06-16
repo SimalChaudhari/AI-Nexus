@@ -9,7 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export class PreviousWorkExperienceItemDto {
+export class WorkExperienceItemDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -59,7 +59,35 @@ export class PreviousWorkExperienceItemDto {
   @IsOptional()
   @IsBoolean()
   isCurrentEmployment?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessEmail?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessRegistrationType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  staffStrength?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  turnover?: string;
 }
+
+/** @deprecated Use WorkExperienceItemDto */
+export class PreviousWorkExperienceItemDto extends WorkExperienceItemDto {}
 
 export class CreateApplicationEmploymentDetailsDto {
   @ApiProperty({ description: 'Salesforce IdP access token from membership SSO' })
@@ -77,10 +105,22 @@ export class CreateApplicationEmploymentDetailsDto {
   @IsString()
   currentEmploymentStatus?: string;
 
-  @ApiPropertyOptional({ type: [PreviousWorkExperienceItemDto] })
+  @ApiPropertyOptional({ example: 'Yes' })
+  @IsOptional()
+  @IsString()
+  accreditedEmployerScheme?: string;
+
+  @ApiPropertyOptional({ type: [WorkExperienceItemDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => PreviousWorkExperienceItemDto)
-  previousWorkExperience?: PreviousWorkExperienceItemDto[];
+  @Type(() => WorkExperienceItemDto)
+  currentWorkExperience?: WorkExperienceItemDto[];
+
+  @ApiPropertyOptional({ type: [WorkExperienceItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkExperienceItemDto)
+  previousWorkExperience?: WorkExperienceItemDto[];
 }

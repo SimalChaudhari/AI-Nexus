@@ -12,7 +12,7 @@ import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 import { CategoryEntity } from '../category/categories.entity';
 
 type HomeHeroContentPayload = {
-  badge?: string;
+  badgeLogoUrl?: string;
   headline?: string;
   headlineAccent?: string;
   headlineColor?: string;
@@ -724,6 +724,48 @@ export class AppSettingsService {
     };
   }
 
+  async uploadHomeHeroBadgeLogo(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const heroContent =
+      settings.homeHeroContent && typeof settings.homeHeroContent === 'object'
+        ? { ...(settings.homeHeroContent as any) }
+        : {};
+
+    await this.localStorageService.clearFolder('home-hero-badge-logo');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'home-hero-badge-logo', {
+      fileName: 'logo',
+    });
+
+    heroContent.badgeLogoUrl = relativeUrl;
+    settings.homeHeroContent = this.sanitizeHomeHeroContent(heroContent);
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Home hero badge logo uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeHomeHeroBadgeLogo(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const heroContent =
+      settings.homeHeroContent && typeof settings.homeHeroContent === 'object'
+        ? { ...(settings.homeHeroContent as any) }
+        : {};
+
+    await this.localStorageService.clearFolder('home-hero-badge-logo');
+    heroContent.badgeLogoUrl = '';
+    settings.homeHeroContent = this.sanitizeHomeHeroContent(heroContent);
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Home hero badge logo removed successfully',
+      settings: saved,
+    };
+  }
+
   async uploadContactHeroImage(file: Express.Multer.File): Promise<{ message: string; settings: AppSettingsEntity }> {
     const settings = await this.getSettings();
 
@@ -812,7 +854,8 @@ export class AppSettingsService {
     const stats = Array.isArray(source.stats) ? source.stats : [];
     const secondaryCtas = Array.isArray(source.secondaryCtas) ? source.secondaryCtas : [];
     return {
-      badge: this.cleanText(source.badge, 80),
+      badgeLogoUrl:
+        this.toStoredUploadPath(source.badgeLogoUrl) || this.cleanText(source.badgeLogoUrl, 500),
       headline: this.cleanText(source.headline, HERO_HEADLINE_MAX_LENGTH),
       headlineAccent: this.cleanText(source.headlineAccent, HERO_HEADLINE_MAX_LENGTH),
       headlineColor: this.sanitizeHexColor(source.headlineColor),

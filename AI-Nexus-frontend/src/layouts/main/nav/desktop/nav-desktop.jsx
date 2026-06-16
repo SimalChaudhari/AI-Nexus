@@ -3,8 +3,7 @@ import Stack from '@mui/material/Stack';
 import { NavUl } from 'src/components/nav-section';
 
 import { NavList } from './nav-desktop-list';
-
-// ----------------------------------------------------------------------
+import { NARROW_DESKTOP_NAV } from './nav-desktop.constants';
 
 export function NavDesktop({ data, sx }) {
   return (
@@ -12,6 +11,10 @@ export function NavDesktop({ data, sx }) {
       <NavUl
         sx={{
           gap: { md: 2.5, lg: 3.5 },
+          [NARROW_DESKTOP_NAV]: {
+            gap: 1.5,
+            flexWrap: 'nowrap',
+          },
           height: 1,
           flexDirection: 'row',
           alignItems: 'center',

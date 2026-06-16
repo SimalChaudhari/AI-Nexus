@@ -3,7 +3,10 @@
 // draft stored in sessionStorage so the SCAQ candidate flow can auto-verify.
 // ----------------------------------------------------------------------
 
-import { paths } from 'src/routes/paths';
+import {
+  persistMembershipApplicationPathway,
+  MEMBERSHIP_APPLICATION_PATHWAY,
+} from 'src/utils/membership-application-pathway';
 import {
   clearMembershipApplicationPending,
   saveMembershipApplicationCourseReturn,
@@ -455,6 +458,12 @@ export function navigateGuestToSignIn(navigate, returnPath) {
 export function continueMembershipSignupDialog({ navigate, returnPath, authenticated, payload }) {
   const outcome = payload?.result?.outcome || '';
   const actionTarget = payload?.result?.actionTarget || '';
+  const applicationPathway =
+    payload?.result?.applicationPathway
+    || payload?.flow?.applicationPathway
+    || (payload?.flow?.homeSelectedPathway === 'experienced' || payload?.flow?.eligibilityType === 'experienced'
+      ? MEMBERSHIP_APPLICATION_PATHWAY.EXPERIENCED
+      : '');
   const signupAccessToken = payload?.signupAccessToken || '';
   const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
   const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
@@ -489,11 +498,18 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
     }
   }
 
+  if (outcome === 'membership-application' && applicationPathway) {
+    persistMembershipApplicationPathway(applicationPathway);
+  }
+
   if (actionTarget === 'salesforce' || actionTarget === 'student-salesforce') {
     try {
       sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, safeReturnPath);
       if (actionTarget === 'student-salesforce') {
         setStudentMembershipApplicationPending();
+        saveMembershipApplicationCourseReturn(safeReturnPath);
+      } else if (outcome === 'membership-application') {
+        setMembershipApplicationPending();
         saveMembershipApplicationCourseReturn(safeReturnPath);
       } else if (payload?.flow?.eligibilityType !== 'recognition') {
         clearMembershipApplicationPending();
@@ -519,7 +535,11 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
   const eligibilityType =
     actionTarget === 'student-salesforce'
       ? '&eligibilityType=student'
-      : '';
+      : outcome === 'membership-application' && applicationPathway === MEMBERSHIP_APPLICATION_PATHWAY.EXPERIENCED
+        ? '&eligibilityType=experienced'
+        : outcome === 'membership-application'
+          ? '&eligibilityType=recognition'
+          : '';
   const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}${eligibilityType}`;
   navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
 }

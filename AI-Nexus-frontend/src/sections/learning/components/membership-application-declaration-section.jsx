@@ -12,6 +12,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { RequiredMark } from 'src/utils/membership-form-required-mark';
 import { YES_NO_OPTIONS } from 'src/utils/membership-application-declaration';
+import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
 
 // ----------------------------------------------------------------------
 
@@ -76,9 +77,11 @@ function AcknowledgementField({ checked, onChange, label, error }) {
 export function MembershipApplicationDeclarationSection({
   declaration,
   applicationId,
+  pathway,
   fieldErrors = {},
   onUpdate,
 }) {
+  const isExperienced = isExperiencedMembershipApplicationPathway(pathway);
   const update = (field, value) => onUpdate(field, value);
   const fe = (key) => {
     const msg = fieldErrors[key];
@@ -190,23 +193,27 @@ export function MembershipApplicationDeclarationSection({
         />
       )}
 
-      <YesNoField
-        label="CPE compliance declaration"
-        value={declaration.cpeComplianceDeclaration}
-        onChange={(v) => update('cpeComplianceDeclaration', v)}
-      />
-      {declaration.cpeComplianceDeclaration === 'No' && (
-        <MembershipFormTextField
-          label="Reason for non-compliance"
-          required
-          multiline
-          minRows={2}
-          size={fieldSize}
-          fullWidth
-          value={declaration.reasonForNonComplianceOther}
-          onChange={(e) => update('reasonForNonComplianceOther', e.target.value)}
-          {...fe('reasonForNonComplianceOther')}
-        />
+      {!isExperienced && (
+        <>
+          <YesNoField
+            label="CPE compliance declaration"
+            value={declaration.cpeComplianceDeclaration}
+            onChange={(v) => update('cpeComplianceDeclaration', v)}
+          />
+          {declaration.cpeComplianceDeclaration === 'No' && (
+            <MembershipFormTextField
+              label="Reason for non-compliance"
+              required
+              multiline
+              minRows={2}
+              size={fieldSize}
+              fullWidth
+              value={declaration.reasonForNonComplianceOther}
+              onChange={(e) => update('reasonForNonComplianceOther', e.target.value)}
+              {...fe('reasonForNonComplianceOther')}
+            />
+          )}
+        </>
       )}
 
       <Box sx={{ pt: 1 }}>
@@ -232,12 +239,21 @@ export function MembershipApplicationDeclarationSection({
             label="I acknowledge the non-refundable admission fee"
             error={fieldErrors.acknowledgeNonRefundableAdmissionFee}
           />
-          <AcknowledgementField
-            checked={Boolean(declaration.transitionalArrangements)}
-            onChange={(e) => update('transitionalArrangements', e.target.checked)}
-            label="I am applying under transitional arrangements"
-            error={fieldErrors.transitionalArrangements}
-          />
+          {isExperienced ? (
+            <AcknowledgementField
+              checked={Boolean(declaration.memberApplicationTandC)}
+              onChange={(e) => update('memberApplicationTandC', e.target.checked)}
+              label="I agree to the membership application terms and conditions"
+              error={fieldErrors.memberApplicationTandC}
+            />
+          ) : (
+            <AcknowledgementField
+              checked={Boolean(declaration.transitionalArrangements)}
+              onChange={(e) => update('transitionalArrangements', e.target.checked)}
+              label="I am applying under transitional arrangements"
+              error={fieldErrors.transitionalArrangements}
+            />
+          )}
         </Stack>
       </Box>
     </Stack>
