@@ -32,6 +32,11 @@ import {
   shouldScaqRejectToPaidSignup,
   isScaqMembershipSsoFlow,
   POST_OAUTH_RETURN_TO_KEY,
+  isIscaMemberSsoCheckPending,
+  clearIscaMemberSsoCheckPending,
+  applyYesYesYesIscaMemberFailureToStoredFlow,
+  applyIscaMemberQuestionnaireSuccessToStoredFlow,
+  buildResumeMembershipSignupReturnUrl,
 } from 'src/utils/membership-eligibility-sso';
 import {
   isRecognitionMembershipApplicationFlow,
@@ -47,7 +52,9 @@ import {
 import {
   redirectCaMemberToPlatform,
   tryCompleteCaMemberPlatformLogin,
+  fetchMembershipNexusUserInfo,
 } from 'src/utils/membership-application-ca';
+import { tryCompleteApprovedMemberPlatformLogin } from 'src/utils/membership-application-approved-member';
 import {
   redirectStudentMemberToPlatform,
   tryCompleteStudentMemberPlatformLogin,
@@ -274,6 +281,61 @@ async function handleNonScaqCandidateAfterSso(
   return true;
 }
 
+function withNotEligibleParam(path) {
+  const base = String(path || paths.home).trim() || paths.home;
+  return `${base}${base.includes('?') ? '&' : '?'}membershipNotEligible=1`;
+}
+
+async function handleIscaMemberSsoCheckAfterSso(router, searchParams, payload = {}) {
+  if (!isIscaMemberSsoCheckPending(searchParams)) return false;
+
+  const socialToken = String(
+    payload?.socialToken || searchParams.get('socialAccessToken') || ''
+  ).trim();
+
+  const redirectTo = resolvePostLoginPath(searchParams) || paths.home;
+  if (!socialToken) {
+    clearIscaMemberSsoCheckPending();
+    router.replace(withNotEligibleParam(redirectTo));
+    return true;
+  }
+
+  try {
+    const nexusInfo = await fetchMembershipNexusUserInfo(socialToken);
+    const fromNexusUser = nexusInfo?.nexusUser?.isSCAQCandidate;
+    const fromTopLevel = nexusInfo?.isSCAQCandidate;
+    const isScaqCandidate =
+      typeof fromNexusUser === 'boolean'
+        ? fromNexusUser
+        : typeof fromTopLevel === 'boolean'
+          ? fromTopLevel
+          : readScaqFlagsFromOAuthCallback(searchParams).isSCAQCandidate;
+
+    if (isScaqCandidate === true) {
+      applyIscaMemberQuestionnaireSuccessToStoredFlow();
+      clearIscaMemberSsoCheckPending();
+      router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
+      return true;
+    }
+
+    const resumedNoYesYesFlow = applyYesYesYesIscaMemberFailureToStoredFlow();
+    if (resumedNoYesYesFlow) {
+      clearIscaMemberSsoCheckPending();
+      router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
+      return true;
+    }
+
+    clearIscaMemberSsoCheckPending();
+    router.replace(withNotEligibleParam(redirectTo));
+    return true;
+  } catch {
+    // if userinfonexus check fails, fall back to not-eligible modal for now
+    clearIscaMemberSsoCheckPending();
+    router.replace(withNotEligibleParam(redirectTo));
+    return true;
+  }
+}
+
 async function runScaqPromoteAssociateIfNeeded(decision, scaqFlow) {
   if (decision !== 'promote-associate') return;
 
@@ -378,6 +440,17 @@ export default function OAuthCallbackPage() {
             }
           }
 
+          const handledIscaMemberCheck = await handleIscaMemberSsoCheckAfterSso(
+            router,
+            searchParams,
+            {
+              socialToken: searchParams.get('socialAccessToken') || '',
+            }
+          );
+          if (handledIscaMemberCheck) {
+            return;
+          }
+
           const handledNonScaq = await handleNonScaqCandidateAfterSso(
             router,
             checkUserSession,
@@ -433,6 +506,18 @@ export default function OAuthCallbackPage() {
               }
               return;
             }
+          }
+
+          const handledIscaMemberCheck = await handleIscaMemberSsoCheckAfterSso(
+            router,
+            searchParams,
+            {
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken: pendingToken,
+            }
+          );
+          if (handledIscaMemberCheck) {
+            return;
           }
 
           const handledNonScaq = await handleNonScaqCandidateAfterSso(
@@ -500,6 +585,21 @@ export default function OAuthCallbackPage() {
 
         await checkUserSession?.();
 
+        if (isIscaMemberSsoCheckPending(searchParams)) {
+          const handledIscaMemberCheck = await handleIscaMemberSsoCheckAfterSso(
+            router,
+            searchParams,
+            {
+              socialToken: searchParams.get('socialAccessToken') || '',
+              pendingPlatformAccessToken:
+                searchParams.get('pendingPlatformAccessToken') || accessToken || '',
+            }
+          );
+          if (handledIscaMemberCheck) {
+            return;
+          }
+        }
+
         let sfAfterLogin = readSalesforceFlagsFromCallbackParams(searchParams);
         const userStr = sessionStorage.getItem('user');
         let userRole = 'User';
@@ -513,7 +613,10 @@ export default function OAuthCallbackPage() {
           }
         }
 
-        if (shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate)) {
+        if (
+          !isIscaMemberSsoCheckPending(searchParams)
+          && shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate)
+        ) {
           await rejectScaqAndRedirectToPaidSignup(
             router,
             checkUserSession,

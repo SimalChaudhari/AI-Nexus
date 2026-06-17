@@ -30,6 +30,7 @@ export const SALESFORCE_CREATE_ACCOUNT_OUTCOMES = new Set([
   'student-create-membership-account',
   'student-fee-paid-create-account',
   'membership-account-create',
+  'corporate-membership-signup',
 ]);
 
 const SALUTATION_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Mdm.'];
@@ -105,6 +106,17 @@ export function isSalesforceMembershipCreateOutcomeKey(outcome) {
   return SALESFORCE_CREATE_ACCOUNT_OUTCOMES.has(outcome);
 }
 
+function isCorporateQuestionnaireMembershipFlow(state) {
+  return (
+    state?.initialQuestionnaireSubmitted
+    && state?.isIscaMember === false
+    && state?.isSingaporePr === false
+    && state?.companyRegistrationUnderCompany === true
+    && state?.companyReferenceConfirmed === true
+    && !state?.companyReferenceRouteAbandoned
+  );
+}
+
 /**
  * Whether the flow should show the dedicated Salesforce create-account step
  * (separate from the generic membership result / signup forms).
@@ -113,6 +125,10 @@ export function shouldUseSalesforceMembershipCreateStep(state) {
   if (!state || state.salesforceMembershipAccountCreated) return false;
   if (state.isIscaMember === true) return false;
   if (state.isSingaporePr === true && state.spPrVerified === true) return false;
+
+  if (isCorporateQuestionnaireMembershipFlow(state) && state.salesforceAccountChoice === 'create') {
+    return true;
+  }
 
   // Recognition path: create account on /auth/membership/salesforce-create (never in modal).
   if (state.eligibilityType === 'recognition') {
@@ -160,8 +176,10 @@ export function SalesforceMembershipCreateStep({
   onLoginWithSalesforce,
 }) {
   const theme = useTheme();
+  const isCorporateFlow = isCorporateQuestionnaireMembershipFlow(flowState);
   const [phase, setPhase] = useState('register');
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
+  const [designation, setDesignation] = useState('');
   const [passwordForm, setPasswordForm] = useState({ username: '', password: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -192,6 +210,10 @@ export function SalesforceMembershipCreateStep({
     const { salutation, firstName, lastName, nameAsPerId, email } = registerForm;
     if (!firstName.trim() || !lastName.trim() || !nameAsPerId.trim() || !email.trim()) {
       setError('Please complete all required fields.');
+      return;
+    }
+    if (isCorporateFlow && !designation.trim()) {
+      setError('Please enter your designation.');
       return;
     }
     setSubmitting(true);
@@ -245,6 +267,15 @@ export function SalesforceMembershipCreateStep({
         username.trim(),
         registerForm
       );
+      if (isCorporateFlow) {
+        eligibility.snapshot = {
+          ...eligibility.snapshot,
+          companyName: String(flowState?.companyVerifiedName || '').trim(),
+          industry: String(flowState?.companyVerifiedIndustry || '').trim(),
+          companyReferenceId: String(flowState?.companyReferenceId || '').trim(),
+          designation: String(designation || '').trim(),
+        };
+      }
       if (flowState) {
         await saveSalesforceMembershipRecord({
           email: registerForm.email.trim(),
@@ -530,9 +561,59 @@ export function SalesforceMembershipCreateStep({
                 required
                 disabled={submitting}
                 InputLabelProps={INPUT_LABEL_ABOVE}
-                helperText="Used as your Salesforce username if not assigned separately."
+                helperText={
+                  isCorporateFlow
+                    ? 'We will check if a Salesforce account already exists for this email before creating a new account.'
+                    : 'Used as your Salesforce username if not assigned separately.'
+                }
               />
             </Grid>
+            {isCorporateFlow && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Company name"
+                    value={String(flowState?.companyVerifiedName || '').trim()}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Industry"
+                    value={String(flowState?.companyVerifiedIndustry || '').trim()}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Company ID"
+                    value={String(flowState?.companyReferenceId || '').trim()}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Designation"
+                    value={designation}
+                    onChange={(event) => setDesignation(event.target.value)}
+                    fullWidth
+                    size={fieldSize}
+                    required
+                    disabled={submitting}
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+              </>
+            )}
           </Grid>
 
           {error && (

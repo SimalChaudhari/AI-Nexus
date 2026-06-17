@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -27,6 +27,11 @@ import { AuthSignInSchema } from 'src/validations/user.validation';
 
 import { useAuthContext } from 'src/auth/hooks';
 import { signInWithPassword, resendVerification } from 'src/auth/context/jwt';
+import {
+  MembershipSignupDialog,
+  MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
+} from 'src/sections/learning/components/membership-signup-dialog';
+import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -37,11 +42,7 @@ export function SimpleSignInView() {
   const membershipPaymentConfirmed = searchParams.get('membershipPaymentConfirmed') === '1';
   const returnTo = searchParams.get('returnTo') || '';
   const prefilledEmail = searchParams.get('email') || '';
-  const paidSignUpHref = useMemo(() => {
-    const params = new URLSearchParams({ membershipOutcome: 'paid-signup' });
-    if (returnTo) params.set('returnTo', returnTo);
-    return `${paths.auth.simple.signUp}?${params.toString()}`;
-  }, [returnTo]);
+  const [signupModalOpen, setSignupModalOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isResending, setIsResending] = useState(false);
@@ -70,6 +71,11 @@ export function SimpleSignInView() {
     setValue('identifier', prefilledEmail, { shouldDirty: false, shouldValidate: false });
     setUserEmail(prefilledEmail);
   }, [prefilledEmail, setValue]);
+
+  useEffect(() => {
+    if (searchParams.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) !== '1') return;
+    setSignupModalOpen(true);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!membershipPaymentConfirmed) return;
@@ -175,7 +181,13 @@ export function SimpleSignInView() {
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           Don&apos;t have an account?
         </Typography>
-        <Link component={RouterLink} href={paidSignUpHref} variant="subtitle2">
+        <Link
+          component="button"
+          type="button"
+          variant="subtitle2"
+          onClick={() => setSignupModalOpen(true)}
+          sx={{ cursor: 'pointer', border: 'none', background: 'none', p: 0, font: 'inherit' }}
+        >
           Sign up
         </Link>
       </Stack>
@@ -320,6 +332,25 @@ export function SimpleSignInView() {
           {renderForm}
         </Form>
       </Box>
+
+      <MembershipSignupDialog
+        entrySource={MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP}
+        open={signupModalOpen}
+        onClose={() => setSignupModalOpen(false)}
+        onDeclineFeeWaiver={() => {
+          setSignupModalOpen(false);
+          navigateToPaidMembershipSignup(router.push, returnTo || paths.home);
+        }}
+        onContinue={(payload) => {
+          setSignupModalOpen(false);
+          continueMembershipSignupDialog({
+            navigate: router.push,
+            returnPath: returnTo || paths.home,
+            authenticated: false,
+            payload,
+          });
+        }}
+      />
     </>
   );
 }

@@ -391,6 +391,34 @@ export function sanitizeStudentMembershipFormFields(form = {}) {
   };
 }
 
+/**
+ * Copy personal email from eligibility questionnaire into the student application draft.
+ * Only fills when the draft personal email is still empty.
+ * @param {Record<string, unknown>} flow
+ * @returns {boolean}
+ */
+export function applyStudentMembershipEmailPrefillFromEligibilityFlow(flow = {}) {
+  const personalEmail = String(flow.studentPersonalEmail || '').trim();
+  if (!personalEmail) return false;
+
+  const existing = readStudentMembershipFormDraft();
+  const currentEmail = String(existing?.form?.personalEmail || '').trim();
+  if (currentEmail) return false;
+
+  const nextForm = sanitizeStudentMembershipFormFields({
+    ...EMPTY_STUDENT_MEMBERSHIP_FORM,
+    ...(existing?.form || {}),
+    personalEmail,
+  });
+
+  saveStudentMembershipFormDraft({
+    form: nextForm,
+    applicationId: String(existing?.applicationId || '').trim(),
+    applicationName: existing?.applicationName || '',
+  });
+  return true;
+}
+
 export function readStudentMembershipFormDraft() {
   try {
     const raw = localStorage.getItem(STUDENT_MEMBERSHIP_FORM_DRAFT_KEY);
