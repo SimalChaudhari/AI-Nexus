@@ -98,3 +98,25 @@ export class CreateAtoMembershipDto extends MembershipApplicationSocialTokenDto 
   @IsString()
   membershipNo?: string;
 }
+
+export class CreateOpbMembershipDto extends MembershipApplicationSocialTokenDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  applicationId!: string;
+
+  @ApiProperty({ example: 'Chartered Institute of Management Accountants (CIMA)' })
+  @IsString()
+  @IsNotEmpty()
+  institutionName!: string;
+
+  @ApiPropertyOptional({ example: 'Fellow' })
+  @IsOptional()
+  @IsString()
+  membershipStatus?: string;
+
+  @ApiPropertyOptional({ example: 'CIMA12345' })
+  @IsOptional()
+  @IsString()
+  membershipId?: string;
+}

@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateApplicationNexusDto {
   @ApiProperty({ description: 'Salesforce IdP access token from membership SSO' })
@@ -17,8 +17,13 @@ export class CreateApplicationNexusDto {
   @IsNotEmpty()
   recordTypeName!: string;
 
-  @ApiProperty({ example: 'ACCA Qualification Holders' })
+  @ApiPropertyOptional({ example: 'ACCA Qualification Holders' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  accountingQualification!: string;
+  accountingQualification?: string;
+
+  @ApiPropertyOptional({ example: 'academic' })
+  @IsOptional()
+  @IsString()
+  experiencedMemberType?: string;
 }

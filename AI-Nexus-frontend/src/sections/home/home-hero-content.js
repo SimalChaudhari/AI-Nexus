@@ -4,7 +4,7 @@ import { resolveHomeHeroData } from './home-hero-defaults';
  * Hero data is loaded from backend app-settings (admin), merged with design defaults.
  */
 export const EMPTY_HERO_DATA = {
-  badge: '',
+  badgeLogoUrl: '',
   headline: '',
   headlineAccent: '',
   headlineColor: '',

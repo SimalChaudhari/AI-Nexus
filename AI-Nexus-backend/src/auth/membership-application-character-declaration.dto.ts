@@ -158,10 +158,10 @@ export class CreateDeclarationDto extends MembershipApplicationSocialTokenDto {
   @IsString()
   previousISCAembershipDetails?: string;
 
-  @ApiProperty({ enum: ['Yes', 'No'] })
+  @ApiPropertyOptional({ enum: ['Yes', 'No'] })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  cpeComplianceDeclaration!: string;
+  cpeComplianceDeclaration?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -180,7 +180,13 @@ export class CreateDeclarationDto extends MembershipApplicationSocialTokenDto {
   @IsBoolean()
   acknowledgeNonRefundableAdmissionFee!: boolean;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
-  transitionalArrangements!: boolean;
+  transitionalArrangements?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  memberApplicationTandC?: boolean;
 }

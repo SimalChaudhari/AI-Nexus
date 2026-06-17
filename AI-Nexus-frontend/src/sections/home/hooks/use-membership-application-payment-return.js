@@ -7,6 +7,7 @@ import {
   parseMembershipApplicationPaymentReturn,
   stripMembershipApplicationPaymentParams,
 } from 'src/utils/membership-application-checkout';
+import { buildMembershipPaymentErrorReturnUrl } from 'src/utils/membership-application-payment-return';
 
 // ----------------------------------------------------------------------
 
@@ -39,21 +40,18 @@ export function useMembershipApplicationPaymentReturn() {
         window.history.replaceState({}, '', cleanPath);
 
         if (!result?.navigated) {
-          router.replace(result?.redirectTo || paths.learning);
+          router.replace(result?.redirectTo || paths.auth.membership.application);
         }
       } catch (err) {
         if (err?.code === 'SALESFORCE_SOCIAL_TOKEN_EXPIRED') {
           return;
         }
         handledRef.current = false;
-        const message = encodeURIComponent(
-          err instanceof Error ? err.message : 'Payment could not be confirmed.'
+        router.replace(
+          buildMembershipPaymentErrorReturnUrl(
+            err instanceof Error ? err.message : 'Payment could not be confirmed.'
+          )
         );
-        const cleanPath = `${window.location.pathname}${stripMembershipApplicationPaymentParams(
-          window.location.search
-        )}`;
-        window.history.replaceState({}, '', cleanPath);
-        router.replace(`${paths.auth.membership.application}?billing=1&paymentError=${message}`);
       }
     };
 

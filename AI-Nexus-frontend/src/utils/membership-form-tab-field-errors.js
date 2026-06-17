@@ -1,13 +1,16 @@
 import { validateApplicationBeforeSubmit } from 'src/utils/membership-application-create';
+import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
 import {
   getPersonalRequiredFieldKeys,
   isPersonalFieldMissing,
   validatePersonalFormBeforeSubmit,
 } from 'src/utils/membership-application-personal';
 import {
-  isWorkExperienceRowComplete,
   isWorkExperienceRowStarted,
   validateWorkExperienceBeforeSubmit,
+  normalizeWorkExperienceForm,
+  requiresCurrentWorkExperience,
+  isExperiencedPeriodToOptional,
 } from 'src/utils/membership-application-employment';
 import {
   CHARACTER_REFERENCE_REQUIRED_KEYS,
@@ -40,12 +43,12 @@ function hasAnyFieldError(fields) {
   return Object.values(fields).some(Boolean);
 }
 
-function buildApplicationFieldErrors(application, accountId, applicationId) {
+function buildApplicationFieldErrors(application, accountId, applicationId, pathway) {
   const fields = {};
   if (!applicationId?.trim()) {
     if (!accountId?.trim()) {
       fields._form = 'Salesforce account is not linked. Please sign in with Eservices again.';
-    } else if (!application.accountingQualification?.trim()) {
+    } else if (!isExperiencedMembershipApplicationPathway(pathway) && !application.accountingQualification?.trim()) {
       fields.accountingQualification = REQUIRED_FIELD_MESSAGE;
     }
   }
@@ -81,56 +84,83 @@ function buildPersonalFieldErrors(personal, applicationId) {
   return fields;
 }
 
-function buildWorkExperienceFieldErrors(workExperience, applicationId) {
+function applyWorkRowFieldErrors(fields, prefix, row, requirePeriodTo) {
+  const orgName = String(row?.organisationName ?? '').trim();
+  const industry = String(row?.industry ?? '').trim();
+  const jobPos = String(row?.jobPosition ?? '').trim();
+  const jobLevel = String(row?.jobLevel ?? '').trim();
+  const jobFunction = String(row?.jobFunction ?? '').trim();
+  if (!orgName) fields[`${prefix}_organisationName`] = REQUIRED_FIELD_MESSAGE;
+  if (!industry) fields[`${prefix}_industry`] = REQUIRED_FIELD_MESSAGE;
+  if (!jobPos) fields[`${prefix}_jobPosition`] = REQUIRED_FIELD_MESSAGE;
+  if (!jobLevel) fields[`${prefix}_jobLevel`] = REQUIRED_FIELD_MESSAGE;
+  if (!jobFunction) fields[`${prefix}_jobFunction`] = REQUIRED_FIELD_MESSAGE;
+  if (!String(row?.jobResponsibilities ?? '').trim()) {
+    fields[`${prefix}_jobResponsibilities`] = REQUIRED_FIELD_MESSAGE;
+  }
+  if (!String(row?.periodFrom ?? '').trim()) {
+    fields[`${prefix}_periodFrom`] = REQUIRED_FIELD_MESSAGE;
+  }
+  if (requirePeriodTo && !String(row?.periodTo ?? '').trim()) {
+    fields[`${prefix}_periodTo`] = REQUIRED_FIELD_MESSAGE;
+  }
+}
+
+function buildWorkExperienceFieldErrors(workExperience, applicationId, pathway) {
   const fields = {};
   if (!applicationId?.trim()) {
     fields._form = 'Application ID is required. Submit the Application tab first.';
     return fields;
   }
-  fields.currentEmploymentStatus = req(workExperience.currentEmploymentStatus);
-  const experiences = Array.isArray(workExperience?.experiences) ? workExperience.experiences : [];
-  let hasCompleteEntry = false;
-  experiences.forEach((row, index) => {
-    const mustValidate = index === 0 || isWorkExperienceRowStarted(row);
-    if (!mustValidate) {
-      return;
-    }
-    const orgName = String(row?.organisationName ?? '').trim();
-    const industry = String(row?.industry ?? '').trim();
-    const jobPos = String(row?.jobPosition ?? '').trim();
-    const jobLevel = String(row?.jobLevel ?? '').trim();
-    const jobFunction = String(row?.jobFunction ?? '').trim();
-    if (!orgName) {
-      fields[`experience_${index}_organisationName`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!industry) {
-      fields[`experience_${index}_industry`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!jobPos) {
-      fields[`experience_${index}_jobPosition`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!jobLevel) {
-      fields[`experience_${index}_jobLevel`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!jobFunction) {
-      fields[`experience_${index}_jobFunction`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!String(row?.jobResponsibilities ?? '').trim()) {
-      fields[`experience_${index}_jobResponsibilities`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!String(row?.periodFrom ?? '').trim()) {
-      fields[`experience_${index}_periodFrom`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (!row?.isCurrentEmployment && !String(row?.periodTo ?? '').trim()) {
-      fields[`experience_${index}_periodTo`] = REQUIRED_FIELD_MESSAGE;
-    }
-    if (isWorkExperienceRowComplete(row)) {
-      hasCompleteEntry = true;
+
+  const normalized = normalizeWorkExperienceForm(workExperience);
+  const periodToOptional = isExperiencedPeriodToOptional(pathway);
+  fields.currentEmploymentStatus = req(normalized.currentEmploymentStatus);
+  const requiresCurrent = requiresCurrentWorkExperience(normalized.currentEmploymentStatus);
+
+  let hasCompleteCurrent = false;
+  (normalized.currentWorkExperience || []).forEach((row, index) => {
+    const mustValidate =
+      (requiresCurrent && index === 0) || isWorkExperienceRowStarted(row, 'current');
+    if (!mustValidate) return;
+    applyWorkRowFieldErrors(fields, `current_${index}`, row, false);
+    if (
+      String(row?.organisationName ?? '').trim() &&
+      String(row?.industry ?? '').trim() &&
+      String(row?.jobPosition ?? '').trim() &&
+      String(row?.jobLevel ?? '').trim() &&
+      String(row?.jobFunction ?? '').trim() &&
+      String(row?.jobResponsibilities ?? '').trim() &&
+      String(row?.periodFrom ?? '').trim()
+    ) {
+      hasCompleteCurrent = true;
     }
   });
-  if (!hasCompleteEntry && experiences.length) {
-    fields._form = 'Add at least one complete work experience entry with all required fields.';
+
+  let hasCompletePrevious = false;
+  (normalized.previousWorkExperience || []).forEach((row, index) => {
+    if (!isWorkExperienceRowStarted(row, 'previous')) return;
+    applyWorkRowFieldErrors(fields, `previous_${index}`, row, !periodToOptional);
+    if (
+      String(row?.organisationName ?? '').trim() &&
+      String(row?.industry ?? '').trim() &&
+      String(row?.jobPosition ?? '').trim() &&
+      String(row?.jobLevel ?? '').trim() &&
+      String(row?.jobFunction ?? '').trim() &&
+      String(row?.jobResponsibilities ?? '').trim() &&
+      String(row?.periodFrom ?? '').trim() &&
+      (periodToOptional || String(row?.periodTo ?? '').trim())
+    ) {
+      hasCompletePrevious = true;
+    }
+  });
+
+  if (requiresCurrent && !hasCompleteCurrent) {
+    fields._form = 'Add at least one complete current work experience entry.';
+  } else if (!hasCompleteCurrent && !hasCompletePrevious) {
+    fields._form = 'Add at least one complete work experience entry.';
   }
+
   return fields;
 }
 
@@ -166,7 +196,7 @@ function buildCharacterReferenceFieldErrors(form, applicationId) {
   return fields;
 }
 
-function buildDeclarationFieldErrors(form, applicationId) {
+function buildDeclarationFieldErrors(form, applicationId, pathway) {
   const fields = {};
   if (!applicationId?.trim()) {
     fields._form = 'Application ID is required. Submit the Application tab first.';
@@ -187,16 +217,20 @@ function buildDeclarationFieldErrors(form, applicationId) {
   if (form.memberOfISCAPreviously === 'Yes') {
     fields.previousISCAembershipDetails = req(form.previousISCAembershipDetails);
   }
-  if (form.cpeComplianceDeclaration === 'No') {
-    fields.reasonForNonComplianceOther = req(form.reasonForNonComplianceOther);
+  if (!isExperiencedMembershipApplicationPathway(pathway)) {
+    if (form.cpeComplianceDeclaration === 'No') {
+      fields.reasonForNonComplianceOther = req(form.reasonForNonComplianceOther);
+    }
+    if (!form.transitionalArrangements) {
+      fields.transitionalArrangements = 'You must confirm to continue.';
+    }
+  } else if (!form.memberApplicationTandC) {
+    fields.memberApplicationTandC = 'You must agree to continue.';
   }
   if (!form.pdpaPolicy) fields.pdpaPolicy = 'You must agree to continue.';
   if (!form.infoIsTrueAndComplete) fields.infoIsTrueAndComplete = 'You must confirm to continue.';
   if (!form.acknowledgeNonRefundableAdmissionFee) {
     fields.acknowledgeNonRefundableAdmissionFee = 'You must acknowledge to continue.';
-  }
-  if (!form.transitionalArrangements) {
-    fields.transitionalArrangements = 'You must confirm to continue.';
   }
   return fields;
 }
@@ -236,6 +270,7 @@ function buildDocumentFieldErrors(documentTypes, documentFiles, documentEntries)
 export function collectTabFieldErrors(tabId, ctx) {
   const {
     draft,
+    pathway,
     applicationId = '',
     accountId = '',
     documentTypes = [],
@@ -247,24 +282,24 @@ export function collectTabFieldErrors(tabId, ctx) {
 
   switch (tabId) {
     case 'application':
-      fields = buildApplicationFieldErrors(draft.application, accountId, applicationId);
-      message = validateApplicationBeforeSubmit(draft.application, accountId, applicationId);
+      fields = buildApplicationFieldErrors(draft.application, accountId, applicationId, pathway);
+      message = validateApplicationBeforeSubmit(draft.application, accountId, applicationId, pathway);
       break;
     case 'personal':
       fields = buildPersonalFieldErrors(draft.personal, applicationId);
       message = validatePersonalFormBeforeSubmit(draft.personal, applicationId);
       break;
     case 'work-experience':
-      fields = buildWorkExperienceFieldErrors(draft.workExperience, applicationId);
-      message = validateWorkExperienceBeforeSubmit(draft.workExperience, applicationId);
+      fields = buildWorkExperienceFieldErrors(draft.workExperience, applicationId, pathway);
+      message = validateWorkExperienceBeforeSubmit(draft.workExperience, applicationId, pathway);
       break;
     case 'character-reference':
       fields = buildCharacterReferenceFieldErrors(draft.characterReference, applicationId);
       message = validateCharacterReferenceBeforeSubmit(draft.characterReference, applicationId);
       break;
     case 'declaration':
-      fields = buildDeclarationFieldErrors(draft.declaration, applicationId);
-      message = validateDeclarationBeforeSubmit(draft.declaration, applicationId);
+      fields = buildDeclarationFieldErrors(draft.declaration, applicationId, pathway);
+      message = validateDeclarationBeforeSubmit(draft.declaration, applicationId, pathway);
       break;
     case 'document-upload':
       fields = buildDocumentFieldErrors(
@@ -286,8 +321,9 @@ export function collectTabFieldErrors(tabId, ctx) {
       );
       break;
     case 'qualification':
-      message =
-        'Use the Submit button under each qualification section (Academic, Professional, Other Professional Bodies).';
+      message = isExperiencedMembershipApplicationPathway(pathway)
+        ? 'Use the Submit button under each qualification section (Academic, Professional, Other Professional Bodies).'
+        : 'Use the Submit button under each qualification section (Professional Qualification, ATO, Other Professional Bodies).';
       break;
     case 'billing':
       message = 'Use the Pay button on this tab to complete payment.';

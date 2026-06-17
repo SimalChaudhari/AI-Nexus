@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { paths } from 'src/routes/paths';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -32,10 +34,12 @@ import {
   submitAcademicQualification,
   submitProfessionalQualification,
   submitAtoMembership,
+  submitOpbMembership,
   submitCharacterReference,
   submitDeclaration,
   submitMembershipDocumentUpload,
   submitResidentialDeclaration,
+  fetchMembershipApplicationUserInfo,
 } from 'src/api/membership-application';
 import { MembershipApplicationDocumentSection } from './membership-application-document-section';
 import { MembershipApplicationBillingSection } from './membership-application-billing-section';
@@ -55,13 +59,26 @@ import {
   buildPersonalDetailsApiPayload,
   PERSONAL_MAILING_REQUIRED_KEYS,
   validatePersonalFormBeforeSubmit,
+  extractPersonalPrefillFromNexusUser,
+  mergePersonalFormWithPrefill,
+  readLocalMembershipPersonalPrefill,
 } from 'src/utils/membership-application-personal';
 import {
   EMPTY_WORK_EXPERIENCE_FORM,
-  EMPTY_WORK_EXPERIENCE_ENTRY,
+  EMPTY_CURRENT_WORK_ENTRY,
+  EMPTY_PREVIOUS_WORK_ENTRY,
   buildEmploymentDetailsApiPayload,
   validateWorkExperienceBeforeSubmit,
+  normalizeWorkExperienceForm,
+  requiresCurrentWorkExperience,
+  seedExperiencedEmployedWorkExperience,
 } from 'src/utils/membership-application-employment';
+import {
+  MEMBERSHIP_PICKLIST_CONFIG,
+  MembershipApplicationPicklistField,
+  useMembershipPicklist,
+  useMembershipOrganisationNames,
+} from 'src/sections/learning/membership-application-picklists';
 import {
   EMPTY_QUALIFICATION_FORM,
   EMPTY_ACADEMIC_ENTRY,
@@ -70,10 +87,19 @@ import {
   validateAcademicQualificationBeforeSubmit,
   validateProfessionalQualificationBeforeSubmit,
   validateAtoMembershipBeforeSubmit,
+  EMPTY_OPB_ENTRY,
   isQualificationTabComplete,
   getQualificationSubmitPlan,
+  validateOpbMembershipBeforeSubmit,
   QUALIFICATION_SUBMIT_KEYS,
 } from 'src/utils/membership-application-qualification';
+import {
+  getMembershipApplicationTabs,
+  getMembershipApplicationDraftKey,
+  normalizeMembershipApplicationPathway,
+  readMembershipApplicationPathway,
+  isExperiencedMembershipApplicationPathway,
+} from 'src/utils/membership-application-pathway';
 import {
   EMPTY_CHARACTER_REFERENCE_FORM,
   buildCharacterReferenceApiPayload,
@@ -91,6 +117,7 @@ import {
 } from 'src/utils/membership-application-residential-declaration';
 import {
   EMPTY_APPLICATION_FORM,
+  getEmptyApplicationForm,
   buildCreateApplicationApiPayload,
   validateApplicationBeforeSubmit,
 } from 'src/utils/membership-application-create';
@@ -106,6 +133,19 @@ import {
 } from 'src/utils/membership-application-document';
 import { EMPTY_BILLING_FORM } from 'src/utils/membership-application-billing';
 import { collectTabFieldErrors } from 'src/utils/membership-form-tab-field-errors';
+import { MEMBERSHIP_ELIGIBILITY_FLOW_KEY } from 'src/utils/membership-eligibility-sso';
+import {
+  backupMembershipApplicationDraft,
+  mergeMembershipApplicationDraftSources,
+} from 'src/utils/membership-application-draft-backup';
+import {
+  readPaymentReturnFromSearch,
+  reconcileSubmittedTabsAfterPaymentRecorded,
+} from 'src/utils/membership-application-payment-return';
+import {
+  completeMembershipApplicationPaymentReturn,
+  parseMembershipApplicationPaymentReturn,
+} from 'src/utils/membership-application-checkout';
 import {
   DEFAULT_MEMBERSHIP_COUNTRY,
   DEFAULT_MEMBERSHIP_DIAL_CODE,
@@ -117,33 +157,43 @@ import {
 
 // ----------------------------------------------------------------------
 
-const TABS = [
-  { id: 'application', label: 'Application', icon: 'solar:document-add-bold' },
-  { id: 'personal', label: 'Personal', icon: 'solar:user-bold' },
-  { id: 'work-experience', label: 'Work Experience', icon: 'solar:case-minimalistic-bold' },
-  { id: 'qualification', label: 'Qualification', icon: 'solar:diploma-verified-bold' },
-  { id: 'character-reference', label: 'Character Reference', icon: 'solar:users-group-two-rounded-bold' },
-  { id: 'declaration', label: 'Declaration', icon: 'solar:document-text-bold' },
-  { id: 'document-upload', label: 'Document Upload', icon: 'solar:upload-bold' },
-  { id: 'residential-declaration', label: 'Residential Declaration', icon: 'solar:home-2-bold' },
-  { id: 'billing', label: 'Billing', icon: 'solar:wallet-money-bold' },
-];
-
-const EMPTY_DRAFT = {
-  application: { ...EMPTY_APPLICATION_FORM },
-  personal: { salutation: 'Mr.', ...EMPTY_PERSONAL_FORM },
-  workExperience: { ...EMPTY_WORK_EXPERIENCE_FORM },
-  qualification: {
-    ...EMPTY_QUALIFICATION_FORM,
-    professional: [{ ...EMPTY_PROFESSIONAL_ENTRY }],
-    ato: [{ ...EMPTY_ATO_ENTRY }],
-  },
-  characterReference: { ...EMPTY_CHARACTER_REFERENCE_FORM },
-  declaration: { ...EMPTY_DECLARATION_FORM },
-  documentUpload: { ...EMPTY_DOCUMENT_UPLOAD_FORM },
-  residentialDeclaration: { ...EMPTY_RESIDENTIAL_DECLARATION_FORM },
-  billing: { ...EMPTY_BILLING_FORM },
-};
+function buildEmptyDraft(pathway) {
+  const isExperienced = isExperiencedMembershipApplicationPathway(pathway);
+  return {
+    application: getEmptyApplicationForm(pathway),
+    personal: {
+      salutation: 'Mr.',
+      ...EMPTY_PERSONAL_FORM,
+      voiceCalls: '',
+      textMessages: '',
+      faxMessages: '',
+    },
+    workExperience: normalizeWorkExperienceForm(
+      isExperienced
+        ? seedExperiencedEmployedWorkExperience({
+            ...EMPTY_WORK_EXPERIENCE_FORM,
+            currentEmploymentStatus: 'Employed',
+            accreditedEmployerScheme: 'Yes',
+          })
+        : { ...EMPTY_WORK_EXPERIENCE_FORM }
+    ),
+    qualification: {
+      ...EMPTY_QUALIFICATION_FORM,
+      academic: isExperienced ? [{ ...EMPTY_ACADEMIC_ENTRY }] : [],
+      professional: [{ ...EMPTY_PROFESSIONAL_ENTRY }],
+      ato: isExperienced ? [] : [{ ...EMPTY_ATO_ENTRY }],
+      opb: [{ ...EMPTY_OPB_ENTRY }],
+    },
+    characterReference: { ...EMPTY_CHARACTER_REFERENCE_FORM },
+    declaration: { ...EMPTY_DECLARATION_FORM },
+    documentUpload: { ...EMPTY_DOCUMENT_UPLOAD_FORM },
+    residentialDeclaration: {
+      ...EMPTY_RESIDENTIAL_DECLARATION_FORM,
+      ...(isExperienced ? {} : { residentialDeclaration: '' }),
+    },
+    billing: { ...EMPTY_BILLING_FORM },
+  };
+}
 
 function applyPersonalSingaporeDefaults(personal) {
   if (!personal) return personal;
@@ -169,78 +219,89 @@ function applyCharacterReferenceDialDefaults(characterReference) {
   };
 }
 
-function loadDraft() {
+function loadDraft(pathway = readMembershipApplicationPathway()) {
+  const emptyDraft = buildEmptyDraft(pathway);
+  const draftKey = getMembershipApplicationDraftKey(pathway);
+  let parsed = null;
   try {
-    const raw = localStorage.getItem(MEMBERSHIP_APPLICATION_FORM_DRAFT_KEY);
-    if (!raw) return { ...EMPTY_DRAFT, submittedTabs: {} };
-    const parsed = JSON.parse(raw);
-    return {
-      ...EMPTY_DRAFT,
-      ...parsed,
-      application: { ...EMPTY_DRAFT.application, ...parsed.application },
-      personal: applyPersonalSingaporeDefaults({
-        ...EMPTY_DRAFT.personal,
-        ...parsed.personal,
-      }),
-      workExperience: {
-        ...EMPTY_DRAFT.workExperience,
-        ...parsed.workExperience,
-        experiences: Array.isArray(parsed.workExperience?.experiences)
-          ? parsed.workExperience.experiences.map((row) => ({
-              ...EMPTY_WORK_EXPERIENCE_ENTRY,
-              ...row,
-            }))
-          : EMPTY_WORK_EXPERIENCE_FORM.experiences,
-      },
-      qualification: {
-        ...EMPTY_DRAFT.qualification,
-        ...parsed.qualification,
-        academic: Array.isArray(parsed.qualification?.academic)
-          ? parsed.qualification.academic.map((row) => ({
-              ...EMPTY_ACADEMIC_ENTRY,
-              ...row,
-              country: row.country || DEFAULT_MEMBERSHIP_COUNTRY,
-              institutionName: row.institutionName || row.nameOfInstitution || '',
-            }))
-          : [],
-        professional: Array.isArray(parsed.qualification?.professional)
-          ? parsed.qualification.professional.map((row) => ({
-              ...EMPTY_PROFESSIONAL_ENTRY,
-              ...row,
-            }))
-          : [{ ...EMPTY_PROFESSIONAL_ENTRY }],
-        ato: Array.isArray(parsed.qualification?.ato)
-          ? parsed.qualification.ato.map((row) => ({ ...EMPTY_ATO_ENTRY, ...row }))
-          : [{ ...EMPTY_ATO_ENTRY }],
-      },
-      characterReference: applyCharacterReferenceDialDefaults({
-        ...EMPTY_DRAFT.characterReference,
-        ...parsed.characterReference,
-      }),
-      declaration: { ...EMPTY_DRAFT.declaration, ...parsed.declaration },
-      documentUpload: {
-        ...EMPTY_DRAFT.documentUpload,
-        ...parsed.documentUpload,
-        entries: {
-          ...EMPTY_DOCUMENT_UPLOAD_FORM.entries,
-          ...(parsed.documentUpload?.entries || {}),
-        },
-      },
-      residentialDeclaration: {
-        ...EMPTY_DRAFT.residentialDeclaration,
-        ...parsed.residentialDeclaration,
-      },
-      billing: { ...EMPTY_BILLING_FORM, ...parsed.billing },
-      submittedTabs: parsed.submittedTabs || {},
-    };
+    const raw = localStorage.getItem(draftKey);
+    if (raw) parsed = JSON.parse(raw);
   } catch {
-    return { ...EMPTY_DRAFT, submittedTabs: {} };
+    parsed = null;
   }
+
+  parsed = mergeMembershipApplicationDraftSources(parsed, pathway);
+
+  if (!parsed) return { ...emptyDraft, submittedTabs: {} };
+
+  return {
+    ...emptyDraft,
+    ...parsed,
+    application: {
+      ...emptyDraft.application,
+      ...parsed.application,
+      ...(isExperiencedMembershipApplicationPathway(pathway)
+        ? { recordTypeName: emptyDraft.application.recordTypeName }
+        : {}),
+    },
+    personal: applyPersonalSingaporeDefaults({
+      ...emptyDraft.personal,
+      ...parsed.personal,
+    }),
+    workExperience: normalizeWorkExperienceForm({
+      ...emptyDraft.workExperience,
+      ...parsed.workExperience,
+    }),
+    qualification: {
+      ...emptyDraft.qualification,
+      ...parsed.qualification,
+      academic: Array.isArray(parsed.qualification?.academic)
+        ? parsed.qualification.academic.map((row) => ({
+            ...EMPTY_ACADEMIC_ENTRY,
+            ...row,
+            country: row.country || DEFAULT_MEMBERSHIP_COUNTRY,
+            institutionName: row.institutionName || row.nameOfInstitution || '',
+          }))
+        : [],
+      professional: Array.isArray(parsed.qualification?.professional)
+        ? parsed.qualification.professional.map((row) => ({
+            ...EMPTY_PROFESSIONAL_ENTRY,
+            ...row,
+          }))
+        : [{ ...EMPTY_PROFESSIONAL_ENTRY }],
+      ato: Array.isArray(parsed.qualification?.ato)
+        ? parsed.qualification.ato.map((row) => ({ ...EMPTY_ATO_ENTRY, ...row }))
+        : emptyDraft.qualification.ato,
+      opb: Array.isArray(parsed.qualification?.opb)
+        ? parsed.qualification.opb.map((row) => ({ ...EMPTY_OPB_ENTRY, ...row }))
+        : emptyDraft.qualification.opb,
+    },
+    characterReference: applyCharacterReferenceDialDefaults({
+      ...emptyDraft.characterReference,
+      ...parsed.characterReference,
+    }),
+    declaration: { ...emptyDraft.declaration, ...parsed.declaration },                                                                    
+    documentUpload: {
+      ...emptyDraft.documentUpload,
+      ...parsed.documentUpload,
+      entries: {
+        ...EMPTY_DOCUMENT_UPLOAD_FORM.entries,
+        ...(parsed.documentUpload?.entries || {}),
+      },
+    },
+    residentialDeclaration: {
+      ...emptyDraft.residentialDeclaration,
+      ...parsed.residentialDeclaration,
+    },
+    billing: { ...EMPTY_BILLING_FORM, ...parsed.billing },
+    submittedTabs: parsed.submittedTabs || {},
+  };
 }
 
-function saveDraft(draft) {
+function saveDraft(draft, pathway = readMembershipApplicationPathway()) {
   try {
-    localStorage.setItem(MEMBERSHIP_APPLICATION_FORM_DRAFT_KEY, JSON.stringify(draft));
+    localStorage.setItem(getMembershipApplicationDraftKey(pathway), JSON.stringify(draft));
+    backupMembershipApplicationDraft(draft, pathway);
   } catch {
     // ignore
   }
@@ -256,18 +317,128 @@ function createValidationError(message) {
   return err;
 }
 
+function areNonBillingTabsComplete(tabs, submittedTabs, pathway) {
+  return tabs.every((t) => {
+    if (t.id === 'billing') return true;
+    if (t.id === 'qualification') {
+      return isQualificationTabComplete(submittedTabs, pathway);
+    }
+    return Boolean(submittedTabs[t.id]);
+  });
+}
+
+function isApplicationFullyComplete(tabs, submittedTabs, pathway) {
+  return areNonBillingTabsComplete(tabs, submittedTabs, pathway) && Boolean(submittedTabs.billing);
+}
+
 function isMembershipValidationError(err) {
   return err?.code === MEMBERSHIP_VALIDATION_ERROR;
 }
 
+const MEMBERSHIP_TAB_QUERY_KEY = 'tab';
+
+function resolveTabIndexFromQuery(tabId, tabsList) {
+  if (!tabId) return null;
+  const index = tabsList.findIndex((tab) => tab.id === tabId);
+  return index >= 0 ? index : null;
+}
+
 // ----------------------------------------------------------------------
 
-export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false }) {
+export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false, pathway: pathwayProp }) {
   const theme = useTheme();
   const { primary, secondary } = theme.palette;
+  const pathway = useMemo(
+    () => normalizeMembershipApplicationPathway(pathwayProp || readMembershipApplicationPathway()),
+    [pathwayProp]
+  );
+  const tabs = useMemo(() => getMembershipApplicationTabs(pathway), [pathway]);
+  const isExperiencedPathway = isExperiencedMembershipApplicationPathway(pathway);
+  const companyTypePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.companyType,
+  });
+  const industryPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.industry,
+  });
+  const jobLevelPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.jobLevel,
+  });
+  const jobFunctionPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.jobFunction,
+  });
+  const citizenshipPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.citizenship,
+  });
+  const currentEmploymentStatusPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.currentEmploymentStatus,
+  });
+  const genderPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.gender,
+  });
+  const nationalityPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.nationality,
+  });
+  const maritalStatusPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.maritalStatus,
+  });
+  const idTypePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.idType,
+  });
+  const subscriptionPreferencePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.subscriptionPreference,
+  });
+  const communicationPreferencePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.communicationPreference,
+  });
+  const professionalInterestPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.professionalInterest,
+  });
+  const voiceCallsPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.voiceCalls,
+  });
+  const textMessagesPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.textMessages,
+  });
+  const faxMessagesPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.faxMessages,
+  });
+  const qualificationMembershipStatusPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.qualificationMembershipStatus,
+  });
+  const organisationNamesPicklist = useMembershipOrganisationNames({
+    enabled: true,
+    emptyErrorMessage: 'Organisation name options were not returned from Salesforce.',
+  });
   const salesforceSession = readMembershipSalesforceSession();
-  const [activeTab, setActiveTab] = useState(0);
-  const [draft, setDraft] = useState(loadDraft);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState(() => {
+    if (!fullPage) return 0;
+    const tabFromUrl = resolveTabIndexFromQuery(
+      new URLSearchParams(window.location.search).get(MEMBERSHIP_TAB_QUERY_KEY),
+      getMembershipApplicationTabs(
+        normalizeMembershipApplicationPathway(pathwayProp || readMembershipApplicationPathway())
+      )
+    );
+    return tabFromUrl ?? 0;
+  });
+  const [draft, setDraft] = useState(() => loadDraft(pathway));
   const [submittingTab, setSubmittingTab] = useState('');
   const [documentTypes, setDocumentTypes] = useState([]);
   const [documentFiles, setDocumentFiles] = useState({});
@@ -276,8 +447,40 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   const formValidationRef = useRef(null);
   const [tabValidationError, setTabValidationError] = useState('');
   const [tabFieldErrors, setTabFieldErrors] = useState({});
+  const personalPrefillAppliedRef = useRef(false);
+  const paymentReturnLockRef = useRef(false);
+  const paymentReturnHandledRef = useRef(false);
+  const [paymentReturnMode, setPaymentReturnMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return readPaymentReturnFromSearch(window.location.search).isPaymentReturn;
+  });
+  const [billingPaymentProcessing, setBillingPaymentProcessing] = useState(false);
 
-  const currentTabId = TABS[activeTab]?.id || 'personal';
+  const applyPersonalPrefill = useCallback(
+    (prefill) => {
+      if (!prefill) return;
+      setDraft((prev) => {
+        const merged = mergePersonalFormWithPrefill(prev.personal, prefill);
+        const normalized = applyPersonalSingaporeDefaults(merged);
+        if (
+          normalized.firstName === prev.personal.firstName
+          && normalized.lastName === prev.personal.lastName
+          && normalized.personalEmail === prev.personal.personalEmail
+          && normalized.nameAsPerId === prev.personal.nameAsPerId
+          && normalized.emailFriendlyName === prev.personal.emailFriendlyName
+          && normalized.salutation === prev.personal.salutation
+        ) {
+          return prev;
+        }
+        const next = { ...prev, personal: normalized };
+        saveDraft(next, pathway);
+        return next;
+      });
+    },
+    [pathway]
+  );
+
+  const currentTabId = tabs[activeTab]?.id || 'personal';
 
   const scrollFormToTop = useCallback(() => {
     if (typeof document !== 'undefined') {
@@ -364,10 +567,16 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     const session = readMembershipSalesforceSession();
     setDraft((prev) => {
       let personal = prev.personal;
+      let submittedTabs = prev.submittedTabs || {};
       let changed = false;
 
       if (session?.applicationId && !personal.applicationId) {
         personal = { ...personal, applicationId: session.applicationId };
+        changed = true;
+      }
+
+      if (session?.applicationId?.trim() && !submittedTabs.application) {
+        submittedTabs = { ...submittedTabs, application: new Date().toISOString() };
         changed = true;
       }
 
@@ -386,89 +595,334 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
       if (!changed) return prev;
 
-      const next = { ...prev, personal };
-      saveDraft(next);
+      const next = { ...prev, personal, submittedTabs };
+      saveDraft(next, pathway);
       return next;
     });
-  }, []);
+  }, [pathway]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const openBilling = params.get('billing') === '1';
-    const paymentCanceled = params.get('payment') === 'canceled';
+    if (personalPrefillAppliedRef.current) return undefined;
 
-    if (openBilling || paymentCanceled) {
-      const billingIndex = TABS.findIndex((t) => t.id === 'billing');
-      if (billingIndex >= 0) {
-        setActiveTab((current) => {
-          const draftNow = loadDraft();
-          const firstOpen = TABS.findIndex((t) => {
-            if (t.id === 'qualification') {
-              return !isQualificationTabComplete(draftNow.submittedTabs);
-            }
-            return !draftNow.submittedTabs?.[t.id];
-          });
-          const maxOpen = firstOpen === -1 ? TABS.length - 1 : firstOpen;
-          return billingIndex <= maxOpen ? billingIndex : current;
-        });
+    const localPrefill = readLocalMembershipPersonalPrefill();
+    if (localPrefill) {
+      applyPersonalPrefill(localPrefill);
+    }
+
+    const session = readMembershipSalesforceSession();
+    const socialToken = session?.socialToken?.trim();
+    if (!socialToken) {
+      personalPrefillAppliedRef.current = true;
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadSalesforceProfile = async () => {
+      try {
+        const result = await fetchMembershipApplicationUserInfo({ socialAccessToken: socialToken });
+        if (cancelled) return;
+        const nexusUser = result?.nexusUser || result?.salesforce || result;
+        applyPersonalPrefill(extractPersonalPrefillFromNexusUser(nexusUser));
+      } catch {
+        // Best-effort — local signup draft may already have filled the form.
+      } finally {
+        if (!cancelled) {
+          personalPrefillAppliedRef.current = true;
+        }
       }
-    }
+    };
 
-    const paymentError = params.get('paymentError');
+    loadSalesforceProfile();
 
-    if (paymentCanceled) {
-      setPaymentReturnNotice({
-        severity: 'warning',
-        message: 'Payment was canceled. You can try again when ready.',
+    return () => {
+      cancelled = true;
+    };
+  }, [applyPersonalPrefill]);
+
+  useEffect(() => {
+    if (!isExperiencedPathway) return;
+    try {
+      const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const memberType =
+        parsed?.flow?.homeExperiencedMemberType
+        || parsed?.flow?.experiencedMemberType
+        || '';
+      if (!memberType) return;
+      setDraft((prev) => {
+        if (prev.application?.experiencedMemberType) return prev;
+        const next = {
+          ...prev,
+          application: { ...prev.application, experiencedMemberType: memberType },
+        };
+        saveDraft(next, pathway);
+        return next;
       });
-    } else if (paymentError) {
-      setPaymentReturnNotice({
-        severity: 'error',
-        message: decodeURIComponent(paymentError),
-      });
+    } catch {
+      // ignore
     }
-
-    if (openBilling || paymentCanceled || paymentError) {
-      ['billing', 'payment', 'ref', 'paymentError'].forEach((key) => params.delete(key));
-      const nextSearch = params.toString();
-      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
-      window.history.replaceState({}, '', nextUrl);
-    }
-  }, []);
+  }, [isExperiencedPathway, pathway]);
 
   const isTabSubmitted = useCallback(
     (tabId) => {
+      if (tabId === 'billing') {
+        return Boolean(draft.submittedTabs.billing) || Boolean(draft.billing?.paymentCompleted);
+      }
       if (tabId === 'qualification') {
-        return isQualificationTabComplete(draft.submittedTabs);
+        return isQualificationTabComplete(draft.submittedTabs, pathway);
       }
       return Boolean(draft.submittedTabs[tabId]);
     },
-    [draft.submittedTabs]
+    [draft.billing?.paymentCompleted, draft.submittedTabs, pathway]
   );
 
   const completedCount = useMemo(
-    () => TABS.filter((t) => isTabSubmitted(t.id)).length,
+    () => tabs.filter((t) => isTabSubmitted(t.id)).length,
     [isTabSubmitted]
   );
 
-  const progressValue = Math.round((completedCount / TABS.length) * 100);
+  const progressValue = Math.round((completedCount / tabs.length) * 100);
 
   /** First tab that still needs a successful submit; all tabs before it must be done first. */
   const firstIncompleteTabIndex = useMemo(() => {
-    const idx = TABS.findIndex((t) => !isTabSubmitted(t.id));
-    return idx === -1 ? TABS.length : idx;
+    const idx = tabs.findIndex((t) => !isTabSubmitted(t.id));
+    return idx === -1 ? tabs.length : idx;
   }, [isTabSubmitted]);
 
   const isTabAccessible = useCallback(
     (index) => {
-      if (index < 0 || index >= TABS.length) return false;
-      const tabId = TABS[index].id;
+      if (index < 0 || index >= tabs.length) return false;
+      const tabId = tabs[index].id;
+      if (paymentReturnMode && tabId === 'billing') return true;
       if (isTabSubmitted(tabId)) return true;
       return index === firstIncompleteTabIndex;
     },
-    [firstIncompleteTabIndex, isTabSubmitted]
+    [firstIncompleteTabIndex, isTabSubmitted, paymentReturnMode, tabs]
   );
+
+  const lastSyncedUrlTabRef = useRef(
+    fullPage && typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get(MEMBERSHIP_TAB_QUERY_KEY) || ''
+      : ''
+  );
+
+  const readUrlTabId = useCallback(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get(MEMBERSHIP_TAB_QUERY_KEY) || '';
+  }, []);
+
+  const writeTabToUrl = useCallback(
+    (tabId) => {
+      if (!fullPage || !tabId || typeof window === 'undefined') return;
+      if (readUrlTabId() === tabId) {
+        lastSyncedUrlTabRef.current = tabId;
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set(MEMBERSHIP_TAB_QUERY_KEY, tabId);
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+      lastSyncedUrlTabRef.current = tabId;
+    },
+    [fullPage, readUrlTabId]
+  );
+
+  const setActiveTab = useCallback(
+    (next) => {
+      setActiveTabState((prev) => {
+        const index = typeof next === 'function' ? next(prev) : next;
+        const tabId = tabs[index]?.id;
+        if (tabId) writeTabToUrl(tabId);
+        return index;
+      });
+    },
+    [tabs, writeTabToUrl]
+  );
+
+  useEffect(() => {
+    if (paymentReturnHandledRef.current || typeof window === 'undefined') return;
+
+    const paymentSuccessReturn = parseMembershipApplicationPaymentReturn(window.location.search);
+    if (!paymentSuccessReturn.isSuccessReturn) return;
+
+    paymentReturnHandledRef.current = true;
+    paymentReturnLockRef.current = true;
+    setPaymentReturnMode(true);
+    setBillingPaymentProcessing(true);
+
+    const billingIndex = tabs.findIndex((t) => t.id === 'billing');
+    if (billingIndex >= 0) {
+      setActiveTab(billingIndex);
+    }
+
+    const run = async () => {
+      try {
+        const result = await completeMembershipApplicationPaymentReturn({
+          sessionId: paymentSuccessReturn.sessionId,
+          applicationId: paymentSuccessReturn.applicationId,
+        });
+
+        if (!result?.navigated) {
+          window.location.href = result?.redirectTo || paths.auth.membership.application;
+          return;
+        }
+      } catch (err) {
+        const message = encodeURIComponent(
+          err instanceof Error ? err.message : 'Payment could not be confirmed.'
+        );
+        window.location.href = `${paths.auth.membership.application}?billing=1&tab=billing&paymentError=${message}`;
+      } finally {
+        setBillingPaymentProcessing(false);
+        paymentReturnLockRef.current = false;
+        setPaymentReturnMode(false);
+      }
+    };
+
+    run();
+  }, [setActiveTab, tabs]);
+
+  useEffect(() => {
+    if (paymentReturnHandledRef.current || typeof window === 'undefined') return;
+
+    const paymentReturn = readPaymentReturnFromSearch(window.location.search);
+    if (!paymentReturn.isPaymentReturn) return;
+
+    paymentReturnHandledRef.current = true;
+    paymentReturnLockRef.current = true;
+    setPaymentReturnMode(true);
+
+    let restored = loadDraft(pathway);
+    const session = readMembershipSalesforceSession();
+
+    if (paymentReturn.paymentRecorded) {
+      const submittedTabs = reconcileSubmittedTabsAfterPaymentRecorded(
+        restored.submittedTabs,
+        tabs,
+        pathway
+      );
+      restored = {
+        ...restored,
+        billing: { ...restored.billing, paymentCompleted: true },
+        submittedTabs: {
+          ...submittedTabs,
+          billing: submittedTabs.billing || new Date().toISOString(),
+        },
+      };
+    }
+
+    if (session?.applicationId) {
+      restored = {
+        ...restored,
+        personal: {
+          ...restored.personal,
+          applicationId: restored.personal?.applicationId || session.applicationId,
+        },
+        submittedTabs: {
+          ...restored.submittedTabs,
+          application: restored.submittedTabs?.application || new Date().toISOString(),
+        },
+      };
+    }
+
+    setDraft(restored);
+    saveDraft(restored, pathway);
+
+    if (paymentReturn.paymentCanceled) {
+      setPaymentReturnNotice({
+        severity: 'warning',
+        message: 'Payment was canceled. You can try again when ready.',
+      });
+    } else if (paymentReturn.paymentError) {
+      let errorMessage = paymentReturn.paymentError;
+      try {
+        errorMessage = decodeURIComponent(paymentReturn.paymentError);
+      } catch {
+        // use raw message
+      }
+      setPaymentReturnNotice({
+        severity: 'error',
+        message: errorMessage,
+      });
+    } else if (paymentReturn.billingComplete) {
+      let statusMessage = 'Payment received successfully.';
+      if (paymentReturn.statusMessage) {
+        try {
+          statusMessage = decodeURIComponent(paymentReturn.statusMessage);
+        } catch {
+          statusMessage = paymentReturn.statusMessage;
+        }
+      }
+      setPaymentReturnNotice({
+        severity: paymentReturn.membershipStatus === 'pending' ? 'info' : 'success',
+        message: statusMessage,
+      });
+    }
+
+    const billingIndex = tabs.findIndex((t) => t.id === 'billing');
+    if (billingIndex >= 0) {
+      setActiveTab(billingIndex);
+    }
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        [
+          'billing',
+          'payment',
+          'ref',
+          'paymentError',
+          'billingComplete',
+          'membershipStatus',
+          'statusMessage',
+        ].forEach((key) => next.delete(key));
+        next.set(MEMBERSHIP_TAB_QUERY_KEY, 'billing');
+        return next;
+      },
+      { replace: true }
+    );
+
+    window.setTimeout(() => {
+      paymentReturnLockRef.current = false;
+      setPaymentReturnMode(false);
+    }, 200);
+  }, [pathway, setActiveTab, setSearchParams, tabs]);
+
+  const initialUrlSyncedRef = useRef(false);
+
+  useEffect(() => {
+    if (!fullPage || initialUrlSyncedRef.current) return;
+    initialUrlSyncedRef.current = true;
+    if (!readUrlTabId() && tabs[activeTab]?.id) {
+      writeTabToUrl(tabs[activeTab].id);
+    }
+  }, [fullPage, activeTab, readUrlTabId, tabs, writeTabToUrl]);
+
+  useEffect(() => {
+    if (!fullPage) return;
+    const tabId = readUrlTabId();
+    if (!tabId) return;
+    const urlIndex = resolveTabIndexFromQuery(tabId, tabs);
+    if (urlIndex === null || !isTabAccessible(urlIndex)) return;
+    setActiveTabState((current) => {
+      if (isTabAccessible(current)) return current;
+      return urlIndex;
+    });
+  }, [fullPage, draft.submittedTabs, isTabAccessible, readUrlTabId, tabs]);
+
+  useEffect(() => {
+    if (!fullPage) return undefined;
+    const onPopState = () => {
+      const tabId = readUrlTabId();
+      if (!tabId) return;
+      const urlIndex = resolveTabIndexFromQuery(tabId, tabs);
+      if (urlIndex === null || !isTabAccessible(urlIndex)) return;
+      lastSyncedUrlTabRef.current = tabId;
+      setActiveTabState(urlIndex);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [fullPage, isTabAccessible, readUrlTabId, tabs]);
 
   const handleTabChange = useCallback(
     (_, newIndex) => {
@@ -477,17 +931,18 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         return;
       }
       showTabValidationError(
-        `Submit "${TABS[firstIncompleteTabIndex]?.label || 'the current section'}" before opening another tab.`
+        `Submit "${tabs[firstIncompleteTabIndex]?.label || 'the current section'}" before opening another tab.`
       );
     },
-    [firstIncompleteTabIndex, isTabAccessible, showTabValidationError]
+    [firstIncompleteTabIndex, isTabAccessible, setActiveTab, showTabValidationError, tabs]
   );
 
   useEffect(() => {
+    if (paymentReturnLockRef.current) return;
     if (!isTabAccessible(activeTab)) {
       setActiveTab(firstIncompleteTabIndex);
     }
-  }, [activeTab, firstIncompleteTabIndex, isTabAccessible]);
+  }, [activeTab, draft.submittedTabs, firstIncompleteTabIndex, isTabAccessible, setActiveTab]);
 
   const resolveApplicationId = useCallback(() => {
     const session = readMembershipSalesforceSession();
@@ -500,41 +955,86 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       PERSONAL_MAILING_REQUIRED_KEYS.forEach((key) => clearFieldError(key));
     }
     setDraft((prev) => {
+      const sectionData = { ...prev[section], [field]: value };
+      if (section === 'workExperience' && field === 'currentEmploymentStatus') {
+        if (requiresCurrentWorkExperience(value)) {
+          if (!sectionData.currentWorkExperience?.length) {
+            sectionData.currentWorkExperience = [{ ...EMPTY_CURRENT_WORK_ENTRY }];
+          }
+          if (
+            isExperiencedPathway
+            && value === 'Employed'
+            && !sectionData.previousWorkExperience?.length
+          ) {
+            sectionData.previousWorkExperience = [{ ...EMPTY_PREVIOUS_WORK_ENTRY }];
+          }
+        } else {
+          sectionData.currentWorkExperience = [];
+          if (!sectionData.previousWorkExperience?.length) {
+            sectionData.previousWorkExperience = [{ ...EMPTY_PREVIOUS_WORK_ENTRY }];
+          }
+        }
+        if (isExperiencedPathway && value === 'Employed') {
+          sectionData.accreditedEmployerScheme = sectionData.accreditedEmployerScheme || 'Yes';
+        }
+      }
+      const next = { ...prev, [section]: sectionData };
+      saveDraft(next, pathway);
+      return next;
+    });
+  }, [clearFieldError, isExperiencedPathway, pathway]);
+
+  const updateWorkExperienceList = useCallback((listKey, index, field, value) => {
+    const prefix = listKey === 'currentWorkExperience' ? 'current' : 'previous';
+    clearFieldError(`${prefix}_${index}_${field}`);
+    clearFieldError('currentEmploymentStatus');
+
+    setDraft((prev) => {
+      const rows = [...(prev.workExperience[listKey] || [])];
+      rows[index] = { ...rows[index], [field]: value };
       const next = {
         ...prev,
-        [section]: { ...prev[section], [field]: value },
+        workExperience: { ...prev.workExperience, [listKey]: rows },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   }, [clearFieldError]);
 
-  const updateWorkExperienceEntry = useCallback((index, field, value) => {
-    clearFieldError(`experience_${index}_${field}`);
-    clearFieldError('currentEmploymentStatus');
-    if (field === 'isCurrentEmployment' && value) {
-      clearFieldError(`experience_${index}_periodTo`);
-    }
+  const addWorkExperienceRow = useCallback((listKey, emptyEntry) => {
     setDraft((prev) => {
-      const experiences = [...(prev.workExperience.experiences || [])];
-      const updated = { ...experiences[index], [field]: value };
-      if (field === 'isCurrentEmployment' && value) {
-        updated.periodTo = '';
-      }
-      experiences[index] = updated;
       const next = {
         ...prev,
-        workExperience: { ...prev.workExperience, experiences },
+        workExperience: {
+          ...prev.workExperience,
+          [listKey]: [...(prev.workExperience[listKey] || []), { ...emptyEntry }],
+        },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
-  }, [clearFieldError]);
+  }, []);
+
+  const removeWorkExperienceRow = useCallback((listKey, index, emptyEntry, minRows = 0) => {
+    setDraft((prev) => {
+      const rows = (prev.workExperience[listKey] || []).filter((_, i) => i !== index);
+      const next = {
+        ...prev,
+        workExperience: {
+          ...prev.workExperience,
+          [listKey]: rows.length >= minRows ? rows : minRows ? [{ ...emptyEntry }] : [],
+        },
+      };
+      saveDraft(next, pathway);
+      return next;
+    });
+  }, []);
 
   const applyClientValidation = useCallback(
     (tabId) => {
       const { fields, message } = collectTabFieldErrors(tabId, {
         draft,
+        pathway,
         applicationId: resolveApplicationId(),
         accountId: readMembershipSalesforceSession()?.accountId || '',
         documentTypes,
@@ -552,25 +1052,12 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       draft,
       documentFiles,
       documentTypes,
+      pathway,
       resolveApplicationId,
       showTabValidationError,
       clearTabValidationError,
     ]
   );
-
-  const addWorkExperienceEntry = () => {
-    setDraft((prev) => {
-      const next = {
-        ...prev,
-        workExperience: {
-          ...prev.workExperience,
-          experiences: [...(prev.workExperience.experiences || []), { ...EMPTY_WORK_EXPERIENCE_ENTRY }],
-        },
-      };
-      saveDraft(next);
-      return next;
-    });
-  };
 
   const updateQualificationList = (listKey, index, field, value) => {
     setDraft((prev) => {
@@ -580,7 +1067,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev,
         qualification: { ...prev.qualification, [listKey]: list },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   };
@@ -594,7 +1081,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           [listKey]: [...(prev.qualification[listKey] || []), { ...emptyEntry }],
         },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   };
@@ -610,22 +1097,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             list.length > minRows ? list : minRows > 0 ? [{ ...emptyEntry }] : list,
         },
       };
-      saveDraft(next);
-      return next;
-    });
-  };
-
-  const removeWorkExperienceEntry = (index) => {
-    setDraft((prev) => {
-      const experiences = (prev.workExperience.experiences || []).filter((_, i) => i !== index);
-      const next = {
-        ...prev,
-        workExperience: {
-          ...prev.workExperience,
-          experiences: experiences.length ? experiences : [{ ...EMPTY_WORK_EXPERIENCE_ENTRY }],
-        },
-      };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   };
@@ -654,7 +1126,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev,
         documentUpload: { ...prev.documentUpload, entries },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   };
@@ -681,7 +1153,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev,
         documentUpload: { ...prev.documentUpload, entries },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   };
@@ -702,7 +1174,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev,
         documentUpload: { ...prev.documentUpload, entries },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
     setDocumentTypes((prev) =>
@@ -739,7 +1211,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev,
         documentUpload: { ...prev.documentUpload, entries },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   }, []);
@@ -757,7 +1229,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev,
         documentUpload: { ...prev.documentUpload, entries },
       };
-      saveDraft(next);
+      saveDraft(next, pathway);
       return next;
     });
   };
@@ -766,37 +1238,42 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     setDraft((prev) => {
       const nextSubmitted = { ...prev.submittedTabs, [tabId]: new Date().toISOString() };
       const next = { ...prev, submittedTabs: nextSubmitted };
-      saveDraft(next);
+      saveDraft(next, pathway);
 
-      const allDone = TABS.every((t) => nextSubmitted[t.id]);
-      queueMicrotask(() => {
-        if (allDone) {
-          onAllTabsSubmitted?.();
-        } else {
-          const nextIndex = TABS.findIndex((t) => t.id === tabId);
-          if (nextIndex >= 0 && nextIndex < TABS.length - 1) {
-            setActiveTab(nextIndex + 1);
-          }
-        }
-      });
+      if (isApplicationFullyComplete(tabs, nextSubmitted, pathway)) {
+        onAllTabsSubmitted?.();
+      }
       return next;
     });
+
+    const nextIndex = tabs.findIndex((t) => t.id === tabId);
+    if (nextIndex >= 0 && nextIndex < tabs.length - 1) {
+      setActiveTab(nextIndex + 1);
+    }
   };
 
   const submitApplicationTab = async () => {
     const session = ensureMembershipSalesforceSession();
 
     const existingId = resolveApplicationId();
+    if (existingId) {
+      if (!draft.personal.applicationId?.trim()) {
+        updateSection('personal', 'applicationId', existingId);
+      }
+      return;
+    }
+
     const validationError = validateApplicationBeforeSubmit(
       draft.application,
       session.accountId,
-      existingId
+      existingId,
+      pathway
     );
     if (validationError) {
       throw createValidationError(validationError);
     }
 
-    const body = buildCreateApplicationApiPayload(draft.application, session.accountId);
+    const body = buildCreateApplicationApiPayload(draft.application, session.accountId, pathway);
     const result = await submitCreateApplication({
       socialAccessToken: session.socialToken,
       ...body,
@@ -846,24 +1323,18 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         ...prev.submittedTabs,
         [sectionKey]: new Date().toISOString(),
       };
-      if (isQualificationTabComplete(nextSubmitted)) {
+      if (isQualificationTabComplete(nextSubmitted, pathway)) {
         nextSubmitted.qualification = new Date().toISOString();
       }
       const next = { ...prev, submittedTabs: nextSubmitted };
-      saveDraft(next);
+      saveDraft(next, pathway);
 
-      const allDone = TABS.every((t) => {
-        if (t.id === 'qualification') {
-          return isQualificationTabComplete(nextSubmitted);
-        }
-        return Boolean(nextSubmitted[t.id]);
-      });
       queueMicrotask(() => {
-        if (allDone) {
+        if (isApplicationFullyComplete(tabs, nextSubmitted, pathway)) {
           onAllTabsSubmitted?.();
-        } else if (isQualificationTabComplete(nextSubmitted)) {
-          const qualIndex = TABS.findIndex((t) => t.id === 'qualification');
-          if (qualIndex >= 0 && qualIndex < TABS.length - 1) {
+        } else if (isQualificationTabComplete(nextSubmitted, pathway)) {
+          const qualIndex = tabs.findIndex((t) => t.id === 'qualification');
+          if (qualIndex >= 0 && qualIndex < tabs.length - 1) {
             setActiveTab(qualIndex + 1);
           }
         }
@@ -875,7 +1346,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
   const runQualificationSectionSubmit = async (sectionKey, validate, submitRows, emptySuccessMessage) => {
     const applicationId = resolveApplicationId();
-    const validationError = validate(draft.qualification, applicationId);
+    const validationError = validate(draft.qualification, applicationId, pathway);
     if (validationError) {
       setTabFieldErrors({});
       showTabValidationError(validationError);
@@ -917,7 +1388,9 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         }
         return plan.academic.length;
       },
-      'No academic qualifications to submit (optional section skipped).'
+      isExperiencedPathway
+        ? 'No academic qualifications to submit.'
+        : 'No academic qualifications to submit (optional section skipped).'
     );
 
   const submitProfessionalQualificationSection = () =>
@@ -930,6 +1403,20 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           await submitProfessionalQualification({ socialAccessToken: token, ...payload });
         }
         return plan.professional.length;
+      },
+      ''
+    );
+
+  const submitOpbMembershipSection = () =>
+    runQualificationSectionSubmit(
+      QUALIFICATION_SUBMIT_KEYS.opb,
+      validateOpbMembershipBeforeSubmit,
+      async (token, applicationId) => {
+        const plan = getQualificationSubmitPlan(draft.qualification, applicationId);
+        for (const payload of plan.opb) {
+          await submitOpbMembership({ socialAccessToken: token, ...payload });
+        }
+        return plan.opb.length;
       },
       ''
     );
@@ -1047,12 +1534,12 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
-    const validationError = validateDeclarationBeforeSubmit(draft.declaration, applicationId);
+    const validationError = validateDeclarationBeforeSubmit(draft.declaration, applicationId, pathway);
     if (validationError) {
       throw createValidationError(validationError);
     }
 
-    const body = buildDeclarationApiPayload(draft.declaration, applicationId);
+    const body = buildDeclarationApiPayload(draft.declaration, applicationId, pathway);
     await submitDeclaration({ socialAccessToken: session.socialToken, ...body });
   };
 
@@ -1060,12 +1547,16 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     const session = ensureMembershipSalesforceSession();
 
     const applicationId = resolveApplicationId();
-    const validationError = validateWorkExperienceBeforeSubmit(draft.workExperience, applicationId);
+    const validationError = validateWorkExperienceBeforeSubmit(
+      draft.workExperience,
+      applicationId,
+      pathway
+    );
     if (validationError) {
       throw createValidationError(validationError);
     }
 
-    const body = buildEmploymentDetailsApiPayload(draft.workExperience, applicationId);
+    const body = buildEmploymentDetailsApiPayload(draft.workExperience, applicationId, pathway);
 
     await submitMembershipApplicationEmploymentDetails({
       socialAccessToken: session.socialToken,
@@ -1081,8 +1572,13 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     setSubmittingTab(tabId);
     try {
       if (tabId === 'application') {
+        const alreadyCreated = Boolean(resolveApplicationId());
         await submitApplicationTab();
-        notifyTabSuccess('Application created in Salesforce successfully.');
+        notifyTabSuccess(
+          alreadyCreated
+            ? 'Application already exists in Salesforce. Continue to Personal details.'
+            : 'Application created in Salesforce successfully.'
+        );
       } else if (tabId === 'personal') {
         await submitPersonalTab();
         notifyTabSuccess('Personal details submitted to Salesforce successfully.');
@@ -1091,7 +1587,9 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         notifyTabSuccess('Work experience submitted to Salesforce successfully.');
       } else if (tabId === 'qualification') {
         throw createValidationError(
-          'Use the Submit button under each qualification section (Academic, Professional, Other Professional Bodies).'
+          isExperiencedPathway
+            ? 'Use the Submit button under each qualification section (Academic, Professional, Other Professional Bodies).'
+            : 'Use the Submit button under each qualification section (Professional Qualification, ATO, Other Professional Bodies).'
         );
       } else if (tabId === 'character-reference') {
         await submitCharacterReferenceTab();
@@ -1124,7 +1622,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         throw createValidationError('Use the Pay button on this tab to complete payment.');
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
-        notifyTabSuccess(`${TABS.find((t) => t.id === tabId)?.label || 'Section'} saved.`);
+        notifyTabSuccess(`${tabs.find((t) => t.id === tabId)?.label || 'Section'} saved.`);
       }
       clearTabValidationError();
       clearTabFieldErrors();
@@ -1163,14 +1661,44 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         application={draft.application}
         accountId={session?.accountId || ''}
         applicationId={resolveApplicationId()}
+        pathway={pathway}
         fieldErrors={tabFieldErrors}
         onUpdate={(field, value) => updateSection('application', field, value)}
       />
     );
   };
 
-  const renderPersonal = () => (
+  const renderPersonal = () => {
+    const personalPicklistErrors = [
+      citizenshipPicklist,
+      genderPicklist,
+      nationalityPicklist,
+      maritalStatusPicklist,
+      idTypePicklist,
+      subscriptionPreferencePicklist,
+      communicationPreferencePicklist,
+      professionalInterestPicklist,
+      voiceCallsPicklist,
+      textMessagesPicklist,
+      faxMessagesPicklist,
+    ].filter((picklist) => picklist.error);
+
+    return (
     <Grid container spacing={2.5}>
+      {personalPicklistErrors.map((picklist) => (
+        <Grid item xs={12} key={picklist.error}>
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={picklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {picklist.error}
+          </Alert>
+        </Grid>
+      ))}
       {renderSectionTitle('Application reference', true)}
       <Grid item xs={12} md={6}>
         <MembershipFormTextField
@@ -1225,22 +1753,17 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Gender"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.gender}
           onChange={(e) => updateSection('personal', 'gender', e.target.value)}
-          {...fieldProps('gender')}
-        >
-          {['Male', 'Female'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={genderPicklist.options}
+          loading={genderPicklist.loading}
+          onOpen={genderPicklist.load}
+          fieldProps={fieldProps('gender')}
+        />
       </Grid>
       <Grid item xs={12} md={8} lg={6}>
         <MembershipFormTextField
@@ -1268,57 +1791,55 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={3}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Marital status"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.maritalStatus}
           onChange={(e) => updateSection('personal', 'maritalStatus', e.target.value)}
-          {...fieldProps('maritalStatus')}
-        >
-          {['Single', 'Married', 'Divorced', 'Widowed'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
-      </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
-          label="Nationality"
-          required
-          size={fieldSize}
-          fullWidth
-          value={draft.personal.nationality}
-          onChange={(e) => updateSection('personal', 'nationality', e.target.value)}
-          placeholder="Enter nationality"
-          {...fieldProps('nationality')}
+          options={maritalStatusPicklist.options}
+          loading={maritalStatusPicklist.loading}
+          onOpen={maritalStatusPicklist.load}
+          fieldProps={fieldProps('maritalStatus')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
+          label="Nationality"
+          size={fieldSize}
+          required
+          value={draft.personal.nationality}
+          onChange={(e) => updateSection('personal', 'nationality', e.target.value)}
+          options={nationalityPicklist.options}
+          loading={nationalityPicklist.loading}
+          onOpen={nationalityPicklist.load}
+          fieldProps={fieldProps('nationality')}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} md={4} lg={2}>
+        <MembershipApplicationPicklistField
           label="Citizenship"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.citizenship}
           onChange={(e) => updateSection('personal', 'citizenship', e.target.value)}
-          placeholder="Enter citizenship"
-          {...fieldProps('citizenship')}
+          options={citizenshipPicklist.options}
+          loading={citizenshipPicklist.loading}
+          onOpen={citizenshipPicklist.load}
+          fieldProps={fieldProps('citizenship')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="ID type"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.idType}
           onChange={(e) => updateSection('personal', 'idType', e.target.value)}
-          placeholder="e.g. Pink NRIC"
-          {...fieldProps('idType')}
+          options={idTypePicklist.options}
+          loading={idTypePicklist.loading}
+          onOpen={idTypePicklist.load}
+          fieldProps={fieldProps('idType')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={6} lg={3}>
@@ -1565,134 +2086,111 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
       {renderSectionTitle('Preferences')}
       <Grid item xs={12} md={6}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="Subscription preference"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.subscriptionPreference}
           onChange={(e) => updateSection('personal', 'subscriptionPreference', e.target.value)}
-          placeholder="Monthly Chartered Accountants Lab;ISCAccountify Bulletin"
-          {...fieldProps('subscriptionPreference')}
+          options={subscriptionPreferencePicklist.options}
+          loading={subscriptionPreferencePicklist.loading}
+          onOpen={subscriptionPreferencePicklist.load}
+          fieldProps={fieldProps('subscriptionPreference')}
         />
       </Grid>
       <Grid item xs={12} md={6}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="Communication preference"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.communicationPreference}
           onChange={(e) => updateSection('personal', 'communicationPreference', e.target.value)}
-          {...fieldProps('communicationPreference')}
+          options={communicationPreferencePicklist.options}
+          loading={communicationPreferencePicklist.loading}
+          onOpen={communicationPreferencePicklist.load}
+          fieldProps={fieldProps('communicationPreference')}
         />
       </Grid>
       <Grid item xs={12}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="Professional interest"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.professionalInterest}
           onChange={(e) => updateSection('personal', 'professionalInterest', e.target.value)}
-          placeholder="Risk Management;Taxation"
-          {...fieldProps('professionalInterest')}
+          options={professionalInterestPicklist.options}
+          loading={professionalInterestPicklist.loading}
+          onOpen={professionalInterestPicklist.load}
+          fieldProps={fieldProps('professionalInterest')}
         />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Voice calls"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.voiceCalls}
           onChange={(e) => updateSection('personal', 'voiceCalls', e.target.value)}
-          {...fieldProps('voiceCalls')}
-        >
-          {['Yes', 'No'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={voiceCallsPicklist.options}
+          loading={voiceCallsPicklist.loading}
+          onOpen={voiceCallsPicklist.load}
+          fieldProps={fieldProps('voiceCalls')}
+        />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Text messages"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.textMessages}
           onChange={(e) => updateSection('personal', 'textMessages', e.target.value)}
-          {...fieldProps('textMessages')}
-        >
-          {['Yes', 'No'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={textMessagesPicklist.options}
+          loading={textMessagesPicklist.loading}
+          onOpen={textMessagesPicklist.load}
+          fieldProps={fieldProps('textMessages')}
+        />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Fax messages"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.faxMessages}
           onChange={(e) => updateSection('personal', 'faxMessages', e.target.value)}
-          {...fieldProps('faxMessages')}
-        >
-          {['Yes', 'No'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={faxMessagesPicklist.options}
+          loading={faxMessagesPicklist.loading}
+          onOpen={faxMessagesPicklist.load}
+          fieldProps={fieldProps('faxMessages')}
+        />
       </Grid>
     </Grid>
-  );
+    );
+  };
 
   const renderWorkExperience = () => {
-    const experiences = draft.workExperience.experiences || [];
+    const work = normalizeWorkExperienceForm(draft.workExperience);
+    const requiresCurrent = requiresCurrentWorkExperience(draft.workExperience.currentEmploymentStatus);
+    const currentRows = work.currentWorkExperience || [];
+    const previousRows = work.previousWorkExperience || [];
 
-    return (
-      <Stack spacing={3.5}>
-        <Alert severity="info" sx={{ py: 0.5 }}>
-          Application ID: {resolveApplicationId() || '— submit Application tab first'}
-        </Alert>
+    const renderExperienceRows = ({
+      kind,
+      listKey,
+      rows,
+      emptyEntry,
+      rowLabelPrefix,
+      minRows,
+      showCurrentOnlyFields,
+      showPeriodTo,
+      periodToRequired = true,
+    }) =>
+      rows.map((row, index) => {
+        const fieldPrefix = `${kind}_${index}`;
+        const canRemove = rows.length > minRows;
 
-        <MembershipFormSectionTitleBlock title="Current employment" firstSection sx={{ mt: 0 }} />
-
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <MembershipFormTextField
-              select
-              label="Current employment status"
-              size={fieldSize}
-              fullWidth
-              required
-              value={draft.workExperience.currentEmploymentStatus}
-              onChange={(e) =>
-                updateSection('workExperience', 'currentEmploymentStatus', e.target.value)
-              }
-              {...fieldProps('currentEmploymentStatus')}
-            >
-              {['Student', 'Employed', 'Self-employed', 'Unemployed', 'Retired'].map((o) => (
-                <MenuItem key={o} value={o}>
-                  {o}
-                </MenuItem>
-              ))}
-            </MembershipFormTextField>
-          </Grid>
-        </Grid>
-
-        {experiences.map((row, index) => (
+        return (
           <Paper
-            key={`work-exp-${index}`}
+            key={`${kind}-work-exp-${index}`}
             variant="outlined"
             sx={{
               p: { xs: 2.5, md: 3.5 },
@@ -1710,17 +2208,17 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
             >
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <MembershipFormSectionTitleBlock
-                  title={`Work experience ${index + 1}`}
+                  title={`${rowLabelPrefix} ${index + 1}`}
                   firstSection
                   sx={{ mt: 0 }}
                 />
               </Box>
-              {experiences.length > 1 && (
+              {canRemove && (
                 <IconButton
                   size="small"
                   color="error"
-                  onClick={() => removeWorkExperienceEntry(index)}
-                  aria-label="Remove experience"
+                  onClick={() => removeWorkExperienceRow(listKey, index, emptyEntry, minRows)}
+                  aria-label={`Remove ${rowLabelPrefix.toLowerCase()}`}
                   sx={{ mt: 0.75, flexShrink: 0 }}
                 >
                   <Iconify icon="solar:trash-bin-trash-bold" width={20} />
@@ -1743,39 +2241,47 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               }}
             >
               <Grid item xs={12} md={6}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Organisation name"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.organisationName}
                   onChange={(e) =>
-                    updateWorkExperienceEntry(index, 'organisationName', e.target.value)
+                    updateWorkExperienceList(listKey, index, 'organisationName', e.target.value)
                   }
-                  {...fieldProps(`experience_${index}_organisationName`)}
+                  options={organisationNamesPicklist.options}
+                  loading={organisationNamesPicklist.loading}
+                  onOpen={organisationNamesPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_organisationName`)}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Organisation type"
                   size={fieldSize}
-                  fullWidth
                   value={row.organisationType}
                   onChange={(e) =>
-                    updateWorkExperienceEntry(index, 'organisationType', e.target.value)
+                    updateWorkExperienceList(listKey, index, 'organisationType', e.target.value)
                   }
-                  placeholder="Public Accounting Firms (EY / Deloitte / KPMG / PwC)"
+                  options={companyTypePicklist.options}
+                  loading={companyTypePicklist.loading}
+                  onOpen={companyTypePicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_organisationType`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Industry"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.industry}
-                  onChange={(e) => updateWorkExperienceEntry(index, 'industry', e.target.value)}
-                  {...fieldProps(`experience_${index}_industry`)}
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'industry', e.target.value)
+                  }
+                  options={industryPicklist.options}
+                  loading={industryPicklist.loading}
+                  onOpen={industryPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_industry`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
@@ -1785,35 +2291,43 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   fullWidth
                   required
                   value={row.jobPosition}
-                  onChange={(e) => updateWorkExperienceEntry(index, 'jobPosition', e.target.value)}
-                  {...fieldProps(`experience_${index}_jobPosition`)}
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'jobPosition', e.target.value)
+                  }
+                  {...fieldProps(`${fieldPrefix}_jobPosition`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Job level"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.jobLevel}
-                  onChange={(e) => updateWorkExperienceEntry(index, 'jobLevel', e.target.value)}
-                  placeholder="Middle Management"
-                  {...fieldProps(`experience_${index}_jobLevel`)}
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'jobLevel', e.target.value)
+                  }
+                  options={jobLevelPicklist.options}
+                  loading={jobLevelPicklist.loading}
+                  onOpen={jobLevelPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_jobLevel`)}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
-                <MembershipFormTextField
+              <Grid item xs={12} sm={showPeriodTo ? 4 : 6} md={showPeriodTo ? 4 : 6}>
+                <MembershipApplicationPicklistField
                   label="Job function"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.jobFunction}
-                  onChange={(e) => updateWorkExperienceEntry(index, 'jobFunction', e.target.value)}
-                  placeholder="Investment Analysis"
-                  {...fieldProps(`experience_${index}_jobFunction`)}
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'jobFunction', e.target.value)
+                  }
+                  options={jobFunctionPicklist.options}
+                  loading={jobFunctionPicklist.loading}
+                  onOpen={jobFunctionPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_jobFunction`)}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={showPeriodTo ? 4 : 6} md={showPeriodTo ? 4 : 6}>
                 <MembershipFormTextField
                   label="Period from"
                   type="date"
@@ -1821,39 +2335,30 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   fullWidth
                   required
                   value={row.periodFrom}
-                  onChange={(e) => updateWorkExperienceEntry(index, 'periodFrom', e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  {...fieldProps(`experience_${index}_periodFrom`)}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <MembershipFormTextField
-                  label="Period to"
-                  type="date"
-                  size={fieldSize}
-                  fullWidth
-                  required={!row.isCurrentEmployment}
-                  value={row.periodTo}
-                  onChange={(e) => updateWorkExperienceEntry(index, 'periodTo', e.target.value)}
-                  disabled={row.isCurrentEmployment}
-                  InputLabelProps={{ shrink: true }}
-                  {...fieldProps(`experience_${index}_periodTo`)}
-                />
-              </Grid>
-              <Grid item xs={12} sx={{ pt: 0.5 }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={Boolean(row.isCurrentEmployment)}
-                      onChange={(e) =>
-                        updateWorkExperienceEntry(index, 'isCurrentEmployment', e.target.checked)
-                      }
-                    />
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'periodFrom', e.target.value)
                   }
-                  label="This is my current employment"
-                  sx={{ ml: 0.25 }}
+                  InputLabelProps={{ shrink: true }}
+                  {...fieldProps(`${fieldPrefix}_periodFrom`)}
                 />
               </Grid>
+              {showPeriodTo && (
+                <Grid item xs={12} sm={4} md={4}>
+                  <MembershipFormTextField
+                    label="Period to"
+                    type="date"
+                    size={fieldSize}
+                    fullWidth
+                    required={periodToRequired}
+                    value={row.periodTo || ''}
+                    onChange={(e) =>
+                      updateWorkExperienceList(listKey, index, 'periodTo', e.target.value)
+                    }
+                    InputLabelProps={{ shrink: true }}
+                    {...(periodToRequired ? fieldProps(`${fieldPrefix}_periodTo`) : {})}
+                  />
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <MembershipFormTextField
                   label="Job responsibilities"
@@ -1864,22 +2369,282 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   minRows={3}
                   value={row.jobResponsibilities}
                   onChange={(e) =>
-                    updateWorkExperienceEntry(index, 'jobResponsibilities', e.target.value)
+                    updateWorkExperienceList(listKey, index, 'jobResponsibilities', e.target.value)
                   }
-                  {...fieldProps(`experience_${index}_jobResponsibilities`)}
+                  {...fieldProps(`${fieldPrefix}_jobResponsibilities`)}
                 />
               </Grid>
+
+              <Grid item xs={12}>
+                <MembershipFormSectionTitleBlock
+                  title="Employer contact & details"
+                  sx={{ mt: 0.5, mb: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <MembershipFormTextField
+                  label="Business email"
+                  size={fieldSize}
+                  fullWidth
+                  type="email"
+                  value={row.businessEmail || ''}
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'businessEmail', e.target.value)
+                  }
+                  placeholder="name@company.com"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <MembershipFormTextField
+                  label="Business number"
+                  size={fieldSize}
+                  fullWidth
+                  value={row.businessNumber || ''}
+                  onChange={(e) =>
+                    updateWorkExperienceList(listKey, index, 'businessNumber', e.target.value)
+                  }
+                  placeholder="12345678"
+                />
+              </Grid>
+              {showCurrentOnlyFields && (
+                <>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <MembershipFormTextField
+                      label="Business registration type"
+                      size={fieldSize}
+                      fullWidth
+                      value={row.businessRegistrationType || ''}
+                      onChange={(e) =>
+                        updateWorkExperienceList(
+                          listKey,
+                          index,
+                          'businessRegistrationType',
+                          e.target.value
+                        )
+                      }
+                      placeholder="Partnership"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <MembershipFormTextField
+                      label="Staff strength"
+                      size={fieldSize}
+                      fullWidth
+                      value={row.staffStrength || ''}
+                      onChange={(e) =>
+                        updateWorkExperienceList(listKey, index, 'staffStrength', e.target.value)
+                      }
+                      placeholder="500"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <MembershipFormTextField
+                      label="Turnover"
+                      size={fieldSize}
+                      fullWidth
+                      value={row.turnover || ''}
+                      onChange={(e) =>
+                        updateWorkExperienceList(listKey, index, 'turnover', e.target.value)
+                      }
+                      placeholder="SGD 10,000,000"
+                    />
+                  </Grid>
+                </>
+              )}
             </Grid>
           </Paper>
-        ))}
+        );
+      });
+
+    const periodToRequired = !isExperiencedPathway;
+
+    return (
+      <Stack spacing={3.5}>
+        <Alert severity="info" sx={{ py: 0.5 }}>
+          Application ID: {resolveApplicationId() || '— submit Application tab first'}
+        </Alert>
+
+        {companyTypePicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={companyTypePicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {companyTypePicklist.error}
+          </Alert>
+        )}
+
+        {industryPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={industryPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {industryPicklist.error}
+          </Alert>
+        )}
+
+        {jobLevelPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={jobLevelPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {jobLevelPicklist.error}
+          </Alert>
+        )}
+
+        {jobFunctionPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={jobFunctionPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {jobFunctionPicklist.error}
+          </Alert>
+        )}
+
+        {currentEmploymentStatusPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={currentEmploymentStatusPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {currentEmploymentStatusPicklist.error}
+          </Alert>
+        )}
+
+        {organisationNamesPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={organisationNamesPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {organisationNamesPicklist.error}
+          </Alert>
+        )}
+
+        <MembershipFormSectionTitleBlock
+          title={requiresCurrent ? 'Current employment' : 'Employment status'}
+          firstSection
+          sx={{ mt: 0 }}
+        />
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={requiresCurrent ? 6 : 12}>
+            <MembershipApplicationPicklistField
+              label="Current employment status"
+              size={fieldSize}
+              required
+              value={draft.workExperience.currentEmploymentStatus}
+              onChange={(e) =>
+                updateSection('workExperience', 'currentEmploymentStatus', e.target.value)
+              }
+              options={currentEmploymentStatusPicklist.options}
+              loading={currentEmploymentStatusPicklist.loading}
+              onOpen={currentEmploymentStatusPicklist.load}
+              fieldProps={fieldProps('currentEmploymentStatus')}
+            />
+          </Grid>
+          {requiresCurrent && (
+            <Grid item xs={12} md={6}>
+              <MembershipFormTextField
+                select
+                label="Accredited employer scheme"
+                size={fieldSize}
+                fullWidth
+                required={isExperiencedPathway}
+                value={
+                  draft.workExperience.accreditedEmployerScheme
+                  || (isExperiencedPathway ? 'Yes' : 'No')
+                }
+                onChange={(e) =>
+                  updateSection('workExperience', 'accreditedEmployerScheme', e.target.value)
+                }
+                {...fieldProps('accreditedEmployerScheme')}
+              >
+                {['Yes', 'No'].map((o) => (
+                  <MenuItem key={o} value={o}>
+                    {o}
+                  </MenuItem>
+                ))}
+              </MembershipFormTextField>
+            </Grid>
+          )}
+        </Grid>
+
+        {requiresCurrent && (
+          <>
+            <MembershipFormSectionTitleBlock title="Current work experience" sx={{ mt: 0 }} />
+
+            {renderExperienceRows({
+              kind: 'current',
+              listKey: 'currentWorkExperience',
+              rows: currentRows,
+              emptyEntry: EMPTY_CURRENT_WORK_ENTRY,
+              rowLabelPrefix: 'Current role',
+              minRows: 1,
+              showCurrentOnlyFields: true,
+              showPeriodTo: false,
+              periodToRequired: false,
+            })}
+
+            <Button
+              variant="outlined"
+              startIcon={<Iconify icon="mingcute:add-line" width={20} />}
+              onClick={() => addWorkExperienceRow('currentWorkExperience', EMPTY_CURRENT_WORK_ENTRY)}
+              sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 600 }}
+            >
+              Add another current role
+            </Button>
+          </>
+        )}
+
+        <MembershipFormSectionTitleBlock title="Previous work experience" sx={{ mt: 0 }} />
+
+        {previousRows.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Optional — add past roles if applicable.
+          </Typography>
+        ) : (
+          renderExperienceRows({
+            kind: 'previous',
+            listKey: 'previousWorkExperience',
+            rows: previousRows,
+            emptyEntry: EMPTY_PREVIOUS_WORK_ENTRY,
+            rowLabelPrefix: 'Previous role',
+            minRows: requiresCurrent ? 0 : 1,
+            showCurrentOnlyFields: false,
+            showPeriodTo: true,
+            periodToRequired,
+          })
+        )}
 
         <Button
           variant="outlined"
           startIcon={<Iconify icon="mingcute:add-line" width={20} />}
-          onClick={addWorkExperienceEntry}
+          onClick={() => addWorkExperienceRow('previousWorkExperience', EMPTY_PREVIOUS_WORK_ENTRY)}
           sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 600 }}
         >
-          Add another work experience
+          Add previous work experience
         </Button>
       </Stack>
     );
@@ -1889,8 +2654,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationQualificationSection
       qualification={draft.qualification}
       applicationId={resolveApplicationId()}
+      pathway={pathway}
       submittedTabs={draft.submittedTabs}
       submittingSection={submittingTab}
+      membershipStatusPicklist={qualificationMembershipStatusPicklist}
       onUpdateAcademic={(index, field, value) =>
         updateQualificationList('academic', index, field, value)
       }
@@ -1898,19 +2665,23 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         updateQualificationList('professional', index, field, value)
       }
       onUpdateAto={(index, field, value) => updateQualificationList('ato', index, field, value)}
+      onUpdateOpb={(index, field, value) => updateQualificationList('opb', index, field, value)}
       onAddAcademic={() => addQualificationRow('academic', EMPTY_ACADEMIC_ENTRY)}
       onAddProfessional={() => addQualificationRow('professional', EMPTY_PROFESSIONAL_ENTRY)}
       onAddAto={() => addQualificationRow('ato', EMPTY_ATO_ENTRY)}
+      onAddOpb={() => addQualificationRow('opb', EMPTY_OPB_ENTRY)}
       onRemoveAcademic={(index) =>
-        removeQualificationRow('academic', index, EMPTY_ACADEMIC_ENTRY, 0)
+        removeQualificationRow('academic', index, EMPTY_ACADEMIC_ENTRY, isExperiencedPathway ? 1 : 0)
       }
       onRemoveProfessional={(index) =>
         removeQualificationRow('professional', index, EMPTY_PROFESSIONAL_ENTRY, 1)
       }
       onRemoveAto={(index) => removeQualificationRow('ato', index, EMPTY_ATO_ENTRY, 1)}
+      onRemoveOpb={(index) => removeQualificationRow('opb', index, EMPTY_OPB_ENTRY, 1)}
       onSubmitAcademic={submitAcademicQualificationSection}
       onSubmitProfessional={submitProfessionalQualificationSection}
       onSubmitAto={submitAtoMembershipSection}
+      onSubmitOpb={submitOpbMembershipSection}
     />
   );
 
@@ -1918,6 +2689,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationCharacterReferenceSection
       characterReference={draft.characterReference}
       applicationId={resolveApplicationId()}
+      pathway={pathway}
       fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('characterReference', field, value)}
     />
@@ -1927,6 +2699,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationDeclarationSection
       declaration={draft.declaration}
       applicationId={resolveApplicationId()}
+      pathway={pathway}
       fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('declaration', field, value)}
     />
@@ -1949,6 +2722,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationResidentialDeclarationSection
       residentialDeclaration={draft.residentialDeclaration}
       applicationId={resolveApplicationId()}
+      pathway={pathway}
       fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('residentialDeclaration', field, value)}
     />
@@ -1963,7 +2737,12 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       residentialDeclarationSubmitted={residentialDeclarationSubmitted}
       customerEmail={draft.personal?.personalEmail || draft.personal?.email || ''}
       paymentReturnNotice={paymentReturnNotice}
+      paymentProcessing={billingPaymentProcessing}
       onClearPaymentReturnNotice={() => setPaymentReturnNotice(null)}
+      onBeforePayRedirect={() => {
+        backupMembershipApplicationDraft(draft, pathway);
+        saveDraft(draft, pathway);
+      }}
     />
   );
 
@@ -2004,7 +2783,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         >
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
-              {completedCount} of {TABS.length} sections completed
+              {completedCount} of {tabs.length} sections completed
             </Typography>
             <Typography variant="body2" sx={{ fontWeight: 700, color: secondary.main }}>
               {progressValue}%
@@ -2052,7 +2831,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         allowScrollButtonsMobile
         sx={tabsSx}
       >
-        {TABS.map((tab, index) => {
+        {tabs.map((tab, index) => {
           const done = isTabSubmitted(tab.id);
           const accessible = isTabAccessible(index);
           const isCurrent = index === firstIncompleteTabIndex && !done;
@@ -2120,7 +2899,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                   }}
                 >
                   <Iconify
-                    icon={TABS[activeTab]?.icon || 'solar:document-bold'}
+                    icon={tabs[activeTab]?.icon || 'solar:document-bold'}
                     width={28}
                     sx={{ color: 'primary.main' }}
                   />
@@ -2131,11 +2910,11 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                       Step {activeTab + 1} —{' '}
                     </Box>
                     <Box component="span" sx={{ color: secondary.main }}>
-                      {TABS[activeTab]?.label}
+                      {tabs[activeTab]?.label}
                     </Box>
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 0.75, lineHeight: 1.65, color: 'text.primary' }}>
-                    Section {activeTab + 1} of {TABS.length} — fill in the details below, then submit.
+                    Section {activeTab + 1} of {tabs.length} — fill in the details below, then submit.
                     Fields marked with{' '}
                     <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>
                       *
@@ -2150,10 +2929,10 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           ) : (
             <>
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5 }}>
-                {TABS[activeTab]?.label}
+                {tabs[activeTab]?.label}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
-                Step {activeTab + 1} of {TABS.length} — fill in the details below, then submit this section.
+                Step {activeTab + 1} of {tabs.length} — fill in the details below, then submit this section.
               </Typography>
               {sectionRenderers[currentTabId]?.()}
             </>
@@ -2188,7 +2967,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         </Button>
 
         <Stack direction="row" spacing={1.5} alignItems="center">
-          {activeTab < TABS.length - 1 && (
+          {activeTab < tabs.length - 1 && (
             <Button
               variant="text"
               color="primary"
@@ -2205,8 +2984,9 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           )}
           {currentTabId === 'qualification' ? (
             <Typography variant="body2" sx={{ maxWidth: 360, textAlign: 'right', color: 'text.primary' }}>
-              Submit each section above using its own button. Professional and Other Professional Bodies are
-              required.
+              {isExperiencedPathway
+                ? 'Submit each section above. Academic, Professional and Other Professional Bodies are required.'
+                : 'Submit each section above. Professional Qualification, ATO and Other Professional Bodies are required.'}
             </Typography>
           ) : currentTabId === 'billing' ? (
             <Typography variant="body2" sx={{ maxWidth: 360, textAlign: 'right', color: 'text.primary' }}>
@@ -2221,7 +3001,9 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               onClick={() => handleTabSubmit(currentTabId)}
               sx={submitButtonSx}
             >
-              Submit {TABS[activeTab]?.label}
+              {currentTabId === 'application' && resolveApplicationId()
+                ? 'Continue to Personal'
+                : 'Submit'}
             </LoadingButton>
           )}
         </Stack>

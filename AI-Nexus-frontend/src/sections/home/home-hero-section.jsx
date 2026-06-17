@@ -26,6 +26,20 @@ const NAVY_STATS = '#001A70';
 const RED = '#E32B24';
 const BORDER_BLUE = '#5C7AA1';
 
+/** Eyebrow logo — flush left with headline, Figma spacing/size. */
+const HERO_BADGE_LOGO_SX = {
+  display: 'block',
+  m: 0,
+  p: { xs: 0.5, sm: 0.625, md: 0.75 },
+  width: 'auto',
+  height: { xs: 30, sm: 34, md: 40 },
+  maxWidth: { xs: 140, sm: 156, md: 172 },
+  objectFit: 'contain',
+  objectPosition: 'left center',
+  flexShrink: 0,
+  mb: { xs: 1, sm: 1.25, md: 1.5 },
+};
+
 function normalizeRichTextHtml(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -54,16 +68,24 @@ function normalizeAppPath(href) {
 }
 
 function isHashHref(href) {
-  return String(href || '').trim().startsWith('#');
+  return String(href || '')
+    .trim()
+    .startsWith('#');
 }
 
 function isJoinMovementHref(href) {
-  const h = String(href || '').trim().toLowerCase();
+  const h = String(href || '')
+    .trim()
+    .toLowerCase();
   return h === '#join-movement' || h === '#join' || h === '#get-started';
 }
 
 function isEligibilityCtaLabel(label) {
-  return String(label || '').trim().toLowerCase() === 'check eligibility';
+  return (
+    String(label || '')
+      .trim()
+      .toLowerCase() === 'check eligibility'
+  );
 }
 
 function isLikelyImagePath(value) {
@@ -267,11 +289,13 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
   const isEligibilityButton = isEligibilityCtaLabel(label);
 
   const isPrimary = variant === 'primary';
-  const iconNode = icon
-    ? isLikelyImagePath(icon)
-      ? <Box component="img" src={icon} alt="" sx={{ width: 18, height: 18, objectFit: 'contain' }} />
-      : <Iconify icon={icon} width={18} />
-    : null;
+  const iconNode = icon ? (
+    isLikelyImagePath(icon) ? (
+      <Box component="img" src={icon} alt="" sx={{ width: 18, height: 18, objectFit: 'contain' }} />
+    ) : (
+      <Iconify icon={icon} width={18} />
+    )
+  ) : null;
 
   const baseSx = {
     width: '100%',
@@ -342,7 +366,10 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
         onClick={handleClick}
         sx={{ ...baseSx, ...variantSx }}
       >
-        <Box component="span" sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}>
+        <Box
+          component="span"
+          sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}
+        >
           {label}
         </Box>
         {iconNode && (
@@ -376,7 +403,10 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
         size="large"
         sx={{ ...baseSx, ...variantSx }}
       >
-        <Box component="span" sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}>
+        <Box
+          component="span"
+          sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}
+        >
           {label}
         </Box>
         {iconNode && (
@@ -412,7 +442,10 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
         size="large"
         sx={{ ...baseSx, ...variantSx }}
       >
-        <Box component="span" sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}>
+        <Box
+          component="span"
+          sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}
+        >
           {label}
         </Box>
         {iconNode && (
@@ -445,7 +478,10 @@ function HeroCtaButton({ cta, variant = 'primary', onJoinClick, onEligibilityScr
       size="large"
       sx={{ ...baseSx, ...variantSx }}
     >
-      <Box component="span" sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}>
+      <Box
+        component="span"
+        sx={{ display: 'block', width: '100%', textAlign: 'center', lineHeight: 1.25 }}
+      >
         {label}
       </Box>
       {iconNode && (
@@ -506,7 +542,9 @@ function HeroStatIcon({ icon, size = 26 }) {
 
 /** Navy stats bar — full width of hero content, below copy row. */
 function HeroStatsBar({ stats = [], iconSize = 26 }) {
-  const rows = (stats || []).filter((row) => String(row?.value || '').trim() || String(row?.label || '').trim());
+  const rows = (stats || []).filter(
+    (row) => String(row?.value || '').trim() || String(row?.label || '').trim()
+  );
   if (!rows.length) return null;
 
   return (
@@ -543,7 +581,8 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
                 md: 'none',
               },
               borderRight: {
-                xs: index % 2 === 0 && rows.length > 1 ? `1px solid ${alpha('#fff', 0.16)}` : 'none',
+                xs:
+                  index % 2 === 0 && rows.length > 1 ? `1px solid ${alpha('#fff', 0.16)}` : 'none',
                 md: 'none',
               },
               ...(index < rows.length - 1 && {
@@ -610,7 +649,10 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
     };
   }, []);
 
-  const descriptionHtml = useMemo(() => normalizeRichTextHtml(hero.description), [hero.description]);
+  const descriptionHtml = useMemo(
+    () => normalizeRichTextHtml(hero.description),
+    [hero.description]
+  );
 
   const headlineColor = hero.headlineColor?.trim() || NAVY;
   const headlineAccentColor = hero.headlineAccentColor?.trim() || RED;
@@ -662,7 +704,8 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
           },
         }}
       >
-        <DashboardContent variant="fullWidth"
+        <DashboardContent
+          variant="fullWidth"
           sx={{
             position: 'relative',
             zIndex: 1,
@@ -676,8 +719,9 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
             boxSizing: 'border-box',
             px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
             pt: {
-              xs: 'calc(var(--layout-header-mobile-height, 64px) + 16px)',
-              md: 'calc(var(--layout-header-desktop-height, 72px) + 32px)',
+              xs: 'calc(var(--layout-header-mobile-height, 64px) + 4px)',
+              sm: 'calc(var(--layout-header-mobile-height, 64px) + 8px)',
+              md: 'calc(var(--layout-header-desktop-height, 64px) + 2px)',
             },
             pb: { xs: 2.5, md: 0 },
           }}
@@ -698,94 +742,108 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
               pt: { md: 0 },
             }}
           >
-          <Grid
-            component={m.div}
-            initial={HERO_TEXT_ANIMATION.initial}
-            animate={HERO_TEXT_ANIMATION.animate}
-            transition={HERO_TEXT_ANIMATION.transition}
-            container
-            alignItems={{ xs: 'flex-start', md: 'flex-start' }}
-            sx={{ width: '100%', maxWidth: '100%', m: 0, willChange: 'opacity, transform' }}
-          >
-            <Grid xs={12} md={6} lg={5} sx={{ minWidth: 0, pr: { md: 2 }, maxWidth: { md: 'none' } }}>
-              <Stack spacing={{ xs: 2, sm: 2.5, md: 3 }} sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                {hero.badge?.trim() ? (
-                  <Typography
-                    sx={{
-                      color: RED,
-                      ...FLUID_TYPOGRAPHY.heroBadge,
-                      m: 0,
-                    }}
-                  >
-                    {hero.badge}
-                  </Typography>
-                ) : null}
-
-                <Typography
-                  component="h1"
-                  sx={{
-                    ...FLUID_TYPOGRAPHY.heroHeadline,
-                    m: 0,
-                    maxWidth: '100%',
-                    overflowWrap: 'break-word',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: { xs: 0.5, sm: 0.625, md: 0.75 },
-                  }}
+            <Grid
+              component={m.div}
+              initial={HERO_TEXT_ANIMATION.initial}
+              animate={HERO_TEXT_ANIMATION.animate}
+              transition={HERO_TEXT_ANIMATION.transition}
+              container
+              columnSpacing={0}
+              rowSpacing={0}
+              alignItems={{ xs: 'flex-start', md: 'flex-start' }}
+              sx={{ width: '100%', maxWidth: '100%', m: 0, willChange: 'opacity, transform' }}
+            >
+              <Grid
+                xs={12}
+                md={6}
+                lg={5}
+                sx={{ minWidth: 0, p: 0, pr: { md: 2 }, maxWidth: { md: 'none' } }}
+              >
+                <Stack
+                  alignItems="flex-start"
+                  sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}
                 >
-                  {hero.headline?.trim() ? (
-                    <Box component="span" sx={{ color: headlineColor, display: 'block' }}>
-                      {hero.headline}
-                    </Box>
+                  {hero.badgeLogoUrl?.trim() ? (
+                    <Box
+                      component="img"
+                      src={hero.badgeLogoUrl}
+                      alt="AI Nexus"
+                      sx={(theme) => ({
+                        ...HERO_BADGE_LOGO_SX,
+                      })}
+                    />
                   ) : null}
-                  {hero.headlineAccent?.trim() ? (
-                    <Box component="span" sx={{ color: headlineAccentColor, display: 'block' }}>
-                      {hero.headlineAccent}
-                    </Box>
-                  ) : null}
-                </Typography>
 
-                {descriptionHtml ? (
-                  <RichTextContent
-                    html={descriptionHtml}
-                    sx={{
-                      color: NAVY,
-                      ...FLUID_TYPOGRAPHY.heroDescription,
-                      maxWidth: '100%',
-                      '& p': { m: 0 },
-                      '& p + p': { mt: 1 },
-                    }}
-                  />
-                ) : null}
-
-                <HeroMobileImage imageSrc={hero.backgroundImageUrl} />
-
-                {heroCtas.length ? (
-                  <Box
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
-                      gap: { xs: 1.25, sm: 1.25, md: 1.5 },
-                      width: '100%',
-                      maxWidth: '100%',
-                    pt: { xs: 0.25, md: 0.5 },
-                    boxSizing: 'border-box',
-                  }}
+                  <Stack
+                    spacing={{ xs: 2, sm: 2.5, md: 3 }}
+                    sx={{ width: '100%', maxWidth: '100%', minWidth: 0, alignItems: 'flex-start' }}
                   >
-                    {heroCtas.map((cta, index) => (
-                      <HeroCtaButton
-                        key={`hero-cta-${index}-${cta.label}`}
-                        cta={cta}
-                        variant={cta.variant === 'primary' ? 'primary' : 'outline'}
-                        onJoinClick={handleJoinClick}
-                        onEligibilityScroll={handleEligibilityScroll}
+                    <Typography
+                      component="h1"
+                      sx={{
+                        ...FLUID_TYPOGRAPHY.heroHeadline,
+                        m: 0,
+                        maxWidth: '100%',
+                        overflowWrap: 'break-word',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: { xs: 0.5, sm: 0.625, md: 0.75 },
+                      }}
+                    >
+                      {hero.headline?.trim() ? (
+                        <Box component="span" sx={{ color: headlineColor, display: 'block' }}>
+                          {hero.headline}
+                        </Box>
+                      ) : null}
+                      {hero.headlineAccent?.trim() ? (
+                        <Box component="span" sx={{ color: headlineAccentColor, display: 'block' }}>
+                          {hero.headlineAccent}
+                        </Box>
+                      ) : null}
+                    </Typography>
+
+                    {descriptionHtml ? (
+                      <RichTextContent
+                        html={descriptionHtml}
+                        sx={{
+                          color: NAVY,
+                          ...FLUID_TYPOGRAPHY.heroDescription,
+                          maxWidth: '100%',
+                          '& p': { m: 0 },
+                          '& p + p': { mt: 1 },
+                        }}
                       />
-                    ))}
-                  </Box>
-                ) : null}
-              </Stack>
+                    ) : null}
+
+                    <HeroMobileImage imageSrc={hero.backgroundImageUrl} />
+
+                    {heroCtas.length ? (
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                          gap: { xs: 1.25, sm: 1.25, md: 1.5 },
+                          width: '100%',
+                          maxWidth: '100%',
+                          pt: { xs: 0.25, md: 0.5 },
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {heroCtas.map((cta, index) => (
+                          <HeroCtaButton
+                            key={`hero-cta-${index}-${cta.label}`}
+                            cta={cta}
+                            variant={cta.variant === 'primary' ? 'primary' : 'outline'}
+                            onJoinClick={handleJoinClick}
+                            onEligibilityScroll={handleEligibilityScroll}
+                          />
+                        ))}
+                      </Box>
+                    ) : null}
+                  </Stack>
+                </Stack>
+              </Grid>
             </Grid>
-          </Grid>
           </Box>
 
           <Box

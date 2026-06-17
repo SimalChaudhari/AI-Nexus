@@ -3,13 +3,19 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
+import { MembershipApplicationSocialTokenDto } from './membership-application-character-declaration.dto';
+import {
+  MEMBERSHIP_PICKLIST_KEY_VALUES,
+  type MembershipPicklistKey,
+} from './membership-application/picklists';
 
-export class PreviousWorkExperienceItemDto {
+export class WorkExperienceItemDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -59,7 +65,35 @@ export class PreviousWorkExperienceItemDto {
   @IsOptional()
   @IsBoolean()
   isCurrentEmployment?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessEmail?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessRegistrationType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  staffStrength?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  turnover?: string;
 }
+
+/** @deprecated Use WorkExperienceItemDto */
+export class PreviousWorkExperienceItemDto extends WorkExperienceItemDto {}
 
 export class CreateApplicationEmploymentDetailsDto {
   @ApiProperty({ description: 'Salesforce IdP access token from membership SSO' })
@@ -77,10 +111,42 @@ export class CreateApplicationEmploymentDetailsDto {
   @IsString()
   currentEmploymentStatus?: string;
 
-  @ApiPropertyOptional({ type: [PreviousWorkExperienceItemDto] })
+  @ApiPropertyOptional({ example: 'Yes' })
+  @IsOptional()
+  @IsString()
+  accreditedEmployerScheme?: string;
+
+  @ApiPropertyOptional({ type: [WorkExperienceItemDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => PreviousWorkExperienceItemDto)
-  previousWorkExperience?: PreviousWorkExperienceItemDto[];
+  @Type(() => WorkExperienceItemDto)
+  currentWorkExperience?: WorkExperienceItemDto[];
+
+  @ApiPropertyOptional({ type: [WorkExperienceItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkExperienceItemDto)
+  previousWorkExperience?: WorkExperienceItemDto[];
+}
+
+export class GetEmploymentPicklistOptionsDto extends MembershipApplicationSocialTokenDto {
+  @ApiPropertyOptional({ enum: MEMBERSHIP_PICKLIST_KEY_VALUES })
+  @IsOptional()
+  @IsString()
+  @IsIn(MEMBERSHIP_PICKLIST_KEY_VALUES)
+  picklistKey?: MembershipPicklistKey;
+
+  @ApiPropertyOptional({ description: 'Deprecated — use picklistKey' })
+  @IsOptional()
+  @IsString()
+  field?: string;
+}
+
+export class GetMembershipPicklistOptionsDto extends MembershipApplicationSocialTokenDto {
+  @ApiProperty({ enum: MEMBERSHIP_PICKLIST_KEY_VALUES })
+  @IsString()
+  @IsIn(MEMBERSHIP_PICKLIST_KEY_VALUES)
+  picklistKey!: MembershipPicklistKey;
 }

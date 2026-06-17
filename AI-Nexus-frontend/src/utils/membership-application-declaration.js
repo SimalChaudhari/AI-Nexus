@@ -1,5 +1,7 @@
 // ----------------------------------------------------------------------
 
+import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
+
 export const YES_NO_OPTIONS = ['Yes', 'No'];
 
 export const EMPTY_DECLARATION_FORM = {
@@ -19,9 +21,10 @@ export const EMPTY_DECLARATION_FORM = {
   infoIsTrueAndComplete: false,
   acknowledgeNonRefundableAdmissionFee: false,
   transitionalArrangements: false,
+  memberApplicationTandC: false,
 };
 
-export function buildDeclarationApiPayload(form, applicationId) {
+export function buildDeclarationApiPayload(form, applicationId, pathway) {
   const payload = {
     applicationId: String(applicationId || '').trim(),
     convictedOfAnyCriminalOffence: form.convictedOfAnyCriminalOffence || 'No',
@@ -29,12 +32,20 @@ export function buildDeclarationApiPayload(form, applicationId) {
     subjectOfAnyInvestigation: form.subjectOfAnyInvestigation || 'No',
     refusedEntryToAnyProfessionalBody: form.refusedEntryToAnyProfessionalBody || 'No',
     memberOfISCAPreviously: form.memberOfISCAPreviously || 'No',
-    cpeComplianceDeclaration: form.cpeComplianceDeclaration || 'Yes',
     pdpaPolicy: Boolean(form.pdpaPolicy),
     infoIsTrueAndComplete: Boolean(form.infoIsTrueAndComplete),
     acknowledgeNonRefundableAdmissionFee: Boolean(form.acknowledgeNonRefundableAdmissionFee),
-    transitionalArrangements: Boolean(form.transitionalArrangements),
   };
+
+  if (!isExperiencedMembershipApplicationPathway(pathway)) {
+    payload.cpeComplianceDeclaration = form.cpeComplianceDeclaration || 'Yes';
+    payload.transitionalArrangements = Boolean(form.transitionalArrangements);
+    if (form.cpeComplianceDeclaration === 'No' && form.reasonForNonComplianceOther?.trim()) {
+      payload.reasonForNonComplianceOther = form.reasonForNonComplianceOther.trim();
+    }
+  } else {
+    payload.memberApplicationTandC = Boolean(form.memberApplicationTandC);
+  }
 
   if (form.convictedOfAnyCriminalOffence === 'Yes' && form.criminalConvictionDetails?.trim()) {
     payload.criminalConvictionDetails = form.criminalConvictionDetails.trim();
@@ -54,14 +65,11 @@ export function buildDeclarationApiPayload(form, applicationId) {
   if (form.memberOfISCAPreviously === 'Yes' && form.previousISCAembershipDetails?.trim()) {
     payload.previousISCAembershipDetails = form.previousISCAembershipDetails.trim();
   }
-  if (form.cpeComplianceDeclaration === 'No' && form.reasonForNonComplianceOther?.trim()) {
-    payload.reasonForNonComplianceOther = form.reasonForNonComplianceOther.trim();
-  }
 
   return payload;
 }
 
-export function validateDeclarationBeforeSubmit(form, applicationId) {
+export function validateDeclarationBeforeSubmit(form, applicationId, pathway) {
   if (!applicationId?.trim()) {
     return 'Application ID is required. Submit the Application tab first.';
   }
@@ -84,8 +92,16 @@ export function validateDeclarationBeforeSubmit(form, applicationId) {
   if (form.memberOfISCAPreviously === 'Yes' && !form.previousISCAembershipDetails?.trim()) {
     return 'Please provide previous ISCA membership details.';
   }
-  if (form.cpeComplianceDeclaration === 'No' && !form.reasonForNonComplianceOther?.trim()) {
-    return 'Please provide reason for non-compliance.';
+
+  if (!isExperiencedMembershipApplicationPathway(pathway)) {
+    if (form.cpeComplianceDeclaration === 'No' && !form.reasonForNonComplianceOther?.trim()) {
+      return 'Please provide reason for non-compliance.';
+    }
+    if (!form.transitionalArrangements) {
+      return 'You must confirm transitional arrangements acknowledgement.';
+    }
+  } else if (!form.memberApplicationTandC) {
+    return 'You must agree to the membership application terms and conditions.';
   }
 
   if (!form.pdpaPolicy) {
@@ -96,9 +112,6 @@ export function validateDeclarationBeforeSubmit(form, applicationId) {
   }
   if (!form.acknowledgeNonRefundableAdmissionFee) {
     return 'You must acknowledge the non-refundable admission fee.';
-  }
-  if (!form.transitionalArrangements) {
-    return 'You must confirm transitional arrangements acknowledgement.';
   }
 
   return '';

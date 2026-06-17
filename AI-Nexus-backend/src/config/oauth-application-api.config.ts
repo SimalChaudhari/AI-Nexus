@@ -16,6 +16,7 @@ export const OAUTH_APPLICATION_API_ROUTES = {
   academicQualification: 'createAcademicQualificationNexus',
   professionalQualification: 'createProfessionalQualificationNexus',
   ato: 'createATONexus',
+  opb: 'createMembershipForOPBNexus',
   characterReference: 'createCharacterReferenceNexus',
   declaration: 'createDeclarationNexus',
   residentialDeclaration: 'createResidentialDeclarationNexus',
@@ -23,6 +24,8 @@ export const OAUTH_APPLICATION_API_ROUTES = {
   uploadDocument: 'uploadDocumentNexus',
   checkoutDetails: 'getCheckoutDetailsForNexus',
   createBilling: 'createBillingNexus',
+  organisationNames: 'getOrganisationNameForNexus',
+  accountancyBodyNames: 'getNameOfAccountancyBodyForNexus',
 } as const;
 
 export type OAuthApplicationApiRouteKey = keyof typeof OAUTH_APPLICATION_API_ROUTES;
@@ -34,6 +37,7 @@ const ROUTE_PATH_ENV: Record<OAuthApplicationApiRouteKey, string> = {
   academicQualification: 'OAUTH_APPLICATION_API_ROUTE_ACADEMIC_QUALIFICATION',
   professionalQualification: 'OAUTH_APPLICATION_API_ROUTE_PROFESSIONAL_QUALIFICATION',
   ato: 'OAUTH_APPLICATION_API_ROUTE_ATO',
+  opb: 'OAUTH_APPLICATION_API_ROUTE_OPB',
   characterReference: 'OAUTH_APPLICATION_API_ROUTE_CHARACTER_REFERENCE',
   declaration: 'OAUTH_APPLICATION_API_ROUTE_DECLARATION',
   residentialDeclaration: 'OAUTH_APPLICATION_API_ROUTE_RESIDENTIAL_DECLARATION',
@@ -41,6 +45,8 @@ const ROUTE_PATH_ENV: Record<OAuthApplicationApiRouteKey, string> = {
   uploadDocument: 'OAUTH_APPLICATION_API_ROUTE_UPLOAD_DOCUMENT',
   checkoutDetails: 'OAUTH_APPLICATION_API_ROUTE_CHECKOUT_DETAILS',
   createBilling: 'OAUTH_APPLICATION_API_ROUTE_CREATE_BILLING',
+  organisationNames: 'OAUTH_APPLICATION_API_ROUTE_ORGANISATION_NAMES',
+  accountancyBodyNames: 'OAUTH_APPLICATION_API_ROUTE_ACCOUNTANCY_BODY_NAMES',
 };
 
 /** @deprecated Legacy full-URL env vars — prefer OAUTH_INSTANCE_URL + routes above. */
@@ -51,6 +57,7 @@ const LEGACY_FULL_URL_ENV: Partial<Record<OAuthApplicationApiRouteKey, string>> 
   academicQualification: 'OAUTH_APPLICATION_ACADEMIC_QUALIFICATION_URL',
   professionalQualification: 'OAUTH_APPLICATION_PROFESSIONAL_QUALIFICATION_URL',
   ato: 'OAUTH_APPLICATION_ATO_URL',
+  opb: 'OAUTH_APPLICATION_OPB_URL',
   characterReference: 'OAUTH_APPLICATION_CHARACTER_REFERENCE_URL',
   declaration: 'OAUTH_APPLICATION_DECLARATION_URL',
   residentialDeclaration: 'OAUTH_APPLICATION_RESIDENTIAL_DECLARATION_URL',
@@ -58,6 +65,8 @@ const LEGACY_FULL_URL_ENV: Partial<Record<OAuthApplicationApiRouteKey, string>> 
   uploadDocument: 'OAUTH_APPLICATION_UPLOAD_DOCUMENT_URL',
   checkoutDetails: 'OAUTH_APPLICATION_CHECKOUT_DETAILS_URL',
   createBilling: 'OAUTH_APPLICATION_CREATE_BILLING_URL',
+  organisationNames: 'OAUTH_APPLICATION_ORGANISATION_NAMES_URL',
+  accountancyBodyNames: 'OAUTH_APPLICATION_ACCOUNTANCY_BODY_NAMES_URL',
 };
 
 function normalizeLeadingSlash(path: string): string {

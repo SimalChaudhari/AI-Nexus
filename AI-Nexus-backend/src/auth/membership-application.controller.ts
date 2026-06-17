@@ -4,10 +4,12 @@ import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OAuthAuthService } from './oauth-auth.service';
 import { CreateApplicationNexusDto } from './membership-application-create.dto';
 import { CreateApplicationPersonalDetailsDto } from './membership-application-personal.dto';
-import { CreateApplicationEmploymentDetailsDto } from './membership-application-employment.dto';
+import { CreateApplicationEmploymentDetailsDto, GetEmploymentPicklistOptionsDto, GetMembershipPicklistOptionsDto } from './membership-application-employment.dto';
+import { MEMBERSHIP_PICKLIST_KEYS } from './membership-application/picklists';
 import {
   CreateAcademicQualificationDto,
   CreateAtoMembershipDto,
+  CreateOpbMembershipDto,
   CreateProfessionalQualificationDto,
 } from './membership-application-qualification.dto';
 import {
@@ -108,6 +110,104 @@ export class MembershipApplicationController {
     });
   }
 
+  @Post('picklist-options')
+  @ApiOperation({ summary: 'Load membership application Salesforce picklist values' })
+  @ApiBody({ type: GetMembershipPicklistOptionsDto })
+  async getMembershipPicklistOptions(
+    @Res() response: Response,
+    @Body() dto: GetMembershipPicklistOptionsDto,
+  ) {
+    const options = await this.oauthAuthService.getMembershipPicklist(
+      dto.socialAccessToken,
+      dto.picklistKey,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      picklistKey: dto.picklistKey,
+      options,
+    });
+  }
+
+  @Post('employment-picklist-options')
+  @ApiOperation({
+    summary: 'Load membership application picklist values (legacy employment endpoint)',
+  })
+  @ApiBody({ type: GetEmploymentPicklistOptionsDto })
+  async getEmploymentPicklistOptions(
+    @Res() response: Response,
+    @Body() dto: GetEmploymentPicklistOptionsDto,
+  ) {
+    const picklistKey =
+      dto.picklistKey
+      || (dto.field === 'Sector__c'
+        ? MEMBERSHIP_PICKLIST_KEYS.industry
+        : MEMBERSHIP_PICKLIST_KEYS.companyType);
+    const options = await this.oauthAuthService.getMembershipPicklist(
+      dto.socialAccessToken,
+      picklistKey,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      picklistKey,
+      options,
+    });
+  }
+
+  @Post('employment-company-type-options')
+  @ApiOperation({
+    summary:
+      'Load CA Work Experience organisation type picklist (Application_Employment_Detail__c.Company_Type__c)',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getEmploymentCompanyTypeOptions(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const options = await this.oauthAuthService.getMembershipPicklist(
+      dto.socialAccessToken,
+      MEMBERSHIP_PICKLIST_KEYS.companyType,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      picklistKey: MEMBERSHIP_PICKLIST_KEYS.companyType,
+      options,
+    });
+  }
+
+  @Post('organisation-name-options')
+  @ApiOperation({ summary: 'Load employment organisation names from Salesforce ApplicationAPI' })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getOrganisationNameOptions(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const options = await this.oauthAuthService.getOrganisationNamesForNexus(
+      dto.socialAccessToken,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      options,
+    });
+  }
+
+  @Post('accountancy-body-name-options')
+  @ApiOperation({
+    summary: 'Load character reference accountancy body names from Salesforce ApplicationAPI',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getAccountancyBodyNameOptions(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const options = await this.oauthAuthService.getAccountancyBodyNamesForNexus(
+      dto.socialAccessToken,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      options,
+    });
+  }
+
   @Post('academic-qualification')
   @ApiOperation({ summary: 'Submit one academic qualification record (optional)' })
   @ApiBody({ type: CreateAcademicQualificationDto })
@@ -147,7 +247,7 @@ export class MembershipApplicationController {
   }
 
   @Post('ato-membership')
-  @ApiOperation({ summary: 'Submit one other professional body (ATO) membership record' })
+  @ApiOperation({ summary: 'Submit one CA Approved Training Organisation (createATONexus)' })
   @ApiBody({ type: CreateAtoMembershipDto })
   async createAtoMembership(
     @Res() response: Response,
@@ -161,6 +261,27 @@ export class MembershipApplicationController {
     return response.status(HttpStatus.OK).json({
       success: true,
       message: 'Professional body membership submitted successfully.',
+      salesforce,
+    });
+  }
+
+  @Post('opb-membership')
+  @ApiOperation({
+    summary: 'Submit one other professional body membership record (Experienced pathway)',
+  })
+  @ApiBody({ type: CreateOpbMembershipDto })
+  async createOpbMembership(
+    @Res() response: Response,
+    @Body() dto: CreateOpbMembershipDto,
+  ) {
+    const { socialAccessToken, ...rest } = dto;
+    const salesforce = await this.oauthAuthService.createMembershipForOPBNexus(
+      socialAccessToken,
+      rest as Record<string, unknown>,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Other professional body membership submitted successfully.',
       salesforce,
     });
   }
@@ -315,11 +436,14 @@ export class MembershipApplicationController {
       dto.socialAccessToken,
     );
     const memberClass = String(nexusInfo.memberClass || '').trim() || null;
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim() || null;
     return response.status(HttpStatus.OK).json({
       success: true,
       message: 'Membership status loaded.',
       memberClass,
+      membershipStatus,
       isCaMember: this.oauthAuthService.isSalesforceCaMemberClass(memberClass),
+      isApprovedMember: this.oauthAuthService.isApprovedSalesforceMember(nexusInfo),
       nexusUser: nexusInfo,
     });
   }
@@ -353,6 +477,44 @@ export class MembershipApplicationController {
       isCaMember: true,
       memberClass: result.memberClass,
       message: 'CA membership confirmed. Signing you in.',
+      accessToken: result.accessToken,
+      nexusUser: result.nexusInfo,
+    });
+  }
+
+  @Post('member-login')
+  @ApiOperation({
+    summary:
+      'When Salesforce memberClass is Member and membershipStatus is Approved, sync platform user and return access token for establish-session',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async loginIfApprovedMember(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const result = await this.oauthAuthService.resolveApprovedMemberLoginFromSocialToken(
+      dto.socialAccessToken,
+    );
+    const membershipStatus = String(result.membershipStatus || '').trim();
+
+    if (!result.isApprovedMember) {
+      return response.status(HttpStatus.OK).json({
+        success: true,
+        isApprovedMember: false,
+        memberClass: result.memberClass,
+        membershipStatus,
+        message:
+          'ISCA Member status is not active yet in eServices. Continue your application or check back after processing.',
+        nexusUser: result.nexusInfo,
+      });
+    }
+
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      isApprovedMember: true,
+      memberClass: result.memberClass,
+      membershipStatus,
+      message: 'ISCA membership confirmed. Signing you in.',
       accessToken: result.accessToken,
       nexusUser: result.nexusInfo,
     });

@@ -42,6 +42,49 @@ export async function submitMembershipApplicationEmploymentDetails(payload) {
   });
 }
 
+/** Load Salesforce picklist values for membership application forms. */
+export async function fetchMembershipPicklistOptions(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/picklist-options', payload);
+    return res.data;
+  });
+}
+
+/** Load employment organisation names from Salesforce ApplicationAPI. */
+export async function fetchOrganisationNameOptions(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/organisation-name-options', payload);
+    return res.data;
+  });
+}
+
+/** Load character reference accountancy body names from Salesforce ApplicationAPI. */
+export async function fetchAccountancyBodyNameOptions(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/accountancy-body-name-options', payload);
+    return res.data;
+  });
+}
+
+/** @deprecated Use fetchMembershipPicklistOptions */
+export async function fetchEmploymentPicklistOptions(payload) {
+  if (payload?.picklistKey) {
+    return fetchMembershipPicklistOptions(payload);
+  }
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/employment-picklist-options', payload);
+    return res.data;
+  });
+}
+
+/** @deprecated Use fetchEmploymentPicklistOptions */
+export async function fetchEmploymentCompanyTypeOptions(payload) {
+  return fetchEmploymentPicklistOptions({
+    ...payload,
+    field: payload?.field || 'Company_Type__c',
+  });
+}
+
 export async function submitAcademicQualification(payload) {
   return callMembershipApplicationApi(async () => {
     const res = await axios.post('/auth/membership-application/academic-qualification', payload);
@@ -59,9 +102,17 @@ export async function submitProfessionalQualification(payload) {
   });
 }
 
+/** CA pathway — Salesforce ApplicationAPI createATONexus ({ applicationId, atoName }). */
 export async function submitAtoMembership(payload) {
   return callMembershipApplicationApi(async () => {
     const res = await axios.post('/auth/membership-application/ato-membership', payload);
+    return res.data;
+  });
+}
+
+export async function submitOpbMembership(payload) {
+  return callMembershipApplicationApi(async () => {
+    const res = await axios.post('/auth/membership-application/opb-membership', payload);
     return res.data;
   });
 }

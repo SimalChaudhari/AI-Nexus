@@ -41,7 +41,8 @@ export default function OAuthStartPage() {
         const membershipOutcome = params.get('membershipOutcome') || '';
         const isRecognitionApplication =
           membershipOutcome === MEMBERSHIP_APPLICATION_OUTCOME
-          || params.get('eligibilityType') === 'recognition';
+          || params.get('eligibilityType') === 'recognition'
+          || params.get('eligibilityType') === 'experienced';
         const isStudentApplication =
           membershipOutcome === STUDENT_MEMBERSHIP_APPLICATION_OUTCOME
           || (params.get('eligibilityType') === 'student'

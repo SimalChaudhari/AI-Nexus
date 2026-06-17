@@ -51,6 +51,9 @@ export function readMembershipSalesforceSession() {
       accountId,
       applicationId: String(parsed.applicationId || '').trim() || undefined,
       socialToken: String(parsed.socialToken || '').trim(),
+      firstName: String(parsed.firstName || '').trim() || undefined,
+      lastName: String(parsed.lastName || '').trim() || undefined,
+      email: String(parsed.email || '').trim() || undefined,
       memberClass: String(parsed.memberClass || '').trim() || undefined,
       pendingPlatformAccessToken,
       platformAccessToken: pendingPlatformAccessToken,
@@ -77,6 +80,9 @@ export function persistMembershipSalesforceSession(payload) {
     ...(payload?.memberClass
       ? { memberClass: String(payload.memberClass).trim() }
       : {}),
+    ...(payload?.firstName ? { firstName: String(payload.firstName).trim() } : {}),
+    ...(payload?.lastName ? { lastName: String(payload.lastName).trim() } : {}),
+    ...(payload?.email ? { email: String(payload.email).trim() } : {}),
     socialToken: String(payload?.socialToken || '').trim(),
     pendingPlatformAccessToken: String(payload?.pendingPlatformAccessToken || '').trim() || undefined,
     savedAt: new Date().toISOString(),

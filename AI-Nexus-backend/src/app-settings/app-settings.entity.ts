@@ -7,7 +7,7 @@ import {
 } from 'typeorm';
 
 export type HomeHeroContent = {
-  badge?: string;
+  badgeLogoUrl?: string;
   headline?: string;
   headlineAccent?: string;
   headlineColor?: string;

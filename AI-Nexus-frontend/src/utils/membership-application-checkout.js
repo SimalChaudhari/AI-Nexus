@@ -6,6 +6,12 @@ import {
   clearPendingMembershipApplicationPayment,
   readPendingMembershipApplicationPaymentSession,
 } from './membership-application-billing';
+import {
+  clearMembershipApplicationDraft,
+  readMembershipApplicationPathway,
+  isExperiencedMembershipApplicationPathway,
+} from './membership-application-pathway';
+import { clearMembershipApplicationDraftBackup } from './membership-application-draft-backup';
 import { ensureMembershipSalesforceSession } from './membership-salesforce-auth';
 import {
   MEMBERSHIP_APPLICATION_ALREADY_SUBMITTED_MESSAGE,
@@ -13,6 +19,10 @@ import {
   redirectCaMemberToPlatform,
   tryCompleteCaMemberPlatformLogin,
 } from './membership-application-ca';
+import {
+  MEMBERSHIP_APPLICATION_MEMBER_PENDING_MESSAGE,
+  tryCompleteApprovedMemberPlatformLogin,
+} from './membership-application-approved-member';
 
 // ----------------------------------------------------------------------
 
@@ -41,14 +51,23 @@ export function normalizeCheckoutDetailsResponse(response) {
 
 export function buildMembershipApplicationPaymentUrls() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const pathway = readMembershipApplicationPathway();
 
-  const success = new URL(`${origin}${paths.home}`);
+  const success = new URL(`${origin}${paths.auth.membership.application}`);
   success.searchParams.set('membershipAppPayment', 'success');
   success.searchParams.set('session_id', WOOSHPAY_CHECKOUT_SESSION_PLACEHOLDER);
+  success.searchParams.set('tab', 'billing');
+  if (isExperiencedMembershipApplicationPathway(pathway)) {
+    success.searchParams.set('pathway', pathway);
+  }
 
   const cancel = new URL(`${origin}${paths.auth.membership.application}`);
   cancel.searchParams.set('billing', '1');
   cancel.searchParams.set('payment', 'canceled');
+  cancel.searchParams.set('tab', 'billing');
+  if (isExperiencedMembershipApplicationPathway(pathway)) {
+    cancel.searchParams.set('pathway', pathway);
+  }
 
   return {
     successUrl: success.toString(),
@@ -139,12 +158,19 @@ export async function completeMembershipApplicationPaymentReturn({
 
   clearPendingMembershipApplicationPayment();
 
+  const pathway = readMembershipApplicationPathway();
+  const clearDraftAfterLogin = () => {
+    clearMembershipApplicationDraft(pathway);
+    clearMembershipApplicationDraftBackup(pathway);
+  };
+
   const caLogin = await tryCompleteCaMemberPlatformLogin({
     socialAccessToken: socialToken,
-    redirectTo: paths.learning,
+    redirectTo: paths.home,
   });
 
   if (caLogin.loggedIn && caLogin.redirectTo) {
+    clearDraftAfterLogin();
     redirectCaMemberToPlatform(caLogin.redirectTo);
     return {
       redirectTo: caLogin.redirectTo,
@@ -154,9 +180,29 @@ export async function completeMembershipApplicationPaymentReturn({
     };
   }
 
+  const memberLogin = await tryCompleteApprovedMemberPlatformLogin({
+    socialAccessToken: socialToken,
+    redirectTo: paths.home,
+  });
+
+  if (memberLogin.loggedIn && memberLogin.redirectTo) {
+    clearDraftAfterLogin();
+    redirectCaMemberToPlatform(memberLogin.redirectTo);
+    return {
+      redirectTo: memberLogin.redirectTo,
+      message: memberLogin.message,
+      isApprovedMember: true,
+      navigated: true,
+    };
+  }
+
+  const pendingMessage = isExperiencedMembershipApplicationPathway(pathway)
+    ? memberLogin.message || MEMBERSHIP_APPLICATION_MEMBER_PENDING_MESSAGE
+    : caLogin.message || MEMBERSHIP_APPLICATION_CA_PENDING_MESSAGE;
+
   const statusMessage = billingAlreadySubmitted
     ? MEMBERSHIP_APPLICATION_ALREADY_SUBMITTED_MESSAGE
-    : MEMBERSHIP_APPLICATION_CA_PENDING_MESSAGE;
+    : pendingMessage;
 
   const params = new URLSearchParams({
     billing: '1',
@@ -164,10 +210,14 @@ export async function completeMembershipApplicationPaymentReturn({
     membershipStatus: billingAlreadySubmitted ? 'submitted' : 'pending',
   });
   params.set('statusMessage', statusMessage);
+  params.set('tab', 'billing');
+  if (isExperiencedMembershipApplicationPathway(pathway)) {
+    params.set('pathway', pathway);
+  }
 
   return {
     redirectTo: `${paths.auth.membership.application}?${params.toString()}`,
-    message: caLogin.message || statusMessage,
+    message: pendingMessage,
     isCaMember: false,
   };
 }

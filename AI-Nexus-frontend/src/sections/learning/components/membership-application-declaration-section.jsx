@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
@@ -12,6 +13,12 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { RequiredMark } from 'src/utils/membership-form-required-mark';
 import { YES_NO_OPTIONS } from 'src/utils/membership-application-declaration';
+import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
+import {
+  MEMBERSHIP_PICKLIST_CONFIG,
+  MembershipApplicationPicklistField,
+  useMembershipPicklist,
+} from 'src/sections/learning/membership-application-picklists';
 
 // ----------------------------------------------------------------------
 
@@ -76,20 +83,39 @@ function AcknowledgementField({ checked, onChange, label, error }) {
 export function MembershipApplicationDeclarationSection({
   declaration,
   applicationId,
+  pathway,
   fieldErrors = {},
   onUpdate,
 }) {
+  const isExperienced = isExperiencedMembershipApplicationPathway(pathway);
   const update = (field, value) => onUpdate(field, value);
   const fe = (key) => {
     const msg = fieldErrors[key];
     return msg ? { error: true, helperText: msg } : {};
   };
+  const cpeCompliancePicklist = useMembershipPicklist({
+    enabled: !isExperienced,
+    ...MEMBERSHIP_PICKLIST_CONFIG.cpeComplianceDeclaration,
+  });
 
   return (
     <Stack spacing={3} sx={{ width: 1 }}>
       {!applicationId && (
         <Alert severity="warning">
           Submit the Application tab first to obtain an application ID.
+        </Alert>
+      )}
+
+      {!isExperienced && cpeCompliancePicklist.error && (
+        <Alert
+          severity="error"
+          action={
+            <Button size="small" color="inherit" onClick={cpeCompliancePicklist.retry}>
+              Retry
+            </Button>
+          }
+        >
+          {cpeCompliancePicklist.error}
         </Alert>
       )}
 
@@ -190,23 +216,33 @@ export function MembershipApplicationDeclarationSection({
         />
       )}
 
-      <YesNoField
-        label="CPE compliance declaration"
-        value={declaration.cpeComplianceDeclaration}
-        onChange={(v) => update('cpeComplianceDeclaration', v)}
-      />
-      {declaration.cpeComplianceDeclaration === 'No' && (
-        <MembershipFormTextField
-          label="Reason for non-compliance"
-          required
-          multiline
-          minRows={2}
-          size={fieldSize}
-          fullWidth
-          value={declaration.reasonForNonComplianceOther}
-          onChange={(e) => update('reasonForNonComplianceOther', e.target.value)}
-          {...fe('reasonForNonComplianceOther')}
-        />
+      {!isExperienced && (
+        <>
+          <MembershipApplicationPicklistField
+            label="CPE compliance declaration"
+            required
+            size={fieldSize}
+            value={declaration.cpeComplianceDeclaration}
+            onChange={(e) => update('cpeComplianceDeclaration', e.target.value)}
+            options={cpeCompliancePicklist.options}
+            loading={cpeCompliancePicklist.loading}
+            onOpen={cpeCompliancePicklist.load}
+            fieldProps={fe('cpeComplianceDeclaration')}
+          />
+          {declaration.cpeComplianceDeclaration === 'No' && (
+            <MembershipFormTextField
+              label="Reason for non-compliance"
+              required
+              multiline
+              minRows={2}
+              size={fieldSize}
+              fullWidth
+              value={declaration.reasonForNonComplianceOther}
+              onChange={(e) => update('reasonForNonComplianceOther', e.target.value)}
+              {...fe('reasonForNonComplianceOther')}
+            />
+          )}
+        </>
       )}
 
       <Box sx={{ pt: 1 }}>
@@ -232,12 +268,21 @@ export function MembershipApplicationDeclarationSection({
             label="I acknowledge the non-refundable admission fee"
             error={fieldErrors.acknowledgeNonRefundableAdmissionFee}
           />
-          <AcknowledgementField
-            checked={Boolean(declaration.transitionalArrangements)}
-            onChange={(e) => update('transitionalArrangements', e.target.checked)}
-            label="I am applying under transitional arrangements"
-            error={fieldErrors.transitionalArrangements}
-          />
+          {isExperienced ? (
+            <AcknowledgementField
+              checked={Boolean(declaration.memberApplicationTandC)}
+              onChange={(e) => update('memberApplicationTandC', e.target.checked)}
+              label="I agree to the membership application terms and conditions"
+              error={fieldErrors.memberApplicationTandC}
+            />
+          ) : (
+            <AcknowledgementField
+              checked={Boolean(declaration.transitionalArrangements)}
+              onChange={(e) => update('transitionalArrangements', e.target.checked)}
+              label="I am applying under transitional arrangements"
+              error={fieldErrors.transitionalArrangements}
+            />
+          )}
         </Stack>
       </Box>
     </Stack>

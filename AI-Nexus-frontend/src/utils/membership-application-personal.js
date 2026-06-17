@@ -2,6 +2,8 @@ import {
   getNationalPhoneLimits,
   isValidNationalPhoneNumber,
 } from 'src/utils/membership-dial-codes';
+import { readCachedUser } from 'src/auth/context/jwt/session';
+import { readMembershipSalesforceSession } from 'src/utils/membership-salesforce-session';
 
 // ----------------------------------------------------------------------
 // Map Personal tab form → Salesforce createApplicationPersonalDetailsNexus body
@@ -253,4 +255,148 @@ export function validatePersonalFormBeforeSubmit(personal, applicationId = '') {
   }
 
   return '';
+}
+
+// ----------------------------------------------------------------------
+// Auto-fill Personal tab from Salesforce account / signup
+// ----------------------------------------------------------------------
+
+function resolveProfileEmail(profile = {}) {
+  const username = String(profile.username || profile.salesforceUsername || '').trim();
+  const email = String(profile.email || profile.personalEmail || '').trim();
+  if (email) return email;
+  if (username.includes('@')) return username;
+  return '';
+}
+
+/**
+ * Map Salesforce userinfonexus (or similar) payload → personal form fields.
+ * @param {Record<string, unknown>} nexusUser
+ */
+export function extractPersonalPrefillFromNexusUser(nexusUser = {}) {
+  const firstName = String(
+    nexusUser.firstName || nexusUser.firstname || nexusUser.given_name || ''
+  ).trim();
+  const lastName = String(
+    nexusUser.lastName || nexusUser.lastname || nexusUser.family_name || ''
+  ).trim();
+  const personalEmail = resolveProfileEmail(nexusUser);
+  const nameAsPerId = String(nexusUser.nameAsPerId || nexusUser.name_as_per_id || '').trim()
+    || [firstName, lastName].filter(Boolean).join(' ');
+
+  return {
+    firstName,
+    lastName,
+    personalEmail,
+    nameAsPerId,
+    emailFriendlyName: firstName,
+    salutation: String(nexusUser.salutation || '').trim(),
+  };
+}
+
+/**
+ * Fill empty personal fields only — never overwrite user edits.
+ * @param {Record<string, unknown>} personal
+ * @param {Record<string, unknown>} prefill
+ */
+export function mergePersonalFormWithPrefill(personal, prefill = {}) {
+  if (!personal || !prefill) return personal;
+
+  const next = { ...personal };
+  const assignIfEmpty = (key, value) => {
+    const nextValue = String(value || '').trim();
+    if (!nextValue) return;
+    if (!String(next[key] || '').trim()) {
+      next[key] = nextValue;
+    }
+  };
+
+  const email = resolveProfileEmail(prefill);
+  assignIfEmpty('personalEmail', prefill.personalEmail || email);
+  assignIfEmpty('firstName', prefill.firstName);
+  assignIfEmpty('lastName', prefill.lastName);
+
+  const nameAsPerId =
+    String(prefill.nameAsPerId || '').trim()
+    || [prefill.firstName, prefill.lastName].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+  assignIfEmpty('nameAsPerId', nameAsPerId);
+  assignIfEmpty('emailFriendlyName', prefill.emailFriendlyName || prefill.firstName);
+
+  const salutation = String(prefill.salutation || '').trim();
+  if (salutation && (!next.salutation || next.salutation === 'Mr.')) {
+    next.salutation = salutation;
+  }
+
+  return next;
+}
+
+function readSignupDraftPersonalPrefill() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem('membershipSignupDraftForm');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const values = parsed?.values || parsed;
+    if (!values || typeof values !== 'object') return null;
+    return {
+      firstName: values.firstName,
+      lastName: values.lastName,
+      personalEmail: values.email,
+      email: values.email,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readEligibilityFlowPersonalPrefill() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem('membershipEligibilityFlow');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const flow = parsed?.flow;
+    const snapshot = flow?.snapshot;
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    return {
+      firstName: snapshot.firstName,
+      lastName: snapshot.lastName,
+      personalEmail: snapshot.email || snapshot.studentSchoolEmail,
+      email: snapshot.email || snapshot.studentSchoolEmail,
+      salutation: snapshot.salutation,
+      nameAsPerId: snapshot.nameAsPerId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort profile from browser storage before calling user-info API. */
+export function readLocalMembershipPersonalPrefill() {
+  const candidates = [readSignupDraftPersonalPrefill(), readEligibilityFlowPersonalPrefill()];
+
+  const session = readMembershipSalesforceSession();
+  if (session?.firstName || session?.lastName || session?.email) {
+    candidates.push({
+      firstName: session.firstName,
+      lastName: session.lastName,
+      personalEmail: session.email,
+      email: session.email,
+    });
+  }
+
+  const user = readCachedUser();
+  if (user) {
+    candidates.push({
+      firstName: user.firstname || user.firstName,
+      lastName: user.lastname || user.lastName,
+      personalEmail: user.email,
+      email: user.email,
+    });
+  }
+
+  return candidates.reduce((merged, item) => {
+    if (!item) return merged;
+    return mergePersonalFormWithPrefill(merged || {}, item);
+  }, null);
 }

@@ -31,7 +31,19 @@ import {
   redirectCaMemberToPlatform,
   tryCompleteCaMemberPlatformLogin,
 } from 'src/utils/membership-application-ca';
+import {
+  isApprovedSalesforceMember,
+  tryCompleteApprovedMemberPlatformLogin,
+} from 'src/utils/membership-application-approved-member';
 import { readSalesforceFlagsFromCallbackParams } from 'src/utils/membership-eligibility-sso';
+import {
+  readMembershipApplicationPathway,
+  getMembershipApplicationPageSubtitle,
+  persistMembershipApplicationPathway,
+  normalizeMembershipApplicationPathway,
+  clearMembershipApplicationDraft,
+} from 'src/utils/membership-application-pathway';
+import { clearMembershipApplicationDraftBackup } from 'src/utils/membership-application-draft-backup';
 
 // ----------------------------------------------------------------------
 
@@ -40,11 +52,18 @@ export default function MembershipApplicationPage() {
   const { primary, secondary } = theme.palette;
   const router = useRouter();
   const [searchParams] = useSearchParams();
+  const pathway = normalizeMembershipApplicationPathway(
+    searchParams.get('pathway') || readMembershipApplicationPathway()
+  );
   /** 'checking' = CA gate in progress; 'form' = show application; never flash form for CA members. */
   const [gatePhase, setGatePhase] = useState('checking');
   const [ssoNotice, setSsoNotice] = useState('');
   const [statusNotice, setStatusNotice] = useState('');
   const { authenticated, user } = useAuthContext();
+
+  useEffect(() => {
+    persistMembershipApplicationPathway(pathway);
+  }, [pathway]);
 
   useEffect(() => {
     const notice = readMembershipApplicationSsoRedirectNotice();
@@ -65,10 +84,23 @@ export default function MembershipApplicationPage() {
     const callbackSf = readSalesforceFlagsFromCallbackParams(searchParams);
     const sessionMemberClass = session?.memberClass || callbackSf.memberClass;
     const userMemberClass = user?.salesforce?.memberClass;
+    const sessionMembershipStatus =
+      callbackSf.membershipStatus || user?.salesforce?.membershipStatus;
 
     if (
       authenticated
       && (isSalesforceCaMemberClass(userMemberClass) || isSalesforceCaMemberClass(sessionMemberClass))
+    ) {
+      redirectCaMemberToPlatform(readMembershipApplicationCourseReturn() || paths.learning);
+      return undefined;
+    }
+
+    if (
+      authenticated
+      && isApprovedSalesforceMember({
+        memberClass: userMemberClass || sessionMemberClass,
+        membershipStatus: sessionMembershipStatus,
+      })
     ) {
       redirectCaMemberToPlatform(readMembershipApplicationCourseReturn() || paths.learning);
       return undefined;
@@ -98,6 +130,15 @@ export default function MembershipApplicationPage() {
           return;
         }
 
+        const memberLogin = await tryCompleteApprovedMemberPlatformLogin({
+          socialAccessToken: session.socialToken,
+        });
+        if (cancelled) return;
+        if (memberLogin.loggedIn && memberLogin.redirectTo) {
+          redirectCaMemberToPlatform(memberLogin.redirectTo);
+          return;
+        }
+
         if (
           isSalesforceCaMemberClass(caLogin.memberClass)
           || isSalesforceCaMemberClass(sessionMemberClass)
@@ -105,6 +146,20 @@ export default function MembershipApplicationPage() {
           setStatusNotice(
             caLogin.message
             || 'Your CA membership was confirmed in eServices, but sign-in could not be completed. Please sign in with eServices again.'
+          );
+          setGatePhase('checking');
+          return;
+        }
+
+        if (
+          isApprovedSalesforceMember({
+            memberClass: memberLogin.memberClass || sessionMemberClass,
+            membershipStatus: memberLogin.membershipStatus || sessionMembershipStatus,
+          })
+        ) {
+          setStatusNotice(
+            memberLogin.message
+            || 'Your ISCA membership was confirmed in eServices, but sign-in could not be completed. Please sign in with eServices again.'
           );
           setGatePhase('checking');
           return;
@@ -132,9 +187,11 @@ export default function MembershipApplicationPage() {
     return () => {
       cancelled = true;
     };
-  }, [authenticated, router, searchParams, user?.salesforce?.memberClass]);
+  }, [authenticated, router, searchParams, user?.salesforce?.memberClass, user?.salesforce?.membershipStatus]);
 
   const handleAllTabsSubmitted = async () => {
+    clearMembershipApplicationDraft(pathway);
+    clearMembershipApplicationDraftBackup(pathway);
     await applyDeferredPlatformLoginAfterApplication();
     clearMembershipApplicationPending();
     const courseReturn = readMembershipApplicationCourseReturn();
@@ -144,7 +201,7 @@ export default function MembershipApplicationPage() {
       window.location.href = courseReturn;
       return;
     }
-    router.replace(paths.learning);
+    router.replace(paths.home);
   };
 
   const handleBack = () => {
@@ -283,8 +340,7 @@ export default function MembershipApplicationPage() {
               variant="body2"
               sx={{ mt: 1, lineHeight: 1.65, maxWidth: 720, color: 'text.primary' }}
             >
-              Chartered accountant recognition pathway — complete each section and submit before
-              continuing.
+              {getMembershipApplicationPageSubtitle(pathway)}
             </Typography>
             </Box>
           </Stack>
@@ -336,7 +392,7 @@ export default function MembershipApplicationPage() {
             {statusNotice}
           </Alert>
         )}
-        <MembershipApplicationForm onAllTabsSubmitted={handleAllTabsSubmitted} fullPage />
+        <MembershipApplicationForm onAllTabsSubmitted={handleAllTabsSubmitted} fullPage pathway={pathway} />
       </Box>
     </Box>
   );

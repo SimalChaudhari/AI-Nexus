@@ -408,8 +408,17 @@ export const setSalesforceNexusPassword = async (payload) => {
     const res = await axios.post('/auth/oauth/set-nexus-password', payload);
     return res.data;
   } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const rawMessage = normalizedMessage || error?.message || '';
+    const lower = String(rawMessage).toLowerCase();
+
+    if (lower.includes('invalid repeated password') || lower.includes('repeated password')) {
+      throw new Error('This password was used before. Please choose a different password.');
+    }
+
     const errorMessage =
-      error?.response?.data?.message ||
+      normalizedMessage ||
       error?.message ||
       (typeof error === 'string' ? error : 'Failed to set Salesforce password.');
     throw new Error(errorMessage);
