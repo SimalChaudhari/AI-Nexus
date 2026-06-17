@@ -12,8 +12,12 @@ import {
   saveMembershipApplicationCourseReturn,
   setStudentMembershipApplicationPending,
 } from 'src/utils/membership-salesforce-session';
+import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
+import { paths } from 'src/routes/paths';
 
 export const MEMBERSHIP_ELIGIBILITY_FLOW_KEY = 'membershipEligibilityFlow';
+export const ISCA_MEMBER_SSO_CHECK_PENDING_KEY = 'iscaMemberSsoCheckPending';
+export const RESUME_MEMBERSHIP_SIGNUP_QUERY = 'resumeMembershipSignup';
 
 /** Where to send the user after SSO when returnTo was lost on the IdP redirect. */
 export const POST_OAUTH_RETURN_TO_KEY = 'postOAuthReturnTo';
@@ -23,6 +27,71 @@ export const SCAQ_SSO_VERIFICATION_PENDING_KEY = 'scaqSsoVerificationPending';
 
 /** Paid signup form draft (used by simple-sign-up-view). */
 export const MEMBERSHIP_SIGNUP_DRAFT_FORM_KEY = 'membershipSignupDraftForm';
+
+/** Build URL for the paid programme sign-up page. */
+export function buildPaidMembershipSignupUrl(returnPath = '') {
+  const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
+  const returnTo = encodeURIComponent(safeReturnPath);
+  return `${paths.auth.simple.signUp}?returnTo=${returnTo}&membershipOutcome=paid-signup`;
+}
+
+/** Navigate directly to paid sign-up (fee waiver declined). */
+export function navigateToPaidMembershipSignup(navigate, returnPath = '') {
+  navigate(buildPaidMembershipSignupUrl(returnPath));
+}
+
+/**
+ * Persist fee-waiver signup context after NRIC / company-reference eligibility.
+ * @param {Record<string, unknown>} flow
+ * @param {string} [signupAccessToken]
+ */
+export function persistFeeWaiverSignupPrefill(flow = {}, signupAccessToken = '') {
+  const isCorporate = flow.companyRegistrationUnderCompany === true;
+  const isSgPrIndividualNric =
+    flow.isIscaMember === false
+    && flow.isSingaporePr === true
+    && flow.companyRegistrationUnderCompany === false;
+  const educationalBackground = String(flow.workingEducationalBackground || '').trim();
+  const educationalBackgroundLabel =
+    educationalBackground === 'accounting'
+      ? 'Accounting graduate'
+      : educationalBackground === 'non-accounting'
+        ? 'Non-accounting graduate'
+        : educationalBackground;
+
+  try {
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        membershipOutcome: 'verified-nric-signup',
+        flow,
+        savedAt: new Date().toISOString(),
+      })
+    );
+    sessionStorage.setItem(
+      MEMBERSHIP_SIGNUP_DRAFT_FORM_KEY,
+      JSON.stringify({
+        membershipOutcome: 'verified-nric-signup',
+        prefillSource: isCorporate
+          ? 'corporate-reference'
+          : isSgPrIndividualNric
+            ? 'sg-pr-individual-nric'
+            : 'sg-pr-nric',
+        signupAccessToken: String(signupAccessToken || '').trim(),
+        flow,
+        values: {
+          companyName: isCorporate ? String(flow.companyVerifiedName || '').trim() : '',
+          industry: isCorporate ? String(flow.companyVerifiedIndustry || '').trim() : '',
+          companyReferenceId: isCorporate ? String(flow.companyReferenceId || '').trim() : '',
+          designation: '',
+          educationalBackground: educationalBackgroundLabel,
+        },
+      })
+    );
+  } catch {
+    // ignore
+  }
+}
 
 function suggestUsernameFromEmail(email) {
   const local = String(email || '').split('@')[0] || '';
@@ -98,6 +167,7 @@ export function clearMembershipEligibilitySessionStorage() {
     sessionStorage.removeItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
     sessionStorage.removeItem(POST_OAUTH_RETURN_TO_KEY);
     sessionStorage.removeItem(SCAQ_SSO_VERIFICATION_PENDING_KEY);
+    sessionStorage.removeItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY);
   } catch {
     // ignore quota / private mode errors
   }
@@ -111,6 +181,7 @@ export function clearMembershipEligibilityDraftOnModalClose() {
   try {
     sessionStorage.removeItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
     sessionStorage.removeItem(POST_OAUTH_RETURN_TO_KEY);
+    sessionStorage.removeItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY);
     clearMembershipApplicationPending();
   } catch {
     // ignore
@@ -468,9 +539,24 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
   const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
   const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
 
+  if (actionTarget === 'close') {
+    return;
+  }
+
   if (actionTarget === 'student-application') {
     try {
       saveMembershipApplicationCourseReturn(safeReturnPath);
+      applyStudentMembershipEmailPrefillFromEligibilityFlow(payload?.flow || {});
+      if (payload?.flow) {
+        sessionStorage.setItem(
+          MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+          JSON.stringify({
+            membershipOutcome: outcome || 'student-fee-waiver',
+            flow: payload.flow,
+            savedAt: new Date().toISOString(),
+          })
+        );
+      }
     } catch {
       // ignore
     }
@@ -505,6 +591,11 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
   if (actionTarget === 'salesforce' || actionTarget === 'student-salesforce') {
     try {
       sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, safeReturnPath);
+      if (outcome === 'isca-member-sso-check') {
+        sessionStorage.setItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY, 'true');
+      } else {
+        sessionStorage.removeItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY);
+      }
       if (actionTarget === 'student-salesforce') {
         setStudentMembershipApplicationPending();
         saveMembershipApplicationCourseReturn(safeReturnPath);
@@ -542,4 +633,150 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
           : '';
   const extra = `${actionTarget === 'scaq' ? '&membershipAction=scaq' : ''}${signupAccessToken ? `&signupAccessToken=${encodeURIComponent(signupAccessToken)}` : ''}${eligibilityType}`;
   navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}${extra}`);
+}
+
+function isYesYesYesQuestionnaireFlow(flow = {}) {
+  return (
+    flow.isIscaMember === true
+    && flow.isSingaporePr === true
+    && flow.companyRegistrationUnderCompany === true
+  );
+}
+
+export function buildResumeMembershipSignupReturnUrl(path = '') {
+  const base = String(path || paths.home).trim() || paths.home;
+  return `${base}${base.includes('?') ? '&' : '?'}${RESUME_MEMBERSHIP_SIGNUP_QUERY}=1`;
+}
+
+export function readResumedMembershipEligibilityFlow() {
+  try {
+    const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.resumeMembershipSignup !== true) return null;
+    const storedFlow = parsed?.flow;
+    if (!storedFlow || typeof storedFlow !== 'object') return null;
+    return {
+      parsed,
+      flow: storedFlow,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearResumeMembershipSignupFlag() {
+  try {
+    const resumed = readResumedMembershipEligibilityFlow();
+    if (!resumed) return;
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        ...resumed.parsed,
+        resumeMembershipSignup: false,
+      })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+export function persistMembershipEligibilityFlowForResume(flow, membershipOutcome = '') {
+  try {
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        membershipOutcome,
+        flow,
+        resumeMembershipSignup: true,
+        savedAt: new Date().toISOString(),
+      })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+/** After eServices SSO, ISCA member verified — continue Yes/* questionnaire to result. */
+export function applyIscaMemberQuestionnaireSuccessToStoredFlow() {
+  try {
+    const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const flow = parsed?.flow;
+    if (!flow || typeof flow !== 'object') return null;
+
+    const updatedFlow = {
+      ...flow,
+      eServicesLoginCompleted: true,
+      iscaMemberVerificationPassed: true,
+    };
+
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        ...parsed,
+        flow: updatedFlow,
+        resumeMembershipSignup: true,
+        savedAt: new Date().toISOString(),
+      })
+    );
+    return updatedFlow;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Yes / Yes / Yes questionnaire: ISCA member not verified after eServices SSO.
+ * Fall through to the No / Yes / Yes (SG-PR under company) NRIC flow.
+ */
+export function applyYesYesYesIscaMemberFailureToStoredFlow() {
+  try {
+    const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const flow = parsed?.flow;
+    if (!flow || typeof flow !== 'object' || !isYesYesYesQuestionnaireFlow(flow)) {
+      return null;
+    }
+
+    const updatedFlow = {
+      ...flow,
+      isIscaMember: false,
+      eServicesLoginCompleted: true,
+      iscaMemberVerificationPassed: false,
+    };
+
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        ...parsed,
+        flow: updatedFlow,
+        resumeMembershipSignup: true,
+        savedAt: new Date().toISOString(),
+      })
+    );
+    return updatedFlow;
+  } catch {
+    return null;
+  }
+}
+
+export function isIscaMemberSsoCheckPending(searchParams) {
+  const outcome = String(searchParams?.get?.('membershipOutcome') || '').trim();
+  if (outcome === 'isca-member-sso-check' || outcome === 'isca-member-eservices-login') return true;
+  try {
+    return sessionStorage.getItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function clearIscaMemberSsoCheckPending() {
+  try {
+    sessionStorage.removeItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY);
+  } catch {
+    // ignore
+  }
 }

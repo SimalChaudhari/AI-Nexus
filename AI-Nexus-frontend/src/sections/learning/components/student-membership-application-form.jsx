@@ -49,10 +49,12 @@ import {
   sanitizeStudentMembershipFormFields,
   clearStudentMembershipApplicationLocalData,
   saveStudentMembershipFormDraft,
+  applyStudentMembershipEmailPrefillFromEligibilityFlow,
   isStudentMembershipTabComplete,
   validateStudentMembershipFormBeforeSubmit,
   validateStudentMembershipTab,
 } from 'src/utils/student-membership-application-form';
+import { MEMBERSHIP_ELIGIBILITY_FLOW_KEY } from 'src/utils/membership-eligibility-sso';
 import {
   parseStudentMembershipCreateResult,
   parseStudentMembershipSubmitResult,
@@ -121,6 +123,36 @@ export function StudentMembershipApplicationForm({ onSubmitted, fullPage = false
     },
     [applicationId, applicationName]
   );
+
+  useEffect(() => {
+    if (form.personalEmail?.trim()) return;
+
+    let flow = null;
+    try {
+      const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        flow = parsed?.flow || null;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!flow?.studentPersonalEmail?.trim()) return;
+
+    applyStudentMembershipEmailPrefillFromEligibilityFlow(flow);
+    const personalEmail = String(flow.studentPersonalEmail).trim();
+    setForm((prev) => {
+      if (prev.personalEmail?.trim()) return prev;
+      const next = { ...prev, personalEmail };
+      saveStudentMembershipFormDraft({
+        form: next,
+        applicationId,
+        applicationName,
+      });
+      return next;
+    });
+  }, [applicationId, applicationName, form.personalEmail]);
 
   useEffect(() => {
     const id = String(applicationId || '').trim();

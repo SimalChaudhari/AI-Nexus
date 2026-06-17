@@ -6,6 +6,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Typography from '@mui/material/Typography';
+import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
@@ -13,6 +14,11 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
+import FormControl from '@mui/material/FormControl';
+import FormLabel from '@mui/material/FormLabel';
+import RadioGroup from '@mui/material/RadioGroup';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Radio from '@mui/material/Radio';
 import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
@@ -38,7 +44,14 @@ import {
   clearMembershipApplicationPending,
   saveMembershipApplicationCourseReturn,
 } from 'src/utils/membership-salesforce-session';
-import { POST_OAUTH_RETURN_TO_KEY } from 'src/utils/membership-eligibility-sso';
+import {
+  POST_OAUTH_RETURN_TO_KEY,
+  ISCA_MEMBER_SSO_CHECK_PENDING_KEY,
+  MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+  readResumedMembershipEligibilityFlow,
+  clearResumeMembershipSignupFlag,
+} from 'src/utils/membership-eligibility-sso';
+import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
 import {
   SalesforceMembershipCreateStep,
   isSalesforceMembershipCreateOutcomeKey,
@@ -79,6 +92,78 @@ import {
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
 export const MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED = 'home-get-started';
+/** Sign-in page “Sign up” link — fee waiver choice then eligibility questionnaire. */
+export const MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP = 'auth-sign-up';
+
+const ISCA_STUDENT_MEMBERSHIP_INFO_URL = 'https://www.isca.org.sg/membership/StudentMember';
+const ISCA_STUDENT_YOUTH_APP_URL = 'https://eservices.isca.org.sg/youth_app';
+const ISCA_WORKING_MY_APPLICATION_URL = 'https://eservices.isca.org.sg/MyApplication';
+
+const WORKING_MEMBERSHIP_PATHWAY_URLS = {
+  associate:
+    'https://isca.org.sg/membership/become-a-member/individual-membership/associate-pathway',
+  ca: 'https://isca.org.sg/membership/become-a-member/individual-membership/chartered-accountant-pathway',
+  experienced:
+    'https://isca.org.sg/membership/become-a-member/individual-membership/experienced-professional-pathway',
+  specialisation:
+    'https://isca.org.sg/membership/become-a-member/individual-membership/specialisation-pathways',
+};
+
+const WORKING_ACCOUNTING_MEMBERSHIP_PATHWAYS = [
+  {
+    key: 'associate',
+    label: 'Associate Pathway',
+    description: 'Apply for ISCA Associate Membership.',
+    href: WORKING_MEMBERSHIP_PATHWAY_URLS.associate,
+  },
+  {
+    key: 'ca',
+    label: 'Chartered Accountant (CA) Pathway',
+    description: 'Apply for the relevant CA qualification pathway.',
+    href: WORKING_MEMBERSHIP_PATHWAY_URLS.ca,
+  },
+  {
+    key: 'experienced',
+    label: 'Experienced Professional Pathway',
+    description:
+      'Apply as ISCA Member (Academic), ISCA Member (Business) or ISCA Member (Public Sector).',
+    href: WORKING_MEMBERSHIP_PATHWAY_URLS.experienced,
+  },
+];
+
+const WORKING_NON_ACCOUNTING_MEMBERSHIP_PATHWAYS = [
+  {
+    key: 'associate',
+    label: 'Associate Pathway',
+    description:
+      'Enrol for the SCAQ Foundation Programme and opt-in for ISCA Associate Membership.',
+    href: WORKING_MEMBERSHIP_PATHWAY_URLS.associate,
+  },
+  {
+    key: 'specialisation',
+    label: 'Specialisation Pathway',
+    description: 'Apply for the Associate (Specialist) with FFP or SRP credentials.',
+    href: WORKING_MEMBERSHIP_PATHWAY_URLS.specialisation,
+  },
+  {
+    key: 'experienced',
+    label: 'Experienced Professional Pathway',
+    description:
+      'Apply as ISCA Member (Academic), ISCA Member (Business) or ISCA Member (Public Sector).',
+    href: WORKING_MEMBERSHIP_PATHWAY_URLS.experienced,
+  },
+];
+
+const MEMBERSHIP_OPTION_BUTTON_SX = {
+  textTransform: 'none',
+  fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+  minHeight: { xs: 40, sm: 42 },
+  height: 'auto',
+  py: { xs: 0.875, sm: 1 },
+  px: { xs: 1.5, sm: 2 },
+  lineHeight: 1.4,
+  whiteSpace: 'normal',
+};
 
 function getSalesforceAccountChoiceCopy(state) {
   if (isHomeGetStartedFlow(state)) {
@@ -100,6 +185,17 @@ function getSalesforceAccountChoiceCopy(state) {
       title: 'Experienced Professional Pathway',
       description:
         'Create a new ISCA Salesforce membership account, or sign in if you already have one to continue your Experienced Professional membership application.',
+    };
+  }
+
+  if (isQuestionnaireCorporatePath(state) && state.companyReferenceConfirmed === true) {
+    const companyLabel = String(state.companyVerifiedName || '').trim();
+    return {
+      badge: 'Corporate membership registration',
+      title: 'Eligible to register for membership',
+      description: companyLabel
+        ? `Your company (${companyLabel}) is verified. We will check whether you already have a Salesforce account using your email before creating a new one. Company name and industry will be auto-filled from your company reference.`
+        : 'Your company is verified. We will check whether you already have a Salesforce account using your email before creating a new one. Company name and industry will be auto-filled from your company reference.',
     };
   }
 
@@ -169,9 +265,36 @@ function getCharteredPathwayOptionsForFlow(state) {
 }
 
 const INITIAL_STATE = {
+  signupEntrySource: '',
+  feeWaiverApplicationChoice: null,
   isSingaporePr: null,
   isIscaMember: null,
+  companyRegistrationUnderCompany: null,
+  initialQuestionnaireSubmitted: false,
+  companyReferenceId: '',
+  companyReferenceVerified: null,
+  companyVerifiedName: '',
+  companyVerifiedIndustry: '',
+  companyReferenceConfirmed: null,
+  companyReferenceRouteAbandoned: false,
+  eServicesLoginCompleted: false,
+  iscaMemberVerificationPassed: null,
+  registrationPersona: '',
+  studentMemberOrAssociate: null,
+  studentFinalYearLocal: null,
+  studentNonFinalInterested: null,
+  studentAcademicEmail: '',
+  studentPersonalEmail: '',
+  studentCardImageName: '',
+  studentDetailsSubmitted: false,
+  studentVerificationTriggered: false,
+  studentAcademicEmailVerified: null,
+  workingEducationalBackground: '',
+  workingMembershipInterested: null,
+  workingNotEligibleChoice: null,
   nricUploadAcknowledged: false,
+  nricSgPrCheckFailed: false,
+  feeWaiverViaCompanyReference: false,
   spPrVerified: null,
   wantsIscaMembership: null,
   eligibilityType: '',
@@ -297,13 +420,25 @@ function resolveFlowStateOnOpen(storedFlow, fromHomeGetStarted) {
     ...INITIAL_STATE,
     ...(storedFlow && typeof storedFlow === 'object' ? storedFlow : {}),
   };
-  if (fromHomeGetStarted) {
-    return { ...merged, homeGetStartedFlow: true, ...HOME_FLUENCY_INITIAL_FIELDS };
-  }
-  return stripHomeOnlyFlowState(merged);
+  return {
+    ...stripHomeOnlyFlowState(merged),
+    homeGetStartedFlow: false,
+    ...HOME_FLUENCY_INITIAL_FIELDS,
+  };
 }
 
 function getEligibilityOptionsForFlow(state) {
+  if (!isHomeGetStartedFlow(state) && state.registrationPersona === 'working-professional') {
+    if (state.workingEducationalBackground === 'accounting') {
+      return ELIGIBILITY_OPTIONS.filter(
+        (option) => option.value === 'recognition' || option.value === 'experienced'
+      );
+    }
+    if (state.workingEducationalBackground === 'non-accounting') {
+      return ELIGIBILITY_OPTIONS.filter((option) => option.value === 'experienced');
+    }
+  }
+
   if (!isHomeGetStartedFlow(state)) {
     return ELIGIBILITY_OPTIONS;
   }
@@ -321,17 +456,362 @@ const HOME_ISCA_SPECIALISATION_OPTIONS = [
   { value: 'no', label: 'No' },
 ];
 
+const STUDENT_ACADEMIC_EMAIL_SUFFIXES = [
+  'nus.edu.sg',
+  'ntu.edu.sg',
+  'smu.edu.sg',
+  'sit.singaporetech.edu.sg',
+  'sp.edu.sg',
+  'np.edu.sg',
+  'nyp.edu.sg',
+  'tp.edu.sg',
+  'rp.edu.sg',
+];
+
+function isAcademicEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value || !value.includes('@')) return false;
+  return STUDENT_ACADEMIC_EMAIL_SUFFIXES.some((suffix) => value.endsWith(`@${suffix}`));
+}
+
+function isQuestionnaireSgPrPath(state) {
+  return (
+    state.initialQuestionnaireSubmitted
+    && state.isIscaMember === false
+    && state.isSingaporePr === true
+    && !isHomeGetStartedFlow(state)
+  );
+}
+
+function isSgPrUnderCompanyPath(state) {
+  return isQuestionnaireSgPrPath(state) && state.companyRegistrationUnderCompany === true;
+}
+
+function isSgPrIndividualPath(state) {
+  return isQuestionnaireSgPrPath(state) && state.companyRegistrationUnderCompany === false;
+}
+
+/** Initial questionnaire answered Yes to ISCA member (non-home flows). */
+function isQuestionnaireIscaMemberPath(state) {
+  return (
+    state.initialQuestionnaireSubmitted
+    && state.isIscaMember === true
+    && !isHomeGetStartedFlow(state)
+  );
+}
+
+function isQuestionnaireYesYesNoPath(state) {
+  return (
+    isQuestionnaireIscaMemberPath(state)
+    && state.isSingaporePr === true
+    && state.companyRegistrationUnderCompany === false
+  );
+}
+
+function isQuestionnaireYesNoNoPath(state) {
+  return (
+    isQuestionnaireIscaMemberPath(state)
+    && state.isSingaporePr === false
+    && state.companyRegistrationUnderCompany === false
+  );
+}
+
+function isQuestionnaireYesNoYesPath(state) {
+  return (
+    isQuestionnaireIscaMemberPath(state)
+    && state.isSingaporePr === false
+    && state.companyRegistrationUnderCompany === true
+  );
+}
+
+function isQuestionnaireYesYesYesPath(state) {
+  return (
+    isQuestionnaireIscaMemberPath(state)
+    && state.isSingaporePr === true
+    && state.companyRegistrationUnderCompany === true
+  );
+}
+
+function shouldEarlyCompanyReferenceStep(state) {
+  if (state.companyRegistrationUnderCompany !== true) return false;
+  if (!isQuestionnaireIscaMemberPath(state)) return true;
+  return isQuestionnaireYesYesYesPath(state);
+}
+
+/** Questionnaire paths that use NRIC verification with Continue (not legacy paid/sign-in fallbacks). */
+function isQuestionnaireNricEligiblePath(state) {
+  return isQuestionnaireSgPrPath(state) || isSgPrUnderCompanyPath(state);
+}
+
+function applyQuestionnaireNricFailureState(state) {
+  if (isSgPrUnderCompanyPath(state)) {
+    return {
+      ...state,
+      feeWaiverViaCompanyReference: true,
+      nricSgPrCheckFailed: false,
+    };
+  }
+  return {
+    ...state,
+    nricSgPrCheckFailed: true,
+  };
+}
+
+function getQuestionnaireIscaMemberStep(state) {
+  if (!isQuestionnaireIscaMemberPath(state)) return null;
+
+  if (isQuestionnaireYesYesYesPath(state)) {
+    if (
+      !state.companyReferenceRouteAbandoned
+      && (
+        !state.companyReferenceId?.trim()
+        || state.companyReferenceVerified !== true
+        || state.companyReferenceConfirmed !== true
+      )
+    ) {
+      return 'company-reference';
+    }
+  }
+
+  if (state.iscaMemberVerificationPassed === null) {
+    return 'isca-member-verify';
+  }
+
+  if (state.iscaMemberVerificationPassed === true) {
+    return 'result';
+  }
+
+  return null;
+}
+
+/** Questionnaire: not ISCA member, not SG/PR, registering under company (No / No / Yes). */
+function isQuestionnaireNoNoYesPath(state) {
+  return (
+    state.initialQuestionnaireSubmitted
+    && state.isIscaMember === false
+    && state.isSingaporePr === false
+    && state.companyRegistrationUnderCompany === true
+    && !isHomeGetStartedFlow(state)
+  );
+}
+
+/** No / No / Yes with company reference confirmed — corporate membership registration. */
+function isQuestionnaireCorporatePath(state) {
+  return (
+    isQuestionnaireNoNoYesPath(state)
+    && state.companyReferenceConfirmed === true
+    && !state.companyReferenceRouteAbandoned
+  );
+}
+
+/** Student or working-professional persona flow (No / No / No, No / No / Yes company not verified, or No / Yes / No after NRIC fail). */
+function isStudentWorkingPersonaPath(state) {
+  const isNoNoNo =
+    state.isIscaMember === false
+    && state.isSingaporePr === false
+    && state.companyRegistrationUnderCompany === false;
+  const isNoNoYesCompanyFallback =
+    isQuestionnaireNoNoYesPath(state) && state.companyReferenceRouteAbandoned === true;
+  const isNoYesNoNricFailedFallback =
+    isSgPrIndividualPath(state)
+    && state.nricSgPrCheckFailed === true
+    && state.spPrVerified !== true;
+  return (
+    (isNoNoNo || isNoNoYesCompanyFallback || isNoYesNoNricFailedFallback)
+    && !isHomeGetStartedFlow(state)
+  );
+}
+
+function lookupCompanyByReferenceId(referenceId) {
+  const id = String(referenceId || '').trim();
+  if (!id) return null;
+
+  const catalog = {
+    PWC2024: { name: 'PwC Singapore', industry: 'Professional Services' },
+    ISCA001: { name: 'ISCA Corporate Partner', industry: 'Accounting' },
+  };
+
+  return catalog[id.toUpperCase()] || { name: `Corporate account (${id})`, industry: 'To be confirmed' };
+}
+
+function isAuthSignUpEntryFlow(state) {
+  return state?.signupEntrySource === MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP;
+}
+
+const MEMBERSHIP_FLOW_ENTRY_STEPS = ['fee-waiver-choice', 'home-user-type'];
+
+function canShowMembershipFlowBackButton(step, flowState, flowHistoryDepth) {
+  if (flowHistoryDepth > 0) return true;
+  if (MEMBERSHIP_FLOW_ENTRY_STEPS.includes(step)) return false;
+  if (step === 'initial-questionnaire') {
+    return isAuthSignUpEntryFlow(flowState);
+  }
+  return true;
+}
+
 function getFlowStep(state) {
   if (isHomeGetStartedFlow(state)) {
     return getHomeFluencyFlowStep(state);
+  }
+
+  if (isAuthSignUpEntryFlow(state) && state.feeWaiverApplicationChoice !== true) {
+    return 'fee-waiver-choice';
+  }
+
+  if (
+    state.isIscaMember === null
+    || state.isSingaporePr === null
+    || state.companyRegistrationUnderCompany === null
+    || !state.initialQuestionnaireSubmitted
+  ) {
+    return 'initial-questionnaire';
+  }
+
+  if (
+    shouldEarlyCompanyReferenceStep(state)
+    && !state.companyReferenceRouteAbandoned
+    && (
+      !state.companyReferenceId?.trim()
+      || state.companyReferenceVerified !== true
+      || state.companyReferenceConfirmed !== true
+    )
+  ) {
+    return 'company-reference';
+  }
+
+  const iscaMemberQuestionnaireStep = getQuestionnaireIscaMemberStep(state);
+  if (iscaMemberQuestionnaireStep !== null) {
+    return iscaMemberQuestionnaireStep;
+  }
+
+  if (isQuestionnaireCorporatePath(state)) {
+    if (!state.companyReferenceId?.trim() || state.companyReferenceVerified !== true) {
+      return 'company-reference';
+    }
+    if (state.companyReferenceConfirmed !== true) {
+      return 'company-reference';
+    }
+    if (
+      !state.salesforceAccountChoice
+      && !state.salesforceMembershipAccountCreated
+      && !state.salesforceSessionReady
+    ) {
+      return 'salesforce-account-choice';
+    }
+    if (state.salesforceAccountChoice === 'create' && !state.salesforceMembershipAccountCreated) {
+      return 'salesforce-membership-create';
+    }
+    if (state.salesforceAccountChoice === 'login' && !state.salesforceSessionReady) {
+      return 'salesforce-account-choice';
+    }
+    return 'result';
+  }
+
+  if (isStudentWorkingPersonaPath(state)) {
+    if (!state.registrationPersona) return 'registration-persona';
+    if (state.registrationPersona === 'student') {
+      if (state.studentFinalYearLocal === null) return 'student-final-year-check';
+      if (state.studentFinalYearLocal === false) {
+        if (state.studentMemberOrAssociate === null) return 'student-member-associate-check';
+        if (state.studentMemberOrAssociate === true) return 'result';
+        if (state.studentNonFinalInterested === null) return 'student-non-final-options';
+        return 'result';
+      }
+      if (!state.studentAcademicEmail?.trim() || !state.studentPersonalEmail?.trim() || !state.studentCardImageName) {
+        return 'student-academic-email';
+      }
+      if (!state.studentDetailsSubmitted) return 'student-academic-email';
+      if (!state.studentVerificationTriggered) return 'student-verification-trigger';
+      if (state.studentAcademicEmailVerified === null) return 'student-verification-result';
+      if (state.studentAcademicEmailVerified !== true) {
+        if (state.studentMemberOrAssociate === null) return 'student-member-associate-check';
+        if (state.studentMemberOrAssociate === true) return 'result';
+        if (state.studentNonFinalInterested === null) return 'student-non-final-options';
+        return 'result';
+      }
+      return 'result';
+    }
+    if (state.registrationPersona === 'working-professional' && !state.workingEducationalBackground) {
+      return 'working-educational-background';
+    }
+    if (state.registrationPersona === 'working-professional') {
+      if (state.workingMembershipInterested === null) return 'working-membership-options';
+      if (state.workingMembershipInterested === true) return 'result';
+      if (state.workingNotEligibleChoice === null) return 'working-not-eligible-options';
+      return 'result';
+    }
+  }
+
+  if (isSgPrUnderCompanyPath(state)) {
+    if (
+      !state.companyReferenceRouteAbandoned
+      && (
+        !state.companyReferenceId?.trim()
+        || state.companyReferenceVerified !== true
+        || state.companyReferenceConfirmed !== true
+      )
+    ) {
+      return 'company-reference';
+    }
+    if (state.feeWaiverViaCompanyReference) {
+      return 'result';
+    }
+    if (state.spPrVerified !== true) {
+      return 'nric';
+    }
+    return 'result';
+  }
+
+  if (isSgPrIndividualPath(state)) {
+    if (state.spPrVerified !== true) {
+      return 'nric';
+    }
+    return 'result';
+  }
+
+  if (state.isSingaporePr === false && !state.registrationPersona) return 'registration-persona';
+
+  if (isExactCorporateIscaPath) return 'result';
+
+  if (!state.registrationPersona) return 'registration-persona';
+  if (state.registrationPersona === 'student') {
+    if (state.studentFinalYearLocal === null) return 'student-final-year-check';
+    if (state.studentFinalYearLocal === false) {
+      if (state.studentMemberOrAssociate === null) return 'student-member-associate-check';
+      if (state.studentMemberOrAssociate === true) return 'result';
+      if (state.studentNonFinalInterested === null) return 'student-non-final-options';
+      return 'result';
+    }
+    if (!state.studentAcademicEmail?.trim() || !state.studentPersonalEmail?.trim() || !state.studentCardImageName) {
+      return 'student-academic-email';
+    }
+    if (!state.studentDetailsSubmitted) return 'student-academic-email';
+    if (!state.studentVerificationTriggered) return 'student-verification-trigger';
+    if (state.studentAcademicEmailVerified === null) return 'student-verification-result';
+    if (state.studentAcademicEmailVerified !== true) {
+      if (state.studentMemberOrAssociate === null) return 'student-member-associate-check';
+      if (state.studentMemberOrAssociate === true) return 'result';
+      if (state.studentNonFinalInterested === null) return 'student-non-final-options';
+      return 'result';
+    }
+    return 'result';
+  }
+  if (state.registrationPersona === 'working-professional' && !state.workingEducationalBackground) {
+    return 'working-educational-background';
+  }
+  if (state.registrationPersona === 'working-professional') {
+    if (state.workingMembershipInterested === null) return 'working-membership-options';
+    if (state.workingMembershipInterested === true) return 'result';
+    if (state.workingNotEligibleChoice === null) return 'working-not-eligible-options';
+    return 'result';
   }
 
   if (state.isSingaporePr === null) return 'residency';
   if (state.isIscaMember === null) return 'member';
   if (state.isIscaMember === true) return 'result';
 
-  if (state.isSingaporePr === true && !state.nricUploadAcknowledged) return 'nric';
-  if (state.isSingaporePr === true && state.spPrVerified === true) return 'result';
+  if (state.isSingaporePr === true && !isQuestionnaireSgPrPath(state) && !state.nricUploadAcknowledged) return 'nric';
+  if (state.isSingaporePr === true && !isQuestionnaireSgPrPath(state) && state.spPrVerified === true) return 'result';
   if (state.wantsIscaMembership === null) return 'membership-choice';
   if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) {
     return 'membership-choice';
@@ -531,6 +1011,183 @@ function getOutcome(state) {
     if (fluencyOutcome) return fluencyOutcome;
   }
 
+  if (isQuestionnaireIscaMemberPath(state)) {
+    if (state.iscaMemberVerificationPassed === true) {
+      if (isQuestionnaireYesYesYesPath(state)) {
+        return {
+          outcome: 'isca-member-sso-check',
+          title: 'Sign in with eServices',
+          summary:
+            'Continue with eServices SSO. If the signed-in account is an ISCA member, platform login will be completed automatically.',
+          ctaLabel: 'Login with Eservices',
+          actionTarget: 'salesforce',
+        };
+      }
+      return {
+        outcome: 'isca-login',
+        title: 'ISCA member route',
+        summary: 'Sign in with your Salesforce-linked member account.',
+        ctaLabel: 'Login with Eservices',
+        actionTarget: 'salesforce',
+      };
+    }
+  }
+
+  if (state.isIscaMember === true) {
+    if (state.companyRegistrationUnderCompany === true && state.isSingaporePr === true) {
+      return {
+        outcome: 'isca-member-sso-check',
+        title: 'Sign in with eServices',
+        summary:
+          'Continue with eServices SSO. If the signed-in account is an ISCA member, platform login will be completed automatically.',
+        ctaLabel: 'Login with Eservices',
+        actionTarget: 'salesforce',
+      };
+    }
+    return {
+      outcome: 'isca-login',
+      title: 'ISCA member route',
+      summary: 'Sign in with your Salesforce-linked member account.',
+      ctaLabel: 'Login with Eservices',
+      actionTarget: 'salesforce',
+    };
+  }
+
+  if (state.isSingaporePr === false && !isStudentWorkingPersonaPath(state) && !isQuestionnaireCorporatePath(state)) {
+    return {
+      outcome: 'paid-signup',
+      title: 'Paid access route',
+      summary: 'You are not eligible for fee waiver. Continue with paid signup.',
+      ctaLabel: 'Continue to paid signup',
+      actionTarget: 'signUp',
+    };
+  }
+
+  if (state.registrationPersona === 'working-professional' && state.workingMembershipInterested === true) {
+    return {
+      outcome: 'working-membership-apply-thanks',
+      title: 'Thank you',
+      summary:
+        'Thank you for your application. You may gain free access to the programme with your membership login once your application is approved.',
+      ctaLabel: 'Close',
+      actionTarget: 'close',
+    };
+  }
+
+  if (
+    state.registrationPersona === 'working-professional'
+    && state.workingMembershipInterested === false
+    && state.workingNotEligibleChoice === 'pay'
+  ) {
+    return {
+      outcome: 'working-paid-signup',
+      title: 'Sign up with payment',
+      summary: 'Continue to the sign up page to pay the full programme fee.',
+      ctaLabel: 'Continue to paid signup',
+      actionTarget: 'signUp',
+    };
+  }
+
+  if (isQuestionnaireCorporatePath(state) && state.companyReferenceConfirmed) {
+    return {
+      outcome: 'corporate-membership-signup',
+      title: 'Eligible to register for membership',
+      summary: state.salesforceMembershipAccountCreated
+        ? 'Your Salesforce membership account has been created. Sign in with eServices to continue your membership registration.'
+        : 'Proceed to account registration. Company name and industry are auto-filled from your verified company reference. Your company ID will be saved with your profile.',
+      ctaLabel: state.salesforceMembershipAccountCreated || state.salesforceSessionReady
+        ? 'Login with Eservices'
+        : 'Continue',
+      actionTarget: state.salesforceMembershipAccountCreated || state.salesforceSessionReady
+        ? 'salesforce'
+        : 'close',
+    };
+  }
+
+  if (isSgPrUnderCompanyPath(state) && (state.spPrVerified === true || state.feeWaiverViaCompanyReference)) {
+    return {
+      outcome: 'verified-nric-signup',
+      title: 'Eligible to register for fee waiver',
+      summary:
+        'Proceed to account creation. We will check for an existing non-member Salesforce account before creating a new one. Company name and industry will be auto-filled from your company reference ID. Please provide your designation on the signup page.',
+      ctaLabel: 'Continue to sign up',
+      actionTarget: 'signUp',
+    };
+  }
+
+  if (isSgPrIndividualPath(state) && state.spPrVerified === true) {
+    return {
+      outcome: 'verified-nric-signup',
+      title: 'Eligible to register for fee waiver',
+      summary:
+        'Proceed to account creation. Please provide your company name, designation, industry, and accounting or non-accounting educational background on the signup page.',
+      ctaLabel: 'Continue to sign up',
+      actionTarget: 'signUp',
+    };
+  }
+
+  if (state.registrationPersona === 'student' && state.studentAcademicEmailVerified === true) {
+    return {
+      outcome: 'student-fee-waiver',
+      title: 'Eligible to register for fee waiver',
+      summary:
+        'Proceed to registration. Your personal email address will be auto-filled. If you already have an ISCA Student account, sign in with eServices.',
+      ctaLabel: 'Register now',
+      actionTarget: 'student-application',
+      secondaryCtaLabel: 'eServices login',
+      secondaryActionTarget: 'student-salesforce',
+    };
+  }
+
+  if (state.registrationPersona === 'student' && state.studentMemberOrAssociate === true) {
+    return {
+      outcome: 'student-member-eservices-login',
+      title: 'Eligible to register for free',
+      summary: 'Proceed to sign in using eServices login.',
+      ctaLabel: 'eServices login',
+      actionTarget: 'salesforce',
+    };
+  }
+
+  if (
+    state.registrationPersona === 'student'
+    && state.studentMemberOrAssociate === false
+    && state.studentNonFinalInterested === true
+  ) {
+    return {
+      outcome: 'student-non-final-apply',
+      title: 'Thank you',
+      summary:
+        'Thank you for your application. You may gain free access to the programme with your membership login once your application is approved.',
+      ctaLabel: 'Close',
+      actionTarget: 'close',
+    };
+  }
+
+  if (
+    state.registrationPersona === 'student'
+    && state.studentMemberOrAssociate === false
+    && state.studentNonFinalInterested === false
+  ) {
+    return {
+      outcome: 'student-non-final-not-interested',
+      title: 'Thank you',
+      summary: 'You may gain free access once your application is approved.',
+      ctaLabel: 'Continue',
+      actionTarget: 'signIn',
+    };
+  }
+
+  if (state.registrationPersona === 'student' && state.studentAcademicEmailVerified === false) {
+    return {
+      outcome: 'not-eligible-student-domain',
+      title: 'Not eligible',
+      summary: 'Academic email domain is not eligible for fee waiver.',
+      ctaLabel: 'Continue',
+      actionTarget: 'signIn',
+    };
+  }
+
   if (state.isIscaMember === true) {
     return {
       outcome: 'isca-login',
@@ -540,7 +1197,11 @@ function getOutcome(state) {
       actionTarget: 'salesforce',
     };
   }
-  if (state.isSingaporePr === true && state.spPrVerified === true) {
+  if (
+    state.isSingaporePr === true
+    && state.spPrVerified === true
+    && !isQuestionnaireSgPrPath(state)
+  ) {
     return {
       outcome: 'sp-pr-verified-login',
       title: 'SP/PR Verified',
@@ -667,8 +1328,24 @@ function getOutcome(state) {
 
 function getRequirementLabel(state, step) {
   const labelsByStep = {
+    'fee-waiver-choice': 'Fee waiver application',
+    'initial-questionnaire': 'Basic eligibility questions',
     residency: 'Required before course access',
     member: 'Are you already an ISCA member?',
+    'company-registration': 'Company registration check',
+    'company-reference': 'Company reference verification',
+    'registration-persona': 'Select your registration profile',
+    'student-member-associate-check': 'ISCA Student/Associate member check',
+    'student-final-year-check': 'Final-year local institution check',
+    'student-non-final-options': 'Student membership options',
+    'student-academic-email': 'Student academic email verification',
+    'student-verification-trigger': 'Trigger student verification email',
+    'student-verification-result': 'Student verification result',
+    'working-educational-background': 'Educational background check',
+    'working-membership-options': 'ISCA membership options',
+    'working-not-eligible-options': 'Fee waiver not eligible',
+    'nric-sg-pr-retry': 'NRIC Singaporean/PR verification',
+    'nric-company-fallback': 'Company reference registration',
     nric: 'NRIC upload required for SP/PR verification',
     'membership-choice': 'Choose membership preference',
     'membership-fee': 'Membership fee and benefits information',
@@ -796,6 +1473,99 @@ function getProgressMeta(state, step) {
 
   if (home) {
     return getHomeFluencyProgressMeta(state, step);
+  }
+
+  if (step === 'fee-waiver-choice') {
+    return {
+      currentStep: 1,
+      totalSteps: 1,
+    };
+  }
+
+  if (step === 'initial-questionnaire') {
+    return {
+      currentStep: 1,
+      totalSteps: 1,
+    };
+  }
+
+  const isExactCorporateIscaPath =
+    state.isIscaMember === true
+    && state.isSingaporePr === true
+    && state.companyRegistrationUnderCompany === true;
+  if (isQuestionnaireIscaMemberPath(state)) {
+    const steps = ['initial-questionnaire'];
+    if (isQuestionnaireYesYesYesPath(state)) {
+      steps.push('company-reference');
+    }
+    steps.push('isca-member-verify');
+    steps.push('result');
+    const currentIndex = steps.indexOf(step);
+    return {
+      currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
+      totalSteps: steps.length,
+    };
+  }
+  if (isExactCorporateIscaPath) {
+    const steps = ['initial-questionnaire', 'company-reference', 'result'];
+    const currentIndex = steps.indexOf(step);
+    return {
+      currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
+      totalSteps: steps.length,
+    };
+  }
+
+  const baseSteps = ['initial-questionnaire'];
+  if (state.companyRegistrationUnderCompany === true && state.companyReferenceVerified !== true) {
+    baseSteps.push('company-reference');
+  }
+  if (state.isIscaMember === true) {
+    baseSteps.push('result');
+  } else {
+    if (isQuestionnaireCorporatePath(state)) {
+      baseSteps.push('company-reference', 'salesforce-account-choice', 'salesforce-membership-create', 'result');
+    } else if (isStudentWorkingPersonaPath(state)) {
+      if (isQuestionnaireNoNoYesPath(state)) {
+        baseSteps.push('company-reference');
+      }
+      if (isSgPrIndividualPath(state) && state.nricSgPrCheckFailed) {
+        baseSteps.push('nric');
+      }
+      baseSteps.push('registration-persona');
+      if (state.registrationPersona === 'student') {
+        baseSteps.push('student-academic-email');
+        if (state.studentAcademicEmailVerified === true) baseSteps.push('result');
+      } else if (state.registrationPersona === 'working-professional') {
+        baseSteps.push('working-educational-background', 'working-membership-options', 'result');
+      }
+    } else if (isQuestionnaireNoNoYesPath(state) && !state.companyReferenceRouteAbandoned) {
+      baseSteps.push('company-reference', 'salesforce-account-choice', 'salesforce-membership-create', 'result');
+    } else if (isSgPrUnderCompanyPath(state)) {
+      baseSteps.push('company-reference', 'nric', 'result');
+    } else if (isSgPrIndividualPath(state)) {
+      baseSteps.push('nric', 'result');
+    }
+  }
+
+  if (
+    [
+      'initial-questionnaire',
+      'company-reference',
+      'registration-persona',
+      'student-academic-email',
+      'working-educational-background',
+      'working-membership-options',
+      'working-not-eligible-options',
+      'nric-sg-pr-retry',
+      'nric-company-fallback',
+      'nric',
+    ].includes(step)
+  ) {
+    const currentIndex = baseSteps.indexOf(step);
+    return {
+      currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
+      totalSteps: baseSteps.length || 1,
+    };
   }
 
   const steps = ['residency', 'member'];
@@ -928,7 +1698,7 @@ function getProgressMeta(state, step) {
   };
 }
 
-export function MembershipSignupDialog({ open, onClose, onContinue, entrySource }) {
+export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFeeWaiver, entrySource }) {
   const [flowState, setFlowState] = useState(INITIAL_STATE);
   const [charteredUploadedFiles, setCharteredUploadedFiles] = useState({});
   const [nricFrontImage, setNricFrontImage] = useState(null);
@@ -1052,20 +1822,50 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     }
 
     const fromHomeGetStarted = entrySource === MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED;
+    const fromAuthSignUp = entrySource === MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP;
     let nextState = resolveFlowStateOnOpen(null, fromHomeGetStarted);
 
-    try {
-      const raw = sessionStorage.getItem('membershipEligibilityFlow');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const storedFlow = parsed?.flow;
-        if (storedFlow && typeof storedFlow === 'object') {
-          nextState = resolveFlowStateOnOpen(storedFlow, fromHomeGetStarted);
+    if (fromAuthSignUp) {
+      const resumed = readResumedMembershipEligibilityFlow();
+      if (resumed?.flow) {
+        nextState = {
+          ...resolveFlowStateOnOpen(resumed.flow, false),
+          signupEntrySource: MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
+        };
+        clearResumeMembershipSignupFlag();
+      } else {
+        nextState = {
+          ...INITIAL_STATE,
+          signupEntrySource: MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
+        };
+      }
+    } else {
+      const resumed = readResumedMembershipEligibilityFlow();
+      if (resumed?.flow) {
+        nextState = resolveFlowStateOnOpen(resumed.flow, fromHomeGetStarted);
+        clearResumeMembershipSignupFlag();
+      } else {
+        try {
+          const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const storedFlow = parsed?.flow;
+            if (storedFlow && typeof storedFlow === 'object') {
+              nextState = resolveFlowStateOnOpen(storedFlow, fromHomeGetStarted);
+            }
+          }
+        } catch {
+          // ignore invalid draft
         }
       }
-    } catch {
-      // ignore invalid draft
     }
+
+    nextState = {
+      ...nextState,
+      signupEntrySource: fromAuthSignUp
+        ? MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP
+        : entrySource || nextState.signupEntrySource || '',
+    };
 
     setFlowState(nextState);
   }, [open, entrySource]);
@@ -1073,18 +1873,21 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   const flowHistoryRef = useRef([]);
   const skipFlowHistoryRef = useRef(false);
   const lastFlowSnapshotRef = useRef(null);
+  const [flowHistoryDepth, setFlowHistoryDepth] = useState(0);
 
   useEffect(() => {
     if (!open) {
       flowHistoryRef.current = [];
       lastFlowSnapshotRef.current = null;
       skipFlowHistoryRef.current = false;
+      setFlowHistoryDepth(0);
       return;
     }
 
     if (skipFlowHistoryRef.current) {
       skipFlowHistoryRef.current = false;
       lastFlowSnapshotRef.current = cloneFlowState(flowState);
+      setFlowHistoryDepth(flowHistoryRef.current.length);
       return;
     }
 
@@ -1097,6 +1900,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       }
     }
     lastFlowSnapshotRef.current = snapshot;
+    setFlowHistoryDepth(flowHistoryRef.current.length);
   }, [flowState, open]);
 
   const step = getFlowStep(flowState);
@@ -1105,6 +1909,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   const progressMeta = getProgressMeta(flowState, step);
   const { currentStep, totalSteps } = progressMeta;
   const progressValue = progressMeta.progressValue ?? Math.round((currentStep / totalSteps) * 100);
+  const showBackButton = canShowMembershipFlowBackButton(step, flowState, flowHistoryDepth);
   const isSalesforceCreateOutcome = isSalesforceMembershipCreateOutcomeKey(result?.outcome);
   const salesforceAccountReady =
     flowState.salesforceMembershipAccountCreated && isSalesforceCreateOutcome;
@@ -1117,6 +1922,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     try {
       const courseReturn = `${window.location.pathname}${window.location.search || ''}`;
       saveMembershipApplicationCourseReturn(courseReturn);
+      applyStudentMembershipEmailPrefillFromEligibilityFlow(flowState);
+      sessionStorage.setItem(
+        MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+        JSON.stringify({
+          membershipOutcome: result?.outcome || 'student-fee-waiver',
+          flow: flowState,
+          savedAt: new Date().toISOString(),
+        })
+      );
     } catch {
       // ignore
     }
@@ -1125,9 +1939,37 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
   };
 
   const handleResultAction = () => {
+    if (result?.outcome === 'isca-member-sso-check' && result?.actionTarget === 'salesforce') {
+      const returnTo = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}`);
+      try {
+        sessionStorage.setItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY, 'true');
+        sessionStorage.setItem(
+          POST_OAUTH_RETURN_TO_KEY,
+          `${window.location.pathname}${window.location.search || ''}`
+        );
+      } catch {
+        // ignore storage errors
+      }
+      window.location.assign(
+        `${paths.auth.oauth.start}?returnTo=${returnTo}&membershipOutcome=${encodeURIComponent(result.outcome)}`
+      );
+      return;
+    }
     if (result?.actionTarget === 'student-application') {
       openStudentMembershipApplicationFromDialog();
       onContinue?.({ flow: flowState, result });
+      return;
+    }
+    if (result?.actionTarget === 'close') {
+      onClose?.();
+      return;
+    }
+    if (result?.outcome === 'corporate-membership-signup' && result?.actionTarget === 'salesforce') {
+      handleSalesforceLogin();
+      return;
+    }
+    if (result?.outcome === 'verified-nric-signup' && result?.actionTarget === 'signUp') {
+      onClose?.();
       return;
     }
     onContinue?.({ flow: flowState, result });
@@ -1141,6 +1983,33 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         ...result,
         actionTarget: 'salesforce',
         ctaLabel: 'Login with Eservices',
+      },
+    });
+  };
+
+  const handleStudentFeeWaiverEservicesLogin = () => {
+    try {
+      const courseReturn = `${window.location.pathname}${window.location.search || ''}`;
+      sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, courseReturn);
+      saveMembershipApplicationCourseReturn(courseReturn);
+      sessionStorage.setItem(
+        MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+        JSON.stringify({
+          membershipOutcome: 'student-fee-waiver',
+          flow: flowState,
+          savedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // ignore
+    }
+    onContinue?.({
+      flow: flowState,
+      result: {
+        ...result,
+        outcome: 'student-fee-waiver',
+        actionTarget: result?.secondaryActionTarget || 'student-salesforce',
+        ctaLabel: result?.secondaryCtaLabel || 'eServices login',
       },
     });
   };
@@ -1204,6 +2073,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       openStudentMembershipApplicationFromDialog();
       return;
     }
+    if (isQuestionnaireCorporatePath(flowState)) {
+      if (choice === 'login') {
+        setFlowState((prev) => ({ ...prev, salesforceAccountChoice: 'login' }));
+        handleSalesforceLogin();
+        return;
+      }
+      setFlowState((prev) => ({ ...prev, salesforceAccountChoice: 'create' }));
+      return;
+    }
     if (
       flowState.eligibilityType === 'recognition'
       || isHomeCaDirectSalesforceFlow(flowState)
@@ -1242,7 +2120,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     setFlowState((prev) => ({
       ...prev,
       isSingaporePr: value,
-      isIscaMember: null,
+      initialQuestionnaireSubmitted: false,
+      companyRegistrationUnderCompany: null,
+      companyReferenceId: '',
+      companyReferenceVerified: null,
+      eServicesLoginCompleted: false,
+      iscaMemberVerificationPassed: null,
+      registrationPersona: '',
+      studentAcademicEmail: '',
+      studentAcademicEmailVerified: null,
+      workingEducationalBackground: '',
       nricUploadAcknowledged: false,
       spPrVerified: null,
       wantsIscaMembership: null,
@@ -1269,6 +2156,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     setFlowState((prev) => ({
       ...prev,
       isIscaMember: value,
+      initialQuestionnaireSubmitted: false,
+      companyRegistrationUnderCompany: null,
+      companyReferenceId: '',
+      companyReferenceVerified: null,
+      eServicesLoginCompleted: false,
+      iscaMemberVerificationPassed: null,
+      registrationPersona: '',
+      studentAcademicEmail: '',
+      studentAcademicEmailVerified: null,
+      workingEducationalBackground: '',
       ...(fromHomeGetStarted && value === false ? { wantsIscaMembership: true } : {}),
       nricUploadAcknowledged: false,
       spPrVerified: null,
@@ -1287,6 +2184,308 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       associateMemberAlready: null,
       studentFeePaymentCompleted: false,
       studentMembershipApplicationAgreed: false,
+    }));
+  };
+
+  const selectCompanyRegistration = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      companyRegistrationUnderCompany: value,
+      initialQuestionnaireSubmitted: false,
+      companyReferenceId: '',
+      companyReferenceVerified: value === false ? true : null,
+      companyReferenceRouteAbandoned: false,
+      eServicesLoginCompleted: false,
+      iscaMemberVerificationPassed: null,
+      registrationPersona: '',
+      studentAcademicEmail: '',
+      studentAcademicEmailVerified: null,
+      workingEducationalBackground: '',
+    }));
+  };
+
+  const submitInitialQuestionnaire = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      initialQuestionnaireSubmitted: true,
+    }));
+  };
+
+  const selectFeeWaiverApplicationChoice = (wantsFeeWaiver) => {
+    if (!wantsFeeWaiver) {
+      if (isAuthSignUpEntryFlow(flowState) && typeof onDeclineFeeWaiver === 'function') {
+        onDeclineFeeWaiver();
+        return;
+      }
+      onContinue?.({
+        flow: { ...flowState, feeWaiverApplicationChoice: false },
+        result: {
+          outcome: 'paid-signup',
+          title: 'Sign up with payment',
+          summary: 'Continue to sign up and pay the full programme fee.',
+          ctaLabel: 'Continue to paid signup',
+          actionTarget: 'signUp',
+        },
+      });
+      onClose?.();
+      return;
+    }
+    setFlowState((prev) => ({
+      ...prev,
+      feeWaiverApplicationChoice: true,
+    }));
+  };
+
+  const verifyCompanyReferenceId = () => {
+    setFlowState((prev) => {
+      const company = lookupCompanyByReferenceId(prev.companyReferenceId);
+      return {
+        ...prev,
+        companyReferenceVerified: Boolean(company),
+        companyVerifiedName: company?.name || '',
+        companyVerifiedIndustry: company?.industry || '',
+        companyReferenceConfirmed: null,
+        eServicesLoginCompleted: false,
+        iscaMemberVerificationPassed: null,
+      };
+    });
+  };
+
+  const confirmCompanyReference = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      companyReferenceConfirmed: true,
+      companyReferenceRouteAbandoned: false,
+    }));
+  };
+
+  const declineCompanyReferenceRoute = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      companyReferenceRouteAbandoned: true,
+      companyReferenceConfirmed: false,
+      registrationPersona: '',
+      studentMemberOrAssociate: null,
+      studentFinalYearLocal: null,
+      studentNonFinalInterested: null,
+      studentAcademicEmail: '',
+      studentPersonalEmail: '',
+      studentCardImageName: '',
+      studentDetailsSubmitted: false,
+      studentVerificationTriggered: false,
+      studentAcademicEmailVerified: null,
+      workingEducationalBackground: '',
+      workingMembershipInterested: null,
+      workingNotEligibleChoice: null,
+      salesforceAccountChoice: '',
+      salesforceMembershipAccountCreated: false,
+      salesforceSessionReady: false,
+    }));
+  };
+
+  const declineCompanyReferenceForSgPrNric = () => {
+    resetNricCheckState();
+    setFlowState((prev) => ({
+      ...prev,
+      companyReferenceRouteAbandoned: true,
+      companyReferenceConfirmed: false,
+      feeWaiverViaCompanyReference: false,
+      nricSgPrCheckFailed: false,
+      spPrVerified: null,
+      nricUploadAcknowledged: false,
+    }));
+  };
+
+  const continueQuestionnaireNricVerification = () => {
+    if (!nricAiVerified) return;
+    setFlowState((prev) => ({
+      ...prev,
+      spPrVerified: true,
+      nricUploadAcknowledged: true,
+      nricSgPrCheckFailed: false,
+      feeWaiverViaCompanyReference: false,
+    }));
+  };
+
+  const retryQuestionnaireNricVerification = () => {
+    resetNricCheckState();
+    setFlowState((prev) => ({
+      ...prev,
+      nricSgPrCheckFailed: false,
+      spPrVerified: null,
+      nricUploadAcknowledged: false,
+      feeWaiverViaCompanyReference: false,
+    }));
+  };
+
+  const continueFeeWaiverViaCompanyReference = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      feeWaiverViaCompanyReference: true,
+      nricSgPrCheckFailed: false,
+    }));
+  };
+
+  const completeEServicesLogin = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      eServicesLoginCompleted: true,
+    }));
+  };
+
+  const setIscaMemberVerification = (passed) => {
+    setFlowState((prev) => {
+      if (!passed && prev.isIscaMember === true) {
+        const { isSingaporePr, companyRegistrationUnderCompany } = prev;
+        const shouldFallbackToQuestionnairePath =
+          (isSingaporePr === true && companyRegistrationUnderCompany === true)
+          || (isSingaporePr === false && companyRegistrationUnderCompany === true)
+          || (isSingaporePr === true && companyRegistrationUnderCompany === false)
+          || (isSingaporePr === false && companyRegistrationUnderCompany === false);
+
+        if (shouldFallbackToQuestionnairePath) {
+          return {
+            ...prev,
+            isIscaMember: false,
+            iscaMemberVerificationPassed: false,
+          };
+        }
+      }
+
+      return {
+        ...prev,
+        iscaMemberVerificationPassed: passed,
+      };
+    });
+  };
+
+  const selectRegistrationPersona = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      wantsIscaMembership: true,
+      registrationPersona: value,
+      studentMemberOrAssociate: null,
+      studentFinalYearLocal: null,
+      studentNonFinalInterested: null,
+      studentAcademicEmail: '',
+      studentPersonalEmail: '',
+      studentCardImageName: '',
+      studentDetailsSubmitted: false,
+      studentVerificationTriggered: false,
+      studentAcademicEmailVerified: null,
+      workingEducationalBackground: '',
+      workingMembershipInterested: null,
+      workingNotEligibleChoice: null,
+      eligibilityType: value === 'student' ? 'student' : '',
+      studentMembershipApplicationAgreed: value === 'student',
+      studentMembershipOptIn: value === 'student' ? true : prev.studentMembershipOptIn,
+      eligibilityVerified: value === 'student' ? true : prev.eligibilityVerified,
+    }));
+  };
+
+  const verifyStudentAcademicEmail = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      studentAcademicEmailVerified: isAcademicEmail(prev.studentAcademicEmail),
+    }));
+  };
+
+  const selectStudentMemberAssociate = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      studentMemberOrAssociate: value,
+      studentNonFinalInterested: value ? prev.studentNonFinalInterested : null,
+      studentAcademicEmail: value ? prev.studentAcademicEmail : '',
+      studentPersonalEmail: value ? prev.studentPersonalEmail : '',
+      studentCardImageName: value ? prev.studentCardImageName : '',
+      studentDetailsSubmitted: value ? prev.studentDetailsSubmitted : false,
+      studentVerificationTriggered: value ? prev.studentVerificationTriggered : false,
+      studentAcademicEmailVerified: value ? prev.studentAcademicEmailVerified : null,
+    }));
+  };
+
+  const selectStudentFinalYearLocal = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      studentFinalYearLocal: value,
+      studentNonFinalInterested: value ? prev.studentNonFinalInterested : null,
+      studentAcademicEmail: value ? prev.studentAcademicEmail : '',
+      studentPersonalEmail: value ? prev.studentPersonalEmail : '',
+      studentCardImageName: value ? prev.studentCardImageName : '',
+      studentDetailsSubmitted: value ? prev.studentDetailsSubmitted : false,
+      studentVerificationTriggered: value ? prev.studentVerificationTriggered : false,
+      studentAcademicEmailVerified: value ? prev.studentAcademicEmailVerified : null,
+    }));
+  };
+
+  const triggerStudentVerificationEmail = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      studentVerificationTriggered: true,
+      studentAcademicEmailVerified: null,
+    }));
+  };
+
+  const selectStudentNonFinalInterested = (value) => {
+    if (value === false) {
+      onClose?.();
+      return;
+    }
+
+    try {
+      window.open(ISCA_STUDENT_YOUTH_APP_URL, '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+
+    setFlowState((prev) => ({
+      ...prev,
+      studentNonFinalInterested: value,
+    }));
+  };
+
+  const selectWorkingEducationalBackground = (value) => {
+    setFlowState((prev) => ({
+      ...prev,
+      workingEducationalBackground: value,
+      workingMembershipInterested: null,
+      workingNotEligibleChoice: null,
+      eligibilityType: '',
+      eligibilityVerified: null,
+    }));
+  };
+
+  const selectWorkingMembershipInterested = (value) => {
+    if (value === false) {
+      setFlowState((prev) => ({
+        ...prev,
+        workingMembershipInterested: value,
+        workingNotEligibleChoice: null,
+      }));
+      return;
+    }
+
+    try {
+      window.open(ISCA_WORKING_MY_APPLICATION_URL, '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+
+    setFlowState((prev) => ({
+      ...prev,
+      workingMembershipInterested: value,
+    }));
+  };
+
+  const selectWorkingNotEligibleChoice = (value) => {
+    if (value === 'decline') {
+      onClose?.();
+      return;
+    }
+
+    setFlowState((prev) => ({
+      ...prev,
+      workingNotEligibleChoice: value,
     }));
   };
 
@@ -1435,6 +2634,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
 
   const continueAfterNricOtherOptions = () => {
     setFlowState((prev) => ({ ...prev, nricUploadAcknowledged: true, spPrVerified: false }));
+  };
+
+  const resetNricVerificationAttempt = () => {
+    setNricAiError('');
+    setNricAiFailureReason('');
+    setNricAiFailureMode('default');
+    setNricAiVerified(false);
+    setNricSignupAccessToken('');
+    setNricVerifiedJson(null);
   };
 
   const continueToPaidSignupAfterNricFailure = () => {
@@ -1593,6 +2801,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         backImage: nricBackImage,
       });
       if (!response?.verified) {
+        if (isQuestionnaireNricEligiblePath(flowState)) {
+          if (!isSgPrUnderCompanyPath(flowState)) {
+            setNricAiFailureReason(
+              String(response?.message || '').trim()
+              || 'Could not extract a Singapore NRIC/FIN from the uploaded NRIC front image.'
+            );
+          }
+          setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
+          return;
+        }
         const failureState = getNricFailureState(response?.message);
         setNricAiError(failureState.summary);
         setNricAiFailureReason(failureState.reason);
@@ -1603,6 +2821,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       setNricVerifiedJson(response);
       setNricAiVerified(true);
     } catch (error) {
+      if (isQuestionnaireNricEligiblePath(flowState)) {
+        if (!isSgPrUnderCompanyPath(flowState)) {
+          setNricAiFailureReason(
+            String(error?.message || '').trim()
+            || 'Could not extract a Singapore NRIC/FIN from the uploaded NRIC front image.'
+          );
+        }
+        setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
+        return;
+      }
       const failureState = getNricFailureState(error?.message);
       setNricAiError(failureState.summary);
       setNricAiFailureReason(failureState.reason);
@@ -2580,6 +3808,86 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       rewindEphemeralUiForStep(previousStep);
       setFlowState(previousSnapshot);
       lastFlowSnapshotRef.current = cloneFlowState(previousSnapshot);
+      setFlowHistoryDepth(flowHistoryRef.current.length);
+      return;
+    }
+
+    if (step === 'initial-questionnaire' && isAuthSignUpEntryFlow(flowState)) {
+      setFlowState({
+        ...INITIAL_STATE,
+        signupEntrySource: MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
+      });
+      return;
+    }
+    if (step === 'isca-member-verify') {
+      setFlowState((prev) => ({
+        ...prev,
+        iscaMemberVerificationPassed: null,
+      }));
+      return;
+    }
+    if (step === 'eservices-login') {
+      setFlowState((prev) => ({
+        ...prev,
+        eServicesLoginCompleted: false,
+      }));
+      return;
+    }
+    if (step === 'company-reference') {
+      resetNricCheckState();
+      if (isQuestionnaireIscaMemberPath(flowState) && isQuestionnaireYesYesYesPath(flowState)) {
+        setFlowState((prev) => ({
+          ...prev,
+          companyReferenceId: '',
+          companyReferenceVerified: null,
+          companyVerifiedName: '',
+          companyVerifiedIndustry: '',
+          companyReferenceConfirmed: null,
+        }));
+        return;
+      }
+      setFlowState((prev) => ({
+        ...prev,
+        initialQuestionnaireSubmitted: false,
+        companyReferenceId: '',
+        companyReferenceVerified: null,
+        companyVerifiedName: '',
+        companyVerifiedIndustry: '',
+        companyReferenceConfirmed: null,
+        companyReferenceRouteAbandoned: false,
+        feeWaiverViaCompanyReference: false,
+        nricSgPrCheckFailed: false,
+        spPrVerified: null,
+      }));
+      return;
+    }
+    if (step === 'registration-persona') {
+      setFlowState((prev) => ({
+        ...prev,
+        registrationPersona: '',
+      }));
+      return;
+    }
+    if (step === 'nric' && isQuestionnaireSgPrPath(flowState)) {
+      resetNricCheckState();
+      if (isSgPrUnderCompanyPath(flowState)) {
+        setFlowState((prev) => ({
+          ...prev,
+          feeWaiverViaCompanyReference: false,
+          nricSgPrCheckFailed: false,
+          spPrVerified: null,
+          nricUploadAcknowledged: false,
+        }));
+        return;
+      }
+      if (isSgPrIndividualPath(flowState)) {
+        setFlowState((prev) => ({
+          ...prev,
+          nricSgPrCheckFailed: false,
+          spPrVerified: null,
+          nricUploadAcknowledged: false,
+        }));
+      }
       return;
     }
 
@@ -3076,11 +4384,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
     if (step === 'salesforce-account-choice') {
       setFlowState((prev) => ({
         ...prev,
-        ...(prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
-          ? { homeSelectedPathway: '' }
-          : prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED
-            ? { homeFluencyPathwayAcknowledged: false }
-            : { eligibilityType: '', eligibilityVerified: null }),
+        ...(isQuestionnaireCorporatePath(prev)
+          ? {}
+          : prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.CA
+            ? { homeSelectedPathway: '' }
+            : prev.homeGetStartedFlow && prev.homeSelectedPathway === HOME_FLUENCY_PATHWAY.EXPERIENCED
+              ? { homeFluencyPathwayAcknowledged: false }
+              : { eligibilityType: '', eligibilityVerified: null }),
         salesforceAccountChoice: '',
         salesforceSessionReady: false,
       }));
@@ -3108,6 +4418,49 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       return;
     }
     if (step === 'result') {
+      if (flowState.feeWaiverViaCompanyReference) {
+        resetNricCheckState();
+        setFlowState((prev) => ({
+          ...prev,
+          feeWaiverViaCompanyReference: false,
+        }));
+        return;
+      }
+      if (isSgPrUnderCompanyPath(flowState) && flowState.spPrVerified === true) {
+        resetNricCheckState();
+        setFlowState((prev) => ({
+          ...prev,
+          spPrVerified: null,
+          nricUploadAcknowledged: false,
+          feeWaiverViaCompanyReference: false,
+        }));
+        return;
+      }
+      if (isSgPrIndividualPath(flowState) && flowState.spPrVerified === true) {
+        resetNricCheckState();
+        setFlowState((prev) => ({
+          ...prev,
+          spPrVerified: null,
+          nricUploadAcknowledged: false,
+        }));
+        return;
+      }
+      if (isQuestionnaireIscaMemberPath(flowState) && flowState.iscaMemberVerificationPassed === true) {
+        setFlowState((prev) => ({
+          ...prev,
+          iscaMemberVerificationPassed: null,
+        }));
+        return;
+      }
+      if (isQuestionnaireCorporatePath(flowState)) {
+        setFlowState((prev) => ({
+          ...prev,
+          salesforceMembershipAccountCreated: false,
+          salesforceSessionReady: false,
+          salesforceAccountChoice: '',
+        }));
+        return;
+      }
       if (flowState.homeGetStartedFlow) {
         if (flowState.homeFluencyUserType === HOME_FLUENCY_USER_TYPE.STUDENT) {
           if (flowState.homeFinalYearAccountancyStudent === true) {
@@ -3205,10 +4558,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
       }}
     >
       <DialogTitle sx={{ px: 3, pt: 2, pb: 1.25 }}>
-        {step !== 'residency' && step !== 'home-user-type' && !(flowState.homeGetStartedFlow && step === 'member') && (
+        {showBackButton && (
           <IconButton
             size="small"
             onClick={goBack}
+            aria-label="Back"
             sx={{
               position: 'absolute',
               top: 12,
@@ -3245,7 +4599,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
           sx={{
             fontWeight: 700,
             lineHeight: 1.2,
-            pl: step !== 'residency' && step !== 'home-user-type' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
+            pl: showBackButton ? 5 : 0,
             pr: 5,
           }}
         >
@@ -3257,7 +4611,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             mt: 0.75,
             color: 'text.secondary',
             display: 'block',
-            pl: step !== 'residency' && step !== 'home-user-type' && !(flowState.homeGetStartedFlow && step === 'member') ? 5 : 0,
+            pl: showBackButton ? 5 : 0,
             pr: 5,
           }}
         >
@@ -3298,6 +4652,123 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
           <Iconify icon="solar:info-circle-bold" width={16} />
           {requirementLabel}
         </Box>
+        {step === 'fee-waiver-choice' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Would you like to apply for a fee waiver?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              Select Yes to answer a few eligibility questions. Select No to continue to sign up with payment
+              for the full programme fee.
+            </Typography>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ pt: 0.5, justifyContent: { sm: 'flex-end' } }}
+            >
+              <Button
+                variant="contained"
+                color="primary"
+                size="medium"
+                fullWidth
+                onClick={() => selectFeeWaiverApplicationChoice(true)}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+              >
+                Yes
+              </Button>
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="medium"
+                fullWidth
+                onClick={() => selectFeeWaiverApplicationChoice(false)}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+              >
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'initial-questionnaire' && (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
+              Please answer the following questions:
+            </Typography>
+            <FormControl component="fieldset">
+              <FormLabel component="legend" sx={{ mb: 0.5, color: 'text.primary', fontWeight: 700 }}>
+                1) Are you an ISCA member?
+              </FormLabel>
+              <RadioGroup
+                value={
+                  flowState.isIscaMember === null
+                    ? ''
+                    : flowState.isIscaMember
+                      ? 'yes'
+                      : 'no'
+                }
+                onChange={(event) => selectMember(event.target.value === 'yes')}
+              >
+                <FormControlLabel value="yes" control={<Radio />} label="a) Yes" />
+                <FormControlLabel value="no" control={<Radio />} label="b) No" />
+              </RadioGroup>
+            </FormControl>
+
+            <FormControl component="fieldset">
+              <FormLabel component="legend" sx={{ mb: 0.5, color: 'text.primary', fontWeight: 700 }}>
+                2) Are you a Singaporean/PR?
+              </FormLabel>
+              <RadioGroup
+                value={
+                  flowState.isSingaporePr === null
+                    ? ''
+                    : flowState.isSingaporePr
+                      ? 'yes'
+                      : 'no'
+                }
+                onChange={(event) => selectResidency(event.target.value === 'yes')}
+              >
+                <FormControlLabel value="yes" control={<Radio />} label="a) Yes" />
+                <FormControlLabel value="no" control={<Radio />} label="b) No" />
+              </RadioGroup>
+            </FormControl>
+
+            <FormControl component="fieldset">
+              <FormLabel component="legend" sx={{ mb: 0.5, color: 'text.primary', fontWeight: 700 }}>
+                3) Are you registering under your company?
+              </FormLabel>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                (your company has a corporate account and you have the unique corporate reference ID)
+              </Typography>
+              <RadioGroup
+                value={
+                  flowState.companyRegistrationUnderCompany === null
+                    ? ''
+                    : flowState.companyRegistrationUnderCompany
+                      ? 'yes'
+                      : 'no'
+                }
+                onChange={(event) => selectCompanyRegistration(event.target.value === 'yes')}
+              >
+                <FormControlLabel value="yes" control={<Radio />} label="a) Yes" />
+                <FormControlLabel value="no" control={<Radio />} label="b) No" />
+              </RadioGroup>
+            </FormControl>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                onClick={submitInitialQuestionnaire}
+                disabled={
+                  flowState.isIscaMember === null
+                  || flowState.isSingaporePr === null
+                  || flowState.companyRegistrationUnderCompany === null
+                }
+              >
+                Continue
+              </Button>
+            </Stack>
+          </Stack>
+        )}
         {step === 'residency' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -3583,6 +5054,561 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             </Stack>
           </Stack>
         )}
+        {step === 'company-registration' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Are you registering under your company?
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Your company should have a corporate account and unique corporate reference ID.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectCompanyRegistration(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => selectCompanyRegistration(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'company-reference' && (
+          <Stack spacing={1.5}>
+            {flowState.companyReferenceVerified === null ? (
+              <>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  Please enter your company reference ID
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We will verify your company and display the company name for you to confirm.
+                </Typography>
+                <TextField
+                  size="small"
+                  label="Company reference ID"
+                  value={flowState.companyReferenceId || ''}
+                  onChange={(event) =>
+                    setFlowState((prev) => ({
+                      ...prev,
+                      companyReferenceId: event.target.value,
+                      companyReferenceVerified: null,
+                      companyVerifiedName: '',
+                      companyVerifiedIndustry: '',
+                      companyReferenceConfirmed: null,
+                      companyReferenceRouteAbandoned: false,
+                    }))}
+                  fullWidth
+                  disabled={flowState.companyReferenceConfirmed === true}
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                  <Button variant="contained" onClick={verifyCompanyReferenceId}>
+                    Verify
+                  </Button>
+                </Stack>
+              </>
+            ) : flowState.companyReferenceConfirmed !== true ? (
+              <>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  Company verified?
+                </Typography>
+                {flowState.companyReferenceVerified === true && flowState.companyVerifiedName ? (
+                  <Alert severity="success">
+                    Company found: <strong>{flowState.companyVerifiedName}</strong>
+                    {flowState.companyVerifiedIndustry
+                      ? ` (${flowState.companyVerifiedIndustry})`
+                      : ''}
+                  </Alert>
+                ) : (
+                  <Alert severity="warning">
+                    {isSgPrUnderCompanyPath(flowState)
+                      ? 'Could not verify this company reference ID. Please check the ID and try again, or select No to continue with NRIC verification.'
+                      : 'Could not verify this company reference ID. Please check the ID and try again, or select No to continue as a student or working professional.'}
+                  </Alert>
+                )}
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1}
+                  sx={{ pt: 0.5, justifyContent: { sm: 'flex-end' } }}
+                >
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="medium"
+                    fullWidth
+                    disabled={flowState.companyReferenceVerified !== true}
+                    onClick={confirmCompanyReference}
+                    sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+                  >
+                    Yes
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="inherit"
+                    size="medium"
+                    fullWidth
+                    onClick={
+                      isQuestionnaireNoNoYesPath(flowState)
+                        ? declineCompanyReferenceRoute
+                        : isSgPrUnderCompanyPath(flowState)
+                          ? declineCompanyReferenceForSgPrNric
+                          : () =>
+                              setFlowState((prev) => ({
+                                ...prev,
+                                companyReferenceVerified: null,
+                                companyVerifiedName: '',
+                                companyVerifiedIndustry: '',
+                                companyReferenceConfirmed: null,
+                              }))
+                    }
+                    sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+                  >
+                    No
+                  </Button>
+                </Stack>
+                {flowState.companyReferenceVerified === false && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                    <Button
+                      variant="text"
+                      color="inherit"
+                      onClick={() =>
+                        setFlowState((prev) => ({
+                          ...prev,
+                          companyReferenceVerified: null,
+                          companyVerifiedName: '',
+                          companyVerifiedIndustry: '',
+                          companyReferenceConfirmed: null,
+                        }))}
+                      sx={{ textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Try verify again
+                    </Button>
+                  </Stack>
+                )}
+              </>
+            ) : null}
+          </Stack>
+        )}
+        {step === 'eservices-login' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Sign in to eServices
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Sign in with eServices to verify your ISCA membership. If you are not verified as a member, you can
+              continue with NRIC verification under your company reference.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={completeEServicesLogin}>
+                Sign in with eServices
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'isca-member-verify' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Verified as an ISCA Member?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => setIscaMemberVerification(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => setIscaMemberVerification(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'registration-persona' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Which best describe you?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectRegistrationPersona('student')}>
+                Student
+              </Button>
+              <Button variant="outlined" onClick={() => selectRegistrationPersona('working-professional')}>
+                Working professional
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'student-member-associate-check' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Are you currently an ISCA Student Member or Associate Member?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectStudentMemberAssociate(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => selectStudentMemberAssociate(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'student-non-final-options' && (
+          <Stack spacing={1.5}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+            >
+              You may be eligible for the following ISCA membership:{' '}
+              <Link
+                href={ISCA_STUDENT_MEMBERSHIP_INFO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                underline="hover"
+                sx={{ fontSize: 'inherit' }}
+              >
+                ISCA Student Membership
+              </Link>
+              . Sign up now to enjoy free access to the ISCA Fluency Programme.
+            </Typography>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ pt: 0.5, justifyContent: { sm: 'flex-end' } }}
+            >
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="medium"
+                fullWidth
+                onClick={() => selectStudentNonFinalInterested(false)}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+              >
+                Not interested in ISCA Student membership
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                size="medium"
+                fullWidth
+                onClick={() => selectStudentNonFinalInterested(true)}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+              >
+                Sign up now for free ISCA Fluency Programme
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'student-final-year-check' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Are you a final-year Accountancy student from Singapore local universities/polytechnics?
+            </Typography>
+            <Box
+              sx={(theme) => ({
+                px: 1.5,
+                py: 1,
+                borderRadius: 1.25,
+                border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                bgcolor: alpha(theme.palette.grey[500], 0.06),
+              })}
+            >
+              <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
+                {`National University of Singapore (NUS)
+Nanyang Technological University (NTU)
+Singapore Management University (SMU)
+Singapore University of Social Sciences (SUSS)
+Singapore Institute of Technology (SIT)
+Singapore Polytechnic (SP)
+Nanyang Polytechnic (NYP)
+Temasek Polytechnic (TP)
+Republic Polytechnic (RP)`}
+              </Typography>
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectStudentFinalYearLocal(true)}>
+                Yes
+              </Button>
+              <Button variant="outlined" onClick={() => selectStudentFinalYearLocal(false)}>
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'student-academic-email' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Enter academic and personal details
+            </Typography>
+            <TextField
+              size="small"
+              label="Academic email"
+              placeholder="name@nus.edu.sg"
+              value={flowState.studentAcademicEmail || ''}
+              onChange={(event) =>
+                setFlowState((prev) => ({
+                  ...prev,
+                  studentAcademicEmail: event.target.value,
+                  studentDetailsSubmitted: false,
+                  studentAcademicEmailVerified: null,
+                }))}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Personal email"
+              placeholder="name@email.com"
+              value={flowState.studentPersonalEmail || ''}
+              onChange={(event) =>
+                setFlowState((prev) => ({
+                  ...prev,
+                  studentPersonalEmail: event.target.value,
+                  studentDetailsSubmitted: false,
+                }))}
+              fullWidth
+            />
+            <Button variant="outlined" component="label">
+              Upload student card image
+              <input
+                hidden
+                type="file"
+                accept="image/*"
+                onChange={(event) =>
+                  setFlowState((prev) => ({
+                    ...prev,
+                    studentCardImageName: event.target.files?.[0]?.name || '',
+                    studentDetailsSubmitted: false,
+                  }))}
+              />
+            </Button>
+            <Typography variant="caption" color="text.secondary">
+              {flowState.studentCardImageName || 'Student card image not uploaded'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Supported domains: {STUDENT_ACADEMIC_EMAIL_SUFFIXES.join(', ')}
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                onClick={() => setFlowState((prev) => ({ ...prev, studentDetailsSubmitted: true }))}
+                disabled={
+                  !flowState.studentAcademicEmail?.trim()
+                  || !flowState.studentPersonalEmail?.trim()
+                  || !flowState.studentCardImageName
+                }
+              >
+                Continue
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'student-verification-trigger' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Trigger verification email to academic email
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Academic email: {flowState.studentAcademicEmail || '-'}
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => setFlowState((prev) => ({ ...prev, studentVerificationTriggered: true }))}>
+                Verification sent
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'student-verification-result' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Verified?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => verifyStudentAcademicEmail()}>
+                Yes
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() =>
+                  setFlowState((prev) => ({
+                    ...prev,
+                    studentAcademicEmailVerified: false,
+                    studentMemberOrAssociate: null,
+                  }))}
+              >
+                No
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'working-educational-background' && (
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              What is your educational background?
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={() => selectWorkingEducationalBackground('accounting')}>
+                Accounting graduate
+              </Button>
+              <Button variant="outlined" onClick={() => selectWorkingEducationalBackground('non-accounting')}>
+                Non-accounting graduate
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'working-membership-options' && (
+          <Stack spacing={1.5}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+            >
+              You may be eligible for the following ISCA membership:
+            </Typography>
+            <Stack component="ul" spacing={1.25} sx={{ m: 0, pl: 0, listStyle: 'none' }}>
+              {(flowState.workingEducationalBackground === 'accounting'
+                ? WORKING_ACCOUNTING_MEMBERSHIP_PATHWAYS
+                : WORKING_NON_ACCOUNTING_MEMBERSHIP_PATHWAYS
+              ).map((pathway) => (
+                <Box component="li" key={pathway.key}>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 700, fontSize: { xs: '0.8125rem', sm: '0.875rem' }, lineHeight: 1.45 }}
+                  >
+                    {pathway.label}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' }, lineHeight: 1.55 }}
+                  >
+                    <Link
+                      href={pathway.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      underline="hover"
+                      sx={{ fontSize: 'inherit' }}
+                    >
+                      {pathway.description}
+                    </Link>
+                  </Typography>
+                </Box>
+              ))}
+            </Stack>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+            >
+              Apply for one of the ISCA memberships to get free access to the ISCA Fluency Programme.
+            </Typography>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ pt: 0.5, justifyContent: { sm: 'flex-end' } }}
+            >
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="medium"
+                fullWidth
+                onClick={() => selectWorkingMembershipInterested(false)}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+              >
+                Not interested in applying for ISCA membership
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                size="medium"
+                fullWidth
+                onClick={() => selectWorkingMembershipInterested(true)}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+              >
+                Apply for ISCA membership — free Fluency access
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'working-not-eligible-options' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              You are not eligible for the fee waiver
+            </Typography>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ justifyContent: { sm: 'flex-end' } }}
+            >
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="medium"
+                fullWidth
+                onClick={() => selectWorkingNotEligibleChoice('decline')}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+              >
+                Decided not to sign up for the programme
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                size="medium"
+                fullWidth
+                onClick={() => selectWorkingNotEligibleChoice('pay')}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+              >
+                Proceed to pay for the programme
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'nric-sg-pr-retry' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Not verified as Singaporean/PR
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              The system could not verify you as a Singaporean or Permanent Resident from the uploaded
+              NRIC images. Please submit clearer NRIC front and back screenshots, or digital NRIC full details.
+            </Typography>
+            {!!nricAiFailureReason && (
+              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }}>
+                Reason: {nricAiFailureReason}
+              </Typography>
+            )}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={retryQuestionnaireNricVerification}>
+                Try again
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'nric-company-fallback' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Not verified as Singaporean/PR
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              The system could not verify you as a Singaporean or Permanent Resident from your NRIC upload.
+              Your company reference is verified
+              {flowState.companyVerifiedName ? ` for ${flowState.companyVerifiedName}` : ''}. You may proceed
+              to fee waiver registration with company name and industry auto-filled, or try NRIC verification again.
+            </Typography>
+            {!!nricAiFailureReason && (
+              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }}>
+                Reason: {nricAiFailureReason}
+              </Typography>
+            )}
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ justifyContent: { sm: 'flex-end' } }}
+            >
+              <Button variant="outlined" onClick={retryQuestionnaireNricVerification}>
+                Try NRIC again
+              </Button>
+              <Button variant="contained" onClick={continueFeeWaiverViaCompanyReference}>
+                Continue to registration
+              </Button>
+            </Stack>
+          </Stack>
+        )}
         {step === 'membership-choice' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -3632,10 +5658,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
         {step === 'nric' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Sign up account with NRIC verification
+              {isQuestionnaireSgPrPath(flowState)
+                ? 'Submit NRIC verification'
+                : 'Sign up account with NRIC verification'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Please upload NRIC images (front and back), then run AI verification.
+              {isQuestionnaireSgPrPath(flowState)
+                ? 'Please upload NRIC front and back screenshots, or digital NRIC full details, then run verification.'
+                : 'Please upload NRIC images (front and back), then run AI verification.'}
             </Typography>
             {nricAiVerified && (
               <Box
@@ -3718,11 +5748,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
                 <Button
                   variant="outlined"
                   onClick={runNricAiCheck}
-                  disabled={nricAiChecking || nricAiVerified || Boolean(nricAiError)}
+                  disabled={nricAiChecking || nricAiVerified}
                 >
-                  {nricAiVerified ? 'AI check completed' : nricAiChecking ? 'AI checking...' : 'Run AI NRIC check'}
+                  {nricAiVerified ? 'Verification completed' : nricAiChecking ? 'Verifying...' : 'Run NRIC verification'}
                 </Button>
-                {nricAiVerified ? null : nricAiFailureMode !== 'sign-in-only' ? (
+                {isQuestionnaireSgPrPath(flowState) && nricAiVerified ? (
+                  <Button variant="contained" onClick={continueQuestionnaireNricVerification}>
+                    Continue
+                  </Button>
+                ) : null}
+                {!isQuestionnaireSgPrPath(flowState) && !nricAiVerified && nricAiFailureMode !== 'sign-in-only' ? (
                   <Button variant="contained" color="inherit" onClick={continueAfterNricOtherOptions}>
                     Continue with other options
                   </Button>
@@ -3759,7 +5794,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
                 </Box>
               )}
 
-              {!!nricAiError && (
+              {!!nricAiError && !isQuestionnaireSgPrPath(flowState) && (
                 <Box
                   sx={(theme) => ({
                     p: 1.5,
@@ -5416,6 +7451,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
               {salesforceCopy.description}
             </Typography>
+            {isQuestionnaireCorporatePath(flowState) && flowState.companyVerifiedName && (
+              <Alert severity="success">
+                Company verified: <strong>{flowState.companyVerifiedName}</strong>
+                {flowState.companyVerifiedIndustry ? ` (${flowState.companyVerifiedIndustry})` : ''}
+              </Alert>
+            )}
             {flowState.salesforceSessionReady && !isHomeStudentMembershipApplicationFlow(flowState) && (
               <Alert severity="success">
                 Salesforce account linked. Continue to the membership application using the button below.
@@ -5445,6 +7486,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
             <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.75 }}>
               {(result.outcome === 'sp-pr-verified-login'
                 || result.outcome === 'ai-fluency-eligible'
+                || result.outcome === 'verified-nric-signup'
                 || salesforceAccountReady) && (
                 <Iconify icon="solar:verified-check-bold" width={20} style={{ color: '#16a34a' }} />
               )}
@@ -5460,10 +7502,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
                 Account created successfully.
               </Typography>
             )}
-            <Divider />
-            <Typography variant="caption" color="text.secondary">
-              Review complete. Continue to authentication.
-            </Typography>
+            {result.actionTarget !== 'close' && result.outcome !== 'verified-nric-signup' && (
+              <>
+                <Divider />
+                <Typography variant="caption" color="text.secondary">
+                  Review complete. Continue to authentication.
+                </Typography>
+              </>
+            )}
           </Stack>
         )}
       </DialogContent>
@@ -5518,7 +7564,33 @@ export function MembershipSignupDialog({ open, onClose, onContinue, entrySource 
               : 'Open membership application'}
           </Button>
         )}
-        {step === 'result' && (
+        {step === 'result' && result.outcome === 'student-fee-waiver' && (
+          <>
+            <Button
+              variant="outlined"
+              color="inherit"
+              size="large"
+              onClick={handleStudentFeeWaiverEservicesLogin}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+            >
+              {result.secondaryCtaLabel || 'eServices login'}
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              onClick={handleResultAction}
+              autoFocus
+              sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700 }}
+            >
+              <Stack direction="row" alignItems="center" justifyContent="center" component="span" sx={{ width: 1 }}>
+                {resultCtaLabel}
+                <Iconify icon="solar:arrow-right-bold" width={20} sx={{ ml: 1 }} />
+              </Stack>
+            </Button>
+          </>
+        )}
+        {step === 'result' && result.outcome !== 'student-fee-waiver' && result.actionTarget !== 'close' && (
           <Button
             variant="contained"
             color="primary"
