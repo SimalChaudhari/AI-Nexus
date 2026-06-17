@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
@@ -13,6 +14,11 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import { RequiredMark } from 'src/utils/membership-form-required-mark';
 import { YES_NO_OPTIONS } from 'src/utils/membership-application-declaration';
 import { isExperiencedMembershipApplicationPathway } from 'src/utils/membership-application-pathway';
+import {
+  MEMBERSHIP_PICKLIST_CONFIG,
+  MembershipApplicationPicklistField,
+  useMembershipPicklist,
+} from 'src/sections/learning/membership-application-picklists';
 
 // ----------------------------------------------------------------------
 
@@ -87,12 +93,29 @@ export function MembershipApplicationDeclarationSection({
     const msg = fieldErrors[key];
     return msg ? { error: true, helperText: msg } : {};
   };
+  const cpeCompliancePicklist = useMembershipPicklist({
+    enabled: !isExperienced,
+    ...MEMBERSHIP_PICKLIST_CONFIG.cpeComplianceDeclaration,
+  });
 
   return (
     <Stack spacing={3} sx={{ width: 1 }}>
       {!applicationId && (
         <Alert severity="warning">
           Submit the Application tab first to obtain an application ID.
+        </Alert>
+      )}
+
+      {!isExperienced && cpeCompliancePicklist.error && (
+        <Alert
+          severity="error"
+          action={
+            <Button size="small" color="inherit" onClick={cpeCompliancePicklist.retry}>
+              Retry
+            </Button>
+          }
+        >
+          {cpeCompliancePicklist.error}
         </Alert>
       )}
 
@@ -195,10 +218,16 @@ export function MembershipApplicationDeclarationSection({
 
       {!isExperienced && (
         <>
-          <YesNoField
+          <MembershipApplicationPicklistField
             label="CPE compliance declaration"
+            required
+            size={fieldSize}
             value={declaration.cpeComplianceDeclaration}
-            onChange={(v) => update('cpeComplianceDeclaration', v)}
+            onChange={(e) => update('cpeComplianceDeclaration', e.target.value)}
+            options={cpeCompliancePicklist.options}
+            loading={cpeCompliancePicklist.loading}
+            onOpen={cpeCompliancePicklist.load}
+            fieldProps={fe('cpeComplianceDeclaration')}
           />
           {declaration.cpeComplianceDeclaration === 'No' && (
             <MembershipFormTextField

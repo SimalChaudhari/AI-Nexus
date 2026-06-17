@@ -74,6 +74,12 @@ import {
   seedExperiencedEmployedWorkExperience,
 } from 'src/utils/membership-application-employment';
 import {
+  MEMBERSHIP_PICKLIST_CONFIG,
+  MembershipApplicationPicklistField,
+  useMembershipPicklist,
+  useMembershipOrganisationNames,
+} from 'src/sections/learning/membership-application-picklists';
+import {
   EMPTY_QUALIFICATION_FORM,
   EMPTY_ACADEMIC_ENTRY,
   EMPTY_PROFESSIONAL_ENTRY,
@@ -155,7 +161,13 @@ function buildEmptyDraft(pathway) {
   const isExperienced = isExperiencedMembershipApplicationPathway(pathway);
   return {
     application: getEmptyApplicationForm(pathway),
-    personal: { salutation: 'Mr.', ...EMPTY_PERSONAL_FORM },
+    personal: {
+      salutation: 'Mr.',
+      ...EMPTY_PERSONAL_FORM,
+      voiceCalls: '',
+      textMessages: '',
+      faxMessages: '',
+    },
     workExperience: normalizeWorkExperienceForm(
       isExperienced
         ? seedExperiencedEmployedWorkExperience({
@@ -175,7 +187,10 @@ function buildEmptyDraft(pathway) {
     characterReference: { ...EMPTY_CHARACTER_REFERENCE_FORM },
     declaration: { ...EMPTY_DECLARATION_FORM },
     documentUpload: { ...EMPTY_DOCUMENT_UPLOAD_FORM },
-    residentialDeclaration: { ...EMPTY_RESIDENTIAL_DECLARATION_FORM },
+    residentialDeclaration: {
+      ...EMPTY_RESIDENTIAL_DECLARATION_FORM,
+      ...(isExperienced ? {} : { residentialDeclaration: '' }),
+    },
     billing: { ...EMPTY_BILLING_FORM },
   };
 }
@@ -265,7 +280,7 @@ function loadDraft(pathway = readMembershipApplicationPathway()) {
       ...emptyDraft.characterReference,
       ...parsed.characterReference,
     }),
-    declaration: { ...emptyDraft.declaration, ...parsed.declaration },
+    declaration: { ...emptyDraft.declaration, ...parsed.declaration },                                                                    
     documentUpload: {
       ...emptyDraft.documentUpload,
       ...parsed.documentUpload,
@@ -339,6 +354,78 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
   );
   const tabs = useMemo(() => getMembershipApplicationTabs(pathway), [pathway]);
   const isExperiencedPathway = isExperiencedMembershipApplicationPathway(pathway);
+  const companyTypePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.companyType,
+  });
+  const industryPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.industry,
+  });
+  const jobLevelPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.jobLevel,
+  });
+  const jobFunctionPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.jobFunction,
+  });
+  const citizenshipPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.citizenship,
+  });
+  const currentEmploymentStatusPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.currentEmploymentStatus,
+  });
+  const genderPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.gender,
+  });
+  const nationalityPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.nationality,
+  });
+  const maritalStatusPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.maritalStatus,
+  });
+  const idTypePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.idType,
+  });
+  const subscriptionPreferencePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.subscriptionPreference,
+  });
+  const communicationPreferencePicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.communicationPreference,
+  });
+  const professionalInterestPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.professionalInterest,
+  });
+  const voiceCallsPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.voiceCalls,
+  });
+  const textMessagesPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.textMessages,
+  });
+  const faxMessagesPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.faxMessages,
+  });
+  const qualificationMembershipStatusPicklist = useMembershipPicklist({
+    enabled: true,
+    ...MEMBERSHIP_PICKLIST_CONFIG.qualificationMembershipStatus,
+  });
+  const organisationNamesPicklist = useMembershipOrganisationNames({
+    enabled: true,
+    emptyErrorMessage: 'Organisation name options were not returned from Salesforce.',
+  });
   const salesforceSession = readMembershipSalesforceSession();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTabState] = useState(() => {
@@ -1581,8 +1668,37 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     );
   };
 
-  const renderPersonal = () => (
+  const renderPersonal = () => {
+    const personalPicklistErrors = [
+      citizenshipPicklist,
+      genderPicklist,
+      nationalityPicklist,
+      maritalStatusPicklist,
+      idTypePicklist,
+      subscriptionPreferencePicklist,
+      communicationPreferencePicklist,
+      professionalInterestPicklist,
+      voiceCallsPicklist,
+      textMessagesPicklist,
+      faxMessagesPicklist,
+    ].filter((picklist) => picklist.error);
+
+    return (
     <Grid container spacing={2.5}>
+      {personalPicklistErrors.map((picklist) => (
+        <Grid item xs={12} key={picklist.error}>
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={picklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {picklist.error}
+          </Alert>
+        </Grid>
+      ))}
       {renderSectionTitle('Application reference', true)}
       <Grid item xs={12} md={6}>
         <MembershipFormTextField
@@ -1637,22 +1753,17 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Gender"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.gender}
           onChange={(e) => updateSection('personal', 'gender', e.target.value)}
-          {...fieldProps('gender')}
-        >
-          {['Male', 'Female'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={genderPicklist.options}
+          loading={genderPicklist.loading}
+          onOpen={genderPicklist.load}
+          fieldProps={fieldProps('gender')}
+        />
       </Grid>
       <Grid item xs={12} md={8} lg={6}>
         <MembershipFormTextField
@@ -1680,57 +1791,55 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={3}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Marital status"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.maritalStatus}
           onChange={(e) => updateSection('personal', 'maritalStatus', e.target.value)}
-          {...fieldProps('maritalStatus')}
-        >
-          {['Single', 'Married', 'Divorced', 'Widowed'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
-      </Grid>
-      <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
-          label="Nationality"
-          required
-          size={fieldSize}
-          fullWidth
-          value={draft.personal.nationality}
-          onChange={(e) => updateSection('personal', 'nationality', e.target.value)}
-          placeholder="Enter nationality"
-          {...fieldProps('nationality')}
+          options={maritalStatusPicklist.options}
+          loading={maritalStatusPicklist.loading}
+          onOpen={maritalStatusPicklist.load}
+          fieldProps={fieldProps('maritalStatus')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
+          label="Nationality"
+          size={fieldSize}
+          required
+          value={draft.personal.nationality}
+          onChange={(e) => updateSection('personal', 'nationality', e.target.value)}
+          options={nationalityPicklist.options}
+          loading={nationalityPicklist.loading}
+          onOpen={nationalityPicklist.load}
+          fieldProps={fieldProps('nationality')}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} md={4} lg={2}>
+        <MembershipApplicationPicklistField
           label="Citizenship"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.citizenship}
           onChange={(e) => updateSection('personal', 'citizenship', e.target.value)}
-          placeholder="Enter citizenship"
-          {...fieldProps('citizenship')}
+          options={citizenshipPicklist.options}
+          loading={citizenshipPicklist.loading}
+          onOpen={citizenshipPicklist.load}
+          fieldProps={fieldProps('citizenship')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={4} lg={2}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="ID type"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.idType}
           onChange={(e) => updateSection('personal', 'idType', e.target.value)}
-          placeholder="e.g. Pink NRIC"
-          {...fieldProps('idType')}
+          options={idTypePicklist.options}
+          loading={idTypePicklist.loading}
+          onOpen={idTypePicklist.load}
+          fieldProps={fieldProps('idType')}
         />
       </Grid>
       <Grid item xs={12} sm={6} md={6} lg={3}>
@@ -1977,105 +2086,92 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
       {renderSectionTitle('Preferences')}
       <Grid item xs={12} md={6}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="Subscription preference"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.subscriptionPreference}
           onChange={(e) => updateSection('personal', 'subscriptionPreference', e.target.value)}
-          placeholder="Monthly Chartered Accountants Lab;ISCAccountify Bulletin"
-          {...fieldProps('subscriptionPreference')}
+          options={subscriptionPreferencePicklist.options}
+          loading={subscriptionPreferencePicklist.loading}
+          onOpen={subscriptionPreferencePicklist.load}
+          fieldProps={fieldProps('subscriptionPreference')}
         />
       </Grid>
       <Grid item xs={12} md={6}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="Communication preference"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.communicationPreference}
           onChange={(e) => updateSection('personal', 'communicationPreference', e.target.value)}
-          {...fieldProps('communicationPreference')}
+          options={communicationPreferencePicklist.options}
+          loading={communicationPreferencePicklist.loading}
+          onOpen={communicationPreferencePicklist.load}
+          fieldProps={fieldProps('communicationPreference')}
         />
       </Grid>
       <Grid item xs={12}>
-        <MembershipFormTextField
+        <MembershipApplicationPicklistField
           label="Professional interest"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.professionalInterest}
           onChange={(e) => updateSection('personal', 'professionalInterest', e.target.value)}
-          placeholder="Risk Management;Taxation"
-          {...fieldProps('professionalInterest')}
+          options={professionalInterestPicklist.options}
+          loading={professionalInterestPicklist.loading}
+          onOpen={professionalInterestPicklist.load}
+          fieldProps={fieldProps('professionalInterest')}
         />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Voice calls"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.voiceCalls}
           onChange={(e) => updateSection('personal', 'voiceCalls', e.target.value)}
-          {...fieldProps('voiceCalls')}
-        >
-          {['Yes', 'No'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={voiceCallsPicklist.options}
+          loading={voiceCallsPicklist.loading}
+          onOpen={voiceCallsPicklist.load}
+          fieldProps={fieldProps('voiceCalls')}
+        />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Text messages"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.textMessages}
           onChange={(e) => updateSection('personal', 'textMessages', e.target.value)}
-          {...fieldProps('textMessages')}
-        >
-          {['Yes', 'No'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={textMessagesPicklist.options}
+          loading={textMessagesPicklist.loading}
+          onOpen={textMessagesPicklist.load}
+          fieldProps={fieldProps('textMessages')}
+        />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <MembershipFormTextField
-          select
+        <MembershipApplicationPicklistField
           label="Fax messages"
           size={fieldSize}
-          fullWidth
           required
           value={draft.personal.faxMessages}
           onChange={(e) => updateSection('personal', 'faxMessages', e.target.value)}
-          {...fieldProps('faxMessages')}
-        >
-          {['Yes', 'No'].map((o) => (
-            <MenuItem key={o} value={o}>
-              {o}
-            </MenuItem>
-          ))}
-        </MembershipFormTextField>
+          options={faxMessagesPicklist.options}
+          loading={faxMessagesPicklist.loading}
+          onOpen={faxMessagesPicklist.load}
+          fieldProps={fieldProps('faxMessages')}
+        />
       </Grid>
     </Grid>
-  );
+    );
+  };
 
   const renderWorkExperience = () => {
     const work = normalizeWorkExperienceForm(draft.workExperience);
     const requiresCurrent = requiresCurrentWorkExperience(draft.workExperience.currentEmploymentStatus);
     const currentRows = work.currentWorkExperience || [];
     const previousRows = work.previousWorkExperience || [];
-    const employmentStatusOptions = isExperiencedPathway
-      ? ['Employed', 'Self-employed', 'Unemployed', 'Retired']
-      : ['Student', 'Employed', 'Self-employed', 'Unemployed', 'Retired'];
 
     const renderExperienceRows = ({
       kind,
@@ -2145,41 +2241,47 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
               }}
             >
               <Grid item xs={12} md={6}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Organisation name"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.organisationName}
                   onChange={(e) =>
                     updateWorkExperienceList(listKey, index, 'organisationName', e.target.value)
                   }
-                  {...fieldProps(`${fieldPrefix}_organisationName`)}
+                  options={organisationNamesPicklist.options}
+                  loading={organisationNamesPicklist.loading}
+                  onOpen={organisationNamesPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_organisationName`)}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Organisation type"
                   size={fieldSize}
-                  fullWidth
-                  value={row.organisationType || ''}
+                  value={row.organisationType}
                   onChange={(e) =>
                     updateWorkExperienceList(listKey, index, 'organisationType', e.target.value)
                   }
-                  placeholder="Public Accounting Firms (EY / Deloitte / KPMG / PwC)"
+                  options={companyTypePicklist.options}
+                  loading={companyTypePicklist.loading}
+                  onOpen={companyTypePicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_organisationType`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Industry"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.industry}
                   onChange={(e) =>
                     updateWorkExperienceList(listKey, index, 'industry', e.target.value)
                   }
-                  {...fieldProps(`${fieldPrefix}_industry`)}
+                  options={industryPicklist.options}
+                  loading={industryPicklist.loading}
+                  onOpen={industryPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_industry`)}
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
@@ -2196,31 +2298,33 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
                 />
               </Grid>
               <Grid item xs={12} sm={6} lg={4}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Job level"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.jobLevel}
                   onChange={(e) =>
                     updateWorkExperienceList(listKey, index, 'jobLevel', e.target.value)
                   }
-                  placeholder="Middle Management"
-                  {...fieldProps(`${fieldPrefix}_jobLevel`)}
+                  options={jobLevelPicklist.options}
+                  loading={jobLevelPicklist.loading}
+                  onOpen={jobLevelPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_jobLevel`)}
                 />
               </Grid>
               <Grid item xs={12} sm={showPeriodTo ? 4 : 6} md={showPeriodTo ? 4 : 6}>
-                <MembershipFormTextField
+                <MembershipApplicationPicklistField
                   label="Job function"
                   size={fieldSize}
-                  fullWidth
                   required
                   value={row.jobFunction}
                   onChange={(e) =>
                     updateWorkExperienceList(listKey, index, 'jobFunction', e.target.value)
                   }
-                  placeholder="Investment Analysis"
-                  {...fieldProps(`${fieldPrefix}_jobFunction`)}
+                  options={jobFunctionPicklist.options}
+                  loading={jobFunctionPicklist.loading}
+                  onOpen={jobFunctionPicklist.load}
+                  fieldProps={fieldProps(`${fieldPrefix}_jobFunction`)}
                 />
               </Grid>
               <Grid item xs={12} sm={showPeriodTo ? 4 : 6} md={showPeriodTo ? 4 : 6}>
@@ -2360,6 +2464,84 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
           Application ID: {resolveApplicationId() || '— submit Application tab first'}
         </Alert>
 
+        {companyTypePicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={companyTypePicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {companyTypePicklist.error}
+          </Alert>
+        )}
+
+        {industryPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={industryPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {industryPicklist.error}
+          </Alert>
+        )}
+
+        {jobLevelPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={jobLevelPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {jobLevelPicklist.error}
+          </Alert>
+        )}
+
+        {jobFunctionPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={jobFunctionPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {jobFunctionPicklist.error}
+          </Alert>
+        )}
+
+        {currentEmploymentStatusPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={currentEmploymentStatusPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {currentEmploymentStatusPicklist.error}
+          </Alert>
+        )}
+
+        {organisationNamesPicklist.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" color="inherit" onClick={organisationNamesPicklist.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {organisationNamesPicklist.error}
+          </Alert>
+        )}
+
         <MembershipFormSectionTitleBlock
           title={requiresCurrent ? 'Current employment' : 'Employment status'}
           firstSection
@@ -2368,24 +2550,19 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={requiresCurrent ? 6 : 12}>
-            <MembershipFormTextField
-              select
+            <MembershipApplicationPicklistField
               label="Current employment status"
               size={fieldSize}
-              fullWidth
               required
               value={draft.workExperience.currentEmploymentStatus}
               onChange={(e) =>
                 updateSection('workExperience', 'currentEmploymentStatus', e.target.value)
               }
-              {...fieldProps('currentEmploymentStatus')}
-            >
-              {employmentStatusOptions.map((o) => (
-                <MenuItem key={o} value={o}>
-                  {o}
-                </MenuItem>
-              ))}
-            </MembershipFormTextField>
+              options={currentEmploymentStatusPicklist.options}
+              loading={currentEmploymentStatusPicklist.loading}
+              onOpen={currentEmploymentStatusPicklist.load}
+              fieldProps={fieldProps('currentEmploymentStatus')}
+            />
           </Grid>
           {requiresCurrent && (
             <Grid item xs={12} md={6}>
@@ -2480,6 +2657,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
       pathway={pathway}
       submittedTabs={draft.submittedTabs}
       submittingSection={submittingTab}
+      membershipStatusPicklist={qualificationMembershipStatusPicklist}
       onUpdateAcademic={(index, field, value) =>
         updateQualificationList('academic', index, field, value)
       }
@@ -2511,6 +2689,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationCharacterReferenceSection
       characterReference={draft.characterReference}
       applicationId={resolveApplicationId()}
+      pathway={pathway}
       fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('characterReference', field, value)}
     />
@@ -2543,6 +2722,7 @@ export function MembershipApplicationForm({ onAllTabsSubmitted, fullPage = false
     <MembershipApplicationResidentialDeclarationSection
       residentialDeclaration={draft.residentialDeclaration}
       applicationId={resolveApplicationId()}
+      pathway={pathway}
       fieldErrors={tabFieldErrors}
       onUpdate={(field, value) => updateSection('residentialDeclaration', field, value)}
     />

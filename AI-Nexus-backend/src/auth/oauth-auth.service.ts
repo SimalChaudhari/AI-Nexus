@@ -11,6 +11,13 @@ import {
   type OAuthApplicationApiRouteKey,
 } from '../config/oauth-application-api.config';
 import {
+  MEMBERSHIP_PICKLIST_DEFINITIONS,
+  MEMBERSHIP_PICKLIST_KEY_VALUES,
+  getMembershipPicklistApiVersion,
+  getMembershipPicklistDefinition,
+  type MembershipPicklistKey,
+} from './membership-application/picklists';
+import {
   buildOAuthStudentMembershipApiUrl,
   type OAuthStudentMembershipApiRouteKey,
 } from '../config/oauth-student-membership-api.config';
@@ -275,6 +282,14 @@ export class OAuthAuthService {
 
   get applicationCreateBillingUrl(): string {
     return this.resolveApplicationApiUrl('createBilling');
+  }
+
+  get applicationOrganisationNamesUrl(): string {
+    return this.resolveApplicationApiUrl('organisationNames');
+  }
+
+  get applicationAccountancyBodyNamesUrl(): string {
+    return this.resolveApplicationApiUrl('accountancyBodyNames');
   }
 
   private resolveStudentMembershipApiUrl(
@@ -939,6 +954,327 @@ export class OAuthAuthService {
       }
       throw err;
     }
+  }
+
+  private decodeSalesforceUiLabel(value: string): string {
+    return String(value || '')
+      .replace(/&gt;/g, '>')
+      .replace(/&lt;/g, '<')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
+  private getMembershipPicklistPath(definition: {
+    objectName: string;
+    recordTypeId: string;
+    field: string;
+  }): string {
+    const apiVersion = getMembershipPicklistApiVersion();
+    return `/services/data/${apiVersion}/ui-api/object-info/${definition.objectName}/picklist-values/${definition.recordTypeId}/${definition.field}`;
+  }
+
+  private buildMembershipPicklistUrl(
+    baseUrl: string,
+    definition: { objectName: string; recordTypeId: string; field: string },
+  ): string {
+    const normalizedBase = baseUrl.replace(/\/$/, '');
+    return `${normalizedBase}${this.getMembershipPicklistPath(definition)}`;
+  }
+
+  private parseEmploymentPicklistResponse(data: unknown): Array<{ label: string; value: string }> {
+    const record = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const values = Array.isArray(record.values) ? record.values : [];
+    return values
+      .map((entry) => {
+        const item = entry as { label?: string; value?: string };
+        const rawValue = String(item?.value || item?.label || '').trim();
+        if (!rawValue) return null;
+        const decoded = this.decodeSalesforceUiLabel(rawValue);
+        return { label: decoded, value: decoded };
+      })
+      .filter((entry): entry is { label: string; value: string } => Boolean(entry));
+  }
+
+  private async fetchEmploymentPicklistWithToken(
+    url: string,
+    token: string,
+  ): Promise<Array<{ label: string; value: string }>> {
+    const res = await axios.get<{ values?: Array<{ label?: string; value?: string }> }>(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      timeout: 30000,
+    });
+    return this.parseEmploymentPicklistResponse(res.data);
+  }
+
+  /** Membership application Salesforce UI API picklists. */
+  async getMembershipPicklist(
+    socialAccessToken: string,
+    picklistKey: MembershipPicklistKey,
+  ): Promise<Array<{ label: string; value: string }>> {
+    if (!MEMBERSHIP_PICKLIST_KEY_VALUES.includes(picklistKey)) {
+      throw new BadRequestException('Unsupported picklist key.');
+    }
+
+    const definition = getMembershipPicklistDefinition(picklistKey);
+    const { emptyMessage, failureMessage } = definition;
+    const attempts: Array<{ label: string; url: string; token: string | Promise<string> }> = [];
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim()?.replace(/\/$/, '');
+    const integrationBase =
+      process.env.OAUTH_INTEGRATION_INSTANCE_URL?.trim()?.replace(/\/$/, '')
+      || this.integrationApiBaseUrl;
+
+    if (socialAccessToken?.trim()) {
+      attempts.push({
+        label: 'social-site',
+        url: this.buildMembershipPicklistUrl(siteBase || integrationBase, definition),
+        token: this.requireSalesforceSocialAccessToken(socialAccessToken),
+      });
+    }
+
+    attempts.push({
+      label: 'integration-core',
+      url: this.buildMembershipPicklistUrl(integrationBase, definition),
+      token: this.getIntegrationAccessToken(),
+    });
+
+    if (siteBase) {
+      attempts.push({
+        label: 'integration-site',
+        url: this.buildMembershipPicklistUrl(siteBase, definition),
+        token: this.getIntegrationAccessToken(),
+      });
+    }
+
+    let lastError: unknown;
+
+    for (const attempt of attempts) {
+      try {
+        const token = await attempt.token;
+        console.log('[Salesforce] Fetching membership picklist:', {
+          attempt: attempt.label,
+          picklistKey,
+          field: definition.field,
+          url: attempt.url,
+        });
+        const options = await this.fetchEmploymentPicklistWithToken(attempt.url, token);
+        if (!options.length) {
+          throw new BadRequestException(emptyMessage);
+        }
+        return options;
+      } catch (err: unknown) {
+        lastError = err;
+        if (axios.isAxiosError(err)) {
+          console.error('[Salesforce] membership picklist failed:', {
+            attempt: attempt.label,
+            picklistKey,
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+          });
+        }
+      }
+    }
+
+    if (axios.isAxiosError(lastError)) {
+      this.throwMappedSalesforceApplicationApiError(lastError, failureMessage);
+    }
+
+    if (lastError instanceof BadRequestException) {
+      throw lastError;
+    }
+
+    throw new BadRequestException(failureMessage);
+  }
+
+  private parseOrganisationNameResponse(
+    data: unknown,
+  ): Array<{ label: string; value: string; id: string | null }> {
+    const record = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const rows = Array.isArray(record.data) ? record.data : [];
+    const options: Array<{ label: string; value: string; id: string | null }> = [];
+
+    for (const entry of rows) {
+      const item = entry as { name?: string; id?: string | null };
+      const name = String(item?.name || '').trim();
+      if (!name) continue;
+      options.push({
+        label: name,
+        value: name,
+        id: item?.id ?? null,
+      });
+    }
+
+    return options;
+  }
+
+  /** GET ApplicationAPI/getOrganisationNameForNexus — employment organisation names. */
+  async getOrganisationNamesForNexus(
+    socialAccessToken: string,
+  ): Promise<Array<{ label: string; value: string; id: string | null }>> {
+    const url = this.applicationOrganisationNamesUrl;
+    const attempts: Array<{ label: string; token: string | Promise<string> }> = [];
+
+    if (socialAccessToken?.trim()) {
+      attempts.push({
+        label: 'social',
+        token: this.requireSalesforceSocialAccessToken(socialAccessToken),
+      });
+    }
+
+    attempts.push({
+      label: 'integration',
+      token: this.getIntegrationAccessToken(),
+    });
+
+    let lastError: unknown;
+
+    for (const attempt of attempts) {
+      try {
+        const token = await attempt.token;
+        console.log('[Salesforce] Fetching organisation names:', { attempt: attempt.label, url });
+        const res = await axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          timeout: 30000,
+        });
+        const options = this.parseOrganisationNameResponse(res.data);
+        if (!options.length) {
+          throw new BadRequestException('Organisation name options were not returned from Salesforce.');
+        }
+        return options;
+      } catch (err: unknown) {
+        lastError = err;
+        if (axios.isAxiosError(err)) {
+          console.error('[Salesforce] organisation names failed:', {
+            attempt: attempt.label,
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+          });
+        }
+      }
+    }
+
+    if (axios.isAxiosError(lastError)) {
+      this.throwMappedSalesforceApplicationApiError(
+        lastError,
+        'Failed to load organisation name options from Salesforce.',
+      );
+    }
+
+    if (lastError instanceof BadRequestException) {
+      throw lastError;
+    }
+
+    throw new BadRequestException('Failed to load organisation name options from Salesforce.');
+  }
+
+  private parseAccountancyBodyNameResponse(
+    data: unknown,
+  ): Array<{ label: string; value: string; id: string | null }> {
+    const record = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const rows = Array.isArray(record.data) ? record.data : [];
+    const options: Array<{ label: string; value: string; id: string | null }> = [];
+
+    for (const entry of rows) {
+      const item = entry as { institutionName?: string; id?: string | null };
+      const institutionName = String(item?.institutionName || '').trim();
+      const id = String(item?.id || '').trim();
+      if (!institutionName || !id) continue;
+      options.push({
+        label: institutionName,
+        value: id,
+        id,
+      });
+    }
+
+    return options;
+  }
+
+  /** GET ApplicationAPI/getNameOfAccountancyBodyForNexus — character reference accountancy bodies. */
+  async getAccountancyBodyNamesForNexus(
+    socialAccessToken: string,
+  ): Promise<Array<{ label: string; value: string; id: string | null }>> {
+    const url = this.applicationAccountancyBodyNamesUrl;
+    const attempts: Array<{ label: string; token: string | Promise<string> }> = [];
+
+    if (socialAccessToken?.trim()) {
+      attempts.push({
+        label: 'social',
+        token: this.requireSalesforceSocialAccessToken(socialAccessToken),
+      });
+    }
+
+    attempts.push({
+      label: 'integration',
+      token: this.getIntegrationAccessToken(),
+    });
+
+    let lastError: unknown;
+
+    for (const attempt of attempts) {
+      try {
+        const token = await attempt.token;
+        console.log('[Salesforce] Fetching accountancy body names:', { attempt: attempt.label, url });
+        const res = await axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          timeout: 30000,
+        });
+        const options = this.parseAccountancyBodyNameResponse(res.data);
+        if (!options.length) {
+          throw new BadRequestException(
+            'Accountancy body options were not returned from Salesforce.',
+          );
+        }
+        return options;
+      } catch (err: unknown) {
+        lastError = err;
+        if (axios.isAxiosError(err)) {
+          console.error('[Salesforce] accountancy body names failed:', {
+            attempt: attempt.label,
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+          });
+        }
+      }
+    }
+
+    if (axios.isAxiosError(lastError)) {
+      this.throwMappedSalesforceApplicationApiError(
+        lastError,
+        'Failed to load accountancy body options from Salesforce.',
+      );
+    }
+
+    if (lastError instanceof BadRequestException) {
+      throw lastError;
+    }
+
+    throw new BadRequestException('Failed to load accountancy body options from Salesforce.');
+  }
+
+  /** @deprecated Use getMembershipPicklist */
+  async getEmploymentPicklist(
+    socialAccessToken: string,
+    fieldName: string,
+  ): Promise<Array<{ label: string; value: string }>> {
+    const entry = Object.entries(MEMBERSHIP_PICKLIST_DEFINITIONS).find(
+      ([, definition]) => definition.field === fieldName,
+    );
+    if (!entry) {
+      throw new BadRequestException('Unsupported employment picklist field.');
+    }
+    return this.getMembershipPicklist(socialAccessToken, entry[0] as MembershipPicklistKey);
   }
 
   /**

@@ -1,15 +1,17 @@
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
-import MenuItem from '@mui/material/MenuItem';
+import Button from '@mui/material/Button';
 import { MembershipFormTextField } from 'src/components/membership-form-textfield';
 import { MembershipFormSectionTitleBlock } from 'src/components/membership-form-section-title';
 import Typography from '@mui/material/Typography';
 
+import { RECORD_TYPE_CA_APPLICATION } from 'src/utils/membership-application-create';
 import {
-  ACCOUNTING_QUALIFICATION_OPTIONS,
-  RECORD_TYPE_CA_APPLICATION,
-} from 'src/utils/membership-application-create';
+  MEMBERSHIP_PICKLIST_CONFIG,
+  MembershipApplicationPicklistField,
+  useMembershipPicklist,
+} from 'src/sections/learning/membership-application-picklists';
 import {
   getExperiencedMemberTypeLabel,
   isExperiencedMembershipApplicationPathway,
@@ -36,6 +38,10 @@ export function MembershipApplicationCreateSection({
     return msg ? { error: true, helperText: msg } : {};
   };
   const experiencedMemberTypeLabel = getExperiencedMemberTypeLabel(application.experiencedMemberType);
+  const accountingQualificationPicklist = useMembershipPicklist({
+    enabled: !isExperienced,
+    ...MEMBERSHIP_PICKLIST_CONFIG.accountingQualification,
+  });
 
   return (
     <Stack spacing={3}>
@@ -43,6 +49,19 @@ export function MembershipApplicationCreateSection({
         Create your Salesforce application record first. The application ID returned here is
         required for all following tabs.
       </Alert>
+
+      {!isExperienced && accountingQualificationPicklist.error && (
+        <Alert
+          severity="error"
+          action={
+            <Button size="small" color="inherit" onClick={accountingQualificationPicklist.retry}>
+              Retry
+            </Button>
+          }
+        >
+          {accountingQualificationPicklist.error}
+        </Alert>
+      )}
 
       <MembershipFormSectionTitleBlock title="Application details" firstSection />
 
@@ -95,23 +114,18 @@ export function MembershipApplicationCreateSection({
           ) : null
         ) : (
           <Grid item xs={12} md={6}>
-            <MembershipFormTextField
-              select
+            <MembershipApplicationPicklistField
               label="Accounting qualification"
               required
               size={fieldSize}
-              fullWidth
               disabled={created}
               value={application.accountingQualification}
               onChange={(e) => update('accountingQualification', e.target.value)}
-              {...fe('accountingQualification')}
-            >
-              {ACCOUNTING_QUALIFICATION_OPTIONS.map((opt) => (
-                <MenuItem key={opt} value={opt}>
-                  {opt}
-                </MenuItem>
-              ))}
-            </MembershipFormTextField>
+              options={accountingQualificationPicklist.options}
+              loading={accountingQualificationPicklist.loading}
+              onOpen={accountingQualificationPicklist.load}
+              fieldProps={fe('accountingQualification')}
+            />
           </Grid>
         )}
       </Grid>

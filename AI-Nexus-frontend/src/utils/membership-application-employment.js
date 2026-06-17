@@ -47,7 +47,12 @@ export const EMPTY_WORK_EXPERIENCE_FORM = {
   previousWorkExperience: [],
 };
 
-export const EMPLOYMENT_STATUSES_WITHOUT_CURRENT = ['Student', 'Unemployed'];
+export const EMPLOYMENT_STATUSES_WITHOUT_CURRENT = [
+  'Student',
+  'Unemployed',
+  'Not Employed',
+  'Retired',
+];
 
 export function requiresCurrentWorkExperience(status) {
   return !EMPLOYMENT_STATUSES_WITHOUT_CURRENT.includes(String(status || '').trim());

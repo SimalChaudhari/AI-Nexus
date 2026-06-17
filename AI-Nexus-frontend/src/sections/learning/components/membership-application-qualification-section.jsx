@@ -16,6 +16,7 @@ import TableContainer from '@mui/material/TableContainer';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { MembershipApplicationPicklistField } from 'src/sections/learning/membership-application-picklists';
 import { MembershipFormCountrySelect } from 'src/components/membership-form-country-select';
 import {
   DEFAULT_MEMBERSHIP_COUNTRY,
@@ -138,6 +139,7 @@ export function MembershipApplicationQualificationSection({
   pathway,
   submittedTabs = {},
   submittingSection = '',
+  membershipStatusPicklist,
   onUpdateAcademic,
   onUpdateProfessional,
   onUpdateAto,
@@ -170,6 +172,18 @@ export function MembershipApplicationQualificationSection({
       <Alert severity="info" sx={{ py: 0.5 }}>
         Application ID: {applicationId || '— submit Application tab first'}
       </Alert>
+      {membershipStatusPicklist?.error && (
+        <Alert
+          severity="error"
+          action={(
+            <Button size="small" color="inherit" onClick={membershipStatusPicklist.retry}>
+              Retry
+            </Button>
+          )}
+        >
+          {membershipStatusPicklist.error}
+        </Alert>
+      )}
 
       <Box sx={tablePaperSx}>
         <Box sx={{ px: 2, pt: 2 }}>
@@ -475,15 +489,18 @@ export function MembershipApplicationQualificationSection({
                         />
                       </TableCell>
                       <TableCell>
-                        <TextField
+                        <MembershipApplicationPicklistField
+                          label=""
                           size={fieldSize}
-                          fullWidth
                           required
                           value={row.membershipStatus}
                           onChange={(e) =>
                             onUpdateOpb(index, 'membershipStatus', e.target.value)
                           }
-                          placeholder="Fellow"
+                          options={membershipStatusPicklist?.options || []}
+                          loading={Boolean(membershipStatusPicklist?.loading)}
+                          onOpen={membershipStatusPicklist?.load}
+                          fieldProps={{ placeholder: 'Fellow' }}
                         />
                       </TableCell>
                       <TableCell>
@@ -568,13 +585,16 @@ export function MembershipApplicationQualificationSection({
                           />
                         </TableCell>
                         <TableCell>
-                          <TextField
+                          <MembershipApplicationPicklistField
+                            label=""
                             size={fieldSize}
-                            fullWidth
                             value={row.membershipStatus}
                             onChange={(e) =>
                               onUpdateAto(index, 'membershipStatus', e.target.value)
                             }
+                            options={membershipStatusPicklist?.options || []}
+                            loading={Boolean(membershipStatusPicklist?.loading)}
+                            onOpen={membershipStatusPicklist?.load}
                           />
                         </TableCell>
                         <TableCell>
@@ -675,15 +695,18 @@ export function MembershipApplicationQualificationSection({
                           />
                         </TableCell>
                         <TableCell>
-                          <TextField
+                          <MembershipApplicationPicklistField
+                            label=""
                             size={fieldSize}
-                            fullWidth
                             required
                             value={row.membershipStatus}
                             onChange={(e) =>
                               onUpdateOpb(index, 'membershipStatus', e.target.value)
                             }
-                            placeholder="Fellow"
+                            options={membershipStatusPicklist?.options || []}
+                            loading={Boolean(membershipStatusPicklist?.loading)}
+                            onOpen={membershipStatusPicklist?.load}
+                            fieldProps={{ placeholder: 'Fellow' }}
                           />
                         </TableCell>
                         <TableCell>

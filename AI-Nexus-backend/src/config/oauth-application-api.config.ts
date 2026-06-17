@@ -24,6 +24,8 @@ export const OAUTH_APPLICATION_API_ROUTES = {
   uploadDocument: 'uploadDocumentNexus',
   checkoutDetails: 'getCheckoutDetailsForNexus',
   createBilling: 'createBillingNexus',
+  organisationNames: 'getOrganisationNameForNexus',
+  accountancyBodyNames: 'getNameOfAccountancyBodyForNexus',
 } as const;
 
 export type OAuthApplicationApiRouteKey = keyof typeof OAUTH_APPLICATION_API_ROUTES;
@@ -43,6 +45,8 @@ const ROUTE_PATH_ENV: Record<OAuthApplicationApiRouteKey, string> = {
   uploadDocument: 'OAUTH_APPLICATION_API_ROUTE_UPLOAD_DOCUMENT',
   checkoutDetails: 'OAUTH_APPLICATION_API_ROUTE_CHECKOUT_DETAILS',
   createBilling: 'OAUTH_APPLICATION_API_ROUTE_CREATE_BILLING',
+  organisationNames: 'OAUTH_APPLICATION_API_ROUTE_ORGANISATION_NAMES',
+  accountancyBodyNames: 'OAUTH_APPLICATION_API_ROUTE_ACCOUNTANCY_BODY_NAMES',
 };
 
 /** @deprecated Legacy full-URL env vars — prefer OAUTH_INSTANCE_URL + routes above. */
@@ -61,6 +65,8 @@ const LEGACY_FULL_URL_ENV: Partial<Record<OAuthApplicationApiRouteKey, string>> 
   uploadDocument: 'OAUTH_APPLICATION_UPLOAD_DOCUMENT_URL',
   checkoutDetails: 'OAUTH_APPLICATION_CHECKOUT_DETAILS_URL',
   createBilling: 'OAUTH_APPLICATION_CREATE_BILLING_URL',
+  organisationNames: 'OAUTH_APPLICATION_ORGANISATION_NAMES_URL',
+  accountancyBodyNames: 'OAUTH_APPLICATION_ACCOUNTANCY_BODY_NAMES_URL',
 };
 
 function normalizeLeadingSlash(path: string): string {

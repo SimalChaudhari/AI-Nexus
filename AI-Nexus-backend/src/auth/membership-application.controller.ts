@@ -4,7 +4,8 @@ import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OAuthAuthService } from './oauth-auth.service';
 import { CreateApplicationNexusDto } from './membership-application-create.dto';
 import { CreateApplicationPersonalDetailsDto } from './membership-application-personal.dto';
-import { CreateApplicationEmploymentDetailsDto } from './membership-application-employment.dto';
+import { CreateApplicationEmploymentDetailsDto, GetEmploymentPicklistOptionsDto, GetMembershipPicklistOptionsDto } from './membership-application-employment.dto';
+import { MEMBERSHIP_PICKLIST_KEYS } from './membership-application/picklists';
 import {
   CreateAcademicQualificationDto,
   CreateAtoMembershipDto,
@@ -106,6 +107,104 @@ export class MembershipApplicationController {
       success: true,
       message: 'Employment details submitted successfully.',
       salesforce,
+    });
+  }
+
+  @Post('picklist-options')
+  @ApiOperation({ summary: 'Load membership application Salesforce picklist values' })
+  @ApiBody({ type: GetMembershipPicklistOptionsDto })
+  async getMembershipPicklistOptions(
+    @Res() response: Response,
+    @Body() dto: GetMembershipPicklistOptionsDto,
+  ) {
+    const options = await this.oauthAuthService.getMembershipPicklist(
+      dto.socialAccessToken,
+      dto.picklistKey,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      picklistKey: dto.picklistKey,
+      options,
+    });
+  }
+
+  @Post('employment-picklist-options')
+  @ApiOperation({
+    summary: 'Load membership application picklist values (legacy employment endpoint)',
+  })
+  @ApiBody({ type: GetEmploymentPicklistOptionsDto })
+  async getEmploymentPicklistOptions(
+    @Res() response: Response,
+    @Body() dto: GetEmploymentPicklistOptionsDto,
+  ) {
+    const picklistKey =
+      dto.picklistKey
+      || (dto.field === 'Sector__c'
+        ? MEMBERSHIP_PICKLIST_KEYS.industry
+        : MEMBERSHIP_PICKLIST_KEYS.companyType);
+    const options = await this.oauthAuthService.getMembershipPicklist(
+      dto.socialAccessToken,
+      picklistKey,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      picklistKey,
+      options,
+    });
+  }
+
+  @Post('employment-company-type-options')
+  @ApiOperation({
+    summary:
+      'Load CA Work Experience organisation type picklist (Application_Employment_Detail__c.Company_Type__c)',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getEmploymentCompanyTypeOptions(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const options = await this.oauthAuthService.getMembershipPicklist(
+      dto.socialAccessToken,
+      MEMBERSHIP_PICKLIST_KEYS.companyType,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      picklistKey: MEMBERSHIP_PICKLIST_KEYS.companyType,
+      options,
+    });
+  }
+
+  @Post('organisation-name-options')
+  @ApiOperation({ summary: 'Load employment organisation names from Salesforce ApplicationAPI' })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getOrganisationNameOptions(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const options = await this.oauthAuthService.getOrganisationNamesForNexus(
+      dto.socialAccessToken,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      options,
+    });
+  }
+
+  @Post('accountancy-body-name-options')
+  @ApiOperation({
+    summary: 'Load character reference accountancy body names from Salesforce ApplicationAPI',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async getAccountancyBodyNameOptions(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const options = await this.oauthAuthService.getAccountancyBodyNamesForNexus(
+      dto.socialAccessToken,
+    );
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      options,
     });
   }
 
