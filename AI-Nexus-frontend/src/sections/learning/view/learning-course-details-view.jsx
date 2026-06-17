@@ -1134,25 +1134,55 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                         <AccordionSummary
                           expandIcon={<Iconify icon="solar:alt-arrow-down-bold" width={20} />}
                           sx={{
-                            px: 2,
+                            px: { xs: 1.5, sm: 2 },
                             py: 1.5,
                             minHeight: 48,
                             '& .MuiAccordionSummary-content': {
                               my: 0,
+                              minWidth: 0,
+                              mr: 1,
+                              overflow: 'hidden',
+                            },
+                            '& .MuiAccordionSummary-expandIconWrapper': {
+                              flexShrink: 0,
                             },
                             '&.Mui-expanded': {
                               minHeight: 48,
                             },
                           }}
                         >
-                          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%', pr: 2 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                              {moduleIndex + 1}. {module.title}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                              {moduleSectionCount} {moduleSectionCount === 1 ? 'Lesson' : 'Lesson(s)'}
-                            </Typography>
-                          </Stack>
+                          <Box sx={{ width: '100%', minWidth: 0 }}>
+                            <Stack
+                              direction={{ xs: 'column', sm: 'row' }}
+                              alignItems={{ xs: 'flex-start', sm: 'center' }}
+                              justifyContent="space-between"
+                              spacing={{ xs: 0.25, sm: 1 }}
+                              sx={{ width: '100%' }}
+                            >
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  fontWeight: 600,
+                                  flex: { sm: 1 },
+                                  minWidth: 0,
+                                  wordBreak: 'break-word',
+                                  lineHeight: 1.4,
+                                }}
+                              >
+                                {moduleIndex + 1}. {module.title}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  color: 'text.secondary',
+                                  flexShrink: 0,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {moduleSectionCount} {moduleSectionCount === 1 ? 'Lesson' : 'Lesson(s)'}
+                              </Typography>
+                            </Stack>
+                          </Box>
                         </AccordionSummary>
                         <AccordionDetails sx={{ pt: 0, pb: 1.5, px: 2 }}>
                           <Stack spacing={1}>
