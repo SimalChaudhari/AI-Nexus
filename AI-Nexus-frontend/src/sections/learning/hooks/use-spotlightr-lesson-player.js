@@ -771,15 +771,22 @@ export function useSpotlightrLessonPlayer({
     }
 
     const prog = spotlightrProgressRef.current;
-    prog.lastTime = Math.max(prog.lastTime || 0, resumeSeconds);
+    const livePosition = Math.max(prog.lastTime || 0, prog.maxWatchedTimeline || 0);
+    prog.lastTime = Math.max(livePosition, resumeSeconds);
     prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline || 0, resumeSeconds);
 
-    const iframe = spotlightrContainerRef.current?.querySelector('iframe');
-    if (iframe && !/[?&]s=\d+/i.test(String(iframe.src || ''))) {
-      iframe.src = buildSpotlightrEmbedUrl(spotlightrMeta.watchUrl, resumeSeconds);
-      resumeOnceRef.current = false;
-      resumeMeta.applied = false;
+    // Late-arriving progress only: never reload the iframe after playback has started
+    // (e.g. SWR revalidate on tab focus would otherwise restart the video).
+    if (resumeMeta.applied || prog.isPlaying || livePosition > resumeSeconds + 1) {
+      return undefined;
     }
+
+    const iframe = spotlightrContainerRef.current?.querySelector('iframe');
+    if (!iframe || /[?&]s=\d+/i.test(String(iframe.src || ''))) {
+      return undefined;
+    }
+
+    iframe.src = buildSpotlightrEmbedUrl(spotlightrMeta.watchUrl, resumeSeconds);
 
     return undefined;
   }, [

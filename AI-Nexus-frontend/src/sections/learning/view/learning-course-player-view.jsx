@@ -1244,12 +1244,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         watchedCoverageRanges: payload.watchedCoverageRanges,
       };
 
-      if (!useKeepalive) {
-        setLiveSectionProgressMap((prev) => ({
-          ...prev,
-          [sectionId]: mergeServerProgressIntoMap(prev[sectionId], payload),
-        }));
-      }
+      setLiveSectionProgressMap((prev) => ({
+        ...prev,
+        [sectionId]: mergeServerProgressIntoMap(prev[sectionId], payload),
+      }));
 
       const req = sendProgressUpdate(courseId, sectionId, payload, useKeepalive, useKeepalive);
 
@@ -1375,6 +1373,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [modules]
   );
   flatLessonsRef.current = flatLessons;
+  const modulesRef = useRef(modules);
+  modulesRef.current = modules;
 
   const markLessonCompletedOnly = useCallback(
     (lessonId) => {
@@ -2116,11 +2116,29 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }
       return undefined;
     }
+    let preservedLastTime = Math.max(
+      0,
+      Number(youtubeProgressRef.current.lastTime || 0),
+      Number(youtubeProgressRef.current.maxWatchedTimeline || 0),
+      Number(sectionPlayerSnapshotRef.current[activeLessonId]?.lastPositionSeconds || 0)
+    );
+    const existingYtPlayer = youtubePlayerRef.current;
+    if (existingYtPlayer && typeof existingYtPlayer.getCurrentTime === 'function') {
+      try {
+        preservedLastTime = Math.max(preservedLastTime, Number(existingYtPlayer.getCurrentTime() || 0));
+      } catch {
+        // ignore player teardown errors
+      }
+    }
+    const preservedMaxTimeline = Math.max(
+      Number(youtubeProgressRef.current.maxWatchedTimeline || 0),
+      preservedLastTime
+    );
     youtubeProgressRef.current = {
-      watchedSeconds: 0,
+      watchedSeconds: youtubeProgressRef.current.watchedSeconds || 0,
       pendingDeltaSeconds: 0,
-      lastTime: 0,
-      maxWatchedTimeline: nativeVideoProgressRef.current.maxWatchedTimeline || 0,
+      lastTime: preservedLastTime,
+      maxWatchedTimeline: preservedMaxTimeline,
       isPlaying: false,
       markedComplete: nativeVideoProgressRef.current.markedComplete || false,
     };
@@ -2192,18 +2210,28 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             onReady: () => {
               fitYoutubeToFrame();
               const resumeMeta = resumeSeekAppliedRef.current;
-              if (
-                resumeMeta.sectionId === activeLessonId &&
-                !resumeMeta.applied &&
-                resumeMeta.seconds > 2 &&
-                player &&
-                typeof player.seekTo === 'function'
-              ) {
+              const snapshotPos = Math.max(
+                0,
+                Number(sectionPlayerSnapshotRef.current[activeLessonId]?.lastPositionSeconds || 0)
+              );
+              const resumeAt = Math.max(
+                resumeMeta.sectionId === activeLessonId ? Number(resumeMeta.seconds || 0) : 0,
+                Number(youtubeProgressRef.current.lastTime || 0),
+                snapshotPos
+              );
+              if (resumeAt > 2 && player && typeof player.seekTo === 'function') {
                 try {
                   markVideoSeekClampGrace();
-                  player.seekTo(resumeMeta.seconds, true);
-                  youtubeProgressRef.current.lastTime = resumeMeta.seconds;
-                  resumeMeta.applied = true;
+                  player.seekTo(resumeAt, true);
+                  youtubeProgressRef.current.lastTime = resumeAt;
+                  youtubeProgressRef.current.maxWatchedTimeline = Math.max(
+                    youtubeProgressRef.current.maxWatchedTimeline || 0,
+                    resumeAt
+                  );
+                  if (resumeMeta.sectionId === activeLessonId) {
+                    resumeMeta.applied = true;
+                    resumeMeta.seconds = Math.max(resumeMeta.seconds || 0, resumeAt);
+                  }
                 } catch {
                   // ignore seek errors
                 }
@@ -2330,7 +2358,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     const t = player.getCurrentTime();
                     const d = typeof player.getDuration === 'function' ? player.getDuration() : 0;
                     const currentId = activeLessonIdRef.current;
-                    const currentLesson = flatLessons.find((l) => l.id === currentId);
+                    const currentLesson = flatLessonsRef.current.find((l) => l.id === currentId);
                     const fallbackDur = currentLesson
                       ? lessonFallbackDurationSeconds(currentLesson, liveSectionProgressMap)
                       : 0;
@@ -2370,7 +2398,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         duration: d ? Math.round(d) : null,
                       });
                       if (currentId && currentId !== FEEDBACK_LESSON_ID) {
-                        const next = getNextLessonFromModules(modules, currentId);
+                        const next = getNextLessonFromModules(modulesRef.current, currentId);
                         if (next?.id) startAutoNextCountdown(next);
                       }
                     } else if (course?.id && activeLessonId) {
@@ -2440,7 +2468,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     course?.id,
     activeLessonId,
     activeLessonGateBlocked,
-    modules,
     sendProgressUpdate,
     setSearchParams,
     startAutoNextCountdown,

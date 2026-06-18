@@ -502,17 +502,27 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
         return;
       }
 
-      if (getYouTubeEmbedUrl(trimmedUrl)) {
-        setDetectingVideoDuration(false);
-        setDetectedVideoDurationSeconds(null);
-        setVideoDurationError('Duration auto-detect is unavailable for YouTube links.');
-        return;
-      }
-
-      if (isSpotlightrUrl(trimmedUrl)) {
-        setDetectingVideoDuration(false);
-        setDetectedVideoDurationSeconds(null);
-        setVideoDurationError('Duration auto-detect is unavailable for Spotlightr links. Set watchtime manually.');
+      if (getYouTubeEmbedUrl(trimmedUrl) || isSpotlightrUrl(trimmedUrl)) {
+        setDetectingVideoDuration(true);
+        setVideoDurationError('');
+        try {
+          const seconds = await courseService.detectSectionVideoDuration(trimmedUrl);
+          if (!canceled) {
+            if (seconds != null) {
+              setDetectedVideoDurationSeconds(seconds);
+            } else {
+              setDetectedVideoDurationSeconds(null);
+              setVideoDurationError('Could not auto-detect duration for this link. Set watchtime manually.');
+            }
+          }
+        } catch {
+          if (!canceled) {
+            setDetectedVideoDurationSeconds(null);
+            setVideoDurationError('Could not auto-detect duration for this link. Set watchtime manually.');
+          }
+        } finally {
+          if (!canceled) setDetectingVideoDuration(false);
+        }
         return;
       }
 

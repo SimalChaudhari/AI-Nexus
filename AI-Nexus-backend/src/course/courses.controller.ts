@@ -32,6 +32,7 @@ import { Roles } from '../jwt/roles.decorator';
 import { SessionGuard } from '../jwt/session.guard';
 import { LocalStorageService } from '../service/local-storage.service';
 import { SpotlightrService } from '../service/spotlightr.service';
+import { VideoDurationService } from '../service/video-duration.service';
 import { CourseModuleService } from './course-module.service';
 import { CreateCourseModuleDto, UpdateCourseModuleDto } from './course-module.dto';
 import { CourseModuleSectionService } from './course-module-section.service';
@@ -242,6 +243,7 @@ export class CourseController {
         private readonly courseService: CourseService,
         private readonly localStorageService: LocalStorageService,
         private readonly spotlightrService: SpotlightrService,
+        private readonly videoDurationService: VideoDurationService,
         private readonly courseModuleService: CourseModuleService,
         private readonly courseModuleSectionService: CourseModuleSectionService,
         private readonly courseWatchProgressService: CourseWatchProgressService,
@@ -1492,6 +1494,28 @@ export class CourseController {
         }
         const urls = await this.localStorageService.saveFiles(files, 'course-section');
         return response.status(HttpStatus.OK).json({ data: { urls } });
+    }
+
+    @Post('modules/sections/detect-video-duration')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Detect duration (seconds) for YouTube, Spotlightr, or direct video URL' })
+    async detectSectionVideoDuration(
+        @Body() body: { url?: string },
+        @Res() response: Response,
+    ) {
+        const url = String(body?.url || '').trim();
+        if (!url) {
+            return response.status(HttpStatus.BAD_REQUEST).json({ message: 'Video URL is required' });
+        }
+        try {
+            const seconds = await this.videoDurationService.detectDurationSeconds(url);
+            return response.status(HttpStatus.OK).json({ data: { seconds } });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not detect video duration';
+            return response.status(HttpStatus.BAD_GATEWAY).json({ message });
+        }
     }
 
     @Post('modules/sections/upload-video')

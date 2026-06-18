@@ -745,6 +745,18 @@ export const courseService = {
     return urls[0] || '';
   },
 
+  async detectSectionVideoDuration(url) {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return null;
+    try {
+      const response = await axios.post('/courses/modules/sections/detect-video-duration', { url: trimmed });
+      const seconds = Number(response.data?.data?.seconds);
+      return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : null;
+    } catch {
+      return null;
+    }
+  },
+
   async uploadSectionVideo(file, onProgress) {
     if (!file) return '';
     const formData = new FormData();

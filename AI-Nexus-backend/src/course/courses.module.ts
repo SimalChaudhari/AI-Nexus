@@ -28,6 +28,7 @@ import { CourseSectionWatchProgressInitService } from './course-section-watch-pr
 import { JwtModule } from '@nestjs/jwt';
 import { LocalStorageService } from '../service/local-storage.service';
 import { SpotlightrService } from '../service/spotlightr.service';
+import { VideoDurationService } from '../service/video-duration.service';
 import { CourseGroupEntity } from './course-group.entity';
 import { CourseQuestionBankEntity } from './course-question-bank.entity';
 import { CourseQuestionBankService } from './course-question-bank.service';
@@ -59,7 +60,7 @@ import { ReviewEntity } from '../review/review.entity';
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService, SpotlightrService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService, SpotlightrService, VideoDurationService],
     controllers: [CourseController],
     exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService],
 })
