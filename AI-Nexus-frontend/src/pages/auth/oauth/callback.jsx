@@ -194,6 +194,71 @@ function resolvePostLoginPath(searchParams) {
   return null;
 }
 
+/** Plain sign-in page SSO: only verified ISCA members (CA or approved Member) may log in. */
+async function tryCompleteIscaMemberSsoLogin(options = {}) {
+  const socialToken = String(options.socialToken || '').trim();
+  const pendingPlatformAccessToken = String(options.pendingPlatformAccessToken || '').trim();
+  const redirectTo =
+    options.redirectTo
+    || (options.searchParams ? resolvePostLoginPath(options.searchParams) : null)
+    || paths.home;
+  const searchParams = options.searchParams;
+
+  if (searchParams && socialToken) {
+    const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+    if (sf.accountId) {
+      persistMembershipSalesforceSession({
+        accountId: sf.accountId,
+        socialToken,
+        pendingPlatformAccessToken: pendingPlatformAccessToken || undefined,
+        memberClass: sf.memberClass || undefined,
+      });
+    }
+  }
+
+  if (!socialToken) {
+    return { loggedIn: false };
+  }
+
+  try {
+    const caLogin = await tryCompleteCaMemberPlatformLogin({
+      socialAccessToken: socialToken,
+      redirectTo,
+    });
+    if (caLogin.loggedIn && caLogin.redirectTo) {
+      redirectCaMemberToPlatform(caLogin.redirectTo);
+      return { loggedIn: true, redirectTo: caLogin.redirectTo };
+    }
+  } catch {
+    // try approved ISCA Member next
+  }
+
+  try {
+    const memberLogin = await tryCompleteApprovedMemberPlatformLogin({
+      socialAccessToken: socialToken,
+      redirectTo,
+    });
+    if (memberLogin.loggedIn && memberLogin.redirectTo) {
+      redirectCaMemberToPlatform(memberLogin.redirectTo);
+      return { loggedIn: true, redirectTo: memberLogin.redirectTo };
+    }
+  } catch {
+    // not a verified ISCA member
+  }
+
+  return { loggedIn: false };
+}
+
+function isPlainSignInSsoFlow(searchParams) {
+  return (
+    !isScaqMembershipSsoFlow(searchParams)
+    && !isRecognitionMembershipApplicationFlow(searchParams)
+    && !isStudentMembershipApplicationFlow(searchParams)
+    && !isStudentMemberLoginOAuthOutcome(searchParams)
+    && !isIscaMemberSsoCheckPending(searchParams)
+  );
+}
+
 async function rejectScaqAndRedirectToPaidSignup(
   router,
   checkUserSession,
@@ -204,7 +269,7 @@ async function rejectScaqAndRedirectToPaidSignup(
     options.socialToken || options.socialAccessToken || ''
   ).trim();
 
-  if (socialToken) {
+  if (socialToken && !options.skipStudentLoginAttempt) {
     try {
       const studentLogin = await tryCompleteStudentMemberPlatformLogin({
         socialAccessToken: socialToken,
@@ -246,7 +311,8 @@ async function rejectScaqAndRedirectToPaidSignup(
 }
 
 /**
- * Non-SCAQ SSO: recognition path → application tab; all other SSO → paid signup (SGD 900).
+ * Non-SCAQ SSO: recognition/student application tabs, or paid signup.
+ * Plain sign-in page SSO: only verified ISCA members log in; others → paid signup.
  * @returns {boolean} true when navigation was handled.
  */
 async function handleNonScaqCandidateAfterSso(
@@ -271,6 +337,25 @@ async function handleNonScaqCandidateAfterSso(
 
   if (recognitionApplicationFlow) {
     return await finishRecognitionApplicationTab(router, searchParams, payload);
+  }
+
+  if (isPlainSignInSsoFlow(searchParams)) {
+    const iscaLogin = await tryCompleteIscaMemberSsoLogin({
+      socialToken: payload?.socialToken,
+      pendingPlatformAccessToken: payload?.pendingPlatformAccessToken,
+      searchParams,
+    });
+    if (iscaLogin.loggedIn) {
+      return true;
+    }
+
+    await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile, {
+      socialToken: payload?.socialToken,
+      pendingPlatformAccessToken: payload?.pendingPlatformAccessToken,
+      searchParams,
+      skipStudentLoginAttempt: true,
+    });
+    return true;
   }
 
   await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile, {
@@ -616,6 +701,7 @@ export default function OAuthCallbackPage() {
         if (
           !isIscaMemberSsoCheckPending(searchParams)
           && shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate)
+          && !isPlainSignInSsoFlow(searchParams)
         ) {
           await rejectScaqAndRedirectToPaidSignup(
             router,

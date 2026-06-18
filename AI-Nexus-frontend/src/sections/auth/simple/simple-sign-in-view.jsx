@@ -269,7 +269,7 @@ export function SimpleSignInView() {
         startIcon={<Iconify icon="solar:login-3-bold-duotone" />}
         sx={{ height: 44, borderStyle: 'dashed', fontWeight: 600 }}
       >
-        Sign in with SSO
+      Sign in with ISCA Eservices
       </Button>
     </Stack>
   );
