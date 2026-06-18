@@ -9,7 +9,7 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { getOAuthAuthUrl } from 'src/auth/context/jwt';
-import { POST_OAUTH_RETURN_TO_KEY, setScaqSsoVerificationPending } from 'src/utils/membership-eligibility-sso';
+import { POST_OAUTH_RETURN_TO_KEY, setScaqSsoVerificationPending, SCAQ_SSO_VERIFICATION_PENDING_KEY, MEMBERSHIP_ELIGIBILITY_FLOW_KEY } from 'src/utils/membership-eligibility-sso';
 import {
   MEMBERSHIP_APPLICATION_OUTCOME,
   STUDENT_MEMBERSHIP_APPLICATION_OUTCOME,
@@ -67,6 +67,14 @@ export default function OAuthStartPage() {
           clearMembershipApplicationPending();
           clearStudentMembershipApplicationPending();
           clearStudentMemberLoginPending();
+          if (!params.get('membershipOutcome') && !params.get('eligibilityType')) {
+            try {
+              sessionStorage.removeItem(SCAQ_SSO_VERIFICATION_PENDING_KEY);
+              sessionStorage.removeItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+            } catch {
+              // ignore
+            }
+          }
         }
 
         if (isDeferredMembershipApplication) {
