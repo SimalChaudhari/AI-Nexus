@@ -34,9 +34,9 @@ import {
   POST_OAUTH_RETURN_TO_KEY,
   isIscaMemberSsoCheckPending,
   clearIscaMemberSsoCheckPending,
-  applyYesYesYesIscaMemberFailureToStoredFlow,
-  applyIscaMemberQuestionnaireSuccessToStoredFlow,
+  ensureNoYesYesFlowAfterEservicesFailure,
   buildResumeMembershipSignupReturnUrl,
+  stripResumeMembershipSignupFromPath,
 } from 'src/utils/membership-eligibility-sso';
 import {
   isRecognitionMembershipApplicationFlow,
@@ -366,22 +366,30 @@ async function handleNonScaqCandidateAfterSso(
   return true;
 }
 
-function withNotEligibleParam(path) {
-  const base = String(path || paths.home).trim() || paths.home;
-  return `${base}${base.includes('?') ? '&' : '?'}membershipNotEligible=1`;
+function redirectToNoYesYesMembershipModal(router, redirectTo) {
+  ensureNoYesYesFlowAfterEservicesFailure();
+  clearIscaMemberSsoCheckPending();
+  router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
 }
 
-async function handleIscaMemberSsoCheckAfterSso(router, searchParams, payload = {}) {
+async function handleIscaMemberSsoCheckAfterSso(
+  router,
+  searchParams,
+  payload = {},
+  checkUserSession
+) {
   if (!isIscaMemberSsoCheckPending(searchParams)) return false;
 
   const socialToken = String(
     payload?.socialToken || searchParams.get('socialAccessToken') || ''
   ).trim();
+  const pendingPlatformAccessToken = String(
+    payload?.pendingPlatformAccessToken || searchParams.get('pendingPlatformAccessToken') || ''
+  ).trim();
 
   const redirectTo = resolvePostLoginPath(searchParams) || paths.home;
   if (!socialToken) {
-    clearIscaMemberSsoCheckPending();
-    router.replace(withNotEligibleParam(redirectTo));
+    redirectToNoYesYesMembershipModal(router, redirectTo);
     return true;
   }
 
@@ -397,26 +405,29 @@ async function handleIscaMemberSsoCheckAfterSso(router, searchParams, payload = 
           : readScaqFlagsFromOAuthCallback(searchParams).isSCAQCandidate;
 
     if (isScaqCandidate === true) {
-      applyIscaMemberQuestionnaireSuccessToStoredFlow();
       clearIscaMemberSsoCheckPending();
-      router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
+      clearMembershipEligibilitySessionStorage();
+
+      const cleanRedirect = stripResumeMembershipSignupFromPath(redirectTo);
+      const loginResult = await tryCompleteIscaMemberSsoLogin({
+        socialToken,
+        pendingPlatformAccessToken,
+        redirectTo: cleanRedirect,
+        searchParams,
+      });
+      if (loginResult.loggedIn) {
+        return true;
+      }
+
+      await checkUserSession?.();
+      router.replace(cleanRedirect);
       return true;
     }
 
-    const resumedNoYesYesFlow = applyYesYesYesIscaMemberFailureToStoredFlow();
-    if (resumedNoYesYesFlow) {
-      clearIscaMemberSsoCheckPending();
-      router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
-      return true;
-    }
-
-    clearIscaMemberSsoCheckPending();
-    router.replace(withNotEligibleParam(redirectTo));
+    redirectToNoYesYesMembershipModal(router, redirectTo);
     return true;
   } catch {
-    // if userinfonexus check fails, fall back to not-eligible modal for now
-    clearIscaMemberSsoCheckPending();
-    router.replace(withNotEligibleParam(redirectTo));
+    redirectToNoYesYesMembershipModal(router, redirectTo);
     return true;
   }
 }
@@ -530,7 +541,9 @@ export default function OAuthCallbackPage() {
             searchParams,
             {
               socialToken: searchParams.get('socialAccessToken') || '',
-            }
+              pendingPlatformAccessToken: exchangeResult.accessToken || '',
+            },
+            checkUserSession
           );
           if (handledIscaMemberCheck) {
             return;
@@ -599,7 +612,8 @@ export default function OAuthCallbackPage() {
             {
               socialToken: searchParams.get('socialAccessToken') || '',
               pendingPlatformAccessToken: pendingToken,
-            }
+            },
+            checkUserSession
           );
           if (handledIscaMemberCheck) {
             return;
@@ -678,7 +692,8 @@ export default function OAuthCallbackPage() {
               socialToken: searchParams.get('socialAccessToken') || '',
               pendingPlatformAccessToken:
                 searchParams.get('pendingPlatformAccessToken') || accessToken || '',
-            }
+            },
+            checkUserSession
           );
           if (handledIscaMemberCheck) {
             return;

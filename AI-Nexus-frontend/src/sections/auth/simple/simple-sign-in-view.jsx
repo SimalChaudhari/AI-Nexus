@@ -31,7 +31,7 @@ import {
   MembershipSignupDialog,
   MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
 } from 'src/sections/learning/components/membership-signup-dialog';
-import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY } from 'src/utils/membership-eligibility-sso';
+import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY, shouldOpenResumedMembershipSignupModal, stripResumeMembershipSignupFromPath, clearMembershipEligibilityDraftOnModalClose, ensureNoYesYesFlowAfterEservicesFailure } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -73,9 +73,27 @@ export function SimpleSignInView() {
   }, [prefilledEmail, setValue]);
 
   useEffect(() => {
+    if (searchParams.get('membershipNotEligible') === '1') {
+      ensureNoYesYesFlowAfterEservicesFailure();
+      const params = new URLSearchParams(window.location.search || '');
+      params.delete('membershipNotEligible');
+      params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+      const next = params.toString();
+      router.replace(`${window.location.pathname}${next ? `?${next}` : ''}`);
+      setSignupModalOpen(true);
+      return;
+    }
     if (searchParams.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) !== '1') return;
+    if (!shouldOpenResumedMembershipSignupModal()) {
+      clearMembershipEligibilityDraftOnModalClose();
+      const nextPath = stripResumeMembershipSignupFromPath(
+        `${window.location.pathname}${window.location.search || ''}`
+      );
+      router.replace(nextPath);
+      return;
+    }
     setSignupModalOpen(true);
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   useEffect(() => {
     if (!membershipPaymentConfirmed) return;
@@ -185,7 +203,12 @@ export function SimpleSignInView() {
           component="button"
           type="button"
           variant="subtitle2"
-          onClick={() => setSignupModalOpen(true)}
+          onClick={() => {
+            if (!shouldOpenResumedMembershipSignupModal()) {
+              clearMembershipEligibilityDraftOnModalClose();
+            }
+            setSignupModalOpen(true);
+          }}
           sx={{ cursor: 'pointer', border: 'none', background: 'none', p: 0, font: 'inherit' }}
         >
           Sign up
@@ -211,16 +234,6 @@ export function SimpleSignInView() {
       />
 
       <Stack spacing={1}>
-        <Link
-          component={RouterLink}
-          href={paths.auth.simple.forgotPassword}
-          variant="body2"
-          color="inherit"
-          sx={{ alignSelf: 'flex-end' }}
-        >
-          Forgot password?
-        </Link>
-
         <Field.Text
           name="password"
           label="Password"
@@ -242,6 +255,16 @@ export function SimpleSignInView() {
             ),
           }}
         />
+
+        <Link
+          component={RouterLink}
+          href={paths.auth.simple.forgotPassword}
+          variant="body2"
+          color="inherit"
+          sx={{ alignSelf: 'flex-end' }}
+        >
+          Forgot password?
+        </Link>
       </Stack>
 
       <LoadingButton

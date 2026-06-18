@@ -3,12 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
 
 import { ScrollProgress, useScrollProgress } from 'src/components/animate/scroll-progress';
 import { HomeFooter } from 'src/layouts/main/footer';
@@ -22,7 +16,10 @@ import {
 import {
   clearMembershipEligibilityDraftOnModalClose,
   continueMembershipSignupDialog,
+  ensureNoYesYesFlowAfterEservicesFailure,
   RESUME_MEMBERSHIP_SIGNUP_QUERY,
+  shouldOpenResumedMembershipSignupModal,
+  stripResumeMembershipSignupFromPath,
 } from 'src/utils/membership-eligibility-sso';
 
 import { ContactSection } from 'src/sections/contact/view/contact-view';
@@ -50,31 +47,34 @@ export function HomeView() {
   const footerReady = useHomePageApisReady();
   useMembershipApplicationPaymentReturn();
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
-  const [notEligibleOpen, setNotEligibleOpen] = useState(false);
   const returnPath = `${location.pathname}${location.search || ''}`;
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
-    if (params.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1') {
+    if (params.get('membershipNotEligible') === '1') {
+      ensureNoYesYesFlowAfterEservicesFailure();
+      params.delete('membershipNotEligible');
+      params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+      const next = params.toString();
+      navigate(`${location.pathname}${next ? `?${next}` : ''}`, { replace: true });
       setMembershipSignupOpen(true);
       return;
     }
-    if (params.get('membershipNotEligible') === '1') {
-      setNotEligibleOpen(true);
+    if (params.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1') {
+      if (!shouldOpenResumedMembershipSignupModal()) {
+        clearMembershipEligibilityDraftOnModalClose();
+        const nextPath = stripResumeMembershipSignupFromPath(
+          `${location.pathname}${location.search || ''}`
+        );
+        navigate(nextPath, { replace: true });
+        return;
+      }
+      setMembershipSignupOpen(true);
     }
-  }, [location.search]);
-
-  const handleCloseNotEligible = useCallback(() => {
-    setNotEligibleOpen(false);
-    const params = new URLSearchParams(location.search || '');
-    if (params.has('membershipNotEligible')) {
-      params.delete('membershipNotEligible');
-      const next = params.toString();
-      navigate(`${location.pathname}${next ? `?${next}` : ''}`, { replace: true });
-    }
-  }, [location.pathname, location.search, navigate]);
+  }, [location.search, location.pathname, navigate]);
 
   const handleOpenMembershipSignup = useCallback(() => {
+    clearMembershipEligibilityDraftOnModalClose();
     setMembershipSignupOpen(true);
   }, []);
 
@@ -142,19 +142,6 @@ export function HomeView() {
         }}
       />
 
-      <Dialog open={notEligibleOpen} onClose={handleCloseNotEligible} maxWidth="xs" fullWidth>
-        <DialogTitle>Not eligible</DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary">
-            Your eServices sign-in is not mapped to an active ISCA member profile for this flow.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseNotEligible} variant="contained">
-            OK
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

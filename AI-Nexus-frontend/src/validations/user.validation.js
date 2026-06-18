@@ -45,6 +45,18 @@ const emailSchema = zod
     { message: 'Please enter a real email address.' }
   );
 
+export function isValidPersonalEmail(email) {
+  return emailSchema.safeParse(String(email || '').trim()).success;
+}
+
+export function getPersonalEmailValidationMessage(email) {
+  const value = String(email || '').trim();
+  if (!value) return '';
+  const result = emailSchema.safeParse(value);
+  if (result.success) return '';
+  return result.error.issues[0]?.message || 'Email must be a valid email address!';
+}
+
 const optionalEmailSchema = emailSchema.optional();
 
 export const AuthSignInSchema = zod.object({
