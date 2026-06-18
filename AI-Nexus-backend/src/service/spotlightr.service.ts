@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 
 const SPOTLIGHTR_CREATE_VIDEO_URL = 'https://api.spotlightr.com/api/createVideo';
+const SPOTLIGHTR_LIST_VIDEOS_URL = 'https://api.spotlightr.com/api/videos';
 
 @Injectable()
 export class SpotlightrService {
@@ -56,6 +57,58 @@ export class SpotlightrService {
             this.logger.error(`Spotlightr upload failed: ${message}`);
             throw new Error(message);
         }
+    }
+
+    /** Resolve MP4 (or original) file URL for a Spotlightr video id via the account API. */
+    async resolveVideoFileUrl(videoId: string): Promise<string | null> {
+        const vooKey = String(process.env.SPOTLIGHTR_API_KEY || '').trim();
+        if (!vooKey) {
+            this.logger.warn('Spotlightr API key is not configured; cannot resolve video file URL');
+            return null;
+        }
+
+        const id = String(videoId || '').trim();
+        if (!id) return null;
+
+        try {
+            const response = await axios.get(SPOTLIGHTR_LIST_VIDEOS_URL, {
+                params: { vooKey, id },
+                timeout: 20000,
+            });
+            const rows = this.extractVideoRows(response.data);
+            const match = rows.find((row) => String(row?.id) === id);
+            if (!match) return null;
+
+            const original = String(match.originalFileURL || '').trim();
+            if (original) return original;
+
+            const stream = String(match.url || '').trim();
+            return stream || null;
+        } catch (error) {
+            const message = axios.isAxiosError(error)
+                ? String(error.response?.data || error.message)
+                : error instanceof Error
+                  ? error.message
+                  : 'Spotlightr video lookup failed';
+            this.logger.error(`Spotlightr video lookup failed: ${message}`);
+            return null;
+        }
+    }
+
+    private extractVideoRows(data: unknown): Array<Record<string, unknown>> {
+        if (!data || typeof data !== 'object') return [];
+        const record = data as Record<string, unknown>;
+        const videos = record.videos;
+        if (videos && typeof videos === 'object') {
+            const nested = (videos as Record<string, unknown>).data;
+            if (Array.isArray(nested)) {
+                return nested.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'));
+            }
+        }
+        if (Array.isArray(record.data)) {
+            return record.data.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'));
+        }
+        return [];
     }
 
     private extractVideoUrl(data: unknown): string | null {
