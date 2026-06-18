@@ -28,6 +28,82 @@ export const SCAQ_SSO_VERIFICATION_PENDING_KEY = 'scaqSsoVerificationPending';
 /** Paid signup form draft (used by simple-sign-up-view). */
 export const MEMBERSHIP_SIGNUP_DRAFT_FORM_KEY = 'membershipSignupDraftForm';
 
+/** Outcomes that reopen the fee-waiver result from Sign in → Sign up only. */
+export const FEE_WAIVER_RESUME_MEMBERSHIP_OUTCOMES = [
+  'corporate-fee-waiver-signup',
+  'student-fee-waiver',
+  'verified-nric-signup',
+];
+
+export function isFeeWaiverResumeMembershipOutcome(outcome = '') {
+  return FEE_WAIVER_RESUME_MEMBERSHIP_OUTCOMES.includes(String(outcome || '').trim());
+}
+
+function buildFeeWaiverResumeFlow(flow = {}) {
+  return {
+    ...flow,
+    feeWaiverApplicationChoice: true,
+    initialQuestionnaireSubmitted: flow.initialQuestionnaireSubmitted ?? true,
+    signupEntrySource: flow.signupEntrySource || 'auth-sign-up',
+  };
+}
+
+/** Read fee-waiver result stored for Sign up resume (auth sign-in entry only). */
+export function readStoredFeeWaiverSignupFlow() {
+  try {
+    const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isFeeWaiverResumeMembershipOutcome(parsed?.membershipOutcome)) return null;
+    if (parsed?.resumeMembershipSignup !== true) return null;
+    const storedFlow = parsed?.flow;
+    if (!storedFlow || typeof storedFlow !== 'object') return null;
+    return {
+      parsed,
+      flow: buildFeeWaiverResumeFlow(storedFlow),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist fee-waiver result so Sign in → Sign up reopens this step (not home eligibility).
+ * @param {Record<string, unknown>} flow
+ * @param {string} membershipOutcome
+ */
+export function persistFeeWaiverResultForResume(flow = {}, membershipOutcome = 'corporate-fee-waiver-signup') {
+  const resumeFlow = buildFeeWaiverResumeFlow(flow);
+  const outcome = String(membershipOutcome || 'corporate-fee-waiver-signup').trim();
+
+  if (outcome === 'corporate-fee-waiver-signup' || outcome === 'verified-nric-signup') {
+    persistFeeWaiverSignupPrefill(resumeFlow);
+  }
+  if (outcome === 'student-fee-waiver') {
+    try {
+      applyStudentMembershipEmailPrefillFromEligibilityFlow(resumeFlow);
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        membershipOutcome: outcome,
+        flow: resumeFlow,
+        resumeMembershipSignup: true,
+        savedAt: new Date().toISOString(),
+      })
+    );
+  } catch {
+    // ignore
+  }
+
+  return resumeFlow;
+}
+
 /** Build URL for the paid programme sign-up page. */
 export function buildPaidMembershipSignupUrl(returnPath = '') {
   const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
@@ -546,16 +622,10 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
   if (actionTarget === 'student-application') {
     try {
       saveMembershipApplicationCourseReturn(safeReturnPath);
-      applyStudentMembershipEmailPrefillFromEligibilityFlow(payload?.flow || {});
-      if (payload?.flow) {
-        sessionStorage.setItem(
-          MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
-          JSON.stringify({
-            membershipOutcome: outcome || 'student-fee-waiver',
-            flow: payload.flow,
-            savedAt: new Date().toISOString(),
-          })
-        );
+      if (payload?.resumeFeeWaiverOnSignUp && payload?.flow) {
+        persistFeeWaiverResultForResume(payload.flow, outcome || 'student-fee-waiver');
+      } else {
+        applyStudentMembershipEmailPrefillFromEligibilityFlow(payload?.flow || {});
       }
     } catch {
       // ignore
@@ -571,11 +641,14 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
 
   if ((actionTarget === 'signUp' || isScaqCandidateFlow) && payload?.flow) {
     try {
+      const keepFeeWaiverResume = Boolean(payload?.resumeFeeWaiverOnSignUp)
+        && isFeeWaiverResumeMembershipOutcome(outcome);
       sessionStorage.setItem(
         MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
         JSON.stringify({
           membershipOutcome: outcome,
-          flow: payload.flow,
+          flow: keepFeeWaiverResume ? buildFeeWaiverResumeFlow(payload.flow) : payload.flow,
+          ...(keepFeeWaiverResume ? { resumeMembershipSignup: true } : {}),
           savedAt: new Date().toISOString(),
         })
       );
@@ -643,9 +716,137 @@ function isYesYesYesQuestionnaireFlow(flow = {}) {
   );
 }
 
+function isYesYesNoQuestionnaireFlow(flow = {}) {
+  return (
+    flow.isIscaMember === true
+    && flow.isSingaporePr === true
+    && flow.companyRegistrationUnderCompany === false
+  );
+}
+
+function isYesNoNoQuestionnaireFlow(flow = {}) {
+  return (
+    flow.isIscaMember === true
+    && flow.isSingaporePr === false
+    && flow.companyRegistrationUnderCompany === false
+  );
+}
+
+function isYesNoYesQuestionnaireFlow(flow = {}) {
+  return (
+    flow.isIscaMember === true
+    && flow.isSingaporePr === false
+    && flow.companyRegistrationUnderCompany === true
+  );
+}
+
+/** Yes/Yes/Yes + eServices SSO succeeded as ISCA member — do not reopen modal. */
+export function isYesYesYesEservicesMemberVerified(flow = {}) {
+  return (
+    flow.isIscaMember === true
+    && flow.isSingaporePr === true
+    && flow.companyRegistrationUnderCompany === true
+    && flow.eServicesLoginCompleted === true
+    && flow.iscaMemberVerificationPassed === true
+  );
+}
+
+/** Yes/Yes/Yes + eServices SSO but not ISCA member — reopen No/Yes/Yes NRIC modal. */
+export function isYesYesYesEservicesMemberFallback(flow = {}) {
+  if (flow.iscaMemberEservicesFallback === true) return true;
+  return (
+    flow.initialQuestionnaireSubmitted === true
+    && flow.isSingaporePr === true
+    && flow.companyRegistrationUnderCompany === true
+    && flow.eServicesLoginCompleted === true
+    && flow.isIscaMember === false
+    && flow.iscaMemberVerificationPassed === false
+  );
+}
+
+/** Yes/Yes/No or Yes/No/No + eServices SSO but not ISCA member — reopen the matching No-path modal. */
+export function isQuestionnaireEservicesMemberFallback(flow = {}) {
+  if (isYesYesYesEservicesMemberFallback(flow)) return true;
+  if (flow.iscaMemberEservicesFallback === true) {
+    return (
+      (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === false)
+      || (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === false)
+      || (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === true)
+      || (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === true)
+    );
+  }
+  return (
+    flow.initialQuestionnaireSubmitted === true
+    && flow.eServicesLoginCompleted === true
+    && flow.isIscaMember === false
+    && flow.iscaMemberVerificationPassed === false
+    && (
+      (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === false)
+      || (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === false)
+      || (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === true)
+    )
+  );
+}
+
 export function buildResumeMembershipSignupReturnUrl(path = '') {
   const base = String(path || paths.home).trim() || paths.home;
-  return `${base}${base.includes('?') ? '&' : '?'}${RESUME_MEMBERSHIP_SIGNUP_QUERY}=1`;
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(base, window.location.origin);
+      url.searchParams.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+      url.searchParams.set('membershipNotEligible', '1');
+      const search = url.searchParams.toString();
+      return `${url.pathname}${search ? `?${search}` : ''}`;
+    } catch {
+      // fall through
+    }
+  }
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}${RESUME_MEMBERSHIP_SIGNUP_QUERY}=1&membershipNotEligible=1`;
+}
+
+export function isQuestionnaireEservicesResumeOutcome(outcome = '') {
+  const normalized = String(outcome || '').trim();
+  return normalized === 'isca-member-eservices-login' || normalized === 'isca-member-sso-check';
+}
+
+/** Load questionnaire flow resumed after eServices member check (success fallback or retry). */
+export function readQuestionnaireEservicesResumeFlow() {
+  const resumed = readResumedMembershipEligibilityFlow();
+  if (!resumed?.flow) return null;
+  if (
+    isQuestionnaireEservicesMemberFallback(resumed.flow)
+    || isYesYesYesEservicesMemberFallback(resumed.flow)
+    || isQuestionnaireEservicesResumeOutcome(resumed.parsed?.membershipOutcome)
+  ) {
+    return resumed;
+  }
+  return null;
+}
+
+/** Remove resume query params so the eligibility modal does not auto-reopen. */
+export function stripResumeMembershipSignupFromPath(path = '') {
+  const raw = String(path || paths.home).trim() || paths.home;
+  if (typeof window === 'undefined') {
+    return raw.split('?')[0] || paths.home;
+  }
+  try {
+    const url = new URL(raw, window.location.origin);
+    url.searchParams.delete(RESUME_MEMBERSHIP_SIGNUP_QUERY);
+    url.searchParams.delete('membershipNotEligible');
+    const search = url.searchParams.toString();
+    return `${url.pathname}${search ? `?${search}` : ''}`;
+  } catch {
+    return raw.split('?')[0] || paths.home;
+  }
+}
+
+export function shouldOpenResumedMembershipSignupModal() {
+  const resumed = readResumedMembershipEligibilityFlow() || readStoredFeeWaiverSignupFlow();
+  if (!resumed?.flow) return false;
+  if (isYesYesYesEservicesMemberVerified(resumed.flow)) return false;
+  if (isQuestionnaireEservicesMemberFallback(resumed.flow)) return true;
+  return true;
 }
 
 export function readResumedMembershipEligibilityFlow() {
@@ -731,27 +932,223 @@ export function applyIscaMemberQuestionnaireSuccessToStoredFlow() {
  * Yes / Yes / Yes questionnaire: ISCA member not verified after eServices SSO.
  * Fall through to the No / Yes / Yes (SG-PR under company) NRIC flow.
  */
-export function applyYesYesYesIscaMemberFailureToStoredFlow() {
+function canResumeEservicesMemberFallback(flow = {}) {
+  if (isYesYesYesQuestionnaireFlow(flow)) return true;
+  if (isYesYesYesEservicesMemberFallback(flow)) return true;
+  return (
+    flow.initialQuestionnaireSubmitted === true
+    && flow.isSingaporePr === true
+    && flow.companyRegistrationUnderCompany === true
+  );
+}
+
+function buildNoYesYesFallbackFlow(sourceFlow = {}) {
+  const companyWasVerified =
+    sourceFlow.companyReferenceVerified === true
+    && sourceFlow.companyReferenceConfirmed === true;
+
+  return {
+    ...sourceFlow,
+    initialQuestionnaireSubmitted: true,
+    feeWaiverApplicationChoice: sourceFlow.feeWaiverApplicationChoice ?? true,
+    isIscaMember: false,
+    isSingaporePr: true,
+    companyRegistrationUnderCompany: true,
+    eServicesLoginCompleted: true,
+    iscaMemberVerificationPassed: false,
+    iscaMemberEservicesFallback: true,
+    companyReferenceRouteAbandoned: false,
+    homeGetStartedFlow: false,
+    companyReferenceId: String(sourceFlow.companyReferenceId || '').trim(),
+    spPrVerified: null,
+    nricUploadAcknowledged: false,
+    nricSgPrCheckFailed: false,
+    feeWaiverViaCompanyReference: false,
+    ...(companyWasVerified
+      ? {
+          companyReferenceVerified: true,
+          companyVerifiedName: sourceFlow.companyVerifiedName || '',
+          companyVerifiedIndustry: sourceFlow.companyVerifiedIndustry || '',
+          companyReferenceConfirmed: true,
+        }
+      : {
+          companyReferenceVerified: null,
+          companyVerifiedName: '',
+          companyVerifiedIndustry: '',
+          companyReferenceConfirmed: null,
+        }),
+  };
+}
+
+function buildNoYesNoEservicesFallbackFlow(sourceFlow = {}) {
+  return {
+    ...sourceFlow,
+    initialQuestionnaireSubmitted: true,
+    feeWaiverApplicationChoice: sourceFlow.feeWaiverApplicationChoice ?? true,
+    isIscaMember: false,
+    isSingaporePr: true,
+    companyRegistrationUnderCompany: false,
+    eServicesLoginCompleted: true,
+    iscaMemberVerificationPassed: false,
+    iscaMemberEservicesFallback: true,
+    spPrVerified: null,
+    nricUploadAcknowledged: false,
+    nricSgPrCheckFailed: false,
+    homeGetStartedFlow: false,
+  };
+}
+
+function buildNoNoNoEservicesFallbackFlow(sourceFlow = {}) {
+  return {
+    ...sourceFlow,
+    initialQuestionnaireSubmitted: true,
+    feeWaiverApplicationChoice: sourceFlow.feeWaiverApplicationChoice ?? true,
+    isIscaMember: false,
+    isSingaporePr: false,
+    companyRegistrationUnderCompany: false,
+    eServicesLoginCompleted: true,
+    iscaMemberVerificationPassed: false,
+    iscaMemberEservicesFallback: true,
+    registrationPersona: '',
+    studentMemberOrAssociate: null,
+    studentFinalYearLocal: null,
+    studentNonFinalInterested: null,
+    workingEducationalBackground: '',
+    workingMembershipInterested: null,
+    workingNotEligibleChoice: null,
+    homeGetStartedFlow: false,
+  };
+}
+
+function buildNoNoYesEservicesFallbackFlow(sourceFlow = {}) {
+  const companyWasVerified =
+    sourceFlow.companyReferenceVerified === true
+    && sourceFlow.companyReferenceConfirmed === true;
+
+  return {
+    ...sourceFlow,
+    initialQuestionnaireSubmitted: true,
+    feeWaiverApplicationChoice: sourceFlow.feeWaiverApplicationChoice ?? true,
+    isIscaMember: false,
+    isSingaporePr: false,
+    companyRegistrationUnderCompany: true,
+    eServicesLoginCompleted: true,
+    iscaMemberVerificationPassed: false,
+    iscaMemberEservicesFallback: true,
+    companyReferenceRouteAbandoned: false,
+    homeGetStartedFlow: false,
+    companyReferenceId: String(sourceFlow.companyReferenceId || '').trim(),
+    ...(companyWasVerified
+      ? {
+          companyReferenceVerified: true,
+          companyVerifiedName: sourceFlow.companyVerifiedName || '',
+          companyVerifiedIndustry: sourceFlow.companyVerifiedIndustry || '',
+          companyReferenceConfirmed: true,
+        }
+      : {
+          companyReferenceVerified: null,
+          companyVerifiedName: '',
+          companyVerifiedIndustry: '',
+          companyReferenceConfirmed: null,
+        }),
+  };
+}
+
+function buildEservicesMemberFailureFlow(sourceFlow = {}) {
+  return resolveQuestionnaireEservicesFailureFlow(sourceFlow);
+}
+
+/** Map Yes/* ISCA-member questionnaire answers to the matching No-path flow after non-member verification. */
+export function resolveQuestionnaireEservicesFailureFlow(sourceFlow = {}) {
+  const flow = sourceFlow && typeof sourceFlow === 'object' ? sourceFlow : {};
+
+  if (
+    flow.eServicesLoginCompleted === true
+    && flow.iscaMemberVerificationPassed === false
+    && flow.isIscaMember === false
+  ) {
+    if (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === false) {
+      return buildNoYesNoEservicesFallbackFlow(flow);
+    }
+    if (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === false) {
+      return buildNoNoNoEservicesFallbackFlow(flow);
+    }
+    if (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === true) {
+      return buildNoYesYesFallbackFlow(flow);
+    }
+    if (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === true) {
+      return buildNoNoYesEservicesFallbackFlow(flow);
+    }
+  }
+
+  if (isYesYesYesQuestionnaireFlow(flow) || canResumeEservicesMemberFallback(flow)) {
+    return buildNoYesYesFallbackFlow(flow);
+  }
+  if (isYesYesNoQuestionnaireFlow(flow)) {
+    return buildNoYesNoEservicesFallbackFlow(flow);
+  }
+  if (isYesNoNoQuestionnaireFlow(flow)) {
+    return buildNoNoNoEservicesFallbackFlow(flow);
+  }
+  if (isYesNoYesQuestionnaireFlow(flow)) {
+    return buildNoNoYesEservicesFallbackFlow(flow);
+  }
+
+  if (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === false) {
+    return buildNoYesNoEservicesFallbackFlow(flow);
+  }
+  if (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === false) {
+    return buildNoNoNoEservicesFallbackFlow(flow);
+  }
+  if (flow.isSingaporePr === false && flow.companyRegistrationUnderCompany === true) {
+    return buildNoNoYesEservicesFallbackFlow(flow);
+  }
+  if (flow.isSingaporePr === true && flow.companyRegistrationUnderCompany === true) {
+    return buildNoYesYesFallbackFlow(flow);
+  }
+
+  return buildNoYesYesFallbackFlow(flow);
+}
+
+export function applyQuestionnaireIscaNonMemberFallback(sourceFlow = {}) {
+  return resolveQuestionnaireEservicesFailureFlow(sourceFlow);
+}
+
+/** Always resume No/Yes/Yes NRIC modal after eServices ISCA-member check fails. */
+export function ensureNoYesYesFlowAfterEservicesFailure() {
   try {
+    let parsed = {};
+    let sourceFlow = {};
     const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const flow = parsed?.flow;
-    if (!flow || typeof flow !== 'object' || !isYesYesYesQuestionnaireFlow(flow)) {
-      return null;
+    if (raw) {
+      parsed = JSON.parse(raw);
+      if (parsed?.flow && typeof parsed.flow === 'object') {
+        sourceFlow = parsed.flow;
+      }
     }
 
-    const updatedFlow = {
-      ...flow,
-      isIscaMember: false,
-      eServicesLoginCompleted: true,
-      iscaMemberVerificationPassed: false,
-    };
+    if (
+      !canResumeEservicesMemberFallback(sourceFlow)
+      && !isYesYesNoQuestionnaireFlow(sourceFlow)
+      && !isYesNoNoQuestionnaireFlow(sourceFlow)
+      && !isYesNoYesQuestionnaireFlow(sourceFlow)
+    ) {
+      sourceFlow = {
+        ...sourceFlow,
+        feeWaiverApplicationChoice: sourceFlow.feeWaiverApplicationChoice ?? true,
+        isSingaporePr: sourceFlow.isSingaporePr ?? true,
+        companyRegistrationUnderCompany: sourceFlow.companyRegistrationUnderCompany ?? true,
+        initialQuestionnaireSubmitted: true,
+      };
+    }
+
+    const updatedFlow = buildEservicesMemberFailureFlow(sourceFlow);
 
     sessionStorage.setItem(
       MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
       JSON.stringify({
         ...parsed,
+        membershipOutcome: parsed.membershipOutcome || 'isca-member-eservices-login',
         flow: updatedFlow,
         resumeMembershipSignup: true,
         savedAt: new Date().toISOString(),
@@ -761,6 +1158,10 @@ export function applyYesYesYesIscaMemberFailureToStoredFlow() {
   } catch {
     return null;
   }
+}
+
+export function applyYesYesYesIscaMemberFailureToStoredFlow() {
+  return ensureNoYesYesFlowAfterEservicesFailure();
 }
 
 export function isIscaMemberSsoCheckPending(searchParams) {

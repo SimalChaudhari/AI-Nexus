@@ -101,6 +101,7 @@ export function HomeJoinSection() {
     (event) => {
       event.preventDefault();
       if (!authenticated) {
+        clearMembershipEligibilityDraftOnModalClose();
         setMembershipSignupOpen(true);
         return;
       }
