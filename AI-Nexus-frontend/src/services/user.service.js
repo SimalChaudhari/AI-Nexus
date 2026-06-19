@@ -71,6 +71,8 @@ const transformUser = (user) => {
     salesforceMemberClass: user.salesforceMemberClass || '',
     salesforceUsername: user.salesforceUsername || '',
     salesforceSyncedAt: user.salesforceSyncedAt || null,
+    feeWaiverJobVerified: user.feeWaiverJobVerified ?? null,
+    eligibilitySnapshot: user.eligibilitySnapshot || null,
   };
 };
 
@@ -167,6 +169,40 @@ export const userService = {
         throw new Error('Network error. Please check your internet connection and ensure the server is running.');
       }
       throw error;
+    }
+  },
+
+  async verifyFeeWaiverJobRole(id) {
+    try {
+      const response = await axios.put(`/users/fee-waiver-job-verify/${id}`);
+      const user = response.data?.user || response.data?.data || response.data;
+      return {
+        user: transformUser(user),
+        message: response.data?.message,
+      };
+    } catch (error) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Could not verify fee-waiver job role.';
+      throw new Error(errorMessage);
+    }
+  },
+
+  async rejectFeeWaiverJobRole(id, reason = '') {
+    try {
+      const response = await axios.put(`/users/fee-waiver-job-reject/${id}`, { reason });
+      const user = response.data?.user || response.data?.data || response.data;
+      return {
+        user: transformUser(user),
+        message: response.data?.message,
+      };
+    } catch (error) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Could not reject fee-waiver job role.';
+      throw new Error(errorMessage);
     }
   },
 

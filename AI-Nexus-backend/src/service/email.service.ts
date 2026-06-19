@@ -160,6 +160,58 @@ export class EmailService {
         }
     }
 
+    async sendFeeWaiverHrVerificationEmail(params: {
+        hrEmail: string;
+        learnerEmail: string;
+        learnerName: string;
+        verificationToken: string;
+    }): Promise<void> {
+        const hrEmail = String(params.hrEmail || '').trim();
+        const learnerEmail = String(params.learnerEmail || '').trim();
+        const learnerName = String(params.learnerName || 'Learner').trim() || 'Learner';
+        const safeLearnerName = escapeHtml(learnerName);
+        const verificationUrl = `${this.resolveFrontendBaseUrl()}/auth/fee-waiver-audit/hr-verify?token=${encodeURIComponent(params.verificationToken)}`;
+
+        const bodyHtml = `
+            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
+                ${safeLearnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.
+            </p>
+            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
+                As part of IMDA's and audit purposes, we will need your assistance to verify that ${safeLearnerName} is currently working in an accounting and finance related job role.
+            </p>
+            <p style="margin:0; color:#334155; line-height:1.6;">
+                Please click the button below to complete the verification.
+            </p>
+        `;
+
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'ISCA AI Fluency Programme – Job function verification',
+            greetingName: `HR of ${safeLearnerName}`,
+            intro: '',
+            bodyHtml,
+            ctaLabel: 'Verify that the mentioned learner is working in an accounting and finance related job role',
+            ctaUrl: verificationUrl,
+            note: 'This verification link does not expire. You may use it at any time to complete verification.',
+            footer: 'ISCA AI Fluency Programme',
+        });
+
+        const mailOptions = {
+            from: process.env.SMTP_USER,
+            to: hrEmail,
+            subject: 'ISCA AI Fluency Programme – Job function verification',
+            text: `Dear HR of ${learnerName},\n\n${learnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.\n\nAs part of IMDA's and audit purposes, we will need your assistance to verify that ${learnerName} is currently working in an accounting and finance related job role. Please open the verification link in this email to complete the verification.\n\n${verificationUrl}`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Fee waiver HR verification email sent to ${hrEmail}`);
+        } catch (error) {
+            console.error('Error sending fee waiver HR verification email:', error);
+            throw new Error('Failed to send HR verification email');
+        }
+    }
+
     /**
      * Send credentials when an admin creates a user account (temporary or chosen password).
      */

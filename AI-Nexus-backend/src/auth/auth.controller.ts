@@ -1,5 +1,5 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles, UploadedFile, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, Res, HttpStatus, Get, Req, UseGuards, UseInterceptors, UploadedFiles, UploadedFile, UnauthorizedException, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, LoginDto, ResendVerificationDto } from '../user/users.dto';
 import { Response, Request } from 'express';
@@ -290,5 +290,59 @@ export class AuthController {
   )
   async verifyExperiencedResume(@UploadedFile() resume: Express.Multer.File) {
     return this.authService.verifyExperiencedResume(resume);
+  }
+
+  @Post('fee-waiver-audit/hr-email')
+  @ApiOperation({ summary: 'Send HR verification email for fee-waiver job role audit' })
+  async submitFeeWaiverAuditHrEmail(
+    @Body('userId') userId: string,
+    @Body('learnerEmail') learnerEmail: string,
+    @Body('learnerName') learnerName: string,
+    @Body('hrEmail') hrEmail: string,
+  ) {
+    return this.authService.submitFeeWaiverAuditHrEmail({
+      userId,
+      learnerEmail,
+      learnerName,
+      hrEmail,
+    });
+  }
+
+  @Post('fee-waiver-audit/verify-certificate')
+  @ApiOperation({ summary: 'Upload education certificate for fee-waiver audit (manual admin review)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        certificate: { type: 'string', format: 'binary' },
+        userId: { type: 'string' },
+        learnerEmail: { type: 'string' },
+      },
+      required: ['certificate', 'learnerEmail'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('certificate', {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async verifyFeeWaiverAuditCertificate(
+    @UploadedFile() certificate: Express.Multer.File,
+    @Body('userId') userId: string,
+    @Body('learnerEmail') learnerEmail: string,
+  ) {
+    return this.authService.verifyFeeWaiverAuditCertificate({
+      userId,
+      learnerEmail,
+      certificate,
+    });
+  }
+
+  @Get('fee-waiver-audit/verify-hr')
+  @ApiOperation({ summary: 'Complete HR fee-waiver job role verification from email link' })
+  async verifyFeeWaiverAuditHr(@Query('token') token: string) {
+    return this.authService.verifyFeeWaiverAuditHrToken(token);
   }
 }

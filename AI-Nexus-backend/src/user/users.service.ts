@@ -315,4 +315,75 @@ export class UserService {
         await this.userRepository.remove(user);
         return { message: 'User deleted successfully' };
     }
+
+    async verifyFeeWaiverJobRole(userId: string) {
+        const user = await this.getById(userId);
+        const existingSnapshot =
+            user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+                ? user.eligibilitySnapshot
+                : {};
+        const existingAudit =
+            typeof existingSnapshot.feeWaiverAudit === 'object' && existingSnapshot.feeWaiverAudit
+                ? existingSnapshot.feeWaiverAudit
+                : {};
+
+        user.eligibilitySnapshot = {
+            ...existingSnapshot,
+            feeWaiverAudit: {
+                ...existingAudit,
+                status: 'admin_verified',
+                verifiedAt: new Date().toISOString(),
+                verifiedBy: 'admin',
+                updatedAt: new Date().toISOString(),
+            },
+        };
+        user.feeWaiverJobVerified = true;
+        user.eligibilityCheckedAt = new Date();
+        await this.userRepository.save(user);
+
+        const { password, ...userWithoutPassword } = user;
+        return {
+            message: 'Fee-waiver job role marked as verified.',
+            verified: true,
+            user: userWithoutPassword,
+        };
+    }
+
+    async rejectFeeWaiverJobRole(userId: string, reason?: string) {
+        const user = await this.getById(userId);
+        const existingSnapshot =
+            user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+                ? user.eligibilitySnapshot
+                : {};
+        const existingAudit =
+            typeof existingSnapshot.feeWaiverAudit === 'object' && existingSnapshot.feeWaiverAudit
+                ? existingSnapshot.feeWaiverAudit
+                : {};
+
+        const rejectionReason = String(reason || '').trim() || 'Rejected by administrator.';
+
+        user.eligibilitySnapshot = {
+            ...existingSnapshot,
+            feeWaiverAudit: {
+                ...existingAudit,
+                status: 'admin_rejected',
+                verifiedAt: null,
+                rejectedAt: new Date().toISOString(),
+                verifiedBy: null,
+                rejectedBy: 'admin',
+                rejectionReason,
+                updatedAt: new Date().toISOString(),
+            },
+        };
+        user.feeWaiverJobVerified = false;
+        user.eligibilityCheckedAt = new Date();
+        await this.userRepository.save(user);
+
+        const { password, ...userWithoutPassword } = user;
+        return {
+            message: 'Fee-waiver job role verification rejected.',
+            verified: false,
+            user: userWithoutPassword,
+        };
+    }
 }

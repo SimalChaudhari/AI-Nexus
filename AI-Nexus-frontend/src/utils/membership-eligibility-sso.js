@@ -31,7 +31,15 @@ export const MEMBERSHIP_SIGNUP_DRAFT_FORM_KEY = 'membershipSignupDraftForm';
 /** Outcomes that reopen the fee-waiver result from Sign in → Sign up only. */
 export const FEE_WAIVER_RESUME_MEMBERSHIP_OUTCOMES = [
   'corporate-fee-waiver-signup',
+  'fee-waiver-signup',
   'student-fee-waiver',
+  'verified-nric-signup',
+];
+
+/** Modal outcomes that open the free individual sign-up form (not paid checkout). */
+export const FEE_WAIVER_FREE_SIGNUP_OUTCOMES = [
+  'fee-waiver-signup',
+  'corporate-fee-waiver-signup',
   'verified-nric-signup',
 ];
 
@@ -39,10 +47,15 @@ export function isFeeWaiverResumeMembershipOutcome(outcome = '') {
   return FEE_WAIVER_RESUME_MEMBERSHIP_OUTCOMES.includes(String(outcome || '').trim());
 }
 
+export function isFeeWaiverFreeSignupOutcome(outcome = '') {
+  return FEE_WAIVER_FREE_SIGNUP_OUTCOMES.includes(String(outcome || '').trim());
+}
+
 /** Map dialog outcomes to the signup page `membershipOutcome` query value. */
 export function resolveSignupPageMembershipOutcome(outcome = '') {
   const normalized = String(outcome || '').trim();
   if (normalized === 'working-paid-signup') return 'paid-signup';
+  if (isFeeWaiverFreeSignupOutcome(normalized)) return 'fee-waiver-signup';
   return normalized;
 }
 
@@ -83,8 +96,8 @@ export function persistFeeWaiverResultForResume(flow = {}, membershipOutcome = '
   const resumeFlow = buildFeeWaiverResumeFlow(flow);
   const outcome = String(membershipOutcome || 'corporate-fee-waiver-signup').trim();
 
-  if (outcome === 'corporate-fee-waiver-signup' || outcome === 'verified-nric-signup') {
-    persistFeeWaiverSignupPrefill(resumeFlow);
+  if (isFeeWaiverFreeSignupOutcome(outcome)) {
+    persistFeeWaiverSignupPrefill(resumeFlow, '', outcome);
   }
   if (outcome === 'student-fee-waiver') {
     try {
@@ -118,9 +131,21 @@ export function buildPaidMembershipSignupUrl(returnPath = '') {
   return `${paths.auth.simple.signUp}?returnTo=${returnTo}&membershipOutcome=paid-signup`;
 }
 
+/** Build URL for the free fee-waiver individual sign-up page. */
+export function buildFreeFeeWaiverSignupUrl(returnPath = '') {
+  const safeReturnPath = String(returnPath || paths.home).trim() || paths.home;
+  const returnTo = encodeURIComponent(safeReturnPath);
+  return `${paths.auth.simple.signUp}?returnTo=${returnTo}&membershipOutcome=fee-waiver-signup`;
+}
+
 /** Navigate directly to paid sign-up (fee waiver declined). */
 export function navigateToPaidMembershipSignup(navigate, returnPath = '') {
   navigate(buildPaidMembershipSignupUrl(returnPath));
+}
+
+/** Navigate directly to free fee-waiver sign-up. */
+export function navigateToFreeFeeWaiverSignup(navigate, returnPath = '') {
+  navigate(buildFreeFeeWaiverSignupUrl(returnPath));
 }
 
 /**
@@ -128,7 +153,12 @@ export function navigateToPaidMembershipSignup(navigate, returnPath = '') {
  * @param {Record<string, unknown>} flow
  * @param {string} [signupAccessToken]
  */
-export function persistFeeWaiverSignupPrefill(flow = {}, signupAccessToken = '') {
+export function persistFeeWaiverSignupPrefill(
+  flow = {},
+  signupAccessToken = '',
+  membershipOutcome = 'fee-waiver-signup'
+) {
+  const resolvedOutcome = resolveSignupPageMembershipOutcome(membershipOutcome);
   const isCorporate = flow.companyRegistrationUnderCompany === true;
   const isSgPrIndividualNric =
     flow.isIscaMember === false
@@ -146,7 +176,7 @@ export function persistFeeWaiverSignupPrefill(flow = {}, signupAccessToken = '')
     sessionStorage.setItem(
       MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
       JSON.stringify({
-        membershipOutcome: 'verified-nric-signup',
+        membershipOutcome: resolvedOutcome,
         flow,
         savedAt: new Date().toISOString(),
       })
@@ -154,7 +184,7 @@ export function persistFeeWaiverSignupPrefill(flow = {}, signupAccessToken = '')
     sessionStorage.setItem(
       MEMBERSHIP_SIGNUP_DRAFT_FORM_KEY,
       JSON.stringify({
-        membershipOutcome: 'verified-nric-signup',
+        membershipOutcome: resolvedOutcome,
         prefillSource: isCorporate
           ? 'corporate-reference'
           : isSgPrIndividualNric
@@ -164,10 +194,12 @@ export function persistFeeWaiverSignupPrefill(flow = {}, signupAccessToken = '')
         flow,
         values: {
           companyName: isCorporate ? String(flow.companyVerifiedName || '').trim() : '',
+          company: isCorporate ? String(flow.companyVerifiedName || '').trim() : '',
           industry: isCorporate ? String(flow.companyVerifiedIndustry || '').trim() : '',
           companyReferenceId: isCorporate ? String(flow.companyReferenceId || '').trim() : '',
           designation: '',
           educationalBackground: educationalBackgroundLabel,
+          nricFin: String(flow.verifiedNricFin || '').trim(),
         },
       })
     );
@@ -647,10 +679,22 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
     return;
   }
 
+  if (actionTarget === 'signUp' && isFeeWaiverFreeSignupOutcome(rawOutcome) && payload?.flow) {
+    try {
+      if (payload?.resumeFeeWaiverOnSignUp) {
+        persistFeeWaiverResultForResume(payload.flow, rawOutcome);
+      } else {
+        persistFeeWaiverSignupPrefill(payload.flow, signupAccessToken, rawOutcome);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   if ((actionTarget === 'signUp' || isScaqCandidateFlow) && payload?.flow) {
     try {
       const keepFeeWaiverResume = Boolean(payload?.resumeFeeWaiverOnSignUp)
-        && isFeeWaiverResumeMembershipOutcome(outcome);
+        && isFeeWaiverResumeMembershipOutcome(rawOutcome);
       sessionStorage.setItem(
         MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
         JSON.stringify({

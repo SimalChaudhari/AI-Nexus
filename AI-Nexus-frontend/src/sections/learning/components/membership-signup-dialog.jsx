@@ -321,6 +321,7 @@ const INITIAL_STATE = {
   nricUploadAcknowledged: false,
   nricSgPrCheckFailed: false,
   feeWaiverViaCompanyReference: false,
+  verifiedNricFin: '',
   spPrVerified: null,
   wantsIscaMembership: null,
   eligibilityType: '',
@@ -1468,7 +1469,7 @@ function getOutcome(state) {
 
   if (isSgPrIndividualPath(state) && state.spPrVerified === true) {
     return {
-      outcome: 'verified-nric-signup',
+      outcome: 'fee-waiver-signup',
       title: 'Eligible to register for fee waiver',
       summary:
         'Proceed to account creation. Please provide your company name, designation, industry, and accounting or non-accounting educational background on the signup page.',
@@ -1682,7 +1683,7 @@ function getRequirementLabel(state, step) {
     'fee-waiver-choice': 'Fee waiver application',
     'initial-questionnaire': 'Basic eligibility questions',
     residency: 'Required before course access',
-    member: 'Are you already an ISCA member?',
+    member: 'Are you already an ISCA Member?',
     'company-registration': 'Company registration check',
     'company-reference': 'Company reference verification',
     'registration-persona': 'Which category below best describes you?',
@@ -1762,7 +1763,14 @@ function getRequirementLabel(state, step) {
   }
 
   if (state.isIscaMember === false && step !== 'member') {
-    return 'Are you already an ISCA member? No';
+    return (
+      <>
+        Are you already an ISCA Member? You answered{' '}
+        <Box component="span" sx={{ fontWeight: 800, color: 'text.primary' }}>
+          No
+        </Box>
+      </>
+    );
   }
 
   return labelsByStep[step] || '';
@@ -2371,6 +2379,19 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     openStudentMembershipApplicationPage(paths.auth.membership.studentApplication);
   };
 
+  const continueToFeeWaiverSignup = (outcome) => {
+    onContinue?.({
+      flow: flowState,
+      result: {
+        ...(result || {}),
+        outcome,
+        actionTarget: 'signUp',
+      },
+      resumeFeeWaiverOnSignUp,
+      signupAccessToken: nricSignupAccessToken || undefined,
+    });
+  };
+
   const handleResultAction = () => {
     if (result?.outcome === 'isca-member-sso-check' && result?.actionTarget === 'salesforce') {
       const returnTo = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}`);
@@ -2401,30 +2422,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       handleSalesforceLogin();
       return;
     }
-    if (result?.outcome === 'verified-nric-signup' && result?.actionTarget === 'signUp') {
-      try {
-        if (resumeFeeWaiverOnSignUp) {
-          persistFeeWaiverResultForResume(flowState, 'verified-nric-signup');
-        } else {
-          persistFeeWaiverSignupPrefill(flowState);
-        }
-      } catch {
-        // ignore storage errors
-      }
-      onClose?.();
+    if (
+      (result?.outcome === 'fee-waiver-signup' || result?.outcome === 'verified-nric-signup')
+      && result?.actionTarget === 'signUp'
+    ) {
+      continueToFeeWaiverSignup('fee-waiver-signup');
       return;
     }
-    if (result?.outcome === 'corporate-fee-waiver-signup') {
-      try {
-        if (resumeFeeWaiverOnSignUp) {
-          persistFeeWaiverResultForResume(flowState, 'corporate-fee-waiver-signup');
-        } else {
-          persistFeeWaiverSignupPrefill(flowState);
-        }
-      } catch {
-        // ignore storage errors
-      }
-      onClose?.();
+    if (result?.outcome === 'corporate-fee-waiver-signup' && result?.actionTarget === 'signUp') {
+      continueToFeeWaiverSignup('corporate-fee-waiver-signup');
       return;
     }
     onContinue?.({ flow: flowState, result });
@@ -3086,12 +3092,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   };
 
   const continueAfterNricAiVerified = () => {
-    try {
-      persistFeeWaiverSignupPrefill(flowState, nricSignupAccessToken || undefined);
-    } catch {
-      // ignore storage errors
-    }
-    onClose?.();
+    continueToFeeWaiverSignup('fee-waiver-signup');
   };
 
   const continueAfterNricOtherOptions = () => {
@@ -3277,10 +3278,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         return;
       }
       setNricSignupAccessToken(response?.signupAccessToken || '');
+      const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
       if (isQuestionnaireNricEligiblePath(flowState)) {
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: true,
+          verifiedNricFin,
           nricUploadAcknowledged: true,
           nricSgPrCheckFailed: false,
           feeWaiverViaCompanyReference: false,
@@ -3289,6 +3292,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: true,
+          verifiedNricFin,
           nricUploadAcknowledged: true,
         }));
       }
@@ -5510,7 +5514,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'member' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you already an ISCA member?
+              Are you already an ISCA Member?
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -7975,6 +7979,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.75 }}>
               {(result.outcome === 'sp-pr-verified-login'
                 || result.outcome === 'ai-fluency-eligible'
+                || result.outcome === 'fee-waiver-signup'
                 || result.outcome === 'verified-nric-signup'
                 || result.outcome === 'corporate-fee-waiver-signup'
                 || result.outcome === 'corporate-membership-signup'
@@ -8022,6 +8027,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               </Alert>
             )}
             {result.actionTarget !== 'close'
+              && result.outcome !== 'fee-waiver-signup'
               && result.outcome !== 'verified-nric-signup'
               && result.outcome !== 'corporate-fee-waiver-signup' && (
               <>

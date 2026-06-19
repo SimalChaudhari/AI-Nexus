@@ -86,6 +86,100 @@ export const AuthSignUpSchema = zod.object({
     .min(6, { message: 'Password must be at least 6 characters!' }),
 });
 
+const individualSignupJobFunctionValues = [
+  'accounting-finance-related',
+  'unemployed-accounting-finance-qualification',
+  'others',
+];
+
+const individualSignupCitizenshipValues = ['singaporean', 'permanent-resident-singapore', 'others'];
+
+const individualSignupSharedFields = {
+  company: zod.string().min(1, { message: 'Company is required!' }),
+  jobFunction: zod
+    .string()
+    .min(1, { message: 'Job function is required!' })
+    .refine((value) => individualSignupJobFunctionValues.includes(value), {
+      message: 'Please select a valid job function.',
+    }),
+  jobFunctionOther: zod.string().optional(),
+  yearsOfExperience: zod
+    .string()
+    .min(1, { message: 'Years of relevant work experience is required!' })
+    .refine((value) => /^\d+$/.test(String(value).trim()), {
+      message: 'Enter a whole number of years.',
+    })
+    .refine((value) => {
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed >= 0 && parsed <= 80;
+    }, { message: 'Enter a valid number of years between 0 and 80.' }),
+  countryOfResidence: zod.string().min(1, { message: 'Country of residence is required!' }),
+};
+
+function refineIndividualSignupProfile(data, ctx) {
+  if (data.jobFunction === 'others' && !String(data.jobFunctionOther || '').trim()) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'Please specify your job function.',
+      path: ['jobFunctionOther'],
+    });
+  }
+}
+
+function refineFreeIndividualSignupProfile(data, ctx) {
+  refineIndividualSignupProfile(data, ctx);
+
+  if (!String(data.citizenship || '').trim()) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'Citizenship is required!',
+      path: ['citizenship'],
+    });
+  } else if (
+    individualSignupCitizenshipValues.includes(data.citizenship)
+    && data.citizenship === 'others'
+    && !String(data.citizenshipOther || '').trim()
+  ) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'Please specify your citizenship.',
+      path: ['citizenshipOther'],
+    });
+  }
+
+  if (!String(data.nricFin || '').trim()) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'NRIC/FIN number is required!',
+      path: ['nricFin'],
+    });
+  }
+
+  if (!data.imdaFundingAcknowledged) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'You must acknowledge IMDA funding data sharing to continue.',
+      path: ['imdaFundingAcknowledged'],
+    });
+  }
+}
+
+/** Individual sign-up (paid membership flows). */
+export function buildPaidIndividualSignUpSchema() {
+  return AuthSignUpSchema.extend(individualSignupSharedFields).superRefine(refineIndividualSignupProfile);
+}
+
+/** Individual free sign-up (fee waiver / programme registration). */
+export function buildFreeIndividualSignUpSchema() {
+  return AuthSignUpSchema.extend({
+    ...individualSignupSharedFields,
+    nricFin: zod.string().optional(),
+    citizenship: zod.string().optional(),
+    citizenshipOther: zod.string().optional(),
+    imdaFundingAcknowledged: zod.boolean().optional(),
+  }).superRefine(refineFreeIndividualSignupProfile);
+}
+
 export const CorporateSignUpSchema = AuthSignUpSchema.extend({
   companyCode: zod
     .string()

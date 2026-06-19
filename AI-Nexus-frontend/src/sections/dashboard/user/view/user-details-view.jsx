@@ -4,7 +4,6 @@ import Chip from '@mui/material/Chip';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
-
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { EmptyContent } from 'src/components/empty-content';
@@ -13,10 +12,11 @@ import { Iconify } from 'src/components/iconify';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 
 import { buildSalesforceProfileDetailRows } from 'src/components/user-salesforce-profile-fields';
+import { UserFeeWaiverAuditPanel } from './user-fee-waiver-audit-panel';
 
 // ----------------------------------------------------------------------
 
-export function UserDetailsView({ user, loading, error }) {
+export function UserDetailsView({ user, loading, error, onRefresh }) {
   if (loading) {
     return <LoadingScreen />;
   }
@@ -57,37 +57,66 @@ export function UserDetailsView({ user, loading, error }) {
       .map((part) => part[0]?.toUpperCase())
       .join('') || '?';
 
+  const snapshot = user?.eligibilitySnapshot || {};
+  const hasAuditPanel =
+    Boolean(snapshot?.feeWaiverAudit)
+    || Boolean(snapshot?.nricAudit);
+
   const headerChips = [
+    { label: user.status || '-', color: statusColor },
+    { label: user.role || 'User', color: 'info' },
+  ];
+
+  if (hasAuditPanel) {
+    headerChips.push({
+      label: user.feeWaiverJobVerified ? 'Job role verified' : 'Job audit pending',
+      color: user.feeWaiverJobVerified ? 'success' : 'warning',
+    });
+  }
+
+  const profileRows = [
+    { label: 'First name', value: user.firstname || '-' },
+    { label: 'Last name', value: user.lastname || '-' },
+    { label: 'Username', value: user.username || '-' },
+    { label: 'Email', value: user.email || '-' },
+    { label: 'Contact number', value: user.contactNumber || user.phoneNumber || '—' },
+    { label: 'Company code', value: user.companyCode || '—' },
+    { label: 'Company (signup)', value: snapshot.companyName || '—' },
     {
-      label: user.status || '-',
-      color: statusColor,
+      label: 'Job function',
+      value: snapshot.jobFunctionLabel || snapshot.jobFunction || '—',
     },
-    {
-      label: user.role || 'User',
-      color: 'info',
-    },
+    { label: 'Country of residence', value: snapshot.countryOfResidence || '—' },
   ];
 
   const sections = [
     {
-      title: 'Personal Information',
+      title: 'Personal information',
       icon: 'solar:user-id-bold',
-      rows: [
-        { label: 'First Name', value: user.firstname || '-' },
-        { label: 'Last Name', value: user.lastname || '-' },
-        { label: 'Username', value: user.username || '-' },
-        { label: 'Email', value: user.email || '-' },
-        { label: 'Company code', value: user.companyCode || '—' },
-        { label: 'Contact number', value: user.contactNumber || user.phoneNumber || '—' },
-      ],
+      fullWidth: true,
+      layout: 'grid',
+      rows: profileRows,
     },
     {
-      title: 'Account Details',
+      title: 'Account details',
       icon: 'solar:shield-check-bold',
+      fullWidth: true,
+      layout: 'grid',
       rows: [
-        { label: 'User Role', value: user.role || '-' },
+        { label: 'User role', value: user.role || '-' },
         {
-          label: 'Status',
+          label: 'Email verified',
+          value: (
+            <Chip
+              label={user.isVerified ? 'Yes' : 'No'}
+              color={user.isVerified ? 'success' : 'warning'}
+              size="small"
+              sx={{ mt: 0.5, fontWeight: 600 }}
+            />
+          ),
+        },
+        {
+          label: 'Account status',
           value: (
             <Chip
               label={user.status || '-'}
@@ -97,22 +126,27 @@ export function UserDetailsView({ user, loading, error }) {
             />
           ),
         },
+        {
+          label: 'Registered on',
+          value: user.createdAt ? new Date(user.createdAt).toLocaleString() : '—',
+        },
       ],
     },
     {
       title: 'ISCA eServices',
       icon: 'solar:cloud-bold-duotone',
       fullWidth: true,
+      layout: 'grid',
       rows: buildSalesforceProfileDetailRows(user),
     },
   ];
 
   return (
     <EntityDetailsLayout
-      heading="User Details"
+      heading="User details"
       links={[
         { name: 'Dashboard', href: paths.dashboard.root },
-        { name: 'User', href: paths.admin.user.list },
+        { name: 'Users', href: paths.admin.user.list },
         { name: fullName },
       ]}
       editHref={paths.admin.user.edit(user?.id)}
@@ -125,6 +159,9 @@ export function UserDetailsView({ user, loading, error }) {
         chips: headerChips,
       }}
       sections={sections}
+      footer={
+        hasAuditPanel ? <UserFeeWaiverAuditPanel user={user} onRefresh={onRefresh} /> : null
+      }
     />
   );
 }

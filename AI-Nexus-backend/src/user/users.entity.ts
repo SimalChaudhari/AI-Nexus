@@ -175,6 +175,10 @@ export class UserEntity {
     @Column({ nullable: true, type: 'timestamp' })
     salesforceSyncedAt!: Date | null;
 
+    /** True when fee-waiver job role audit (HR or certificate) is verified */
+    @Column({ type: 'boolean', nullable: true })
+    feeWaiverJobVerified!: boolean | null;
+
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;
 

@@ -14,7 +14,7 @@ const metadata = { title: `User details | Dashboard - ${CONFIG.site.name}` };
 export default function Page() {
   const { id = '' } = useParams();
 
-  const { user, userLoading, userError } = useGetUser(id);
+  const { user, userLoading, userError, refresh } = useGetUser(id);
 
   return (
     <>
@@ -22,7 +22,7 @@ export default function Page() {
         <title> {metadata.title}</title>
       </Helmet>
 
-      <UserDetailsView user={user} loading={userLoading} error={userError} />
+      <UserDetailsView user={user} loading={userLoading} error={userError} onRefresh={refresh} />
     </>
   );
 }

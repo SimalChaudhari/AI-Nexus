@@ -16,6 +16,7 @@ import { UserRole, UserStatus, AuthProvider } from './../user/users.entity';
 import { normalizeEmail, validateEmail } from './../utils/auth.utils';
 import { verifyEmailAddress } from './../utils/email-verification.util';
 import { EmailService } from './../service/email.service';
+import { LocalStorageService } from './../service/local-storage.service';
 import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from '../user/users.dto';
 import * as crypto from 'crypto';
 import { OAuthAuthService } from './oauth-auth.service';
@@ -98,6 +99,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly oauthAuthService: OAuthAuthService,
     private readonly llmService: LlmService,
+    private readonly localStorageService: LocalStorageService,
   ) { }
 
   private normalizeUsername(username: string): string {
@@ -1944,6 +1946,289 @@ export class AuthService {
     }
   }
 
+  private normalizeAuditEmail(email?: string | null) {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  private async resolveUserForFeeWaiverAudit(userId?: string, learnerEmail?: string) {
+    const trimmedId = String(userId || '').trim();
+    if (trimmedId) {
+      const byId = await this.userRepository.findOne({ where: { id: trimmedId } });
+      if (byId) return byId;
+    }
+
+    const normalizedEmail = this.normalizeAuditEmail(learnerEmail);
+    if (!normalizedEmail) {
+      throw new BadRequestException('Learner email is required.');
+    }
+
+    const byEmail = await this.userRepository.findOne({ where: { email: normalizedEmail } });
+    if (!byEmail) {
+      throw new BadRequestException('Could not find the registration record for this learner email.');
+    }
+
+    return byEmail;
+  }
+
+  private mergeFeeWaiverAuditSnapshot(
+    user: UserEntity,
+    audit: Record<string, unknown>,
+  ) {
+    const existing =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? user.eligibilitySnapshot
+        : {};
+    const mergedAudit: Record<string, unknown> = {
+      ...(typeof existing.feeWaiverAudit === 'object' && existing.feeWaiverAudit
+        ? (existing.feeWaiverAudit as Record<string, unknown>)
+        : {}),
+      ...audit,
+      updatedAt: new Date().toISOString(),
+    };
+    user.eligibilitySnapshot = {
+      ...existing,
+      feeWaiverAudit: mergedAudit,
+    };
+    user.eligibilityCheckedAt = new Date();
+
+    const status = String(mergedAudit.status || '').trim();
+    if (status === 'hr_verified' || status === 'certificate_verified' || status === 'admin_verified') {
+      user.feeWaiverJobVerified = true;
+    } else if (status === 'pending_hr_verification' || status === 'pending_certificate_review') {
+      user.feeWaiverJobVerified = false;
+    }
+  }
+
+  private hashFeeWaiverHrVerificationToken(token: string) {
+    return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex');
+  }
+
+  private async saveFeeWaiverAuditFile(
+    user: UserEntity,
+    folder: string,
+    file: Express.Multer.File,
+    fileLabel: string,
+  ) {
+    const userFolder = `fee-waiver-audit/${folder}/${user.id}`;
+    const fileUrl = await this.localStorageService.saveFile(file, userFolder, {
+      fileName: fileLabel,
+    });
+    return fileUrl;
+  }
+
+  private async findUserByFeeWaiverHrToken(token: string) {
+    const tokenHash = this.hashFeeWaiverHrVerificationToken(token);
+    const byHash = await this.userRepository
+      .createQueryBuilder('usr')
+      .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+        auditFilter: JSON.stringify({
+          feeWaiverAudit: { hrVerificationTokenHash: tokenHash },
+        }),
+      })
+      .getOne();
+
+    if (byHash) return byHash;
+
+    return this.userRepository
+      .createQueryBuilder('usr')
+      .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+        auditFilter: JSON.stringify({
+          feeWaiverAudit: { hrVerificationToken: token },
+        }),
+      })
+      .getOne();
+  }
+
+  private validateFeeWaiverCertificateFile(file: Express.Multer.File | undefined) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please upload your education certificate.');
+    }
+    const maxBytes = 8 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException('Certificate file is too large. Maximum size is 8MB.');
+    }
+
+    const name = String(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const allowed =
+      mime === 'application/pdf'
+      || name.endsWith('.pdf')
+      || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || name.endsWith('.docx')
+      || mime === 'application/msword'
+      || name.endsWith('.doc')
+      || mime.startsWith('image/')
+      || /\.(jpe?g|png|webp)$/i.test(name);
+
+    if (!allowed) {
+      throw new BadRequestException('Please upload a PDF, Word document, or image file.');
+    }
+  }
+
+  async submitFeeWaiverAuditHrEmail(params: {
+    userId?: string;
+    learnerEmail?: string;
+    learnerName?: string;
+    hrEmail?: string;
+  }) {
+    const learnerEmail = this.normalizeAuditEmail(params?.learnerEmail);
+    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
+    const learnerName = String(params?.learnerName || '').trim() || 'Learner';
+
+    if (!learnerEmail) {
+      throw new BadRequestException('Learner email is required.');
+    }
+    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
+      throw new BadRequestException('Please enter a valid HR email address.');
+    }
+    if (learnerEmail === hrEmail) {
+      throw new BadRequestException('HR email must be different from your registration email.');
+    }
+
+    const user = await this.resolveUserForFeeWaiverAudit(params?.userId, learnerEmail);
+    if (this.normalizeAuditEmail(user.email) !== learnerEmail) {
+      throw new BadRequestException('Learner email does not match the registration record.');
+    }
+
+    const existingAudit =
+      user.eligibilitySnapshot?.feeWaiverAudit
+      && typeof user.eligibilitySnapshot.feeWaiverAudit === 'object'
+        ? (user.eligibilitySnapshot.feeWaiverAudit as Record<string, unknown>)
+        : null;
+    const existingToken = String(existingAudit?.hrVerificationToken || '').trim();
+    const canReuseToken =
+      existingAudit?.status === 'pending_hr_verification'
+      && existingToken.length > 0;
+
+    const hrVerificationToken = canReuseToken
+      ? existingToken
+      : crypto.randomBytes(32).toString('hex');
+
+    await this.emailService.sendFeeWaiverHrVerificationEmail({
+      hrEmail,
+      learnerEmail,
+      learnerName: learnerName || `${user.firstname || ''} ${user.lastname || ''}`.trim() || 'Learner',
+      verificationToken: hrVerificationToken,
+    });
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      method: 'hr-email',
+      hrEmail,
+      learnerEmail,
+      status: 'pending_hr_verification',
+      auditSubmitted: true,
+      hrVerificationToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(hrVerificationToken),
+      submittedAt: new Date().toISOString(),
+    });
+    user.feeWaiverJobVerified = false;
+    await this.userRepository.save(user);
+
+    return {
+      submitted: true,
+      method: 'hr-email',
+      hrEmail,
+      jobVerified: false,
+      message:
+        'A verification email has been sent to your HR contact. Please verify your registration email, then sign in to start the programme.',
+    };
+  }
+
+  async verifyFeeWaiverAuditHrToken(token?: string) {
+    const trimmedToken = String(token || '').trim();
+    if (!trimmedToken) {
+      throw new BadRequestException('Verification token is required.');
+    }
+
+    const user = await this.findUserByFeeWaiverHrToken(trimmedToken);
+    if (!user) {
+      throw new BadRequestException('This HR verification link is invalid.');
+    }
+
+    const audit = user.eligibilitySnapshot?.feeWaiverAudit;
+    const auditRecord =
+      audit && typeof audit === 'object' ? (audit as Record<string, unknown>) : null;
+    if (!auditRecord) {
+      throw new BadRequestException('This HR verification link is invalid.');
+    }
+
+    const learnerName =
+      `${user.firstname || ''} ${user.lastname || ''}`.trim()
+      || String(auditRecord.learnerEmail || user.email || 'Learner');
+
+    if (auditRecord.status === 'hr_verified' || user.feeWaiverJobVerified === true) {
+      return {
+        verified: true,
+        alreadyVerified: true,
+        learnerName,
+        learnerEmail: user.email,
+        message: 'This learner job role has already been verified. Thank you.',
+      };
+    }
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      status: 'hr_verified',
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'hr-email-link',
+      hrVerificationToken: trimmedToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(trimmedToken),
+    });
+    await this.userRepository.save(user);
+
+    return {
+      verified: true,
+      learnerName,
+      learnerEmail: user.email,
+      message: 'Thank you. The learner job role has been verified successfully.',
+    };
+  }
+
+  async verifyFeeWaiverAuditCertificate(params: {
+    userId?: string;
+    learnerEmail?: string;
+    certificate?: Express.Multer.File;
+  }) {
+    const learnerEmail = this.normalizeAuditEmail(params?.learnerEmail);
+    if (!learnerEmail) {
+      throw new BadRequestException('Learner email is required.');
+    }
+
+    this.validateFeeWaiverCertificateFile(params?.certificate);
+    const user = await this.resolveUserForFeeWaiverAudit(params?.userId, learnerEmail);
+    if (this.normalizeAuditEmail(user.email) !== learnerEmail) {
+      throw new BadRequestException('Learner email does not match the registration record.');
+    }
+
+    const certificateUrl = await this.saveFeeWaiverAuditFile(
+      user,
+      'certificates',
+      params!.certificate!,
+      'education-certificate',
+    );
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      method: 'education-certificate',
+      learnerEmail,
+      status: 'pending_certificate_review',
+      auditSubmitted: true,
+      certificateUrl,
+      fileName: params?.certificate?.originalname || '',
+      submittedAt: new Date().toISOString(),
+    });
+    user.feeWaiverJobVerified = false;
+    await this.userRepository.save(user);
+
+    return {
+      submitted: true,
+      method: 'education-certificate',
+      verified: false,
+      pendingReview: true,
+      jobVerified: false,
+      message:
+        'Your certificate has been submitted for review. Please verify your registration email, then sign in while an administrator completes verification.',
+    };
+  }
+
   async getVerifiedSignupAccess(token: string) {
     const user = await this.resolveUserByVerifiedSignupAccessToken(token);
 
@@ -2177,8 +2462,8 @@ export class AuthService {
       userId: currentResolvedUser?.id || null,
       storedAsDraft: false,
       draftUserCreated: false,
-      signupAccessToken: null,
-      signupAccessTokenExpiresAt: null,
+      signupAccessToken: null as string | null,
+      signupAccessTokenExpiresAt: null as Date | null,
       checks: {
         frontImage: front,
         backImage: back,
@@ -2186,6 +2471,44 @@ export class AuthService {
         frontBackDocumentMatch: true,
       },
     };
+
+    try {
+      const { user: auditUser, createdAsDraft } = await this.resolveOrCreateUserForNricVerification(
+        extracted,
+        userId,
+        authorizationHeader,
+      );
+      const frontUrl = await this.localStorageService.saveFile(frontImage!, `fee-waiver-audit/nric/${auditUser.id}`, {
+        fileName: 'nric-front',
+      });
+      const backUrl = await this.localStorageService.saveFile(backImage!, `fee-waiver-audit/nric/${auditUser.id}`, {
+        fileName: 'nric-back',
+      });
+      const existingSnapshot =
+        auditUser.eligibilitySnapshot && typeof auditUser.eligibilitySnapshot === 'object'
+          ? auditUser.eligibilitySnapshot
+          : {};
+      auditUser.eligibilitySnapshot = {
+        ...existingSnapshot,
+        nricAudit: {
+          frontUrl,
+          backUrl,
+          maskedIdentifier: maskSingaporeNricFin(exactIdentifier),
+          savedAt: new Date().toISOString(),
+        },
+      };
+      const access = await this.issueVerifiedSignupAccessToken(auditUser);
+      verificationResponse.storedOnUser = true;
+      verificationResponse.userId = auditUser.id;
+      verificationResponse.storedAsDraft = auditUser.isDraft;
+      verificationResponse.draftUserCreated = createdAsDraft;
+      verificationResponse.signupAccessToken = access.signupAccessToken;
+      verificationResponse.signupAccessTokenExpiresAt = access.signupAccessTokenExpiresAt;
+    } catch (error) {
+      this.logger.warn(
+        `Could not persist NRIC audit images: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     return verificationResponse;
   }

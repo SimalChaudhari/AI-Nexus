@@ -343,6 +343,74 @@ export const verifyExperiencedResume = async ({ resume }) => {
 };
 
 /** **************************************
+ * Fee-waiver audit: HR email verification after free signup
+ *************************************** */
+export const submitFeeWaiverAuditHrEmail = async ({
+  userId,
+  learnerEmail,
+  learnerName,
+  hrEmail,
+}) => {
+  try {
+    const res = await axios.post('/auth/fee-waiver-audit/hr-email', {
+      userId: userId || undefined,
+      learnerEmail,
+      learnerName,
+      hrEmail,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not send HR verification email.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Fee-waiver audit: verify education certificate after free signup
+ *************************************** */
+export const submitFeeWaiverAuditCertificate = async ({
+  userId,
+  learnerEmail,
+  certificate,
+}) => {
+  try {
+    const formData = new FormData();
+    formData.append('certificate', certificate);
+    if (userId) formData.append('userId', userId);
+    formData.append('learnerEmail', learnerEmail);
+    const res = await axios.post('/auth/fee-waiver-audit/verify-certificate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not verify education certificate.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** Complete HR fee-waiver job role verification from email link. */
+export const verifyFeeWaiverHrToken = async ({ token }) => {
+  try {
+    const res = await axios.get('/auth/fee-waiver-audit/verify-hr', {
+      params: { token },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not complete HR verification.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
 export const getOAuthAuthUrl = async ({ scaqVerify = false, deferredAuth = false } = {}) => {

@@ -274,6 +274,10 @@ export class UsersInitService implements OnModuleInit {
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "salesforceSyncedAt" TIMESTAMP
       `);
+      await queryRunner.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "feeWaiverJobVerified" boolean
+      `);
     } catch (error) {
       console.error(
         '❌ Error ensuring users profile columns:',
