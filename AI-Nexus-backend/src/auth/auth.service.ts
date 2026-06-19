@@ -16,6 +16,7 @@ import { UserRole, UserStatus, AuthProvider } from './../user/users.entity';
 import { normalizeEmail, validateEmail } from './../utils/auth.utils';
 import { verifyEmailAddress } from './../utils/email-verification.util';
 import { EmailService } from './../service/email.service';
+import { LocalStorageService } from './../service/local-storage.service';
 import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from '../user/users.dto';
 import * as crypto from 'crypto';
 import { OAuthAuthService } from './oauth-auth.service';
@@ -33,6 +34,8 @@ import {
   EXPERIENCED_MEMBERSHIP_SYSTEM_PROMPT,
   STUDENT_MEMBERSHIP_PATHWAY_RULE,
   STUDENT_MEMBERSHIP_SYSTEM_PROMPT,
+  STUDENT_CARD_IMAGE_SYSTEM_PROMPT,
+  STUDENT_CARD_IMAGE_USER_PROMPT,
 } from '../ai-prompts/membership-prompts';
 import {
   buildNricSingleImageUserPrompt,
@@ -86,6 +89,46 @@ interface StudentEligibilityAssessment {
   source: LlmProvider | 'heuristic';
 }
 
+interface StudentCardExtraction {
+  isStudentCard: boolean;
+  fullName: string;
+  email: string;
+  institution: string;
+  studentId: string;
+  confidence: number | null;
+  reason: string;
+}
+
+interface StudentAcademicVerificationChecks {
+  academicEmailValid: boolean;
+  personalEmailValid: boolean | null;
+  studentCardReadable: boolean;
+  cardEmailMatchesAcademic: boolean | null;
+}
+
+interface StudentAcademicVerificationResult extends StudentEligibilityAssessment {
+  checks: StudentAcademicVerificationChecks;
+  extracted?: {
+    fullName: string;
+    email: string;
+    institution: string;
+    studentId: string;
+  };
+  cardImageUrl?: string | null;
+}
+
+const QUESTIONNAIRE_ACADEMIC_EMAIL_SUFFIXES = [
+  'nus.edu',
+  'ntu.edu.sg',
+  'smu.edu.sg',
+  'sit.singaporetech.edu.sg',
+  'sp.edu.sg',
+  'np.edu.sg',
+  'nyp.edu.sg',
+  'tp.edu.sg',
+  'rp.edu.sg',
+];
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -98,6 +141,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly oauthAuthService: OAuthAuthService,
     private readonly llmService: LlmService,
+    private readonly localStorageService: LocalStorageService,
   ) { }
 
   private normalizeUsername(username: string): string {
@@ -921,6 +965,28 @@ export class AuthService {
     return null;
   }
 
+  private validateStudentCardImage(file: Express.Multer.File | undefined) {
+    if (!file) {
+      throw new BadRequestException('Please upload your student card image.');
+    }
+
+    if (!file.buffer?.length) {
+      throw new BadRequestException('The student card image is empty.');
+    }
+
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      throw new BadRequestException('Only JPG, PNG or WEBP image files are allowed.');
+    }
+
+    const detectedSignature = this.getNricImageSignature(file.buffer);
+    if (!detectedSignature) {
+      throw new BadRequestException('The student card image is not a valid JPG, PNG or WEBP file.');
+    }
+
+    return file;
+  }
+
   private validateNricImage(file: Express.Multer.File | undefined, side: 'front' | 'back') {
     if (!file) {
       throw new BadRequestException(`Please upload the NRIC ${side} image.`);
@@ -1709,6 +1775,266 @@ export class AuthService {
     }
   }
 
+  private isQuestionnaireAcademicEmail(email: string): boolean {
+    const value = this.normalizeStudentSchoolEmail(email);
+    if (!value || !value.includes('@')) return false;
+    return QUESTIONNAIRE_ACADEMIC_EMAIL_SUFFIXES.some((suffix) => value.endsWith(`@${suffix}`));
+  }
+
+  private parseStudentCardAiResponse(rawResponse: string): StudentCardExtraction {
+    const trimmed = String(rawResponse || '').trim();
+    const withoutFence = trimmed.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    const firstBrace = withoutFence.indexOf('{');
+    const lastBrace = withoutFence.lastIndexOf('}');
+    const jsonCandidate =
+      firstBrace >= 0 && lastBrace > firstBrace
+        ? withoutFence.slice(firstBrace, lastBrace + 1)
+        : withoutFence;
+
+    const parsed = JSON.parse(jsonCandidate) as {
+      isStudentCard?: boolean;
+      fullName?: string;
+      email?: string;
+      institution?: string;
+      studentId?: string;
+      confidence?: number | string;
+      reason?: string;
+    };
+
+    const parsedConfidence = Number(parsed.confidence);
+    return {
+      isStudentCard: parsed.isStudentCard === true,
+      fullName: this.sanitizeExtractedTextField(parsed.fullName),
+      email: this.normalizeStudentSchoolEmail(parsed.email || ''),
+      institution: this.sanitizeExtractedTextField(parsed.institution),
+      studentId: this.sanitizeExtractedTextField(parsed.studentId),
+      confidence: Number.isFinite(parsedConfidence) ? Math.max(0, Math.min(1, parsedConfidence)) : null,
+      reason: this.sanitizeExtractedTextField(parsed.reason),
+    };
+  }
+
+  private async extractStudentCardFromImageWithAi(
+    image: Express.Multer.File,
+  ): Promise<StudentCardExtraction> {
+    if (!this.isExternalNricAiAllowed()) {
+      throw new BadRequestException(
+        'Automatic student card verification with an external AI provider is disabled in this environment. Set NRIC_ALLOW_EXTERNAL_AI=true after compliance approval.',
+      );
+    }
+
+    if (!this.llmService.isConfigured()) {
+      throw new BadRequestException(this.llmService.getConfigurationErrorMessage());
+    }
+
+    try {
+      const result = await this.llmService.chat({
+        useCase: 'student',
+        temperature: 0,
+        maxTokens: this.getStudentAiMaxTokens(),
+        messages: [
+          {
+            role: 'system',
+            content: STUDENT_CARD_IMAGE_SYSTEM_PROMPT,
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: STUDENT_CARD_IMAGE_USER_PROMPT,
+              },
+              {
+                type: 'image_url',
+                image_url: { url: this.buildDataUrl(image) },
+              },
+            ],
+          },
+        ],
+      });
+
+      return this.parseStudentCardAiResponse(result.text);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : 'Student card AI verification failed.';
+      throw new BadRequestException(message);
+    }
+  }
+
+  private buildStudentAcademicVerificationAssessment(input: {
+    academicEmail: string;
+    personalEmail?: string;
+    extracted: StudentCardExtraction;
+    source: LlmProvider | 'heuristic';
+  }): StudentAcademicVerificationResult {
+    const academicEmail = this.normalizeStudentSchoolEmail(input.academicEmail);
+    const personalEmail = String(input.personalEmail || '').trim();
+    const extracted = input.extracted;
+    const reasons: string[] = [];
+    let score = 0;
+
+    const academicEmailValid = this.isQuestionnaireAcademicEmail(academicEmail);
+    if (academicEmailValid) {
+      score += 34;
+      reasons.push('Academic email domain is supported.');
+    } else {
+      reasons.push('Academic email domain is not supported.');
+    }
+
+    let personalEmailValid = false;
+    if (personalEmail) {
+      personalEmailValid = this.isBasicEmailFormat(personalEmail);
+      if (personalEmailValid) {
+        reasons.push('Personal email format is valid.');
+      } else {
+        reasons.push('Personal email format is invalid.');
+      }
+    } else {
+      reasons.push('Personal email is required.');
+    }
+
+    const minConfidence = 0.4;
+    const studentCardReadable =
+      extracted.isStudentCard === true
+      && (extracted.confidence ?? 0) >= minConfidence;
+
+    if (studentCardReadable) {
+      score += 33;
+      reasons.push('Student ID card was read successfully.');
+    } else {
+      reasons.push(extracted.reason || 'Could not confirm a valid student ID card from the upload.');
+    }
+
+    let cardEmailMatchesAcademic: boolean | null = null;
+    if (extracted.email && academicEmail) {
+      cardEmailMatchesAcademic = extracted.email === academicEmail;
+      if (cardEmailMatchesAcademic) {
+        score += 33;
+        reasons.push('Email on student card matches the academic email.');
+      } else {
+        reasons.push('Email on student card does not match the academic email.');
+      }
+    } else if (studentCardReadable) {
+      score += 12;
+      reasons.push('No email was visible on the student card; partial credit applied for manual review.');
+    }
+
+    const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
+    let status: StudentEligibilityAssessment['status'] = 'ineligible';
+    if (cardEmailMatchesAcademic === false || !academicEmailValid || !studentCardReadable) {
+      status = normalizedScore >= 50 ? 'manual_review' : 'ineligible';
+    } else if (normalizedScore >= 70) {
+      status = 'eligible';
+    } else if (normalizedScore >= 50) {
+      status = 'manual_review';
+    }
+
+    const verified =
+      academicEmailValid
+      && personalEmailValid
+      && studentCardReadable
+      && cardEmailMatchesAcademic !== false
+      && status === 'eligible';
+
+    return {
+      verified,
+      score: normalizedScore,
+      status,
+      reasons: reasons.slice(0, 5),
+      confidence: extracted.confidence,
+      source: input.source,
+      checks: {
+        academicEmailValid,
+        personalEmailValid,
+        studentCardReadable,
+        cardEmailMatchesAcademic,
+      },
+      extracted: {
+        fullName: extracted.fullName,
+        email: extracted.email,
+        institution: extracted.institution,
+        studentId: extracted.studentId,
+      },
+    };
+  }
+
+  async verifyStudentAcademicDetailsWithAi(params: {
+    academicEmail?: string;
+    personalEmail?: string;
+    studentCardImage?: Express.Multer.File;
+    userId?: string;
+    authorizationHeader?: string;
+  }): Promise<StudentAcademicVerificationResult> {
+    const academicEmail = this.normalizeStudentSchoolEmail(params?.academicEmail || '');
+    const personalEmail = String(params?.personalEmail || '').trim();
+    const cardImage = this.validateStudentCardImage(params?.studentCardImage);
+
+    if (!academicEmail) {
+      throw new BadRequestException('Please enter your academic email.');
+    }
+
+    if (!this.isQuestionnaireAcademicEmail(academicEmail)) {
+      throw new BadRequestException('Academic email domain is not supported for student verification.');
+    }
+
+    if (!personalEmail) {
+      throw new BadRequestException('Please enter your personal email.');
+    }
+
+    if (!this.isBasicEmailFormat(personalEmail)) {
+      throw new BadRequestException('Please enter a valid personal email address.');
+    }
+
+    const extracted = await this.extractStudentCardFromImageWithAi(params!.studentCardImage!);
+    const assessment = this.buildStudentAcademicVerificationAssessment({
+      academicEmail,
+      personalEmail,
+      extracted,
+      source: this.llmService.getActiveProvider(),
+    });
+
+    try {
+      const auditUser = await this.resolveUserForNricVerification(
+        params?.userId,
+        params?.authorizationHeader,
+      );
+      if (auditUser?.id) {
+        const cardUrl = await this.localStorageService.saveFile(
+          params!.studentCardImage!,
+          `fee-waiver-audit/student-card/${auditUser.id}`,
+          { fileName: 'student-card' },
+        );
+        const existingSnapshot =
+          auditUser.eligibilitySnapshot && typeof auditUser.eligibilitySnapshot === 'object'
+            ? auditUser.eligibilitySnapshot
+            : {};
+        auditUser.eligibilitySnapshot = {
+          ...existingSnapshot,
+          studentCardAudit: {
+            cardUrl,
+            academicEmail,
+            personalEmail: personalEmail || null,
+            score: assessment.score,
+            status: assessment.status,
+            verified: assessment.verified,
+            checks: assessment.checks,
+            extracted: assessment.extracted,
+            savedAt: new Date().toISOString(),
+          },
+        };
+        await this.userRepository.save(auditUser);
+        assessment.cardImageUrl = cardUrl;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not persist student card audit image: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    return assessment;
+  }
+
   private getExperiencedAiMaxTokens(): number {
     const configured = Number(process.env.AI_EXPERIENCED_MAX_TOKENS ?? process.env.OPENROUTER_EXPERIENCED_MAX_TOKENS ?? '400');
     if (!Number.isFinite(configured)) return 400;
@@ -1944,6 +2270,289 @@ export class AuthService {
     }
   }
 
+  private normalizeAuditEmail(email?: string | null) {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  private async resolveUserForFeeWaiverAudit(userId?: string, learnerEmail?: string) {
+    const trimmedId = String(userId || '').trim();
+    if (trimmedId) {
+      const byId = await this.userRepository.findOne({ where: { id: trimmedId } });
+      if (byId) return byId;
+    }
+
+    const normalizedEmail = this.normalizeAuditEmail(learnerEmail);
+    if (!normalizedEmail) {
+      throw new BadRequestException('Learner email is required.');
+    }
+
+    const byEmail = await this.userRepository.findOne({ where: { email: normalizedEmail } });
+    if (!byEmail) {
+      throw new BadRequestException('Could not find the registration record for this learner email.');
+    }
+
+    return byEmail;
+  }
+
+  private mergeFeeWaiverAuditSnapshot(
+    user: UserEntity,
+    audit: Record<string, unknown>,
+  ) {
+    const existing =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? user.eligibilitySnapshot
+        : {};
+    const mergedAudit: Record<string, unknown> = {
+      ...(typeof existing.feeWaiverAudit === 'object' && existing.feeWaiverAudit
+        ? (existing.feeWaiverAudit as Record<string, unknown>)
+        : {}),
+      ...audit,
+      updatedAt: new Date().toISOString(),
+    };
+    user.eligibilitySnapshot = {
+      ...existing,
+      feeWaiverAudit: mergedAudit,
+    };
+    user.eligibilityCheckedAt = new Date();
+
+    const status = String(mergedAudit.status || '').trim();
+    if (status === 'hr_verified' || status === 'certificate_verified' || status === 'admin_verified') {
+      user.feeWaiverJobVerified = true;
+    } else if (status === 'pending_hr_verification' || status === 'pending_certificate_review') {
+      user.feeWaiverJobVerified = false;
+    }
+  }
+
+  private hashFeeWaiverHrVerificationToken(token: string) {
+    return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex');
+  }
+
+  private async saveFeeWaiverAuditFile(
+    user: UserEntity,
+    folder: string,
+    file: Express.Multer.File,
+    fileLabel: string,
+  ) {
+    const userFolder = `fee-waiver-audit/${folder}/${user.id}`;
+    const fileUrl = await this.localStorageService.saveFile(file, userFolder, {
+      fileName: fileLabel,
+    });
+    return fileUrl;
+  }
+
+  private async findUserByFeeWaiverHrToken(token: string) {
+    const tokenHash = this.hashFeeWaiverHrVerificationToken(token);
+    const byHash = await this.userRepository
+      .createQueryBuilder('usr')
+      .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+        auditFilter: JSON.stringify({
+          feeWaiverAudit: { hrVerificationTokenHash: tokenHash },
+        }),
+      })
+      .getOne();
+
+    if (byHash) return byHash;
+
+    return this.userRepository
+      .createQueryBuilder('usr')
+      .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+        auditFilter: JSON.stringify({
+          feeWaiverAudit: { hrVerificationToken: token },
+        }),
+      })
+      .getOne();
+  }
+
+  private validateFeeWaiverCertificateFile(file: Express.Multer.File | undefined) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please upload your education certificate.');
+    }
+    const maxBytes = 8 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException('Certificate file is too large. Maximum size is 8MB.');
+    }
+
+    const name = String(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const allowed =
+      mime === 'application/pdf'
+      || name.endsWith('.pdf')
+      || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || name.endsWith('.docx')
+      || mime === 'application/msword'
+      || name.endsWith('.doc')
+      || mime.startsWith('image/')
+      || /\.(jpe?g|png|webp)$/i.test(name);
+
+    if (!allowed) {
+      throw new BadRequestException('Please upload a PDF, Word document, or image file.');
+    }
+  }
+
+  async submitFeeWaiverAuditHrEmail(params: {
+    userId?: string;
+    learnerEmail?: string;
+    learnerName?: string;
+    hrEmail?: string;
+  }) {
+    const learnerEmail = this.normalizeAuditEmail(params?.learnerEmail);
+    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
+    const learnerName = String(params?.learnerName || '').trim() || 'Learner';
+
+    if (!learnerEmail) {
+      throw new BadRequestException('Learner email is required.');
+    }
+    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
+      throw new BadRequestException('Please enter a valid HR email address.');
+    }
+    if (learnerEmail === hrEmail) {
+      throw new BadRequestException('HR email must be different from your registration email.');
+    }
+
+    const user = await this.resolveUserForFeeWaiverAudit(params?.userId, learnerEmail);
+    if (this.normalizeAuditEmail(user.email) !== learnerEmail) {
+      throw new BadRequestException('Learner email does not match the registration record.');
+    }
+
+    const existingAudit =
+      user.eligibilitySnapshot?.feeWaiverAudit
+      && typeof user.eligibilitySnapshot.feeWaiverAudit === 'object'
+        ? (user.eligibilitySnapshot.feeWaiverAudit as Record<string, unknown>)
+        : null;
+    const existingToken = String(existingAudit?.hrVerificationToken || '').trim();
+    const canReuseToken =
+      existingAudit?.status === 'pending_hr_verification'
+      && existingToken.length > 0;
+
+    const hrVerificationToken = canReuseToken
+      ? existingToken
+      : crypto.randomBytes(32).toString('hex');
+
+    await this.emailService.sendFeeWaiverHrVerificationEmail({
+      hrEmail,
+      learnerEmail,
+      learnerName: learnerName || `${user.firstname || ''} ${user.lastname || ''}`.trim() || 'Learner',
+      verificationToken: hrVerificationToken,
+    });
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      method: 'hr-email',
+      hrEmail,
+      learnerEmail,
+      status: 'pending_hr_verification',
+      auditSubmitted: true,
+      hrVerificationToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(hrVerificationToken),
+      submittedAt: new Date().toISOString(),
+    });
+    user.feeWaiverJobVerified = false;
+    await this.userRepository.save(user);
+
+    return {
+      submitted: true,
+      method: 'hr-email',
+      hrEmail,
+      jobVerified: false,
+      message:
+        'A verification email has been sent to your HR contact. Please verify your registration email, then sign in to start the programme.',
+    };
+  }
+
+  async verifyFeeWaiverAuditHrToken(token?: string) {
+    const trimmedToken = String(token || '').trim();
+    if (!trimmedToken) {
+      throw new BadRequestException('Verification token is required.');
+    }
+
+    const user = await this.findUserByFeeWaiverHrToken(trimmedToken);
+    if (!user) {
+      throw new BadRequestException('This HR verification link is invalid.');
+    }
+
+    const audit = user.eligibilitySnapshot?.feeWaiverAudit;
+    const auditRecord =
+      audit && typeof audit === 'object' ? (audit as Record<string, unknown>) : null;
+    if (!auditRecord) {
+      throw new BadRequestException('This HR verification link is invalid.');
+    }
+
+    const learnerName =
+      `${user.firstname || ''} ${user.lastname || ''}`.trim()
+      || String(auditRecord.learnerEmail || user.email || 'Learner');
+
+    if (auditRecord.status === 'hr_verified' || user.feeWaiverJobVerified === true) {
+      return {
+        verified: true,
+        alreadyVerified: true,
+        learnerName,
+        learnerEmail: user.email,
+        message: 'This learner job role has already been verified. Thank you.',
+      };
+    }
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      status: 'hr_verified',
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'hr-email-link',
+      hrVerificationToken: trimmedToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(trimmedToken),
+    });
+    await this.userRepository.save(user);
+
+    return {
+      verified: true,
+      learnerName,
+      learnerEmail: user.email,
+      message: 'Thank you. The learner job role has been verified successfully.',
+    };
+  }
+
+  async verifyFeeWaiverAuditCertificate(params: {
+    userId?: string;
+    learnerEmail?: string;
+    certificate?: Express.Multer.File;
+  }) {
+    const learnerEmail = this.normalizeAuditEmail(params?.learnerEmail);
+    if (!learnerEmail) {
+      throw new BadRequestException('Learner email is required.');
+    }
+
+    this.validateFeeWaiverCertificateFile(params?.certificate);
+    const user = await this.resolveUserForFeeWaiverAudit(params?.userId, learnerEmail);
+    if (this.normalizeAuditEmail(user.email) !== learnerEmail) {
+      throw new BadRequestException('Learner email does not match the registration record.');
+    }
+
+    const certificateUrl = await this.saveFeeWaiverAuditFile(
+      user,
+      'certificates',
+      params!.certificate!,
+      'education-certificate',
+    );
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      method: 'education-certificate',
+      learnerEmail,
+      status: 'pending_certificate_review',
+      auditSubmitted: true,
+      certificateUrl,
+      fileName: params?.certificate?.originalname || '',
+      submittedAt: new Date().toISOString(),
+    });
+    user.feeWaiverJobVerified = false;
+    await this.userRepository.save(user);
+
+    return {
+      submitted: true,
+      method: 'education-certificate',
+      verified: false,
+      pendingReview: true,
+      jobVerified: false,
+      message:
+        'Your certificate has been submitted for review. Please verify your registration email, then sign in while an administrator completes verification.',
+    };
+  }
+
   async getVerifiedSignupAccess(token: string) {
     const user = await this.resolveUserByVerifiedSignupAccessToken(token);
 
@@ -2177,8 +2786,8 @@ export class AuthService {
       userId: currentResolvedUser?.id || null,
       storedAsDraft: false,
       draftUserCreated: false,
-      signupAccessToken: null,
-      signupAccessTokenExpiresAt: null,
+      signupAccessToken: null as string | null,
+      signupAccessTokenExpiresAt: null as Date | null,
       checks: {
         frontImage: front,
         backImage: back,
@@ -2186,6 +2795,44 @@ export class AuthService {
         frontBackDocumentMatch: true,
       },
     };
+
+    try {
+      const { user: auditUser, createdAsDraft } = await this.resolveOrCreateUserForNricVerification(
+        extracted,
+        userId,
+        authorizationHeader,
+      );
+      const frontUrl = await this.localStorageService.saveFile(frontImage!, `fee-waiver-audit/nric/${auditUser.id}`, {
+        fileName: 'nric-front',
+      });
+      const backUrl = await this.localStorageService.saveFile(backImage!, `fee-waiver-audit/nric/${auditUser.id}`, {
+        fileName: 'nric-back',
+      });
+      const existingSnapshot =
+        auditUser.eligibilitySnapshot && typeof auditUser.eligibilitySnapshot === 'object'
+          ? auditUser.eligibilitySnapshot
+          : {};
+      auditUser.eligibilitySnapshot = {
+        ...existingSnapshot,
+        nricAudit: {
+          frontUrl,
+          backUrl,
+          maskedIdentifier: maskSingaporeNricFin(exactIdentifier),
+          savedAt: new Date().toISOString(),
+        },
+      };
+      const access = await this.issueVerifiedSignupAccessToken(auditUser);
+      verificationResponse.storedOnUser = true;
+      verificationResponse.userId = auditUser.id;
+      verificationResponse.storedAsDraft = auditUser.isDraft;
+      verificationResponse.draftUserCreated = createdAsDraft;
+      verificationResponse.signupAccessToken = access.signupAccessToken;
+      verificationResponse.signupAccessTokenExpiresAt = access.signupAccessTokenExpiresAt;
+    } catch (error) {
+      this.logger.warn(
+        `Could not persist NRIC audit images: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     return verificationResponse;
   }

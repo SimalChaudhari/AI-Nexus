@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -13,6 +13,7 @@ import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import MenuItem from '@mui/material/MenuItem';
 import LoadingButton from '@mui/lab/LoadingButton';
 import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
@@ -27,7 +28,10 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { AnimateLogo2 } from 'src/components/animate';
 import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
-import { AuthSignUpSchema } from 'src/validations/user.validation';
+import {
+  buildFreeIndividualSignUpSchema,
+  buildPaidIndividualSignUpSchema,
+} from 'src/validations/user.validation';
 
 import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp } from 'src/auth/context/jwt';
 import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
@@ -35,6 +39,26 @@ import {
   isApprovedSalesforceStudentMember,
   startStudentMemberSsoLogin,
 } from 'src/utils/membership-application-student';
+import {
+  buildIndividualSignupPrefillFromEligibility,
+  INDIVIDUAL_SIGNUP_CITIZENSHIP_OPTIONS,
+  INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
+  INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS,
+  mergeSignupEligibilityData,
+  requiresFreeSignupJobAudit,
+} from 'src/utils/individual-signup-form';
+import { FreeSignupAuditDialog } from './free-signup-audit-dialog';
+
+const SIGNUP_FORM_GRID_SX = {
+  display: 'grid',
+  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+  columnGap: 2,
+  rowGap: 2,
+  '& .MuiFormLabel-asterisk': { color: 'error.main' },
+  '& > *': { minWidth: 0 },
+};
+
+const SIGNUP_FORM_GRID_FULL_WIDTH_SX = { gridColumn: '1 / -1' };
 
 function buildEligibilityDataFromFlow(flow, membershipOutcome) {
   if (!flow || typeof flow !== 'object' || Array.isArray(flow)) {
@@ -75,6 +99,13 @@ export function SimpleSignUpView() {
   const [verifiedSignupPrefill, setVerifiedSignupPrefill] = useState(null);
   const [eligibilityData, setEligibilityData] = useState(null);
   const [scaqSsoPrefillNotice, setScaqSsoPrefillNotice] = useState(false);
+  const [companyPrefilled, setCompanyPrefilled] = useState(false);
+  const [nricVerifiedReadOnly, setNricVerifiedReadOnly] = useState(false);
+  const [freeSignupAuditOpen, setFreeSignupAuditOpen] = useState(false);
+  const [freeSignupAuditEmail, setFreeSignupAuditEmail] = useState('');
+  const [freeSignupAuditUserId, setFreeSignupAuditUserId] = useState('');
+  const [freeSignupAuditLearnerName, setFreeSignupAuditLearnerName] = useState('');
+  const freeSignupPrefillRestoredRef = useRef(false);
   const membershipOutcome = searchParams.get('membershipOutcome');
   const returnTo = searchParams.get('returnTo') || '';
   const paymentState = searchParams.get('payment') || '';
@@ -83,6 +114,7 @@ export function SimpleSignUpView() {
   const isPaidMembershipFlow = membershipOutcome === 'paid-signup';
   const isVerifiedNricSignupFlow = membershipOutcome === 'verified-nric-signup';
   const isMembershipFeeFlow = isPaidMembershipFlow || isVerifiedNricSignupFlow;
+  const isFreeIndividualSignup = !isMembershipFeeFlow;
   const signupAccessToken = searchParams.get('signupAccessToken') || '';
   const membershipDraftFormStorageKey = 'membershipSignupDraftForm';
   const membershipPaymentConsentKey = 'membershipPaymentConsent';
@@ -182,13 +214,18 @@ export function SimpleSignUpView() {
     firstName: '',
     lastName: '',
     email: '',
-    companyCode: '',
     contactNumber: '',
     password: '',
+    ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
   };
 
+  const signUpSchema = useMemo(
+    () => (isFreeIndividualSignup ? buildFreeIndividualSignUpSchema() : buildPaidIndividualSignUpSchema()),
+    [isFreeIndividualSignup]
+  );
+
   const methods = useForm({
-    resolver: zodResolver(AuthSignUpSchema),
+    resolver: zodResolver(signUpSchema),
     defaultValues,
   });
 
@@ -196,10 +233,13 @@ export function SimpleSignUpView() {
     handleSubmit,
     getValues,
     reset,
+    setValue,
     watch,
     formState: { isSubmitting },
   } = methods;
   const usernameValue = watch('username');
+  const jobFunctionValue = watch('jobFunction');
+  const citizenshipValue = watch('citizenship');
 
   useEffect(() => {
     let active = true;
@@ -244,9 +284,9 @@ export function SimpleSignUpView() {
           firstName: prefill.firstName || '',
           lastName: prefill.lastName || '',
           email: prefill.email || '',
-          companyCode: prefill.companyCode || '',
           contactNumber: prefill.contactNumber || '',
           password: '',
+          ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
         });
       })
       .catch((error) => {
@@ -267,8 +307,66 @@ export function SimpleSignUpView() {
   }, [isVerifiedNricSignupFlow, paymentState, reset, signupAccessToken]);
 
   useEffect(() => {
+    if (!isFreeIndividualSignup || freeSignupPrefillRestoredRef.current) {
+      return;
+    }
+
+    try {
+      let flow = null;
+      let storedValues = {};
+      let membershipOutcomeFromStorage = '';
+
+      const draftRaw = sessionStorage.getItem(membershipDraftFormStorageKey);
+      if (draftRaw) {
+        const parsed = JSON.parse(draftRaw);
+        storedValues = parsed?.values || {};
+        flow = parsed?.flow || null;
+        membershipOutcomeFromStorage = parsed?.membershipOutcome || '';
+      }
+
+      const eligibilityRaw = sessionStorage.getItem(membershipEligibilityStorageKey);
+      if (eligibilityRaw) {
+        const parsed = JSON.parse(eligibilityRaw);
+        flow = flow || parsed?.flow || null;
+        membershipOutcomeFromStorage = membershipOutcomeFromStorage || parsed?.membershipOutcome || '';
+        if (flow) {
+          setEligibilityData(buildEligibilityDataFromFlow(flow, membershipOutcomeFromStorage));
+        }
+      }
+
+      if (!flow && !storedValues.company && !storedValues.nricFin) {
+        return;
+      }
+
+      const prefill = buildIndividualSignupPrefillFromEligibility(flow || {}, storedValues);
+      setCompanyPrefilled(prefill.companyPrefilled);
+      setNricVerifiedReadOnly(prefill.nricVerified);
+
+      reset((current) => ({
+        ...current,
+        company: prefill.company || current.company,
+        jobFunction: prefill.jobFunction || current.jobFunction,
+        jobFunctionOther: prefill.jobFunctionOther || current.jobFunctionOther,
+        yearsOfExperience: prefill.yearsOfExperience || current.yearsOfExperience,
+        countryOfResidence: prefill.countryOfResidence || current.countryOfResidence,
+        nricFin: prefill.nricFin || current.nricFin,
+        citizenship: prefill.citizenship || current.citizenship,
+        citizenshipOther: prefill.citizenshipOther || current.citizenshipOther,
+        imdaFundingAcknowledged: prefill.imdaFundingAcknowledged || current.imdaFundingAcknowledged,
+      }));
+      freeSignupPrefillRestoredRef.current = true;
+    } catch {
+      // Ignore invalid cached signup payloads.
+    }
+  }, [
+    isFreeIndividualSignup,
+    membershipDraftFormStorageKey,
+    membershipEligibilityStorageKey,
+    reset,
+  ]);
+
+  useEffect(() => {
     if (!isMembershipFeeFlow) {
-      setEligibilityData(null);
       return;
     }
 
@@ -284,6 +382,18 @@ export function SimpleSignUpView() {
       // Ignore invalid cached eligibility payloads.
     }
   }, [isMembershipFeeFlow, membershipEligibilityStorageKey, membershipOutcome]);
+
+  useEffect(() => {
+    if (!isMembershipFeeFlow || membershipDraftRestoredRef.current || !eligibilityData?.snapshot) {
+      return;
+    }
+
+    const prefill = buildIndividualSignupPrefillFromEligibility(eligibilityData.snapshot, getValues());
+    if (prefill.company && !getValues('company')) {
+      setValue('company', prefill.company);
+      setCompanyPrefilled(prefill.companyPrefilled);
+    }
+  }, [eligibilityData, getValues, isMembershipFeeFlow, setValue]);
 
   useEffect(() => {
     if (!isMembershipFeeFlow) {
@@ -327,14 +437,24 @@ export function SimpleSignUpView() {
         setPaymentConsentChecked(true);
       }
 
+      const profilePrefill = buildIndividualSignupPrefillFromEligibility(parsed?.flow || {}, parsed.values || {});
+      setCompanyPrefilled(profilePrefill.companyPrefilled);
+
       reset({
         username: parsed.values.username || '',
         firstName: parsed.values.firstName || '',
         lastName: parsed.values.lastName || '',
         email: parsed.values.email || '',
-        companyCode: parsed.values.companyCode || '',
         contactNumber: parsed.values.contactNumber || '',
         password: parsed.values.password || '',
+        company: profilePrefill.company || parsed.values.company || '',
+        jobFunction: profilePrefill.jobFunction || parsed.values.jobFunction || '',
+        jobFunctionOther: profilePrefill.jobFunctionOther || parsed.values.jobFunctionOther || '',
+        yearsOfExperience:
+          profilePrefill.yearsOfExperience || parsed.values.yearsOfExperience || '',
+        countryOfResidence:
+          profilePrefill.countryOfResidence || parsed.values.countryOfResidence || '',
+        ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
       });
       membershipDraftRestoredRef.current = true;
     } catch {
@@ -494,6 +614,22 @@ export function SimpleSignUpView() {
     setShowAllSuggestions(false);
   };
 
+  const buildSubmittedEligibilityData = (data) =>
+    mergeSignupEligibilityData(eligibilityData, data, isFreeIndividualSignup);
+
+  const redirectToEmailVerify = (email) => {
+    const verifySearch = new URLSearchParams({ email }).toString();
+    router.push(`${paths.auth.simple.verify}?${verifySearch}`);
+  };
+
+  const handleFreeSignupAuditSubmitted = () => {
+    const email = freeSignupAuditEmail;
+    setFreeSignupAuditOpen(false);
+    if (email) {
+      redirectToEmailVerify(email);
+    }
+  };
+
   const handleSignupError = (error, attemptedUsername) => {
     console.error(error);
     const message = error && error.message ? error.message : String(error || 'Sign up failed.');
@@ -513,26 +649,33 @@ export function SimpleSignUpView() {
       setUsernameSuggestions([]);
       setShowAllSuggestions(false);
       setAppliedSuggestion('');
-      await signUp({
+      const signupResult = await signUp({
         username: data.username,
         email: data.email,
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
-        companyCode: data.companyCode,
         contactNumber: data.contactNumber,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
-        eligibilityData,
+        eligibilityData: buildSubmittedEligibilityData(data),
       });
 
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem(membershipEligibilityStorageKey);
       }
 
-      // Redirect to verify page after successful registration
-      const verifySearch = new URLSearchParams({ email: data.email }).toString();
-      const href = `${paths.auth.simple.verify}?${verifySearch}`;
-      router.push(href);
+      if (isFreeIndividualSignup && requiresFreeSignupJobAudit(data.jobFunction)) {
+        const registeredUser = signupResult?.user;
+        setFreeSignupAuditEmail(data.email);
+        setFreeSignupAuditUserId(registeredUser?.id || registeredUser?._id || '');
+        setFreeSignupAuditLearnerName(
+          [data.firstName, data.lastName].filter(Boolean).join(' ').trim()
+        );
+        setFreeSignupAuditOpen(true);
+        return;
+      }
+
+      redirectToEmailVerify(data.email);
     } catch (error) {
       handleSignupError(error, data.username);
     }
@@ -560,11 +703,10 @@ export function SimpleSignUpView() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
-        companyCode: data.companyCode,
         contactNumber: data.contactNumber,
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         draftUserId: cachedDraftUserId || undefined,
-        eligibilityData,
+        eligibilityData: buildSubmittedEligibilityData(data),
       });
 
       if (typeof window !== 'undefined') {
@@ -580,9 +722,13 @@ export function SimpleSignUpView() {
               firstName: data.firstName,
               lastName: data.lastName,
               email: data.email,
-              companyCode: data.companyCode,
               contactNumber: data.contactNumber,
               password: data.password,
+              company: data.company,
+              jobFunction: data.jobFunction,
+              jobFunctionOther: data.jobFunctionOther,
+              yearsOfExperience: data.yearsOfExperience,
+              countryOfResidence: data.countryOfResidence,
             },
           })
         );
@@ -671,13 +817,13 @@ export function SimpleSignUpView() {
           ? 'Complete your verified membership setup'
           : isPaidMembershipFlow
             ? 'Complete your membership payment'
-            : 'Get started absolutely free'}
+            : 'Create your account'}
       </Typography>
 
       <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
         {isMembershipFeeFlow
           ? 'Your details stay saved as a draft. We create your account automatically after successful payment.'
-          : 'Build your profile and start learning in minutes.'}
+          : 'Complete your details to register for the programme.'}
       </Typography>
 
       <Stack direction="row" spacing={0.5}>
@@ -694,29 +840,32 @@ export function SimpleSignUpView() {
   );
 
   const renderAccountFields = (
-    <Stack spacing={2} sx={{ '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
-      <Field.Text
-        name="username"
-        label="Username"
-        required
-        placeholder="Choose a username"
-        InputLabelProps={{ shrink: true }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Iconify icon="solar:user-circle-bold-duotone" width={18} />
-            </InputAdornment>
-          ),
-          endAdornment:
-            appliedSuggestion && usernameValue === appliedSuggestion ? (
-              <InputAdornment position="end">
-                <Iconify icon="solar:verified-check-bold" width={18} sx={{ color: 'success.main' }} />
+    <Box sx={SIGNUP_FORM_GRID_SX}>
+      <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+        <Field.Text
+          name="username"
+          label="Username"
+          required
+          placeholder="Choose a username"
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Iconify icon="solar:user-circle-bold-duotone" width={18} />
               </InputAdornment>
-            ) : null,
-        }}
-      />
+            ),
+            endAdornment:
+              appliedSuggestion && usernameValue === appliedSuggestion ? (
+                <InputAdornment position="end">
+                  <Iconify icon="solar:verified-check-bold" width={18} sx={{ color: 'success.main' }} />
+                </InputAdornment>
+              ) : null,
+          }}
+        />
+      </Box>
+
       {usernameSuggestions.length > 0 && (
-        <Stack spacing={1} sx={{ mt: -1 }}>
+        <Stack spacing={1} sx={{ ...SIGNUP_FORM_GRID_FULL_WIDTH_SX, mt: -1 }}>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Username is taken. Try one of these:
           </Typography>
@@ -749,7 +898,7 @@ export function SimpleSignUpView() {
         </Stack>
       )}
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+      <Box>
         <Field.Text
           name="firstName"
           label="First name"
@@ -763,6 +912,8 @@ export function SimpleSignUpView() {
             ),
           }}
         />
+      </Box>
+      <Box>
         <Field.Text
           name="lastName"
           label="Last name"
@@ -776,52 +927,171 @@ export function SimpleSignUpView() {
             ),
           }}
         />
-      </Stack>
+      </Box>
 
-      <Field.Text
-        name="email"
-        label="Email address"
-        required
-        InputLabelProps={{ shrink: true }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Iconify icon="solar:letter-bold-duotone" width={18} />
-            </InputAdornment>
-          ),
-        }}
-      />
+      <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+        <Field.Text
+          name="email"
+          label="Email address"
+          required
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Iconify icon="solar:letter-bold-duotone" width={18} />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
 
-      <Field.Text name="companyCode" label="Company’s Code (optional)" InputLabelProps={{ shrink: true }} />
+      <Box>
+        <Field.Phone name="contactNumber" label="Contact number (optional)" country="SG" />
+      </Box>
+      <Box>
+        <Field.Text
+          name="password"
+          label="Password"
+          required
+          placeholder="6+ characters"
+          type={password.value ? 'text' : 'password'}
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Iconify icon="solar:lock-password-bold-duotone" width={18} />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton onClick={password.onToggle} edge="end">
+                  <Iconify icon={password.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
 
-      <Field.Phone name="contactNumber" label="Contact number (optional)" country="SG" />
+      <Box>
+        <Field.Text
+          name="company"
+          label="Company"
+          required
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            readOnly: companyPrefilled,
+          }}
+          helperText={
+            companyPrefilled
+              ? 'Company name is auto-filled from your eligibility check.'
+              : undefined
+          }
+        />
+      </Box>
+      <Box>
+        <Field.Select
+          name="jobFunction"
+          label="Job function"
+          required
+          InputLabelProps={{ shrink: true }}
+        >
+          {INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </Field.Select>
+      </Box>
 
-      <Field.Text
-        name="password"
-        label="Password"
-        required
-        placeholder="6+ characters"
-        type={password.value ? 'text' : 'password'}
-        InputLabelProps={{ shrink: true }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Iconify icon="solar:lock-password-bold-duotone" width={18} />
-            </InputAdornment>
-          ),
-          endAdornment: (
-            <InputAdornment position="end">
-              <IconButton onClick={password.onToggle} edge="end">
-                <Iconify icon={password.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
-              </IconButton>
-            </InputAdornment>
-          ),
-        }}
-      />
+      {jobFunctionValue === 'others' ? (
+        <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+          <Field.Text
+            name="jobFunctionOther"
+            label="Please specify your job function"
+            required
+            InputLabelProps={{ shrink: true }}
+          />
+        </Box>
+      ) : null}
+
+      <Box>
+        <Field.Text
+          name="yearsOfExperience"
+          label="No. of years of relevant work experience in accounting and finance"
+          required
+          placeholder="0"
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+        />
+      </Box>
+      <Box>
+        <Field.CountrySelect
+          name="countryOfResidence"
+          label="Country of residence"
+          placeholder="Search country"
+          getValue="label"
+          required
+        />
+      </Box>
+
+      {isFreeIndividualSignup ? (
+        <>
+          <Box>
+            <Field.Text
+              name="nricFin"
+              label="NRIC/FIN number"
+              required
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                readOnly: nricVerifiedReadOnly,
+              }}
+              helperText={
+                nricVerifiedReadOnly
+                  ? 'Auto-filled from your verified NRIC upload.'
+                  : 'Enter your NRIC/FIN number.'
+              }
+            />
+          </Box>
+          <Box>
+            <Field.Select
+              name="citizenship"
+              label="Citizenship"
+              required
+              InputLabelProps={{ shrink: true }}
+            >
+              {INDIVIDUAL_SIGNUP_CITIZENSHIP_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Field.Select>
+          </Box>
+
+          {citizenshipValue === 'others' ? (
+            <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+              <Field.Text
+                name="citizenshipOther"
+                label="Please specify your citizenship"
+                required
+                InputLabelProps={{ shrink: true }}
+              />
+            </Box>
+          ) : null}
+
+          <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+            <Field.Checkbox
+              name="imdaFundingAcknowledged"
+              label="I acknowledge that my personal information will be shared with IMDA for funding purposes"
+            />
+          </Box>
+        </>
+      ) : null}
 
       {isMembershipFeeFlow && (
         <Box
           sx={(theme) => ({
+            ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
             px: 1.5,
             py: 1.25,
             borderRadius: 1.5,
@@ -844,20 +1114,22 @@ export function SimpleSignUpView() {
       )}
 
       {!isMembershipFeeFlow && (
-        <LoadingButton
-          fullWidth
-          color="inherit"
-          size="large"
-          type="submit"
-          variant="contained"
-          loading={isSubmitting}
-          loadingIndicator="Create account..."
-          sx={{ height: 44, fontWeight: 700 }}
-        >
-          Create account
-        </LoadingButton>
+        <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+          <LoadingButton
+            fullWidth
+            color="inherit"
+            size="large"
+            type="submit"
+            variant="contained"
+            loading={isSubmitting}
+            loadingIndicator="Create account..."
+            sx={{ height: 44, fontWeight: 700 }}
+          >
+            Create account
+          </LoadingButton>
+        </Box>
       )}
-    </Stack>
+    </Box>
   );
 
   const renderMembershipPanel = isMembershipFeeFlow ? (
@@ -1125,6 +1397,14 @@ export function SimpleSignUpView() {
       )}
 
       {!paymentCompletedState && renderTerms}
+
+      <FreeSignupAuditDialog
+        open={freeSignupAuditOpen}
+        learnerEmail={freeSignupAuditEmail}
+        learnerName={freeSignupAuditLearnerName}
+        userId={freeSignupAuditUserId}
+        onSubmitted={handleFreeSignupAuditSubmitted}
+      />
     </>
   );
 }

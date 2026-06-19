@@ -365,6 +365,7 @@ const Simple = {
   ForgotPasswordPage: lazy(() => import('src/pages/auth/simple/forgot-password')),
   ResetPasswordPage: lazy(() => import('src/pages/auth/simple/reset-password')),
   VerifyPage: lazy(() => import('src/pages/auth/simple/verify')),
+  FeeWaiverHrVerifyPage: lazy(() => import('src/pages/auth/simple/fee-waiver-audit-hr-verify')),
 };
 
 const authSimple = {
@@ -422,6 +423,10 @@ const authSimple = {
           <Simple.VerifyPage />
         </GuestGuard>
       ),
+    },
+    {
+      path: 'fee-waiver-audit/hr-verify',
+      element: <Simple.FeeWaiverHrVerifyPage />,
     },
   ],
 };

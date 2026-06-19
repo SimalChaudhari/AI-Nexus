@@ -113,6 +113,7 @@ export const paths = {
       forgotPassword: `${ROOTS.AUTH}/forgot-password`,
       resetPassword: `${ROOTS.AUTH}/reset-password`,
       verify: `${ROOTS.AUTH}/verify`,
+      feeWaiverHrVerify: `${ROOTS.AUTH}/fee-waiver-audit/hr-verify`,
     },
     oauth: {
       start: `${ROOTS.AUTH}/oauth/start`,

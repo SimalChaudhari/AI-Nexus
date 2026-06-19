@@ -85,7 +85,6 @@ export class UserController {
         });
     }
 
-    // Profile endpoints - accessible to both User and Admin roles - must be before @Get(':id') to avoid route conflicts
     @Get('profile')
     @Roles(UserRole.User, UserRole.Admin)
     @ApiOperation({ summary: 'Get current user profile' })
@@ -101,6 +100,26 @@ export class UserController {
         return response.status(HttpStatus.OK).json({
             data: userWithoutPassword,
         });
+    }
+
+    @Put('fee-waiver-job-verify/:id')
+    @Roles(UserRole.Admin)
+    @ApiOperation({ summary: 'Manually verify fee-waiver job role for a learner (admin)' })
+    async verifyFeeWaiverJobRole(@Param('id') id: string, @Res() response: Response) {
+        const result = await this.userService.verifyFeeWaiverJobRole(id);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Put('fee-waiver-job-reject/:id')
+    @Roles(UserRole.Admin)
+    @ApiOperation({ summary: 'Reject fee-waiver job role verification for a learner (admin)' })
+    async rejectFeeWaiverJobRole(
+        @Param('id') id: string,
+        @Body('reason') reason: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.userService.rejectFeeWaiverJobRole(id, reason);
+        return response.status(HttpStatus.OK).json(result);
     }
 
     @Get(':id')

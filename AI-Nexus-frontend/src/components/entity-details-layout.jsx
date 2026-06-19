@@ -30,7 +30,7 @@ import { Iconify } from 'src/components/iconify';
 //   rows: Array<{ label: string; value: React.ReactNode }>;
 // }>
 
-export function EntityDetailsLayout({ heading, links, editHref, header, sections }) {
+export function EntityDetailsLayout({ heading, links, editHref, header, sections, footer }) {
   const theme = useTheme();
 
   return (
@@ -165,6 +165,54 @@ export function EntityDetailsLayout({ heading, links, editHref, header, sections
                   {section.title}
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
+                {section.layout === 'grid' ? (
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' },
+                      gap: 2,
+                    }}
+                  >
+                    {Array.isArray(section.rows) &&
+                      section.rows.map((row, rowIdx) => (
+                        <Box key={`${row.label}-${rowIdx}`}>
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'text.secondary', display: 'block', fontWeight: 600 }}
+                          >
+                            {row.label}
+                          </Typography>
+                          {(() => {
+                            const v = row.value;
+                            if (v === null || v === undefined) {
+                              return (
+                                <Typography variant="body2" sx={{ color: 'text.primary', mt: 0.35 }}>
+                                  -
+                                </Typography>
+                              );
+                            }
+                            if (
+                              typeof v === 'string' ||
+                              typeof v === 'number' ||
+                              typeof v === 'boolean'
+                            ) {
+                              const display =
+                                typeof v === 'string' && v.trim() === '' ? '-' : String(v);
+                              return (
+                                <Typography
+                                  variant="body2"
+                                  sx={{ color: 'text.primary', mt: 0.35, wordBreak: 'break-word' }}
+                                >
+                                  {display}
+                                </Typography>
+                              );
+                            }
+                            return <Box sx={{ mt: 0.35, width: '100%', maxWidth: '100%' }}>{v}</Box>;
+                          })()}
+                        </Box>
+                      ))}
+                  </Box>
+                ) : (
                 <Stack spacing={2}>
                   {Array.isArray(section.rows) &&
                     section.rows.map((row, rowIdx) => (
@@ -210,10 +258,13 @@ export function EntityDetailsLayout({ heading, links, editHref, header, sections
                       </Box>
                     ))}
                 </Stack>
+                )}
               </Grid>
             ))}
         </Grid>
       </Card>
+
+      {footer ? <Box sx={{ mt: 3 }}>{footer}</Box> : null}
     </DashboardContent>
   );
 }

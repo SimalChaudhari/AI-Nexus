@@ -28,6 +28,7 @@ import {
   verifyStudentEligibility as verifyStudentEligibilityRequest,
   verifyExperiencedResume as verifyExperiencedResumeRequest,
   verifyNricImages,
+  verifyStudentAcademicDetails,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
 } from 'src/auth/context/jwt';
 import { CONFIG } from 'src/config-global';
@@ -114,6 +115,18 @@ const ISCA_STUDENT_YOUTH_APP_URL = 'https://eservices.isca.org.sg/youth_app';
 const ISCA_WORKING_MY_APPLICATION_URL = 'https://eservices.isca.org.sg/MyApplication';
 /** Yes / Yes / Yes company reference ID accepted for verification (interim integration). */
 const YES_YES_YES_VERIFIED_COMPANY_REF_ID = '123456';
+
+const ELIGIBILITY_NRIC_NOT_VERIFIED_MESSAGE =
+  'Sorry, we are not able to verify your Singaporean/PR status from the documents uploaded, please try again or proceed to the next step of your eligibility check';
+
+const ELIGIBILITY_MEMBERSHIP_NOT_VERIFIED_MESSAGE =
+  'Sorry, we are not able to find a valid ISCA membership account, please try again or proceed to the next step of your eligibility check';
+
+const ELIGIBILITY_COMPANY_REFERENCE_INVALID_MESSAGE =
+  'Sorry, the company reference ID you entered is invalid, please try again or proceed to the next step of your eligibility check';
+
+const ELIGIBILITY_STUDENT_ACADEMIC_NOT_VERIFIED_MESSAGE =
+  'Sorry, we are not able to verify your student details from the academic email and student card uploaded, please try again or proceed to the next step of your eligibility check';
 
 const WORKING_MEMBERSHIP_PATHWAY_URLS = {
   associate:
@@ -315,12 +328,17 @@ const INITIAL_STATE = {
   studentDetailsSubmitted: false,
   studentVerificationTriggered: false,
   studentAcademicEmailVerified: null,
+  studentVerificationFailureAcknowledged: false,
+  studentAcademicVerificationScore: null,
   workingEducationalBackground: '',
   workingMembershipInterested: null,
   workingNotEligibleChoice: null,
   nricUploadAcknowledged: false,
   nricSgPrCheckFailed: false,
+  nricFailureProceedAcknowledged: false,
   feeWaiverViaCompanyReference: false,
+  iscaMemberFailureAcknowledged: false,
+  verifiedNricFin: '',
   spPrVerified: null,
   wantsIscaMembership: null,
   eligibilityType: '',
@@ -483,7 +501,7 @@ const HOME_ISCA_SPECIALISATION_OPTIONS = [
 ];
 
 const STUDENT_ACADEMIC_EMAIL_SUFFIXES = [
-  'nus.edu.sg',
+  'nus.edu',
   'ntu.edu.sg',
   'smu.edu.sg',
   'sit.singaporetech.edu.sg',
@@ -514,14 +532,37 @@ function getAcademicEmailValidationMessage(email) {
 }
 
 function getStudentFlowAfterAcademicEmailStep(state) {
-  if (!state.studentDetailsSubmitted) {
+  const pastFailedAcademicVerification =
+    state.studentVerificationFailureAcknowledged
+    && state.studentDetailsSubmitted
+    && state.studentAcademicEmailVerified === false;
+
+  if (!pastFailedAcademicVerification) {
+    if (
+      !state.studentAcademicEmail?.trim()
+      || !state.studentPersonalEmail?.trim()
+      || !state.studentCardImageName
+    ) {
+      return 'student-academic-email';
+    }
+    if (!state.studentDetailsSubmitted || state.studentAcademicEmailVerified === null) {
+      return 'student-academic-email';
+    }
+  }
+  if (state.studentAcademicEmailVerified === true) {
+    return 'result';
+  }
+  if (!state.studentVerificationFailureAcknowledged) {
     return 'student-academic-email';
   }
-  if (state.studentAcademicEmailVerified !== true) {
-    if (state.studentMemberOrAssociate === null) return 'student-member-associate-check';
-    if (state.studentMemberOrAssociate === true) return 'result';
-    if (state.studentNonFinalInterested === null) return 'student-non-final-options';
+  if (state.studentMemberOrAssociate === null) {
+    return 'student-member-associate-check';
+  }
+  if (state.studentMemberOrAssociate === true) {
     return 'result';
+  }
+  if (state.studentNonFinalInterested === null) {
+    return 'student-non-final-options';
   }
   return 'result';
 }
@@ -690,6 +731,18 @@ function getStudentWorkingPersonaProgressMeta(state, step) {
   ) {
     normalizedStep = 'student-non-final-options';
   }
+  if (
+    state.registrationPersona === 'student'
+    && state.studentFinalYearLocal === true
+    && state.studentVerificationFailureAcknowledged
+  ) {
+    if (normalizedStep === 'student-member-associate-check') {
+      normalizedStep = 'student-academic-email';
+    }
+    if (normalizedStep === 'student-non-final-options') {
+      normalizedStep = 'result';
+    }
+  }
   let steps;
   if (!state.registrationPersona) {
     steps = buildPersonaSelectionProgressSteps(state);
@@ -802,16 +855,12 @@ function isQuestionnaireNricEligiblePath(state) {
 }
 
 function applyQuestionnaireNricFailureState(state) {
-  if (isSgPrUnderCompanyPath(state)) {
-    return {
-      ...state,
-      feeWaiverViaCompanyReference: true,
-      nricSgPrCheckFailed: false,
-    };
-  }
   return {
     ...state,
     nricSgPrCheckFailed: true,
+    nricFailureProceedAcknowledged: false,
+    spPrVerified: false,
+    feeWaiverViaCompanyReference: false,
   };
 }
 
@@ -967,7 +1016,8 @@ function isStudentWorkingPersonaPath(state) {
   const isNoYesNoNricFailedFallback =
     isSgPrIndividualPath(state)
     && state.nricSgPrCheckFailed === true
-    && state.spPrVerified !== true;
+    && state.spPrVerified !== true
+    && state.nricFailureProceedAcknowledged === true;
   return (
     (isNoNoNo || isNoNoYesCompanyFallback || isNoYesNoNricFailedFallback)
     && !isHomeGetStartedFlow(state)
@@ -1028,6 +1078,10 @@ function getFlowStep(state) {
     return 'fee-waiver-choice';
   }
 
+  if (state.iscaMemberEservicesFallback === true && state.iscaMemberFailureAcknowledged !== true) {
+    return 'isca-membership-not-verified';
+  }
+
   if (
     state.isIscaMember === null
     || state.isSingaporePr === null
@@ -1064,6 +1118,42 @@ function getFlowStep(state) {
     return 'result';
   }
 
+  if (isSgPrUnderCompanyPath(state)) {
+    if (
+      !state.companyReferenceRouteAbandoned
+      && (
+        !state.companyReferenceId?.trim()
+        || state.companyReferenceVerified !== true
+        || state.companyReferenceConfirmed !== true
+      )
+    ) {
+      return 'company-reference';
+    }
+    if (state.nricSgPrCheckFailed && !state.feeWaiverViaCompanyReference) {
+      return 'nric-company-fallback';
+    }
+    if (state.feeWaiverViaCompanyReference) {
+      return 'result';
+    }
+    if (state.spPrVerified !== true) {
+      return 'nric';
+    }
+    return 'result';
+  }
+
+  if (isSgPrIndividualPath(state)) {
+    if (state.nricSgPrCheckFailed && !state.nricFailureProceedAcknowledged) {
+      return 'nric-sg-pr-retry';
+    }
+    if (!state.nricSgPrCheckFailed) {
+      if (state.spPrVerified !== true) {
+        return 'nric';
+      }
+      return 'result';
+    }
+    // NRIC failed and user chose to proceed — fall through to student/working persona flow.
+  }
+
   if (isStudentWorkingPersonaPath(state)) {
     if (!state.registrationPersona) return 'registration-persona';
     if (state.registrationPersona === 'student') {
@@ -1074,7 +1164,18 @@ function getFlowStep(state) {
         if (state.studentNonFinalInterested === null) return 'student-non-final-options';
         return 'result';
       }
-      if (!state.studentAcademicEmail?.trim() || !state.studentPersonalEmail?.trim() || !state.studentCardImageName) {
+      if (
+        state.studentVerificationFailureAcknowledged
+        && state.studentDetailsSubmitted
+        && state.studentAcademicEmailVerified === false
+      ) {
+        return getStudentFlowAfterAcademicEmailStep(state);
+      }
+      if (
+        !state.studentAcademicEmail?.trim()
+        || !state.studentPersonalEmail?.trim()
+        || !state.studentCardImageName
+      ) {
         return 'student-academic-email';
       }
       return getStudentFlowAfterAcademicEmailStep(state);
@@ -1090,35 +1191,12 @@ function getFlowStep(state) {
     }
   }
 
-  if (isSgPrUnderCompanyPath(state)) {
-    if (
-      !state.companyReferenceRouteAbandoned
-      && (
-        !state.companyReferenceId?.trim()
-        || state.companyReferenceVerified !== true
-        || state.companyReferenceConfirmed !== true
-      )
-    ) {
-      return 'company-reference';
-    }
-    if (state.feeWaiverViaCompanyReference) {
-      return 'result';
-    }
-    if (state.spPrVerified !== true) {
-      return 'nric';
-    }
-    return 'result';
-  }
-
-  if (isSgPrIndividualPath(state)) {
-    if (state.spPrVerified !== true) {
-      return 'nric';
-    }
-    return 'result';
-  }
-
   if (state.isSingaporePr === false && !state.registrationPersona) return 'registration-persona';
 
+  const isExactCorporateIscaPath =
+    state.isIscaMember === true
+    && state.isSingaporePr === true
+    && state.companyRegistrationUnderCompany === true;
   if (isExactCorporateIscaPath) return 'result';
 
   if (!state.registrationPersona) return 'registration-persona';
@@ -1130,7 +1208,18 @@ function getFlowStep(state) {
       if (state.studentNonFinalInterested === null) return 'student-non-final-options';
       return 'result';
     }
-    if (!state.studentAcademicEmail?.trim() || !state.studentPersonalEmail?.trim() || !state.studentCardImageName) {
+    if (
+      state.studentVerificationFailureAcknowledged
+      && state.studentDetailsSubmitted
+      && state.studentAcademicEmailVerified === false
+    ) {
+      return getStudentFlowAfterAcademicEmailStep(state);
+    }
+    if (
+      !state.studentAcademicEmail?.trim()
+      || !state.studentPersonalEmail?.trim()
+      || !state.studentCardImageName
+    ) {
       return 'student-academic-email';
     }
     return getStudentFlowAfterAcademicEmailStep(state);
@@ -1440,9 +1529,9 @@ function getOutcome(state) {
     && state.workingNotEligibleChoice === 'pay'
   ) {
     return {
-      outcome: 'working-paid-signup',
+      outcome: 'paid-signup',
       title: 'Sign up with payment',
-      summary: 'Continue to the sign up page to pay the full programme fee.',
+      summary: 'Continue to the sign-up page to pay the full programme fee.',
       ctaLabel: 'Continue to paid signup',
       actionTarget: 'signUp',
     };
@@ -1468,7 +1557,7 @@ function getOutcome(state) {
 
   if (isSgPrIndividualPath(state) && state.spPrVerified === true) {
     return {
-      outcome: 'verified-nric-signup',
+      outcome: 'fee-waiver-signup',
       title: 'Eligible to register for fee waiver',
       summary:
         'Proceed to account creation. Please provide your company name, designation, industry, and accounting or non-accounting educational background on the signup page.',
@@ -1482,7 +1571,7 @@ function getOutcome(state) {
       outcome: 'student-fee-waiver',
       title: 'Eligible to register for fee waiver',
       summary:
-        'Proceed to registration. Your personal email address will be auto-filled. If you already have an ISCA Student account, sign in with eServices.',
+        'Proceed to registration. Your personal email address will be auto-filled. If you already have an ISCA Student account, please sign in using eServices.',
       ctaLabel: 'Register now',
       actionTarget: 'student-application',
       secondaryCtaLabel: 'eServices login',
@@ -1524,16 +1613,6 @@ function getOutcome(state) {
       outcome: 'student-non-final-not-interested',
       title: 'Thank you',
       summary: 'You may gain free access once your application is approved.',
-      ctaLabel: 'Continue',
-      actionTarget: 'signIn',
-    };
-  }
-
-  if (state.registrationPersona === 'student' && state.studentAcademicEmailVerified === false) {
-    return {
-      outcome: 'not-eligible-student-domain',
-      title: 'Not eligible',
-      summary: 'Academic email domain is not eligible for fee waiver.',
       ctaLabel: 'Continue',
       actionTarget: 'signIn',
     };
@@ -1682,21 +1761,22 @@ function getRequirementLabel(state, step) {
     'fee-waiver-choice': 'Fee waiver application',
     'initial-questionnaire': 'Basic eligibility questions',
     residency: 'Required before course access',
-    member: 'Are you already an ISCA member?',
+    member: 'Are you already an ISCA Member?',
     'company-registration': 'Company registration check',
     'company-reference': 'Company reference verification',
-    'registration-persona': 'Select your registration profile',
+    'registration-persona': 'Which category below best describes you?',
     'student-member-associate-check': 'ISCA Student/Associate member check',
     'student-final-year-check': 'Final-year local institution check',
     'student-non-final-options': 'Student membership options',
     'student-academic-email': 'Student academic email verification',
     'student-verification-trigger': 'Trigger student verification email',
     'student-verification-result': 'Student verification result',
-    'working-educational-background': 'Educational background check',
+    'working-educational-background': 'Which best describes your educational background?',
     'working-membership-options': 'ISCA membership options',
-    'working-not-eligible-options': 'Fee waiver not eligible',
+    'working-not-eligible-options': 'Based on your selected options, you are not eligible for the fee waiver',
     'nric-sg-pr-retry': 'NRIC Singaporean/PR verification',
     'nric-company-fallback': 'Company reference registration',
+    'isca-membership-not-verified': 'ISCA membership verification',
     nric: 'NRIC upload required for SP/PR verification',
     'membership-choice': 'Choose membership preference',
     'membership-fee': 'Membership fee and benefits information',
@@ -1762,7 +1842,14 @@ function getRequirementLabel(state, step) {
   }
 
   if (state.isIscaMember === false && step !== 'member') {
-    return 'Are you already an ISCA member? No';
+    return (
+      <>
+        Are you already an ISCA Member? You answered{' '}
+        <Box component="span" sx={{ fontWeight: 800, color: 'text.primary' }}>
+          No
+        </Box>
+      </>
+    );
   }
 
   return labelsByStep[step] || '';
@@ -1950,7 +2037,11 @@ function getProgressMeta(state, step) {
       'nric',
     ].includes(step)
   ) {
-    const currentIndex = baseSteps.indexOf(step);
+    const resolvedStep =
+      step === 'nric-sg-pr-retry' || step === 'nric-company-fallback'
+        ? 'nric'
+        : step;
+    const currentIndex = baseSteps.indexOf(resolvedStep);
     return {
       currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
       totalSteps: baseSteps.length || 1,
@@ -2106,6 +2197,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   const [studentPinVerifying, setStudentPinVerifying] = useState(false);
   const [studentEligibilityChecking, setStudentEligibilityChecking] = useState(false);
   const [studentEligibilityAssessment, setStudentEligibilityAssessment] = useState(null);
+  const [studentCardImage, setStudentCardImage] = useState(null);
+  const [studentCardVerifying, setStudentCardVerifying] = useState(false);
+  const [studentCardVerification, setStudentCardVerification] = useState(null);
+  const [studentCardVerificationError, setStudentCardVerificationError] = useState('');
   const [experiencedResumeVerifying, setExperiencedResumeVerifying] = useState(false);
   const [experiencedResumeVerificationError, setExperiencedResumeVerificationError] = useState('');
   const [experiencedResumeAssessment, setExperiencedResumeAssessment] = useState(null);
@@ -2113,6 +2208,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setExperiencedResumeVerifying(false);
     setExperiencedResumeVerificationError('');
     setExperiencedResumeAssessment(null);
+  };
+
+  const resetStudentCardVerificationResults = () => {
+    setStudentCardVerifying(false);
+    setStudentCardVerification(null);
+    setStudentCardVerificationError('');
+  };
+
+  const resetStudentCardVerificationState = () => {
+    setStudentCardImage(null);
+    resetStudentCardVerificationResults();
   };
 
   const resetNricCheckState = () => {
@@ -2371,6 +2477,19 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     openStudentMembershipApplicationPage(paths.auth.membership.studentApplication);
   };
 
+  const continueToFeeWaiverSignup = (outcome) => {
+    onContinue?.({
+      flow: flowState,
+      result: {
+        ...(result || {}),
+        outcome,
+        actionTarget: 'signUp',
+      },
+      resumeFeeWaiverOnSignUp,
+      signupAccessToken: nricSignupAccessToken || undefined,
+    });
+  };
+
   const handleResultAction = () => {
     if (result?.outcome === 'isca-member-sso-check' && result?.actionTarget === 'salesforce') {
       const returnTo = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}`);
@@ -2401,30 +2520,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       handleSalesforceLogin();
       return;
     }
-    if (result?.outcome === 'verified-nric-signup' && result?.actionTarget === 'signUp') {
-      try {
-        if (resumeFeeWaiverOnSignUp) {
-          persistFeeWaiverResultForResume(flowState, 'verified-nric-signup');
-        } else {
-          persistFeeWaiverSignupPrefill(flowState);
-        }
-      } catch {
-        // ignore storage errors
-      }
-      onClose?.();
+    if (
+      (result?.outcome === 'fee-waiver-signup' || result?.outcome === 'verified-nric-signup')
+      && result?.actionTarget === 'signUp'
+    ) {
+      continueToFeeWaiverSignup('fee-waiver-signup');
       return;
     }
-    if (result?.outcome === 'corporate-fee-waiver-signup') {
-      try {
-        if (resumeFeeWaiverOnSignUp) {
-          persistFeeWaiverResultForResume(flowState, 'corporate-fee-waiver-signup');
-        } else {
-          persistFeeWaiverSignupPrefill(flowState);
-        }
-      } catch {
-        // ignore storage errors
-      }
-      onClose?.();
+    if (result?.outcome === 'corporate-fee-waiver-signup' && result?.actionTarget === 'signUp') {
+      continueToFeeWaiverSignup('corporate-fee-waiver-signup');
       return;
     }
     onContinue?.({ flow: flowState, result });
@@ -2673,7 +2777,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         result: {
           outcome: 'paid-signup',
           title: 'Sign up with payment',
-          summary: 'Continue to sign up and pay the full programme fee.',
+          summary: 'Continue to the sign-up page to pay the full programme fee.',
           ctaLabel: 'Continue to paid signup',
           actionTarget: 'signUp',
         },
@@ -2688,25 +2792,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   };
 
   const verifyCompanyReferenceId = () => {
-    if (shouldUseNumericQuestionnaireCompanyVerification(flowState)) {
-      const verification = verifyYesYesYesCompanyReference(flowState.companyReferenceId);
-      if (!verification.verified) {
-        if (isSgPrUnderCompanyPath(flowState)) {
-          resetNricCheckState();
-          setFlowState((prev) => buildNoYesNoFlowFromFailedCompanyRoute(prev));
-          return;
-        }
-        if (isQuestionnaireNoNoYesPath(flowState)) {
-          setFlowState((prev) => buildNoNoNoFlowFromFailedCompanyRoute(prev));
-          return;
-        }
-        if (isQuestionnaireYesNoYesPath(flowState)) {
-          setFlowState((prev) => buildNoNoNoFlowFromFailedCompanyRoute(prev));
-          return;
-        }
-      }
-    }
-
     setFlowState((prev) => {
       if (shouldUseNumericQuestionnaireCompanyVerification(prev)) {
         const verification = verifyYesYesYesCompanyReference(prev.companyReferenceId);
@@ -2753,6 +2838,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     }));
   };
 
+  const switchYesNoYesToNoNoNoFlow = () => {
+    setFlowState((prev) => buildNoNoNoFlowFromFailedCompanyRoute(prev));
+  };
+
   const switchNoNoYesToNoNoNoFlow = () => {
     setFlowState((prev) => buildNoNoNoFlowFromFailedCompanyRoute(prev));
   };
@@ -2767,17 +2856,44 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setFlowState((prev) => ({
       ...prev,
       nricSgPrCheckFailed: false,
+      nricFailureProceedAcknowledged: false,
       spPrVerified: null,
       nricUploadAcknowledged: false,
       feeWaiverViaCompanyReference: false,
     }));
   };
 
-  const continueFeeWaiverViaCompanyReference = () => {
+  const proceedAfterNricVerificationFailure = () => {
+    setFlowState((prev) => {
+      if (isSgPrUnderCompanyPath(prev)) {
+        return {
+          ...prev,
+          feeWaiverViaCompanyReference: true,
+          nricSgPrCheckFailed: false,
+        };
+      }
+      return {
+        ...prev,
+        nricFailureProceedAcknowledged: true,
+      };
+    });
+  };
+
+  const retryIscaMembershipVerification = () => {
     setFlowState((prev) => ({
       ...prev,
-      feeWaiverViaCompanyReference: true,
-      nricSgPrCheckFailed: false,
+      isIscaMember: true,
+      iscaMemberEservicesFallback: false,
+      iscaMemberFailureAcknowledged: false,
+      iscaMemberVerificationPassed: null,
+      eServicesLoginCompleted: false,
+    }));
+  };
+
+  const proceedAfterIscaMembershipFailure = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      iscaMemberFailureAcknowledged: true,
     }));
   };
 
@@ -2856,27 +2972,108 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     }));
   };
 
-  const submitStudentAcademicDetails = () => {
+  const submitStudentAcademicDetails = async () => {
+    if (!studentCardImage) {
+      setStudentCardVerificationError('Please upload your student card image before verification.');
+      return;
+    }
+    if (!flowState.studentAcademicEmail?.trim() || !isAcademicEmail(flowState.studentAcademicEmail)) {
+      setStudentCardVerificationError('Please enter a supported academic email address.');
+      return;
+    }
+    const personalEmail = String(flowState.studentPersonalEmail || '').trim();
+    if (!personalEmail || !isValidPersonalEmail(personalEmail)) {
+      setStudentCardVerificationError('Please enter a valid personal email address.');
+      return;
+    }
+
+    setStudentCardVerifying(true);
+    setStudentCardVerificationError('');
+    setStudentCardVerification(null);
     setFlowState((prev) => ({
       ...prev,
       studentDetailsSubmitted: true,
       studentVerificationTriggered: true,
-      studentAcademicEmailVerified: isAcademicEmail(prev.studentAcademicEmail),
+      studentAcademicEmailVerified: null,
+      studentVerificationFailureAcknowledged: false,
+      studentAcademicVerificationScore: null,
+    }));
+
+    try {
+      const assessment = await verifyStudentAcademicDetails({
+        academicEmail: flowState.studentAcademicEmail,
+        personalEmail,
+        studentCardImage,
+      });
+
+      setStudentCardVerification(assessment || null);
+      setFlowState((prev) => ({
+        ...prev,
+        studentAcademicEmailVerified: assessment?.verified === true,
+        studentAcademicVerificationScore: assessment?.score ?? null,
+        studentVerificationFailureAcknowledged: false,
+      }));
+    } catch (error) {
+      setStudentCardVerification(null);
+      setFlowState((prev) => ({
+        ...prev,
+        studentAcademicEmailVerified: false,
+        studentAcademicVerificationScore: null,
+        studentVerificationFailureAcknowledged: false,
+      }));
+      setStudentCardVerificationError(error?.message || 'Student verification failed. Please try again.');
+    } finally {
+      setStudentCardVerifying(false);
+    }
+  };
+
+  const retryStudentAcademicVerification = () => {
+    resetStudentCardVerificationState();
+    setFlowState((prev) => ({
+      ...prev,
+      studentCardImageName: '',
+      studentDetailsSubmitted: false,
+      studentVerificationTriggered: false,
+      studentAcademicEmailVerified: null,
+      studentVerificationFailureAcknowledged: false,
+      studentAcademicVerificationScore: null,
+    }));
+  };
+
+  const proceedAfterStudentAcademicVerificationFailure = () => {
+    setFlowState((prev) => ({
+      ...prev,
+      studentVerificationFailureAcknowledged: true,
+      studentMemberOrAssociate: null,
+      studentNonFinalInterested: null,
     }));
   };
 
   const selectStudentMemberAssociate = (value) => {
-    setFlowState((prev) => ({
-      ...prev,
-      studentMemberOrAssociate: value,
-      studentNonFinalInterested: value ? prev.studentNonFinalInterested : null,
-      studentAcademicEmail: value ? prev.studentAcademicEmail : '',
-      studentPersonalEmail: value ? prev.studentPersonalEmail : '',
-      studentCardImageName: value ? prev.studentCardImageName : '',
-      studentDetailsSubmitted: value ? prev.studentDetailsSubmitted : false,
-      studentVerificationTriggered: value ? prev.studentVerificationTriggered : false,
-      studentAcademicEmailVerified: value ? prev.studentAcademicEmailVerified : null,
-    }));
+    setFlowState((prev) => {
+      const fromFailedAcademicVerification =
+        prev.studentFinalYearLocal === true && prev.studentVerificationFailureAcknowledged;
+
+      if (fromFailedAcademicVerification) {
+        return {
+          ...prev,
+          studentMemberOrAssociate: value,
+          studentNonFinalInterested: value ? prev.studentNonFinalInterested : null,
+        };
+      }
+
+      return {
+        ...prev,
+        studentMemberOrAssociate: value,
+        studentNonFinalInterested: value ? prev.studentNonFinalInterested : null,
+        studentAcademicEmail: value ? prev.studentAcademicEmail : '',
+        studentPersonalEmail: value ? prev.studentPersonalEmail : '',
+        studentCardImageName: value ? prev.studentCardImageName : '',
+        studentDetailsSubmitted: value ? prev.studentDetailsSubmitted : false,
+        studentVerificationTriggered: value ? prev.studentVerificationTriggered : false,
+        studentAcademicEmailVerified: value ? prev.studentAcademicEmailVerified : null,
+      };
+    });
   };
 
   const selectStudentFinalYearLocal = (value) => {
@@ -3086,12 +3283,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   };
 
   const continueAfterNricAiVerified = () => {
-    try {
-      persistFeeWaiverSignupPrefill(flowState, nricSignupAccessToken || undefined);
-    } catch {
-      // ignore storage errors
-    }
-    onClose?.();
+    continueToFeeWaiverSignup('fee-waiver-signup');
   };
 
   const continueAfterNricOtherOptions = () => {
@@ -3277,18 +3469,22 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         return;
       }
       setNricSignupAccessToken(response?.signupAccessToken || '');
+      const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
       if (isQuestionnaireNricEligiblePath(flowState)) {
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: true,
+          verifiedNricFin,
           nricUploadAcknowledged: true,
           nricSgPrCheckFailed: false,
+          nricFailureProceedAcknowledged: false,
           feeWaiverViaCompanyReference: false,
         }));
       } else {
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: true,
+          verifiedNricFin,
           nricUploadAcknowledged: true,
         }));
       }
@@ -5300,8 +5496,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'home-student-final-year' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you a final-year Accountancy student from one of the following Singapore local
-              universities or polytechnics?
+              Are you a final-year Accountancy student from any of the following local universities
+              or polytechnics in Singapore?
             </Typography>
             <Box
               sx={(theme) => ({
@@ -5387,7 +5583,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'home-educational-background' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              What is your educational background?
+              Which best describes your educational background?
             </Typography>
             <Stack spacing={1}>
               <Paper
@@ -5510,7 +5706,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'member' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you already an ISCA member?
+              Are you already an ISCA Member?
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -5583,14 +5779,43 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                   </Button>
                 </Stack>
               </>
-            ) : isQuestionnaireYesYesYesPath(flowState) && flowState.companyReferenceVerified === false ? (
+            ) : flowState.companyReferenceVerified === false ? (
               <Stack spacing={2}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Company reference verification
                 </Typography>
                 <Alert severity="error">
-                  Company not verified. Please check your company reference ID and try again.
+                  {ELIGIBILITY_COMPANY_REFERENCE_INVALID_MESSAGE}
                 </Alert>
+                {!isQuestionnaireYesYesYesPath(flowState) && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() =>
+                        setFlowState((prev) => ({
+                          ...prev,
+                          companyReferenceVerified: null,
+                          companyVerifiedName: '',
+                          companyVerifiedIndustry: '',
+                          companyReferenceConfirmed: null,
+                        }))}
+                    >
+                      Try again
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={
+                        isQuestionnaireNoNoYesPath(flowState)
+                          ? switchNoNoYesToNoNoNoFlow
+                          : isSgPrUnderCompanyPath(flowState)
+                            ? switchNoYesYesToNoYesNoFlow
+                            : switchYesNoYesToNoNoNoFlow
+                      }
+                    >
+                      Proceed to next step
+                    </Button>
+                  </Stack>
+                )}
               </Stack>
             ) : flowState.companyReferenceConfirmed !== true ? (
               <>
@@ -5605,10 +5830,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                       : ''}
                   </Alert>
                 ) : (
-                  <Alert severity="warning">
-                    {isSgPrUnderCompanyPath(flowState)
-                      ? 'Could not verify this company reference ID. Please check the ID and try again, or select No to continue with NRIC verification.'
-                      : 'Could not verify this company reference ID. Please check the ID and try again, or select No to continue as a student or working professional.'}
+                  <Alert severity="error">
+                    {ELIGIBILITY_COMPANY_REFERENCE_INVALID_MESSAGE}
                   </Alert>
                 )}
                 <Stack
@@ -5689,6 +5912,24 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             </Typography>
           </Stack>
         )}
+        {step === 'isca-membership-not-verified' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              ISCA membership verification
+            </Typography>
+            <Alert severity="error">
+              {ELIGIBILITY_MEMBERSHIP_NOT_VERIFIED_MESSAGE}
+            </Alert>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="outlined" onClick={retryIscaMembershipVerification}>
+                Try again
+              </Button>
+              <Button variant="contained" onClick={proceedAfterIscaMembershipFailure}>
+                Proceed to next step
+              </Button>
+            </Stack>
+          </Stack>
+        )}
         {step === 'isca-member-verify' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -5707,13 +5948,29 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'registration-persona' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Which best describe you?
+              Which category below best describes you?
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="contained" onClick={() => selectRegistrationPersona('student')}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ alignItems: { sm: 'center' }, justifyContent: 'flex-end' }}
+            >
+              <Button
+                variant="contained"
+                color="secondary"
+                size="medium"
+                onClick={() => selectRegistrationPersona('student')}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+              >
                 Student
               </Button>
-              <Button variant="outlined" onClick={() => selectRegistrationPersona('working-professional')}>
+              <Button
+                variant="outlined"
+                color="secondary"
+                size="medium"
+                onClick={() => selectRegistrationPersona('working-professional')}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+              >
                 Working professional
               </Button>
             </Stack>
@@ -5784,8 +6041,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'student-final-year-check' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you a final-year Accountancy student from one of the following Singapore local
-              universities or polytechnics?
+              Are you a final-year Accountancy student from any of the following local universities
+              or polytechnics in Singapore?
             </Typography>
             <Box
               sx={(theme) => ({
@@ -5842,101 +6099,151 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               Enter academic and personal details
             </Typography>
-            <TextField
-              size="small"
-              label="Academic email"
-              placeholder="name@nus.edu.sg"
-              value={flowState.studentAcademicEmail || ''}
-              onChange={(event) =>
-                setFlowState((prev) => ({
-                  ...prev,
-                  studentAcademicEmail: event.target.value,
-                  studentDetailsSubmitted: false,
-                  studentAcademicEmailVerified: null,
-                }))}
-              fullWidth
-              error={!!getAcademicEmailValidationMessage(flowState.studentAcademicEmail)}
-              helperText={getAcademicEmailValidationMessage(flowState.studentAcademicEmail) || undefined}
-            />
-            <TextField
-              size="small"
-              label="Personal email"
-              placeholder="name@email.com"
-              value={flowState.studentPersonalEmail || ''}
-              onChange={(event) =>
-                setFlowState((prev) => ({
-                  ...prev,
-                  studentPersonalEmail: event.target.value,
-                  studentDetailsSubmitted: false,
-                }))}
-              fullWidth
-              error={!!getPersonalEmailValidationMessage(flowState.studentPersonalEmail)}
-              helperText={getPersonalEmailValidationMessage(flowState.studentPersonalEmail) || undefined}
-            />
-            <Stack spacing={0.5}>
-              <FormLabel sx={{ fontWeight: 600, color: 'text.primary', fontSize: '0.8125rem' }}>
-                Student card image
-              </FormLabel>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Button
-                  variant="outlined"
-                  component="label"
-                  size="small"
-                  sx={{ justifyContent: 'center', flex: 1, textTransform: 'none', fontWeight: 600 }}
-                >
-                  {flowState.studentCardImageName ? 'Change image' : 'Upload student card image'}
-                  <input
-                    hidden
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) =>
-                      setFlowState((prev) => ({
-                        ...prev,
-                        studentCardImageName: event.target.files?.[0]?.name || '',
-                        studentDetailsSubmitted: false,
-                      }))}
-                  />
-                </Button>
-                {flowState.studentCardImageName && (
-                  <Chip
-                    size="small"
-                    label="Uploaded"
-                    icon={<Iconify icon="solar:verified-check-bold" width={14} />}
-                    sx={(theme) => ({
-                      fontWeight: 600,
-                      color: theme.palette.success.dark,
-                      bgcolor: alpha(theme.palette.success.main, 0.12),
-                      border: `1px solid ${alpha(theme.palette.success.main, 0.35)}`,
-                      '& .MuiChip-icon': { color: theme.palette.success.main },
-                    })}
-                  />
-                )}
+            {studentCardVerifying ? (
+              <Stack spacing={1}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Verifying student details...
+                </Typography>
+                <LinearProgress sx={{ borderRadius: 999 }} />
               </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>
-                {flowState.studentCardImageName || 'Student card image not uploaded'}
-              </Typography>
-            </Stack>
+            ) : (
+              <>
+                <TextField
+                  size="small"
+                  label="Academic email"
+                  placeholder="Academic email"
+                  value={flowState.studentAcademicEmail || ''}
+                  onChange={(event) => {
+                    resetStudentCardVerificationResults();
+                    setFlowState((prev) => ({
+                      ...prev,
+                      studentAcademicEmail: event.target.value,
+                      studentDetailsSubmitted: false,
+                      studentAcademicEmailVerified: null,
+                      studentVerificationFailureAcknowledged: false,
+                      studentAcademicVerificationScore: null,
+                    }));
+                  }}
+                  fullWidth
+                  error={!!getAcademicEmailValidationMessage(flowState.studentAcademicEmail)}
+                  helperText={getAcademicEmailValidationMessage(flowState.studentAcademicEmail) || undefined}
+                />
+                <TextField
+                  size="small"
+                  label="Personal email"
+                  placeholder="name@email.com"
+                  value={flowState.studentPersonalEmail || ''}
+                  onChange={(event) => {
+                    resetStudentCardVerificationResults();
+                    setFlowState((prev) => ({
+                      ...prev,
+                      studentPersonalEmail: event.target.value,
+                      studentDetailsSubmitted: false,
+                      studentAcademicEmailVerified: null,
+                      studentVerificationFailureAcknowledged: false,
+                      studentAcademicVerificationScore: null,
+                    }));
+                  }}
+                  fullWidth
+                  error={!!getPersonalEmailValidationMessage(flowState.studentPersonalEmail)}
+                  helperText={getPersonalEmailValidationMessage(flowState.studentPersonalEmail) || undefined}
+                />
+                <Stack spacing={0.5}>
+                  <FormLabel sx={{ fontWeight: 600, color: 'text.primary', fontSize: '0.8125rem' }}>
+                    Student card image
+                  </FormLabel>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      size="small"
+                      sx={{ justifyContent: 'center', flex: 1, textTransform: 'none', fontWeight: 600 }}
+                    >
+                      {flowState.studentCardImageName ? 'Change image' : 'Upload student card image'}
+                      <input
+                        hidden
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          resetStudentCardVerificationResults();
+                          setStudentCardImage(file || null);
+                          setFlowState((prev) => ({
+                            ...prev,
+                            studentCardImageName: file?.name || '',
+                            studentDetailsSubmitted: false,
+                            studentAcademicEmailVerified: null,
+                            studentVerificationFailureAcknowledged: false,
+                            studentAcademicVerificationScore: null,
+                          }));
+                        }}
+                      />
+                    </Button>
+                    {flowState.studentCardImageName && (
+                      <Chip
+                        size="small"
+                        label="Uploaded"
+                        icon={<Iconify icon="solar:verified-check-bold" width={14} />}
+                        sx={(theme) => ({
+                          fontWeight: 600,
+                          color: theme.palette.success.dark,
+                          bgcolor: alpha(theme.palette.success.main, 0.12),
+                          border: `1px solid ${alpha(theme.palette.success.main, 0.35)}`,
+                          '& .MuiChip-icon': { color: theme.palette.success.main },
+                        })}
+                      />
+                    )}
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>
+                    {flowState.studentCardImageName || 'Student card image not uploaded'}
+                  </Typography>
+                </Stack>
+              </>
+            )}
+
+            {!!studentCardVerificationError && (
+              <Alert severity="error">{studentCardVerificationError}</Alert>
+            )}
+
+            {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === false && (
+              <Alert severity="error">
+                {ELIGIBILITY_STUDENT_ACADEMIC_NOT_VERIFIED_MESSAGE}
+              </Alert>
+            )}
+
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-              <Button
-                variant="contained"
-                onClick={submitStudentAcademicDetails}
-                disabled={
-                  !flowState.studentAcademicEmail?.trim()
-                  || !isAcademicEmail(flowState.studentAcademicEmail)
-                  || !flowState.studentPersonalEmail?.trim()
-                  || !isValidPersonalEmail(flowState.studentPersonalEmail)
-                  || !flowState.studentCardImageName
-                }
-              >
-                Continue
-              </Button>
+              {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === false ? (
+                <>
+                  <Button variant="outlined" onClick={retryStudentAcademicVerification}>
+                    Try again
+                  </Button>
+                  <Button variant="contained" onClick={proceedAfterStudentAcademicVerificationFailure}>
+                    Proceed to next step
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={submitStudentAcademicDetails}
+                  disabled={
+                    studentCardVerifying
+                    || !flowState.studentAcademicEmail?.trim()
+                    || !isAcademicEmail(flowState.studentAcademicEmail)
+                    || !flowState.studentPersonalEmail?.trim()
+                    || !isValidPersonalEmail(flowState.studentPersonalEmail)
+                    || !studentCardImage
+                  }
+                >
+                  {studentCardVerifying ? 'Verifying...' : 'Continue'}
+                </Button>
+              )}
             </Stack>
           </Stack>
         )}
         {step === 'working-educational-background' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              What is your educational background?
+              Which best describes your educational background?
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={() => selectWorkingEducationalBackground('accounting')}>
@@ -5955,7 +6262,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               color="text.secondary"
               sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
             >
-              You may be eligible for the following ISCA membership:
+              You may be eligible for the following ISCA membership type:
             </Typography>
             <Stack component="ul" spacing={1.25} sx={{ m: 0, pl: 0, listStyle: 'none' }}>
               {(flowState.workingEducationalBackground === 'accounting'
@@ -5992,7 +6299,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               color="text.secondary"
               sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
             >
-              Apply for one of the ISCA memberships to get free access to the ISCA Fluency Programme.
+              Apply for an ISCA membership to enjoy free access to the ISCA Fluency Programme.
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -6025,7 +6332,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'working-not-eligible-options' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              You are not eligible for the fee waiver
+              Based on your selected options, you are not eligible for the fee waiver.
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -6058,20 +6365,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'nric-sg-pr-retry' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Not verified as Singaporean/PR
+              NRIC verification
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-              The system could not verify you as a Singaporean or Permanent Resident from the uploaded
-              NRIC images. Please submit clearer NRIC front and back screenshots, or digital NRIC full details.
-            </Typography>
-            {!!nricAiFailureReason && (
-              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }}>
-                Reason: {nricAiFailureReason}
-              </Typography>
-            )}
+            <Alert severity="error">
+              {ELIGIBILITY_NRIC_NOT_VERIFIED_MESSAGE}
+            </Alert>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="contained" onClick={retryQuestionnaireNricVerification}>
+              <Button variant="outlined" onClick={retryQuestionnaireNricVerification}>
                 Try again
+              </Button>
+              <Button variant="contained" onClick={proceedAfterNricVerificationFailure}>
+                Proceed to next step
               </Button>
             </Stack>
           </Stack>
@@ -6079,29 +6383,27 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'nric-company-fallback' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Not verified as Singaporean/PR
+              NRIC verification
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-              The system could not verify you as a Singaporean or Permanent Resident from your NRIC upload.
-              Your company reference is verified
-              {flowState.companyVerifiedName ? ` for ${flowState.companyVerifiedName}` : ''}. You may proceed
-              to fee waiver registration with company name and industry auto-filled, or try NRIC verification again.
-            </Typography>
-            {!!nricAiFailureReason && (
-              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }}>
-                Reason: {nricAiFailureReason}
-              </Typography>
-            )}
+            <Alert severity="error">
+              {ELIGIBILITY_NRIC_NOT_VERIFIED_MESSAGE}
+            </Alert>
+            {flowState.companyVerifiedName ? (
+              <Alert severity="success">
+                Company verified: <strong>{flowState.companyVerifiedName}</strong>
+                {flowState.companyVerifiedIndustry ? ` (${flowState.companyVerifiedIndustry})` : ''}
+              </Alert>
+            ) : null}
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1}
               sx={{ justifyContent: { sm: 'flex-end' } }}
             >
               <Button variant="outlined" onClick={retryQuestionnaireNricVerification}>
-                Try NRIC again
+                Try again
               </Button>
-              <Button variant="contained" onClick={continueFeeWaiverViaCompanyReference}>
-                Continue to registration
+              <Button variant="contained" onClick={proceedAfterNricVerificationFailure}>
+                Proceed to next step
               </Button>
             </Stack>
           </Stack>
@@ -6268,7 +6570,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               </>
             )}
 
-            {!!nricAiError && !isQuestionnaireSgPrPath(flowState) && (
+            {!!nricAiError && (
                 <Box
                   sx={(theme) => ({
                     p: 1.5,
@@ -6310,18 +6612,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                       </Stack>
                     </Stack>
 
-                    {nricAiFailureMode === 'sign-in-only' ? (
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                        <Button variant="contained" onClick={continueToSignInAfterNricFailure}>
-                          Sign in
-                        </Button>
-                      </Stack>
-                    ) : (
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                        <Button variant="contained" onClick={continueToPaidSignupAfterNricFailure}>
-                          Use SGD 900 paid signup
-                        </Button>
-                      </Stack>
+                    {!isQuestionnaireSgPrPath(flowState) && (
+                      nricAiFailureMode === 'sign-in-only' ? (
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                          <Button variant="contained" onClick={continueToSignInAfterNricFailure}>
+                            Sign in
+                          </Button>
+                        </Stack>
+                      ) : (
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                          <Button variant="contained" onClick={continueToPaidSignupAfterNricFailure}>
+                            Use SGD 900 paid signup
+                          </Button>
+                        </Stack>
+                      )
                     )}
                   </Stack>
                 </Box>
@@ -7959,6 +8263,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.75 }}>
               {(result.outcome === 'sp-pr-verified-login'
                 || result.outcome === 'ai-fluency-eligible'
+                || result.outcome === 'fee-waiver-signup'
                 || result.outcome === 'verified-nric-signup'
                 || result.outcome === 'corporate-fee-waiver-signup'
                 || result.outcome === 'corporate-membership-signup'
@@ -8002,10 +8307,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               && isSgPrUnderCompanyPath(flowState)
               && flowState.feeWaiverViaCompanyReference === true && (
               <Alert severity="warning">
-                NRIC not verified: Could not verify Singaporean/PR status from your NRIC upload.
+                {ELIGIBILITY_NRIC_NOT_VERIFIED_MESSAGE}
               </Alert>
             )}
             {result.actionTarget !== 'close'
+              && result.outcome !== 'fee-waiver-signup'
               && result.outcome !== 'verified-nric-signup'
               && result.outcome !== 'corporate-fee-waiver-signup' && (
               <>
@@ -8049,7 +8355,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                 }))}
               sx={{ ...MEMBERSHIP_DIALOG_FOOTER_BUTTON_SX, fontWeight: 600 }}
             >
-              Try verify again
+              Try again
             </Button>
             <Button
               variant="contained"
@@ -8058,7 +8364,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               onClick={completeEServicesLogin}
               sx={{ ...MEMBERSHIP_DIALOG_FOOTER_BUTTON_SX, fontWeight: 700 }}
             >
-              Sign in with eServices
+              Proceed to next step
             </Button>
           </Stack>
         )}

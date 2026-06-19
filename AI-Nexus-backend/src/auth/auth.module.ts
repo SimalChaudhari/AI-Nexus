@@ -8,6 +8,7 @@ import { UserEntity } from './../user/users.entity';
 import { EmailService } from './../service/email.service';
 import { SsoModule } from './sso.module';
 import { LlmModule } from '../llm/llm.module';
+import { LocalStorageModule } from '../service/local-storage.module';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
 import { AuthTokenInitService } from './auth-token-init.service';
@@ -21,6 +22,7 @@ import { AuthTokenInitService } from './auth-token-init.service';
     }),
     SsoModule,
     LlmModule,
+    LocalStorageModule,
   ],
   providers: [AuthService, EmailService, AuthTokenService, AuthTokenInitService],
   controllers: [AuthController],

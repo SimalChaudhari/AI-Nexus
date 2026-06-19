@@ -10,4 +10,6 @@ export * from './user-profile-view';
 
 export * from './user-details-view';
 
+export * from './user-fee-waiver-audit-panel';
+
 export * from './user-profile-detail-view';
