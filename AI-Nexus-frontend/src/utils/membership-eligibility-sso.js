@@ -39,6 +39,13 @@ export function isFeeWaiverResumeMembershipOutcome(outcome = '') {
   return FEE_WAIVER_RESUME_MEMBERSHIP_OUTCOMES.includes(String(outcome || '').trim());
 }
 
+/** Map dialog outcomes to the signup page `membershipOutcome` query value. */
+export function resolveSignupPageMembershipOutcome(outcome = '') {
+  const normalized = String(outcome || '').trim();
+  if (normalized === 'working-paid-signup') return 'paid-signup';
+  return normalized;
+}
+
 function buildFeeWaiverResumeFlow(flow = {}) {
   return {
     ...flow,
@@ -603,7 +610,8 @@ export function navigateGuestToSignIn(navigate, returnPath) {
  * Navigate after the membership eligibility dialog completes (home Get Started CTA).
  */
 export function continueMembershipSignupDialog({ navigate, returnPath, authenticated, payload }) {
-  const outcome = payload?.result?.outcome || '';
+  const rawOutcome = payload?.result?.outcome || '';
+  const outcome = resolveSignupPageMembershipOutcome(rawOutcome);
   const actionTarget = payload?.result?.actionTarget || '';
   const applicationPathway =
     payload?.result?.applicationPathway

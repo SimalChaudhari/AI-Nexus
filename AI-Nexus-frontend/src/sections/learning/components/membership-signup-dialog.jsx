@@ -483,7 +483,7 @@ const HOME_ISCA_SPECIALISATION_OPTIONS = [
 ];
 
 const STUDENT_ACADEMIC_EMAIL_SUFFIXES = [
-  'nus.edu.sg',
+  'nus.edu',
   'ntu.edu.sg',
   'smu.edu.sg',
   'sit.singaporetech.edu.sg',
@@ -1440,9 +1440,9 @@ function getOutcome(state) {
     && state.workingNotEligibleChoice === 'pay'
   ) {
     return {
-      outcome: 'working-paid-signup',
+      outcome: 'paid-signup',
       title: 'Sign up with payment',
-      summary: 'Continue to the sign up page to pay the full programme fee.',
+      summary: 'Continue to the sign-up page to pay the full programme fee.',
       ctaLabel: 'Continue to paid signup',
       actionTarget: 'signUp',
     };
@@ -1482,7 +1482,7 @@ function getOutcome(state) {
       outcome: 'student-fee-waiver',
       title: 'Eligible to register for fee waiver',
       summary:
-        'Proceed to registration. Your personal email address will be auto-filled. If you already have an ISCA Student account, sign in with eServices.',
+        'Proceed to registration. Your personal email address will be auto-filled. If you already have an ISCA Student account, please sign in using eServices.',
       ctaLabel: 'Register now',
       actionTarget: 'student-application',
       secondaryCtaLabel: 'eServices login',
@@ -1685,16 +1685,16 @@ function getRequirementLabel(state, step) {
     member: 'Are you already an ISCA member?',
     'company-registration': 'Company registration check',
     'company-reference': 'Company reference verification',
-    'registration-persona': 'Select your registration profile',
+    'registration-persona': 'Which category below best describes you?',
     'student-member-associate-check': 'ISCA Student/Associate member check',
     'student-final-year-check': 'Final-year local institution check',
     'student-non-final-options': 'Student membership options',
     'student-academic-email': 'Student academic email verification',
     'student-verification-trigger': 'Trigger student verification email',
     'student-verification-result': 'Student verification result',
-    'working-educational-background': 'Educational background check',
+    'working-educational-background': 'Which best describes your educational background?',
     'working-membership-options': 'ISCA membership options',
-    'working-not-eligible-options': 'Fee waiver not eligible',
+    'working-not-eligible-options': 'Based on your selected options, you are not eligible for the fee waiver',
     'nric-sg-pr-retry': 'NRIC Singaporean/PR verification',
     'nric-company-fallback': 'Company reference registration',
     nric: 'NRIC upload required for SP/PR verification',
@@ -2673,7 +2673,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         result: {
           outcome: 'paid-signup',
           title: 'Sign up with payment',
-          summary: 'Continue to sign up and pay the full programme fee.',
+          summary: 'Continue to the sign-up page to pay the full programme fee.',
           ctaLabel: 'Continue to paid signup',
           actionTarget: 'signUp',
         },
@@ -5300,8 +5300,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'home-student-final-year' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you a final-year Accountancy student from one of the following Singapore local
-              universities or polytechnics?
+              Are you a final-year Accountancy student from any of the following local universities
+              or polytechnics in Singapore?
             </Typography>
             <Box
               sx={(theme) => ({
@@ -5387,7 +5387,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'home-educational-background' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              What is your educational background?
+              Which best describes your educational background?
             </Typography>
             <Stack spacing={1}>
               <Paper
@@ -5707,13 +5707,29 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'registration-persona' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Which best describe you?
+              Which category below best describes you?
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="contained" onClick={() => selectRegistrationPersona('student')}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ alignItems: { sm: 'center' }, justifyContent: 'flex-end' }}
+            >
+              <Button
+                variant="contained"
+                color="secondary"
+                size="medium"
+                onClick={() => selectRegistrationPersona('student')}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 700 }}
+              >
                 Student
               </Button>
-              <Button variant="outlined" onClick={() => selectRegistrationPersona('working-professional')}>
+              <Button
+                variant="outlined"
+                color="secondary"
+                size="medium"
+                onClick={() => selectRegistrationPersona('working-professional')}
+                sx={{ ...MEMBERSHIP_OPTION_BUTTON_SX, fontWeight: 600 }}
+              >
                 Working professional
               </Button>
             </Stack>
@@ -5784,8 +5800,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'student-final-year-check' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Are you a final-year Accountancy student from one of the following Singapore local
-              universities or polytechnics?
+              Are you a final-year Accountancy student from any of the following local universities
+              or polytechnics in Singapore?
             </Typography>
             <Box
               sx={(theme) => ({
@@ -5845,7 +5861,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             <TextField
               size="small"
               label="Academic email"
-              placeholder="name@nus.edu.sg"
+              placeholder="Academic email"
               value={flowState.studentAcademicEmail || ''}
               onChange={(event) =>
                 setFlowState((prev) => ({
@@ -5936,7 +5952,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'working-educational-background' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              What is your educational background?
+              Which best describes your educational background?
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={() => selectWorkingEducationalBackground('accounting')}>
@@ -5955,7 +5971,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               color="text.secondary"
               sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
             >
-              You may be eligible for the following ISCA membership:
+              You may be eligible for the following ISCA membership type:
             </Typography>
             <Stack component="ul" spacing={1.25} sx={{ m: 0, pl: 0, listStyle: 'none' }}>
               {(flowState.workingEducationalBackground === 'accounting'
@@ -5992,7 +6008,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               color="text.secondary"
               sx={{ lineHeight: 1.55, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
             >
-              Apply for one of the ISCA memberships to get free access to the ISCA Fluency Programme.
+              Apply for an ISCA membership to enjoy free access to the ISCA Fluency Programme.
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -6025,7 +6041,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'working-not-eligible-options' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              You are not eligible for the fee waiver
+              Based on your selected options, you are not eligible for the fee waiver.
             </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}

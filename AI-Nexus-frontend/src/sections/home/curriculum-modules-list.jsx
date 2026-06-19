@@ -35,11 +35,6 @@ function formatModulesCountLabel(count) {
   return `${value} module${value === 1 ? '' : 's'}`;
 }
 
-function formatCoursesCountLabel(count) {
-  const value = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
-  return `${value} course${value === 1 ? '' : 's'}`;
-}
-
 function formatCourseWithModuleCount(title, modulesCount) {
   const name = String(title || '').trim() || 'Course';
   const count = Number.isFinite(modulesCount) ? Math.max(0, Math.floor(modulesCount)) : 0;
@@ -300,23 +295,9 @@ function CurriculumCourseModules({ row, expanded, nested = false }) {
     <Collapse in={expanded} unmountOnExit={false}>
       <Box
         sx={{
-          position: 'relative',
           pl: nested ? `${NESTED_INDENT}px` : 2,
           pt: 0.5,
           pb: 0.25,
-          ...(nested
-            ? {
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  left: 11,
-                  top: 0,
-                  bottom: 8,
-                  width: '1px',
-                  bgcolor: 'grey.300',
-                },
-              }
-            : {}),
         }}
       >
         <ModuleList
@@ -426,46 +407,25 @@ function CurriculumCategoryRow({
           label={expanded ? 'Collapse category' : 'Expand category'}
         />
 
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography
-            variant="body1"
-            onClick={onToggle}
-            sx={{
-              color: CURRICULUM_RED,
-              fontWeight: 600,
-              fontSize: FLUID_FONT_SIZES.body1,
-              lineHeight: 1.5,
-              cursor: 'pointer',
-            }}
-          >
-            {row.categoryTitle}
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{ mt: 0.25, color: 'text.secondary', fontSize: FLUID_FONT_SIZES.body2 }}
-          >
-            {formatCoursesCountLabel(row.coursesCount)}
-          </Typography>
-        </Box>
+        <Typography
+          variant="body1"
+          onClick={onToggle}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            color: CURRICULUM_RED,
+            fontWeight: 600,
+            fontSize: FLUID_FONT_SIZES.body1,
+            lineHeight: 1.5,
+            cursor: 'pointer',
+          }}
+        >
+          {row.categoryTitle}
+        </Typography>
       </Box>
 
       <Collapse in={expanded} unmountOnExit={false}>
-        <Box
-          sx={{
-            position: 'relative',
-            mt: 1,
-            pl: `${NESTED_INDENT}px`,
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              left: 11,
-              top: 0,
-              bottom: 12,
-              width: '1px',
-              bgcolor: 'grey.300',
-            },
-          }}
-        >
+        <Box sx={{ mt: 1, pl: `${NESTED_INDENT}px` }}>
           {row.courses.length === 0 ? (
             <Typography
               variant="body2"

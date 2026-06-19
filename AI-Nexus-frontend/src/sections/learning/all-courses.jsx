@@ -37,6 +37,7 @@ import {
   clearMembershipEligibilityDraftOnModalClose,
   clearMembershipEligibilitySessionStorage,
   POST_OAUTH_RETURN_TO_KEY,
+  resolveSignupPageMembershipOutcome,
 } from 'src/utils/membership-eligibility-sso';
 import {
   clearMembershipApplicationPending,
@@ -1483,7 +1484,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
         }}
         onContinue={(payload) => {
           setMembershipSignupOpen(false);
-          const outcome = payload?.result?.outcome || '';
+          const outcome = resolveSignupPageMembershipOutcome(payload?.result?.outcome || '');
           const actionTarget = payload?.result?.actionTarget || '';
           const signupAccessToken = payload?.signupAccessToken || '';
           const isScaqCandidateFlow = payload?.flow?.eligibilityType === 'scaq-candidate';
