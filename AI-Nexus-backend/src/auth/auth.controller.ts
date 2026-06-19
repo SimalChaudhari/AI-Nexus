@@ -270,6 +270,43 @@ export class AuthController {
     return this.authService.verifyStudentEligibilityWithAi({ schoolName, graduationDate, schoolEmail });
   }
 
+  @Post('student-verification/verify-academic-details')
+  @ApiOperation({ summary: 'Verify student academic email and student ID card with AI' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        academicEmail: { type: 'string' },
+        personalEmail: { type: 'string' },
+        studentCardImage: { type: 'string', format: 'binary' },
+        userId: { type: 'string' },
+      },
+      required: ['academicEmail', 'studentCardImage'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('studentCardImage', {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async verifyStudentAcademicDetails(
+    @Req() req: Request,
+    @UploadedFile() studentCardImage: Express.Multer.File,
+    @Body('academicEmail') academicEmail?: string,
+    @Body('personalEmail') personalEmail?: string,
+    @Body('userId') userId?: string,
+  ) {
+    return this.authService.verifyStudentAcademicDetailsWithAi({
+      academicEmail,
+      personalEmail,
+      studentCardImage,
+      userId,
+      authorizationHeader: req.headers.authorization,
+    });
+  }
+
   @Post('experienced-pathway/verify-resume')
   @ApiOperation({ summary: 'Verify experienced pathway resume/CV and return ATS-style eligibility score' })
   @ApiConsumes('multipart/form-data')

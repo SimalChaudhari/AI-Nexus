@@ -263,6 +263,48 @@ export const verifyNricImages = async ({ frontImage, backImage }) => {
 };
 
 /** **************************************
+ * Verify student academic email + ID card (questionnaire student path)
+ *************************************** */
+export const verifyStudentAcademicDetails = async ({
+  academicEmail,
+  personalEmail,
+  studentCardImage,
+}) => {
+  try {
+    const formData = new FormData();
+    let draftUserId = '';
+    try {
+      const currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
+      if (currentUser?.id) {
+        formData.append('userId', currentUser.id);
+      }
+    } catch {
+      // ignore
+    }
+    draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
+    if (!formData.get('userId') && draftUserId) {
+      formData.append('userId', draftUserId);
+    }
+    formData.append('academicEmail', String(academicEmail || '').trim());
+    if (personalEmail?.trim()) {
+      formData.append('personalEmail', String(personalEmail).trim());
+    }
+    formData.append('studentCardImage', studentCardImage);
+
+    const res = await axios.post('/auth/student-verification/verify-academic-details', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Student verification failed. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * Send student verification PIN
  *************************************** */
 export const sendStudentVerificationPin = async ({ schoolName, graduationDate, schoolEmail }) => {
