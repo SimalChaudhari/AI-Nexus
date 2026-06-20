@@ -1497,7 +1497,7 @@ function getOutcome(state) {
       outcome: 'isca-login',
       title: 'ISCA member route',
       summary: 'Sign in with your Salesforce-linked member account.',
-      ctaLabel: 'Login with Eservices',
+      ctaLabel: 'Verify Membership Application Submission',
       actionTarget: 'salesforce',
     };
   }
@@ -1515,11 +1515,10 @@ function getOutcome(state) {
   if (state.registrationPersona === 'working-professional' && state.workingMembershipInterested === true) {
     return {
       outcome: 'working-membership-apply-thanks',
-      title: 'Thank you',
-      summary:
-        'Thank you for your application. You may gain free access to the programme with your membership login once your application is approved.',
-      ctaLabel: 'Close',
-      actionTarget: 'close',
+      title: 'Continue to authentication',
+      summary: '',
+      ctaLabel: 'Verify Membership Application Submission',
+      actionTarget: 'salesforce',
     };
   }
 
@@ -1596,11 +1595,10 @@ function getOutcome(state) {
   ) {
     return {
       outcome: 'student-non-final-apply',
-      title: 'Thank you',
-      summary:
-        'Thank you for your application. You may gain free access to the programme with your membership login once your application is approved.',
-      ctaLabel: 'Close',
-      actionTarget: 'close',
+      title: 'Continue to authentication',
+      summary: '',
+      ctaLabel: 'Login with Eservices',
+      actionTarget: 'salesforce',
     };
   }
 

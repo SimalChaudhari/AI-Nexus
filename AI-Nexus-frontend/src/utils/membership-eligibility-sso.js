@@ -11,7 +11,9 @@ import {
   clearMembershipApplicationPending,
   saveMembershipApplicationCourseReturn,
   setStudentMembershipApplicationPending,
+  setMembershipApplicationPending,
 } from 'src/utils/membership-salesforce-session';
+import axios from 'src/utils/axios';
 import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
 import { paths } from 'src/routes/paths';
 
@@ -641,7 +643,7 @@ export function navigateGuestToSignIn(navigate, returnPath) {
 /**
  * Navigate after the membership eligibility dialog completes (home Get Started CTA).
  */
-export function continueMembershipSignupDialog({ navigate, returnPath, authenticated, payload }) {
+export async function continueMembershipSignupDialog({ navigate, returnPath, authenticated, payload }) {
   const rawOutcome = payload?.result?.outcome || '';
   const outcome = resolveSignupPageMembershipOutcome(rawOutcome);
   const actionTarget = payload?.result?.actionTarget || '';
@@ -672,6 +674,50 @@ export function continueMembershipSignupDialog({ navigate, returnPath, authentic
     }
     navigate(paths.auth.membership.studentApplication);
     return;
+  }
+
+  if (actionTarget === 'verify-membership') {
+    // If user is not authenticated on platform, ensure we return after SSO and prompt eServices login
+    if (!authenticated) {
+      try {
+        sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, safeReturnPath);
+        setMembershipApplicationPending();
+      } catch {
+        // ignore
+      }
+      const returnTo = encodeURIComponent(safeReturnPath);
+      const membershipOutcome = encodeURIComponent('membership-application');
+      navigate(`${paths.auth.oauth.start}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}`);
+      return;
+    }
+
+    // If authenticated, attempt to verify via API whether an application exists
+    try {
+      const res = await axios.get('/auth/membership/application/check');
+      const exists = Boolean(res?.data?.exists === true || res?.data?.applicationExists === true || res?.data?.found === true);
+      if (exists) {
+        const returnTo = encodeURIComponent(safeReturnPath);
+        const membershipOutcome = encodeURIComponent('membership-application');
+        const targetPath = paths.auth.simple.signUp;
+        navigate(`${targetPath}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}`);
+        return;
+      }
+      // Not found — inform the user
+      try { window.alert('No membership application was found. If you recently applied, please wait up to 24 hours or contact support.'); } catch { /* ignore */ }
+      return;
+    } catch (err) {
+      // On error, fallback to SSO redirect so user can re-authenticate with eServices
+      try {
+        sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, safeReturnPath);
+        setMembershipApplicationPending();
+      } catch {
+        // ignore
+      }
+      const returnTo = encodeURIComponent(safeReturnPath);
+      const membershipOutcome = encodeURIComponent('membership-application');
+      navigate(`${paths.auth.oauth.start}?returnTo=${returnTo}&membershipOutcome=${membershipOutcome}`);
+      return;
+    }
   }
 
   if (actionTarget === 'scaq-salesforce-auto' && payload?.flow) {
