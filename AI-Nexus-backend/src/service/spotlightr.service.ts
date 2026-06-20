@@ -59,40 +59,145 @@ export class SpotlightrService {
         }
     }
 
-    /** Resolve MP4 (or original) file URL for a Spotlightr video id via the account API. */
-    async resolveVideoFileUrl(videoId: string): Promise<string | null> {
+    /** Look up a Spotlightr video row by numeric id (from watch URL path). */
+    async resolveVideoRecord(videoId: string): Promise<Record<string, unknown> | null> {
         const vooKey = String(process.env.SPOTLIGHTR_API_KEY || '').trim();
         if (!vooKey) {
-            this.logger.warn('Spotlightr API key is not configured; cannot resolve video file URL');
+            this.logger.warn('Spotlightr API key is not configured; cannot resolve video');
             return null;
         }
 
-        const id = String(videoId || '').trim();
-        if (!id) return null;
+        const candidates = this.buildVideoIdCandidates(videoId);
+        if (!candidates.length) return null;
+
+        for (const candidate of candidates) {
+            const record = await this.fetchVideoRecordByApiId(vooKey, candidate);
+            if (record) return record;
+        }
+
+        return null;
+    }
+
+    private buildVideoIdCandidates(videoId: string): string[] {
+        const raw = String(videoId || '').trim();
+        if (!raw) return [];
+
+        const out: string[] = [];
+        const add = (value: string) => {
+            const next = String(value || '').trim();
+            if (next && !out.includes(next)) out.push(next);
+        };
+
+        add(raw);
+        if (/^\d+$/.test(raw)) return out;
+
+        const decoded = this.decodeSpotlightrBase64Id(raw);
+        if (decoded) add(decoded);
+
+        return out;
+    }
+
+    private decodeSpotlightrBase64Id(value: string): string | null {
+        try {
+            const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+            const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+            return Buffer.from(padded, 'base64').toString('utf8');
+        } catch {
+            return null;
+        }
+    }
+
+    private async fetchVideoRecordByApiId(
+        vooKey: string,
+        videoId: string,
+    ): Promise<Record<string, unknown> | null> {
+        if (!/^\d+$/.test(String(videoId || '').trim())) return null;
 
         try {
             const response = await axios.get(SPOTLIGHTR_LIST_VIDEOS_URL, {
-                params: { vooKey, id },
+                // Spotlightr expects `videoID` (not `id`) to return a single video.
+                params: { vooKey, videoID: videoId },
                 timeout: 20000,
             });
             const rows = this.extractVideoRows(response.data);
-            const match = rows.find((row) => String(row?.id) === id);
-            if (!match) return null;
-
-            const original = String(match.originalFileURL || '').trim();
-            if (original) return original;
-
-            const stream = String(match.url || '').trim();
-            return stream || null;
+            const match = rows.find((row) => {
+                const rowId = String(row?.id ?? '');
+                const altId = String(row?.altID ?? '');
+                return rowId === videoId || altId === videoId;
+            });
+            return match || rows[0] || null;
         } catch (error) {
             const message = axios.isAxiosError(error)
                 ? String(error.response?.data || error.message)
                 : error instanceof Error
                   ? error.message
                   : 'Spotlightr video lookup failed';
-            this.logger.error(`Spotlightr video lookup failed: ${message}`);
+            this.logger.error(`Spotlightr video lookup failed for id=${videoId}: ${message}`);
             return null;
         }
+    }
+
+    /** Duration in seconds from Spotlightr metadata (works for large/HLS uploads). */
+    async resolveVideoDurationSeconds(videoId: string): Promise<number | null> {
+        const record = await this.resolveVideoRecord(videoId);
+        if (!record) return null;
+
+        const duration = Number(record.duration);
+        if (Number.isFinite(duration) && duration > 0) {
+            return Math.round(duration);
+        }
+
+        return null;
+    }
+
+    /** Resolve a direct MP4/WebM URL for header-based duration fallback. */
+    async resolveVideoFileUrl(videoId: string): Promise<string | null> {
+        const match = await this.resolveVideoRecord(videoId);
+        if (!match) return null;
+
+        const original = String(match.originalFileURL || '').trim();
+        if (original && this.isDirectVideoUrl(original)) return original;
+
+        const stream = String(match.url || '').trim();
+        if (stream && this.isDirectVideoUrl(stream)) return stream;
+
+        return this.extractSmallestMp4FromOptimizedUrls(match.optimizedUrls);
+    }
+
+    private isDirectVideoUrl(url: string): boolean {
+        const lower = url.toLowerCase();
+        return lower.includes('.mp4') || lower.includes('.webm') || lower.includes('.mov');
+    }
+
+    private extractSmallestMp4FromOptimizedUrls(raw: unknown): string | null {
+        let entries: Array<Record<string, string>> = [];
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) entries = parsed;
+            } catch {
+                return null;
+            }
+        } else if (Array.isArray(raw)) {
+            entries = raw.filter((row): row is Record<string, string> => Boolean(row && typeof row === 'object'));
+        }
+
+        let bestUrl: string | null = null;
+        let bestHeight = Number.POSITIVE_INFINITY;
+        for (const entry of entries) {
+            for (const [heightKey, url] of Object.entries(entry)) {
+                const text = String(url || '').trim();
+                if (!text.toLowerCase().includes('.mp4')) continue;
+                const height = Number(heightKey);
+                if (Number.isFinite(height) && height < bestHeight) {
+                    bestHeight = height;
+                    bestUrl = text;
+                } else if (!Number.isFinite(height) && !bestUrl) {
+                    bestUrl = text;
+                }
+            }
+        }
+        return bestUrl;
     }
 
     private extractVideoRows(data: unknown): Array<Record<string, unknown>> {

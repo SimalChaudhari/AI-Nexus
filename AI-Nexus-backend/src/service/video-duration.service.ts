@@ -114,9 +114,12 @@ export class VideoDurationService {
     }
 
     private async detectSpotlightrDurationSeconds(videoId: string): Promise<number> {
+        const fromApi = await this.spotlightrService.resolveVideoDurationSeconds(videoId);
+        if (fromApi != null) return fromApi;
+
         const fileUrl = await this.spotlightrService.resolveVideoFileUrl(videoId);
         if (!fileUrl) {
-            throw new Error('Could not resolve Spotlightr video file for duration detection');
+            throw new Error('Could not resolve Spotlightr video for duration detection');
         }
         return this.detectMp4DurationSeconds(fileUrl);
     }
