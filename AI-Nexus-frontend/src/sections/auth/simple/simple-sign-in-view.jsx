@@ -290,9 +290,25 @@ export function SimpleSignInView() {
         component={RouterLink}
         href={paths.auth.oauth.start}
         startIcon={<Iconify icon="solar:login-3-bold-duotone" />}
-        sx={{ height: 44, borderStyle: 'dashed', fontWeight: 600 }}
+        sx={(theme) => ({
+          height: 44,
+          borderStyle: 'dashed',
+          fontWeight: 600,
+          [theme.breakpoints.down('sm')]: {
+            whiteSpace: 'nowrap',
+            fontSize: 12.5,
+            px: 1.25,
+            '& .MuiButton-startIcon': {
+              mr: 0.5,
+              '& svg': {
+                width: 18,
+                height: 18,
+              },
+            },
+          },
+        })}
       >
-      Sign in with ISCA Eservices
+        Sign in with ISCA Eservices
       </Button>
     </Stack>
   );
