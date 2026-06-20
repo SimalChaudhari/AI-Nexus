@@ -560,6 +560,15 @@ function getNextLessonFromModules(modules, currentLessonId) {
   return orderedLessons[currentIndex + 1];
 }
 
+/** Next module after `fromIndex` that has at least one published section/lesson. */
+function getNextModuleWithLessons(modules, fromIndex) {
+  if (!modules?.length || fromIndex < 0) return null;
+  for (let i = fromIndex + 1; i < modules.length; i += 1) {
+    if ((modules[i]?.lessons || []).length > 0) return modules[i];
+  }
+  return null;
+}
+
 /** Required seconds for progress: no watchtime => video length; watchtime set => min(watchtime, video length) so we never require more than the video. */
 function effectiveRequiredSeconds(watchtimeSec, videoDurationSec) {
   const duration =
@@ -2679,10 +2688,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }
   const goToNextModuleStart = () => {
     const activeModuleIndex = modules.findIndex((m) => (m.lessons || []).some((l) => l.id === activeLessonId));
-    if (activeModuleIndex < 0 || activeModuleIndex >= modules.length - 1) return;
-    const nextModule = modules[activeModuleIndex + 1];
+    if (activeModuleIndex < 0) return;
+    const nextModule = getNextModuleWithLessons(modules, activeModuleIndex);
     const firstLesson = nextModule?.lessons?.[0];
-    if (!firstLesson) return;
+    if (!nextModule || !firstLesson) return;
     autoPlayNextRef.current = Boolean(firstLesson.videoUrl);
     setActiveLessonId(firstLesson.id);
     setExpandedSection(nextModule.id);
@@ -2730,7 +2739,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       activeModuleStats.total > 0 &&
       activeModuleStats.completed >= activeModuleStats.total
   );
-  const hasNextModule = activeModuleIndex >= 0 && activeModuleIndex < modules.length - 1;
+  const hasNextModule = activeModuleIndex >= 0 && Boolean(getNextModuleWithLessons(modules, activeModuleIndex));
 
   if (loading || playerLoading) return <LoadingScreen />;
 
