@@ -1,7 +1,8 @@
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
-import { buildLogoutPayload, clearClientSalesforceSessions } from './logout-payload';
+import { clearClientSalesforceSessions } from './logout-payload';
+import { postLogoutWithIdpBrowserClear, buildIdpLogoutRedirectUrl } from './idp-browser-logout';
 
 const USER_SESSION_KEY = 'user';
 
@@ -61,11 +62,10 @@ export async function forceLogout({ redirect = true } = {}) {
   }
 
   logoutInFlight = (async () => {
+    const cachedUser = readCachedUser();
+    let browserLogoutUrl = null;
     try {
-      await axios.post('/auth/logout', buildLogoutPayload(), {
-        skipAuthRefresh: true,
-        skipApiLoading: true,
-      });
+      ({ browserLogoutUrl } = await postLogoutWithIdpBrowserClear(cachedUser));
     } catch {
       // Still clear client state if cookies are already invalid.
     }
@@ -84,7 +84,14 @@ export async function forceLogout({ redirect = true } = {}) {
       if (!currentPath.startsWith('/auth')) {
         const returnTo = encodeURIComponent(currentPath + window.location.search);
         const base = (CONFIG.site.basePath || '').replace(/\/$/, '');
-        window.location.replace(`${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`);
+        const signInUrl = `${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`;
+
+        if (browserLogoutUrl) {
+          window.location.replace(buildIdpLogoutRedirectUrl(browserLogoutUrl, `${window.location.origin}${signInUrl}`));
+          return;
+        }
+
+        window.location.replace(`${window.location.origin}${signInUrl}`);
       }
     }
   })().finally(() => {

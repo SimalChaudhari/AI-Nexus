@@ -3500,7 +3500,7 @@ export class AuthService {
   async logout(
     userId: string,
     options?: { supplementalSocialToken?: string },
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; browserLogoutUrl?: string | null }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       return { message: 'Logged out successfully' };
@@ -3509,7 +3509,6 @@ export class AuthService {
     const socialToken =
       String(user.socialAccessToken || '').trim()
       || String(options?.supplementalSocialToken || '').trim();
-    const isOAuth = user.authProvider === AuthProvider.OAUTH && Boolean(socialToken);
 
     if (socialToken) {
       try {
@@ -3526,10 +3525,18 @@ export class AuthService {
 
     user.socialAccessToken = null;
     await this.userRepository.save(user);
+
+    const shouldEndIdpBrowserSession =
+      user.authProvider === AuthProvider.OAUTH || Boolean(socialToken);
+    const browserLogoutUrl = shouldEndIdpBrowserSession
+      ? this.oauthAuthService.buildBrowserLogoutUrl()
+      : null;
+
     return {
-      message: isOAuth
+      message: shouldEndIdpBrowserSession
         ? 'Logged out successfully from both app and SSO'
         : 'Logged out successfully',
+      browserLogoutUrl,
     };
   }
 }

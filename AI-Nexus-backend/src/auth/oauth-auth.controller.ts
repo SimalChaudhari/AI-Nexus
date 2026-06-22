@@ -32,6 +32,21 @@ export class OAuthAuthController {
     private readonly authTokenService: AuthTokenService,
   ) {}
 
+  @Get('browser-logout-url')
+  @ApiOperation({
+    summary: 'Salesforce browser logout URL (clears IdP session cookies on sign-out)',
+  })
+  @ApiQuery({
+    name: 'retUrl',
+    required: false,
+    description: 'Optional post-logout redirect target for Salesforce',
+  })
+  getBrowserLogoutUrl(@Query('retUrl') retUrl?: string) {
+    return {
+      browserLogoutUrl: this.oauthAuthService.buildBrowserLogoutUrl(retUrl),
+    };
+  }
+
   @Get('auth-url')
   @ApiOperation({ summary: 'Generate OAuth authorization URL' })
   @ApiQuery({
