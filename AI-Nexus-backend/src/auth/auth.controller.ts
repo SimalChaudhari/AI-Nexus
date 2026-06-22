@@ -239,6 +239,30 @@ export class AuthController {
     return this.authService.verifyNricImages(front, back, userId, req.headers.authorization);
   }
 
+  @Post('verify-nric-manual')
+  @ApiOperation({ summary: 'Verify NRIC/FIN manually via checksum validation (no AI)' })
+  async verifyNricManual(
+    @Req() req: Request,
+    @Body('identifier') identifier: string,
+    @Body('fullName') fullName: string,
+    @Body('dateOfBirth') dateOfBirth: string,
+    @Body('userId') userId?: string,
+  ) {
+    return this.authService.verifyNricManual({
+      identifier,
+      fullName,
+      dateOfBirth,
+      userId,
+      authorizationHeader: req.headers.authorization,
+    });
+  }
+
+  @Post('validate-nric')
+  @ApiOperation({ summary: 'Validate Singapore NRIC/FIN checksum only (no AI / persistence)' })
+  async validateNric(@Body('identifier') identifier: string) {
+    return this.authService.validateNricIdentifier(identifier);
+  }
+
   @Post('verified-signup-access')
   @ApiOperation({ summary: 'Validate verified NRIC signup access token and return signup prefill data' })
   async getVerifiedSignupAccess(@Body('token') token: string) {

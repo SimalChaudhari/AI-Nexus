@@ -1057,6 +1057,92 @@ export class AuthService {
   }
 
   /**
+   * Normalizes manual or OCR date-of-birth values into ISO `YYYY-MM-DD` for storage.
+   */
+  private normalizeDateOfBirthForStorage(value: unknown): string {
+    const trimmed = this.sanitizeExtractedTextField(value);
+    if (!trimmed) return '';
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return this.isValidIsoDateString(trimmed) ? trimmed : '';
+    }
+
+    const dmyMatch = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+    if (dmyMatch) {
+      const iso = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+      return this.isValidIsoDateString(iso) ? iso : '';
+    }
+
+    const mdyMatch = trimmed.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/);
+    if (mdyMatch) {
+      const parsed = new Date(`${mdyMatch[1]} ${mdyMatch[2]}, ${mdyMatch[3]}`);
+      if (!Number.isNaN(parsed.getTime())) {
+        const iso = this.formatDatePartsToIso(
+          parsed.getFullYear(),
+          parsed.getMonth() + 1,
+          parsed.getDate(),
+        );
+        return this.isValidIsoDateString(iso) ? iso : '';
+      }
+    }
+
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) {
+      const date = new Date(parsed);
+      const iso = this.formatDatePartsToIso(
+        date.getFullYear(),
+        date.getMonth() + 1,
+        date.getDate(),
+      );
+      return this.isValidIsoDateString(iso) ? iso : '';
+    }
+
+    return '';
+  }
+
+  private formatDatePartsToIso(year: number, month: number, day: number): string {
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  private isValidIsoDateString(value: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+    const [year, month, day] = value.split('-').map((part) => Number(part));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+
+    const candidate = new Date(year, month - 1, day);
+    return (
+      candidate.getFullYear() === year
+      && candidate.getMonth() === month - 1
+      && candidate.getDate() === day
+    );
+  }
+
+  private assertValidManualDateOfBirth(value: unknown): string {
+    const normalized = this.normalizeDateOfBirthForStorage(value);
+    if (!normalized) {
+      throw new BadRequestException('Date of birth must be a valid date.');
+    }
+
+    const [year, month, day] = normalized.split('-').map((part) => Number(part));
+    const dob = new Date(year, month - 1, day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dob.getTime() > today.getTime()) {
+      throw new BadRequestException('Date of birth cannot be in the future.');
+    }
+
+    const earliest = new Date(today);
+    earliest.setFullYear(earliest.getFullYear() - 120);
+    if (dob.getTime() < earliest.getTime()) {
+      throw new BadRequestException('Date of birth is outside the allowed range.');
+    }
+
+    return normalized;
+  }
+
+  /**
    * Normalizes OCR address blocks while preserving readable separators.
    */
   private sanitizeExtractedAddressField(value: unknown): string {
@@ -2832,6 +2918,177 @@ export class AuthService {
       this.logger.warn(
         `Could not persist NRIC audit images: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+
+    return verificationResponse;
+  }
+
+  private assertValidNricIdentifier(identifier?: string): ReturnType<typeof validateSingaporeNricFin> {
+    const normalized = normalizeSingaporeNricFin(identifier || '');
+
+    if (!normalized) {
+      throw new BadRequestException('NRIC/FIN number is required.');
+    }
+
+    let validation: ReturnType<typeof validateSingaporeNricFin>;
+    try {
+      validation = validateSingaporeNricFin(normalized);
+    } catch {
+      throw new BadRequestException('Invalid Singapore NRIC/FIN format.');
+    }
+
+    if (!validation.isValid) {
+      throw new BadRequestException('Invalid Singapore NRIC/FIN checksum. Please check the number and try again.');
+    }
+
+    return validation;
+  }
+
+  /**
+   * Lightweight checksum-only validation for a Singapore NRIC/FIN identifier (no AI / persistence).
+   */
+  validateNricIdentifier(identifier?: string) {
+    const validation = this.assertValidNricIdentifier(identifier);
+
+    return {
+      valid: true,
+      normalized: validation.normalized,
+      type: validation.documentType,
+      prefix: validation.prefix,
+      maskedIdentifier: validation.masked,
+    };
+  }
+
+  /**
+   * Validates a manually entered Singapore NRIC/FIN using checksum rules only (no AI / image upload).
+   */
+  async verifyNricManual(params: {
+    identifier?: string;
+    fullName?: string;
+    dateOfBirth?: string;
+    userId?: string;
+    authorizationHeader?: string;
+  }) {
+    const identifier = normalizeSingaporeNricFin(params.identifier || '');
+    const fullName = this.sanitizeExtractedTextField(params.fullName);
+    const dateOfBirth = this.assertValidManualDateOfBirth(params.dateOfBirth);
+
+    if (!fullName) {
+      throw new BadRequestException('Full name is required for manual NRIC verification.');
+    }
+
+    if (!identifier) {
+      throw new BadRequestException('NRIC/FIN number is required.');
+    }
+
+    const validation = this.assertValidNricIdentifier(identifier);
+
+    const currentResolvedUser = await this.resolveUserForNricVerification(
+      params.userId,
+      params.authorizationHeader,
+    );
+
+    if (
+      currentResolvedUser
+      && !currentResolvedUser.isDraft
+      && this.hasStoredCanonicalNricFin(currentResolvedUser, validation.normalized)
+    ) {
+      throw new BadRequestException(
+        'You have already completed signup with this verified document. Please sign in with your credentials.',
+      );
+    }
+
+    const existingCompletedUser = await this.findExistingCompletedUserByNricFin(
+      validation.normalized,
+      currentResolvedUser?.id,
+    );
+
+    if (existingCompletedUser) {
+      throw new BadRequestException(
+        'You have already verified this document. Please sign in with your credentials.',
+      );
+    }
+
+    const extracted: ExtractedSingaporeIdentifier = {
+      identifier: validation.normalized,
+      candidates: [validation.normalized],
+      profile: {
+        fullName,
+        dateOfBirth,
+        nationality: '',
+        sex: '',
+        address: '',
+      },
+      confidence: 1,
+      reason: 'manual entry',
+      rawResponse: '',
+    };
+
+    const verificationResponse = {
+      verified: true,
+      verificationMethod: 'manual' as const,
+      message: 'NRIC/FIN validated successfully.',
+      extracted: {
+        type: validation.documentType,
+        prefix: validation.prefix,
+        identifier: validation.normalized,
+        maskedIdentifier: validation.masked,
+        confidence: 1,
+        reason: 'manual entry',
+        profile: extracted.profile,
+      },
+      storedOnUser: false,
+      userId: currentResolvedUser?.id || null,
+      storedAsDraft: false,
+      draftUserCreated: false,
+      signupAccessToken: null as string | null,
+      signupAccessTokenExpiresAt: null as Date | null,
+      checks: {
+        checksumValid: true,
+        manualEntry: true,
+      },
+    };
+
+    try {
+      const { user: auditUser, createdAsDraft } = await this.resolveOrCreateUserForNricVerification(
+        extracted,
+        params.userId,
+        params.authorizationHeader,
+      );
+      const existingSnapshot =
+        auditUser.eligibilitySnapshot && typeof auditUser.eligibilitySnapshot === 'object'
+          ? auditUser.eligibilitySnapshot
+          : {};
+      auditUser.eligibilitySnapshot = {
+        ...existingSnapshot,
+        nricAudit: {
+          verificationMethod: 'manual',
+          maskedIdentifier: validation.masked,
+          fullName,
+          dateOfBirth,
+          savedAt: new Date().toISOString(),
+        },
+      };
+      const access = await this.issueVerifiedSignupAccessToken(auditUser);
+      verificationResponse.storedOnUser = true;
+      verificationResponse.userId = auditUser.id;
+      verificationResponse.storedAsDraft = auditUser.isDraft;
+      verificationResponse.draftUserCreated = createdAsDraft;
+      verificationResponse.signupAccessToken = access.signupAccessToken;
+      verificationResponse.signupAccessTokenExpiresAt = access.signupAccessTokenExpiresAt;
+    } catch (error) {
+      this.logger.warn(
+        `Could not persist manual NRIC verification audit: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (this.shouldLogNricDebugDetails()) {
+      console.info('[NRIC] Manual verification result:', {
+        verified: verificationResponse.verified,
+        extracted: verificationResponse.extracted,
+        userId: verificationResponse.userId,
+        storedOnUser: verificationResponse.storedOnUser,
+      });
     }
 
     return verificationResponse;
