@@ -308,6 +308,7 @@ export type ContactHeroContent = {
     phone?: string;
     email?: string;
     whatsapp?: string;
+    whatsappLink?: string;
     website?: string;
     addressIcon?: string;
     phoneIcon?: string;

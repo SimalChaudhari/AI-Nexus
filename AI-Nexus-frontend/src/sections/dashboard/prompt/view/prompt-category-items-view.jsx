@@ -212,6 +212,15 @@ export function PromptCategoryItemsView() {
                 Categories
               </Button>
               <Button
+                variant="outlined"
+                onClick={() =>
+                  router.push(paths.admin.prompt.newInCategory(categoryKey, headingTitle))
+                }
+                startIcon={<Iconify icon="mingcute:add-line" />}
+              >
+                Add prompt
+              </Button>
+              <Button
                 variant="contained"
                 onClick={handleSync}
                 disabled={syncing}

@@ -3,6 +3,8 @@ import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { clearAuthSession } from './utils';
 import { writeCachedUser } from './session';
+import { clearClientSalesforceSessions } from './logout-payload';
+import { postLogoutWithIdpBrowserClear, buildIdpLogoutRedirectUrl } from './idp-browser-logout';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 
 /** **************************************
@@ -252,12 +254,71 @@ export const verifyNricImages = async ({ frontImage, backImage }) => {
       sessionStorage.setItem('membershipDraftUserId', res.data.userId);
     }
 
+    console.log('[NRIC Scan] API response:', res.data);
+
+    return res.data;
+  } catch (error) {
+    console.log('[NRIC Scan] API error:', error?.response?.data || error?.message || error);
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'NRIC verification failed. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Validate NRIC/FIN checksum only (live field validation)
+ *************************************** */
+export const validateNricIdentifier = async ({ identifier }) => {
+  try {
+    const res = await axios.post('/auth/validate-nric', {
+      identifier: String(identifier || '').trim(),
+    });
     return res.data;
   } catch (error) {
     const errorMessage =
       error?.response?.data?.message ||
       error?.message ||
-      (typeof error === 'string' ? error : 'NRIC verification failed. Please try again.');
+      (typeof error === 'string' ? error : 'Invalid NRIC/FIN number.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Verify NRIC manually via checksum (no image / AI)
+ *************************************** */
+export const verifyNricManual = async ({ identifier, fullName, dateOfBirth }) => {
+  try {
+    let currentUser = null;
+    let draftUserId = '';
+    try {
+      currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
+    } catch {
+      currentUser = null;
+    }
+    draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
+
+    const res = await axios.post('/auth/verify-nric-manual', {
+      identifier: String(identifier || '').trim(),
+      fullName: String(fullName || '').trim(),
+      dateOfBirth: String(dateOfBirth || '').trim(),
+      userId: currentUser?.id || draftUserId || undefined,
+    });
+
+    if (!currentUser?.id && res?.data?.userId) {
+      sessionStorage.setItem('membershipDraftUserId', res.data.userId);
+    }
+
+    console.log('[NRIC Manual] API response:', res.data);
+
+    return res.data;
+  } catch (error) {
+    console.log('[NRIC Manual] API error:', error?.response?.data || error?.message || error);
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Manual NRIC verification failed. Please try again.');
     throw new Error(errorMessage);
   }
 };
@@ -605,13 +666,15 @@ export const signOut = async () => {
   };
 
   try {
-    try {
-      await axios.post('/auth/logout', {}, { skipAuthRefresh: true, skipApiLoading: true });
-    } catch (err) {
-      console.warn('Backend logout failed (non-fatal):', err);
-    }
+    const { browserLogoutUrl } = await postLogoutWithIdpBrowserClear();
     await triggerFlowiseLogout();
+    clearClientSalesforceSessions();
     await clearAuthSession();
+
+    if (browserLogoutUrl) {
+      window.location.assign(buildIdpLogoutRedirectUrl(browserLogoutUrl));
+      return;
+    }
   } catch (error) {
     console.error('Error during sign out:', error);
     throw error;

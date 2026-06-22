@@ -186,6 +186,49 @@ export class OAuthAuthService {
     return `${this.memberClassUpdateBaseUrl}?${params.toString()}`;
   }
 
+  /** Apex REST path to clear Salesforce mobile app session on logout. */
+  private get clearSessionPath(): string {
+    const p =
+      process.env.OAUTH_CLEAR_SESSION_PATH
+      || '/services/apexrest/mobileAPI/v1/bodmobileapp/clearsession';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get clearSessionUrl(): string {
+    const fullUrl = process.env.OAUTH_CLEAR_SESSION_URL?.trim();
+    if (fullUrl) return fullUrl;
+    return `${this.baseUrl}${this.clearSessionPath}`;
+  }
+
+  /** Browser logout path (ends Salesforce SSO cookies in the user's browser). */
+  private get browserLogoutPath(): string {
+    const p = process.env.OAUTH_BROWSER_LOGOUT_PATH || '/secur/logout.jsp';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  /**
+   * URL to load in the browser on app logout so the next SSO login is not silent.
+   * Override with OAUTH_BROWSER_LOGOUT_URL (e.g. Experience Cloud site logout).
+   */
+  buildBrowserLogoutUrl(retUrl?: string): string | null {
+    const explicit = process.env.OAUTH_BROWSER_LOGOUT_URL?.trim();
+    const base = explicit || (this.baseUrl ? `${this.baseUrl}${this.browserLogoutPath}` : '');
+    if (!base) return null;
+
+    const returnTarget =
+      String(retUrl || process.env.OAUTH_BROWSER_LOGOUT_RET_URL || '').trim();
+    if (!returnTarget) return base;
+
+    try {
+      const url = new URL(base);
+      url.searchParams.set('retUrl', returnTarget);
+      return url.toString();
+    } catch {
+      const sep = base.includes('?') ? '&' : '?';
+      return `${base}${sep}retUrl=${encodeURIComponent(returnTarget)}`;
+    }
+  }
+
   /** Apex REST path to create a Nexus user in Salesforce (membership signup flow). */
   private get createNexusUserPath(): string {
     const p = process.env.OAUTH_CREATE_USER_PATH || '/services/apexrest/createuserfornexus';
@@ -2234,6 +2277,26 @@ export class OAuthAuthService {
     const scheme = this.deepLinkScheme.replace(/\/$/, '').split('?')[0];
     const search = new URLSearchParams(params).toString();
     return search ? `${scheme}?${search}` : scheme;
+  }
+
+  /** Revoke IdP token (e.g. Salesforce). Do not throw on failure. */
+  async clearSalesforceMobileSession(accessToken: string): Promise<void> {
+    const token = String(accessToken || '').trim();
+    if (!token) return;
+
+    const url = this.clearSessionUrl;
+    try {
+      await axios.delete(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+        timeout: 10000,
+      });
+      console.log('[Salesforce] clearSession succeeded:', { url });
+    } catch (err) {
+      console.warn('Salesforce clearSession failed (non-fatal):', err);
+    }
   }
 
   /** Revoke IdP token (e.g. Salesforce). Do not throw on failure. */

@@ -73,6 +73,40 @@ export function parseContactDetails(detailsHtml) {
 }
 
 /**
+ * @param {string} linkOrPhone - Admin-configured link or fallback display value
+ */
+export function resolveWhatsAppUrl(linkOrPhone, displayValue = '') {
+  const raw = String(linkOrPhone || displayValue || '').trim();
+  if (!raw) return '';
+
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/wa\.me|whatsapp\.com/i.test(raw)) {
+    return raw.startsWith('http') ? raw : `https://${raw}`;
+  }
+
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  return `https://wa.me/${digits}`;
+}
+
+export function buildContactFieldHref(fieldKey, row) {
+  if (!row || typeof row !== 'object') return '';
+
+  const value = String(row[fieldKey] || '').trim();
+  if (!value && fieldKey !== 'whatsapp') return '';
+
+  switch (fieldKey) {
+    case 'website':
+      if (!value) return '';
+      return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    case 'whatsapp':
+      return resolveWhatsAppUrl(row.whatsappLink, value);
+    default:
+      return '';
+  }
+}
+
+/**
  * @param {Record<string, unknown> | null | undefined} row - First contact row from public settings
  */
 export function buildContactFieldRows(row) {
@@ -82,5 +116,21 @@ export function buildContactFieldRows(row) {
     ...item,
     value: String(row[item.key] || parsed[item.key] || '').trim(),
     icon: String(row[item.iconKey] || item.defaultIcon || '').trim(),
+    href: buildContactFieldHref(item.key, {
+      ...row,
+      ...parsed,
+      whatsappLink: row.whatsappLink,
+    }),
   })).filter((item) => !!item.value);
+}
+
+export function buildWhatsAppMessageUrl(whatsappUrl, message) {
+  const baseUrl = resolveWhatsAppUrl(whatsappUrl);
+  if (!baseUrl) return '';
+
+  const text = String(message || '').trim();
+  if (!text) return baseUrl;
+
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${separator}text=${encodeURIComponent(text)}`;
 }

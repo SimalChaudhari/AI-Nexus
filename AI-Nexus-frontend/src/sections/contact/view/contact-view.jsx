@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
+import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -56,6 +57,7 @@ export function ContactSection({ hideWhenEmpty = false }) {
           phone: String(row?.phone || '').trim(),
           email: String(row?.email || '').trim(),
           whatsapp: String(row?.whatsapp || '').trim(),
+          whatsappLink: String(row?.whatsappLink || '').trim(),
           website: String(row?.website || '').trim(),
           addressIcon: String(row?.addressIcon || '').trim(),
           phoneIcon: String(row?.phoneIcon || '').trim(),
@@ -169,17 +171,40 @@ export function ContactSection({ hideWhenEmpty = false }) {
                       }
                       spacing={0}
                     >
-                      {contactFields.map((field) => (
+                      {contactFields.map((field) => {
+                        const valueContent = (
+                          <Typography
+                            sx={{
+                              fontWeight: 500,
+                              fontSize: FLUID_FONT_SIZES.body2,
+                              color: field.href ? 'inherit' : 'text.primary',
+                              lineHeight: 1.45,
+                              wordBreak: 'break-word',
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {field.value}
+                          </Typography>
+                        );
+
+                        return (
                         <Stack
                           key={field.key}
                           direction="row"
                           spacing={1.5}
                           alignItems="flex-start"
+                          component={field.href ? Link : 'div'}
+                          href={field.href || undefined}
+                          target={field.href ? '_blank' : undefined}
+                          rel={field.href ? 'noopener noreferrer' : undefined}
+                          underline="none"
                           sx={{
                             py: 1.15,
                             px: 0.5,
                             borderRadius: '12px',
                             transition: 'background-color 0.15s ease',
+                            color: 'inherit',
+                            cursor: field.href ? 'pointer' : 'default',
                             '&:hover': {
                               bgcolor: (t) =>
                                 t.palette.mode === 'dark'
@@ -218,21 +243,23 @@ export function ContactSection({ hideWhenEmpty = false }) {
                             >
                               {field.label}
                             </Typography>
-                            <Typography
-                              sx={{
-                                fontWeight: 500,
-                                fontSize: FLUID_FONT_SIZES.body2,
-                                color: 'text.primary',
-                                lineHeight: 1.45,
-                                wordBreak: 'break-word',
-                                overflowWrap: 'anywhere',
-                              }}
-                            >
-                              {field.value}
-                            </Typography>
+                            {field.href ? (
+                              <Box
+                                component="span"
+                                sx={{
+                                  color: field.key === 'whatsapp' ? '#00c853' : 'primary.main',
+                                  '&:hover': { textDecoration: 'underline' },
+                                }}
+                              >
+                                {valueContent}
+                              </Box>
+                            ) : (
+                              valueContent
+                            )}
                           </Stack>
                         </Stack>
-                      ))}
+                        );
+                      })}
                     </Stack>
                   )}
                 </Box>
@@ -246,7 +273,13 @@ export function ContactSection({ hideWhenEmpty = false }) {
               variants={varFade({ distance: 24 }).inUp}
               sx={{ display: 'flex', minWidth: 0 }}
             >
-              <ContactForm />
+              <ContactForm
+                whatsappLink={
+                  (contactHeroContent.contacts || [])[0]?.whatsappLink ||
+                  (contactHeroContent.contacts || [])[0]?.whatsapp ||
+                  ''
+                }
+              />
             </Grid>
             <Grid item xs={12} component={m.div} variants={varFade({ distance: 24 }).inUp}>
               <Box sx={{ mt: { xs: 0, md: 0 } }}>

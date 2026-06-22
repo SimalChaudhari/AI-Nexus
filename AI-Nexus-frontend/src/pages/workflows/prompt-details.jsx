@@ -31,6 +31,7 @@ import {
 import { getProviderPromptTheme } from 'src/sections/workflows/provider-prompt-theme';
 import { ProviderPromptIcon } from 'src/sections/workflows/provider-prompt-icon';
 import { toast } from 'src/components/snackbar';
+import { ViewHtmlContent } from 'src/components/html-content';
 
 // ChatGPT: OpenAI supports ?prompt= — the site reads it and fills the composer (documented pattern).
 // Claude: https://www.claude.ai/new?q= is community-tested but not officially guaranteed; login can clear it.
@@ -433,27 +434,20 @@ export default function PromptDetailsPage() {
                                 <Iconify icon="solar:copy-bold" width={18} />
                               </IconButton>
                             </Stack>
-                            <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-                              <Box
-                                sx={{
-                                  '& img': {
-                                    maxWidth: '100%',
-                                    height: 'auto',
-                                    borderRadius: 1,
-                                    mt: 1,
-                                    cursor: 'copy',
-                                  },
-                                  '& p': { my: 0.75 },
-                                }}
-                                onClick={(event) => {
-                                  const target = event.target;
-                                  if (target instanceof HTMLImageElement) {
-                                    copyImageFromUrl(target.src);
-                                  }
-                                }}
-                                dangerouslySetInnerHTML={{ __html: promptText }}
+                            <Box
+                              onClick={(event) => {
+                                const target = event.target;
+                                if (target instanceof HTMLImageElement) {
+                                  copyImageFromUrl(target.src);
+                                }
+                              }}
+                              sx={{ '& img': { cursor: 'copy' } }}
+                            >
+                              <ViewHtmlContent
+                                html={promptText}
+                                sx={{ color: 'text.primary', typography: 'body2', lineHeight: 1.6 }}
                               />
-                            </Typography>
+                            </Box>
                             <Box sx={{ clear: 'both', height: 0 }} />
                             <Stack direction="row" justifyContent="flex-end" sx={{ mt: 'auto', pt: 1.25 }}>
                               <Button

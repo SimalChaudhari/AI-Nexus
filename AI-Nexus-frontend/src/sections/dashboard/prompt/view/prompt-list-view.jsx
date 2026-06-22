@@ -148,16 +148,25 @@ export function PromptListView() {
             { name: 'Categories' },
           ]}
           action={
-            <Button
-              variant="contained"
-              onClick={handleSync}
-              disabled={syncing}
-              startIcon={
-                syncing ? <CircularProgress size={16} color="inherit" /> : <Iconify icon="solar:restart-bold" />
-              }
-            >
-              Sync Prompts
-            </Button>
+            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end">
+              <Button
+                variant="outlined"
+                onClick={() => router.push(paths.admin.prompt.new)}
+                startIcon={<Iconify icon="mingcute:add-line" />}
+              >
+                Add prompt
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSync}
+                disabled={syncing}
+                startIcon={
+                  syncing ? <CircularProgress size={16} color="inherit" /> : <Iconify icon="solar:restart-bold" />
+                }
+              >
+                Sync Prompts
+              </Button>
+            </Stack>
           }
           sx={{ mb: { xs: 3, md: 5 } }}
         />

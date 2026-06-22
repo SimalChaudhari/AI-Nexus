@@ -180,7 +180,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Logout the current user session' })
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body?: { socialAccessToken?: string },
+  ) {
     const userId = (req as any).user?.id;
     const rawRefresh = this.authTokenService.readRefreshTokenFromRequest(req);
     await this.authTokenService.revokeRefreshToken(rawRefresh ?? undefined);
@@ -191,7 +195,8 @@ export class AuthController {
     if (!userId) {
       return { message: 'Logged out successfully' };
     }
-    return this.authService.logout(userId);
+    const supplementalSocialToken = String(body?.socialAccessToken || '').trim() || undefined;
+    return this.authService.logout(userId, { supplementalSocialToken });
   }
 
   @Post('verify-nric')
@@ -232,6 +237,30 @@ export class AuthController {
     const front = files?.frontImage?.[0];
     const back = files?.backImage?.[0];
     return this.authService.verifyNricImages(front, back, userId, req.headers.authorization);
+  }
+
+  @Post('verify-nric-manual')
+  @ApiOperation({ summary: 'Verify NRIC/FIN manually via checksum validation (no AI)' })
+  async verifyNricManual(
+    @Req() req: Request,
+    @Body('identifier') identifier: string,
+    @Body('fullName') fullName: string,
+    @Body('dateOfBirth') dateOfBirth: string,
+    @Body('userId') userId?: string,
+  ) {
+    return this.authService.verifyNricManual({
+      identifier,
+      fullName,
+      dateOfBirth,
+      userId,
+      authorizationHeader: req.headers.authorization,
+    });
+  }
+
+  @Post('validate-nric')
+  @ApiOperation({ summary: 'Validate Singapore NRIC/FIN checksum only (no AI / persistence)' })
+  async validateNric(@Body('identifier') identifier: string) {
+    return this.authService.validateNricIdentifier(identifier);
   }
 
   @Post('verified-signup-access')

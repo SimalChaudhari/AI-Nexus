@@ -12,6 +12,8 @@ import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
+import InputAdornment from '@mui/material/InputAdornment';
+import CircularProgress from '@mui/material/CircularProgress';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
@@ -21,6 +23,8 @@ import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
 import { alpha } from '@mui/material/styles';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs from 'dayjs';
 
 import { Iconify } from 'src/components/iconify';
 import {
@@ -28,6 +32,8 @@ import {
   verifyStudentEligibility as verifyStudentEligibilityRequest,
   verifyExperiencedResume as verifyExperiencedResumeRequest,
   verifyNricImages,
+  verifyNricManual,
+  validateNricIdentifier,
   verifyStudentAcademicDetails,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
 } from 'src/auth/context/jwt';
@@ -1497,7 +1503,7 @@ function getOutcome(state) {
       outcome: 'isca-login',
       title: 'ISCA member route',
       summary: 'Sign in with your Salesforce-linked member account.',
-      ctaLabel: 'Login with Eservices',
+      ctaLabel: 'Verify Membership Application Submission',
       actionTarget: 'salesforce',
     };
   }
@@ -1515,11 +1521,10 @@ function getOutcome(state) {
   if (state.registrationPersona === 'working-professional' && state.workingMembershipInterested === true) {
     return {
       outcome: 'working-membership-apply-thanks',
-      title: 'Thank you',
-      summary:
-        'Thank you for your application. You may gain free access to the programme with your membership login once your application is approved.',
-      ctaLabel: 'Close',
-      actionTarget: 'close',
+      title: 'Continue to authentication',
+      summary: '',
+      ctaLabel: 'Verify Membership Application Submission',
+      actionTarget: 'salesforce',
     };
   }
 
@@ -1596,11 +1601,10 @@ function getOutcome(state) {
   ) {
     return {
       outcome: 'student-non-final-apply',
-      title: 'Thank you',
-      summary:
-        'Thank you for your application. You may gain free access to the programme with your membership login once your application is approved.',
-      ctaLabel: 'Close',
-      actionTarget: 'close',
+      title: 'Continue to authentication',
+      summary: '',
+      ctaLabel: 'Login with Eservices',
+      actionTarget: 'salesforce',
     };
   }
 
@@ -2189,6 +2193,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   const [nricAiFailureReason, setNricAiFailureReason] = useState('');
   const [nricAiFailureMode, setNricAiFailureMode] = useState('default');
   const [nricSignupAccessToken, setNricSignupAccessToken] = useState('');
+  const [nricManualIdentifier, setNricManualIdentifier] = useState('');
+  const [nricManualFullName, setNricManualFullName] = useState('');
+  const [nricManualDateOfBirth, setNricManualDateOfBirth] = useState('');
+  const [nricManualChecking, setNricManualChecking] = useState(false);
+  const [nricManualError, setNricManualError] = useState('');
+  const [nricManualIdentifierValid, setNricManualIdentifierValid] = useState(false);
+  const [nricManualIdentifierValidating, setNricManualIdentifierValidating] = useState(false);
+  const [nricManualIdentifierError, setNricManualIdentifierError] = useState('');
+  const [nricVerificationMode, setNricVerificationMode] = useState('image');
   const [studentVerificationToken, setStudentVerificationToken] = useState('');
   const [studentPinInput, setStudentPinInput] = useState('');
   const [studentPinError, setStudentPinError] = useState('');
@@ -2230,6 +2243,36 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricAiFailureReason('');
     setNricAiFailureMode('default');
     setNricSignupAccessToken('');
+    setNricManualIdentifier('');
+    setNricManualFullName('');
+    setNricManualDateOfBirth('');
+    setNricManualChecking(false);
+    setNricManualError('');
+    setNricManualIdentifierValid(false);
+    setNricManualIdentifierValidating(false);
+    setNricManualIdentifierError('');
+    setNricVerificationMode('image');
+  };
+
+  const switchToNricManualMode = () => {
+    setNricVerificationMode('manual');
+    setNricFrontImage(null);
+    setNricBackImage(null);
+    setNricAiError('');
+    setNricAiFailureReason('');
+    setNricAiFailureMode('default');
+    setNricManualError('');
+  };
+
+  const switchToNricImageMode = () => {
+    setNricVerificationMode('image');
+    setNricManualIdentifier('');
+    setNricManualFullName('');
+    setNricManualDateOfBirth('');
+    setNricManualError('');
+    setNricManualIdentifierValid(false);
+    setNricManualIdentifierValidating(false);
+    setNricManualIdentifierError('');
   };
 
   const resetStudentVerificationState = () => {
@@ -2444,6 +2487,38 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     lastFlowSnapshotRef.current = snapshot;
     setFlowHistoryDepth(flowHistoryRef.current.length);
   }, [flowState, open]);
+
+  useEffect(() => {
+    const normalized = String(nricManualIdentifier || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    if (normalized.length !== 9) {
+      setNricManualIdentifierValid(false);
+      setNricManualIdentifierValidating(false);
+      setNricManualIdentifierError('');
+      return undefined;
+    }
+
+    setNricManualIdentifierValidating(true);
+    setNricManualIdentifierValid(false);
+    setNricManualIdentifierError('');
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await validateNricIdentifier({ identifier: normalized });
+        setNricManualIdentifierValid(Boolean(result?.valid));
+        setNricManualIdentifierError('');
+      } catch (error) {
+        setNricManualIdentifierValid(false);
+        setNricManualIdentifierError(
+          String(error?.message || '').trim() || 'Invalid NRIC/FIN number.'
+        );
+      } finally {
+        setNricManualIdentifierValidating(false);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [nricManualIdentifier]);
 
   const step = getFlowStep(flowState);
   const resumeFeeWaiverOnSignUp = entrySource === MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP;
@@ -3434,6 +3509,34 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricSignupAccessToken('');
   };
 
+  const applyNricVerificationSuccess = (response) => {
+    setNricSignupAccessToken(response?.signupAccessToken || '');
+    setNricAiVerified(true);
+    setNricAiError('');
+    setNricAiFailureReason('');
+    setNricAiFailureMode('default');
+    setNricManualError('');
+    const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
+    if (isQuestionnaireNricEligiblePath(flowState)) {
+      setFlowState((prev) => ({
+        ...prev,
+        spPrVerified: true,
+        verifiedNricFin,
+        nricUploadAcknowledged: true,
+        nricSgPrCheckFailed: false,
+        nricFailureProceedAcknowledged: false,
+        feeWaiverViaCompanyReference: false,
+      }));
+    } else {
+      setFlowState((prev) => ({
+        ...prev,
+        spPrVerified: true,
+        verifiedNricFin,
+        nricUploadAcknowledged: true,
+      }));
+    }
+  };
+
   const runNricAiCheck = async () => {
     if (!nricFrontImage || !nricBackImage) {
       setNricAiError('Please upload NRIC front and back images before AI check.');
@@ -3468,26 +3571,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         setNricAiFailureMode(failureState.mode);
         return;
       }
-      setNricSignupAccessToken(response?.signupAccessToken || '');
-      const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
-      if (isQuestionnaireNricEligiblePath(flowState)) {
-        setFlowState((prev) => ({
-          ...prev,
-          spPrVerified: true,
-          verifiedNricFin,
-          nricUploadAcknowledged: true,
-          nricSgPrCheckFailed: false,
-          nricFailureProceedAcknowledged: false,
-          feeWaiverViaCompanyReference: false,
-        }));
-      } else {
-        setFlowState((prev) => ({
-          ...prev,
-          spPrVerified: true,
-          verifiedNricFin,
-          nricUploadAcknowledged: true,
-        }));
-      }
+      applyNricVerificationSuccess(response);
     } catch (error) {
       if (isQuestionnaireNricEligiblePath(flowState)) {
         if (!isSgPrUnderCompanyPath(flowState)) {
@@ -3505,6 +3589,70 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       setNricAiFailureMode(failureState.mode);
     } finally {
       setNricAiChecking(false);
+    }
+  };
+
+  const runNricManualCheck = async () => {
+    const identifier = String(nricManualIdentifier || '').trim();
+    const fullName = String(nricManualFullName || '').trim();
+    const dateOfBirth = String(nricManualDateOfBirth || '').trim();
+
+    if (!identifier || !fullName || !dateOfBirth) {
+      setNricManualError('Please enter NRIC/FIN number, full name, and date of birth.');
+      return;
+    }
+
+    if (!dayjs(dateOfBirth, 'YYYY-MM-DD', true).isValid()) {
+      setNricManualError('Please select a valid date of birth.');
+      return;
+    }
+
+    if (nricManualIdentifierValidating) {
+      setNricManualError('Please wait while your NRIC/FIN number is being validated.');
+      return;
+    }
+
+    if (!nricManualIdentifierValid) {
+      setNricManualError(
+        nricManualIdentifierError || 'Please enter a valid Singapore NRIC/FIN number before submitting.'
+      );
+      return;
+    }
+
+    setNricManualError('');
+    setNricManualChecking(true);
+    setNricAiVerified(false);
+    try {
+      const response = await verifyNricManual({
+        identifier,
+        fullName,
+        dateOfBirth: dayjs(dateOfBirth).format('YYYY-MM-DD'),
+      });
+      if (!response?.verified) {
+        setNricManualError(
+          String(response?.message || '').trim()
+          || 'Manual NRIC verification failed. Please check your details and try again.'
+        );
+        return;
+      }
+      applyNricVerificationSuccess(response);
+    } catch (error) {
+      if (isQuestionnaireNricEligiblePath(flowState)) {
+        if (!isSgPrUnderCompanyPath(flowState)) {
+          setNricManualError(
+            String(error?.message || '').trim()
+            || 'Could not validate the Singapore NRIC/FIN number.'
+          );
+        }
+        setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
+        return;
+      }
+      setNricManualError(
+        String(error?.message || '').trim()
+        || 'Manual NRIC verification failed. Please check your details and try again.'
+      );
+    } finally {
+      setNricManualChecking(false);
     }
   };
 
@@ -6456,13 +6604,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         )}
         {step === 'nric' && (
           <Stack spacing={1.25}>
-            {nricAiChecking ? (
+            {nricAiChecking || nricManualChecking ? (
               <Stack spacing={1}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Verifying NRIC...
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Please wait while we verify your NRIC images.
+                  Please wait while we verify your NRIC details.
                 </Typography>
               </Stack>
             ) : (
@@ -6472,6 +6620,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                     ? 'Submit NRIC verification'
                     : 'Sign up account with NRIC verification'}
                 </Typography>
+
+                {nricVerificationMode === 'image' ? (
+                <>
                 <Typography variant="body2" color="text.secondary">
                   {isQuestionnaireSgPrPath(flowState)
                     ? 'Please upload NRIC front and back screenshots, or digital NRIC full details, then run verification.'
@@ -6554,23 +6705,133 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
 
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
                     <Button
-                      variant="outlined"
+                      variant="contained"
                       onClick={runNricAiCheck}
                       disabled={nricAiChecking}
                     >
                       {nricAiChecking ? 'Verifying...' : 'Run NRIC verification'}
                     </Button>
+                    <Button variant="outlined" onClick={switchToNricManualMode}>
+                      Verify manually
+                    </Button>
                     {!isQuestionnaireSgPrPath(flowState) && nricAiFailureMode !== 'sign-in-only' ? (
-                      <Button variant="contained" color="inherit" onClick={continueAfterNricOtherOptions}>
+                      <Button variant="outlined" color="inherit" onClick={continueAfterNricOtherOptions}>
                         Continue with other options
                       </Button>
                     ) : null}
                   </Stack>
                 </Stack>
+                </>
+                ) : (
+                <Stack spacing={1.25}>
+                  <Typography variant="body2" color="text.secondary">
+                    Enter your NRIC/FIN details below. Your number is validated on the server using Singapore
+                    checksum rules (no image upload or AI required).
+                  </Typography>
+
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      NRIC/FIN number
+                    </Typography>
+                  <TextField
+                    placeholder="e.g. S1234567D"
+                    value={nricManualIdentifier}
+                    onChange={(event) => {
+                      setNricManualIdentifier(event.target.value);
+                      setNricManualError('');
+                    }}
+                    error={Boolean(nricManualIdentifierError)}
+                    helperText={
+                      nricManualIdentifierError
+                      || (nricManualIdentifierValid ? 'NRIC/FIN number validated successfully.' : '')
+                    }
+                    InputProps={{
+                      style: { textTransform: 'uppercase' },
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          {nricManualIdentifierValidating ? (
+                            <CircularProgress size={18} />
+                          ) : nricManualIdentifierValid ? (
+                            <Iconify
+                              icon="solar:verified-check-bold"
+                              width={20}
+                              sx={{ color: 'success.main' }}
+                            />
+                          ) : null}
+                        </InputAdornment>
+                      ),
+                    }}
+                    fullWidth
+                    size="small"
+                  />
+                  </Stack>
+
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Full name (as on NRIC)
+                    </Typography>
+                  <TextField
+                    placeholder="Enter your full name"
+                    value={nricManualFullName}
+                    onChange={(event) => {
+                      setNricManualFullName(event.target.value);
+                      setNricManualError('');
+                    }}
+                    fullWidth
+                    size="small"
+                  />
+                  </Stack>
+
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Date of birth
+                    </Typography>
+                  <DatePicker
+                    value={nricManualDateOfBirth ? dayjs(nricManualDateOfBirth) : null}
+                    onChange={(newValue) => {
+                      setNricManualDateOfBirth(
+                        newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : ''
+                      );
+                      setNricManualError('');
+                    }}
+                    format="DD MMM YYYY"
+                    disableFuture
+                    minDate={dayjs().subtract(120, 'year')}
+                    maxDate={dayjs()}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: 'small',
+                        placeholder: 'Select date of birth',
+                        helperText: nricManualDateOfBirth
+                          ? `Stored as ${nricManualDateOfBirth}`
+                          : 'Select your date of birth as shown on your NRIC',
+                      },
+                    }}
+                  />
+                  </Stack>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end', pt: 0.5 }}>
+                    <Button
+                      variant="contained"
+                      onClick={runNricManualCheck}
+                      disabled={nricManualChecking || nricManualIdentifierValidating || !nricManualIdentifierValid}
+                    >
+                      {nricManualChecking ? 'Verifying...' : 'Verify NRIC manually'}
+                    </Button>
+                    <Button variant="outlined" onClick={switchToNricImageMode}>
+                      Back to image upload
+                    </Button>
+                  </Stack>
+                  {!!nricManualError && (
+                    <Alert severity="error">{nricManualError}</Alert>
+                  )}
+                </Stack>
+                )}
               </>
             )}
 
-            {!!nricAiError && (
+            {nricVerificationMode === 'image' && !!nricAiError && (
                 <Box
                   sx={(theme) => ({
                     p: 1.5,
@@ -6621,6 +6882,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                         </Stack>
                       ) : (
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                          <Button variant="outlined" onClick={switchToNricManualMode}>
+                            Verify manually
+                          </Button>
                           <Button variant="contained" onClick={continueToPaidSignupAfterNricFailure}>
                             Use SGD 900 paid signup
                           </Button>

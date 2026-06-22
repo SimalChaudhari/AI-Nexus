@@ -153,6 +153,7 @@ const parseContactDetailFields = (detailsHtml = '') => {
     phone: '',
     email: '',
     whatsapp: '',
+    whatsappLink: '',
     website: '',
   };
   let activeKey = '';
@@ -359,6 +360,7 @@ export function AdminSettingsView() {
     phone: '',
     email: '',
     whatsapp: '',
+    whatsappLink: '',
     website: '',
     addressIcon: 'solar:map-point-bold',
     phoneIcon: 'solar:phone-bold',
@@ -595,6 +597,7 @@ export function AdminSettingsView() {
           phone: String(row?.phone || parsedFields.phone || '').trim(),
           email: String(row?.email || parsedFields.email || '').trim(),
           whatsapp: String(row?.whatsapp || parsedFields.whatsapp || '').trim(),
+          whatsappLink: String(row?.whatsappLink || '').trim(),
           website: String(row?.website || parsedFields.website || '').trim(),
           addressIcon: String(row?.addressIcon || emptyContactRow().addressIcon || '').trim(),
           phoneIcon: String(row?.phoneIcon || emptyContactRow().phoneIcon || '').trim(),
@@ -1794,6 +1797,7 @@ export function AdminSettingsView() {
           phone: row?.phone || '',
           email: row?.email || '',
           whatsapp: row?.whatsapp || '',
+          whatsappLink: row?.whatsappLink || '',
           website: row?.website || '',
           addressIcon: row?.addressIcon || emptyContactRow().addressIcon,
           phoneIcon: row?.phoneIcon || emptyContactRow().phoneIcon,
@@ -1830,6 +1834,7 @@ export function AdminSettingsView() {
             phone: String(row?.phone || parsedFields.phone || '').trim(),
             email: String(row?.email || parsedFields.email || '').trim(),
             whatsapp: String(row?.whatsapp || parsedFields.whatsapp || '').trim(),
+            whatsappLink: String(row?.whatsappLink || '').trim(),
             website: String(row?.website || parsedFields.website || '').trim(),
             addressIcon: String(row?.addressIcon || emptyContactRow().addressIcon || '').trim(),
             phoneIcon: String(row?.phoneIcon || emptyContactRow().phoneIcon || '').trim(),
@@ -2685,6 +2690,18 @@ export function AdminSettingsView() {
                         onChange={(event) => updateContactRowField(index, item.key, event.target.value)}
                         fullWidth
                       />
+                      {item.key === 'whatsapp' ? (
+                        <TextField
+                          label="WhatsApp link"
+                          value={row?.whatsappLink || ''}
+                          onChange={(event) =>
+                            updateContactRowField(index, 'whatsappLink', event.target.value)
+                          }
+                          placeholder="https://wa.me/6591234567"
+                          helperText="Full wa.me URL or phone with country code. Used when visitors click WhatsApp or submit the contact form."
+                          fullWidth
+                        />
+                      ) : null}
                       <Stack
                         direction="row"
                         spacing={1}

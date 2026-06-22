@@ -9,9 +9,10 @@ import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
+import { RichTextContent } from 'src/components/html-content';
+import { htmlToPlain } from '../prompt-table-row';
 
 const PROVIDER_TITLE = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini' };
-const htmlToPlain = (value) => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
 export function PromptDetailsView({ prompt, loading, error }) {
   if (loading) return <LoadingScreen />;
@@ -71,7 +72,16 @@ export function PromptDetailsView({ prompt, loading, error }) {
       title: 'Prompt body',
       icon: 'solar:chat-round-bold',
       fullWidth: true,
-      rows: [{ label: 'Prompt', value: htmlToPlain(prompt.prompt) || '-' }],
+      rows: [
+        {
+          label: 'Prompt',
+          value: prompt.prompt ? (
+            <RichTextContent html={prompt.prompt} sx={{ color: 'text.primary' }} />
+          ) : (
+            '-'
+          ),
+        },
+      ],
     },
   ];
 
