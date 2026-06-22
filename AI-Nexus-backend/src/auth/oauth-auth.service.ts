@@ -190,7 +190,7 @@ export class OAuthAuthService {
   private get clearSessionPath(): string {
     const p =
       process.env.OAUTH_CLEAR_SESSION_PATH
-      || '/services/apexrest/mobileAPI/v1/bodmobileapp/clearsession';
+      || '/services/apexrest/v1/bodmobileapp/clearsession';
     return p.startsWith('/') ? p : `/${p}`;
   }
 
