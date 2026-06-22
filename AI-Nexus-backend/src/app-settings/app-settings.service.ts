@@ -251,6 +251,7 @@ type ContactHeroContentPayload = {
     phone?: string;
     email?: string;
     whatsapp?: string;
+    whatsappLink?: string;
     website?: string;
     addressIcon?: string;
     phoneIcon?: string;
@@ -1681,6 +1682,7 @@ export class AppSettingsService {
           phone: this.cleanText(item?.phone, 60),
           email: this.cleanText(item?.email, 120),
           whatsapp: this.cleanText(item?.whatsapp, 60),
+          whatsappLink: this.cleanText(item?.whatsappLink, 200),
           website: this.cleanText(item?.website, 160),
           addressIcon: this.cleanText(item?.addressIcon, 120),
           phoneIcon: this.cleanText(item?.phoneIcon, 120),

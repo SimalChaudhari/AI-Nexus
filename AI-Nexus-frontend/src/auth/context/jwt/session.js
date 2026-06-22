@@ -1,6 +1,7 @@
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
+import { buildLogoutPayload, clearClientSalesforceSessions } from './logout-payload';
 
 const USER_SESSION_KEY = 'user';
 
@@ -61,13 +62,17 @@ export async function forceLogout({ redirect = true } = {}) {
 
   logoutInFlight = (async () => {
     try {
-      await axios.post('/auth/logout', {}, { skipAuthRefresh: true, skipApiLoading: true });
+      await axios.post('/auth/logout', buildLogoutPayload(), {
+        skipAuthRefresh: true,
+        skipApiLoading: true,
+      });
     } catch {
       // Still clear client state if cookies are already invalid.
     }
 
     clearCachedUser();
     clearLegacyTokenStorage();
+    clearClientSalesforceSessions();
     delete axios.defaults.headers.common.Authorization;
 
     if (typeof window !== 'undefined') {

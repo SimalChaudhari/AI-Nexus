@@ -180,7 +180,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Logout the current user session' })
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body?: { socialAccessToken?: string },
+  ) {
     const userId = (req as any).user?.id;
     const rawRefresh = this.authTokenService.readRefreshTokenFromRequest(req);
     await this.authTokenService.revokeRefreshToken(rawRefresh ?? undefined);
@@ -191,7 +195,8 @@ export class AuthController {
     if (!userId) {
       return { message: 'Logged out successfully' };
     }
-    return this.authService.logout(userId);
+    const supplementalSocialToken = String(body?.socialAccessToken || '').trim() || undefined;
+    return this.authService.logout(userId, { supplementalSocialToken });
   }
 
   @Post('verify-nric')

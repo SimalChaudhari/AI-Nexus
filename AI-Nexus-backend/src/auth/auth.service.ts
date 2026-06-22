@@ -3239,20 +3239,34 @@ export class AuthService {
     return safe;
   }
 
-  /** SSO-aware logout: revoke IdP token if OAUTH, clear social and refresh tokens. */
-  async logout(userId: string): Promise<{ message: string }> {
+  /** SSO-aware logout: clear Salesforce session, revoke IdP token, clear social token. */
+  async logout(
+    userId: string,
+    options?: { supplementalSocialToken?: string },
+  ): Promise<{ message: string }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       return { message: 'Logged out successfully' };
     }
-    const isOAuth = user.authProvider === AuthProvider.OAUTH && user.socialAccessToken;
-    if (isOAuth) {
+
+    const socialToken =
+      String(user.socialAccessToken || '').trim()
+      || String(options?.supplementalSocialToken || '').trim();
+    const isOAuth = user.authProvider === AuthProvider.OAUTH && Boolean(socialToken);
+
+    if (socialToken) {
       try {
-        await this.oauthAuthService.revokeIdpToken(user.socialAccessToken!);
+        await this.oauthAuthService.clearSalesforceMobileSession(socialToken);
+      } catch (err) {
+        console.warn('Salesforce clearSession during logout (non-fatal):', err);
+      }
+      try {
+        await this.oauthAuthService.revokeIdpToken(socialToken);
       } catch (err) {
         console.warn('IdP revoke during logout (non-fatal):', err);
       }
     }
+
     user.socialAccessToken = null;
     await this.userRepository.save(user);
     return {

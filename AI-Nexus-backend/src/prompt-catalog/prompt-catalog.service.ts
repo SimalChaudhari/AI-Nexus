@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -8,9 +8,12 @@ import {
 } from './utils/prompt-advance-prompts.util';
 import { PromptCatalogItemEntity, PromptProvider } from './prompt-catalog.entity';
 import { PromptProviderProfileEntity } from './prompt-provider-profile.entity';
-import { UpdatePromptCatalogItemDto } from './prompt-catalog.dto';
+import { UpdatePromptCatalogItemDto, CreatePromptCatalogItemDto } from './prompt-catalog.dto';
 import {
+  adminCategoryKeyFromTitle,
+  buildManualPromptMergeKey,
   displaySectionTitle,
+  isManualPromptMergeKey,
   plainTextForMergeKey,
   promptCatalogMergeKey,
 } from './prompt-catalog-keys.util';
@@ -254,6 +257,86 @@ export class PromptCatalogService {
     return item;
   }
 
+  private async resolvePromptOrders(sectionTitle: string, sectionOrder?: number, itemOrder?: number) {
+    if (Number.isInteger(sectionOrder) && sectionOrder! >= 0 && Number.isInteger(itemOrder) && itemOrder! >= 0) {
+      return { sectionOrder: sectionOrder!, itemOrder: itemOrder! };
+    }
+
+    const categoryKey = adminCategoryKeyFromTitle(sectionTitle);
+    const catExpr = PromptCatalogService.adminCategoryKeyExpr('item');
+
+    const sectionAnchor = await this.promptCatalogRepository
+      .createQueryBuilder('item')
+      .where(`${catExpr} = :categoryKey`, { categoryKey })
+      .orderBy('item.sectionOrder', 'ASC')
+      .getOne();
+
+    if (sectionAnchor) {
+      const maxItemRow = await this.promptCatalogRepository
+        .createQueryBuilder('item')
+        .where(`${catExpr} = :categoryKey`, { categoryKey })
+        .orderBy('item.itemOrder', 'DESC')
+        .getOne();
+
+      return {
+        sectionOrder: sectionAnchor.sectionOrder,
+        itemOrder: (maxItemRow?.itemOrder ?? 0) + 1,
+      };
+    }
+
+    const maxSectionOrder = await this.promptCatalogRepository
+      .createQueryBuilder('item')
+      .select('MAX(item.sectionOrder)', 'max')
+      .getRawOne<{ max: string | null }>();
+
+    return {
+      sectionOrder: (Number(maxSectionOrder?.max) || 0) + 1,
+      itemOrder: 1,
+    };
+  }
+
+  async createPromptItem(dto: CreatePromptCatalogItemDto) {
+    const sectionTitle = displaySectionTitle(String(dto.sectionTitle || '').trim());
+    const useCase = String(dto.useCase || '').trim();
+    const prompt = String(dto.prompt || '').trim();
+    const providers = Array.isArray(dto.providers) ? [...new Set(dto.providers)] : [];
+
+    if (!sectionTitle) {
+      throw new BadRequestException('Section title is required');
+    }
+    if (!useCase) {
+      throw new BadRequestException('Use case is required');
+    }
+    if (!prompt) {
+      throw new BadRequestException('Prompt is required');
+    }
+    if (!providers.length) {
+      throw new BadRequestException('At least one provider is required');
+    }
+
+    const { sectionOrder, itemOrder } = await this.resolvePromptOrders(
+      sectionTitle,
+      dto.sectionOrder,
+      dto.itemOrder
+    );
+
+    const item = this.promptCatalogRepository.create({
+      providers,
+      providerLegacy: providers[0] || null,
+      category: dto.category?.trim() || null,
+      sectionTitle,
+      sectionOrder,
+      itemOrder,
+      useCase,
+      prompt,
+      syncMergeKey: buildManualPromptMergeKey(),
+      adminPromptLocked: true,
+      isActive: dto.isActive ?? true,
+    });
+
+    return this.promptCatalogRepository.save(item);
+  }
+
   async updatePromptItem(id: string, dto: UpdatePromptCatalogItemDto) {
     const item = await this.promptCatalogRepository.findOne({ where: { id } });
     if (!item) {
@@ -339,6 +422,7 @@ export class PromptCatalogService {
     }
 
     const existingRows = await this.promptCatalogRepository.find();
+    const manualRows = existingRows.filter((row) => isManualPromptMergeKey(row.syncMergeKey));
     for (const row of existingRows) {
       if (!row.syncMergeKey) {
         row.syncMergeKey = promptCatalogMergeKey(
@@ -391,6 +475,28 @@ export class PromptCatalogService {
       await this.promptCatalogRepository.save(entries);
     }
 
-    return { message: 'Prompts synced from external source successfully' };
+    if (manualRows.length > 0) {
+      const manualEntities = manualRows.map((row) =>
+        this.promptCatalogRepository.create({
+          providers: row.providers,
+          providerLegacy: row.providerLegacy ?? row.providers?.[0] ?? null,
+          category: row.category,
+          sectionTitle: row.sectionTitle,
+          sectionOrder: row.sectionOrder,
+          itemOrder: row.itemOrder,
+          useCase: row.useCase,
+          prompt: row.prompt,
+          syncMergeKey: row.syncMergeKey,
+          adminPromptLocked: true,
+          isActive: row.isActive,
+        })
+      );
+      await this.promptCatalogRepository.save(manualEntities);
+    }
+
+    return {
+      message: 'Prompts synced from external source successfully',
+      manualPreserved: manualRows.length,
+    };
   }
 }

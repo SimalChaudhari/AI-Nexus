@@ -3,6 +3,7 @@ import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { clearAuthSession } from './utils';
 import { writeCachedUser } from './session';
+import { buildLogoutPayload, clearClientSalesforceSessions } from './logout-payload';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 
 /** **************************************
@@ -606,11 +607,15 @@ export const signOut = async () => {
 
   try {
     try {
-      await axios.post('/auth/logout', {}, { skipAuthRefresh: true, skipApiLoading: true });
+      await axios.post('/auth/logout', buildLogoutPayload(), {
+        skipAuthRefresh: true,
+        skipApiLoading: true,
+      });
     } catch (err) {
       console.warn('Backend logout failed (non-fatal):', err);
     }
     await triggerFlowiseLogout();
+    clearClientSalesforceSessions();
     await clearAuthSession();
   } catch (error) {
     console.error('Error during sign out:', error);

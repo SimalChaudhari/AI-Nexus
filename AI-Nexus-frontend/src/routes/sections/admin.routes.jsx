@@ -92,6 +92,7 @@ const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new')
 const WorkflowEditPage = lazy(() => import('src/pages/dashboard/workflow/edit'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/dashboard/workflow/details'));
 const PromptListPage = lazy(() => import('src/pages/dashboard/prompt/list'));
+const PromptCreatePage = lazy(() => import('src/pages/dashboard/prompt/new'));
 const PromptCategoryItemsPage = lazy(() => import('src/pages/dashboard/prompt/items'));
 const PromptDetailsPage = lazy(() => import('src/pages/dashboard/prompt/details'));
 const PromptEditPage = lazy(() => import('src/pages/dashboard/prompt/edit'));
@@ -283,6 +284,7 @@ export const adminRoutes = [
         children: [
           { element: <PromptListPage />, index: true },
           { path: 'list', element: <PromptListPage /> },
+          { path: 'new', element: <PromptCreatePage /> },
           { path: 'items', element: <PromptCategoryItemsPage /> },
           { path: ':id', element: <PromptDetailsPage /> },
           { path: ':id/edit', element: <PromptEditPage /> },

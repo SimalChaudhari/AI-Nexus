@@ -324,6 +324,12 @@ export const paths = {
     prompt: {
       root: `${ROOTS.ADMIN}/prompt`,
       list: `${ROOTS.ADMIN}/prompt/list`,
+      new: `${ROOTS.ADMIN}/prompt/new`,
+      newInCategory: (categoryKey, label = '') => {
+        const qs = new URLSearchParams({ categoryKey: String(categoryKey || '') });
+        if (label) qs.set('label', String(label));
+        return `${ROOTS.ADMIN}/prompt/new?${qs.toString()}`;
+      },
       /** Category → prompts CRUD (query: categoryKey, page, rowsPerPage, name). */
       items: `${ROOTS.ADMIN}/prompt/items`,
       categoryItems: (categoryKey) =>

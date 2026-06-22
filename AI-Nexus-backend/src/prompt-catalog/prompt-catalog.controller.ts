@@ -16,7 +16,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PromptCatalogService } from './prompt-catalog.service';
 import { PromptAdvanceAssistant } from './utils/prompt-advance-prompts.util';
 import { PromptProvider } from './prompt-catalog.entity';
-import { UpdatePromptCatalogItemDto } from './prompt-catalog.dto';
+import { UpdatePromptCatalogItemDto, CreatePromptCatalogItemDto } from './prompt-catalog.dto';
 import { SessionGuard } from '../jwt/session.guard';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
@@ -129,6 +129,16 @@ export class PromptCatalogController {
       data: result.data,
       pagination: result.pagination,
     });
+  }
+
+  @Post('admin/items')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Create prompt catalog item manually (admin only)' })
+  async createAdminPromptItem(@Body() dto: CreatePromptCatalogItemDto, @Res() response: Response) {
+    const data = await this.promptCatalogService.createPromptItem(dto);
+    return response.status(HttpStatus.CREATED).json({ data });
   }
 
   @Put('admin/items/:id')

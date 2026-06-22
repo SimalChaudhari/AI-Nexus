@@ -2,6 +2,7 @@ import { paths } from 'src/routes/paths';
 
 import axios from 'src/utils/axios';
 import { clearCachedUser, clearLegacyTokenStorage } from './session';
+import { clearClientSalesforceSessions } from './logout-payload';
 
 // ----------------------------------------------------------------------
 
@@ -68,5 +69,6 @@ export async function setSession() {
 export async function clearAuthSession() {
   clearCachedUser();
   clearLegacyTokenStorage();
+  clearClientSalesforceSessions();
   delete axios.defaults.headers.common.Authorization;
 }

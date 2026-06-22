@@ -468,6 +468,7 @@ function transformSettings(settings) {
                   phone: row?.phone != null ? String(row.phone) : '',
                   email: row?.email != null ? String(row.email) : '',
                   whatsapp: row?.whatsapp != null ? String(row.whatsapp) : '',
+                  whatsappLink: row?.whatsappLink != null ? String(row.whatsappLink) : '',
                   website: row?.website != null ? String(row.website) : '',
                   addressIcon: row?.addressIcon != null ? String(row.addressIcon) : '',
                   phoneIcon: row?.phoneIcon != null ? String(row.phoneIcon) : '',
