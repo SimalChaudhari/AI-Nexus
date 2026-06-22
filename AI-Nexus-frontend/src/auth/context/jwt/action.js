@@ -4,7 +4,7 @@ import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { clearAuthSession } from './utils';
 import { writeCachedUser } from './session';
 import { clearClientSalesforceSessions } from './logout-payload';
-import { postLogoutWithIdpBrowserClear, buildIdpLogoutRedirectUrl } from './idp-browser-logout';
+import { postLogoutWithIdpBrowserClear, finishLogoutWithIdpBrowserClear, getAppSignInUrl } from './idp-browser-logout';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 
 /** **************************************
@@ -672,7 +672,7 @@ export const signOut = async () => {
     await clearAuthSession();
 
     if (browserLogoutUrl) {
-      window.location.assign(buildIdpLogoutRedirectUrl(browserLogoutUrl));
+      finishLogoutWithIdpBrowserClear(browserLogoutUrl, getAppSignInUrl());
       return;
     }
   } catch (error) {

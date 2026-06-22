@@ -2,7 +2,7 @@ import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 import { clearClientSalesforceSessions } from './logout-payload';
-import { postLogoutWithIdpBrowserClear, buildIdpLogoutRedirectUrl } from './idp-browser-logout';
+import { postLogoutWithIdpBrowserClear, triggerIdpBrowserLogoutPopup } from './idp-browser-logout';
 
 const USER_SESSION_KEY = 'user';
 
@@ -87,7 +87,8 @@ export async function forceLogout({ redirect = true } = {}) {
         const signInUrl = `${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`;
 
         if (browserLogoutUrl) {
-          window.location.replace(buildIdpLogoutRedirectUrl(browserLogoutUrl, `${window.location.origin}${signInUrl}`));
+          triggerIdpBrowserLogoutPopup(browserLogoutUrl);
+          window.location.replace(`${window.location.origin}${signInUrl}`);
           return;
         }
 

@@ -44,6 +44,59 @@ export function buildIdpLogoutRedirectUrl(browserLogoutUrl, retUrl) {
   }
 }
 
+/** Strip retUrl — Experience Cloud ignores external retUrl and shows its own Signin page. */
+export function stripIdpLogoutRetUrl(browserLogoutUrl) {
+  const url = String(browserLogoutUrl || '').trim();
+  if (!url) return '';
+
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete('retUrl');
+    return parsed.toString();
+  } catch {
+    return url.replace(/([?&])retUrl=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+  }
+}
+
+const IDP_LOGOUT_POPUP_MS = 2000;
+
+/**
+ * Clear Salesforce SSO in a popup (top-level navigation sends IdP cookies).
+ * Do not pass retUrl — ISCA sends users to eservices.isca.org.sg/Signin instead of our app.
+ */
+export function triggerIdpBrowserLogoutPopup(browserLogoutUrl) {
+  const logoutOnlyUrl = stripIdpLogoutRetUrl(browserLogoutUrl);
+  if (!logoutOnlyUrl || !/^https?:\/\//i.test(logoutOnlyUrl)) return;
+
+  try {
+    const popup = window.open(
+      logoutOnlyUrl,
+      'sf-idp-logout',
+      'width=1,height=1,left=-10000,top=-10000,noopener,noreferrer',
+    );
+    window.setTimeout(() => {
+      try {
+        popup?.close();
+      } catch {
+        // ignore
+      }
+    }, IDP_LOGOUT_POPUP_MS);
+  } catch {
+    void triggerIdpBrowserLogoutIframe(logoutOnlyUrl);
+  }
+}
+
+/** End IdP browser session in background, then send the user to the app sign-in page. */
+export function finishLogoutWithIdpBrowserClear(browserLogoutUrl, redirectTo) {
+  const target = String(redirectTo || getAppSignInUrl() || '').trim();
+  if (browserLogoutUrl) {
+    triggerIdpBrowserLogoutPopup(browserLogoutUrl);
+  }
+  if (target) {
+    window.location.assign(target);
+  }
+}
+
 /** Best-effort IdP logout via hidden iframe (session expiry paths). */
 export async function triggerIdpBrowserLogoutIframe(browserLogoutUrl) {
   const url = String(browserLogoutUrl || '').trim();
