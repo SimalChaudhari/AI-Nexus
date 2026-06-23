@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
@@ -20,6 +20,8 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { Iconify } from 'src/components/iconify';
 import {
   buildSalesforceNexusUserPayloadFromSignup,
+  resolveSalesforceIdTypeFromPrefix,
+  resolveVerifiedNricSalesforceFields,
 } from 'src/utils/nric-id-type';
 import {
   createSalesforceNexusUser,
@@ -34,6 +36,7 @@ export const SALESFORCE_CREATE_ACCOUNT_OUTCOMES = new Set([
   'student-fee-paid-create-account',
   'membership-account-create',
   'corporate-membership-signup',
+  'verified-nric-signup',
 ]);
 
 const SALUTATION_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Mdm.'];
@@ -104,6 +107,18 @@ function resolveUsernameFromCreateResponse(createResult, email) {
   return email.trim();
 }
 
+function resolveNricIdentityForSalesforceApi(flowState) {
+  const { idType, idNumber } = resolveVerifiedNricSalesforceFields({ flow: flowState });
+  const resolvedIdNumber = String(idNumber || '').trim().toUpperCase();
+  const resolvedIdType =
+    String(idType || '').trim()
+    || resolveSalesforceIdTypeFromPrefix(resolvedIdNumber[0] || '');
+  return {
+    idType: resolvedIdType,
+    idNumber: resolvedIdNumber,
+  };
+}
+
 /** Outcomes that require the dedicated Salesforce membership registration form. */
 export function isSalesforceMembershipCreateOutcomeKey(outcome) {
   return SALESFORCE_CREATE_ACCOUNT_OUTCOMES.has(outcome);
@@ -120,14 +135,37 @@ function isCorporateQuestionnaireMembershipFlow(state) {
   );
 }
 
+function isQuestionnaireSgPrFlow(state) {
+  return (
+    state?.initialQuestionnaireSubmitted
+    && state?.isIscaMember === false
+    && state?.isSingaporePr === true
+    && !state?.homeGetStartedFlow
+  );
+}
+
+/** NRIC image or manual verify succeeded — use in-modal SSO create-account (not simple signup). */
+export function shouldUseNricVerifiedSalesforceCreateStep(state) {
+  if (!state || state.salesforceMembershipAccountCreated) return false;
+  if (state.isSingaporePr !== true || state.spPrVerified !== true) return false;
+  if (!String(state.verifiedNricFin || '').trim()) return false;
+  if (state.feeWaiverViaCompanyReference) return false;
+
+  if (isQuestionnaireSgPrFlow(state)) return true;
+
+  if (!state.initialQuestionnaireSubmitted && state.nricUploadAcknowledged) return true;
+
+  return false;
+}
+
 /**
  * Whether the flow should show the dedicated Salesforce create-account step
  * (separate from the generic membership result / signup forms).
  */
 export function shouldUseSalesforceMembershipCreateStep(state) {
+  if (shouldUseNricVerifiedSalesforceCreateStep(state)) return true;
   if (!state || state.salesforceMembershipAccountCreated) return false;
   if (state.isIscaMember === true) return false;
-  if (state.isSingaporePr === true && state.spPrVerified === true) return false;
 
   if (isCorporateQuestionnaireMembershipFlow(state) && state.salesforceAccountChoice === 'create') {
     return true;
@@ -180,6 +218,11 @@ export function SalesforceMembershipCreateStep({
 }) {
   const theme = useTheme();
   const isCorporateFlow = isCorporateQuestionnaireMembershipFlow(flowState);
+  const isNricVerifiedFlow = shouldUseNricVerifiedSalesforceCreateStep(flowState);
+  const nricIdentity = useMemo(
+    () => (isNricVerifiedFlow ? resolveNricIdentityForSalesforceApi(flowState) : null),
+    [flowState, isNricVerifiedFlow]
+  );
   const [phase, setPhase] = useState('register');
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
   const [designation, setDesignation] = useState('');
@@ -195,6 +238,18 @@ export function SalesforceMembershipCreateStep({
       setRegisterForm((prev) => ({ ...prev, email }));
     }
   }, [defaultEmail]);
+
+  useEffect(() => {
+    const nameAsPerId = String(flowState?.verifiedNricNameAsPerId || '').trim();
+    if (!nameAsPerId || !flowState?.spPrVerified) return;
+    const parts = nameAsPerId.split(/\s+/).filter(Boolean);
+    setRegisterForm((prev) => ({
+      ...prev,
+      nameAsPerId: prev.nameAsPerId || nameAsPerId,
+      firstName: prev.firstName || parts[0] || '',
+      lastName: prev.lastName || (parts.length > 1 ? parts.slice(1).join(' ') : ''),
+    }));
+  }, [flowState?.verifiedNricNameAsPerId, flowState?.spPrVerified]);
 
   useEffect(() => {
     onPhaseChange?.(phase === 'register' ? 0 : 1);
@@ -222,19 +277,28 @@ export function SalesforceMembershipCreateStep({
     setSubmitting(true);
     setError('');
     try {
-      const idType = String(flowState?.verifiedNricIdType || '').trim();
-      const idNumber = String(flowState?.verifiedNricFin || '').trim();
-      const createResult = await createSalesforceNexusUser(
-        buildSalesforceNexusUserPayloadFromSignup({
-          salutation,
-          firstName,
-          lastName,
-          nameAsPerId,
-          email,
-          idType,
-          idNumber,
-        })
-      );
+      let idType = String(flowState?.verifiedNricIdType || '').trim();
+      let idNumber = String(flowState?.verifiedNricFin || '').trim();
+      if (isNricVerifiedFlow) {
+        const resolved = resolveNricIdentityForSalesforceApi(flowState);
+        idType = resolved.idType;
+        idNumber = resolved.idNumber;
+        if (!idType || !idNumber) {
+          setError('Verified NRIC details are missing. Please go back and complete NRIC verification again.');
+          setSubmitting(false);
+          return;
+        }
+      }
+      const salesforcePayload = buildSalesforceNexusUserPayloadFromSignup({
+        salutation,
+        firstName,
+        lastName,
+        nameAsPerId,
+        email,
+        idType,
+        idNumber,
+      });
+      const createResult = await createSalesforceNexusUser(salesforcePayload);
       const username = resolveUsernameFromCreateResponse(createResult, email);
       setPasswordForm({ username, password: '', confirmPassword: '' });
       setPhase('set-password');
@@ -283,6 +347,15 @@ export function SalesforceMembershipCreateStep({
           industry: String(flowState?.companyVerifiedIndustry || '').trim(),
           companyReferenceId: String(flowState?.companyReferenceId || '').trim(),
           designation: String(designation || '').trim(),
+        };
+      }
+      if (isNricVerifiedFlow && nricIdentity?.idType && nricIdentity?.idNumber) {
+        eligibility.snapshot = {
+          ...eligibility.snapshot,
+          verifiedNricFin: nricIdentity.idNumber,
+          verifiedNricIdType: nricIdentity.idType,
+          idType: nricIdentity.idType,
+          nricFin: nricIdentity.idNumber,
         };
       }
       if (flowState) {
@@ -559,6 +632,32 @@ export function SalesforceMembershipCreateStep({
                 InputLabelProps={INPUT_LABEL_ABOVE}
               />
             </Grid>
+            {isNricVerifiedFlow && nricIdentity?.idType && nricIdentity?.idNumber && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="ID type"
+                    value={nricIdentity.idType}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                    helperText="Auto-filled from NRIC verification"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="NRIC / FIN number"
+                    value={nricIdentity.idNumber}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                    helperText="Sent automatically when creating your account"
+                  />
+                </Grid>
+              </>
+            )}
             <Grid item xs={12}>
               <TextField
                 label="Email address"

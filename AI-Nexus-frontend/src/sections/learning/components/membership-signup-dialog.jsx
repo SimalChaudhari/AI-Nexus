@@ -78,6 +78,7 @@ import {
   SalesforceMembershipCreateStep,
   isSalesforceMembershipCreateOutcomeKey,
   shouldUseSalesforceMembershipCreateStep,
+  shouldUseNricVerifiedSalesforceCreateStep,
 } from './salesforce-membership-create-step';
 import { HomePathwayCard } from './home-pathway-card';
 import {
@@ -347,6 +348,7 @@ const INITIAL_STATE = {
   iscaMemberFailureAcknowledged: false,
   verifiedNricFin: '',
   verifiedNricIdType: '',
+  verifiedNricNameAsPerId: '',
   spPrVerified: null,
   wantsIscaMembership: null,
   eligibilityType: '',
@@ -668,13 +670,37 @@ function isNoYesNoQuestionnaireProgressFlow(state) {
   );
 }
 
-function getNoYesNoQuestionnaireProgressMeta(step) {
-  const steps = ['nric', 'result'];
+function getNoYesNoQuestionnaireProgressMeta(step, state) {
+  const steps = ['nric'];
+  if (shouldUseNricVerifiedSalesforceCreateStep(state) || state?.spPrVerified === true) {
+    steps.push('salesforce-membership-create');
+  } else {
+    steps.push('result');
+  }
   const normalizedStep = step === 'nric-sg-pr-retry' ? 'nric' : step;
   const currentIndex = steps.indexOf(normalizedStep);
   return {
     currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
     totalSteps: steps.length,
+  };
+}
+
+function resolveNricVerifiedPostVerifyStep(state) {
+  if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
+    return 'salesforce-membership-create';
+  }
+  return 'result';
+}
+
+function getNricVerifiedSalesforceCreateOutcome(state) {
+  return {
+    outcome: 'verified-nric-signup',
+    title: 'Create membership account',
+    summary: state.salesforceMembershipAccountCreated
+      ? 'Your membership account is ready. Sign in with eServices to continue.'
+      : 'NRIC verified. Complete your membership account details, then set your password to continue.',
+    ctaLabel: state.salesforceMembershipAccountCreated ? 'Login with Eservices' : 'Continue',
+    actionTarget: state.salesforceMembershipAccountCreated ? 'salesforce' : 'close',
   };
 }
 
@@ -1146,7 +1172,7 @@ function getFlowStep(state) {
     if (state.spPrVerified !== true) {
       return 'nric';
     }
-    return 'result';
+    return resolveNricVerifiedPostVerifyStep(state);
   }
 
   if (isSgPrIndividualPath(state)) {
@@ -1157,7 +1183,7 @@ function getFlowStep(state) {
       if (state.spPrVerified !== true) {
         return 'nric';
       }
-      return 'result';
+      return resolveNricVerifiedPostVerifyStep(state);
     }
     // NRIC failed and user chose to proceed — fall through to student/working persona flow.
   }
@@ -1248,7 +1274,9 @@ function getFlowStep(state) {
   if (state.isIscaMember === true && isQuestionnaireIscaMemberPath(state)) return 'eservices-login';
 
   if (state.isSingaporePr === true && !isQuestionnaireSgPrPath(state) && !state.nricUploadAcknowledged) return 'nric';
-  if (state.isSingaporePr === true && !isQuestionnaireSgPrPath(state) && state.spPrVerified === true) return 'result';
+  if (state.isSingaporePr === true && !isQuestionnaireSgPrPath(state) && state.spPrVerified === true) {
+    return resolveNricVerifiedPostVerifyStep(state);
+  }
   if (state.wantsIscaMembership === null) return 'membership-choice';
   if (state.isSingaporePr === true && state.spPrVerified === false && state.wantsIscaMembership === null) {
     return 'membership-choice';
@@ -1544,8 +1572,12 @@ function getOutcome(state) {
     };
   }
 
-  if (isCorporateFeeWaiverSignupResultPath(state)) {
+  if (isCorporateFeeWaiverSignupResultPath(state) && !shouldUseNricVerifiedSalesforceCreateStep(state)) {
     return getCorporateFeeWaiverSignupOutcome();
+  }
+
+  if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
+    return getNricVerifiedSalesforceCreateOutcome(state);
   }
 
   if (isCorporateMembershipRegistrationPath(state)) {
@@ -1559,17 +1591,6 @@ function getOutcome(state) {
       actionTarget: state.salesforceMembershipAccountCreated || state.salesforceSessionReady
         ? 'salesforce'
         : 'close',
-    };
-  }
-
-  if (isSgPrIndividualPath(state) && state.spPrVerified === true) {
-    return {
-      outcome: 'fee-waiver-signup',
-      title: 'Eligible to register for fee waiver',
-      summary:
-        'Proceed to account creation. Please provide your company name, designation, industry, and accounting or non-accounting educational background on the signup page.',
-      ctaLabel: 'Continue to sign up',
-      actionTarget: 'signUp',
     };
   }
 
@@ -1637,6 +1658,7 @@ function getOutcome(state) {
     state.isSingaporePr === true
     && state.spPrVerified === true
     && !isQuestionnaireSgPrPath(state)
+    && !shouldUseNricVerifiedSalesforceCreateStep(state)
   ) {
     return {
       outcome: 'sp-pr-verified-login',
@@ -1969,11 +1991,13 @@ function getProgressMeta(state, step) {
   }
 
   if (isSgPrUnderCompanyPath(state) && !state.companyReferenceRouteAbandoned) {
-    const steps = ['company-reference', 'nric', 'result'];
-    const currentIndex =
+    const steps = ['company-reference', 'nric'];
+    pushMembershipFinalStep(steps, state);
+    const resolvedStep =
       step === 'nric-sg-pr-retry' || step === 'nric-company-fallback'
-        ? steps.indexOf('nric')
-        : steps.indexOf(step);
+        ? 'nric'
+        : step;
+    const currentIndex = steps.indexOf(resolvedStep);
     return {
       currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
       totalSteps: steps.length,
@@ -1981,7 +2005,7 @@ function getProgressMeta(state, step) {
   }
 
   if (isNoYesNoQuestionnaireProgressFlow(state)) {
-    return getNoYesNoQuestionnaireProgressMeta(step);
+    return getNoYesNoQuestionnaireProgressMeta(step, state);
   }
 
   if (isStudentWorkingPersonaPath(state)) {
@@ -2023,9 +2047,11 @@ function getProgressMeta(state, step) {
     } else if (isQuestionnaireNoNoYesPath(state) && !state.companyReferenceRouteAbandoned) {
       baseSteps.push('company-reference', 'result');
     } else if (isSgPrUnderCompanyPath(state)) {
-      baseSteps.push('company-reference', 'nric', 'result');
+      baseSteps.push('company-reference', 'nric');
+      pushMembershipFinalStep(baseSteps, state);
     } else if (isSgPrIndividualPath(state)) {
-      baseSteps.push('nric', 'result');
+      baseSteps.push('nric');
+      pushMembershipFinalStep(baseSteps, state);
     }
   }
 
@@ -2062,7 +2088,7 @@ function getProgressMeta(state, step) {
     if (state.isSingaporePr === true) {
       steps.push('nric');
       if (state.spPrVerified === true) {
-        steps.push('result');
+        pushMembershipFinalStep(steps, state);
       } else if (state.spPrVerified === false) {
         steps.push('membership-choice');
       }
@@ -3520,12 +3546,19 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricManualError('');
     const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
     const verifiedNricIdType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
+    const verifiedNricNameAsPerId = String(
+      response?.extracted?.fullName
+      || response?.extracted?.profile?.fullName
+      || response?.extracted?.nameAsPerId
+      || ''
+    ).trim();
     if (isQuestionnaireNricEligiblePath(flowState)) {
       setFlowState((prev) => ({
         ...prev,
         spPrVerified: true,
         verifiedNricFin,
         verifiedNricIdType,
+        verifiedNricNameAsPerId,
         nricUploadAcknowledged: true,
         nricSgPrCheckFailed: false,
         nricFailureProceedAcknowledged: false,
@@ -3537,6 +3570,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         spPrVerified: true,
         verifiedNricFin,
         verifiedNricIdType,
+        verifiedNricNameAsPerId,
         nricUploadAcknowledged: true,
       }));
     }
@@ -5210,6 +5244,19 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       return;
     }
     if (step === 'salesforce-membership-create') {
+      if (flowState.spPrVerified === true && String(flowState.verifiedNricFin || '').trim()) {
+        resetNricCheckState();
+        setFlowState((prev) => ({
+          ...prev,
+          spPrVerified: null,
+          verifiedNricFin: '',
+          verifiedNricIdType: '',
+          verifiedNricNameAsPerId: '',
+          nricUploadAcknowledged: false,
+          salesforceMembershipAccountCreated: false,
+        }));
+        return;
+      }
       setFlowState((prev) => ({
         ...prev,
         salesforceAccountChoice: '',
@@ -8552,6 +8599,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                 : ''
             }
             onAccountCreated={markSalesforceMembershipAccountCreated}
+            onPasswordSetComplete={
+              shouldUseNricVerifiedSalesforceCreateStep(flowState)
+                ? () => {
+                    markSalesforceMembershipAccountCreated();
+                    handleSalesforceLogin();
+                  }
+                : undefined
+            }
             onLoginWithSalesforce={handleSalesforceLogin}
           />
         )}
