@@ -21,6 +21,11 @@ import {
   buildOAuthStudentMembershipApiUrl,
   type OAuthStudentMembershipApiRouteKey,
 } from '../config/oauth-student-membership-api.config';
+import {
+  normalizeSingaporeNricFin,
+  resolveSalesforceIdTypeFromPrefix,
+  validateSingaporeNricFin,
+} from './utils/singapore-nric-fin.util';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -605,11 +610,16 @@ export class OAuthAuthService {
     const isAssociateMember =
       typeof nexusInfo?.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : null;
 
-    if (options.scaqVerify && isSCAQCandidate !== true) {
+    if (
+      options.scaqVerify
+      && isSCAQCandidate !== true
+      && !this.isSalesforceMemberAccountType(nexusInfo?.accountType)
+    ) {
       console.log('[SSO Login] SCAQ verify-only: not a confirmed candidate — skipping DB persist', {
         email,
         isSCAQCandidate,
         isAssociateMember,
+        accountType: nexusInfo?.accountType,
       });
       return {
         mode: 'profile-only',
@@ -778,21 +788,53 @@ export class OAuthAuthService {
     last_name: string;
     name_as_per_id: string;
     email: string;
+    id_type?: string;
+    id_number?: string;
   }): Promise<Record<string, unknown>> {
     const email = normalizeEmail(payload.email);
     if (!email) {
       throw new BadRequestException('A valid email address is required.');
     }
 
+    const idType = String(payload.id_type || '').trim();
+    const idNumber = normalizeSingaporeNricFin(payload.id_number || '');
+    if (idType || idNumber) {
+      if (!idType || !idNumber) {
+        throw new BadRequestException(
+          'Both id_type and id_number are required when providing identity document details.',
+        );
+      }
+      if (idType !== 'Blue NRIC' && idType !== 'Pink NRIC') {
+        throw new BadRequestException('id_type must be "Blue NRIC" or "Pink NRIC".');
+      }
+      let validation;
+      try {
+        validation = validateSingaporeNricFin(idNumber);
+      } catch {
+        throw new BadRequestException('Invalid Singapore NRIC/FIN format for id_number.');
+      }
+      if (!validation.isValid) {
+        throw new BadRequestException('Invalid Singapore NRIC/FIN checksum for id_number.');
+      }
+      const expectedIdType = resolveSalesforceIdTypeFromPrefix(validation.prefix);
+      if (expectedIdType !== idType) {
+        throw new BadRequestException('id_number does not match the specified id_type.');
+      }
+    }
+
     const accessToken = await this.getIntegrationAccessToken();
     const url = this.createNexusUserUrl;
-    const body = {
+    const body: Record<string, string> = {
       salutation: payload.salutation.trim(),
       first_name: payload.first_name.trim(),
       last_name: payload.last_name.trim(),
       name_as_per_id: payload.name_as_per_id.trim(),
       email,
     };
+    if (idType && idNumber) {
+      body.id_type = idType;
+      body.id_number = idNumber;
+    }
 
     console.log('[Salesforce] Creating Nexus user via Apex REST:', {
       url,
@@ -1934,6 +1976,24 @@ export class OAuthAuthService {
    *
    * Returns null on failure so callers can treat this as best-effort enrichment.
    */
+  /** True when Salesforce nexus userinfo reports accountType "Member". */
+  isSalesforceMemberAccountType(accountType: string | null | undefined): boolean {
+    return String(accountType || '').trim().toLowerCase() === 'member';
+  }
+
+  /** SSO may proceed without SCAQ candidate status when Salesforce accountType is Member. */
+  allowsSsoLoginWithoutScaqCandidate(
+    isSCAQCandidate: boolean | null | undefined,
+    accountType: string | null | undefined,
+  ): boolean {
+    if (isSCAQCandidate === true) return true;
+    return this.isSalesforceMemberAccountType(accountType);
+  }
+
+  requiresPaidSignupAfterSso(user: Pick<UserEntity, 'isSCAQCandidate' | 'salesforceAccountType'>): boolean {
+    return !this.allowsSsoLoginWithoutScaqCandidate(user.isSCAQCandidate, user.salesforceAccountType);
+  }
+
   /** True when Salesforce nexus userinfo reports Chartered Accountant (CA) member class. */
   isSalesforceCaMemberClass(memberClass: string | null | undefined): boolean {
     const normalized = String(memberClass || '').trim().toUpperCase();

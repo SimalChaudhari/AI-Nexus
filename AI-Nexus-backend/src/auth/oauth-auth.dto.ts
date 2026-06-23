@@ -25,6 +25,14 @@ export class CreateSalesforceNexusUserDto {
 
   @IsEmail()
   email!: string;
+
+  @IsString()
+  @IsOptional()
+  id_type?: string;
+
+  @IsString()
+  @IsOptional()
+  id_number?: string;
 }
 
 export class SetSalesforceNexusPasswordDto {

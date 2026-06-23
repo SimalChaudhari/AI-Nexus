@@ -167,7 +167,13 @@ export async function postLogoutWithIdpBrowserClear(cachedUser) {
     });
     logoutResponse = res.data;
   } catch (err) {
-    console.warn('Backend logout failed (non-fatal):', err);
+    const status = err?.response?.status;
+    const message = String(err?.response?.data?.message || err?.message || '').toLowerCase();
+    const isExpectedMissingSession =
+      status === 401 || message.includes('session has expired') || message.includes('unauthorized');
+    if (!isExpectedMissingSession) {
+      console.warn('Backend logout failed (non-fatal):', err);
+    }
   }
 
   const user = cachedUser ?? readCachedUserSafe();

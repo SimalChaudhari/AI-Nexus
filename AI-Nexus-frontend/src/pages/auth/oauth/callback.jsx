@@ -13,11 +13,10 @@ import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
 import {
   clearAuthSession,
+  establishPlatformSessionFromToken,
   exchangeOAuthCode,
   promoteSalesforceAssociateMember,
-  signOut,
 } from 'src/auth/context/jwt';
-import { writeCachedUser } from 'src/auth/context/jwt/session';
 import {
   mergeSalesforceFromExchangeUser,
   mergeSalesforceFromOAuthCallbackSearchParams,
@@ -30,6 +29,8 @@ import {
   readSalesforceFlagsFromSessionUser,
   readScaqFlagsFromOAuthCallback,
   shouldScaqRejectToPaidSignup,
+  allowsSsoLoginWithoutScaqCandidate,
+  isSalesforceMemberAccountType,
   isScaqMembershipSsoFlow,
   POST_OAUTH_RETURN_TO_KEY,
   isIscaMemberSsoCheckPending,
@@ -259,6 +260,49 @@ function isPlainSignInSsoFlow(searchParams) {
   );
 }
 
+/** Ensure cookie session exists after SSO when backend returned a deferred token. */
+async function ensureOAuthPlatformSession({
+  searchParams,
+  sf,
+  pendingPlatformAccessToken,
+  accessToken,
+}) {
+  if (!allowsSsoLoginWithoutScaqCandidate(sf?.isSCAQCandidate, sf?.accountType)) {
+    return false;
+  }
+
+  const socialToken = String(searchParams.get('socialAccessToken') || '').trim();
+  if (
+    socialToken
+    && isSalesforceMemberAccountType(sf?.accountType)
+    && sf?.isSCAQCandidate !== true
+  ) {
+    try {
+      const memberLogin = await tryCompleteApprovedMemberPlatformLogin({
+        socialAccessToken: socialToken,
+        redirectTo: resolvePostLoginPath(searchParams) || paths.home,
+      });
+      if (memberLogin.loggedIn) {
+        return true;
+      }
+    } catch {
+      // Fall through to deferred token session establishment.
+    }
+  }
+
+  const platformToken = String(
+    pendingPlatformAccessToken
+    || accessToken
+    || searchParams.get('pendingPlatformAccessToken')
+    || ''
+  ).trim();
+  if (!platformToken) {
+    return false;
+  }
+
+  return establishPlatformSessionFromToken(platformToken);
+}
+
 async function rejectScaqAndRedirectToPaidSignup(
   router,
   checkUserSession,
@@ -297,11 +341,9 @@ async function rejectScaqAndRedirectToPaidSignup(
     // ignore
   }
 
-  try {
-    await signOut();
-  } catch {
-    await clearAuthSession();
-  }
+  // Callback rejection paths can be reached without an active app session.
+  // Avoid backend logout noise ("session expired") and clear local state only.
+  await clearAuthSession();
   await checkUserSession?.();
   clearMembershipEligibilitySessionStorage();
 
@@ -321,13 +363,14 @@ async function handleNonScaqCandidateAfterSso(
   searchParams,
   {
     isSCAQCandidate,
+    accountType,
     recognitionApplicationFlow,
     studentApplicationFlow,
     profile = {},
     payload = {},
   }
 ) {
-  if (!shouldScaqRejectToPaidSignup(isSCAQCandidate)) {
+  if (!shouldScaqRejectToPaidSignup(isSCAQCandidate, accountType)) {
     return false;
   }
 
@@ -485,22 +528,24 @@ export default function OAuthCallbackPage() {
       try {
         if (scaqProfileOnly) {
           const sf = readSalesforceFlagsFromCallbackParams(searchParams);
-          await rejectScaqAndRedirectToPaidSignup(
-            router,
-            checkUserSession,
-            {
-              email: searchParams.get('email'),
-              firstName: searchParams.get('firstName'),
-              lastName: searchParams.get('lastName'),
-              salesforce: sf,
-            },
-            {
-              socialToken: searchParams.get('socialAccessToken') || '',
-              pendingPlatformAccessToken: searchParams.get('pendingPlatformAccessToken') || '',
-              searchParams,
-            }
-          );
-          return;
+          if (shouldScaqRejectToPaidSignup(sf.isSCAQCandidate, sf.accountType)) {
+            await rejectScaqAndRedirectToPaidSignup(
+              router,
+              checkUserSession,
+              {
+                email: searchParams.get('email'),
+                firstName: searchParams.get('firstName'),
+                lastName: searchParams.get('lastName'),
+                salesforce: sf,
+              },
+              {
+                socialToken: searchParams.get('socialAccessToken') || '',
+                pendingPlatformAccessToken: searchParams.get('pendingPlatformAccessToken') || '',
+                searchParams,
+              }
+            );
+            return;
+          }
         }
 
         if (code) {
@@ -510,12 +555,26 @@ export default function OAuthCallbackPage() {
           });
 
           if (exchangeResult.scaqProfileOnly) {
-            await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
-              email: exchangeResult.email,
-              firstName: exchangeResult.firstName,
-              lastName: exchangeResult.lastName,
-              salesforce: exchangeResult.salesforce,
-            });
+            const sfProfile = exchangeResult.salesforce || {};
+            if (
+              shouldScaqRejectToPaidSignup(
+                sfProfile.isSCAQCandidate,
+                sfProfile.accountType
+              )
+            ) {
+              await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, {
+                email: exchangeResult.email,
+                firstName: exchangeResult.firstName,
+                lastName: exchangeResult.lastName,
+                salesforce: exchangeResult.salesforce,
+              });
+              return;
+            }
+          }
+
+          if (exchangeResult.scaqProfileOnly) {
+            setError('SSO sign-in could not be completed. Please try signing in again.');
+            setLoading(false);
             return;
           }
 
@@ -555,6 +614,7 @@ export default function OAuthCallbackPage() {
             searchParams,
             {
               isSCAQCandidate: sf.isSCAQCandidate,
+              accountType: sf.accountType,
               recognitionApplicationFlow,
               studentApplicationFlow,
               profile: {
@@ -578,7 +638,8 @@ export default function OAuthCallbackPage() {
           const decision = resolveScaqPostLoginDecision(
             sf.isSCAQCandidate,
             sf.isAssociateMember,
-            searchParams
+            searchParams,
+            sf.accountType
           );
 
           if (scaqFlow) {
@@ -625,6 +686,7 @@ export default function OAuthCallbackPage() {
             searchParams,
             {
               isSCAQCandidate: sf.isSCAQCandidate,
+              accountType: sf.accountType,
               recognitionApplicationFlow,
               studentApplicationFlow,
               profile: {
@@ -653,23 +715,9 @@ export default function OAuthCallbackPage() {
           const decision = resolveScaqPostLoginDecision(
             sf.isSCAQCandidate,
             sf.isAssociateMember,
-            searchParams
+            searchParams,
+            sf.accountType
           );
-
-          writeCachedUser({
-            id: searchParams.get('userId'),
-            email: searchParams.get('email'),
-            firstname: searchParams.get('firstName'),
-            lastname: searchParams.get('lastName'),
-            role: 'User',
-            salesforce: {
-              isSCAQCandidate: sf.isSCAQCandidate,
-              isAssociateMember: sf.isAssociateMember,
-              accountId: sf.accountId,
-              accountType: sf.accountType,
-              memberClass: sf.memberClass,
-            },
-          });
 
           if (scaqFlow) {
             mergeSalesforceFromOAuthCallbackSearchParams(searchParams);
@@ -681,6 +729,24 @@ export default function OAuthCallbackPage() {
           setLoading(false);
           return;
         }
+
+        let sfBeforeSession = readSalesforceFlagsFromCallbackParams(searchParams);
+        try {
+          const cachedUserRaw = sessionStorage.getItem('user');
+          if (cachedUserRaw) {
+            sfBeforeSession = readSalesforceFlagsFromSessionUser(JSON.parse(cachedUserRaw));
+          }
+        } catch {
+          // keep callback query flags
+        }
+
+        await ensureOAuthPlatformSession({
+          searchParams,
+          sf: sfBeforeSession,
+          pendingPlatformAccessToken:
+            searchParams.get('pendingPlatformAccessToken') || accessToken || '',
+          accessToken,
+        });
 
         await checkUserSession?.();
 
@@ -715,7 +781,7 @@ export default function OAuthCallbackPage() {
 
         if (
           !isIscaMemberSsoCheckPending(searchParams)
-          && shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate)
+          && shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate, sfAfterLogin.accountType)
           && !isPlainSignInSsoFlow(searchParams)
         ) {
           await rejectScaqAndRedirectToPaidSignup(
@@ -753,7 +819,7 @@ export default function OAuthCallbackPage() {
         const scaqFlowOnError = isScaqMembershipSsoFlow(searchParams);
         if (scaqFlowOnError) {
           const sfOnError = readScaqFlagsFromOAuthCallback(searchParams);
-          if (shouldScaqRejectToPaidSignup(sfOnError.isSCAQCandidate)) {
+          if (shouldScaqRejectToPaidSignup(sfOnError.isSCAQCandidate, sfOnError.accountType)) {
             await rejectScaqAndRedirectToPaidSignup(
               router,
               checkUserSession,
@@ -771,11 +837,8 @@ export default function OAuthCallbackPage() {
             );
             return;
           }
-          try {
-            await signOut();
-          } catch {
-            await clearAuthSession();
-          }
+          // On callback error, do local cleanup only; backend logout may already be expired.
+          await clearAuthSession();
           await checkUserSession?.();
           setError(
             err instanceof Error

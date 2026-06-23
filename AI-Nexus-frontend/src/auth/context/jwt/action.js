@@ -2,7 +2,7 @@ import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
 import { clearAuthSession } from './utils';
-import { writeCachedUser } from './session';
+import { fetchCurrentUser, writeCachedUser } from './session';
 import { clearClientSalesforceSessions } from './logout-payload';
 import { postLogoutWithIdpBrowserClear, finishLogoutWithIdpBrowserClear, getAppSignInUrl } from './idp-browser-logout';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
@@ -529,6 +529,27 @@ export const getOAuthAuthUrl = async ({ scaqVerify = false, deferredAuth = false
 };
 
 /** **************************************
+ * Set HttpOnly auth cookies from a deferred OAuth access token.
+ *************************************** */
+export const establishPlatformSessionFromToken = async (token) => {
+  const trimmed = String(token || '').trim();
+  if (!trimmed) return false;
+
+  try {
+    const res = await axios.post('/auth/establish-session', { token: trimmed }, { skipAuthRefresh: true });
+    const user = res.data?.user;
+    if (user) {
+      writeCachedUser(user);
+    } else {
+      await fetchCurrentUser();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** **************************************
  * OAuth: exchange code for our tokens (e.g. when app receives code via callback)
  *************************************** */
 export const exchangeOAuthCode = async ({ code, state }) => {
@@ -545,8 +566,9 @@ export const exchangeOAuthCode = async ({ code, state }) => {
   }
   const { user, accessToken, isNewUser } = data;
   const normalizedUser = normalizeUserForSession(user);
-  // Deferred membership: token only, no cookies — do not cache as logged-in yet.
-  if (normalizedUser && !accessToken) {
+  if (accessToken) {
+    await establishPlatformSessionFromToken(accessToken);
+  } else if (normalizedUser) {
     writeCachedUser(normalizedUser);
   }
   if (!normalizedUser && !data.scaqProfileOnly) {

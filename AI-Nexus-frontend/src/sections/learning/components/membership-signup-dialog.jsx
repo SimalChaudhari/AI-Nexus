@@ -72,6 +72,7 @@ import {
   isQuestionnaireEservicesMemberFallback,
   applyQuestionnaireIscaNonMemberFallback,
 } from 'src/utils/membership-eligibility-sso';
+import { resolveSalesforceIdTypeFromExtracted } from 'src/utils/nric-id-type';
 import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
 import {
   SalesforceMembershipCreateStep,
@@ -345,6 +346,7 @@ const INITIAL_STATE = {
   feeWaiverViaCompanyReference: false,
   iscaMemberFailureAcknowledged: false,
   verifiedNricFin: '',
+  verifiedNricIdType: '',
   spPrVerified: null,
   wantsIscaMembership: null,
   eligibilityType: '',
@@ -2599,7 +2601,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       (result?.outcome === 'fee-waiver-signup' || result?.outcome === 'verified-nric-signup')
       && result?.actionTarget === 'signUp'
     ) {
-      continueToFeeWaiverSignup('fee-waiver-signup');
+      continueToFeeWaiverSignup(result.outcome);
       return;
     }
     if (result?.outcome === 'corporate-fee-waiver-signup' && result?.actionTarget === 'signUp') {
@@ -3517,11 +3519,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricAiFailureMode('default');
     setNricManualError('');
     const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
+    const verifiedNricIdType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
     if (isQuestionnaireNricEligiblePath(flowState)) {
       setFlowState((prev) => ({
         ...prev,
         spPrVerified: true,
         verifiedNricFin,
+        verifiedNricIdType,
         nricUploadAcknowledged: true,
         nricSgPrCheckFailed: false,
         nricFailureProceedAcknowledged: false,
@@ -3532,9 +3536,28 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         ...prev,
         spPrVerified: true,
         verifiedNricFin,
+        verifiedNricIdType,
         nricUploadAcknowledged: true,
       }));
     }
+  };
+
+  const rejectNricNotCitizenOrPr = (message) => {
+    setNricAiVerified(false);
+    setNricSignupAccessToken('');
+    const reason =
+      String(message || '').trim()
+      || 'This document is not a Singapore NRIC for citizens or permanent residents. Please upload a valid Blue or Pink NRIC.';
+    if (isQuestionnaireNricEligiblePath(flowState)) {
+      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
+      if (!isSgPrUnderCompanyPath(flowState)) {
+        setNricAiFailureReason(reason);
+      }
+      return;
+    }
+    setNricAiError('Verification failed.');
+    setNricAiFailureReason(reason);
+    setNricAiFailureMode('default');
   };
 
   const runNricAiCheck = async () => {
@@ -3569,6 +3592,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         setNricAiError(failureState.summary);
         setNricAiFailureReason(failureState.reason);
         setNricAiFailureMode(failureState.mode);
+        return;
+      }
+      const idType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
+      if (isQuestionnaireNricEligiblePath(flowState) && !idType) {
+        rejectNricNotCitizenOrPr();
         return;
       }
       applyNricVerificationSuccess(response);
@@ -3633,6 +3661,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           String(response?.message || '').trim()
           || 'Manual NRIC verification failed. Please check your details and try again.'
         );
+        return;
+      }
+      const idType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
+      if (isQuestionnaireNricEligiblePath(flowState) && !idType) {
+        rejectNricNotCitizenOrPr();
         return;
       }
       applyNricVerificationSuccess(response);

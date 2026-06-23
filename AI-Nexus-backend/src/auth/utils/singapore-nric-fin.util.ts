@@ -21,6 +21,24 @@ export const M_SERIES_CHECKSUM_MAP = ['X', 'W', 'U', 'T', 'R', 'Q', 'P', 'N', 'J
 export type SingaporeDocumentPrefix = 'S' | 'T' | 'F' | 'G' | 'M';
 export type SingaporeDocumentType = 'NRIC' | 'FIN';
 
+/** Salesforce picklist values for Singapore identity documents. */
+export type SalesforceNricIdType = 'Blue NRIC' | 'Pink NRIC';
+
+/**
+ * Maps NRIC/FIN prefix to Salesforce `id_type` for citizen (Blue) vs PR (Pink).
+ * Returns null for FIN (`M`) and other unsupported prefixes.
+ */
+export function resolveSalesforceIdTypeFromPrefix(prefix: string): SalesforceNricIdType | null {
+  const normalized = String(prefix || '').trim().toUpperCase();
+  if (normalized === 'S' || normalized === 'T') {
+    return 'Blue NRIC';
+  }
+  if (normalized === 'F' || normalized === 'G') {
+    return 'Pink NRIC';
+  }
+  return null;
+}
+
 export interface SingaporeNricFinValidationResult {
   normalized: string;
   prefix: SingaporeDocumentPrefix;

@@ -1,3 +1,7 @@
+import {
+  resolveCitizenshipFromSalesforceIdType,
+} from 'src/utils/nric-id-type';
+
 export const INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS = [
   { value: 'accounting-finance-related', label: 'Accounting and finance related' },
   {
@@ -25,6 +29,7 @@ export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   yearsOfExperience: '',
   countryOfResidence: '',
   nricFin: '',
+  idType: '',
   citizenship: '',
   citizenshipOther: '',
   imdaFundingAcknowledged: false,
@@ -37,7 +42,9 @@ export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
 export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedValues = {}) {
   const companyFromFlow = String(flow.companyVerifiedName || '').trim();
   const verifiedNricFin = String(flow.verifiedNricFin || storedValues.nricFin || '').trim();
+  const verifiedNricIdType = String(flow.verifiedNricIdType || storedValues.idType || '').trim();
   const company = String(storedValues.company || companyFromFlow).trim();
+  const citizenshipFromIdType = resolveCitizenshipFromSalesforceIdType(verifiedNricIdType);
 
   return {
     company,
@@ -49,7 +56,8 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
         : '',
     countryOfResidence: String(storedValues.countryOfResidence || '').trim(),
     nricFin: verifiedNricFin,
-    citizenship: String(storedValues.citizenship || '').trim(),
+    idType: verifiedNricIdType,
+    citizenship: String(storedValues.citizenship || citizenshipFromIdType).trim(),
     citizenshipOther: String(storedValues.citizenshipOther || '').trim(),
     imdaFundingAcknowledged: Boolean(storedValues.imdaFundingAcknowledged),
     nricVerified: Boolean(verifiedNricFin),
@@ -81,6 +89,8 @@ export function buildIndividualSignupProfileSnapshot(formData = {}, isFreeSignup
 
   if (isFreeSignup) {
     snapshot.nricFin = String(formData.nricFin || '').trim();
+    snapshot.idType = String(formData.idType || '').trim();
+    snapshot.verifiedNricIdType = String(formData.idType || '').trim();
     snapshot.citizenship = String(formData.citizenship || '').trim();
     snapshot.citizenshipLabel =
       formData.citizenship === 'others'

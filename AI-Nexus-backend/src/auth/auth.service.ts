@@ -26,6 +26,7 @@ import {
   pickPreferredResolvedSingaporeNricFinCandidate,
   validateSingaporeNricFin,
   normalizeSingaporeNricFin,
+  resolveSalesforceIdTypeFromPrefix,
 } from './utils/singapore-nric-fin.util';
 import { LlmService } from '../llm/llm.service';
 import { LlmProvider } from '../llm/llm.types';
@@ -2657,6 +2658,20 @@ export class AuthService {
         lastName: user.lastname || '',
         email: user.email || '',
         contactNumber: user.contactNumber || '',
+        nricFin:
+          user.eligibilitySnapshot &&
+          typeof user.eligibilitySnapshot === 'object' &&
+          user.eligibilitySnapshot.nricAudit &&
+          typeof user.eligibilitySnapshot.nricAudit === 'object'
+            ? String((user.eligibilitySnapshot.nricAudit as { identifier?: string }).identifier || '').trim()
+            : '',
+        idType:
+          user.eligibilitySnapshot &&
+          typeof user.eligibilitySnapshot === 'object' &&
+          user.eligibilitySnapshot.nricAudit &&
+          typeof user.eligibilitySnapshot.nricAudit === 'object'
+            ? String((user.eligibilitySnapshot.nricAudit as { idType?: string }).idType || '').trim()
+            : '',
       },
     };
   }
@@ -2828,6 +2843,7 @@ export class AuthService {
     const exactIdentifier = resolvedCandidate.rawNormalized || resolvedCandidate.normalized;
 
     const validation = validateSingaporeNricFin(resolvedCandidate.normalized);
+    const salesforceIdType = resolveSalesforceIdTypeFromPrefix(validation.prefix);
     const currentResolvedUser = await this.resolveUserForNricVerification(userId, authorizationHeader);
     const manualReviewReason = this.getManualReviewReason(frontExtracted, backExtracted);
 
@@ -2862,6 +2878,7 @@ export class AuthService {
       extracted: {
         type: validation.documentType,
         prefix: validation.prefix,
+        idType: salesforceIdType,
         identifier: exactIdentifier,
         maskedIdentifier: maskSingaporeNricFin(exactIdentifier),
         confidence: extracted.confidence,
@@ -2904,6 +2921,9 @@ export class AuthService {
           frontUrl,
           backUrl,
           maskedIdentifier: maskSingaporeNricFin(exactIdentifier),
+          identifier: validation.normalized,
+          prefix: validation.prefix,
+          idType: salesforceIdType,
           savedAt: new Date().toISOString(),
         },
       };
@@ -2955,6 +2975,7 @@ export class AuthService {
       normalized: validation.normalized,
       type: validation.documentType,
       prefix: validation.prefix,
+      idType: resolveSalesforceIdTypeFromPrefix(validation.prefix),
       maskedIdentifier: validation.masked,
     };
   }
@@ -2982,6 +3003,7 @@ export class AuthService {
     }
 
     const validation = this.assertValidNricIdentifier(identifier);
+    const salesforceIdType = resolveSalesforceIdTypeFromPrefix(validation.prefix);
 
     const currentResolvedUser = await this.resolveUserForNricVerification(
       params.userId,
@@ -3031,6 +3053,7 @@ export class AuthService {
       extracted: {
         type: validation.documentType,
         prefix: validation.prefix,
+        idType: salesforceIdType,
         identifier: validation.normalized,
         maskedIdentifier: validation.masked,
         confidence: 1,
@@ -3064,6 +3087,9 @@ export class AuthService {
         nricAudit: {
           verificationMethod: 'manual',
           maskedIdentifier: validation.masked,
+          identifier: validation.normalized,
+          prefix: validation.prefix,
+          idType: salesforceIdType,
           fullName,
           dateOfBirth,
           savedAt: new Date().toISOString(),

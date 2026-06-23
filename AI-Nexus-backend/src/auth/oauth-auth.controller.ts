@@ -114,7 +114,7 @@ export class OAuthAuthController {
     }
 
     const { user, isNewUser } = resolution.result;
-    const needsPaidSignup = user.isSCAQCandidate !== true;
+    const needsPaidSignup = this.oauthAuthService.requiresPaidSignupAfterSso(user);
     const useDeferredAuth = deferredAuth || needsPaidSignup;
     const { accessToken: platformAccessToken } = await this.authTokenService.issueTokenPair(user, res, {
       deferredAuth: useDeferredAuth,
@@ -206,7 +206,7 @@ export class OAuthAuthController {
       }
 
       const { user, isNewUser } = resolution.result;
-      const needsPaidSignup = user.isSCAQCandidate !== true;
+      const needsPaidSignup = this.oauthAuthService.requiresPaidSignupAfterSso(user);
       const useDeferredAuth = deferredAuth || needsPaidSignup;
       const { accessToken: platformAccessToken } = await this.authTokenService.issueTokenPair(user, res, {
         deferredAuth: useDeferredAuth,
@@ -274,6 +274,8 @@ export class OAuthAuthController {
       last_name: dto.last_name,
       name_as_per_id: dto.name_as_per_id,
       email: dto.email,
+      id_type: dto.id_type,
+      id_number: dto.id_number,
     });
     return {
       success: true,

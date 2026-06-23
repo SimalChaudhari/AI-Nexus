@@ -19,6 +19,9 @@ import { INPUT_LABEL_ABOVE, MEMBERSHIP_SELECT_MENU_PROPS } from 'src/utils/membe
 import { useBoolean } from 'src/hooks/use-boolean';
 import { Iconify } from 'src/components/iconify';
 import {
+  buildSalesforceNexusUserPayloadFromSignup,
+} from 'src/utils/nric-id-type';
+import {
   createSalesforceNexusUser,
   setSalesforceNexusPassword,
   saveSalesforceMembershipRecord,
@@ -219,13 +222,19 @@ export function SalesforceMembershipCreateStep({
     setSubmitting(true);
     setError('');
     try {
-      const createResult = await createSalesforceNexusUser({
-        salutation,
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        name_as_per_id: nameAsPerId.trim(),
-        email: email.trim(),
-      });
+      const idType = String(flowState?.verifiedNricIdType || '').trim();
+      const idNumber = String(flowState?.verifiedNricFin || '').trim();
+      const createResult = await createSalesforceNexusUser(
+        buildSalesforceNexusUserPayloadFromSignup({
+          salutation,
+          firstName,
+          lastName,
+          nameAsPerId,
+          email,
+          idType,
+          idNumber,
+        })
+      );
       const username = resolveUsernameFromCreateResponse(createResult, email);
       setPasswordForm({ username, password: '', confirmPassword: '' });
       setPhase('set-password');

@@ -33,8 +33,12 @@ import {
   buildPaidIndividualSignUpSchema,
 } from 'src/validations/user.validation';
 
-import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp } from 'src/auth/context/jwt';
+import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser } from 'src/auth/context/jwt';
 import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
+import {
+  buildSalesforceNexusUserPayloadFromSignup,
+  resolveVerifiedNricSalesforceFields,
+} from 'src/utils/nric-id-type';
 import {
   isApprovedSalesforceStudentMember,
   startStudentMemberSsoLogin,
@@ -287,6 +291,8 @@ export function SimpleSignUpView() {
           contactNumber: prefill.contactNumber || '',
           password: '',
           ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
+          nricFin: prefill.nricFin || '',
+          idType: prefill.idType || '',
         });
       })
       .catch((error) => {
@@ -350,6 +356,7 @@ export function SimpleSignUpView() {
         yearsOfExperience: prefill.yearsOfExperience || current.yearsOfExperience,
         countryOfResidence: prefill.countryOfResidence || current.countryOfResidence,
         nricFin: prefill.nricFin || current.nricFin,
+        idType: prefill.idType || current.idType,
         citizenship: prefill.citizenship || current.citizenship,
         citizenshipOther: prefill.citizenshipOther || current.citizenshipOther,
         imdaFundingAcknowledged: prefill.imdaFundingAcknowledged || current.imdaFundingAcknowledged,
@@ -617,6 +624,69 @@ export function SimpleSignUpView() {
   const buildSubmittedEligibilityData = (data) =>
     mergeSignupEligibilityData(eligibilityData, data, isFreeIndividualSignup);
 
+  const ensureSalesforceNexusUserForVerifiedNric = async (data) => {
+    let flow = eligibilityData?.snapshot || null;
+    let storedValues = {};
+
+    if (typeof window !== 'undefined') {
+      try {
+        const draftRaw = sessionStorage.getItem(membershipDraftFormStorageKey);
+        if (draftRaw) {
+          const parsed = JSON.parse(draftRaw);
+          flow = flow || parsed?.flow || null;
+          storedValues = parsed?.values || {};
+        }
+      } catch {
+        // ignore invalid draft payloads
+      }
+    }
+
+    const { idType, idNumber } = resolveVerifiedNricSalesforceFields({
+      flow,
+      storedValues,
+      formData: data,
+      eligibilityData,
+      verifiedPrefill: verifiedSignupPrefill,
+    });
+
+    if (!idType || !idNumber) {
+      return null;
+    }
+
+    const salesforceUsernameKey = 'salesforceNexusUsername';
+    if (typeof window !== 'undefined') {
+      const existing = sessionStorage.getItem(salesforceUsernameKey);
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const createResult = await createSalesforceNexusUser(
+      buildSalesforceNexusUserPayloadFromSignup({
+        salutation: 'Mr.',
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        nameAsPerId: [data.firstName, data.lastName].filter(Boolean).join(' ').trim(),
+        idType,
+        idNumber,
+      })
+    );
+
+    const salesforce = createResult?.salesforce ?? createResult;
+    const username =
+      (typeof salesforce === 'object' && salesforce
+        ? salesforce.username || salesforce.Username
+        : '')
+      || data.email;
+
+    if (typeof window !== 'undefined' && username) {
+      sessionStorage.setItem(salesforceUsernameKey, String(username).trim());
+    }
+
+    return username;
+  };
+
   const redirectToEmailVerify = (email) => {
     const verifySearch = new URLSearchParams({ email }).toString();
     router.push(`${paths.auth.simple.verify}?${verifySearch}`);
@@ -649,6 +719,7 @@ export function SimpleSignUpView() {
       setUsernameSuggestions([]);
       setShowAllSuggestions(false);
       setAppliedSuggestion('');
+      await ensureSalesforceNexusUserForVerifiedNric(data);
       const signupResult = await signUp({
         username: data.username,
         email: data.email,
@@ -693,6 +764,8 @@ export function SimpleSignUpView() {
         source: membershipSource,
         flow: membershipOutcome || 'default',
       });
+
+      await ensureSalesforceNexusUserForVerifiedNric(data);
 
       const cachedDraftUserId =
         typeof window !== 'undefined' ? sessionStorage.getItem('membershipDraftUserId') || '' : '';

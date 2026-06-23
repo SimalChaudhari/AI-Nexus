@@ -37,3 +37,7 @@ build
 .unimportedrc.json
 tsconfig.tsbuildinfo
 config.bat
+
+# SSL certificates (local/dev — do not commit private keys)
+ssl/
+*.pem

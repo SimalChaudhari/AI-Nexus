@@ -202,6 +202,7 @@ export function persistFeeWaiverSignupPrefill(
           designation: '',
           educationalBackground: educationalBackgroundLabel,
           nricFin: String(flow.verifiedNricFin || '').trim(),
+          idType: String(flow.verifiedNricIdType || '').trim(),
         },
       })
     );
@@ -340,20 +341,39 @@ export function isScaqMembershipSsoFlow(searchParams) {
   }
 }
 
+export function isSalesforceMemberAccountType(accountType) {
+  return String(accountType || '').trim().toLowerCase() === 'member';
+}
+
+/** SSO may proceed without SCAQ candidate status when Salesforce accountType is Member. */
+export function allowsSsoLoginWithoutScaqCandidate(isSCAQCandidate, accountType) {
+  if (isSCAQCandidate === true) return true;
+  return isSalesforceMemberAccountType(accountType);
+}
+
 /**
  * After SCAQ associate opt-in SSO, decide what to do with the login session.
- * In SCAQ flow: login is allowed ONLY when Salesforce confirms isSCAQCandidate === true.
+ * Login is allowed when Salesforce confirms isSCAQCandidate === true, or accountType is Member.
  * @param {boolean | null} isSCAQCandidate
  * @param {boolean | null} isAssociateMember
  * @param {URLSearchParams | null | undefined} [searchParams]
+ * @param {string | null | undefined} [accountType]
  * @returns {'allow-login' | 'promote-associate' | 'reject-paid-signup' | null}
  */
-export function resolveScaqPostLoginDecision(isSCAQCandidate, isAssociateMember, searchParams) {
+export function resolveScaqPostLoginDecision(
+  isSCAQCandidate,
+  isAssociateMember,
+  searchParams,
+  accountType
+) {
   if (!isScaqMembershipSsoFlow(searchParams)) return null;
 
-  // Not a verified SCAQ candidate → no platform login; paid signup (SGD 900) only.
-  if (isSCAQCandidate !== true) {
+  if (!allowsSsoLoginWithoutScaqCandidate(isSCAQCandidate, accountType)) {
     return 'reject-paid-signup';
+  }
+
+  if (isSalesforceMemberAccountType(accountType) && isSCAQCandidate !== true) {
+    return 'allow-login';
   }
 
   if (isAssociateMember === true) return 'allow-login';
@@ -439,9 +459,9 @@ export function readScaqFlagsFromOAuthCallback(searchParams) {
   }
 }
 
-/** Paid signup only when Salesforce did not confirm SCAQ candidate. */
-export function shouldScaqRejectToPaidSignup(isSCAQCandidate) {
-  return isSCAQCandidate !== true;
+/** Paid signup when Salesforce did not confirm SCAQ candidate and accountType is not Member. */
+export function shouldScaqRejectToPaidSignup(isSCAQCandidate, accountType) {
+  return !allowsSsoLoginWithoutScaqCandidate(isSCAQCandidate, accountType);
 }
 
 export function readSalesforceFlagsFromSessionUser(user) {

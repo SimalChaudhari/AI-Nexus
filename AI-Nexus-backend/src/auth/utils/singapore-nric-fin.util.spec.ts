@@ -8,6 +8,7 @@ import {
   generateSingaporeNricFinCandidates,
   pickPreferredResolvedSingaporeNricFinCandidate,
   resolveValidSingaporeNricFinCandidate,
+  resolveSalesforceIdTypeFromPrefix,
 } from './singapore-nric-fin.util';
 
 describe('singapore-nric-fin.util', () => {
@@ -139,6 +140,23 @@ describe('singapore-nric-fin.util', () => {
         normalized: 'S8520185I',
         correctedByChecksum: false,
       });
+    });
+  });
+
+  describe('resolveSalesforceIdTypeFromPrefix', () => {
+    it('maps citizen prefixes to Blue NRIC', () => {
+      expect(resolveSalesforceIdTypeFromPrefix('S')).toBe('Blue NRIC');
+      expect(resolveSalesforceIdTypeFromPrefix('t')).toBe('Blue NRIC');
+    });
+
+    it('maps PR prefixes to Pink NRIC', () => {
+      expect(resolveSalesforceIdTypeFromPrefix('F')).toBe('Pink NRIC');
+      expect(resolveSalesforceIdTypeFromPrefix('g')).toBe('Pink NRIC');
+    });
+
+    it('returns null for FIN and unknown prefixes', () => {
+      expect(resolveSalesforceIdTypeFromPrefix('M')).toBeNull();
+      expect(resolveSalesforceIdTypeFromPrefix('')).toBeNull();
     });
   });
 });
