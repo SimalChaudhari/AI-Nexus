@@ -15,6 +15,8 @@ import {
 } from 'src/utils/spotlightr';
 
 const MIN_TRUSTED_DURATION_SEC = 10;
+/** Spotlightr CMS/MP4 metadata can exceed the HLS stream the player plays by ~1 min. */
+const SPOTLIGHTR_METADATA_STREAM_SKEW_SEC = 120;
 const RESUME_GRACE_MS = 6000;
 const SEEK_RELOCK_AFTER_RESUME_MS = 500;
 const SEEK_ROLLBACK_COOLDOWN_MS = 800;
@@ -268,7 +270,18 @@ export function useSpotlightrLessonPlayer({
       const adminDuration = getAdminDurationSeconds();
       const trustedPlayer = isTrustedPlayerDuration(fromPlayer, lastPos) ? fromPlayer : 0;
 
-      if (adminDuration > 0 && trustedPlayer > 0) return Math.max(adminDuration, trustedPlayer);
+      if (adminDuration > 0 && trustedPlayer > 0) {
+        const skew = adminDuration - trustedPlayer;
+        if (
+          trustedPlayer < adminDuration &&
+          skew > 0 &&
+          skew <= SPOTLIGHTR_METADATA_STREAM_SKEW_SEC &&
+          trustedPlayer >= adminDuration * 0.9
+        ) {
+          return trustedPlayer;
+        }
+        return Math.max(adminDuration, trustedPlayer);
+      }
       if (trustedPlayer > 0) return trustedPlayer;
       if (adminDuration > 0) return adminDuration;
       return 0;

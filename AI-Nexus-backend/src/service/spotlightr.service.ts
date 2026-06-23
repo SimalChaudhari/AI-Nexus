@@ -137,17 +137,141 @@ export class SpotlightrService {
         }
     }
 
-    /** Duration in seconds from Spotlightr metadata (works for large/HLS uploads). */
+    /**
+     * Duration in seconds for progress/watchtime.
+     * Spotlightr `duration` and source MP4 headers often include tail padding that is trimmed
+     * from the HLS stream the embedded player actually plays — prefer stream length when lower.
+     */
     async resolveVideoDurationSeconds(videoId: string): Promise<number | null> {
         const record = await this.resolveVideoRecord(videoId);
         if (!record) return null;
 
-        const duration = Number(record.duration);
-        if (Number.isFinite(duration) && duration > 0) {
-            return Math.round(duration);
+        const metadataDuration = Number(record.duration);
+        const meta =
+            Number.isFinite(metadataDuration) && metadataDuration > 0
+                ? Math.round(metadataDuration)
+                : null;
+        const streamDuration = await this.resolveHlsStreamDurationSeconds(record);
+
+        if (streamDuration != null && meta != null) {
+            if (streamDuration < meta && streamDuration >= meta * 0.9) return streamDuration;
+            return meta;
         }
+        if (streamDuration != null) return streamDuration;
+        if (meta != null) return meta;
+        return null;
+    }
+
+    private async resolveHlsStreamDurationSeconds(
+        record: Record<string, unknown>,
+    ): Promise<number | null> {
+        const playlistUrl = this.resolveHlsPlaylistUrl(record);
+        if (!playlistUrl) return null;
+
+        try {
+            const mediaPlaylistUrl = await this.resolveHlsMediaPlaylistUrl(playlistUrl);
+            if (!mediaPlaylistUrl) return null;
+            return await this.fetchHlsPlaylistDurationSeconds(mediaPlaylistUrl);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Spotlightr HLS duration lookup failed: ${message}`);
+            return null;
+        }
+    }
+
+    private resolveHlsPlaylistUrl(record: Record<string, unknown>): string | null {
+        const fromOptimized = this.extractLowestHlsFromOptimizedUrls(record.optimizedUrls);
+        if (fromOptimized) return fromOptimized;
+
+        const stream = String(record.url || '').trim();
+        if (stream.toLowerCase().includes('.m3u8')) return stream;
 
         return null;
+    }
+
+    private extractLowestHlsFromOptimizedUrls(raw: unknown): string | null {
+        let entries: Array<Record<string, string>> = [];
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) entries = parsed;
+            } catch {
+                return null;
+            }
+        } else if (Array.isArray(raw)) {
+            entries = raw.filter((row): row is Record<string, string> => Boolean(row && typeof row === 'object'));
+        }
+
+        let bestUrl: string | null = null;
+        let bestHeight = Number.POSITIVE_INFINITY;
+        for (const entry of entries) {
+            for (const [heightKey, url] of Object.entries(entry)) {
+                const text = String(url || '').trim();
+                if (!text.toLowerCase().includes('.m3u8')) continue;
+                const height = Number(heightKey);
+                if (Number.isFinite(height) && height < bestHeight) {
+                    bestHeight = height;
+                    bestUrl = text;
+                } else if (!Number.isFinite(height) && !bestUrl) {
+                    bestUrl = text;
+                }
+            }
+        }
+        return bestUrl;
+    }
+
+    private async resolveHlsMediaPlaylistUrl(playlistUrl: string): Promise<string | null> {
+        const text = await this.fetchTextResource(playlistUrl);
+        if (!text.includes('#EXT-X-STREAM-INF')) return playlistUrl;
+
+        const lines = text.split(/\r?\n/);
+        let bestUrl: string | null = null;
+        let bestBandwidth = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < lines.length; i += 1) {
+            const line = lines[i].trim();
+            if (!line.startsWith('#EXT-X-STREAM-INF')) continue;
+            const bandwidthMatch = line.match(/BANDWIDTH=(\d+)/i);
+            const bandwidth = bandwidthMatch ? Number(bandwidthMatch[1]) : Number.POSITIVE_INFINITY;
+            const next = (lines[i + 1] || '').trim();
+            if (!next || next.startsWith('#')) continue;
+            if (bandwidth < bestBandwidth) {
+                bestBandwidth = bandwidth;
+                bestUrl = this.resolvePlaylistRelativeUrl(playlistUrl, next);
+            }
+        }
+        return bestUrl;
+    }
+
+    private resolvePlaylistRelativeUrl(playlistUrl: string, entry: string): string {
+        const trimmed = String(entry || '').trim();
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        const base = playlistUrl.split('?')[0];
+        const slash = base.lastIndexOf('/');
+        const prefix = slash >= 0 ? base.slice(0, slash + 1) : `${base}/`;
+        return `${prefix}${trimmed.replace(/^\//, '')}`;
+    }
+
+    private async fetchHlsPlaylistDurationSeconds(mediaPlaylistUrl: string): Promise<number | null> {
+        const text = await this.fetchTextResource(mediaPlaylistUrl);
+        let total = 0;
+        for (const match of text.matchAll(/#EXTINF:([\d.]+)/g)) {
+            total += Number(match[1]);
+        }
+        if (!(total > 0)) return null;
+        return Math.round(total);
+    }
+
+    private async fetchTextResource(url: string): Promise<string> {
+        const response = await axios.get(url, {
+            timeout: 20000,
+            responseType: 'text',
+            transformResponse: [(data) => data],
+            headers: {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+        });
+        return String(response.data || '');
     }
 
     /** Resolve a direct MP4/WebM URL for header-based duration fallback. */

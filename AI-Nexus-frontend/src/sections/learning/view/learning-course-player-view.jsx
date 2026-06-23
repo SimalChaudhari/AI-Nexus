@@ -284,6 +284,17 @@ function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
 
   let total = Math.max(fromSp, fromStr || 0, fromPlayback);
 
+  const catalogDuration = Math.max(fromStr || 0, fromSp);
+  if (
+    fromPlayback > 0 &&
+    catalogDuration > 0 &&
+    fromPlayback < catalogDuration &&
+    catalogDuration - fromPlayback <= 120 &&
+    fromPlayback >= catalogDuration * 0.9
+  ) {
+    total = fromPlayback;
+  }
+
   const lastPos = Math.max(
     0,
     Number(merged?.lastPositionSeconds || 0),
