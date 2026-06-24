@@ -17,6 +17,7 @@ import {
   exchangeOAuthCode,
   promoteSalesforceAssociateMember,
 } from 'src/auth/context/jwt';
+import { endEservicesSessionAfterBlockedLogin } from 'src/auth/context/jwt/idp-browser-logout';
 import {
   mergeSalesforceFromExchangeUser,
   mergeSalesforceFromOAuthCallbackSearchParams,
@@ -321,6 +322,12 @@ async function ensureOAuthPlatformSession({
   return establishPlatformSessionFromToken(platformToken);
 }
 
+/** Revoke eServices + local session when SSO user cannot sign in to the platform. */
+async function endBlockedNonMemberSsoSession(socialToken, checkUserSession) {
+  await endEservicesSessionAfterBlockedLogin(socialToken);
+  await checkUserSession?.();
+}
+
 async function rejectScaqAndRedirectToPaidSignup(
   router,
   checkUserSession,
@@ -347,8 +354,7 @@ async function rejectScaqAndRedirectToPaidSignup(
         }
 
         ensureCitizenshipGapFlowAfterEservicesFailure();
-        await clearAuthSession();
-        await checkUserSession?.();
+        await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
         redirectToCitizenshipGapMembershipModal(router, returnTo || paths.home);
         return;
       }
@@ -386,9 +392,7 @@ async function rejectScaqAndRedirectToPaidSignup(
   }
 
   // Callback rejection paths can be reached without an active app session.
-  // Avoid backend logout noise ("session expired") and clear local state only.
-  await clearAuthSession();
-  await checkUserSession?.();
+  await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
   clearMembershipEligibilitySessionStorage();
 
   const params = new URLSearchParams({ membershipOutcome: 'paid-signup' });
@@ -518,8 +522,7 @@ async function handleIscaMemberSsoCheckAfterSso(
       const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
       if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
         ensureCitizenshipGapFlowAfterEservicesFailure();
-        await clearAuthSession();
-        await checkUserSession?.();
+        await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
         redirectToCitizenshipGapMembershipModal(router, redirectTo);
         return true;
       }
@@ -545,6 +548,7 @@ async function handleIscaMemberSsoCheckAfterSso(
     const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
     if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
       ensureCitizenshipGapFlowAfterEservicesFailure();
+      await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
       redirectToCitizenshipGapMembershipModal(router, redirectTo);
       return true;
     }

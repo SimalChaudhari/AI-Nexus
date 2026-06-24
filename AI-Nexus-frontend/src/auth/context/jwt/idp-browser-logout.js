@@ -6,7 +6,8 @@ import {
   readMembershipSalesforceSession,
 } from 'src/utils/membership-salesforce-session';
 
-import { buildLogoutPayload } from './logout-payload';
+import { buildLogoutPayload, clearClientSalesforceSessions } from './logout-payload';
+import { clearAuthSession } from './utils';
 
 const IDP_LOGOUT_IFRAME_MS = 1200;
 const USER_SESSION_KEY = 'user';
@@ -120,6 +121,34 @@ export async function triggerIdpBrowserLogoutIframe(browserLogoutUrl) {
     document.body.appendChild(iframe);
     iframe.src = url;
   });
+}
+
+/**
+ * Non-member SSO blocked from platform login — revoke eServices token, clear server session,
+ * wipe local app state, and clear IdP browser cookies (popup).
+ * @param {string} [socialAccessToken]
+ */
+export async function endEservicesSessionAfterBlockedLogin(socialAccessToken = '') {
+  const token = String(socialAccessToken || '').trim();
+
+  await clearAuthSession();
+  clearClientSalesforceSessions();
+
+  let browserLogoutUrl = null;
+  try {
+    const res = await axios.post(
+      '/auth/oauth/end-eservices-session',
+      token ? { socialAccessToken: token } : {},
+      { skipAuthRefresh: true, skipApiLoading: true },
+    );
+    browserLogoutUrl = String(res.data?.browserLogoutUrl || '').trim() || null;
+  } catch {
+    browserLogoutUrl = await resolveIdpBrowserLogoutUrl({});
+  }
+
+  if (browserLogoutUrl) {
+    triggerIdpBrowserLogoutPopup(browserLogoutUrl);
+  }
 }
 
 function shouldAttemptIdpBrowserLogout(cachedUser) {

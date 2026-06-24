@@ -15,6 +15,7 @@ import { Response, Request } from 'express';
 import { OAuthAuthService } from './oauth-auth.service';
 import {
   CreateSalesforceNexusUserDto,
+  EndEservicesSessionDto,
   OAuthExchangeDto,
   SetSalesforceNexusPasswordDto,
 } from './oauth-auth.dto';
@@ -45,6 +46,16 @@ export class OAuthAuthController {
     return {
       browserLogoutUrl: this.oauthAuthService.buildBrowserLogoutUrl(retUrl),
     };
+  }
+
+  @Post('end-eservices-session')
+  @ApiOperation({
+    summary:
+      'Revoke eServices OAuth token and clear Salesforce server session when platform login is denied',
+  })
+  @ApiBody({ type: EndEservicesSessionDto })
+  async endEservicesSession(@Body() body: EndEservicesSessionDto) {
+    return this.oauthAuthService.endEservicesSession(body?.socialAccessToken);
   }
 
   @Get('auth-url')

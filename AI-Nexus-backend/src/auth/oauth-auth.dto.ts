@@ -10,6 +10,13 @@ export class OAuthExchangeDto {
   state?: string;
 }
 
+/** Revoke eServices token when platform login is denied (no JWT session required). */
+export class EndEservicesSessionDto {
+  @IsString()
+  @IsOptional()
+  socialAccessToken?: string;
+}
+
 export class CreateSalesforceNexusUserDto {
   @IsString()
   salutation!: string;

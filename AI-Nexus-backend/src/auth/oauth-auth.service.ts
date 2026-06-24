@@ -2519,6 +2519,22 @@ export class OAuthAuthService {
     return search ? `${scheme}?${search}` : scheme;
   }
 
+  /** Revoke eServices token and clear server session when platform login is denied. */
+  async endEservicesSession(socialAccessToken?: string): Promise<{
+    success: boolean;
+    browserLogoutUrl: string | null;
+  }> {
+    const token = String(socialAccessToken || '').trim();
+    if (token) {
+      await this.clearSalesforceMobileSession(token);
+      await this.revokeIdpToken(token);
+    }
+    return {
+      success: true,
+      browserLogoutUrl: this.buildBrowserLogoutUrl(),
+    };
+  }
+
   /** Revoke IdP token (e.g. Salesforce). Do not throw on failure. */
   async clearSalesforceMobileSession(accessToken: string): Promise<void> {
     const token = String(accessToken || '').trim();
