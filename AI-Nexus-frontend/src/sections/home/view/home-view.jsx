@@ -17,6 +17,7 @@ import {
   clearMembershipEligibilityDraftOnModalClose,
   continueMembershipSignupDialog,
   ensureNoYesYesFlowAfterEservicesFailure,
+  readResumedMembershipEligibilityFlow,
   RESUME_MEMBERSHIP_SIGNUP_QUERY,
   shouldOpenResumedMembershipSignupModal,
   stripResumeMembershipSignupFromPath,
@@ -52,7 +53,10 @@ export function HomeView() {
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
     if (params.get('membershipNotEligible') === '1') {
-      ensureNoYesYesFlowAfterEservicesFailure();
+      const resumed = readResumedMembershipEligibilityFlow();
+      if (!resumed?.flow?.showCitizenshipRecordGap) {
+        ensureNoYesYesFlowAfterEservicesFailure();
+      }
       params.delete('membershipNotEligible');
       params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
       const next = params.toString();

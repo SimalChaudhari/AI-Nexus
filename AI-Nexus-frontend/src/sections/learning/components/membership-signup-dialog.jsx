@@ -75,6 +75,7 @@ import {
   isQuestionnaireEservicesMemberFallback,
   applyQuestionnaireIscaNonMemberFallback,
 } from 'src/utils/membership-eligibility-sso';
+import { CITIZENSHIP_RECORD_GAP_MESSAGE } from 'src/utils/nexus-citizenship-eligibility';
 import {
   parseSingaporeNricDisplayName,
   resolveSalesforceIdTypeFromExtracted,
@@ -354,6 +355,9 @@ const INITIAL_STATE = {
   nricFailureProceedAcknowledged: false,
   feeWaiverViaCompanyReference: false,
   iscaMemberFailureAcknowledged: false,
+  showCitizenshipRecordGap: false,
+  citizenshipUpdateMode: false,
+  citizenshipRecordUpdated: false,
   verifiedNricFin: '',
   verifiedNricIdType: '',
   verifiedNricNameAsPerId: '',
@@ -696,6 +700,9 @@ function getNoYesNoQuestionnaireProgressMeta(step, state) {
 }
 
 function resolveNricVerifiedPostVerifyStep(state) {
+  if (state.citizenshipUpdateMode) {
+    return 'result';
+  }
   if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
     return 'salesforce-membership-create';
   }
@@ -1139,6 +1146,10 @@ function getFlowStep(state) {
 
   if (state.iscaMemberEservicesFallback === true && state.iscaMemberFailureAcknowledged !== true) {
     return 'isca-membership-not-verified';
+  }
+
+  if (state.showCitizenshipRecordGap === true) {
+    return 'citizenship-record-gap';
   }
 
   if (
@@ -1605,6 +1616,17 @@ function getOutcome(state) {
     return getNricVerifiedSalesforceCreateOutcome(state);
   }
 
+  if (state.citizenshipRecordUpdated === true && state.spPrVerified === true) {
+    return {
+      outcome: 'citizenship-updated-eservices-login',
+      title: 'NRIC verified',
+      summary:
+        'Your NRIC has been verified. Sign in with eServices again so your citizenship information can be confirmed.',
+      ctaLabel: 'Login with Eservices',
+      actionTarget: 'salesforce',
+    };
+  }
+
   if (isCorporateMembershipRegistrationPath(state)) {
     return {
       outcome: 'corporate-membership-signup',
@@ -1830,6 +1852,7 @@ function getRequirementLabel(state, step) {
     'nric-sg-pr-retry': 'NRIC Singaporean/PR verification',
     'nric-company-fallback': 'Company reference registration',
     'isca-membership-not-verified': 'ISCA membership verification',
+    'citizenship-record-gap': 'Citizenship information',
     nric: 'NRIC upload required for SP/PR verification',
     'membership-choice': 'Choose membership preference',
     'membership-fee': 'Membership fee and benefits information',
@@ -2439,7 +2462,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     const shouldKeepEservicesResumeFlag = (resumed) => {
       const resumeOutcome = resumed?.parsed?.membershipOutcome || '';
       return (
-        isFeeWaiverResumeMembershipOutcome(resumeOutcome)
+        resumed?.flow?.showCitizenshipRecordGap === true
+        || isFeeWaiverResumeMembershipOutcome(resumeOutcome)
         || isQuestionnaireEservicesResumeOutcome(resumeOutcome)
         || isQuestionnaireEservicesMemberFallback(resumed?.flow)
       );
@@ -3032,6 +3056,51 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       ...prev,
       iscaMemberFailureAcknowledged: true,
     }));
+  };
+
+  const startCitizenshipInformationUpdate = () => {
+    resetNricCheckState();
+    setFlowState((prev) => ({
+      ...prev,
+      showCitizenshipRecordGap: false,
+      citizenshipUpdateMode: true,
+      spPrVerified: null,
+      nricUploadAcknowledged: false,
+      nricSgPrCheckFailed: false,
+      nricFailureProceedAcknowledged: false,
+      verifiedNricFin: '',
+      verifiedNricIdType: '',
+      verifiedNricNameAsPerId: '',
+      verifiedNricFirstName: '',
+      verifiedNricLastName: '',
+    }));
+  };
+
+  const startFeeWaiverEligibilityCheck = () => {
+    setFlowState((prev) => ({
+      ...INITIAL_STATE,
+      signupEntrySource: prev.signupEntrySource || entrySource || '',
+      feeWaiverApplicationChoice: true,
+      eServicesLoginCompleted: prev.eServicesLoginCompleted,
+    }));
+    resetNricCheckState();
+  };
+
+  const handleSignUpWithoutFeeWaiver = () => {
+    if (typeof onDeclineFeeWaiver === 'function') {
+      onDeclineFeeWaiver();
+      return;
+    }
+    onContinue?.({
+      flow: flowState,
+      result: {
+        outcome: 'paid-signup',
+        title: 'Sign up with payment',
+        summary: 'Continue to the sign-up page to pay the full programme fee.',
+        ctaLabel: 'Continue to paid signup',
+        actionTarget: 'signUp',
+      },
+    });
   };
 
   const completeEServicesLogin = () => {
@@ -3630,6 +3699,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   };
 
   const applyNricVerificationSuccess = (response) => {
+    const wasCitizenshipUpdate = flowState.citizenshipUpdateMode === true;
     setNricSignupAccessToken(response?.signupAccessToken || '');
     setNricAiVerified(true);
     setNricAiError('');
@@ -3664,6 +3734,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         nricSgPrCheckFailed: false,
         nricFailureProceedAcknowledged: false,
         feeWaiverViaCompanyReference: false,
+        citizenshipUpdateMode: false,
+        citizenshipRecordUpdated: wasCitizenshipUpdate || prev.citizenshipRecordUpdated,
       }));
     } else {
       setFlowState((prev) => ({
@@ -3675,6 +3747,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         verifiedNricFirstName,
         verifiedNricLastName,
         nricUploadAcknowledged: true,
+        citizenshipUpdateMode: false,
+        citizenshipRecordUpdated: wasCitizenshipUpdate || prev.citizenshipRecordUpdated,
       }));
     }
   };
@@ -6245,6 +6319,30 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               </Button>
               <Button variant="contained" onClick={proceedAfterIscaMembershipFailure}>
                 Proceed to next step
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'citizenship-record-gap' && (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Citizenship information required
+            </Typography>
+            <Alert severity="info" sx={{ '& .MuiAlert-message': { lineHeight: 1.65 } }}>
+              {CITIZENSHIP_RECORD_GAP_MESSAGE}
+            </Alert>
+            <Stack spacing={1}>
+              <Button variant="contained" onClick={startCitizenshipInformationUpdate}>
+                Update citizenship information
+              </Button>
+              <Button variant="outlined" onClick={handleSignUpWithoutFeeWaiver}>
+                Sign up an account without waiver
+              </Button>
+              <Button variant="outlined" onClick={startFeeWaiverEligibilityCheck}>
+                Check your eligibility for fee waiver
+              </Button>
+              <Button variant="text" color="inherit" onClick={() => onClose?.()}>
+                Close
               </Button>
             </Stack>
           </Stack>

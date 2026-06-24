@@ -962,6 +962,7 @@ export function stripResumeMembershipSignupFromPath(path = '') {
 export function shouldOpenResumedMembershipSignupModal() {
   const resumed = readResumedMembershipEligibilityFlow() || readStoredFeeWaiverSignupFlow();
   if (!resumed?.flow) return false;
+  if (resumed.flow.showCitizenshipRecordGap === true) return true;
   if (isYesYesYesEservicesMemberVerified(resumed.flow)) return false;
   if (isQuestionnaireEservicesMemberFallback(resumed.flow)) return true;
   return true;
@@ -1230,6 +1231,66 @@ export function resolveQuestionnaireEservicesFailureFlow(sourceFlow = {}) {
 
 export function applyQuestionnaireIscaNonMemberFallback(sourceFlow = {}) {
   return resolveQuestionnaireEservicesFailureFlow(sourceFlow);
+}
+
+/** Resume membership modal on citizenship-record gap screen after eServices SSO. */
+export function buildCitizenshipGapFlow(sourceFlow = {}) {
+  const base = Object.keys(sourceFlow || {}).length
+    ? { ...sourceFlow }
+    : {
+        initialQuestionnaireSubmitted: true,
+        feeWaiverApplicationChoice: true,
+        isIscaMember: false,
+        isSingaporePr: true,
+        companyRegistrationUnderCompany: true,
+      };
+
+  return {
+    ...buildNoYesYesFallbackFlow(base),
+    showCitizenshipRecordGap: true,
+    citizenshipUpdateMode: false,
+    iscaMemberEservicesFallback: true,
+    eServicesLoginCompleted: true,
+    iscaMemberVerificationPassed: false,
+  };
+}
+
+export function ensureCitizenshipGapFlowAfterEservicesFailure(sourceFlow = {}) {
+  try {
+    let parsed = {};
+    let existingFlow = {};
+    const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+    if (raw) {
+      parsed = JSON.parse(raw);
+      if (parsed?.flow && typeof parsed.flow === 'object') {
+        existingFlow = parsed.flow;
+      }
+    }
+
+    const updatedFlow = buildCitizenshipGapFlow({
+      ...existingFlow,
+      ...sourceFlow,
+    });
+
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        ...parsed,
+        membershipOutcome: parsed.membershipOutcome || 'isca-member-eservices-login',
+        flow: updatedFlow,
+        resumeMembershipSignup: true,
+        savedAt: new Date().toISOString(),
+      })
+    );
+    return updatedFlow;
+  } catch {
+    return null;
+  }
+}
+
+export function redirectToCitizenshipGapMembershipModal(router, redirectTo = paths.home) {
+  clearIscaMemberSsoCheckPending();
+  router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
 }
 
 /** Always resume No/Yes/Yes NRIC modal after eServices ISCA-member check fails. */

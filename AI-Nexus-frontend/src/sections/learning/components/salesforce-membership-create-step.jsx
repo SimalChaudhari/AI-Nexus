@@ -193,6 +193,7 @@ function isQuestionnaireSgPrFlow(state) {
 /** NRIC image or manual verify succeeded — use in-modal SSO create-account (not simple signup). */
 export function shouldUseNricVerifiedSalesforceCreateStep(state) {
   if (!state || state.salesforceMembershipAccountCreated) return false;
+  if (state.citizenshipUpdateMode) return false;
   if (state.isSingaporePr !== true || state.spPrVerified !== true) return false;
   if (!String(state.verifiedNricFin || '').trim()) return false;
   if (state.feeWaiverViaCompanyReference) return false;

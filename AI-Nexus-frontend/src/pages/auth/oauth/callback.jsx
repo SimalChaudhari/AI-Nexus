@@ -38,7 +38,10 @@ import {
   ensureNoYesYesFlowAfterEservicesFailure,
   buildResumeMembershipSignupReturnUrl,
   stripResumeMembershipSignupFromPath,
+  ensureCitizenshipGapFlowAfterEservicesFailure,
+  redirectToCitizenshipGapMembershipModal,
 } from 'src/utils/membership-eligibility-sso';
+import { shouldShowCitizenshipRecordGapScreen } from 'src/utils/nexus-citizenship-eligibility';
 import {
   isRecognitionMembershipApplicationFlow,
   isStudentMembershipApplicationFlow,
@@ -328,6 +331,32 @@ async function rejectScaqAndRedirectToPaidSignup(
     options.socialToken || options.socialAccessToken || ''
   ).trim();
 
+  if (socialToken) {
+    try {
+      const nexusData = await fetchMembershipNexusUserInfo(socialToken);
+      const nexusInfo = nexusData?.nexusUser || nexusData;
+      if (shouldShowCitizenshipRecordGapScreen(nexusInfo)) {
+        let returnTo = '';
+        try {
+          returnTo = sessionStorage.getItem(POST_OAUTH_RETURN_TO_KEY) || '';
+        } catch {
+          // ignore
+        }
+        if (!returnTo && options.searchParams) {
+          returnTo = resolvePostLoginPath(options.searchParams) || '';
+        }
+
+        ensureCitizenshipGapFlowAfterEservicesFailure();
+        await clearAuthSession();
+        await checkUserSession?.();
+        redirectToCitizenshipGapMembershipModal(router, returnTo || paths.home);
+        return;
+      }
+    } catch {
+      // Continue to paid signup when nexus info cannot be loaded.
+    }
+  }
+
   if (socialToken && !options.skipStudentLoginAttempt) {
     try {
       const studentLogin = await tryCompleteStudentMemberPlatformLogin({
@@ -473,7 +502,6 @@ async function handleIscaMemberSsoCheckAfterSso(
 
     if (isScaqCandidate === true) {
       clearIscaMemberSsoCheckPending();
-      clearMembershipEligibilitySessionStorage();
 
       const cleanRedirect = stripResumeMembershipSignupFromPath(redirectTo);
       const loginResult = await tryCompleteIscaMemberSsoLogin({
@@ -483,11 +511,41 @@ async function handleIscaMemberSsoCheckAfterSso(
         searchParams,
       });
       if (loginResult.loggedIn) {
+        clearMembershipEligibilitySessionStorage();
         return true;
       }
 
-      await checkUserSession?.();
-      router.replace(cleanRedirect);
+      const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
+      if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
+        ensureCitizenshipGapFlowAfterEservicesFailure();
+        await clearAuthSession();
+        await checkUserSession?.();
+        redirectToCitizenshipGapMembershipModal(router, redirectTo);
+        return true;
+      }
+
+      await rejectScaqAndRedirectToPaidSignup(
+        router,
+        checkUserSession,
+        {
+          email: searchParams.get('email'),
+          firstName: searchParams.get('firstName'),
+          lastName: searchParams.get('lastName'),
+        },
+        {
+          socialToken,
+          pendingPlatformAccessToken,
+          searchParams,
+          skipStudentLoginAttempt: true,
+        }
+      );
+      return true;
+    }
+
+    const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
+    if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
+      ensureCitizenshipGapFlowAfterEservicesFailure();
+      redirectToCitizenshipGapMembershipModal(router, redirectTo);
       return true;
     }
 

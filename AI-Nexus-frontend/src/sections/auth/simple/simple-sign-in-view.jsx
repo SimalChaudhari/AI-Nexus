@@ -31,7 +31,7 @@ import {
   MembershipSignupDialog,
   MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
 } from 'src/sections/learning/components/membership-signup-dialog';
-import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY, shouldOpenResumedMembershipSignupModal, stripResumeMembershipSignupFromPath, clearMembershipEligibilityDraftOnModalClose, ensureNoYesYesFlowAfterEservicesFailure } from 'src/utils/membership-eligibility-sso';
+import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY, shouldOpenResumedMembershipSignupModal, stripResumeMembershipSignupFromPath, clearMembershipEligibilityDraftOnModalClose, ensureNoYesYesFlowAfterEservicesFailure, readResumedMembershipEligibilityFlow } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -74,7 +74,10 @@ export function SimpleSignInView() {
 
   useEffect(() => {
     if (searchParams.get('membershipNotEligible') === '1') {
-      ensureNoYesYesFlowAfterEservicesFailure();
+      const resumed = readResumedMembershipEligibilityFlow();
+      if (!resumed?.flow?.showCitizenshipRecordGap) {
+        ensureNoYesYesFlowAfterEservicesFailure();
+      }
       const params = new URLSearchParams(window.location.search || '');
       params.delete('membershipNotEligible');
       params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
