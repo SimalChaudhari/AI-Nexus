@@ -537,8 +537,20 @@ export class MembershipApplicationController {
       return response.status(HttpStatus.OK).json({
         success: true,
         hasNricNumber: false,
+        loginAllowed: false,
         nricNumber: null,
-        message: 'NRIC_Number was not found in eServices.',
+        message: result.message || 'NRIC_Number was not found in eServices.',
+        nexusUser: result.nexusInfo,
+      });
+    }
+
+    if (!result.loginAllowed) {
+      return response.status(HttpStatus.OK).json({
+        success: true,
+        hasNricNumber: true,
+        loginAllowed: false,
+        nricNumber: result.nricNumber,
+        message: result.message || 'Sign-in is not available for this eServices account.',
         nexusUser: result.nexusInfo,
       });
     }
@@ -546,8 +558,9 @@ export class MembershipApplicationController {
     return response.status(HttpStatus.OK).json({
       success: true,
       hasNricNumber: true,
+      loginAllowed: true,
       nricNumber: result.nricNumber,
-      message: 'NRIC account confirmed. Signing you in.',
+      message: result.message || 'NRIC account confirmed. Signing you in.',
       accessToken: result.accessToken,
       nexusUser: result.nexusInfo,
     });

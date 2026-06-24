@@ -157,6 +157,13 @@ export async function tryCompleteNricNumberPlatformLogin(options = {}) {
     return { loggedIn: false, message: data?.message || 'NRIC_Number was not found in eServices.' };
   }
 
+  if (data?.loginAllowed === false) {
+    return {
+      loggedIn: false,
+      message: data?.message || 'Sign-in is not available for this eServices account.',
+    };
+  }
+
   const platformToken =
     String(data?.accessToken || '').trim()
     || String(session?.pendingPlatformAccessToken || '').trim()

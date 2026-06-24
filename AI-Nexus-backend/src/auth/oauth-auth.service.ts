@@ -27,6 +27,7 @@ import {
   validateSingaporeNricFin,
   SINGAPORE_NRIC_FIN_USER_MESSAGES,
   mapSingaporeNricFinUserErrorMessage,
+  isSalesforceCitizenOrPrNricIdType,
 } from './utils/singapore-nric-fin.util';
 import { assertNricFinAvailableForAccountCreation } from './utils/nric-registration-guard.util';
 
@@ -67,6 +68,8 @@ export interface SalesforceNexusUserInfo {
   accountID?: string;
   isSCAQCandidate?: boolean;
   isAssociateMember?: boolean;
+  isAINexusUser?: boolean;
+  idType?: string;
   NRIC_Number?: string;
   [key: string]: unknown;
 }
@@ -2083,6 +2086,94 @@ export class OAuthAuthService {
     return '';
   }
 
+  private readNexusInfoField(
+    nexusInfo: SalesforceNexusUserInfo | Record<string, unknown> | null | undefined,
+    keys: string[],
+  ): unknown {
+    if (!nexusInfo || typeof nexusInfo !== 'object') return undefined;
+    const sources: Record<string, unknown>[] = [nexusInfo as Record<string, unknown>];
+    const nested = (nexusInfo as SalesforceNexusUserInfo).nexusUser;
+    if (nested && typeof nested === 'object') {
+      sources.push(nested as Record<string, unknown>);
+    }
+    for (const source of sources) {
+      for (const key of keys) {
+        const value = source[key];
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+          return value;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  extractIdTypeFromNexusInfo(
+    nexusInfo: SalesforceNexusUserInfo | Record<string, unknown> | null | undefined,
+  ): string {
+    const value = this.readNexusInfoField(nexusInfo, ['idType', 'id_type', 'IDType']);
+    return String(value || '').trim();
+  }
+
+  extractIsAiNexusUserFromNexusInfo(
+    nexusInfo: SalesforceNexusUserInfo | Record<string, unknown> | null | undefined,
+  ): boolean {
+    const value = this.readNexusInfoField(nexusInfo, ['isAINexusUser', 'isAiNexusUser', 'is_ai_nexus_user']);
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+
+  /** True when Salesforce account is a member (not "Non member"). */
+  isSalesforceNexusMemberAccount(nexusInfo: SalesforceNexusUserInfo | null | undefined): boolean {
+    if (!nexusInfo || typeof nexusInfo !== 'object') return false;
+    if (this.isSalesforceMemberAccountType(nexusInfo.accountType)) {
+      return true;
+    }
+    const memberClass = String(nexusInfo.memberClass || '').trim();
+    if (!memberClass) return false;
+    const normalized = memberClass.toUpperCase();
+    if (normalized.includes('NON')) return false;
+    return true;
+  }
+
+  evaluateNricNumberPlatformLoginEligibility(
+    nexusInfo: SalesforceNexusUserInfo,
+  ): { allowed: boolean; message?: string } {
+    const nricNumber = this.extractNricNumberFromNexusInfo(nexusInfo);
+    if (!nricNumber) {
+      return {
+        allowed: false,
+        message: 'NRIC_Number was not found in eServices.',
+      };
+    }
+
+    if (this.isSalesforceNexusMemberAccount(nexusInfo)) {
+      return { allowed: true };
+    }
+
+    const idType = this.extractIdTypeFromNexusInfo(nexusInfo);
+    const isAiNexusUser = this.extractIsAiNexusUserFromNexusInfo(nexusInfo);
+    const hasCitizenOrPrIdType = isSalesforceCitizenOrPrNricIdType(idType);
+
+    if (!hasCitizenOrPrIdType) {
+      return {
+        allowed: false,
+        message:
+          'Sign-in is only available for Blue NRIC or Pink NRIC accounts. Please complete your membership signup first.',
+      };
+    }
+
+    if (!isAiNexusUser) {
+      return {
+        allowed: false,
+        message:
+          'This eServices account is not linked to AI Nexus yet. Please complete membership signup before signing in.',
+      };
+    }
+
+    return { allowed: true };
+  }
+
   /**
    * Membership application: load nexus userinfo with the eServices social token.
    * Throws when the token is invalid or Salesforce does not return profile data.
@@ -2155,8 +2246,10 @@ export class OAuthAuthService {
   /** When userinfonexus has NRIC_Number, sync platform user and return JWT (same as member login). */
   async resolveNricNumberLoginFromSocialToken(socialAccessToken: string): Promise<{
     hasNricNumber: boolean;
+    loginAllowed: boolean;
     nricNumber: string | null;
     nexusInfo: SalesforceNexusUserInfo;
+    message?: string;
     accessToken?: string;
   }> {
     const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
@@ -2164,12 +2257,36 @@ export class OAuthAuthService {
     const nricNumber = this.extractNricNumberFromNexusInfo(nexusInfo) || null;
 
     if (!nricNumber) {
-      return { hasNricNumber: false, nricNumber: null, nexusInfo };
+      return {
+        hasNricNumber: false,
+        loginAllowed: false,
+        nricNumber: null,
+        nexusInfo,
+        message: 'NRIC_Number was not found in eServices.',
+      };
+    }
+
+    const eligibility = this.evaluateNricNumberPlatformLoginEligibility(nexusInfo);
+    if (!eligibility.allowed) {
+      return {
+        hasNricNumber: true,
+        loginAllowed: false,
+        nricNumber,
+        nexusInfo,
+        message: eligibility.message,
+      };
     }
 
     const idpUserInfo = await this.getUserInfo(token);
     const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
-    return { hasNricNumber: true, nricNumber, nexusInfo, accessToken };
+    return {
+      hasNricNumber: true,
+      loginAllowed: true,
+      nricNumber,
+      nexusInfo,
+      message: 'NRIC account confirmed. Signing you in.',
+      accessToken,
+    };
   }
 
   /**

@@ -122,8 +122,12 @@ export function resolveSalesforceIdTypeFromExtracted(extracted = {}) {
  * @returns {boolean}
  */
 export function isSalesforceCitizenOrPrIdType(idType = '') {
-  const normalized = String(idType || '').trim();
-  return normalized === SALESFORCE_ID_TYPE_BLUE || normalized === SALESFORCE_ID_TYPE_PINK;
+  const normalized = String(idType || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ');
+  return (normalized.includes('blue') && normalized.includes('nric'))
+    || (normalized.includes('pink') && normalized.includes('nric'));
 }
 
 /**

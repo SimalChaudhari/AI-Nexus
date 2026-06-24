@@ -11,6 +11,9 @@ import {
   resolveSalesforceIdTypeFromPrefix,
   resolveSalesforceIdTypeByCardColorOrNationality,
   resolveSalesforceIdTypeForNricNumber,
+  isSalesforceBlueNricIdType,
+  isSalesforcePinkNricIdType,
+  isSalesforceCitizenOrPrNricIdType,
   mapSingaporeNricFinUserErrorMessage,
   parseSingaporeNricDisplayName,
   SINGAPORE_NRIC_FIN_USER_MESSAGES,
@@ -226,6 +229,25 @@ describe('singapore-nric-fin.util', () => {
           cardColor: 'blue',
         }),
       ).toBe('Blue NRIC');
+    });
+  });
+
+  describe('isSalesforceCitizenOrPrNricIdType', () => {
+    it('accepts flexible Blue NRIC labels', () => {
+      expect(isSalesforceBlueNricIdType('Blue NRIC')).toBe(true);
+      expect(isSalesforceBlueNricIdType('NRIC Blue')).toBe(true);
+      expect(isSalesforceBlueNricIdType('blue nric')).toBe(true);
+    });
+
+    it('accepts flexible Pink NRIC labels', () => {
+      expect(isSalesforcePinkNricIdType('Pink NRIC')).toBe(true);
+      expect(isSalesforcePinkNricIdType('NRIC Pink')).toBe(true);
+      expect(isSalesforcePinkNricIdType('pink nric')).toBe(true);
+    });
+
+    it('rejects unrelated id types', () => {
+      expect(isSalesforceCitizenOrPrNricIdType('Passport')).toBe(false);
+      expect(isSalesforceCitizenOrPrNricIdType('Blue Card')).toBe(false);
     });
   });
 

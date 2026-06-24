@@ -115,6 +115,29 @@ export function resolveSalesforceIdTypeByCardColorOrNationality(params: {
   return 'Blue NRIC';
 }
 
+function normalizeSalesforceIdTypeHint(value?: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ');
+}
+
+/** Matches Salesforce idType values like "Blue NRIC", "NRIC Blue", "blue nric". */
+export function isSalesforceBlueNricIdType(idType?: string): boolean {
+  const normalized = normalizeSalesforceIdTypeHint(idType);
+  return normalized.includes('blue') && normalized.includes('nric');
+}
+
+/** Matches Salesforce idType values like "Pink NRIC", "NRIC Pink", "pink nric". */
+export function isSalesforcePinkNricIdType(idType?: string): boolean {
+  const normalized = normalizeSalesforceIdTypeHint(idType);
+  return normalized.includes('pink') && normalized.includes('nric');
+}
+
+export function isSalesforceCitizenOrPrNricIdType(idType?: string): boolean {
+  return isSalesforceBlueNricIdType(idType) || isSalesforcePinkNricIdType(idType);
+}
+
 /** Plain-language messages for NRIC/FIN validation shown to end users. */
 export const SINGAPORE_NRIC_FIN_USER_MESSAGES = {
   invalidFormat:
