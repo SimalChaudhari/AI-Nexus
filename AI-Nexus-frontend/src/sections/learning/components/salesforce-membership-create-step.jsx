@@ -20,8 +20,10 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { Iconify } from 'src/components/iconify';
 import {
   buildSalesforceNexusUserPayloadFromSignup,
-  resolveSalesforceIdTypeFromPrefix,
+  parseSingaporeNricDisplayName,
   resolveVerifiedNricSalesforceFields,
+  SALESFORCE_ID_TYPE_BLUE,
+  SALESFORCE_ID_TYPE_PINK,
 } from 'src/utils/nric-id-type';
 import {
   createSalesforceNexusUser,
@@ -49,13 +51,60 @@ const EMPTY_REGISTER_FORM = {
   email: '',
 };
 
+function resolveEligibilityTypeForSalesforceMembership(flow, membershipOutcome = '') {
+  const explicit = String(flow?.eligibilityType || '').trim();
+  if (explicit) return explicit;
+
+  const outcome = String(membershipOutcome || '').trim();
+  const hasVerifiedNric =
+    flow?.spPrVerified === true
+    && Boolean(String(flow?.verifiedNricFin || '').trim());
+
+  if (
+    outcome === 'verified-nric-signup'
+    || outcome === 'fee-waiver-signup'
+    || shouldUseNricVerifiedSalesforceCreateStep(flow)
+    || hasVerifiedNric
+  ) {
+    return 'fee-waiver-nric';
+  }
+
+  if (isCorporateQuestionnaireMembershipFlow(flow)) {
+    return 'corporate-isca-partner';
+  }
+
+  if (flow?.eligibilityVerified === true && flow?.eligibilityType === 'experienced') {
+    return 'experienced';
+  }
+
+  if (flow?.eligibilityVerified === true && flow?.eligibilityType === 'recognition') {
+    return 'recognition';
+  }
+
+  if (
+    flow?.eligibilityVerified === true
+    && (flow?.studentMembershipOptIn !== null && flow?.studentMembershipOptIn !== undefined)
+  ) {
+    return 'student';
+  }
+
+  if (flow?.isSingaporePr === true) {
+    return 'fee-waiver-nric';
+  }
+
+  return 'student';
+}
+
 function buildEligibilityPayloadFromFlow(flow, membershipOutcome, salesforceUsername, registerForm = null) {
+  const eligibilityType = resolveEligibilityTypeForSalesforceMembership(flow, membershipOutcome);
+
   if (!flow || typeof flow !== 'object') {
     return {
-      eligibilityType: 'student',
+      eligibilityType,
       snapshot: {
         membershipOutcome,
         salesforceUsername,
+        eligibilityType,
         ...(registerForm
           ? {
               firstName: String(registerForm.firstName || '').trim(),
@@ -73,9 +122,10 @@ function buildEligibilityPayloadFromFlow(flow, membershipOutcome, salesforceUser
     isIscaMember: typeof flow.isIscaMember === 'boolean' ? flow.isIscaMember : undefined,
     wantsIscaMembership:
       typeof flow.wantsIscaMembership === 'boolean' ? flow.wantsIscaMembership : undefined,
-    eligibilityType: flow.eligibilityType || 'student',
+    eligibilityType,
     snapshot: {
       ...flow,
+      eligibilityType,
       membershipOutcome: membershipOutcome || '',
       salesforceUsername,
       salesforceMembershipCompletedAt: new Date().toISOString(),
@@ -109,13 +159,9 @@ function resolveUsernameFromCreateResponse(createResult, email) {
 
 function resolveNricIdentityForSalesforceApi(flowState) {
   const { idType, idNumber } = resolveVerifiedNricSalesforceFields({ flow: flowState });
-  const resolvedIdNumber = String(idNumber || '').trim().toUpperCase();
-  const resolvedIdType =
-    String(idType || '').trim()
-    || resolveSalesforceIdTypeFromPrefix(resolvedIdNumber[0] || '');
   return {
-    idType: resolvedIdType,
-    idNumber: resolvedIdNumber,
+    idType: String(idType || '').trim(),
+    idNumber: String(idNumber || '').trim().toUpperCase(),
   };
 }
 
@@ -227,6 +273,7 @@ export function SalesforceMembershipCreateStep({
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
   const [designation, setDesignation] = useState('');
   const [passwordForm, setPasswordForm] = useState({ username: '', password: '', confirmPassword: '' });
+  const [nricIdType, setNricIdType] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const showPassword = useBoolean();
@@ -240,16 +287,31 @@ export function SalesforceMembershipCreateStep({
   }, [defaultEmail]);
 
   useEffect(() => {
-    const nameAsPerId = String(flowState?.verifiedNricNameAsPerId || '').trim();
-    if (!nameAsPerId || !flowState?.spPrVerified) return;
-    const parts = nameAsPerId.split(/\s+/).filter(Boolean);
+    const rawName = String(flowState?.verifiedNricNameAsPerId || '').trim();
+    const explicitFirstName = String(flowState?.verifiedNricFirstName || '').trim();
+    const explicitLastName = String(flowState?.verifiedNricLastName || '').trim();
+    if (!rawName || !flowState?.spPrVerified) return;
+    const parsed = parseSingaporeNricDisplayName(rawName);
     setRegisterForm((prev) => ({
       ...prev,
-      nameAsPerId: prev.nameAsPerId || nameAsPerId,
-      firstName: prev.firstName || parts[0] || '',
-      lastName: prev.lastName || (parts.length > 1 ? parts.slice(1).join(' ') : ''),
+      nameAsPerId: prev.nameAsPerId || rawName,
+      firstName: prev.firstName || explicitFirstName || parsed.firstName || '',
+      lastName: prev.lastName || explicitLastName || parsed.lastName || '',
     }));
-  }, [flowState?.verifiedNricNameAsPerId, flowState?.spPrVerified]);
+  }, [
+    flowState?.verifiedNricNameAsPerId,
+    flowState?.verifiedNricFirstName,
+    flowState?.verifiedNricLastName,
+    flowState?.spPrVerified,
+  ]);
+
+  useEffect(() => {
+    if (!isNricVerifiedFlow) return;
+    const detectedIdType = String(nricIdentity?.idType || flowState?.verifiedNricIdType || '').trim();
+    if (detectedIdType) {
+      setNricIdType(detectedIdType);
+    }
+  }, [flowState?.verifiedNricIdType, isNricVerifiedFlow, nricIdentity?.idType]);
 
   useEffect(() => {
     onPhaseChange?.(phase === 'register' ? 0 : 1);
@@ -281,7 +343,7 @@ export function SalesforceMembershipCreateStep({
       let idNumber = String(flowState?.verifiedNricFin || '').trim();
       if (isNricVerifiedFlow) {
         const resolved = resolveNricIdentityForSalesforceApi(flowState);
-        idType = resolved.idType;
+        idType = String(nricIdType || resolved.idType).trim();
         idNumber = resolved.idNumber;
         if (!idType || !idNumber) {
           setError('Verified NRIC details are missing. Please go back and complete NRIC verification again.');
@@ -349,12 +411,13 @@ export function SalesforceMembershipCreateStep({
           designation: String(designation || '').trim(),
         };
       }
-      if (isNricVerifiedFlow && nricIdentity?.idType && nricIdentity?.idNumber) {
+      if (isNricVerifiedFlow && nricIdentity?.idNumber) {
+        const resolvedIdType = String(nricIdType || nricIdentity.idType).trim();
         eligibility.snapshot = {
           ...eligibility.snapshot,
           verifiedNricFin: nricIdentity.idNumber,
-          verifiedNricIdType: nricIdentity.idType,
-          idType: nricIdentity.idType,
+          verifiedNricIdType: resolvedIdType,
+          idType: resolvedIdType,
           nricFin: nricIdentity.idNumber,
         };
       }
@@ -636,14 +699,20 @@ export function SalesforceMembershipCreateStep({
               <>
                 <Grid item xs={12} sm={6}>
                   <TextField
+                    select
                     label="ID type"
-                    value={nricIdentity.idType}
+                    value={nricIdType}
+                    onChange={(event) => setNricIdType(event.target.value)}
                     fullWidth
                     size={fieldSize}
-                    disabled
+                    disabled={submitting}
                     InputLabelProps={INPUT_LABEL_ABOVE}
-                    helperText="Auto-filled from NRIC verification"
-                  />
+                    SelectProps={MEMBERSHIP_SELECT_MENU_PROPS}
+                    helperText="Auto-detected from your NRIC. Change only if incorrect."
+                  >
+                    <MenuItem value={SALESFORCE_ID_TYPE_BLUE}>{SALESFORCE_ID_TYPE_BLUE}</MenuItem>
+                    <MenuItem value={SALESFORCE_ID_TYPE_PINK}>{SALESFORCE_ID_TYPE_PINK}</MenuItem>
+                  </TextField>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField

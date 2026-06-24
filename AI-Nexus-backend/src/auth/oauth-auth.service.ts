@@ -23,9 +23,12 @@ import {
 } from '../config/oauth-student-membership-api.config';
 import {
   normalizeSingaporeNricFin,
-  resolveSalesforceIdTypeFromPrefix,
+  resolveSalesforceIdTypeByCardColorOrNationality,
   validateSingaporeNricFin,
+  SINGAPORE_NRIC_FIN_USER_MESSAGES,
+  mapSingaporeNricFinUserErrorMessage,
 } from './utils/singapore-nric-fin.util';
+import { assertNricFinAvailableForAccountCreation } from './utils/nric-registration-guard.util';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -64,6 +67,7 @@ export interface SalesforceNexusUserInfo {
   accountID?: string;
   isSCAQCandidate?: boolean;
   isAssociateMember?: boolean;
+  NRIC_Number?: string;
   [key: string]: unknown;
 }
 
@@ -800,26 +804,22 @@ export class OAuthAuthService {
     const idNumber = normalizeSingaporeNricFin(payload.id_number || '');
     if (idType || idNumber) {
       if (!idType || !idNumber) {
-        throw new BadRequestException(
-          'Both id_type and id_number are required when providing identity document details.',
-        );
+        throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.missingIdDetails);
       }
       if (idType !== 'Blue NRIC' && idType !== 'Pink NRIC') {
-        throw new BadRequestException('id_type must be "Blue NRIC" or "Pink NRIC".');
+        throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidIdType);
       }
       let validation;
       try {
         validation = validateSingaporeNricFin(idNumber);
       } catch {
-        throw new BadRequestException('Invalid Singapore NRIC/FIN format for id_number.');
+        throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat);
       }
       if (!validation.isValid) {
-        throw new BadRequestException('Invalid Singapore NRIC/FIN checksum for id_number.');
+        throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum);
       }
-      const expectedIdType = resolveSalesforceIdTypeFromPrefix(validation.prefix);
-      if (expectedIdType !== idType) {
-        throw new BadRequestException('id_number does not match the specified id_type.');
-      }
+
+      await assertNricFinAvailableForAccountCreation(this.userRepository, idNumber);
     }
 
     const accessToken = await this.getIntegrationAccessToken();
@@ -860,9 +860,11 @@ export class OAuthAuthService {
           data: err.response?.data,
           message: err.message,
         });
-        const data = err.response?.data as { message?: string; error?: string; error_description?: string };
-        const desc =
-          data?.message || data?.error_description || data?.error || err.message;
+        const rawDescription = this.extractSalesforceErrorDescription(
+          err.response?.data,
+          err.message,
+        );
+        const desc = this.mapCreateNexusUserErrorMessage(rawDescription);
         throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
       }
       throw err;
@@ -1433,6 +1435,29 @@ export class OAuthAuthService {
       && (/token|session|eservices|idp|salesforce|social|unauthorized|invalid/.test(text)
         || /sign in again/.test(text))
     );
+  }
+
+  private mapCreateNexusUserErrorMessage(description: string): string {
+    const text = String(description || '').trim();
+    const mapped = mapSingaporeNricFinUserErrorMessage(text);
+    if (mapped !== text) {
+      return mapped;
+    }
+
+    const lower = text.toLowerCase();
+    if (lower.includes('already') && (lower.includes('registered') || lower.includes('exists'))) {
+      return 'An account with this NRIC or email already exists. Please sign in instead.';
+    }
+
+    const withoutStack = text.split('\n')[0]?.trim();
+    if (withoutStack && withoutStack !== text) {
+      const apexPrefix = /^System\.\w+Exception:\s*/;
+      const cleaned = withoutStack.replace(apexPrefix, '').replace(/^UNKNOWN_EXCEPTION:\s*/i, '').trim();
+      const remapped = mapSingaporeNricFinUserErrorMessage(cleaned);
+      return remapped !== cleaned ? remapped : cleaned || text;
+    }
+
+    return text;
   }
 
   private mapSetNexusPasswordErrorMessage(description: string): string {
@@ -2040,6 +2065,24 @@ export class OAuthAuthService {
     );
   }
 
+  extractNricNumberFromNexusInfo(
+    nexusInfo: SalesforceNexusUserInfo | Record<string, unknown> | null | undefined,
+  ): string {
+    if (!nexusInfo || typeof nexusInfo !== 'object') return '';
+    const sources: Record<string, unknown>[] = [nexusInfo as Record<string, unknown>];
+    const nested = (nexusInfo as SalesforceNexusUserInfo).nexusUser;
+    if (nested && typeof nested === 'object') {
+      sources.push(nested as Record<string, unknown>);
+    }
+    for (const source of sources) {
+      const value = String(source.NRIC_Number || source.nric_Number || '').trim();
+      if (value) {
+        return normalizeSingaporeNricFin(value) || value.toUpperCase();
+      }
+    }
+    return '';
+  }
+
   /**
    * Membership application: load nexus userinfo with the eServices social token.
    * Throws when the token is invalid or Salesforce does not return profile data.
@@ -2107,6 +2150,26 @@ export class OAuthAuthService {
       accessToken,
       membershipStatus,
     };
+  }
+
+  /** When userinfonexus has NRIC_Number, sync platform user and return JWT (same as member login). */
+  async resolveNricNumberLoginFromSocialToken(socialAccessToken: string): Promise<{
+    hasNricNumber: boolean;
+    nricNumber: string | null;
+    nexusInfo: SalesforceNexusUserInfo;
+    accessToken?: string;
+  }> {
+    const token = this.requireSalesforceSocialAccessToken(socialAccessToken);
+    const nexusInfo = await this.fetchMembershipNexusUserInfoForApplication(token);
+    const nricNumber = this.extractNricNumberFromNexusInfo(nexusInfo) || null;
+
+    if (!nricNumber) {
+      return { hasNricNumber: false, nricNumber: null, nexusInfo };
+    }
+
+    const idpUserInfo = await this.getUserInfo(token);
+    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    return { hasNricNumber: true, nricNumber, nexusInfo, accessToken };
   }
 
   /**

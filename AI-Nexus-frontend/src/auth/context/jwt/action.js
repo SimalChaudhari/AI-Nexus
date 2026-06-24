@@ -6,6 +6,35 @@ import { fetchCurrentUser, writeCachedUser } from './session';
 import { clearClientSalesforceSessions } from './logout-payload';
 import { postLogoutWithIdpBrowserClear, finishLogoutWithIdpBrowserClear, getAppSignInUrl } from './idp-browser-logout';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
+import { mapNricFinUserErrorMessage } from 'src/utils/nric-id-type';
+
+const MEMBERSHIP_DRAFT_USER_ID_KEY = 'membershipDraftUserId';
+
+export const getMembershipSignupDraftUserId = () => {
+  try {
+    return sessionStorage.getItem(MEMBERSHIP_DRAFT_USER_ID_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+export const setMembershipSignupDraftUserId = (userId) => {
+  const nextUserId = String(userId || '').trim();
+  if (!nextUserId) return;
+  try {
+    sessionStorage.setItem(MEMBERSHIP_DRAFT_USER_ID_KEY, nextUserId);
+  } catch {
+    // ignore storage errors
+  }
+};
+
+export const clearMembershipSignupDraftUserId = () => {
+  try {
+    sessionStorage.removeItem(MEMBERSHIP_DRAFT_USER_ID_KEY);
+  } catch {
+    // ignore storage errors
+  }
+};
 
 /** **************************************
  * Sign in with backend API (supports email or username)
@@ -74,7 +103,7 @@ export const signUp = async ({
       sessionStorage.setItem('user', JSON.stringify(normalizeUserForSession(user)));
     }
     if (signupAccessToken) {
-      sessionStorage.removeItem('membershipDraftUserId');
+      clearMembershipSignupDraftUserId();
     }
 
     // Note: Backend register doesn't return access_token, user needs to login after registration
@@ -127,7 +156,7 @@ export const saveMembershipSignupDraft = async ({
     const nextDraftUserId = res?.data?.draftUserId || res?.data?.user?.id || '';
 
     if (nextDraftUserId) {
-      sessionStorage.setItem('membershipDraftUserId', nextDraftUserId);
+      setMembershipSignupDraftUserId(nextDraftUserId);
     }
 
     return res.data;
@@ -230,17 +259,8 @@ export const resendVerification = async ({ email }) => {
 export const verifyNricImages = async ({ frontImage, backImage }) => {
   try {
     const formData = new FormData();
-    let currentUser = null;
-    let draftUserId = '';
-    try {
-      currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
-    } catch {
-      currentUser = null;
-    }
-    draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
-    if (currentUser?.id) {
-      formData.append('userId', currentUser.id);
-    } else if (draftUserId) {
+    const draftUserId = getMembershipSignupDraftUserId();
+    if (draftUserId) {
       formData.append('userId', draftUserId);
     }
     formData.append('frontImage', frontImage);
@@ -250,8 +270,8 @@ export const verifyNricImages = async ({ frontImage, backImage }) => {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
-    if (!currentUser?.id && res?.data?.userId) {
-      sessionStorage.setItem('membershipDraftUserId', res.data.userId);
+    if (res?.data?.userId) {
+      setMembershipSignupDraftUserId(res.data.userId);
     }
 
     console.log('[NRIC Scan] API response:', res.data);
@@ -259,8 +279,10 @@ export const verifyNricImages = async ({ frontImage, backImage }) => {
     return res.data;
   } catch (error) {
     console.log('[NRIC Scan] API error:', error?.response?.data || error?.message || error);
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
     const errorMessage =
-      error?.response?.data?.message ||
+      normalizedMessage ||
       error?.message ||
       (typeof error === 'string' ? error : 'NRIC verification failed. Please try again.');
     throw new Error(errorMessage);
@@ -277,37 +299,44 @@ export const validateNricIdentifier = async ({ identifier }) => {
     });
     return res.data;
   } catch (error) {
-    const errorMessage =
+    const rawMessage =
       error?.response?.data?.message ||
       error?.message ||
       (typeof error === 'string' ? error : 'Invalid NRIC/FIN number.');
-    throw new Error(errorMessage);
+    throw new Error(mapNricFinUserErrorMessage(rawMessage));
   }
 };
 
 /** **************************************
  * Verify NRIC manually via checksum (no image / AI)
  *************************************** */
-export const verifyNricManual = async ({ identifier, fullName, dateOfBirth }) => {
+export const verifyNricManual = async ({
+  identifier,
+  fullName,
+  nameAsPerId,
+  firstName,
+  lastName,
+  nationality,
+  idType,
+  dateOfBirth,
+}) => {
   try {
-    let currentUser = null;
-    let draftUserId = '';
-    try {
-      currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
-    } catch {
-      currentUser = null;
-    }
-    draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
+    const draftUserId = getMembershipSignupDraftUserId();
 
     const res = await axios.post('/auth/verify-nric-manual', {
       identifier: String(identifier || '').trim(),
-      fullName: String(fullName || '').trim(),
+      fullName: String(fullName || nameAsPerId || '').trim(),
+      nameAsPerId: String(nameAsPerId || fullName || '').trim(),
+      firstName: String(firstName || '').trim(),
+      lastName: String(lastName || '').trim(),
+      nationality: String(nationality || '').trim(),
+      idType: String(idType || '').trim(),
       dateOfBirth: String(dateOfBirth || '').trim(),
-      userId: currentUser?.id || draftUserId || undefined,
+      userId: draftUserId || undefined,
     });
 
-    if (!currentUser?.id && res?.data?.userId) {
-      sessionStorage.setItem('membershipDraftUserId', res.data.userId);
+    if (res?.data?.userId) {
+      setMembershipSignupDraftUserId(res.data.userId);
     }
 
     console.log('[NRIC Manual] API response:', res.data);
@@ -315,8 +344,10 @@ export const verifyNricManual = async ({ identifier, fullName, dateOfBirth }) =>
     return res.data;
   } catch (error) {
     console.log('[NRIC Manual] API error:', error?.response?.data || error?.message || error);
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
     const errorMessage =
-      error?.response?.data?.message ||
+      normalizedMessage ||
       error?.message ||
       (typeof error === 'string' ? error : 'Manual NRIC verification failed. Please try again.');
     throw new Error(errorMessage);
@@ -333,17 +364,8 @@ export const verifyStudentAcademicDetails = async ({
 }) => {
   try {
     const formData = new FormData();
-    let draftUserId = '';
-    try {
-      const currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
-      if (currentUser?.id) {
-        formData.append('userId', currentUser.id);
-      }
-    } catch {
-      // ignore
-    }
-    draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
-    if (!formData.get('userId') && draftUserId) {
+    const draftUserId = getMembershipSignupDraftUserId();
+    if (draftUserId) {
       formData.append('userId', draftUserId);
     }
     formData.append('academicEmail', String(academicEmail || '').trim());
@@ -585,10 +607,12 @@ export const createSalesforceNexusUser = async (payload) => {
     const res = await axios.post('/auth/oauth/create-nexus-user', payload);
     return res.data;
   } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const rawMessage = normalizedMessage || error?.message || '';
     const errorMessage =
-      error?.response?.data?.message ||
-      error?.message ||
-      (typeof error === 'string' ? error : 'Failed to create Salesforce membership account.');
+      mapNricFinUserErrorMessage(rawMessage)
+      || (typeof error === 'string' ? error : 'Failed to create Salesforce membership account.');
     throw new Error(errorMessage);
   }
 };
@@ -624,10 +648,7 @@ export const setSalesforceNexusPassword = async (payload) => {
 export const saveSalesforceMembershipRecord = async (payload) => {
   try {
     const res = await axios.post('/auth/salesforce-membership-record', payload);
-    const userId = res?.data?.userId || res?.data?.user?.id || '';
-    if (userId) {
-      sessionStorage.setItem('membershipDraftUserId', userId);
-    }
+    clearMembershipSignupDraftUserId();
     return res.data;
   } catch (error) {
     const errorMessage =

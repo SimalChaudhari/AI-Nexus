@@ -9,6 +9,11 @@ import {
   pickPreferredResolvedSingaporeNricFinCandidate,
   resolveValidSingaporeNricFinCandidate,
   resolveSalesforceIdTypeFromPrefix,
+  resolveSalesforceIdTypeByCardColorOrNationality,
+  resolveSalesforceIdTypeForNricNumber,
+  mapSingaporeNricFinUserErrorMessage,
+  parseSingaporeNricDisplayName,
+  SINGAPORE_NRIC_FIN_USER_MESSAGES,
 } from './singapore-nric-fin.util';
 
 describe('singapore-nric-fin.util', () => {
@@ -157,6 +162,116 @@ describe('singapore-nric-fin.util', () => {
     it('returns null for FIN and unknown prefixes', () => {
       expect(resolveSalesforceIdTypeFromPrefix('M')).toBeNull();
       expect(resolveSalesforceIdTypeFromPrefix('')).toBeNull();
+    });
+  });
+
+  describe('resolveSalesforceIdTypeByCardColorOrNationality', () => {
+    it('prefers detected card color', () => {
+      expect(
+        resolveSalesforceIdTypeByCardColorOrNationality({
+          cardColor: 'pink',
+          nationality: '',
+        }),
+      ).toBe('Pink NRIC');
+
+      expect(
+        resolveSalesforceIdTypeByCardColorOrNationality({
+          cardColor: 'BLUE CARD',
+          nationality: 'MALAYSIAN',
+        }),
+      ).toBe('Blue NRIC');
+    });
+
+    it('falls back to foreign nationality when color is unknown', () => {
+      expect(
+        resolveSalesforceIdTypeByCardColorOrNationality({
+          cardColor: '',
+          nationality: 'MALAYSIAN',
+        }),
+      ).toBe('Pink NRIC');
+    });
+
+    it('treats Singapore nationality as Blue NRIC', () => {
+      expect(
+        resolveSalesforceIdTypeByCardColorOrNationality({
+          cardColor: '',
+          nationality: 'SINGAPORE',
+        }),
+      ).toBe('Blue NRIC');
+    });
+
+    it('defaults to Singapore citizen when no color and no nationality', () => {
+      expect(
+        resolveSalesforceIdTypeByCardColorOrNationality({
+          cardColor: '',
+          nationality: '',
+        }),
+      ).toBe('Blue NRIC');
+    });
+  });
+
+  describe('resolveSalesforceIdTypeForNricNumber', () => {
+    it('prefers explicit id type from AI verification', () => {
+      expect(
+        resolveSalesforceIdTypeForNricNumber('S1234567D', {
+          nationality: 'MALAYSIAN',
+          explicitIdType: 'Pink NRIC',
+        }),
+      ).toBe('Pink NRIC');
+    });
+
+    it('falls back to card color and nationality when no explicit id type', () => {
+      expect(
+        resolveSalesforceIdTypeForNricNumber('S1234567D', {
+          cardColor: 'blue',
+        }),
+      ).toBe('Blue NRIC');
+    });
+  });
+
+  describe('mapSingaporeNricFinUserErrorMessage', () => {
+    it('maps checksum errors to plain language', () => {
+      expect(
+        mapSingaporeNricFinUserErrorMessage('Invalid Singapore NRIC/FIN checksum for id_number.'),
+      ).toBe(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum);
+    });
+
+    it('maps format errors to plain language', () => {
+      expect(
+        mapSingaporeNricFinUserErrorMessage('Invalid Singapore NRIC/FIN format for id_number.'),
+      ).toBe(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat);
+    });
+
+    it('maps id_type mismatch errors', () => {
+      expect(
+        mapSingaporeNricFinUserErrorMessage('id_number does not match the specified id_type.'),
+      ).toBe(SINGAPORE_NRIC_FIN_USER_MESSAGES.idTypeMismatch);
+    });
+  });
+
+  describe('parseSingaporeNricDisplayName', () => {
+    it('splits surname-first NRIC names into given name and surname', () => {
+      expect(parseSingaporeNricDisplayName('LIU XIANLONG, EDMUND')).toEqual({
+        firstname: 'XIANLONG EDMUND',
+        lastname: 'LIU',
+        nameAsPerId: 'LIU XIANLONG, EDMUND',
+      });
+    });
+
+    it('handles simple two-part names', () => {
+      expect(parseSingaporeNricDisplayName('TAN AH KOW')).toEqual({
+        firstname: 'AH KOW',
+        lastname: 'TAN',
+        nameAsPerId: 'TAN AH KOW',
+      });
+    });
+
+    it('normalizes spacing and casing', () => {
+      expect(parseSingaporeNricDisplayName('  liu   xianlong,   edmund  ')).toEqual({
+        firstname: 'XIANLONG EDMUND',
+        lastname: 'LIU',
+        nameAsPerId: 'LIU XIANLONG, EDMUND',
+      });
     });
   });
 });

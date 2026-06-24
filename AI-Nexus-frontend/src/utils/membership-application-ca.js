@@ -132,3 +132,58 @@ export async function tryCompleteCaMemberPlatformLogin(options = {}) {
     message: data?.message || 'Signed in with your CA membership.',
   };
 }
+
+/**
+ * When userinfonexus has NRIC_Number, establish platform session (same pattern as member login).
+ */
+export async function tryCompleteNricNumberPlatformLogin(options = {}) {
+  const session = readMembershipSalesforceSession();
+  const socialAccessToken = String(
+    options.socialAccessToken || session?.socialToken || ''
+  ).trim();
+
+  if (!socialAccessToken) {
+    return { loggedIn: false, message: 'eServices session is missing.' };
+  }
+
+  const data = await callMembershipCaApi(async () => {
+    const res = await axios.post('/auth/membership-application/nric-login', {
+      socialAccessToken,
+    });
+    return res.data;
+  });
+
+  if (data?.hasNricNumber !== true) {
+    return { loggedIn: false, message: data?.message || 'NRIC_Number was not found in eServices.' };
+  }
+
+  const platformToken =
+    String(data?.accessToken || '').trim()
+    || String(session?.pendingPlatformAccessToken || '').trim()
+    || String(options.pendingPlatformAccessToken || '').trim();
+
+  if (!platformToken) {
+    return {
+      loggedIn: false,
+      message: 'NRIC account was confirmed but sign-in could not be completed.',
+    };
+  }
+
+  await axios.post('/auth/establish-session', { token: platformToken }, { skipAuthRefresh: true });
+  await fetchCurrentUser();
+
+  clearMembershipApplicationPending();
+  clearMembershipSalesforceSession();
+
+  const courseReturn = readMembershipApplicationCourseReturn();
+  clearMembershipApplicationCourseReturn();
+
+  const redirectTo = options.redirectTo || courseReturn || paths.learning;
+
+  return {
+    loggedIn: true,
+    nricNumber: data?.nricNumber || undefined,
+    redirectTo,
+    message: data?.message || 'Signed in with your NRIC account.',
+  };
+}

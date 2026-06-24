@@ -1,43 +1,120 @@
 export const SALESFORCE_ID_TYPE_BLUE = 'Blue NRIC';
 export const SALESFORCE_ID_TYPE_PINK = 'Pink NRIC';
 
-/**
- * Maps NRIC/FIN prefix to Salesforce `id_type` for citizen (Blue) vs PR (Pink).
- * @param {string} prefix
- * @returns {string}
- */
-export function resolveSalesforceIdTypeFromPrefix(prefix = '') {
-  const normalized = String(prefix || '').trim().toUpperCase();
-  if (normalized === 'S' || normalized === 'T') {
-    return SALESFORCE_ID_TYPE_BLUE;
+const NRIC_FIN_USER_MESSAGES = {
+  invalidFormat:
+    'The NRIC/FIN number format is not valid. It should be one letter (S, T, F, G, or M), followed by 7 digits and a final letter — for example, S1234567A.',
+  invalidChecksum:
+    'The NRIC/FIN number does not appear to be valid. Please check that it matches your card exactly. If it was read from a photo, go back and verify your NRIC again with a clearer image.',
+  idTypeMismatch:
+    'The NRIC number and card type do not match. Please go back and verify your NRIC again, or check that Blue/Pink NRIC is selected correctly.',
+};
+
+/** Maps technical NRIC/FIN API errors to user-friendly text. */
+export function mapNricFinUserErrorMessage(message = '') {
+  const text = String(message || '').trim();
+  const lower = text.toLowerCase();
+
+  if (!text) {
+    return text;
   }
-  if (normalized === 'F' || normalized === 'G') {
-    return SALESFORCE_ID_TYPE_PINK;
+
+  if (
+    lower.includes('checksum')
+    || lower.includes('failed checksum validation')
+    || lower.includes('invalid singapore nric/fin checksum')
+  ) {
+    return NRIC_FIN_USER_MESSAGES.invalidChecksum;
   }
-  return '';
+
+  if (
+    lower.includes('invalid singapore nric/fin format')
+    || (lower.includes('invalid') && lower.includes('format') && lower.includes('nric'))
+  ) {
+    return NRIC_FIN_USER_MESSAGES.invalidFormat;
+  }
+
+  if (lower.includes('does not match') && (lower.includes('id_type') || lower.includes('id type'))) {
+    return NRIC_FIN_USER_MESSAGES.idTypeMismatch;
+  }
+
+  return text;
+}
+
+function normalizeCardColor(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ');
+}
+
+function normalizeNationality(value = '') {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+}
+
+export function isSingaporeNationality(value = '') {
+  const normalized = normalizeNationality(value);
+  if (!normalized) return false;
+  return normalized === 'SG' || normalized.includes('SINGAPORE');
+}
+
+export function indicatesForeignNationality(value = '') {
+  const normalized = normalizeNationality(value);
+  if (!normalized) return false;
+  return !isSingaporeNationality(normalized);
 }
 
 /**
- * Resolve Salesforce id_type from verify API payload, with prefix/identifier fallback.
+ * Resolve Salesforce id_type from AI-detected card color and nationality.
+ * @param {{ cardColor?: string, nationality?: string }} params
+ * @returns {string}
+ */
+export function resolveSalesforceIdTypeFromCardColorOrNationality(params = {}) {
+  const cardColor = normalizeCardColor(params.cardColor);
+  if (cardColor.includes('pink')) {
+    return SALESFORCE_ID_TYPE_PINK;
+  }
+  if (cardColor.includes('blue')) {
+    return SALESFORCE_ID_TYPE_BLUE;
+  }
+
+  if (isSingaporeNationality(params.nationality)) {
+    return SALESFORCE_ID_TYPE_BLUE;
+  }
+
+  if (indicatesForeignNationality(params.nationality)) {
+    return SALESFORCE_ID_TYPE_PINK;
+  }
+
+  return SALESFORCE_ID_TYPE_BLUE;
+}
+
+/** Resolve id_type from AI/user hints — not from NRIC prefix. */
+export function resolveSalesforceIdTypeForNricNumber(nricNumber = '', fallback = {}) {
+  const explicitIdType = String(fallback.explicitIdType || '').trim();
+  if (explicitIdType === SALESFORCE_ID_TYPE_BLUE || explicitIdType === SALESFORCE_ID_TYPE_PINK) {
+    return explicitIdType;
+  }
+
+  return resolveSalesforceIdTypeFromCardColorOrNationality({
+    cardColor: fallback.cardColor,
+    nationality: fallback.nationality,
+  });
+}
+
+/**
+ * Resolve Salesforce id_type from verify API payload (AI card color / nationality / idType).
  * @param {Record<string, unknown>} extracted
  */
 export function resolveSalesforceIdTypeFromExtracted(extracted = {}) {
-  const direct = String(extracted.idType || '').trim();
-  if (direct) {
-    return direct;
-  }
-
-  const fromPrefix = resolveSalesforceIdTypeFromPrefix(extracted.prefix);
-  if (fromPrefix) {
-    return fromPrefix;
-  }
-
-  const identifier = String(extracted.identifier || '').trim();
-  if (identifier) {
-    return resolveSalesforceIdTypeFromPrefix(identifier[0]);
-  }
-
-  return '';
+  return resolveSalesforceIdTypeForNricNumber(String(extracted.identifier || '').trim(), {
+    cardColor: extracted.cardColor || extracted.profile?.cardColor,
+    nationality: extracted.nationality || extracted.profile?.nationality,
+    explicitIdType: extracted.idType,
+  });
 }
 
 /**
@@ -62,6 +139,49 @@ export function resolveCitizenshipFromSalesforceIdType(idType = '') {
     return 'permanent-resident-singapore';
   }
   return '';
+}
+
+/**
+ * Splits a Singapore NRIC printed name into Western form fields.
+ * NRIC format is `SURNAME GIVEN NAME(S)` e.g. `LIU XIANLONG, EDMUND` → lastName `LIU`, firstName `XIANLONG EDMUND`.
+ * @param {string} fullName
+ */
+function sanitizeSingaporeNricFormNamePart(value = '') {
+  return String(value || '')
+    .replace(/[,.\-']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function parseSingaporeNricDisplayName(fullName = '') {
+  const cleaned = String(fullName || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+
+  if (!cleaned) {
+    return { firstName: '', lastName: '', nameAsPerId: '' };
+  }
+
+  const parts = cleaned.split(' ').filter(Boolean);
+  if (parts.length === 1) {
+    const lastName = sanitizeSingaporeNricFormNamePart(parts[0]);
+    return { firstName: '', lastName, nameAsPerId: parts[0] };
+  }
+
+  const lastName = sanitizeSingaporeNricFormNamePart(parts[0]);
+  const givenNamesOnCard = parts
+    .slice(1)
+    .join(' ')
+    .replace(/\s*,\s*/g, ', ')
+    .trim();
+  const firstName = sanitizeSingaporeNricFormNamePart(givenNamesOnCard);
+
+  return {
+    firstName,
+    lastName,
+    nameAsPerId: `${parts[0]} ${givenNamesOnCard}`.trim(),
+  };
 }
 
 /**
@@ -120,16 +240,20 @@ export function resolveVerifiedNricSalesforceFields({
     || ''
   ).trim();
 
-  const idType = String(
+  const storedIdType = String(
     flow?.verifiedNricIdType
     || storedValues?.idType
     || verifiedPrefill?.idType
     || snapshot.verifiedNricIdType
     || snapshot.idType
-    || resolveSalesforceIdTypeFromExtracted({
-      idType: snapshot.idType,
-      prefix: snapshot.prefix || flow?.verifiedNricPrefix,
-      identifier: idNumber,
+    || ''
+  ).trim();
+
+  const idType = String(
+    storedIdType
+    || resolveSalesforceIdTypeForNricNumber(idNumber, {
+      cardColor: snapshot.cardColor,
+      nationality: snapshot.nationality,
     })
     || ''
   ).trim();

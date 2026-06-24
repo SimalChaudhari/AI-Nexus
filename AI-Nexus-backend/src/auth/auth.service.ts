@@ -26,8 +26,15 @@ import {
   pickPreferredResolvedSingaporeNricFinCandidate,
   validateSingaporeNricFin,
   normalizeSingaporeNricFin,
-  resolveSalesforceIdTypeFromPrefix,
+  resolveSalesforceIdTypeByCardColorOrNationality,
+  parseSingaporeNricDisplayName,
+  SINGAPORE_NRIC_FIN_USER_MESSAGES,
 } from './utils/singapore-nric-fin.util';
+import {
+  assertNricFinNotAlreadyRegistered,
+  assignVerifiedNricFinToUser,
+  canReuseUserForNricVerification,
+} from './utils/nric-registration-guard.util';
 import { LlmService } from '../llm/llm.service';
 import { LlmProvider } from '../llm/llm.types';
 import {
@@ -52,6 +59,7 @@ interface ExtractedSingaporeIdentifier {
     fullName: string;
     dateOfBirth: string;
     nationality: string;
+    cardColor: string;
     sex: string;
     address: string;
   };
@@ -595,6 +603,35 @@ export class AuthService {
     return normalized || null;
   }
 
+  private resolveSalesforceMembershipEligibilityType(dto: {
+    eligibilityType?: string;
+    eligibilitySnapshot?: Record<string, unknown>;
+  }): string {
+    const explicit = String(dto.eligibilityType || '').trim();
+    if (explicit) return explicit;
+
+    const snapshot = dto.eligibilitySnapshot || {};
+    const fromSnapshot = String(snapshot.eligibilityType || '').trim();
+    if (fromSnapshot) return fromSnapshot;
+
+    if (
+      snapshot.spPrVerified === true
+      || String(snapshot.verifiedNricFin || '').trim()
+      || (snapshot.nricAudit && typeof snapshot.nricAudit === 'object')
+    ) {
+      return 'fee-waiver-nric';
+    }
+
+    if (
+      snapshot.companyRegistrationUnderCompany === true
+      && snapshot.companyReferenceConfirmed === true
+    ) {
+      return 'corporate-isca-partner';
+    }
+
+    return 'student';
+  }
+
   private applyEligibilityTracking(user: UserEntity, userDto: UserDto) {
     const snapshot = this.sanitizeEligibilitySnapshot(userDto.eligibilitySnapshot);
     const eligibilityIsSingaporePr = this.readEligibilityBoolean(
@@ -784,15 +821,21 @@ export class AuthService {
       throw new BadRequestException('Email already registered with a local account. Please sign in.');
     }
 
+    const resolvedEligibilityType = this.resolveSalesforceMembershipEligibilityType(dto);
+
     const snapshot = this.sanitizeEligibilitySnapshot({
       ...(dto.eligibilitySnapshot || {}),
+      eligibilityType: resolvedEligibilityType,
       membershipOutcome: dto.membershipOutcome || dto.eligibilitySnapshot?.membershipOutcome || '',
       salesforceUsername,
       salutation: dto.salutation || null,
       nameAsPerId: dto.nameAsPerId || null,
       salesforceMembershipCompletedAt: new Date().toISOString(),
-      studentMembershipOptIn:
-        dto.eligibilitySnapshot?.studentMembershipOptIn ?? dto.eligibilityType === 'student',
+      ...(typeof dto.eligibilitySnapshot?.studentMembershipOptIn === 'boolean'
+        ? { studentMembershipOptIn: dto.eligibilitySnapshot.studentMembershipOptIn }
+        : resolvedEligibilityType === 'student'
+          ? { studentMembershipOptIn: true }
+          : {}),
     });
 
     const trackingDto = {
@@ -804,7 +847,7 @@ export class AuthService {
       eligibilityIsSingaporePr: dto.eligibilityIsSingaporePr,
       eligibilityIsIscaMember: dto.eligibilityIsIscaMember,
       eligibilityWantsMembership: dto.eligibilityWantsMembership,
-      eligibilityType: dto.eligibilityType || 'student',
+      eligibilityType: resolvedEligibilityType,
       eligibilitySnapshot: snapshot || undefined,
     } as UserDto;
 
@@ -819,7 +862,7 @@ export class AuthService {
       user.email = email;
       user.authProvider = AuthProvider.OAUTH;
       user.password = null;
-      user.isDraft = true;
+      user.isDraft = false;
       user.isVerified = false;
       user.salesforceUsername = salesforceUsername;
       user.salesforceSyncedAt = new Date();
@@ -839,7 +882,7 @@ export class AuthService {
         role: UserRole.User,
         status: UserStatus.Active,
         isVerified: false,
-        isDraft: true,
+        isDraft: false,
         salesforceUsername,
         salesforceSyncedAt: new Date(),
       });
@@ -1169,22 +1212,11 @@ export class AuthService {
 
   /**
    * Splits an OCR full name into first/last values without inventing fake names.
+   * Singapore NRIC prints surname first, then given name(s).
    */
   private buildDraftName(fullName: string): { firstname: string; lastname: string } {
-    const cleaned = this.sanitizeExtractedTextField(fullName);
-    if (!cleaned) {
-      return { firstname: '', lastname: '' };
-    }
-
-    const parts = cleaned.split(' ').filter(Boolean);
-    if (parts.length === 1) {
-      return { firstname: parts[0], lastname: '' };
-    }
-
-    return {
-      firstname: parts[0],
-      lastname: parts.slice(1).join(' ') || '',
-    };
+    const parsed = parseSingaporeNricDisplayName(this.sanitizeExtractedTextField(fullName));
+    return { firstname: parsed.firstname, lastname: parsed.lastname };
   }
 
   /**
@@ -1404,6 +1436,7 @@ export class AuthService {
         fullName?: string | string[];
         dateOfBirth?: string | string[];
         nationality?: string | string[];
+        cardColor?: string | string[];
         sex?: string | string[];
         address?: string | string[];
         confidence?: number | string;
@@ -1423,6 +1456,7 @@ export class AuthService {
           fullName: this.sanitizeExtractedTextField(parsed.fullName),
           dateOfBirth: this.sanitizeExtractedTextField(parsed.dateOfBirth),
           nationality: this.sanitizeExtractedTextField(parsed.nationality),
+          cardColor: this.sanitizeExtractedTextField(parsed.cardColor),
           sex: this.sanitizeExtractedTextField(parsed.sex),
           address: this.sanitizeExtractedAddressField(parsed.address),
         },
@@ -1445,6 +1479,7 @@ export class AuthService {
         fullName: '',
         dateOfBirth: '',
         nationality: '',
+        cardColor: '',
         sex: '',
         address: '',
       },
@@ -1658,9 +1693,10 @@ export class AuthService {
     userId?: string,
     authorizationHeader?: string,
   ) {
-    const existingUser = await this.resolveUserForNricVerification(userId, authorizationHeader);
-    if (existingUser) {
-      return { user: existingUser, createdAsDraft: false };
+    const resolvedUser = await this.resolveUserForNricVerification(userId, authorizationHeader);
+    const normalizedNricFin = normalizeSingaporeNricFin(extracted.identifier || '');
+    if (canReuseUserForNricVerification(resolvedUser, normalizedNricFin)) {
+      return { user: resolvedUser!, createdAsDraft: false };
     }
 
     const draftName = this.buildDraftName(extracted.profile.fullName);
@@ -1684,42 +1720,15 @@ export class AuthService {
     return { user: draftUser, createdAsDraft: true };
   }
 
-  private hasStoredCanonicalNricFin(user: UserEntity | null | undefined, normalizedNricFin: string): boolean {
-    if (!user) return false;
-
-    return String(user.nricFinCanonicalValue || user.nricFinValue || '').trim() === normalizedNricFin;
+  private resolveCurrentUserIdForNricGuard(
+    user: UserEntity | null | undefined,
+    normalizedNricFin: string,
+  ): string | undefined {
+    return canReuseUserForNricVerification(user, normalizedNricFin) ? user?.id : undefined;
   }
 
-  private async findExistingCompletedUserByNricFin(normalizedNricFin: string, excludeUserId?: string) {
-    const existingUser = await this.userRepository
-      .createQueryBuilder('usr')
-      .where(
-        '(usr."nricFinCanonicalValue" = :normalizedNricFin OR (usr."nricFinCanonicalValue" IS NULL AND usr."nricFinValue" = :normalizedNricFin))',
-        { normalizedNricFin }
-      )
-      .getOne();
-
-    if (!existingUser) return null;
-    if (excludeUserId && existingUser.id === excludeUserId) return null;
-    if (existingUser.isDraft) return null;
-
-    return existingUser;
-  }
-
-  private async findExistingVerifiedDraftByNricFin(normalizedNricFin: string, excludeUserId?: string) {
-    const existingUser = await this.userRepository
-      .createQueryBuilder('usr')
-      .where(
-        '(usr."nricFinCanonicalValue" = :normalizedNricFin OR (usr."nricFinCanonicalValue" IS NULL AND usr."nricFinValue" = :normalizedNricFin))',
-        { normalizedNricFin }
-      )
-      .getOne();
-
-    if (!existingUser) return null;
-    if (excludeUserId && existingUser.id === excludeUserId) return null;
-    if (!existingUser.isDraft) return null;
-
-    return existingUser;
+  private async assertNricFinAvailable(normalizedNricFin: string, currentUserId?: string): Promise<void> {
+    await assertNricFinNotAlreadyRegistered(this.userRepository, normalizedNricFin, currentUserId);
   }
 
   async sendStudentVerificationPin(params: {
@@ -2843,7 +2852,10 @@ export class AuthService {
     const exactIdentifier = resolvedCandidate.rawNormalized || resolvedCandidate.normalized;
 
     const validation = validateSingaporeNricFin(resolvedCandidate.normalized);
-    const salesforceIdType = resolveSalesforceIdTypeFromPrefix(validation.prefix);
+    const salesforceIdType = resolveSalesforceIdTypeByCardColorOrNationality({
+      cardColor: extracted.profile.cardColor,
+      nationality: extracted.profile.nationality,
+    });
     const currentResolvedUser = await this.resolveUserForNricVerification(userId, authorizationHeader);
     const manualReviewReason = this.getManualReviewReason(frontExtracted, backExtracted);
 
@@ -2851,26 +2863,16 @@ export class AuthService {
       throw new BadRequestException(manualReviewReason);
     }
 
-    if (
-      currentResolvedUser
-      && !currentResolvedUser.isDraft
-      && this.hasStoredCanonicalNricFin(currentResolvedUser, validation.normalized)
-    ) {
-      throw new BadRequestException(
-        'You have already completed signup with this verified document. Please sign in with your credentials.',
-      );
-    }
-
-    const existingCompletedUser = await this.findExistingCompletedUserByNricFin(
+    await this.assertNricFinAvailable(
       validation.normalized,
-      currentResolvedUser?.id,
+      this.resolveCurrentUserIdForNricGuard(currentResolvedUser, validation.normalized),
     );
 
-    if (existingCompletedUser) {
-      throw new BadRequestException(
-        'You have already verified this document. Please sign in with your credentials.',
-      );
-    }
+    const parsedVerifiedName = parseSingaporeNricDisplayName(extracted.profile.fullName);
+    const verifiedNameAsPerId =
+      parsedVerifiedName.nameAsPerId
+      || extracted.profile.fullName
+      || '';
 
     const verificationResponse = {
       verified: true,
@@ -2881,6 +2883,10 @@ export class AuthService {
         idType: salesforceIdType,
         identifier: exactIdentifier,
         maskedIdentifier: maskSingaporeNricFin(exactIdentifier),
+        firstName: parsedVerifiedName.firstname,
+        lastName: parsedVerifiedName.lastname,
+        nameAsPerId: verifiedNameAsPerId,
+        fullName: verifiedNameAsPerId,
         confidence: extracted.confidence,
         reason: extracted.reason,
         profile: extracted.profile,
@@ -2917,6 +2923,7 @@ export class AuthService {
           : {};
       auditUser.eligibilitySnapshot = {
         ...existingSnapshot,
+        verifiedNricFin: validation.normalized,
         nricAudit: {
           frontUrl,
           backUrl,
@@ -2927,6 +2934,7 @@ export class AuthService {
           savedAt: new Date().toISOString(),
         },
       };
+      assignVerifiedNricFinToUser(auditUser, validation.normalized);
       const access = await this.issueVerifiedSignupAccessToken(auditUser);
       verificationResponse.storedOnUser = true;
       verificationResponse.userId = auditUser.id;
@@ -2935,9 +2943,17 @@ export class AuthService {
       verificationResponse.signupAccessToken = access.signupAccessToken;
       verificationResponse.signupAccessTokenExpiresAt = access.signupAccessTokenExpiresAt;
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       this.logger.warn(
         `Could not persist NRIC audit images: ${error instanceof Error ? error.message : String(error)}`,
       );
+      throw new BadRequestException('Could not complete NRIC verification. Please try again.');
+    }
+
+    if (!verificationResponse.storedOnUser) {
+      throw new BadRequestException('Could not complete NRIC verification. Please try again.');
     }
 
     return verificationResponse;
@@ -2954,11 +2970,11 @@ export class AuthService {
     try {
       validation = validateSingaporeNricFin(normalized);
     } catch {
-      throw new BadRequestException('Invalid Singapore NRIC/FIN format.');
+      throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat);
     }
 
     if (!validation.isValid) {
-      throw new BadRequestException('Invalid Singapore NRIC/FIN checksum. Please check the number and try again.');
+      throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum);
     }
 
     return validation;
@@ -2975,7 +2991,10 @@ export class AuthService {
       normalized: validation.normalized,
       type: validation.documentType,
       prefix: validation.prefix,
-      idType: resolveSalesforceIdTypeFromPrefix(validation.prefix),
+      idType: resolveSalesforceIdTypeByCardColorOrNationality({
+        cardColor: '',
+        nationality: '',
+      }),
       maskedIdentifier: validation.masked,
     };
   }
@@ -2986,16 +3005,32 @@ export class AuthService {
   async verifyNricManual(params: {
     identifier?: string;
     fullName?: string;
+    nameAsPerId?: string;
+    firstName?: string;
+    lastName?: string;
+    nationality?: string;
+    idType?: string;
     dateOfBirth?: string;
     userId?: string;
     authorizationHeader?: string;
   }) {
     const identifier = normalizeSingaporeNricFin(params.identifier || '');
-    const fullName = this.sanitizeExtractedTextField(params.fullName);
     const dateOfBirth = this.assertValidManualDateOfBirth(params.dateOfBirth);
+    const nationality = this.sanitizeExtractedTextField(params.nationality);
 
-    if (!fullName) {
-      throw new BadRequestException('Full name is required for manual NRIC verification.');
+    const nameAsPerIdInput = this.sanitizeExtractedTextField(
+      params.nameAsPerId || params.fullName,
+    );
+    const parsedName = parseSingaporeNricDisplayName(nameAsPerIdInput);
+    const firstName = this.sanitizeExtractedTextField(params.firstName) || parsedName.firstname;
+    const lastName = this.sanitizeExtractedTextField(params.lastName) || parsedName.lastname;
+    const nameAsPerId =
+      nameAsPerIdInput
+      || parsedName.nameAsPerId
+      || [lastName, firstName].filter(Boolean).join(' ').trim();
+
+    if (!nameAsPerId) {
+      throw new BadRequestException('Name as per ID is required for manual NRIC verification.');
     }
 
     if (!identifier) {
@@ -3003,41 +3038,30 @@ export class AuthService {
     }
 
     const validation = this.assertValidNricIdentifier(identifier);
-    const salesforceIdType = resolveSalesforceIdTypeFromPrefix(validation.prefix);
+    const explicitIdType = String(params.idType || '').trim();
+    const salesforceIdType =
+      explicitIdType === 'Blue NRIC' || explicitIdType === 'Pink NRIC'
+        ? explicitIdType
+        : resolveSalesforceIdTypeByCardColorOrNationality({ nationality });
 
     const currentResolvedUser = await this.resolveUserForNricVerification(
       params.userId,
       params.authorizationHeader,
     );
 
-    if (
-      currentResolvedUser
-      && !currentResolvedUser.isDraft
-      && this.hasStoredCanonicalNricFin(currentResolvedUser, validation.normalized)
-    ) {
-      throw new BadRequestException(
-        'You have already completed signup with this verified document. Please sign in with your credentials.',
-      );
-    }
-
-    const existingCompletedUser = await this.findExistingCompletedUserByNricFin(
+    await this.assertNricFinAvailable(
       validation.normalized,
-      currentResolvedUser?.id,
+      this.resolveCurrentUserIdForNricGuard(currentResolvedUser, validation.normalized),
     );
-
-    if (existingCompletedUser) {
-      throw new BadRequestException(
-        'You have already verified this document. Please sign in with your credentials.',
-      );
-    }
 
     const extracted: ExtractedSingaporeIdentifier = {
       identifier: validation.normalized,
       candidates: [validation.normalized],
       profile: {
-        fullName,
+        fullName: nameAsPerId,
         dateOfBirth,
-        nationality: '',
+        nationality,
+        cardColor: '',
         sex: '',
         address: '',
       },
@@ -3056,6 +3080,10 @@ export class AuthService {
         idType: salesforceIdType,
         identifier: validation.normalized,
         maskedIdentifier: validation.masked,
+        firstName,
+        lastName,
+        nameAsPerId,
+        fullName: nameAsPerId,
         confidence: 1,
         reason: 'manual entry',
         profile: extracted.profile,
@@ -3084,17 +3112,23 @@ export class AuthService {
           : {};
       auditUser.eligibilitySnapshot = {
         ...existingSnapshot,
+        verifiedNricFin: validation.normalized,
         nricAudit: {
           verificationMethod: 'manual',
           maskedIdentifier: validation.masked,
           identifier: validation.normalized,
           prefix: validation.prefix,
           idType: salesforceIdType,
-          fullName,
+          fullName: nameAsPerId,
+          firstName,
+          lastName,
+          nameAsPerId,
           dateOfBirth,
+          nationality,
           savedAt: new Date().toISOString(),
         },
       };
+      assignVerifiedNricFinToUser(auditUser, validation.normalized);
       const access = await this.issueVerifiedSignupAccessToken(auditUser);
       verificationResponse.storedOnUser = true;
       verificationResponse.userId = auditUser.id;
@@ -3103,9 +3137,17 @@ export class AuthService {
       verificationResponse.signupAccessToken = access.signupAccessToken;
       verificationResponse.signupAccessTokenExpiresAt = access.signupAccessTokenExpiresAt;
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       this.logger.warn(
         `Could not persist manual NRIC verification audit: ${error instanceof Error ? error.message : String(error)}`,
       );
+      throw new BadRequestException('Could not complete NRIC verification. Please try again.');
+    }
+
+    if (!verificationResponse.storedOnUser) {
+      throw new BadRequestException('Could not complete NRIC verification. Please try again.');
     }
 
     if (this.shouldLogNricDebugDetails()) {

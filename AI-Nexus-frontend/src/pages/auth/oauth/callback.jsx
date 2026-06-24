@@ -53,6 +53,7 @@ import {
 import {
   redirectCaMemberToPlatform,
   tryCompleteCaMemberPlatformLogin,
+  tryCompleteNricNumberPlatformLogin,
   fetchMembershipNexusUserInfo,
 } from 'src/utils/membership-application-ca';
 import { tryCompleteApprovedMemberPlatformLogin } from 'src/utils/membership-application-approved-member';
@@ -244,7 +245,21 @@ async function tryCompleteIscaMemberSsoLogin(options = {}) {
       return { loggedIn: true, redirectTo: memberLogin.redirectTo };
     }
   } catch {
-    // not a verified ISCA member
+    // not a verified ISCA member — try NRIC_Number next
+  }
+
+  try {
+    const nricLogin = await tryCompleteNricNumberPlatformLogin({
+      socialAccessToken: socialToken,
+      redirectTo,
+      pendingPlatformAccessToken,
+    });
+    if (nricLogin.loggedIn && nricLogin.redirectTo) {
+      redirectCaMemberToPlatform(nricLogin.redirectTo);
+      return { loggedIn: true, redirectTo: nricLogin.redirectTo };
+    }
+  } catch {
+    // NRIC_Number not present or login failed
   }
 
   return { loggedIn: false };
@@ -398,6 +413,15 @@ async function handleNonScaqCandidateAfterSso(
       searchParams,
       skipStudentLoginAttempt: true,
     });
+    return true;
+  }
+
+  const memberOrNricLogin = await tryCompleteIscaMemberSsoLogin({
+    socialToken: payload?.socialToken,
+    pendingPlatformAccessToken: payload?.pendingPlatformAccessToken,
+    searchParams,
+  });
+  if (memberOrNricLogin.loggedIn) {
     return true;
   }
 
@@ -784,6 +808,16 @@ export default function OAuthCallbackPage() {
           && shouldScaqRejectToPaidSignup(sfAfterLogin.isSCAQCandidate, sfAfterLogin.accountType)
           && !isPlainSignInSsoFlow(searchParams)
         ) {
+          const memberOrNricLogin = await tryCompleteIscaMemberSsoLogin({
+            socialToken: searchParams.get('socialAccessToken') || '',
+            pendingPlatformAccessToken:
+              searchParams.get('pendingPlatformAccessToken') || accessToken || '',
+            searchParams,
+          });
+          if (memberOrNricLogin.loggedIn) {
+            return;
+          }
+
           await rejectScaqAndRedirectToPaidSignup(
             router,
             checkUserSession,

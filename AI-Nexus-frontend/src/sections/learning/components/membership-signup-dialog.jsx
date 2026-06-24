@@ -12,6 +12,7 @@ import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
 import InputAdornment from '@mui/material/InputAdornment';
 import CircularProgress from '@mui/material/CircularProgress';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -36,6 +37,8 @@ import {
   validateNricIdentifier,
   verifyStudentAcademicDetails,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
+  clearMembershipSignupDraftUserId,
+  getMembershipSignupDraftUserId,
 } from 'src/auth/context/jwt';
 import { CONFIG } from 'src/config-global';
 import { paths } from 'src/routes/paths';
@@ -72,7 +75,12 @@ import {
   isQuestionnaireEservicesMemberFallback,
   applyQuestionnaireIscaNonMemberFallback,
 } from 'src/utils/membership-eligibility-sso';
-import { resolveSalesforceIdTypeFromExtracted } from 'src/utils/nric-id-type';
+import {
+  parseSingaporeNricDisplayName,
+  resolveSalesforceIdTypeFromExtracted,
+  SALESFORCE_ID_TYPE_BLUE,
+  SALESFORCE_ID_TYPE_PINK,
+} from 'src/utils/nric-id-type';
 import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
 import {
   SalesforceMembershipCreateStep,
@@ -349,6 +357,8 @@ const INITIAL_STATE = {
   verifiedNricFin: '',
   verifiedNricIdType: '',
   verifiedNricNameAsPerId: '',
+  verifiedNricFirstName: '',
+  verifiedNricLastName: '',
   spPrVerified: null,
   wantsIscaMembership: null,
   eligibilityType: '',
@@ -896,6 +906,21 @@ function applyQuestionnaireNricFailureState(state) {
     spPrVerified: false,
     feeWaiverViaCompanyReference: false,
   };
+}
+
+/** Keep user on NRIC upload step with a specific message (not generic SG/PR eligibility failure). */
+function shouldKeepQuestionnaireNricOnUploadStep(failureState) {
+  if (!failureState) return false;
+  if (failureState.mode === 'sign-in-only') return true;
+  const normalized = String(`${failureState.reason || ''} ${failureState.summary || ''}`).toLowerCase();
+  return (
+    normalized.includes('must be different')
+    || normalized.includes('same nric/fin document')
+    || normalized.includes('same document')
+    || normalized.includes('different identity details')
+    || normalized.includes('could not confirm both front and back')
+    || normalized.includes('could not complete nric verification')
+  );
 }
 
 function getQuestionnaireIscaMemberStep(state) {
@@ -2222,7 +2247,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   const [nricAiFailureMode, setNricAiFailureMode] = useState('default');
   const [nricSignupAccessToken, setNricSignupAccessToken] = useState('');
   const [nricManualIdentifier, setNricManualIdentifier] = useState('');
-  const [nricManualFullName, setNricManualFullName] = useState('');
+  const [nricManualIdType, setNricManualIdType] = useState('');
+  const [nricManualNationality, setNricManualNationality] = useState('');
+  const [nricManualNameAsPerId, setNricManualNameAsPerId] = useState('');
+  const [nricManualFirstName, setNricManualFirstName] = useState('');
+  const [nricManualLastName, setNricManualLastName] = useState('');
   const [nricManualDateOfBirth, setNricManualDateOfBirth] = useState('');
   const [nricManualChecking, setNricManualChecking] = useState(false);
   const [nricManualError, setNricManualError] = useState('');
@@ -2272,7 +2301,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricAiFailureMode('default');
     setNricSignupAccessToken('');
     setNricManualIdentifier('');
-    setNricManualFullName('');
+    setNricManualIdType('');
+    setNricManualNationality('');
+    setNricManualNameAsPerId('');
+    setNricManualFirstName('');
+    setNricManualLastName('');
     setNricManualDateOfBirth('');
     setNricManualChecking(false);
     setNricManualError('');
@@ -2377,6 +2410,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   useEffect(() => {
     if (!open) {
       clearMembershipApplicationPending();
+      clearMembershipSignupDraftUserId();
       setFlowState(INITIAL_STATE);
       setCharteredUploadedFiles({});
       resetNricCheckState();
@@ -3427,6 +3461,61 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     });
   };
 
+  const applyImageNricVerificationFailure = (message) => {
+    const failureState = getNricFailureState(message);
+    if (
+      isQuestionnaireNricEligiblePath(flowState)
+      && shouldKeepQuestionnaireNricOnUploadStep(failureState)
+    ) {
+      setNricAiError(failureState.summary);
+      setNricAiFailureReason(failureState.reason);
+      setNricAiFailureMode(failureState.mode);
+      return;
+    }
+    if (isQuestionnaireNricEligiblePath(flowState)) {
+      if (!isSgPrUnderCompanyPath(flowState)) {
+        setNricAiFailureReason(
+          failureState.reason
+          || String(message || '').trim()
+          || 'Could not extract a Singapore NRIC/FIN from the uploaded NRIC front image.'
+        );
+      }
+      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
+      return;
+    }
+    setNricAiError(failureState.summary);
+    setNricAiFailureReason(failureState.reason);
+    setNricAiFailureMode(failureState.mode);
+  };
+
+  const applyManualNricVerificationFailure = (message) => {
+    const failureState = getNricFailureState(message);
+    if (
+      isQuestionnaireNricEligiblePath(flowState)
+      && shouldKeepQuestionnaireNricOnUploadStep(failureState)
+    ) {
+      setNricManualError(failureState.reason || failureState.summary);
+      setNricAiFailureMode(failureState.mode);
+      return;
+    }
+    if (isQuestionnaireNricEligiblePath(flowState)) {
+      if (!isSgPrUnderCompanyPath(flowState)) {
+        setNricManualError(
+          failureState.reason
+          || String(message || '').trim()
+          || 'Could not validate the Singapore NRIC/FIN number.'
+        );
+      }
+      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
+      return;
+    }
+    setNricManualError(
+      failureState.reason
+      || String(message || '').trim()
+      || 'Manual NRIC verification failed. Please check your details and try again.'
+    );
+  };
+
   const getNricFailureState = (message) => {
     const fallbackSummary =
       'Verification failed. We could not identify a valid NRIC/FIN from the uploaded images. You can upload clearer images, continue with paid signup at SGD 900, or sign in if you already have an account.';
@@ -3508,13 +3597,16 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     }
 
     if (
-      normalized.includes('already verified this document')
+      normalized.includes('already registered')
+      || normalized.includes('already verified this document')
       || normalized.includes('already completed signup with this verified document')
       || (normalized.includes('please sign in') && normalized.includes('credentials'))
     ) {
       return {
-        summary: 'Verification already exists for this document.',
-        reason: 'You have already completed signup with this verified document. Please sign in with your credentials.',
+        summary: 'This NRIC/FIN number is already registered.',
+        reason:
+          rawMessage
+          || 'This NRIC/FIN number is already registered. Please sign in with your existing account.',
         mode: 'sign-in-only',
       };
     }
@@ -3547,10 +3639,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
     const verifiedNricIdType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
     const verifiedNricNameAsPerId = String(
-      response?.extracted?.fullName
+      response?.extracted?.nameAsPerId
+      || response?.extracted?.fullName
       || response?.extracted?.profile?.fullName
-      || response?.extracted?.nameAsPerId
       || ''
+    ).trim();
+    const parsedVerifiedName = parseSingaporeNricDisplayName(verifiedNricNameAsPerId);
+    const verifiedNricFirstName = String(
+      response?.extracted?.firstName || parsedVerifiedName.firstName || ''
+    ).trim();
+    const verifiedNricLastName = String(
+      response?.extracted?.lastName || parsedVerifiedName.lastName || ''
     ).trim();
     if (isQuestionnaireNricEligiblePath(flowState)) {
       setFlowState((prev) => ({
@@ -3559,6 +3658,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         verifiedNricFin,
         verifiedNricIdType,
         verifiedNricNameAsPerId,
+        verifiedNricFirstName,
+        verifiedNricLastName,
         nricUploadAcknowledged: true,
         nricSgPrCheckFailed: false,
         nricFailureProceedAcknowledged: false,
@@ -3571,9 +3672,20 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         verifiedNricFin,
         verifiedNricIdType,
         verifiedNricNameAsPerId,
+        verifiedNricFirstName,
+        verifiedNricLastName,
         nricUploadAcknowledged: true,
       }));
     }
+  };
+
+  const handleNricManualNameAsPerIdChange = (value) => {
+    const nextValue = String(value || '');
+    setNricManualNameAsPerId(nextValue);
+    const parsed = parseSingaporeNricDisplayName(nextValue);
+    setNricManualFirstName(parsed.firstName);
+    setNricManualLastName(parsed.lastName);
+    setNricManualError('');
   };
 
   const rejectNricNotCitizenOrPr = (message) => {
@@ -3612,20 +3724,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         backImage: nricBackImage,
       });
       if (!response?.verified) {
-        if (isQuestionnaireNricEligiblePath(flowState)) {
-          if (!isSgPrUnderCompanyPath(flowState)) {
-            setNricAiFailureReason(
-              String(response?.message || '').trim()
-              || 'Could not extract a Singapore NRIC/FIN from the uploaded NRIC front image.'
-            );
-          }
-          setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
-          return;
-        }
-        const failureState = getNricFailureState(response?.message);
-        setNricAiError(failureState.summary);
-        setNricAiFailureReason(failureState.reason);
-        setNricAiFailureMode(failureState.mode);
+        applyImageNricVerificationFailure(response?.message);
         return;
       }
       const idType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
@@ -3635,20 +3734,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       }
       applyNricVerificationSuccess(response);
     } catch (error) {
-      if (isQuestionnaireNricEligiblePath(flowState)) {
-        if (!isSgPrUnderCompanyPath(flowState)) {
-          setNricAiFailureReason(
-            String(error?.message || '').trim()
-            || 'Could not extract a Singapore NRIC/FIN from the uploaded NRIC front image.'
-          );
-        }
-        setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
-        return;
-      }
-      const failureState = getNricFailureState(error?.message);
-      setNricAiError(failureState.summary);
-      setNricAiFailureReason(failureState.reason);
-      setNricAiFailureMode(failureState.mode);
+      applyImageNricVerificationFailure(error?.message);
     } finally {
       setNricAiChecking(false);
     }
@@ -3656,11 +3742,23 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
 
   const runNricManualCheck = async () => {
     const identifier = String(nricManualIdentifier || '').trim();
-    const fullName = String(nricManualFullName || '').trim();
+    const nameAsPerId = String(nricManualNameAsPerId || '').trim();
+    const parsedName = parseSingaporeNricDisplayName(nameAsPerId);
+    const firstName = String(nricManualFirstName || parsedName.firstName || '').trim();
+    const lastName = String(nricManualLastName || parsedName.lastName || '').trim();
+    const nationality = String(nricManualNationality || '').trim();
+    const selectedIdType = String(nricManualIdType || '').trim();
     const dateOfBirth = String(nricManualDateOfBirth || '').trim();
 
-    if (!identifier || !fullName || !dateOfBirth) {
-      setNricManualError('Please enter NRIC/FIN number, full name, and date of birth.');
+    if (!identifier || !nameAsPerId || !dateOfBirth) {
+      setNricManualError('Please enter NRIC/FIN number, name as per ID, and date of birth.');
+      return;
+    }
+
+    if (!firstName || !lastName) {
+      setNricManualError(
+        'Please enter name as per ID in the same format shown on your NRIC (surname first).'
+      );
       return;
     }
 
@@ -3687,7 +3785,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     try {
       const response = await verifyNricManual({
         identifier,
-        fullName,
+        nameAsPerId,
+        firstName,
+        lastName,
+        nationality,
+        idType: selectedIdType,
         dateOfBirth: dayjs(dateOfBirth).format('YYYY-MM-DD'),
       });
       if (!response?.verified) {
@@ -3697,27 +3799,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         );
         return;
       }
-      const idType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
-      if (isQuestionnaireNricEligiblePath(flowState) && !idType) {
+      const resolvedIdType = resolveSalesforceIdTypeFromExtracted(response?.extracted || {});
+      if (isQuestionnaireNricEligiblePath(flowState) && !resolvedIdType) {
         rejectNricNotCitizenOrPr();
         return;
       }
       applyNricVerificationSuccess(response);
     } catch (error) {
-      if (isQuestionnaireNricEligiblePath(flowState)) {
-        if (!isSgPrUnderCompanyPath(flowState)) {
-          setNricManualError(
-            String(error?.message || '').trim()
-            || 'Could not validate the Singapore NRIC/FIN number.'
-          );
-        }
-        setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
-        return;
-      }
-      setNricManualError(
-        String(error?.message || '').trim()
-        || 'Manual NRIC verification failed. Please check your details and try again.'
-      );
+      applyManualNricVerificationFailure(error?.message);
     } finally {
       setNricManualChecking(false);
     }
@@ -5252,6 +5341,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           verifiedNricFin: '',
           verifiedNricIdType: '',
           verifiedNricNameAsPerId: '',
+          verifiedNricFirstName: '',
+          verifiedNricLastName: '',
           nricUploadAcknowledged: false,
           salesforceMembershipAccountCreated: false,
         }));
@@ -6848,18 +6939,87 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
 
                   <Stack spacing={0.75}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      Full name (as on NRIC)
+                      ID type
+                    </Typography>
+                    <TextField
+                      select
+                      value={nricManualIdType}
+                      onChange={(event) => {
+                        setNricManualIdType(event.target.value);
+                        setNricManualError('');
+                      }}
+                      fullWidth
+                      size="small"
+                      helperText="Leave as auto-detect unless you want to choose Blue or Pink NRIC."
+                    >
+                      <MenuItem value="">Auto-detect</MenuItem>
+                      <MenuItem value={SALESFORCE_ID_TYPE_BLUE}>{SALESFORCE_ID_TYPE_BLUE}</MenuItem>
+                      <MenuItem value={SALESFORCE_ID_TYPE_PINK}>{SALESFORCE_ID_TYPE_PINK}</MenuItem>
+                    </TextField>
+                  </Stack>
+
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Nationality (optional)
+                    </Typography>
+                    <TextField
+                      placeholder="e.g. Malaysian"
+                      value={nricManualNationality}
+                      onChange={(event) => {
+                        setNricManualNationality(event.target.value);
+                        setNricManualError('');
+                      }}
+                      fullWidth
+                      size="small"
+                      helperText="Optional reference only. ID type is chosen from the dropdown or NRIC prefix."
+                    />
+                  </Stack>
+
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Name as per ID
                     </Typography>
                   <TextField
-                    placeholder="Enter your full name"
-                    value={nricManualFullName}
-                    onChange={(event) => {
-                      setNricManualFullName(event.target.value);
-                      setNricManualError('');
-                    }}
+                    placeholder="e.g. LIU XIANLONG, EDMUND"
+                    value={nricManualNameAsPerId}
+                    onChange={(event) => handleNricManualNameAsPerIdChange(event.target.value)}
                     fullWidth
                     size="small"
+                    InputProps={{ style: { textTransform: 'uppercase' } }}
                   />
+                  </Stack>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Stack spacing={0.75} sx={{ flex: 1 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        First name
+                      </Typography>
+                      <TextField
+                        placeholder="Given name(s)"
+                        value={nricManualFirstName}
+                        onChange={(event) => {
+                          setNricManualFirstName(event.target.value);
+                          setNricManualError('');
+                        }}
+                        fullWidth
+                        size="small"
+                      />
+                    </Stack>
+                    <Stack spacing={0.75} sx={{ flex: 1 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        Last name
+                      </Typography>
+                      <TextField
+                        placeholder="Surname"
+                        value={nricManualLastName}
+                        onChange={(event) => {
+                          setNricManualLastName(event.target.value);
+                          setNricManualError('');
+                        }}
+                        fullWidth
+                        size="small"
+                      />
+                    </Stack>
                   </Stack>
 
                   <Stack spacing={0.75}>
@@ -6905,6 +7065,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                   </Stack>
                   {!!nricManualError && (
                     <Alert severity="error">{nricManualError}</Alert>
+                  )}
+                  {isQuestionnaireSgPrPath(flowState) && nricAiFailureMode === 'sign-in-only' && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                      <Button variant="contained" onClick={continueToSignInAfterNricFailure}>
+                        Sign in
+                      </Button>
+                    </Stack>
                   )}
                 </Stack>
                 )}
@@ -6953,7 +7120,13 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                       </Stack>
                     </Stack>
 
-                    {!isQuestionnaireSgPrPath(flowState) && (
+                    {isQuestionnaireSgPrPath(flowState) && nricAiFailureMode === 'sign-in-only' ? (
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                          <Button variant="contained" onClick={continueToSignInAfterNricFailure}>
+                            Sign in
+                          </Button>
+                        </Stack>
+                      ) : !isQuestionnaireSgPrPath(flowState) && (
                       nricAiFailureMode === 'sign-in-only' ? (
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
                           <Button variant="contained" onClick={continueToSignInAfterNricFailure}>
@@ -8595,7 +8768,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             membershipOutcome={result.outcome}
             draftUserId={
               typeof window !== 'undefined'
-                ? sessionStorage.getItem('membershipDraftUserId') || ''
+                ? getMembershipSignupDraftUserId()
                 : ''
             }
             onAccountCreated={markSalesforceMembershipAccountCreated}
@@ -8608,6 +8781,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                 : undefined
             }
             onLoginWithSalesforce={handleSalesforceLogin}
+            hideLoginButton={shouldUseNricVerifiedSalesforceCreateStep(flowState)}
           />
         )}
         {step === 'result' && (

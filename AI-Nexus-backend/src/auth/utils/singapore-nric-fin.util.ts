@@ -39,6 +39,135 @@ export function resolveSalesforceIdTypeFromPrefix(prefix: string): SalesforceNri
   return null;
 }
 
+/** Resolve id_type from AI/user hints — not from NRIC prefix. */
+export function resolveSalesforceIdTypeForNricNumber(
+  nricNumber: string,
+  fallback?: {
+    cardColor?: string;
+    nationality?: string;
+    explicitIdType?: string;
+  },
+): SalesforceNricIdType {
+  const explicitIdType = String(fallback?.explicitIdType || '').trim();
+  if (explicitIdType === 'Blue NRIC' || explicitIdType === 'Pink NRIC') {
+    return explicitIdType;
+  }
+
+  return resolveSalesforceIdTypeByCardColorOrNationality({
+    cardColor: fallback?.cardColor,
+    nationality: fallback?.nationality,
+  });
+}
+
+function normalizeCardColor(value?: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ');
+}
+
+function normalizeNationality(value?: string): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+}
+
+export function isSingaporeNationality(value?: string): boolean {
+  const normalized = normalizeNationality(value);
+  if (!normalized) return false;
+  return normalized === 'SG' || normalized.includes('SINGAPORE');
+}
+
+/** Non-empty nationality that is not Singapore-related (PR hint on NRIC). */
+export function indicatesForeignNationality(value?: string): boolean {
+  const normalized = normalizeNationality(value);
+  if (!normalized) return false;
+  return !isSingaporeNationality(normalized);
+}
+
+/**
+ * Resolve Salesforce `id_type` from AI-detected card color and nationality.
+ * 1) Card color (`blue`/`pink`)
+ * 2) Foreign nationality => Pink; Singapore nationality => Blue
+ * 3) Default Blue NRIC
+ */
+export function resolveSalesforceIdTypeByCardColorOrNationality(params: {
+  cardColor?: string;
+  nationality?: string;
+}): SalesforceNricIdType {
+  const cardColor = normalizeCardColor(params.cardColor);
+  if (cardColor.includes('pink')) {
+    return 'Pink NRIC';
+  }
+  if (cardColor.includes('blue')) {
+    return 'Blue NRIC';
+  }
+
+  if (isSingaporeNationality(params.nationality)) {
+    return 'Blue NRIC';
+  }
+
+  if (indicatesForeignNationality(params.nationality)) {
+    return 'Pink NRIC';
+  }
+
+  return 'Blue NRIC';
+}
+
+/** Plain-language messages for NRIC/FIN validation shown to end users. */
+export const SINGAPORE_NRIC_FIN_USER_MESSAGES = {
+  invalidFormat:
+    'The NRIC/FIN number format is not valid. It should be one letter (S, T, F, G, or M), followed by 7 digits and a final letter — for example, S1234567A.',
+  invalidChecksum:
+    'The NRIC/FIN number does not appear to be valid. Please check that it matches your card exactly. If it was read from a photo, go back and verify your NRIC again with a clearer image.',
+  missingIdDetails:
+    'Your NRIC type and NRIC/FIN number are both required to create your account.',
+  invalidIdType:
+    'Please select Blue NRIC (Singapore citizen) or Pink NRIC (permanent resident).',
+  idTypeMismatch:
+    'The NRIC number and card type do not match. Please go back and verify your NRIC again, or check that Blue/Pink NRIC is selected correctly.',
+} as const;
+
+/** Maps technical NRIC/FIN API errors to user-friendly text. */
+export function mapSingaporeNricFinUserErrorMessage(description: string): string {
+  const text = String(description || '').trim();
+  const lower = text.toLowerCase();
+
+  if (!text) {
+    return text;
+  }
+
+  if (
+    lower.includes('checksum')
+    || lower.includes('failed checksum validation')
+    || lower.includes('invalid singapore nric/fin checksum')
+  ) {
+    return SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum;
+  }
+
+  if (
+    lower.includes('invalid singapore nric/fin format')
+    || (lower.includes('invalid') && lower.includes('format') && lower.includes('nric'))
+  ) {
+    return SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat;
+  }
+
+  if (lower.includes('does not match') && (lower.includes('id_type') || lower.includes('id type'))) {
+    return SINGAPORE_NRIC_FIN_USER_MESSAGES.idTypeMismatch;
+  }
+
+  if (lower.includes('both id_type and id_number are required')) {
+    return SINGAPORE_NRIC_FIN_USER_MESSAGES.missingIdDetails;
+  }
+
+  if (lower.includes('id_type must be') && lower.includes('nric')) {
+    return SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidIdType;
+  }
+
+  return text;
+}
+
 export interface SingaporeNricFinValidationResult {
   normalized: string;
   prefix: SingaporeDocumentPrefix;
@@ -154,6 +283,57 @@ export function normalizeSingaporeNricFin(value: string): string {
 export function maskSingaporeNricFin(normalized: string): string {
   if (normalized.length !== 9) return normalized;
   return `${normalized[0]}****${normalized.slice(-4)}`;
+}
+
+export interface ParsedSingaporeNricDisplayName {
+  /** Given name(s) for form fields — no commas or punctuation. */
+  firstname: string;
+  /** Surname / family name — first token on a Singapore NRIC. */
+  lastname: string;
+  /** Full name for `name_as_per_id` (surname first, as printed on card). */
+  nameAsPerId: string;
+}
+
+function sanitizeSingaporeNricFormNamePart(value: string): string {
+  return String(value || '')
+    .replace(/[,.\-']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Splits a Singapore NRIC printed name into Western form fields.
+ * NRIC format is `SURNAME GIVEN NAME(S)` e.g. `LIU XIANLONG, EDMUND` → lastname `LIU`, firstname `XIANLONG EDMUND`.
+ */
+export function parseSingaporeNricDisplayName(fullName: string): ParsedSingaporeNricDisplayName {
+  const cleaned = String(fullName || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+
+  if (!cleaned) {
+    return { firstname: '', lastname: '', nameAsPerId: '' };
+  }
+
+  const parts = cleaned.split(' ').filter(Boolean);
+  if (parts.length === 1) {
+    const lastname = sanitizeSingaporeNricFormNamePart(parts[0]);
+    return { firstname: '', lastname, nameAsPerId: parts[0] };
+  }
+
+  const lastname = sanitizeSingaporeNricFormNamePart(parts[0]);
+  const givenNamesOnCard = parts
+    .slice(1)
+    .join(' ')
+    .replace(/\s*,\s*/g, ', ')
+    .trim();
+  const firstname = sanitizeSingaporeNricFormNamePart(givenNamesOnCard);
+
+  return {
+    firstname,
+    lastname,
+    nameAsPerId: `${parts[0]} ${givenNamesOnCard}`.trim(),
+  };
 }
 
 /**

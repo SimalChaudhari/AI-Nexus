@@ -520,6 +520,39 @@ export class MembershipApplicationController {
     });
   }
 
+  @Post('nric-login')
+  @ApiOperation({
+    summary: 'When userinfonexus has NRIC_Number, sync platform user and return access token',
+  })
+  @ApiBody({ type: MembershipApplicationSocialTokenDto })
+  async loginIfNricNumberPresent(
+    @Res() response: Response,
+    @Body() dto: MembershipApplicationSocialTokenDto,
+  ) {
+    const result = await this.oauthAuthService.resolveNricNumberLoginFromSocialToken(
+      dto.socialAccessToken,
+    );
+
+    if (!result.hasNricNumber) {
+      return response.status(HttpStatus.OK).json({
+        success: true,
+        hasNricNumber: false,
+        nricNumber: null,
+        message: 'NRIC_Number was not found in eServices.',
+        nexusUser: result.nexusInfo,
+      });
+    }
+
+    return response.status(HttpStatus.OK).json({
+      success: true,
+      hasNricNumber: true,
+      nricNumber: result.nricNumber,
+      message: 'NRIC account confirmed. Signing you in.',
+      accessToken: result.accessToken,
+      nexusUser: result.nexusInfo,
+    });
+  }
+
   @Post('billing')
   @ApiOperation({ summary: 'Submit membership application billing (createBillingNexus)' })
   @ApiBody({ type: CreateMembershipBillingDto })
