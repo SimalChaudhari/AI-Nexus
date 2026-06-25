@@ -20,6 +20,7 @@ import {
   SalesforceUserCheckEmailDto,
   SalesforceUserCheckNricDto,
   SetSalesforceNexusPasswordDto,
+  UpdateSalesforceNexusUserDto,
 } from './oauth-auth.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { SsoSyncService } from './sso-sync.service';
@@ -350,6 +351,26 @@ export class OAuthAuthController {
     return {
       success: true,
       ...result,
+    };
+  }
+
+  @Post('update-nexus-user')
+  @ApiOperation({ summary: 'Update existing eServices account with NRIC/citizenship (userupdateapinexus)' })
+  @ApiBody({ type: UpdateSalesforceNexusUserDto })
+  async updateNexusUser(@Body() dto: UpdateSalesforceNexusUserDto) {
+    const salesforce = await this.oauthAuthService.updateSalesforceNexusUser({
+      accountId: dto.accountId,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      nationality: dto.nationality,
+      nricNumber: dto.nricNumber,
+      idType: dto.idType,
+    });
+    await this.oauthAuthService.markSalesforceAccountAsAiNexusUser(dto.accountId);
+    return {
+      success: true,
+      message: 'Salesforce account updated successfully.',
+      salesforce,
     };
   }
 

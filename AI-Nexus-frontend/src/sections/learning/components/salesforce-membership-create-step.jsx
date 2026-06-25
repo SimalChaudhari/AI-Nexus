@@ -11,6 +11,7 @@ import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 import LoadingButton from '@mui/lab/LoadingButton';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -30,6 +31,8 @@ import {
   setSalesforceNexusPassword,
   saveSalesforceMembershipRecord,
   checkSalesforceUserByEmail,
+  checkSalesforceUserByNric,
+  updateSalesforceNexusUser,
 } from 'src/auth/context/jwt';
 
 // ----------------------------------------------------------------------
@@ -195,6 +198,10 @@ function isQuestionnaireSgPrFlow(state) {
 export function shouldUseNricVerifiedSalesforceCreateStep(state) {
   if (!state || state.salesforceMembershipAccountCreated) return false;
   if (state.salesforceExistingAccountFound) return false;
+  if (state.salesforceNexusUserUpdated) return false;
+  if (String(state.salesforcePendingAccountId || '').trim() && state.citizenshipRecordUpdated) {
+    return false;
+  }
   if (state.citizenshipUpdateMode) return false;
   if (state.isSingaporePr !== true || state.spPrVerified !== true) return false;
   if (!String(state.verifiedNricFin || '').trim()) return false;
@@ -217,11 +224,22 @@ export function shouldUseNricVerifiedSalesforceCreateStep(state) {
   return false;
 }
 
+/** Existing eServices account — update NRIC/citizenship after verification (citizenship gap flow). */
+export function shouldUseNricVerifiedSalesforceUpdateStep(state) {
+  if (!state || state.salesforceNexusUserUpdated) return false;
+  if (state.salesforceExistingAccountFound) return false;
+  if (!String(state.salesforcePendingAccountId || '').trim()) return false;
+  if (state.spPrVerified !== true) return false;
+  if (!String(state.verifiedNricFin || '').trim()) return false;
+  return state.citizenshipRecordUpdated === true;
+}
+
 /**
  * Whether the flow should show the dedicated Salesforce create-account step
  * (separate from the generic membership result / signup forms).
  */
 export function shouldUseSalesforceMembershipCreateStep(state) {
+  if (shouldUseNricVerifiedSalesforceUpdateStep(state)) return true;
   if (shouldUseNricVerifiedSalesforceCreateStep(state)) return true;
   if (!state || state.salesforceMembershipAccountCreated) return false;
   if (state.isIscaMember === true) return false;
@@ -1070,6 +1088,281 @@ export function SalesforceMembershipCreateStep({
             : 'Next you will set your Salesforce login password, then sign in to the platform.'}
         </Typography>
       )}
+    </Stack>
+  );
+}
+
+const NATIONALITY_OPTIONS = ['Singapore', 'Malaysia', 'India', 'China', 'Indonesia', 'Philippines', 'Other'];
+
+export function SalesforceNexusUserUpdateStep({
+  title,
+  summary,
+  flowState = null,
+  onUpdateComplete,
+  onLoginWithSalesforce,
+}) {
+  const theme = useTheme();
+  const fieldSize = 'medium';
+  const primary = theme.palette.primary;
+  const nricIdentity = useMemo(
+    () => resolveNricIdentityForSalesforceApi(flowState),
+    [flowState]
+  );
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    nationality: 'Singapore',
+    idType: SALESFORCE_ID_TYPE_BLUE,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [updated, setUpdated] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+
+  const accountId = String(flowState?.salesforcePendingAccountId || '').trim();
+  const email = String(flowState?.salesforcePendingAccountEmail || '').trim();
+  const nricNumber = String(nricIdentity?.idNumber || flowState?.verifiedNricFin || '').trim();
+
+  useEffect(() => {
+    const pendingFirst = String(flowState?.salesforcePendingAccountFirstName || '').trim();
+    const pendingLast = String(flowState?.salesforcePendingAccountLastName || '').trim();
+    const verifiedFirst = String(flowState?.verifiedNricFirstName || '').trim();
+    const verifiedLast = String(flowState?.verifiedNricLastName || '').trim();
+    const nationality = String(flowState?.verifiedNricNationality || 'Singapore').trim() || 'Singapore';
+    const idType =
+      String(nricIdentity?.idType || flowState?.verifiedNricIdType || SALESFORCE_ID_TYPE_BLUE).trim()
+      || SALESFORCE_ID_TYPE_BLUE;
+    setForm({
+      firstName: verifiedFirst || pendingFirst,
+      lastName: verifiedLast || pendingLast,
+      nationality,
+      idType,
+    });
+  }, [
+    flowState?.salesforcePendingAccountFirstName,
+    flowState?.salesforcePendingAccountLastName,
+    flowState?.verifiedNricFirstName,
+    flowState?.verifiedNricLastName,
+    flowState?.verifiedNricNationality,
+    flowState?.verifiedNricIdType,
+    nricIdentity?.idType,
+  ]);
+
+  const updateField = (field) => (event) => {
+    setForm((prev) => ({ ...prev, [field]: event.target.value }));
+    setError('');
+  };
+
+  const handleSubmit = async (event) => {
+    event?.preventDefault?.();
+    if (!accountId) {
+      setError('eServices account ID is missing. Please sign in with eServices and try again.');
+      return;
+    }
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      setError('Please enter your first and last name.');
+      return;
+    }
+    if (!nricNumber) {
+      setError('Verified NRIC number is missing. Please complete NRIC verification again.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const nricCheck = await checkSalesforceUserByNric(nricNumber);
+      if (nricCheck?.found) {
+        const pendingEmail = email.trim().toLowerCase();
+        const foundEmail = String(nricCheck.emailAddress || '').trim().toLowerCase();
+        if (foundEmail && pendingEmail && foundEmail !== pendingEmail) {
+          setError(
+            'An eServices account already exists for this NRIC. Please sign in with eServices instead of updating a different account.'
+          );
+          return;
+        }
+      }
+
+      await updateSalesforceNexusUser({
+        accountId,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        nationality: form.nationality.trim(),
+        nricNumber,
+        idType: form.idType.trim(),
+      });
+      if (onUpdateComplete) {
+        setSigningIn(true);
+        await onUpdateComplete();
+        return;
+      }
+      setUpdated(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update eServices account.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (signingIn) {
+    return (
+      <Stack spacing={2} alignItems="center" sx={{ py: 2 }}>
+        <CircularProgress size={28} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+          Account updated. Signing you in...
+        </Typography>
+      </Stack>
+    );
+  }
+
+  if (updated) {
+    return (
+      <Stack spacing={2}>
+        <Alert severity="success" icon={<Iconify icon="solar:verified-check-bold" width={22} />}>
+          Your eServices account has been updated with your NRIC and citizenship details.
+        </Alert>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+          Sign in with eServices to continue to the platform.
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+          <Button variant="contained" onClick={onLoginWithSalesforce}>
+            Login with Eservices
+          </Button>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack spacing={2} component="form" onSubmit={handleSubmit}>
+      {title ? (
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+      ) : null}
+      {summary ? (
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+          {summary}
+        </Typography>
+      ) : null}
+      <Alert severity="info">
+        NRIC verified. Review your details below and update your existing eServices account record.
+      </Alert>
+      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              label="Email address"
+              value={email}
+              fullWidth
+              size={fieldSize}
+              disabled
+              InputLabelProps={INPUT_LABEL_ABOVE}
+              helperText="From your eServices account"
+            />
+          </Grid>
+          {accountId ? (
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="eServices account ID"
+                value={`…${accountId.slice(-8)}`}
+                fullWidth
+                size={fieldSize}
+                disabled
+                InputLabelProps={INPUT_LABEL_ABOVE}
+              />
+            </Grid>
+          ) : null}
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="NRIC / FIN number"
+              value={nricNumber}
+              fullWidth
+              size={fieldSize}
+              disabled
+              InputLabelProps={INPUT_LABEL_ABOVE}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="First name"
+              value={form.firstName}
+              onChange={updateField('firstName')}
+              fullWidth
+              size={fieldSize}
+              required
+              disabled={submitting}
+              InputLabelProps={INPUT_LABEL_ABOVE}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="Last name"
+              value={form.lastName}
+              onChange={updateField('lastName')}
+              fullWidth
+              size={fieldSize}
+              required
+              disabled={submitting}
+              InputLabelProps={INPUT_LABEL_ABOVE}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              select
+              label="Nationality"
+              value={form.nationality}
+              onChange={updateField('nationality')}
+              fullWidth
+              size={fieldSize}
+              required
+              disabled={submitting}
+              InputLabelProps={INPUT_LABEL_ABOVE}
+              SelectProps={MEMBERSHIP_SELECT_MENU_PROPS}
+            >
+              {NATIONALITY_OPTIONS.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              select
+              label="ID type"
+              value={form.idType}
+              onChange={updateField('idType')}
+              fullWidth
+              size={fieldSize}
+              required
+              disabled={submitting}
+              InputLabelProps={INPUT_LABEL_ABOVE}
+              SelectProps={MEMBERSHIP_SELECT_MENU_PROPS}
+            >
+              <MenuItem value={SALESFORCE_ID_TYPE_BLUE}>{SALESFORCE_ID_TYPE_BLUE}</MenuItem>
+              <MenuItem value={SALESFORCE_ID_TYPE_PINK}>{SALESFORCE_ID_TYPE_PINK}</MenuItem>
+            </TextField>
+          </Grid>
+        </Grid>
+      </Paper>
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+        <LoadingButton
+          type="submit"
+          variant="contained"
+          color="primary"
+          size="large"
+          loading={submitting}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            px: 3,
+            boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
+          }}
+        >
+          Update eServices account
+        </LoadingButton>
+      </Stack>
     </Stack>
   );
 }

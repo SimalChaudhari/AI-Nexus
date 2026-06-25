@@ -280,6 +280,15 @@ function isPlainSignInSsoFlow(searchParams) {
   );
 }
 
+function resolveOAuthSocialToken(searchParams, exchangeResult, fallback = '') {
+  return String(
+    fallback
+    || exchangeResult?.socialAccessToken
+    || searchParams?.get('socialAccessToken')
+    || ''
+  ).trim();
+}
+
 /** Ensure cookie session exists after SSO when backend returned a deferred token. */
 async function ensureOAuthPlatformSession({
   searchParams,
@@ -355,8 +364,7 @@ async function redirectCitizenshipGapForNonEligibleLogin(
       return false;
     }
 
-    ensureCitizenshipGapFlowAfterEservicesFailure();
-    await endBlockedNonMemberSsoSession(token, checkUserSession);
+    ensureCitizenshipGapFlowAfterEservicesFailure({}, nexusInfo, { socialToken: token });
     const returnTo = resolvePostLoginPath(searchParams) || paths.home;
     redirectToCitizenshipGapMembershipModal(router, returnTo);
     return true;
@@ -390,8 +398,7 @@ async function rejectScaqAndRedirectToPaidSignup(
           returnTo = resolvePostLoginPath(options.searchParams) || '';
         }
 
-        ensureCitizenshipGapFlowAfterEservicesFailure();
-        await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
+        ensureCitizenshipGapFlowAfterEservicesFailure({}, nexusInfo, { socialToken });
         redirectToCitizenshipGapMembershipModal(router, returnTo || paths.home);
         return;
       }
@@ -576,8 +583,7 @@ async function handleIscaMemberSsoCheckAfterSso(
 
       const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
       if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
-        ensureCitizenshipGapFlowAfterEservicesFailure();
-        await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
+        ensureCitizenshipGapFlowAfterEservicesFailure({}, resolvedNexusInfo, { socialToken });
         redirectToCitizenshipGapMembershipModal(router, redirectTo);
         return true;
       }
@@ -614,8 +620,7 @@ async function handleIscaMemberSsoCheckAfterSso(
 
     const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
     if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
-      ensureCitizenshipGapFlowAfterEservicesFailure();
-      await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
+      ensureCitizenshipGapFlowAfterEservicesFailure({}, resolvedNexusInfo, { socialToken });
       redirectToCitizenshipGapMembershipModal(router, redirectTo);
       return true;
     }
@@ -796,7 +801,7 @@ export default function OAuthCallbackPage() {
               },
               payload: {
                 accountId: sf.accountId,
-                socialToken: searchParams.get('socialAccessToken') || '',
+                socialToken: resolveOAuthSocialToken(searchParams, exchangeResult),
                 pendingPlatformAccessToken: exchangeResult.accessToken || '',
               },
             }

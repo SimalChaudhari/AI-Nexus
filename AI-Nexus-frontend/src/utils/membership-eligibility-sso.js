@@ -16,6 +16,7 @@ import {
 import axios from 'src/utils/axios';
 import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
 import { paths } from 'src/routes/paths';
+import { buildCitizenshipGapPendingAccountFields } from 'src/utils/nexus-citizenship-eligibility';
 
 export const MEMBERSHIP_ELIGIBILITY_FLOW_KEY = 'membershipEligibilityFlow';
 export const ISCA_MEMBER_SSO_CHECK_PENDING_KEY = 'iscaMemberSsoCheckPending';
@@ -1260,7 +1261,15 @@ export function buildCitizenshipGapFlow(sourceFlow = {}) {
   };
 }
 
-export function ensureCitizenshipGapFlowAfterEservicesFailure(sourceFlow = {}) {
+export function readCitizenshipGapSocialToken(flow = {}) {
+  return String(flow?.citizenshipGapSocialToken || '').trim();
+}
+
+export function ensureCitizenshipGapFlowAfterEservicesFailure(
+  sourceFlow = {},
+  nexusInfo = null,
+  options = {},
+) {
   try {
     let parsed = {};
     let existingFlow = {};
@@ -1272,9 +1281,18 @@ export function ensureCitizenshipGapFlowAfterEservicesFailure(sourceFlow = {}) {
       }
     }
 
+    const pendingAccountFields =
+      nexusInfo && typeof nexusInfo === 'object'
+        ? buildCitizenshipGapPendingAccountFields(nexusInfo)
+        : {};
+
+    const socialToken = String(options.socialToken || '').trim();
+
     const updatedFlow = buildCitizenshipGapFlow({
       ...existingFlow,
       ...sourceFlow,
+      ...pendingAccountFields,
+      ...(socialToken ? { citizenshipGapSocialToken: socialToken } : {}),
     });
 
     sessionStorage.setItem(

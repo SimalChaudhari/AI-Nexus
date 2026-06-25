@@ -61,3 +61,29 @@ export class SalesforceUserCheckEmailDto {
   @IsNotEmpty()
   email!: string;
 }
+
+export class UpdateSalesforceNexusUserDto {
+  @IsString()
+  @IsNotEmpty()
+  accountId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  firstName!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  lastName!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  nationality!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  nricNumber!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  idType!: string;
+}

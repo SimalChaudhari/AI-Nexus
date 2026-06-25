@@ -47,6 +47,26 @@ export function extractIsAiNexusUserFromNexusUser(nexusInfo) {
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
+/** Account context from eServices userinfonexus — stored when non-member SSO is blocked. */
+export function extractSalesforceAccountContextFromNexusUser(nexusInfo) {
+  return {
+    accountId: readNexusField(nexusInfo, ['accountID', 'accountId']),
+    email: readNexusField(nexusInfo, ['email', 'username', 'Email_Address', 'emailAddress']),
+    firstName: readNexusField(nexusInfo, ['firstName', 'First_Name', 'given_name']),
+    lastName: readNexusField(nexusInfo, ['lastName', 'Last_Name', 'family_name']),
+  };
+}
+
+export function buildCitizenshipGapPendingAccountFields(nexusInfo) {
+  const ctx = extractSalesforceAccountContextFromNexusUser(nexusInfo);
+  return {
+    salesforcePendingAccountId: ctx.accountId || '',
+    salesforcePendingAccountEmail: ctx.email || '',
+    salesforcePendingAccountFirstName: ctx.firstName || '',
+    salesforcePendingAccountLastName: ctx.lastName || '',
+  };
+}
+
 /**
  * Non-members without Blue/Pink NRIC + NRIC on file should see the citizenship gap screen
  * instead of being sent straight to paid signup.

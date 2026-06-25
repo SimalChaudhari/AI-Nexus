@@ -38,7 +38,7 @@ import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_
 export function SimpleSignInView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { checkUserSession } = useAuthContext();
+  const { checkUserSession, authenticated } = useAuthContext();
   const membershipPaymentConfirmed = searchParams.get('membershipPaymentConfirmed') === '1';
   const returnTo = searchParams.get('returnTo') || '';
   const prefilledEmail = searchParams.get('email') || '';
@@ -73,6 +73,21 @@ export function SimpleSignInView() {
   }, [prefilledEmail, setValue]);
 
   useEffect(() => {
+    if (authenticated) {
+      if (
+        searchParams.get('membershipNotEligible') === '1'
+        || searchParams.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1'
+      ) {
+        clearMembershipEligibilityDraftOnModalClose();
+        const nextPath = stripResumeMembershipSignupFromPath(
+          `${window.location.pathname}${window.location.search || ''}`
+        );
+        router.replace(nextPath);
+      }
+      setSignupModalOpen(false);
+      return;
+    }
+
     if (searchParams.get('membershipNotEligible') === '1') {
       const resumed = readResumedMembershipEligibilityFlow();
       if (!resumed?.flow?.showCitizenshipRecordGap) {
@@ -96,7 +111,7 @@ export function SimpleSignInView() {
       return;
     }
     setSignupModalOpen(true);
-  }, [searchParams, router]);
+  }, [authenticated, searchParams, router]);
 
   useEffect(() => {
     if (!membershipPaymentConfirmed) return;

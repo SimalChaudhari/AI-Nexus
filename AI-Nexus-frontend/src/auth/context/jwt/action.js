@@ -655,6 +655,24 @@ export const checkSalesforceUserByEmail = async (email) => {
 };
 
 /** **************************************
+ * Membership flow: update existing Salesforce account with NRIC/citizenship
+ *************************************** */
+export const updateSalesforceNexusUser = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/update-nexus-user', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage
+      || error?.message
+      || (typeof error === 'string' ? error : 'Failed to update Salesforce account.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * Membership flow: set Salesforce password after account creation
  *************************************** */
 export const setSalesforceNexusPassword = async (payload) => {

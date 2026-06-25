@@ -52,6 +52,21 @@ export function HomeView() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
+    if (authenticated) {
+      if (
+        params.get('membershipNotEligible') === '1'
+        || params.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1'
+      ) {
+        clearMembershipEligibilityDraftOnModalClose();
+        const nextPath = stripResumeMembershipSignupFromPath(
+          `${location.pathname}${location.search || ''}`
+        );
+        navigate(nextPath, { replace: true });
+      }
+      setMembershipSignupOpen(false);
+      return;
+    }
+
     if (params.get('membershipNotEligible') === '1') {
       const resumed = readResumedMembershipEligibilityFlow();
       if (!resumed?.flow?.showCitizenshipRecordGap) {
@@ -75,7 +90,7 @@ export function HomeView() {
       }
       setMembershipSignupOpen(true);
     }
-  }, [location.search, location.pathname, navigate]);
+  }, [authenticated, location.search, location.pathname, navigate]);
 
   const handleOpenMembershipSignup = useCallback(() => {
     clearMembershipEligibilityDraftOnModalClose();

@@ -75,7 +75,12 @@ import {
   readQuestionnaireEservicesResumeFlow,
   isQuestionnaireEservicesMemberFallback,
   applyQuestionnaireIscaNonMemberFallback,
+  readCitizenshipGapSocialToken,
+  clearMembershipEligibilityDraftOnModalClose,
+  stripResumeMembershipSignupFromPath,
 } from 'src/utils/membership-eligibility-sso';
+import { tryCompleteNricNumberPlatformLogin } from 'src/utils/membership-application-ca';
+import { endEservicesSessionAfterBlockedLogin } from 'src/auth/context/jwt/idp-browser-logout';
 import { CITIZENSHIP_RECORD_GAP_MESSAGE } from 'src/utils/nexus-citizenship-eligibility';
 import {
   parseSingaporeNricDisplayName,
@@ -86,9 +91,11 @@ import {
 import { applyStudentMembershipEmailPrefillFromEligibilityFlow } from 'src/utils/student-membership-application-form';
 import {
   SalesforceMembershipCreateStep,
+  SalesforceNexusUserUpdateStep,
   isSalesforceMembershipCreateOutcomeKey,
   shouldUseSalesforceMembershipCreateStep,
   shouldUseNricVerifiedSalesforceCreateStep,
+  shouldUseNricVerifiedSalesforceUpdateStep,
 } from './salesforce-membership-create-step';
 import { HomePathwayCard } from './home-pathway-card';
 import {
@@ -359,6 +366,13 @@ const INITIAL_STATE = {
   showCitizenshipRecordGap: false,
   citizenshipUpdateMode: false,
   citizenshipRecordUpdated: false,
+  salesforcePendingAccountId: '',
+  salesforcePendingAccountEmail: '',
+  salesforcePendingAccountFirstName: '',
+  salesforcePendingAccountLastName: '',
+  citizenshipGapSocialToken: '',
+  verifiedNricNationality: '',
+  salesforceNexusUserUpdated: false,
   verifiedNricFin: '',
   verifiedNricIdType: '',
   verifiedNricNameAsPerId: '',
@@ -601,6 +615,11 @@ function isQuestionnaireSgPrPath(state) {
   );
 }
 
+/** SSO citizenship gap — update existing eServices account (not create). */
+function isCitizenshipGapAccountUpdateFlow(state) {
+  return Boolean(String(state?.salesforcePendingAccountId || '').trim());
+}
+
 function isSgPrUnderCompanyPath(state) {
   return isQuestionnaireSgPrPath(state) && state.companyRegistrationUnderCompany === true;
 }
@@ -715,11 +734,11 @@ function getNoYesNoQuestionnaireProgressMeta(step, state) {
 }
 
 function resolveNricVerifiedPostVerifyStep(state) {
-  if (state.citizenshipUpdateMode) {
-    return 'result';
-  }
   if (state.salesforceExistingAccountFound) {
     return 'result';
+  }
+  if (shouldUseNricVerifiedSalesforceUpdateStep(state)) {
+    return 'salesforce-nexus-user-update';
   }
   if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
     return 'salesforce-membership-create';
@@ -739,8 +758,15 @@ function getSalesforceExistingAccountOutcome(state) {
   };
 }
 
-/** After NRIC verify success, call Salesforce usercheckfornric before create-account step. */
+/** After NRIC verify success, call Salesforce usercheckfornric before create/update step. */
 function shouldRunSalesforceUserCheckAfterNricSuccess(state) {
+  if (isCitizenshipGapAccountUpdateFlow(state)) {
+    return (
+      state.isSingaporePr === true
+      && (state.citizenshipUpdateMode === true || state.citizenshipRecordUpdated === true)
+    );
+  }
+  if (String(state?.salesforcePendingAccountId || '').trim()) return false;
   if (!isQuestionnaireNricEligiblePath(state)) return false;
   if (state.isSingaporePr !== true) return false;
   if (
@@ -1198,12 +1224,26 @@ function getFlowStep(state) {
     return 'fee-waiver-choice';
   }
 
-  if (state.iscaMemberEservicesFallback === true && state.iscaMemberFailureAcknowledged !== true) {
-    return 'isca-membership-not-verified';
-  }
-
   if (state.showCitizenshipRecordGap === true) {
     return 'citizenship-record-gap';
+  }
+
+  if (
+    isCitizenshipGapAccountUpdateFlow(state)
+    && (state.citizenshipUpdateMode === true || state.citizenshipRecordUpdated === true)
+  ) {
+    if (state.spPrVerified !== true) {
+      return 'nric';
+    }
+    return resolveNricVerifiedPostVerifyStep(state);
+  }
+
+  if (
+    state.iscaMemberEservicesFallback === true
+    && state.iscaMemberFailureAcknowledged !== true
+    && !isCitizenshipGapAccountUpdateFlow(state)
+  ) {
+    return 'isca-membership-not-verified';
   }
 
   if (
@@ -1243,6 +1283,15 @@ function getFlowStep(state) {
   }
 
   if (isSgPrUnderCompanyPath(state)) {
+    if (
+      isCitizenshipGapAccountUpdateFlow(state)
+      && (state.citizenshipUpdateMode === true || state.citizenshipRecordUpdated === true)
+    ) {
+      if (state.spPrVerified !== true) {
+        return 'nric';
+      }
+      return resolveNricVerifiedPostVerifyStep(state);
+    }
     if (
       !state.companyReferenceRouteAbandoned
       && (
@@ -1551,6 +1600,9 @@ function getFlowStep(state) {
   if (state.eligibilityType === 'scaq-candidate' && state.scaqAssociateOptIn === false) {
     return 'retry-eligibility';
   }
+  if (shouldUseNricVerifiedSalesforceUpdateStep(state)) {
+    return 'salesforce-nexus-user-update';
+  }
   if (shouldUseSalesforceMembershipCreateStep(state)) {
     return 'salesforce-membership-create';
   }
@@ -1669,6 +1721,28 @@ function getOutcome(state) {
 
   if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
     return getNricVerifiedSalesforceCreateOutcome(state);
+  }
+
+  if (state.salesforceNexusUserUpdated && state.citizenshipRecordUpdated === true) {
+    return {
+      outcome: 'citizenship-updated-eservices-login',
+      title: 'Account updated',
+      summary:
+        'Your citizenship and NRIC details have been saved in eServices. Sign in to continue to the platform.',
+      ctaLabel: 'Login with Eservices',
+      actionTarget: 'salesforce',
+    };
+  }
+
+  if (shouldUseNricVerifiedSalesforceUpdateStep(state)) {
+    return {
+      outcome: 'citizenship-nric-update',
+      title: 'Update eServices account',
+      summary:
+        'NRIC verified. Review your account details and update your eServices record before signing in.',
+      ctaLabel: 'Continue',
+      actionTarget: 'close',
+    };
   }
 
   if (state.citizenshipRecordUpdated === true && state.spPrVerified === true) {
@@ -1908,6 +1982,7 @@ function getRequirementLabel(state, step) {
     'nric-company-fallback': 'Company reference registration',
     'isca-membership-not-verified': 'ISCA membership verification',
     'citizenship-record-gap': 'Citizenship information',
+    'salesforce-nexus-user-update': 'Update eServices account',
     nric: 'NRIC upload required for SP/PR verification',
     'membership-choice': 'Choose membership preference',
     'membership-fee': 'Membership fee and benefits information',
@@ -2763,6 +2838,64 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     });
   };
 
+  const endCitizenshipGapEservicesSession = async (flow = flowState) => {
+    const socialToken =
+      readCitizenshipGapSocialToken(flow)
+      || readCitizenshipGapSocialToken(readResumedMembershipEligibilityFlow()?.flow || {});
+    if (!socialToken) return;
+    try {
+      await endEservicesSessionAfterBlockedLogin(socialToken);
+    } catch {
+      // non-fatal — user is leaving the citizenship update path
+    }
+  };
+
+  const handleDismiss = async () => {
+    await endCitizenshipGapEservicesSession();
+    onClose?.();
+  };
+
+  /** After NRIC account update — sign in with preserved eServices token (no session kill). */
+  const completeCitizenshipUpdateAndAutoLogin = async () => {
+    const socialToken =
+      readCitizenshipGapSocialToken(flowState)
+      || readCitizenshipGapSocialToken(readResumedMembershipEligibilityFlow()?.flow || {});
+    const returnPath =
+      stripResumeMembershipSignupFromPath(
+        typeof window !== 'undefined'
+          ? `${window.location.pathname}${window.location.search || ''}`
+          : paths.home
+      ) || paths.home;
+
+    if (socialToken) {
+      try {
+        const login = await tryCompleteNricNumberPlatformLogin({
+          socialAccessToken: socialToken,
+          redirectTo: returnPath,
+        });
+        if (login.loggedIn) {
+          clearMembershipEligibilityDraftOnModalClose();
+          window.location.assign(login.redirectTo || returnPath);
+          return;
+        }
+      } catch {
+        // Fall through to eServices SSO redirect.
+      }
+    }
+
+    try {
+      sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, returnPath);
+      sessionStorage.removeItem(ISCA_MEMBER_SSO_CHECK_PENDING_KEY);
+      clearMembershipEligibilityDraftOnModalClose();
+    } catch {
+      // ignore
+    }
+    const returnTo = encodeURIComponent(returnPath);
+    window.location.assign(
+      `${paths.auth.oauth.start}?returnTo=${returnTo}&membershipOutcome=${encodeURIComponent('citizenship-updated-eservices-login')}`
+    );
+  };
+
   const handleStudentFeeWaiverEservicesLogin = () => {
     try {
       const courseReturn = `${window.location.pathname}${window.location.search || ''}`;
@@ -3147,7 +3280,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     }));
   };
 
-  const startFeeWaiverEligibilityCheck = () => {
+  const startFeeWaiverEligibilityCheck = async () => {
+    await endCitizenshipGapEservicesSession();
     setFlowState((prev) => ({
       ...INITIAL_STATE,
       signupEntrySource: prev.signupEntrySource || entrySource || '',
@@ -3157,7 +3291,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     resetNricCheckState();
   };
 
-  const handleSignUpWithoutFeeWaiver = () => {
+  const handleSignUpWithoutFeeWaiver = async () => {
+    await endCitizenshipGapEservicesSession();
     if (typeof onDeclineFeeWaiver === 'function') {
       onDeclineFeeWaiver();
       return;
@@ -3792,6 +3927,11 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     const verifiedNricLastName = String(
       response?.extracted?.lastName || parsedVerifiedName.lastName || ''
     ).trim();
+    const verifiedNricNationality = String(
+      response?.extracted?.nationality
+      || response?.extracted?.profile?.nationality
+      || ''
+    ).trim();
     const existingAccountFound = salesforceExistingAccount?.found === true;
     const salesforceAccountFields = existingAccountFound
       ? {
@@ -3817,6 +3957,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         verifiedNricNameAsPerId,
         verifiedNricFirstName,
         verifiedNricLastName,
+        verifiedNricNationality: verifiedNricNationality || prev.verifiedNricNationality || 'Singapore',
         nricUploadAcknowledged: true,
         nricSgPrCheckFailed: false,
         nricFailureProceedAcknowledged: false,
@@ -3834,6 +3975,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         verifiedNricNameAsPerId,
         verifiedNricFirstName,
         verifiedNricLastName,
+        verifiedNricNationality: verifiedNricNationality || prev.verifiedNricNationality || 'Singapore',
         nricUploadAcknowledged: true,
         citizenshipUpdateMode: false,
         citizenshipRecordUpdated: wasCitizenshipUpdate || prev.citizenshipRecordUpdated,
@@ -3852,15 +3994,25 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricSfAccountChecking(true);
     try {
       const sfCheck = await checkSalesforceUserByNric(verifiedNricFin);
-      const existingAccount = sfCheck?.found
-        ? {
-            found: true,
-            emailAddress: sfCheck.emailAddress || '',
-            firstName: sfCheck.firstName || '',
-            lastName: sfCheck.lastName || '',
-            membershipType: sfCheck.membershipType ?? null,
-          }
-        : null;
+      const pendingEmail = String(flowState.salesforcePendingAccountEmail || '').trim().toLowerCase();
+      const foundEmail = String(sfCheck?.emailAddress || '').trim().toLowerCase();
+      const isSameCitizenshipGapAccount =
+        isCitizenshipGapAccountUpdateFlow(flowState)
+        && sfCheck?.found
+        && pendingEmail
+        && foundEmail
+        && pendingEmail === foundEmail;
+
+      const existingAccount =
+        sfCheck?.found && !isSameCitizenshipGapAccount
+          ? {
+              found: true,
+              emailAddress: sfCheck.emailAddress || '',
+              firstName: sfCheck.firstName || '',
+              lastName: sfCheck.lastName || '',
+              membershipType: sfCheck.membershipType ?? null,
+            }
+          : null;
       applyNricVerificationSuccess(response, existingAccount);
     } catch (error) {
       const message =
@@ -4168,6 +4320,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       return;
     }
     if (value === 'skip-membership') {
+      void endCitizenshipGapEservicesSession();
       setFlowState((prev) => ({
         ...prev,
         wantsIscaMembership: false,
@@ -5712,10 +5865,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     }
   };
 
-  const handleDismiss = () => {
-    onClose?.();
-  };
-
   return (
     <Dialog
       open={open}
@@ -6458,7 +6607,10 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               <Button variant="outlined" onClick={startFeeWaiverEligibilityCheck}>
                 Check your eligibility for fee waiver
               </Button>
-              <Button variant="text" color="inherit" onClick={() => onClose?.()}>
+              <Button variant="text" color="inherit" onClick={async () => {
+                await endCitizenshipGapEservicesSession();
+                onClose?.();
+              }}>
                 Close
               </Button>
             </Stack>
@@ -8979,6 +9131,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           </Stack>
           );
         })()}
+        {step === 'salesforce-nexus-user-update'
+          && !flowState.salesforceExistingAccountFound
+          && shouldUseNricVerifiedSalesforceUpdateStep(flowState) && (
+          <SalesforceNexusUserUpdateStep
+            title={result.title}
+            summary={result.summary}
+            flowState={flowState}
+            onUpdateComplete={completeCitizenshipUpdateAndAutoLogin}
+            onLoginWithSalesforce={completeCitizenshipUpdateAndAutoLogin}
+          />
+        )}
         {step === 'salesforce-membership-create' && (
           <SalesforceMembershipCreateStep
             title={result.title}
@@ -9004,7 +9167,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             hideLoginButton={shouldUseNricVerifiedSalesforceCreateStep(flowState)}
           />
         )}
-        {step === 'result' && (
+        {step === 'result' && result.outcome !== 'citizenship-updated-eservices-login' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.75 }}>
               {(result.outcome === 'sp-pr-verified-login'
@@ -9238,7 +9401,8 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             </Button>
           </>
         )}
-        {step === 'result' && result.outcome !== 'student-fee-waiver' && result.actionTarget !== 'close' && (
+        {step === 'result' && result.outcome !== 'student-fee-waiver' && result.actionTarget !== 'close'
+          && result.outcome !== 'citizenship-updated-eservices-login' && (
           <Button
             variant="contained"
             color="primary"

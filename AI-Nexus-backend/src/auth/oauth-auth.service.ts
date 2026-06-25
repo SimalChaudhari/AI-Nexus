@@ -488,6 +488,91 @@ export class OAuthAuthService {
     }
   }
 
+  private get userUpdateNexusPath(): string {
+    const p = process.env.OAUTH_USER_UPDATE_NEXUS_PATH || '/services/apexrest/userupdateapinexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get userUpdateNexusUrl(): string {
+    const fullUrl = process.env.OAUTH_USER_UPDATE_NEXUS_URL?.trim();
+    if (fullUrl) return fullUrl.split('?')[0].replace(/\/$/, '');
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.userUpdateNexusPath}`;
+    return `${this.integrationApiBaseUrl}${this.userUpdateNexusPath}`;
+  }
+
+  /** PUT userupdateapinexus — update existing eServices account with NRIC/citizenship details. */
+  async updateSalesforceNexusUser(payload: {
+    accountId: string;
+    firstName: string;
+    lastName: string;
+    nationality: string;
+    nricNumber: string;
+    idType: string;
+  }): Promise<Record<string, unknown>> {
+    const accountId = payload.accountId?.trim();
+    const firstName = payload.firstName?.trim();
+    const lastName = payload.lastName?.trim();
+    const nationality = payload.nationality?.trim();
+    const nricNumber = payload.nricNumber?.trim().toUpperCase();
+    const idType = payload.idType?.trim();
+
+    if (!accountId) throw new BadRequestException('Salesforce accountId is required.');
+    if (!firstName || !lastName) {
+      throw new BadRequestException('First name and last name are required.');
+    }
+    if (!nationality) throw new BadRequestException('Nationality is required.');
+    if (!nricNumber) throw new BadRequestException('NRIC number is required.');
+    if (!idType) throw new BadRequestException('ID type is required.');
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.userUpdateNexusUrl;
+    const body = {
+      accountId,
+      firstName,
+      lastName,
+      nationality,
+      nricNumber,
+      idType,
+    };
+
+    console.log('[Salesforce] Updating Nexus user via Apex REST:', {
+      url,
+      accountId,
+      nricNumber,
+      idType,
+    });
+
+    try {
+      const res = await axios.put<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      console.log('[Salesforce] userupdateapinexus response status:', res.status);
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] userupdateapinexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const rawDescription = this.extractSalesforceErrorDescription(
+          err.response?.data,
+          err.message,
+        );
+        throw new BadRequestException(
+          rawDescription || 'Failed to update Salesforce account with NRIC details.',
+        );
+      }
+      throw err;
+    }
+  }
+
   private get setNexusPasswordPath(): string {
     const p = process.env.OAUTH_SET_PASSWORD_PATH || '/services/apexrest/setpasswordfornexus';
     return p.startsWith('/') ? p : `/${p}`;
