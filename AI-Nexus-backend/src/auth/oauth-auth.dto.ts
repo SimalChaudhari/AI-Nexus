@@ -1,5 +1,5 @@
 // src/auth/oauth-auth.dto.ts
-import { IsString, IsOptional, IsEmail } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsNotEmpty } from 'class-validator';
 
 export class OAuthExchangeDto {
   @IsString()
@@ -48,4 +48,16 @@ export class SetSalesforceNexusPasswordDto {
 
   @IsString()
   password!: string;
+}
+
+export class SalesforceUserCheckNricDto {
+  @IsString()
+  @IsNotEmpty()
+  nricNumber!: string;
+}
+
+export class SalesforceUserCheckEmailDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
 }

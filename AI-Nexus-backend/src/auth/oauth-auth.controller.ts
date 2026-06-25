@@ -17,6 +17,8 @@ import {
   CreateSalesforceNexusUserDto,
   EndEservicesSessionDto,
   OAuthExchangeDto,
+  SalesforceUserCheckEmailDto,
+  SalesforceUserCheckNricDto,
   SetSalesforceNexusPasswordDto,
 } from './oauth-auth.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
@@ -132,6 +134,10 @@ export class OAuthAuthController {
       req,
     });
 
+    if (!useDeferredAuth) {
+      await this.oauthAuthService.markSalesforceAccountAsAiNexusUser(user.salesforceAccountId);
+    }
+
     return {
       success: true,
       message: 'Authentication successful',
@@ -223,6 +229,10 @@ export class OAuthAuthController {
         deferredAuth: useDeferredAuth,
       });
 
+      if (!useDeferredAuth) {
+        await this.oauthAuthService.markSalesforceAccountAsAiNexusUser(user.salesforceAccountId);
+      }
+
       const redirectParams: Record<string, string> = {
         success: 'true',
         message: 'Logged in successfully',
@@ -307,6 +317,28 @@ export class OAuthAuthController {
       success: true,
       message: 'Salesforce password set successfully. You can now sign in.',
       salesforce,
+    };
+  }
+
+  @Post('salesforce-user-check-nric')
+  @ApiOperation({ summary: 'Check if an eServices account already exists for NRIC (usercheckfornric)' })
+  @ApiBody({ type: SalesforceUserCheckNricDto })
+  async checkSalesforceUserByNric(@Body() dto: SalesforceUserCheckNricDto) {
+    const result = await this.oauthAuthService.checkSalesforceUserByNric(dto.nricNumber);
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
+  @Post('salesforce-user-check-email')
+  @ApiOperation({ summary: 'Check if an eServices account already exists for email (usercheckforemail)' })
+  @ApiBody({ type: SalesforceUserCheckEmailDto })
+  async checkSalesforceUserByEmail(@Body() dto: SalesforceUserCheckEmailDto) {
+    const result = await this.oauthAuthService.checkSalesforceUserByEmail(dto.email);
+    return {
+      success: true,
+      ...result,
     };
   }
 

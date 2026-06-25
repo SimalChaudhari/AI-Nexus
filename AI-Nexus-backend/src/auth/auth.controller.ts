@@ -9,6 +9,7 @@ import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express
 import { memoryStorage } from 'multer';
 import { SaveSalesforceMembershipRecordDto } from './save-salesforce-membership-record.dto';
 import { AuthTokenService } from './auth-token.service';
+import { OAuthAuthService } from './oauth-auth.service';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -16,6 +17,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly authTokenService: AuthTokenService,
+    private readonly oauthAuthService: OAuthAuthService,
   ) {}
 
   @Get('health')
@@ -118,6 +120,7 @@ export class AuthController {
     const { id } = this.authTokenService.verifyAccessToken(token);
     const user = await this.authService.getUserProfile(id);
     await this.authTokenService.issueTokenPair(user as any, res, { req });
+    await this.oauthAuthService.markSalesforceAccountAsAiNexusUser(user.salesforceAccountId);
     return { message: 'Session established', user };
   }
 

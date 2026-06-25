@@ -29,6 +29,7 @@ import {
   createSalesforceNexusUser,
   setSalesforceNexusPassword,
   saveSalesforceMembershipRecord,
+  checkSalesforceUserByEmail,
 } from 'src/auth/context/jwt';
 
 // ----------------------------------------------------------------------
@@ -193,12 +194,23 @@ function isQuestionnaireSgPrFlow(state) {
 /** NRIC image or manual verify succeeded — use in-modal SSO create-account (not simple signup). */
 export function shouldUseNricVerifiedSalesforceCreateStep(state) {
   if (!state || state.salesforceMembershipAccountCreated) return false;
+  if (state.salesforceExistingAccountFound) return false;
   if (state.citizenshipUpdateMode) return false;
   if (state.isSingaporePr !== true || state.spPrVerified !== true) return false;
   if (!String(state.verifiedNricFin || '').trim()) return false;
   if (state.feeWaiverViaCompanyReference) return false;
 
-  if (isQuestionnaireSgPrFlow(state)) return true;
+  if (isQuestionnaireSgPrFlow(state)) {
+    // No / Yes / Yes + company verified → corporate fee-waiver result, not in-modal create.
+    if (
+      state.companyRegistrationUnderCompany === true
+      && state.companyReferenceConfirmed === true
+      && !state.companyReferenceRouteAbandoned
+    ) {
+      return false;
+    }
+    return true;
+  }
 
   if (!state.initialQuestionnaireSubmitted && state.nricUploadAcknowledged) return true;
 
@@ -277,8 +289,11 @@ export function SalesforceMembershipCreateStep({
   const [nricIdType, setNricIdType] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [emailSfChecking, setEmailSfChecking] = useState(false);
+  const [emailSfError, setEmailSfError] = useState('');
   const showPassword = useBoolean();
   const showConfirmPassword = useBoolean();
+  const shouldCheckSalesforceEmail = isNricVerifiedFlow || isCorporateFlow;
 
   useEffect(() => {
     const email = String(defaultEmail || '').trim();
@@ -320,6 +335,46 @@ export function SalesforceMembershipCreateStep({
 
   const updateRegisterField = (field) => (event) => {
     setRegisterForm((prev) => ({ ...prev, [field]: event.target.value }));
+    if (field === 'email') {
+      setEmailSfError('');
+    }
+  };
+
+  const verifyEmailAvailableInSalesforce = async (email) => {
+    const trimmed = String(email || '').trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@')) {
+      return {
+        ok: false,
+        message: 'Please enter a valid email address.',
+      };
+    }
+    setEmailSfChecking(true);
+    setEmailSfError('');
+    try {
+      const result = await checkSalesforceUserByEmail(trimmed);
+      if (result?.found) {
+        const message =
+          'An eServices account already exists for this email address. Please sign in instead of creating a new account.';
+        setEmailSfError(message);
+        return { ok: false, message };
+      }
+      return { ok: true };
+    } catch (err) {
+      const message =
+        String(err?.message || '').trim()
+        || 'Could not verify email with eServices. Please try again.';
+      setEmailSfError(message);
+      return { ok: false, message };
+    } finally {
+      setEmailSfChecking(false);
+    }
+  };
+
+  const handleEmailBlur = async () => {
+    if (!shouldCheckSalesforceEmail) return;
+    const email = String(registerForm.email || '').trim();
+    if (!email) return;
+    await verifyEmailAvailableInSalesforce(email);
   };
 
   const updatePasswordField = (field) => (event) => {
@@ -336,6 +391,13 @@ export function SalesforceMembershipCreateStep({
     if (isCorporateFlow && !designation.trim()) {
       setError('Please enter your designation.');
       return;
+    }
+    if (shouldCheckSalesforceEmail) {
+      const emailCheck = await verifyEmailAvailableInSalesforce(email);
+      if (!emailCheck.ok) {
+        setError(emailCheck.message);
+        return;
+      }
     }
     setSubmitting(true);
     setError('');
@@ -734,15 +796,20 @@ export function SalesforceMembershipCreateStep({
                 type="email"
                 value={registerForm.email}
                 onChange={updateRegisterField('email')}
+                onBlur={handleEmailBlur}
                 fullWidth
                 size={fieldSize}
                 required
-                disabled={submitting}
+                disabled={submitting || emailSfChecking}
+                error={Boolean(emailSfError)}
                 InputLabelProps={INPUT_LABEL_ABOVE}
                 helperText={
-                  isCorporateFlow
-                    ? 'We will check if a Salesforce account already exists for this email before creating a new account.'
-                    : 'Used as your Salesforce username if not assigned separately.'
+                  emailSfError
+                  || (shouldCheckSalesforceEmail
+                    ? emailSfChecking
+                      ? 'Checking eServices for an existing account with this email...'
+                      : 'We will check if an eServices account already exists for this email before creating a new account.'
+                    : 'Used as your Salesforce username if not assigned separately.')
                 }
               />
             </Grid>

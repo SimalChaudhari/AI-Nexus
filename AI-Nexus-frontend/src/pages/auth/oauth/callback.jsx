@@ -328,6 +328,42 @@ async function endBlockedNonMemberSsoSession(socialToken, checkUserSession) {
   await checkUserSession?.();
 }
 
+/**
+ * Non-member without Blue/Pink NRIC on file must not receive platform login
+ * (including when isSCAQCandidate is true).
+ * @returns {boolean} true when navigation was handled.
+ */
+async function redirectCitizenshipGapForNonEligibleLogin(
+  router,
+  checkUserSession,
+  searchParams,
+  socialToken = ''
+) {
+  const token = String(socialToken || searchParams?.get('socialAccessToken') || '').trim();
+  if (!token) return false;
+
+  try {
+    const nexusData = await fetchMembershipNexusUserInfo(token);
+    const nexusInfo = nexusData?.nexusUser || nexusData;
+
+    if (nexusData?.isApprovedMember === true || nexusData?.isCaMember === true) {
+      return false;
+    }
+
+    if (!shouldShowCitizenshipRecordGapScreen(nexusInfo)) {
+      return false;
+    }
+
+    ensureCitizenshipGapFlowAfterEservicesFailure();
+    await endBlockedNonMemberSsoSession(token, checkUserSession);
+    const returnTo = resolvePostLoginPath(searchParams) || paths.home;
+    redirectToCitizenshipGapMembershipModal(router, returnTo);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function rejectScaqAndRedirectToPaidSignup(
   router,
   checkUserSession,
@@ -419,6 +455,36 @@ async function handleNonScaqCandidateAfterSso(
   }
 ) {
   if (!shouldScaqRejectToPaidSignup(isSCAQCandidate, accountType)) {
+    if (isPlainSignInSsoFlow(searchParams)) {
+      const socialToken = payload?.socialToken;
+      if (
+        await redirectCitizenshipGapForNonEligibleLogin(
+          router,
+          checkUserSession,
+          searchParams,
+          socialToken
+        )
+      ) {
+        return true;
+      }
+
+      const loginResult = await tryCompleteIscaMemberSsoLogin({
+        socialToken: payload?.socialToken,
+        pendingPlatformAccessToken: payload?.pendingPlatformAccessToken,
+        searchParams,
+      });
+      if (loginResult.loggedIn) {
+        return true;
+      }
+
+      await rejectScaqAndRedirectToPaidSignup(router, checkUserSession, profile, {
+        socialToken: payload?.socialToken,
+        pendingPlatformAccessToken: payload?.pendingPlatformAccessToken,
+        searchParams,
+        skipStudentLoginAttempt: true,
+      });
+      return true;
+    }
     return false;
   }
 
@@ -666,6 +732,22 @@ export default function OAuthCallbackPage() {
 
           const { user } = exchangeResult;
           const sf = readSalesforceFlagsFromSessionUser(user);
+          const socialTokenFromExchange = String(
+            searchParams.get('socialAccessToken')
+            || user?.socialAccessToken
+            || ''
+          ).trim();
+
+          if (
+            await redirectCitizenshipGapForNonEligibleLogin(
+              router,
+              checkUserSession,
+              searchParams,
+              socialTokenFromExchange
+            )
+          ) {
+            return;
+          }
 
           if (studentMemberLoginFlow) {
             const studentLoginResult = await finishStudentMemberLoginTab(searchParams, {
@@ -826,15 +908,29 @@ export default function OAuthCallbackPage() {
           // keep callback query flags
         }
 
-        await ensureOAuthPlatformSession({
-          searchParams,
-          sf: sfBeforeSession,
-          pendingPlatformAccessToken:
-            searchParams.get('pendingPlatformAccessToken') || accessToken || '',
-          accessToken,
-        });
+        if (!isIscaMemberSsoCheckPending(searchParams)) {
+          const socialToken = searchParams.get('socialAccessToken') || '';
+          if (
+            await redirectCitizenshipGapForNonEligibleLogin(
+              router,
+              checkUserSession,
+              searchParams,
+              socialToken
+            )
+          ) {
+            return;
+          }
 
-        await checkUserSession?.();
+          await ensureOAuthPlatformSession({
+            searchParams,
+            sf: sfBeforeSession,
+            pendingPlatformAccessToken:
+              searchParams.get('pendingPlatformAccessToken') || accessToken || '',
+            accessToken,
+          });
+
+          await checkUserSession?.();
+        }
 
         if (isIscaMemberSsoCheckPending(searchParams)) {
           const handledIscaMemberCheck = await handleIscaMemberSsoCheckAfterSso(
@@ -900,6 +996,18 @@ export default function OAuthCallbackPage() {
         }
 
         const nextPath = resolvePostLoginPath(searchParams);
+
+        const socialToken = searchParams.get('socialAccessToken') || '';
+        if (
+          await redirectCitizenshipGapForNonEligibleLogin(
+            router,
+            checkUserSession,
+            searchParams,
+            socialToken
+          )
+        ) {
+          return;
+        }
 
         clearMembershipApplicationPending();
         clearMembershipEligibilitySessionStorage();

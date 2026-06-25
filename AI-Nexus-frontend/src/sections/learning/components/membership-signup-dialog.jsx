@@ -35,6 +35,7 @@ import {
   verifyNricImages,
   verifyNricManual,
   validateNricIdentifier,
+  checkSalesforceUserByNric,
   verifyStudentAcademicDetails,
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
   clearMembershipSignupDraftUserId,
@@ -661,6 +662,18 @@ function buildNoNoNoFlowFromFailedCompanyRoute(state) {
   };
 }
 
+/** No / Yes / Yes NRIC failed — continue as No / No / No (student / working professional). */
+function buildNoNoNoFlowFromNoYesYesNricFailure(state) {
+  return {
+    ...buildNoNoNoFlowFromFailedCompanyRoute(state),
+    isSingaporePr: false,
+    nricSgPrCheckFailed: false,
+    nricFailureProceedAcknowledged: false,
+    spPrVerified: null,
+    nricUploadAcknowledged: false,
+  };
+}
+
 /** No / Yes / No after NRIC verification fails — student or working-professional fallback. */
 function isNoYesNoNricFailedFallback(state) {
   return (
@@ -686,7 +699,9 @@ function isNoYesNoQuestionnaireProgressFlow(state) {
 
 function getNoYesNoQuestionnaireProgressMeta(step, state) {
   const steps = ['nric'];
-  if (shouldUseNricVerifiedSalesforceCreateStep(state) || state?.spPrVerified === true) {
+  if (state?.salesforceExistingAccountFound) {
+    steps.push('result');
+  } else if (shouldUseNricVerifiedSalesforceCreateStep(state) || state?.spPrVerified === true) {
     steps.push('salesforce-membership-create');
   } else {
     steps.push('result');
@@ -703,10 +718,39 @@ function resolveNricVerifiedPostVerifyStep(state) {
   if (state.citizenshipUpdateMode) {
     return 'result';
   }
+  if (state.salesforceExistingAccountFound) {
+    return 'result';
+  }
   if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
     return 'salesforce-membership-create';
   }
   return 'result';
+}
+
+function getSalesforceExistingAccountOutcome(state) {
+  const email = String(state?.salesforceExistingAccountEmail || '').trim();
+  const emailHint = email ? ` (${email})` : '';
+  return {
+    outcome: 'salesforce-existing-account-login',
+    title: 'Account already exists',
+    summary: `An eServices account is already linked to this NRIC${emailHint}. Please sign in to continue.`,
+    ctaLabel: 'Login with Eservices',
+    actionTarget: 'salesforce',
+  };
+}
+
+/** After NRIC verify success, call Salesforce usercheckfornric before create-account step. */
+function shouldRunSalesforceUserCheckAfterNricSuccess(state) {
+  if (!isQuestionnaireNricEligiblePath(state)) return false;
+  if (state.isSingaporePr !== true) return false;
+  if (
+    state.companyRegistrationUnderCompany === true
+    && state.companyReferenceConfirmed === true
+    && !state.companyReferenceRouteAbandoned
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function getNricVerifiedSalesforceCreateOutcome(state) {
@@ -1209,11 +1253,8 @@ function getFlowStep(state) {
     ) {
       return 'company-reference';
     }
-    if (state.nricSgPrCheckFailed && !state.feeWaiverViaCompanyReference) {
+    if (state.nricSgPrCheckFailed) {
       return 'nric-company-fallback';
-    }
-    if (state.feeWaiverViaCompanyReference) {
-      return 'result';
     }
     if (state.spPrVerified !== true) {
       return 'nric';
@@ -1620,6 +1661,10 @@ function getOutcome(state) {
 
   if (isCorporateFeeWaiverSignupResultPath(state) && !shouldUseNricVerifiedSalesforceCreateStep(state)) {
     return getCorporateFeeWaiverSignupOutcome();
+  }
+
+  if (state.salesforceExistingAccountFound) {
+    return getSalesforceExistingAccountOutcome(state);
   }
 
   if (shouldUseNricVerifiedSalesforceCreateStep(state)) {
@@ -2288,6 +2333,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   const [nricManualDateOfBirth, setNricManualDateOfBirth] = useState('');
   const [nricManualChecking, setNricManualChecking] = useState(false);
   const [nricManualError, setNricManualError] = useState('');
+  const [nricSfAccountChecking, setNricSfAccountChecking] = useState(false);
   const [nricManualIdentifierValid, setNricManualIdentifierValid] = useState(false);
   const [nricManualIdentifierValidating, setNricManualIdentifierValidating] = useState(false);
   const [nricManualIdentifierError, setNricManualIdentifierError] = useState('');
@@ -3051,13 +3097,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   };
 
   const proceedAfterNricVerificationFailure = () => {
+    if (isSgPrUnderCompanyPath(flowState)) {
+      resetNricCheckState();
+    }
     setFlowState((prev) => {
       if (isSgPrUnderCompanyPath(prev)) {
-        return {
-          ...prev,
-          feeWaiverViaCompanyReference: true,
-          nricSgPrCheckFailed: false,
-        };
+        return buildNoNoNoFlowFromNoYesYesNricFailure(prev);
       }
       return {
         ...prev,
@@ -3568,6 +3613,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       return;
     }
     if (isQuestionnaireNricEligiblePath(flowState)) {
+      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
       if (!isSgPrUnderCompanyPath(flowState)) {
         setNricAiFailureReason(
           failureState.reason
@@ -3575,7 +3621,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           || 'Could not extract a Singapore NRIC/FIN from the uploaded NRIC front image.'
         );
       }
-      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
       return;
     }
     setNricAiError(failureState.summary);
@@ -3594,6 +3639,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       return;
     }
     if (isQuestionnaireNricEligiblePath(flowState)) {
+      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
       if (!isSgPrUnderCompanyPath(flowState)) {
         setNricManualError(
           failureState.reason
@@ -3601,7 +3647,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           || 'Could not validate the Singapore NRIC/FIN number.'
         );
       }
-      setFlowState((prev) => applyQuestionnaireNricFailureState(prev));
       return;
     }
     setNricManualError(
@@ -3724,7 +3769,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricSignupAccessToken('');
   };
 
-  const applyNricVerificationSuccess = (response) => {
+  const applyNricVerificationSuccess = (response, salesforceExistingAccount = null) => {
     const wasCitizenshipUpdate = flowState.citizenshipUpdateMode === true;
     setNricSignupAccessToken(response?.signupAccessToken || '');
     setNricAiVerified(true);
@@ -3747,6 +3792,22 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     const verifiedNricLastName = String(
       response?.extracted?.lastName || parsedVerifiedName.lastName || ''
     ).trim();
+    const existingAccountFound = salesforceExistingAccount?.found === true;
+    const salesforceAccountFields = existingAccountFound
+      ? {
+          salesforceExistingAccountFound: true,
+          salesforceExistingAccountEmail: String(salesforceExistingAccount.emailAddress || '').trim(),
+          salesforceExistingAccountFirstName: String(salesforceExistingAccount.firstName || '').trim(),
+          salesforceExistingAccountLastName: String(salesforceExistingAccount.lastName || '').trim(),
+          salesforceExistingAccountMembershipType: salesforceExistingAccount.membershipType ?? null,
+        }
+      : {
+          salesforceExistingAccountFound: false,
+          salesforceExistingAccountEmail: '',
+          salesforceExistingAccountFirstName: '',
+          salesforceExistingAccountLastName: '',
+          salesforceExistingAccountMembershipType: null,
+        };
     if (isQuestionnaireNricEligiblePath(flowState)) {
       setFlowState((prev) => ({
         ...prev,
@@ -3762,6 +3823,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         feeWaiverViaCompanyReference: false,
         citizenshipUpdateMode: false,
         citizenshipRecordUpdated: wasCitizenshipUpdate || prev.citizenshipRecordUpdated,
+        ...salesforceAccountFields,
       }));
     } else {
       setFlowState((prev) => ({
@@ -3775,7 +3837,41 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         nricUploadAcknowledged: true,
         citizenshipUpdateMode: false,
         citizenshipRecordUpdated: wasCitizenshipUpdate || prev.citizenshipRecordUpdated,
+        ...salesforceAccountFields,
       }));
+    }
+  };
+
+  const completeNricVerificationAfterPlatformVerify = async (response) => {
+    const verifiedNricFin = String(response?.extracted?.identifier || '').trim();
+    if (!shouldRunSalesforceUserCheckAfterNricSuccess(flowState)) {
+      applyNricVerificationSuccess(response);
+      return;
+    }
+
+    setNricSfAccountChecking(true);
+    try {
+      const sfCheck = await checkSalesforceUserByNric(verifiedNricFin);
+      const existingAccount = sfCheck?.found
+        ? {
+            found: true,
+            emailAddress: sfCheck.emailAddress || '',
+            firstName: sfCheck.firstName || '',
+            lastName: sfCheck.lastName || '',
+            membershipType: sfCheck.membershipType ?? null,
+          }
+        : null;
+      applyNricVerificationSuccess(response, existingAccount);
+    } catch (error) {
+      const message =
+        String(error?.message || '').trim()
+        || 'Could not verify whether an eServices account already exists for this NRIC. Please try again.';
+      setNricAiVerified(false);
+      setNricSignupAccessToken('');
+      setNricAiError(message);
+      setNricManualError(message);
+    } finally {
+      setNricSfAccountChecking(false);
     }
   };
 
@@ -3832,7 +3928,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         rejectNricNotCitizenOrPr();
         return;
       }
-      applyNricVerificationSuccess(response);
+      await completeNricVerificationAfterPlatformVerify(response);
     } catch (error) {
       applyImageNricVerificationFailure(error?.message);
     } finally {
@@ -3904,7 +4000,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         rejectNricNotCitizenOrPr();
         return;
       }
-      applyNricVerificationSuccess(response);
+      await completeNricVerificationAfterPlatformVerify(response);
     } catch (error) {
       applyManualNricVerificationFailure(error?.message);
     } finally {
@@ -6894,7 +6990,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         )}
         {step === 'nric' && (
           <Stack spacing={1.25}>
-            {nricAiChecking || nricManualChecking ? (
+            {nricAiChecking || nricManualChecking || nricSfAccountChecking ? (
               <Stack spacing={1}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Verifying NRIC...
@@ -6997,9 +7093,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                     <Button
                       variant="contained"
                       onClick={runNricAiCheck}
-                      disabled={nricAiChecking}
+                      disabled={nricAiChecking || nricSfAccountChecking}
                     >
-                      {nricAiChecking ? 'Verifying...' : 'Run NRIC verification'}
+                      {nricAiChecking || nricSfAccountChecking ? 'Verifying...' : 'Run NRIC verification'}
                     </Button>
                     <Button variant="outlined" onClick={switchToNricManualMode}>
                       Verify manually
@@ -7174,9 +7270,14 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                     <Button
                       variant="contained"
                       onClick={runNricManualCheck}
-                      disabled={nricManualChecking || nricManualIdentifierValidating || !nricManualIdentifierValid}
+                      disabled={
+                        nricManualChecking
+                        || nricSfAccountChecking
+                        || nricManualIdentifierValidating
+                        || !nricManualIdentifierValid
+                      }
                     >
-                      {nricManualChecking ? 'Verifying...' : 'Verify NRIC manually'}
+                      {nricManualChecking || nricSfAccountChecking ? 'Verifying...' : 'Verify NRIC manually'}
                     </Button>
                     <Button variant="outlined" onClick={switchToNricImageMode}>
                       Back to image upload

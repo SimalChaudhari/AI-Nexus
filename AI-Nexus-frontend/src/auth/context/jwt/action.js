@@ -618,6 +618,42 @@ export const createSalesforceNexusUser = async (payload) => {
 };
 
 /** **************************************
+ * Membership flow: check if NRIC already exists in Salesforce eServices
+ *************************************** */
+export const checkSalesforceUserByNric = async (nricNumber) => {
+  try {
+    const res = await axios.post('/auth/oauth/salesforce-user-check-nric', { nricNumber });
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage
+      || error?.message
+      || (typeof error === 'string' ? error : 'Failed to check NRIC against eServices.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Membership flow: check if email already exists in Salesforce eServices
+ *************************************** */
+export const checkSalesforceUserByEmail = async (email) => {
+  try {
+    const res = await axios.post('/auth/oauth/salesforce-user-check-email', { email });
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage
+      || error?.message
+      || (typeof error === 'string' ? error : 'Failed to check email against eServices.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * Membership flow: set Salesforce password after account creation
  *************************************** */
 export const setSalesforceNexusPassword = async (payload) => {

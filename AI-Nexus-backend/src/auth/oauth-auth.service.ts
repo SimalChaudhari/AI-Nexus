@@ -263,6 +263,231 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.createNexusUserPath}`;
   }
 
+  private get userCheckForNricPath(): string {
+    const p = process.env.OAUTH_USER_CHECK_FOR_NRIC_PATH || '/services/apexrest/usercheckfornric';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  private get userCheckForEmailPath(): string {
+    const p = process.env.OAUTH_USER_CHECK_FOR_EMAIL_PATH || '/services/apexrest/usercheckforemail';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  buildUserCheckForNricUrl(nricNumber: string): string {
+    const fullUrl = process.env.OAUTH_USER_CHECK_FOR_NRIC_URL?.trim();
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    const base = fullUrl
+      ? fullUrl.split('?')[0].replace(/\/$/, '')
+      : siteBase
+        ? `${siteBase.replace(/\/$/, '')}${this.userCheckForNricPath}`
+        : `${this.baseUrl}${this.userCheckForNricPath}`;
+    const params = new URLSearchParams({ nricNumber: nricNumber.trim().toUpperCase() });
+    return `${base}?${params.toString()}`;
+  }
+
+  buildUserCheckForEmailUrl(email: string): string {
+    const fullUrl = process.env.OAUTH_USER_CHECK_FOR_EMAIL_URL?.trim();
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    const base = fullUrl
+      ? fullUrl.split('?')[0].replace(/\/$/, '')
+      : siteBase
+        ? `${siteBase.replace(/\/$/, '')}${this.userCheckForEmailPath}`
+        : `${this.baseUrl}${this.userCheckForEmailPath}`;
+    const params = new URLSearchParams({ email: email.trim().toLowerCase() });
+    return `${base}?${params.toString()}`;
+  }
+
+  /** PATCH accountupdate/ai-nexus-user — mark Salesforce account as an AI Nexus platform user. */
+  private get aiNexusUserAccountUpdatePath(): string {
+    const p =
+      process.env.OAUTH_AI_NEXUS_USER_ACCOUNT_UPDATE_PATH
+      || '/services/apexrest/accountupdate/ai-nexus-user';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get aiNexusUserAccountUpdateUrl(): string {
+    const fullUrl = process.env.OAUTH_AI_NEXUS_USER_ACCOUNT_UPDATE_URL?.trim();
+    if (fullUrl) return fullUrl.split('?')[0].replace(/\/$/, '');
+    return `${this.integrationApiBaseUrl}${this.aiNexusUserAccountUpdatePath}`;
+  }
+
+  /**
+   * Best-effort: set isAINexusUser=true on the Salesforce account after a successful platform login.
+   * Non-fatal — login must not fail if Salesforce rejects the update.
+   */
+  async markSalesforceAccountAsAiNexusUser(accountId: string | null | undefined): Promise<void> {
+    const normalizedAccountId = String(accountId || '').trim();
+    if (!normalizedAccountId) {
+      console.warn('[SSO Login] Skipping ai-nexus-user account update — missing accountId');
+      return;
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.aiNexusUserAccountUpdateUrl;
+    const body = { accountId: normalizedAccountId, isAINexusUser: true };
+
+    console.log('[SSO Login] PATCH accountupdate/ai-nexus-user:', {
+      url,
+      accountId: normalizedAccountId,
+    });
+
+    try {
+      const res = await axios.patch<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      console.log('[SSO Login] accountupdate/ai-nexus-user success:', {
+        status: res.status,
+        accountId: normalizedAccountId,
+      });
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[SSO Login] accountupdate/ai-nexus-user failed (non-fatal):', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+          accountId: normalizedAccountId,
+        });
+      } else {
+        console.error('[SSO Login] accountupdate/ai-nexus-user failed (non-fatal):', err);
+      }
+    }
+  }
+
+  private parseSalesforceUserCheckPayload(
+    data: Record<string, unknown> | null | undefined,
+  ): {
+    found: boolean;
+    membershipType: string | null;
+    firstName: string;
+    lastName: string;
+    emailAddress: string;
+  } {
+    const raw = data && typeof data === 'object' ? data : {};
+    const emailAddress = String(
+      raw.Email_Address ?? raw.emailAddress ?? raw.email ?? '',
+    ).trim();
+    const firstName = String(raw.First_Name ?? raw.firstName ?? '').trim();
+    const lastName = String(raw.Last_Name ?? raw.lastName ?? '').trim();
+    const membershipTypeRaw = raw.Membership_Type ?? raw.membershipType ?? null;
+    const membershipType =
+      membershipTypeRaw === null || membershipTypeRaw === undefined
+        ? null
+        : String(membershipTypeRaw).trim() || null;
+    const found = Boolean(emailAddress || (firstName && lastName));
+    return { found, membershipType, firstName, lastName, emailAddress };
+  }
+
+  /** GET usercheckfornric — returns existing eServices account for NRIC if present. */
+  async checkSalesforceUserByNric(nricNumber: string): Promise<{
+    found: boolean;
+    membershipType: string | null;
+    firstName: string;
+    lastName: string;
+    emailAddress: string;
+  }> {
+    const normalized = nricNumber?.trim().toUpperCase();
+    if (!normalized) {
+      throw new BadRequestException('NRIC number is required.');
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.buildUserCheckForNricUrl(normalized);
+    console.log('[Salesforce] usercheckfornric:', { url, nricNumber: normalized });
+
+    try {
+      const res = await axios.get<Record<string, unknown>>(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      const parsed = this.parseSalesforceUserCheckPayload(res.data);
+      console.log('[Salesforce] usercheckfornric result:', {
+        found: parsed.found,
+        emailAddress: parsed.emailAddress ? '[present]' : '',
+      });
+      return parsed;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        return this.parseSalesforceUserCheckPayload(null);
+      }
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] usercheckfornric failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const rawDescription = this.extractSalesforceErrorDescription(
+          err.response?.data,
+          err.message,
+        );
+        throw new BadRequestException(
+          rawDescription || 'Failed to check NRIC against eServices.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /** GET usercheckforemail — returns existing eServices account for email if present. */
+  async checkSalesforceUserByEmail(email: string): Promise<{
+    found: boolean;
+    membershipType: string | null;
+    firstName: string;
+    lastName: string;
+    emailAddress: string;
+  }> {
+    const normalized = email?.trim().toLowerCase();
+    if (!normalized) {
+      throw new BadRequestException('Email is required.');
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.buildUserCheckForEmailUrl(normalized);
+    console.log('[Salesforce] usercheckforemail:', { url, email: normalized });
+
+    try {
+      const res = await axios.get<Record<string, unknown>>(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      const parsed = this.parseSalesforceUserCheckPayload(res.data);
+      console.log('[Salesforce] usercheckforemail result:', {
+        found: parsed.found,
+        emailAddress: parsed.emailAddress ? '[present]' : '',
+      });
+      return parsed;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        return this.parseSalesforceUserCheckPayload(null);
+      }
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] usercheckforemail failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const rawDescription = this.extractSalesforceErrorDescription(
+          err.response?.data,
+          err.message,
+        );
+        throw new BadRequestException(
+          rawDescription || 'Failed to check email against eServices.',
+        );
+      }
+      throw err;
+    }
+  }
+
   private get setNexusPasswordPath(): string {
     const p = process.env.OAUTH_SET_PASSWORD_PATH || '/services/apexrest/setpasswordfornexus';
     return p.startsWith('/') ? p : `/${p}`;
@@ -2209,7 +2434,7 @@ export class OAuthAuthService {
     }
 
     const idpUserInfo = await this.getUserInfo(token);
-    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    const { accessToken } = await this.completeSuccessfulPlatformLogin(idpUserInfo, token);
     return { isCaMember: true, memberClass, nexusInfo, accessToken };
   }
 
@@ -2233,7 +2458,7 @@ export class OAuthAuthService {
     }
 
     const idpUserInfo = await this.getUserInfo(token);
-    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    const { accessToken } = await this.completeSuccessfulPlatformLogin(idpUserInfo, token);
     return {
       isApprovedMember: true,
       memberClass,
@@ -2278,7 +2503,7 @@ export class OAuthAuthService {
     }
 
     const idpUserInfo = await this.getUserInfo(token);
-    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    const { accessToken } = await this.completeSuccessfulPlatformLogin(idpUserInfo, token);
     return {
       hasNricNumber: true,
       loginAllowed: true,
@@ -2309,7 +2534,7 @@ export class OAuthAuthService {
     }
 
     const idpUserInfo = await this.getUserInfo(token);
-    const { accessToken } = await this.processOAuthAuthentication(idpUserInfo, token);
+    const { accessToken } = await this.completeSuccessfulPlatformLogin(idpUserInfo, token);
     return { isStudentMember: true, memberClass, nexusInfo, accessToken, membershipStatus };
   }
 
@@ -2485,6 +2710,20 @@ export class OAuthAuthService {
     }
 
     return { user, accessToken, isNewUser };
+  }
+
+  /**
+   * Persist platform user from SSO, then mark the Salesforce account as an AI Nexus user.
+   * Only call from code paths where application login has succeeded (not profile-only / blocked).
+   */
+  private async completeSuccessfulPlatformLogin(
+    idpUserInfo: IdPUserInfo,
+    idpAccessToken: string,
+    syncFn?: (userId: string) => Promise<unknown>,
+  ): Promise<ProcessOAuthResult> {
+    const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn);
+    await this.markSalesforceAccountAsAiNexusUser(result.user.salesforceAccountId);
+    return result;
   }
 
   /** Mask a token for safe logging (keep first 6 and last 4 chars only). */

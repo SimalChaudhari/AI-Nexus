@@ -62,7 +62,8 @@ export class UserService {
 
         const query = this.userRepository
             .createQueryBuilder('user')
-            .where('user.role != :adminRole', { adminRole: UserRole.Admin });
+            .where('user.role != :adminRole', { adminRole: UserRole.Admin })
+            .andWhere('user.isDraft = :isDraft', { isDraft: false });
 
         if (status) {
             query.andWhere('user.status = :status', { status });
@@ -103,7 +104,7 @@ export class UserService {
     }
 
     async findAllUsers(): Promise<UserEntity[]> {
-        return this.userRepository.find({ where: { role: UserRole.User } });
+        return this.userRepository.find({ where: { role: UserRole.User, isDraft: false } });
     }
 
     async getById(id: string): Promise<UserEntity> {
