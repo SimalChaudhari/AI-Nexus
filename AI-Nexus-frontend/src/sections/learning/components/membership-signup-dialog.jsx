@@ -900,6 +900,16 @@ function shouldEarlyCompanyReferenceStep(state) {
   return isQuestionnaireYesYesYesPath(state) || isQuestionnaireYesNoYesPath(state);
 }
 
+/** Initial company-reference screen — user may defer verification and continue the questionnaire. */
+function canSkipCompanyReferenceEntry(state) {
+  return (
+    state.companyReferenceVerified === null
+    && !state.companyReferenceRouteAbandoned
+    && !isHomeGetStartedFlow(state)
+    && shouldEarlyCompanyReferenceStep(state)
+  );
+}
+
 /** Questionnaire paths that use NRIC verification with Continue (not legacy paid/sign-in fallbacks). */
 function isQuestionnaireNricEligiblePath(state) {
   return isQuestionnaireSgPrPath(state) || isSgPrUnderCompanyPath(state);
@@ -2996,6 +3006,22 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       ...prev,
       companyReferenceConfirmed: true,
       companyReferenceRouteAbandoned: false,
+    }));
+  };
+
+  const skipCompanyReferenceForNow = () => {
+    resetNricCheckState();
+    setFlowState((prev) => ({
+      ...prev,
+      companyReferenceId: '',
+      companyReferenceVerified: null,
+      companyVerifiedName: '',
+      companyVerifiedIndustry: '',
+      companyReferenceConfirmed: null,
+      companyReferenceRouteAbandoned: true,
+      feeWaiverViaCompanyReference: false,
+      eServicesLoginCompleted: false,
+      iscaMemberVerificationPassed: null,
     }));
   };
 
@@ -6166,11 +6192,6 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                   fullWidth
                   disabled={flowState.companyReferenceConfirmed === true}
                 />
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                  <Button variant="contained" onClick={verifyCompanyReferenceId}>
-                    Verify
-                  </Button>
-                </Stack>
               </>
             ) : flowState.companyReferenceVerified === false ? (
               <Stack spacing={2}>
@@ -8957,6 +8978,43 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
             : { px: 3, pb: 2.5, pt: 1, justifyContent: 'flex-end', gap: 1 }
         }
       >
+        {step === 'company-reference'
+          && flowState.companyReferenceVerified === null
+          && canSkipCompanyReferenceEntry(flowState) && (
+          <>
+            <Button
+              variant="outlined"
+              color="inherit"
+              size="large"
+              onClick={skipCompanyReferenceForNow}
+              sx={{ minHeight: 46, textTransform: 'none', fontWeight: 600 }}
+            >
+              Skip for now
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              onClick={verifyCompanyReferenceId}
+              sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700, minWidth: 120 }}
+            >
+              Verify
+            </Button>
+          </>
+        )}
+        {step === 'company-reference'
+          && flowState.companyReferenceVerified === null
+          && !canSkipCompanyReferenceEntry(flowState) && (
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={verifyCompanyReferenceId}
+            sx={{ ...MEMBERSHIP_DIALOG_FOOTER_BUTTON_SX, fontWeight: 700 }}
+          >
+            Verify
+          </Button>
+        )}
         {step === 'company-reference'
           && isQuestionnaireYesYesYesPath(flowState)
           && flowState.companyReferenceVerified === false && (
