@@ -586,17 +586,18 @@ export const exchangeOAuthCode = async ({ code, state }) => {
       salesforce: data.salesforce,
     };
   }
-  const { user, accessToken, isNewUser } = data;
+  const { user, accessToken, isNewUser, socialAccessToken, requiresCitizenshipGap } = data;
   const normalizedUser = normalizeUserForSession(user);
-  if (accessToken) {
-    await establishPlatformSessionFromToken(accessToken);
-  } else if (normalizedUser) {
-    writeCachedUser(normalizedUser);
-  }
   if (!normalizedUser && !data.scaqProfileOnly) {
     throw new Error(data.message || 'SSO login failed.');
   }
-  return { user: normalizedUser, accessToken, isNewUser };
+  return {
+    user: normalizedUser,
+    accessToken,
+    isNewUser,
+    socialAccessToken,
+    requiresCitizenshipGap: requiresCitizenshipGap === true,
+  };
 };
 
 /** **************************************

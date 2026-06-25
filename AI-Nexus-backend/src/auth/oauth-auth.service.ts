@@ -2247,6 +2247,53 @@ export class OAuthAuthService {
     return !this.allowsSsoLoginWithoutScaqCandidate(user.isSCAQCandidate, user.salesforceAccountType);
   }
 
+  /**
+   * Non-members without Blue/Pink NRIC on file must not receive platform cookies until
+   * citizenship is updated (including when isSCAQCandidate is true).
+   */
+  requiresCitizenshipGapBeforePlatformLogin(
+    nexusInfo: SalesforceNexusUserInfo | null | undefined,
+  ): boolean {
+    if (!nexusInfo || typeof nexusInfo !== 'object') return false;
+
+    if (this.isApprovedSalesforceMember(nexusInfo)) return false;
+
+    const memberClass = String(nexusInfo.memberClass || '').trim();
+    const membershipStatus = String(nexusInfo.membershipStatus || '').trim();
+    if (
+      this.isSalesforceCaMemberClass(memberClass)
+      && this.isSalesforceMembershipStatusApproved(membershipStatus)
+    ) {
+      return false;
+    }
+
+    if (this.isSalesforceNexusMemberAccount(nexusInfo)) {
+      return false;
+    }
+
+    const nricNumber = this.extractNricNumberFromNexusInfo(nexusInfo);
+    const idType = this.extractIdTypeFromNexusInfo(nexusInfo);
+    const hasCitizenOrPrIdType = isSalesforceCitizenOrPrNricIdType(idType);
+
+    return !(nricNumber && hasCitizenOrPrIdType);
+  }
+
+  async resolveOAuthPlatformSessionDeferral(
+    user: Pick<UserEntity, 'isSCAQCandidate' | 'salesforceAccountType'>,
+    idpAccessToken: string,
+    deferredAuthFromState: boolean,
+  ): Promise<{
+    useDeferredAuth: boolean;
+    needsPaidSignup: boolean;
+    citizenshipGap: boolean;
+  }> {
+    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+    const needsPaidSignup = this.requiresPaidSignupAfterSso(user);
+    const citizenshipGap = this.requiresCitizenshipGapBeforePlatformLogin(nexusInfo);
+    const useDeferredAuth = deferredAuthFromState || needsPaidSignup || citizenshipGap;
+    return { useDeferredAuth, needsPaidSignup, citizenshipGap };
+  }
+
   /** True when Salesforce nexus userinfo reports Chartered Accountant (CA) member class. */
   isSalesforceCaMemberClass(memberClass: string | null | undefined): boolean {
     const normalized = String(memberClass || '').trim().toUpperCase();

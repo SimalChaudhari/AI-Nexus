@@ -127,8 +127,12 @@ export class OAuthAuthController {
     }
 
     const { user, isNewUser } = resolution.result;
-    const needsPaidSignup = this.oauthAuthService.requiresPaidSignupAfterSso(user);
-    const useDeferredAuth = deferredAuth || needsPaidSignup;
+    const { useDeferredAuth, needsPaidSignup, citizenshipGap } =
+      await this.oauthAuthService.resolveOAuthPlatformSessionDeferral(
+        user,
+        tokens.access_token,
+        deferredAuth,
+      );
     const { accessToken: platformAccessToken } = await this.authTokenService.issueTokenPair(user, res, {
       deferredAuth: useDeferredAuth,
       req,
@@ -166,7 +170,9 @@ export class OAuthAuthController {
         },
       },
       ...(useDeferredAuth ? { accessToken: platformAccessToken } : {}),
+      ...(user.socialAccessToken ? { socialAccessToken: user.socialAccessToken } : {}),
       requiresPaidSignup: needsPaidSignup,
+      requiresCitizenshipGap: citizenshipGap,
       isNewUser,
     };
   }
@@ -223,8 +229,12 @@ export class OAuthAuthController {
       }
 
       const { user, isNewUser } = resolution.result;
-      const needsPaidSignup = this.oauthAuthService.requiresPaidSignupAfterSso(user);
-      const useDeferredAuth = deferredAuth || needsPaidSignup;
+      const { useDeferredAuth, needsPaidSignup, citizenshipGap } =
+        await this.oauthAuthService.resolveOAuthPlatformSessionDeferral(
+          user,
+          tokens.access_token,
+          deferredAuth,
+        );
       const { accessToken: platformAccessToken } = await this.authTokenService.issueTokenPair(user, res, {
         deferredAuth: useDeferredAuth,
       });
@@ -251,6 +261,7 @@ export class OAuthAuthController {
         isSCAQCandidate: user.isSCAQCandidate === null ? '' : String(user.isSCAQCandidate),
         isAssociateMember: user.isAssociateMember === null ? '' : String(user.isAssociateMember),
         requiresPaidSignup: needsPaidSignup ? 'true' : 'false',
+        requiresCitizenshipGap: citizenshipGap ? 'true' : 'false',
         ...(user.socialAccessToken
           ? { socialAccessToken: user.socialAccessToken }
           : {}),

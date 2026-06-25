@@ -31,6 +31,7 @@ import {
   readScaqFlagsFromOAuthCallback,
   shouldScaqRejectToPaidSignup,
   allowsSsoLoginWithoutScaqCandidate,
+  allowsImmediatePlatformSessionAfterSso,
   isSalesforceMemberAccountType,
   isScaqMembershipSsoFlow,
   POST_OAUTH_RETURN_TO_KEY,
@@ -286,7 +287,7 @@ async function ensureOAuthPlatformSession({
   pendingPlatformAccessToken,
   accessToken,
 }) {
-  if (!allowsSsoLoginWithoutScaqCandidate(sf?.isSCAQCandidate, sf?.accountType)) {
+  if (!allowsImmediatePlatformSessionAfterSso(sf?.accountType)) {
     return false;
   }
 
@@ -573,6 +574,14 @@ async function handleIscaMemberSsoCheckAfterSso(
     if (isScaqCandidate === true) {
       clearIscaMemberSsoCheckPending();
 
+      const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
+      if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
+        ensureCitizenshipGapFlowAfterEservicesFailure();
+        await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
+        redirectToCitizenshipGapMembershipModal(router, redirectTo);
+        return true;
+      }
+
       const cleanRedirect = stripResumeMembershipSignupFromPath(redirectTo);
       const loginResult = await tryCompleteIscaMemberSsoLogin({
         socialToken,
@@ -582,14 +591,6 @@ async function handleIscaMemberSsoCheckAfterSso(
       });
       if (loginResult.loggedIn) {
         clearMembershipEligibilitySessionStorage();
-        return true;
-      }
-
-      const resolvedNexusInfo = nexusInfo?.nexusUser || nexusInfo;
-      if (shouldShowCitizenshipRecordGapScreen(resolvedNexusInfo)) {
-        ensureCitizenshipGapFlowAfterEservicesFailure();
-        await endBlockedNonMemberSsoSession(socialToken, checkUserSession);
-        redirectToCitizenshipGapMembershipModal(router, redirectTo);
         return true;
       }
 
@@ -733,7 +734,8 @@ export default function OAuthCallbackPage() {
           const { user } = exchangeResult;
           const sf = readSalesforceFlagsFromSessionUser(user);
           const socialTokenFromExchange = String(
-            searchParams.get('socialAccessToken')
+            exchangeResult.socialAccessToken
+            || searchParams.get('socialAccessToken')
             || user?.socialAccessToken
             || ''
           ).trim();
@@ -820,6 +822,18 @@ export default function OAuthCallbackPage() {
             searchParams.get('pendingPlatformAccessToken') || accessToken || '';
 
           const sf = readSalesforceFlagsFromCallbackParams(searchParams);
+
+          const socialTokenFromCallback = String(searchParams.get('socialAccessToken') || '').trim();
+          if (
+            await redirectCitizenshipGapForNonEligibleLogin(
+              router,
+              checkUserSession,
+              searchParams,
+              socialTokenFromCallback
+            )
+          ) {
+            return;
+          }
 
           if (studentMemberLoginFlow) {
             const studentLoginResult = await finishStudentMemberLoginTab(searchParams, {

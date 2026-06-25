@@ -345,6 +345,11 @@ export function isSalesforceMemberAccountType(accountType) {
   return String(accountType || '').trim().toLowerCase() === 'member';
 }
 
+/** Immediate platform cookies after SSO — only Salesforce accountType Member (not SCAQ alone). */
+export function allowsImmediatePlatformSessionAfterSso(accountType) {
+  return isSalesforceMemberAccountType(accountType);
+}
+
 /** SSO may proceed without SCAQ candidate status when Salesforce accountType is Member. */
 export function allowsSsoLoginWithoutScaqCandidate(isSCAQCandidate, accountType) {
   if (isSCAQCandidate === true) return true;
@@ -368,7 +373,7 @@ export function resolveScaqPostLoginDecision(
 ) {
   if (!isScaqMembershipSsoFlow(searchParams)) return null;
 
-  if (!allowsSsoLoginWithoutScaqCandidate(isSCAQCandidate, accountType)) {
+  if (shouldScaqRejectToPaidSignup(isSCAQCandidate, accountType)) {
     return 'reject-paid-signup';
   }
 
