@@ -4,6 +4,7 @@ import {
   buildPaginationParams,
   mapPaginatedResponse,
 } from 'src/utils/pagination-service';
+import { formatCourseDurationLabel } from 'src/utils/course-duration';
 
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -76,6 +77,8 @@ const transformCourse = (course) => {
         accessViaBundle: rel?.accessViaBundle ?? false,
         modulesCount: Number(rel?.modulesCount ?? rel?.moduleCount ?? 0),
         sectionsCount: Number(rel?.sectionsCount ?? rel?.sectionCount ?? 0),
+        totalDurationSeconds: Number(rel?.totalDurationSeconds ?? 0),
+        totalDuration: String(rel?.totalDuration || '').trim(),
         reviewStats:
           rel?.reviewStats && typeof rel.reviewStats === 'object'
             ? {
@@ -128,6 +131,10 @@ const transformCourse = (course) => {
     isEnrolled: course.isEnrolled ?? false,
     modulesCount: Number(course.modulesCount ?? course.moduleCount ?? 0),
     sectionsCount: Number(course.sectionsCount ?? course.sectionCount ?? course.lessonCount ?? 0),
+    totalDurationSeconds: Number(course.totalDurationSeconds ?? 0),
+    totalDuration:
+      String(course.totalDuration || '').trim() ||
+      formatCourseDurationLabel(Number(course.totalDurationSeconds ?? 0)),
     /** True when access comes only from owning a bundle (not a direct enrollment row). */
     accessViaBundle: course.accessViaBundle ?? false,
     relatedCourses,

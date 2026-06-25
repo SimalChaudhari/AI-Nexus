@@ -12,6 +12,7 @@ import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
 import { RouterLink } from 'src/routes/components';
 import { LearningBundleRibbon } from './course-bundle-badge';
+import { getCourseDurationLabel } from 'src/utils/course-duration';
 
 const CARD_META_ROW_HEIGHT = 18;
 const CARD_STATUS_ROW_HEIGHT = 30;
@@ -171,12 +172,7 @@ export function LearningCourseGridCard({
   const showStatusRow = isEnrolled || (showStatusAccessLabel && showProgressSlot);
 
   const levelLabel = course.level || 'All levels';
-  const durationLabel =
-    sectionCount > 0
-      ? `${sectionCount} lesson${sectionCount === 1 ? '' : 's'}`
-      : moduleCount > 0
-        ? `${moduleCount} module${moduleCount === 1 ? '' : 's'}`
-        : '—';
+  const durationLabel = getCourseDurationLabel(course);
   const reviewCount = Number(course?.reviewStats?.reviewCount || 0);
   const averageRating = Number(course?.reviewStats?.averageRating || 0);
   const ratingLabel = reviewCount > 0 ? averageRating.toFixed(1) : '—';
@@ -352,6 +348,13 @@ export function LearningCourseGridCard({
               label={levelLabel}
               iconColor="secondary.main"
               sx={{ flex: 1, minWidth: 0, justifyContent: 'flex-start' }}
+            />
+            <CardMetaItemMobile
+              icon="solar:clock-circle-bold"
+              label={durationLabel}
+              iconColor="info.main"
+              isPlaceholder={durationLabel === '—'}
+              sx={{ flex: 1, minWidth: 0, justifyContent: 'center' }}
             />
             <CardMetaItemMobile
               icon="solar:star-bold"

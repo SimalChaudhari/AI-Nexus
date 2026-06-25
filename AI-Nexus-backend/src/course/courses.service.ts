@@ -23,6 +23,47 @@ import { CategoryEntity } from '../category/categories.entity';
 import { CourseOptionEntity, CourseOptionType } from './course-option.entity';
 import { ReviewEntity } from '../review/review.entity';
 
+function parseWatchtimeToSeconds(value?: string | null): number {
+    const text = String(value || '').trim();
+    if (!text) return 0;
+    if (/^\d+$/.test(text)) return Number(text) || 0;
+    const hms = text.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+    if (hms) {
+        const h = Number(hms[1]);
+        const m = Number(hms[2]);
+        const s = Number(hms[3]);
+        if ([h, m, s].some((n) => Number.isNaN(n)) || m > 59 || s > 59) return 0;
+        return h * 3600 + m * 60 + s;
+    }
+    const ms = text.match(/^(\d+):(\d{1,2})$/);
+    if (ms) {
+        const m = Number(ms[1]);
+        const s = Number(ms[2]);
+        if ([m, s].some((n) => Number.isNaN(n)) || s > 59) return 0;
+        return m * 60 + s;
+    }
+    return 0;
+}
+
+function resolveSectionDurationSeconds(durationTime?: string | null, watchtime?: string | null): number {
+    const fromDuration = parseWatchtimeToSeconds(durationTime);
+    if (fromDuration > 0) return fromDuration;
+    return parseWatchtimeToSeconds(watchtime);
+}
+
+function formatCourseDurationLabel(totalSeconds: number): string {
+    const safe = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    if (safe <= 0) return '';
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const seconds = safe % 60;
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    return parts.join(' ');
+}
+
 /** Multipart / plain body may send booleans as strings. */
 function coerceBoolean(value: unknown, defaultValue = false): boolean {
     if (value === undefined || value === null || value === '') return defaultValue;
@@ -177,7 +218,7 @@ export class CourseService {
             return data;
         }
 
-        const [moduleRows, sectionRows] = await Promise.all([
+        const [moduleRows, sectionRows, sectionTimingRows] = await Promise.all([
             this.courseModuleRepository
                 .createQueryBuilder('module')
                 .select('module.courseId', 'courseId')
@@ -193,6 +234,14 @@ export class CourseService {
                 .where('module.courseId IN (:...courseIds)', { courseIds })
                 .groupBy('module.courseId')
                 .getRawMany<{ courseId: string; count: string | number }>(),
+            this.courseModuleSectionRepository
+                .createQueryBuilder('section')
+                .innerJoin(CourseModuleEntity, 'module', 'module.id = section.moduleId')
+                .select('module.courseId', 'courseId')
+                .addSelect('section.durationTime', 'durationTime')
+                .addSelect('section.watchtime', 'watchtime')
+                .where('module.courseId IN (:...courseIds)', { courseIds })
+                .getRawMany<{ courseId: string; durationTime: string | null; watchtime: string | null }>(),
         ]);
 
         const modulesByCourseId = new Map(
@@ -201,15 +250,30 @@ export class CourseService {
         const sectionsByCourseId = new Map(
             sectionRows.map((row) => [row.courseId, Number(row.count) || 0]),
         );
+        const durationSecondsByCourseId = new Map<string, number>();
+        sectionTimingRows.forEach((row) => {
+            const courseId = row.courseId;
+            if (!courseId) return;
+            const sectionSeconds = resolveSectionDurationSeconds(row.durationTime, row.watchtime);
+            if (sectionSeconds <= 0) return;
+            durationSecondsByCourseId.set(
+                courseId,
+                (durationSecondsByCourseId.get(courseId) ?? 0) + sectionSeconds,
+            );
+        });
 
         return data.map((course) => {
             const modulesCount = modulesByCourseId.get(course.id) ?? 0;
             const sectionsCount = sectionsByCourseId.get(course.id) ?? 0;
+            const totalDurationSeconds = durationSecondsByCourseId.get(course.id) ?? 0;
+            const totalDuration = formatCourseDurationLabel(totalDurationSeconds);
 
             return {
                 ...course,
                 modulesCount,
                 sectionsCount,
+                totalDurationSeconds,
+                totalDuration,
             };
         });
     }
@@ -872,6 +936,8 @@ export class CourseService {
             isRecommended: recommendedSet.has(row.id),
             modulesCount: row.modulesCount ?? 0,
             sectionsCount: row.sectionsCount ?? 0,
+            totalDurationSeconds: row.totalDurationSeconds ?? 0,
+            totalDuration: row.totalDuration ?? '',
             reviewStats: row.reviewStats ?? { averageRating: 0, reviewCount: 0 },
             ...(userId
                 ? {

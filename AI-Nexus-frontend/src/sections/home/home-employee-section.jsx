@@ -29,11 +29,9 @@ const SECTION_BG = `linear-gradient(180deg, ${SECTION_GREY_LIGHT} 0%, ${SECTION_
 const FONT_STACK = '"Montserrat", "Google Sans", system-ui, sans-serif';
 
 const sectionBackgroundSx = {
-  bgcolor: 'grey.200',
+  bgcolor: '#F7F9FA',
   background: SECTION_BG,
 };
-
-const PARTNERS_BG = '#F7F9FA';
 
 /** Scales with viewport; smaller in 2-col mobile grid, larger on tablet/desktop */
 const EMPLOYEE_BENEFIT_CARD_TITLE_SX = {
@@ -62,127 +60,6 @@ const EMPLOYEE_BENEFIT_CARD_ICON_SX = {
 };
 
 const EMPLOYEE_BENEFIT_CARD_ICON_SIZE = { xs: 14, sm: 17, md: 19 };
-
-function PartnersLogoSection({ heading, logos, secondaryColor }) {
-  const shouldScroll = logos.length > 6;
-
-  return (
-    <Box
-      component={m.section}
-      variants={varFade({ distance: 16 }).inUp}
-      sx={{
-        width: '100%',
-        bgcolor: PARTNERS_BG,
-        py: { xs: 4, md: 5 },
-        borderTop: `1px solid ${alpha(SECTION_GREY, 0.65)}`,
-      }}
-    >
-      <DashboardContent
-        component={MotionViewport}
-        sx={{
-          width: 1,
-          pt: 0,
-          pb: 0,
-        }}
-      >
-        <Stack spacing={{ xs: 3, md: 3.5 }} alignItems="center" sx={{ width: 1 }}>
-          {heading ? (
-            <Stack spacing={0} alignItems="center" sx={{ width: 1 }}>
-              <Typography
-                component="h3"
-                sx={{
-                  m: 0,
-                  textAlign: 'center',
-                  color: 'secondary.main',
-                  fontWeight: 800,
-                  fontSize: FLUID_FONT_SIZES.h4,
-                  lineHeight: 1.2,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {heading}
-              </Typography>
-
-              <Box
-                sx={{
-                  mt: 1.5,
-                  width: { xs: 72, sm: 80, md: 96 },
-                  height: 4,
-                  borderRadius: 999,
-                  flexShrink: 0,
-                  background: (theme) =>
-                    `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${secondaryColor || theme.palette.secondary.main} 100%)`,
-                  boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.primary.main, 0.25)}`,
-                }}
-              />
-            </Stack>
-          ) : null}
-
-          <Box
-            sx={{
-              width: 1,
-              overflow: 'hidden',
-              '@keyframes employeePartnersScroll': {
-                from: { transform: 'translateX(0)' },
-                to: { transform: 'translateX(-50%)' },
-              },
-            }}
-          >
-            <Stack
-              direction="row"
-              alignItems="center"
-              sx={{
-                width: shouldScroll ? 'max-content' : 1,
-                minWidth: shouldScroll ? '100%' : 'auto',
-                animation: shouldScroll ? 'employeePartnersScroll 40s linear infinite' : 'none',
-                justifyContent: shouldScroll ? 'flex-start' : 'center',
-                flexWrap: shouldScroll ? 'nowrap' : 'wrap',
-                gap: { xs: 2.5, sm: 3.5, md: 4.5, lg: 5 },
-                px: { xs: 0.5, md: 1 },
-              }}
-            >
-              {(shouldScroll ? [...logos, ...logos] : logos).map((row, index) => (
-                <Box
-                  key={`employee-partner-logo-${index}`}
-                  sx={{
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: { xs: 52, md: 64 },
-                    px: { xs: 0.5, md: 1 },
-                  }}
-                >
-                  <Box
-                    component="img"
-                    src={row.logoUrl}
-                    alt={row.name}
-                    sx={{
-                      height: { xs: 40, sm: 44, md: 52 },
-                      maxWidth: { xs: 120, sm: 140, md: 160 },
-                      width: 'auto',
-                      objectFit: 'contain',
-                      display: 'block',
-                      filter: 'grayscale(1)',
-                      opacity: 0.72,
-                      transition: (theme) => theme.transitions.create(['opacity', 'filter'], { duration: 200 }),
-                      '@media (hover: hover) and (pointer: fine)': {
-                        '&:hover': {
-                          opacity: 0.95,
-                          filter: 'grayscale(0)',
-                        },
-                      },
-                    }}
-                  />
-                </Box>
-              ))}
-            </Stack>
-          </Box>
-        </Stack>
-      </DashboardContent>
-    </Box>
-  );
-}
 
 function isExternalHref(href) {
   return /^https?:\/\//i.test(String(href || '').trim());
@@ -476,7 +353,6 @@ export function HomeEmployeeSection() {
   const secondary = theme.palette.secondary;
 
   const [content, setContent] = useState(() => resolveEmployeeContent(null, null));
-  const [companyLogos, setCompanyLogos] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -487,22 +363,10 @@ export function HomeEmployeeSection() {
         setContent(
           resolveEmployeeContent(settings?.homeEmployeeContent, settings?.homeEmployerContent)
         );
-        const logos = Array.isArray(settings?.homeEmployerContent?.logos)
-          ? settings.homeEmployerContent.logos
-          : [];
-        setCompanyLogos(
-          logos
-            .map((row) => ({
-              name: String(row?.name || '').trim(),
-              logoUrl: resolveAssetUrl(row?.logoUrl),
-            }))
-            .filter((row) => row.logoUrl)
-        );
       })
       .catch(() => {
         if (active) {
           setContent(resolveEmployeeContent(null, null));
-          setCompanyLogos([]);
         }
       });
     return () => {
@@ -514,9 +378,6 @@ export function HomeEmployeeSection() {
 
   const benefits = (content.benefits || []).filter((row) => String(row?.title || '').trim());
   const heroSrc = resolveAssetUrl(content.heroImageUrl);
-  const displayLogos = companyLogos;
-  const partnersHeading = String(content.partnersHeading || '').trim();
-  const showPartners = displayLogos.length > 0;
 
   return (
     <Box
@@ -669,14 +530,6 @@ export function HomeEmployeeSection() {
           ) : null}
         </Grid>
       </DashboardContent>
-
-      {showPartners ? (
-        <PartnersLogoSection
-          heading={partnersHeading}
-          logos={displayLogos}
-          secondaryColor={secondary.main}
-        />
-      ) : null}
     </Box>
   );
 }

@@ -57,6 +57,8 @@ const normalizeFavoriteCourse = (course, defaultCourseImage = DEFAULT_COURSE_IMA
   languages: Array.isArray(course.languages) ? course.languages : [],
   modulesCount: Number(course.modulesCount ?? course.moduleCount ?? 0),
   sectionsCount: Number(course.sectionsCount ?? course.sectionCount ?? 0),
+  totalDurationSeconds: Number(course.totalDurationSeconds ?? 0),
+  totalDuration: String(course.totalDuration || '').trim(),
 });
 
 const getCourseContentMeta = (course = {}) => {

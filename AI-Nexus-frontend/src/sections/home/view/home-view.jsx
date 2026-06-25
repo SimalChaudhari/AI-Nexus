@@ -35,7 +35,7 @@ import { HomeCurriculumSection } from '../home-curriculum-section';
 import { HomeProgrammeFeesSection } from '../home-programme-fees-section';
 import { HomeTestimonialsSection } from '../home-testimonials-section';
 import { HomeEmployeeSection } from '../home-employee-section';
-import { HomeEmployerSection } from '../home-employer-section';
+import { HomeSupportingPartnersSection } from '../home-supporting-partners-section';
 import { HomeFaqsSection } from '../home-faqs-section';
 
 // ----------------------------------------------------------------------
@@ -127,18 +127,22 @@ export function HomeView() {
 
       <HomeHeroSection onOpenMembershipSignup={handleOpenMembershipSignup} />
 
+      <HomeCeoLaunchSection />
+
+      <HomeEmployeeSection />
+
+      
       <HomeProgrammeStructureSection />
 
       <HomeEligibilityMembershipSection onOpenMembershipSignup={handleOpenMembershipSignup} />
 
-      <HomeCeoLaunchSection />
 
       <Stack sx={{ position: 'relative', bgcolor: 'background.default' }}>
         <HomeCurriculumSection />
         <HomeProgrammeFeesSection />
         {/* <HomeTestimonialsSection /> */}
-        <HomeEmployeeSection />
-       
+        <HomeSupportingPartnersSection />
+
         <ContactSection hideWhenEmpty />
 
         <HomeFaqsSection />

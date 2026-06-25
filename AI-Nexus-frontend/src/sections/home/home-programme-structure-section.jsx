@@ -5,7 +5,7 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { useTheme } from '@mui/material/styles';
+import { useTheme, alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { RichTextContent } from 'src/components/html-content';
@@ -43,6 +43,26 @@ const MOBILE_LINE_TOP_PX = MOBILE_TRACK_H_PX / 2;
 const MOBILE_STEP_TITLE_FONT = 'clamp(0.5625rem, 2.35vw, 0.6875rem)';
 const STEP_ADVANCE_INTERVAL_MS = 1600;
 const PROGRESS_TICK_MS = 60;
+/** Sequential journey steps; phases after this are shown as always-available (e.g. Forum, Clinics). */
+const JOURNEY_PHASE_COUNT = 3;
+const ONGOING_SECTION_LABEL = 'Available throughout your journey';
+
+function splitProgrammePhases(phases) {
+  if (!Array.isArray(phases) || phases.length <= JOURNEY_PHASE_COUNT) {
+    return { journeyPhases: phases || [], ongoingPhases: [] };
+  }
+  return {
+    journeyPhases: phases.slice(0, JOURNEY_PHASE_COUNT),
+    ongoingPhases: phases.slice(JOURNEY_PHASE_COUNT),
+  };
+}
+
+/** Line spans from first node centre to last node centre within `count` equal columns. */
+function timelineLineInsets(count) {
+  if (!count) return { left: '0%', right: '0%' };
+  const inset = (50 / count).toFixed(4);
+  return { left: `${inset}%`, right: `${inset}%` };
+}
 
 const STEP_ANIMATION = {
   hidden: { opacity: 0, y: 18 },
@@ -146,7 +166,7 @@ function JourneyHeading({ heading, underlineWord }) {
   );
 }
 
-function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, compact = false }) {
+function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, compact = false, isOngoing = false }) {
   const color = phaseIconColor(index);
   const iconValue = String(icon || '').trim();
   const isImage = isLikelyImagePath(iconValue);
@@ -181,10 +201,16 @@ function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, comp
         flexShrink: 0,
         position: 'relative',
         zIndex: 2,
-        border: isActive ? '2px solid transparent' : '1px solid rgba(15, 39, 68, 0.1)',
-        boxShadow: isActive
-          ? `0 0 0 1px rgba(124, 58, 237, 0.16), 0 12px 34px rgba(124, 58, 237, 0.18)`
-          : '0 10px 28px rgba(15, 39, 68, 0.1)',
+        border: isOngoing
+          ? `2px dashed ${alpha(NAVY, 0.22)}`
+          : isActive
+            ? '2px solid transparent'
+            : '1px solid rgba(15, 39, 68, 0.1)',
+        boxShadow: isOngoing
+          ? '0 8px 22px rgba(15, 39, 68, 0.08)'
+          : isActive
+            ? `0 0 0 1px rgba(124, 58, 237, 0.16), 0 12px 34px rgba(124, 58, 237, 0.18)`
+            : '0 10px 28px rgba(15, 39, 68, 0.1)',
         transition: 'all 0.3s ease',
         '&::after': isActive
           ? {
@@ -248,7 +274,7 @@ function StepIconCircle({ index, icon, isActive, isCompleted, primaryColor, comp
   );
 }
 
-function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, hideDescription = false }) {
+function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, hideDescription = false, isOngoing = false }) {
   const title = String(phase?.title || '').trim();
   const descriptionHtml = String(phase?.description || '');
   const hasDescription = !isEffectivelyEmptyHtml(descriptionHtml);
@@ -279,7 +305,7 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
           sx={{
             m: 0,
             fontWeight: compact ? 500 : 700,
-            color: compact && isActive ? '#1a2d4f' : NAVY,
+            color: compact && (isActive || isOngoing) ? '#1a2d4f' : NAVY,
             lineHeight: compact ? 1.15 : 1.3,
             fontSize: compact ? MOBILE_STEP_TITLE_FONT : FLUID_FONT_SIZES.body2,
             letterSpacing: compact ? 0 : 0,
@@ -291,6 +317,27 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
           }}
         >
           {title}
+        </Typography>
+      ) : null}
+      {isOngoing ? (
+        <Typography
+          component="span"
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 0.4,
+            px: 0.85,
+            py: 0.2,
+            borderRadius: 999,
+            fontSize: compact ? '0.5625rem' : FLUID_FONT_SIZES.caption,
+            fontWeight: 700,
+            color: '#0d6e4f',
+            bgcolor: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.22)',
+          }}
+        >
+          <Iconify icon="solar:infinity-bold" width={compact ? 11 : 13} />
+          Always open
         </Typography>
       ) : null}
       {hasDescription && !hideDescription ? (
@@ -312,16 +359,118 @@ function StepTextBlock({ phase, index, isActive, isCompleted, compact = false, h
   );
 }
 
-function DesktopTimeline({ phases, primaryColor }) {
+function OngoingPhasesBand({ phases, primaryColor, compact = false }) {
   const count = phases.length;
+  if (!count) return null;
+
+  const lineInsets = timelineLineInsets(count);
+
+  return (
+    <Box
+      sx={{
+        mt: compact ? 2 : 2.5,
+        pt: compact ? 1.75 : 2.25,
+        position: 'relative',
+        borderTop: `1px dashed ${alpha(LINE_COLOR, 0.95)}`,
+      }}
+    >
+      <Box
+        aria-hidden
+        sx={{
+          position: 'absolute',
+          top: compact ? 10 : 12,
+          left: lineInsets.left,
+          right: lineInsets.right,
+          height: compact ? 10 : 12,
+          borderLeft: `2px dashed ${LINE_COLOR}`,
+          borderRight: `2px dashed ${LINE_COLOR}`,
+          borderTop: `2px dashed ${LINE_COLOR}`,
+          borderRadius: '10px 10px 0 0',
+          pointerEvents: 'none',
+        }}
+      />
+
+      <Typography
+        component="p"
+        sx={{
+          m: 0,
+          mb: compact ? 1.25 : 1.75,
+          textAlign: 'center',
+          fontWeight: 700,
+          fontSize: compact ? FLUID_FONT_SIZES.caption : FLUID_FONT_SIZES.body2,
+          color: DESC_COLOR,
+          letterSpacing: 0.2,
+        }}
+      >
+        {ONGOING_SECTION_LABEL}
+      </Typography>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
+          columnGap: compact ? { xs: 0.25, sm: 0.35 } : { xs: 1.1, md: 1.35 },
+          alignItems: 'start',
+          px: compact ? { xs: 0, sm: 0.25 } : { xs: 1, md: 1.4 },
+        }}
+      >
+        {phases.map((phase, index) => (
+          <Stack
+            key={phase.id || `ongoing-phase-${index}`}
+            component={m.div}
+            custom={index}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.5 }}
+            variants={STEP_ANIMATION}
+            alignItems="center"
+            sx={{ minWidth: 0 }}
+          >
+            <Box
+              sx={{
+                width: 1,
+                height: compact ? MOBILE_TRACK_H_PX : TRACK_H,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <StepIconCircle
+                index={JOURNEY_PHASE_COUNT + index}
+                icon={resolvePhaseIcon(phase, JOURNEY_PHASE_COUNT + index)}
+                isActive={false}
+                isCompleted={false}
+                isOngoing
+                primaryColor={primaryColor}
+                compact={compact}
+              />
+            </Box>
+            <StepTextBlock
+              phase={phase}
+              index={JOURNEY_PHASE_COUNT + index}
+              isActive={false}
+              isCompleted={false}
+              isOngoing
+              compact={compact}
+              hideDescription={compact}
+            />
+          </Stack>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+function DesktopTimeline({ phases, primaryColor }) {
+  const { journeyPhases, ongoingPhases } = splitProgrammePhases(phases);
+  const count = journeyPhases.length;
   if (!count) return null;
 
   const timelineRef = useRef(null);
   const isInView = useInView(timelineRef, { amount: 0.85, margin: '0px 0px -15% 0px' });
-  const lineInsetPct = (50 / count).toFixed(4);
+  const lineInsets = timelineLineInsets(count);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [activeStepProgress, setActiveStepProgress] = useState(0);
-  const cycleDurationSeconds = Math.max((count * STEP_ADVANCE_INTERVAL_MS) / 1000, 1.6);
   const totalProgress = (activeStepIndex + activeStepProgress) / count;
   const progressPercentage = Math.max(0, Math.min(100, Math.round(totalProgress * 100)));
 
@@ -414,8 +563,8 @@ function DesktopTimeline({ phases, primaryColor }) {
         sx={{
           position: 'absolute',
           top: TIMELINE_LINE_TOP,
-          left: `${lineInsetPct}%`,
-          right: `${lineInsetPct}%`,
+          left: lineInsets.left,
+          right: lineInsets.right,
           height: 0,
           borderTop: `2px dashed ${LINE_COLOR}`,
           zIndex: 0,
@@ -434,8 +583,8 @@ function DesktopTimeline({ phases, primaryColor }) {
         sx={{
           position: 'absolute',
           top: TIMELINE_LINE_TOP,
-          left: `${lineInsetPct}%`,
-          right: `${lineInsetPct}%`,
+          left: lineInsets.left,
+          right: lineInsets.right,
           height: 0,
           borderTop: `3px solid ${RED}`,
           zIndex: 1,
@@ -454,11 +603,11 @@ function DesktopTimeline({ phases, primaryColor }) {
           position: 'relative',
           zIndex: 2,
           pt: { xs: `${TIMELINE_GRID_PT_PX.xs}px`, md: `${TIMELINE_GRID_PT_PX.md}px` },
-          pb: { xs: 1.1, md: 1.35 },
+          pb: ongoingPhases.length ? { xs: 0.5, md: 0.75 } : { xs: 1.1, md: 1.35 },
           px: { xs: 1, md: 1.4 },
         }}
       >
-        {phases.map((phase, index) => (
+        {journeyPhases.map((phase, index) => (
           <Stack
             key={phase.id || `phase-${index}`}
             component={m.div}
@@ -500,18 +649,24 @@ function DesktopTimeline({ phases, primaryColor }) {
           </Stack>
         ))}
       </Box>
+
+      {ongoingPhases.length > 0 ? (
+        <OngoingPhasesBand phases={ongoingPhases} primaryColor={primaryColor} />
+      ) : null}
     </Box>
   );
 }
 
 function MobileTimeline({ phases, primaryColor }) {
-  const count = phases.length;
+  const { journeyPhases, ongoingPhases } = splitProgrammePhases(phases);
+  const count = journeyPhases.length;
   if (!count) return null;
 
   const timelineRef = useRef(null);
   const isInView = useInView(timelineRef, { amount: 0.6, margin: '0px 0px -10% 0px' });
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [activeStepProgress, setActiveStepProgress] = useState(0);
+  const lineInsets = timelineLineInsets(count);
 
   useEffect(() => {
     if (!isInView) {
@@ -541,7 +696,6 @@ function MobileTimeline({ phases, primaryColor }) {
     };
   }, [count, isInView]);
 
-  const lineInsetPct = (50 / count).toFixed(4);
   const totalProgress = (activeStepIndex + activeStepProgress) / count;
 
   return (
@@ -551,8 +705,8 @@ function MobileTimeline({ phases, primaryColor }) {
         sx={{
           position: 'absolute',
           top: MOBILE_LINE_TOP_PX,
-          left: `${lineInsetPct}%`,
-          right: `${lineInsetPct}%`,
+          left: lineInsets.left,
+          right: lineInsets.right,
           height: 0,
           borderTop: `2px dashed ${LINE_COLOR}`,
           opacity: isInView ? 1 : 0,
@@ -570,8 +724,8 @@ function MobileTimeline({ phases, primaryColor }) {
         sx={{
           position: 'absolute',
           top: MOBILE_LINE_TOP_PX,
-          left: `${lineInsetPct}%`,
-          right: `${lineInsetPct}%`,
+          left: lineInsets.left,
+          right: lineInsets.right,
           height: 0,
           borderTop: `3px solid ${RED}`,
           filter: 'drop-shadow(0 0 6px rgba(230, 57, 70, 0.3))',
@@ -590,10 +744,10 @@ function MobileTimeline({ phases, primaryColor }) {
           position: 'relative',
           zIndex: 2,
           px: { xs: 0, sm: 0.25 },
-          pb: { xs: 0.5, sm: 0 },
+          pb: ongoingPhases.length ? 0 : { xs: 0.5, sm: 0 },
         }}
       >
-        {phases.map((phase, index) => (
+        {journeyPhases.map((phase, index) => (
           <Stack
             key={phase.id || `phase-${index}`}
             component={m.div}
@@ -635,6 +789,10 @@ function MobileTimeline({ phases, primaryColor }) {
           </Stack>
         ))}
       </Box>
+
+      {ongoingPhases.length > 0 ? (
+        <OngoingPhasesBand phases={ongoingPhases} primaryColor={primaryColor} compact />
+      ) : null}
     </Box>
   );
 }
