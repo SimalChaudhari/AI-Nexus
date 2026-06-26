@@ -657,18 +657,20 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
   const headlineColor = hero.headlineColor?.trim() || NAVY;
   const headlineAccentColor = hero.headlineAccentColor?.trim() || RED;
 
-  const heroCtas = useMemo(() => {
-    const rows = [];
-    if (hero.cta?.label?.trim()) {
-      rows.push({ ...hero.cta, variant: 'primary' });
-    }
-    (hero.secondaryCtas || []).forEach((row) => {
-      if (row?.label?.trim()) {
-        rows.push({ ...row, variant: 'outline' });
-      }
-    });
-    return rows;
-  }, [hero.cta, hero.secondaryCtas]);
+  const primaryCta = useMemo(
+    () => (hero.cta?.label?.trim() ? { ...hero.cta, variant: 'primary' } : null),
+    [hero.cta]
+  );
+
+  const secondaryCtas = useMemo(
+    () =>
+      (hero.secondaryCtas || [])
+        .filter((row) => row?.label?.trim())
+        .map((row) => ({ ...row, variant: 'outline' })),
+    [hero.secondaryCtas]
+  );
+
+  const hasCtas = Boolean(primaryCta) || secondaryCtas.length > 0;
 
   const handleJoinClick = useCallback(() => {
     if (!authenticated) {
@@ -817,28 +819,53 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
 
                     <HeroMobileImage imageSrc={hero.backgroundImageUrl} />
 
-                    {heroCtas.length ? (
-                      <Box
+                    {hasCtas ? (
+                      <Stack
+                        spacing={{ xs: 1.25, sm: 1.25, md: 1.5 }}
                         sx={{
-                          display: 'grid',
-                          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
-                          gap: { xs: 1.25, sm: 1.25, md: 1.5 },
                           width: '100%',
                           maxWidth: '100%',
                           pt: { xs: 0.25, md: 0.5 },
                           boxSizing: 'border-box',
                         }}
                       >
-                        {heroCtas.map((cta, index) => (
-                          <HeroCtaButton
-                            key={`hero-cta-${index}-${cta.label}`}
-                            cta={cta}
-                            variant={cta.variant === 'primary' ? 'primary' : 'outline'}
-                            onJoinClick={handleJoinClick}
-                            onEligibilityScroll={handleEligibilityScroll}
-                          />
-                        ))}
-                      </Box>
+                        {secondaryCtas.length ? (
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: {
+                                xs: '1fr',
+                                sm: 'repeat(2, minmax(0, 1fr))',
+                              },
+                              gap: { xs: 1.25, sm: 1.25, md: 1.5 },
+                              width: '100%',
+                              maxWidth: '100%',
+                              boxSizing: 'border-box',
+                            }}
+                          >
+                            {secondaryCtas.map((cta, index) => (
+                              <HeroCtaButton
+                                key={`hero-secondary-cta-${index}-${cta.label}`}
+                                cta={cta}
+                                variant="outline"
+                                onJoinClick={handleJoinClick}
+                                onEligibilityScroll={handleEligibilityScroll}
+                              />
+                            ))}
+                          </Box>
+                        ) : null}
+
+                        {primaryCta ? (
+                          <Box sx={{ width: '100%' }}>
+                            <HeroCtaButton
+                              cta={primaryCta}
+                              variant="primary"
+                              onJoinClick={handleJoinClick}
+                              onEligibilityScroll={handleEligibilityScroll}
+                            />
+                          </Box>
+                        ) : null}
+                      </Stack>
                     ) : null}
                   </Stack>
                 </Stack>
