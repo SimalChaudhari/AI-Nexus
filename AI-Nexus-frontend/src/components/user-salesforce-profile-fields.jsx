@@ -18,6 +18,29 @@ function memberClassLabelColor(memberClass) {
   return 'default';
 }
 
+function isNonMemberValue(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-_\s]+/g, ' ');
+  return normalized === 'non member';
+}
+
+/**
+ * Member class display (based only on salesforceMemberClass):
+ * - Non-member (e.g. "Non member") → "AI Fluency Learner".
+ * - Otherwise → show the member class as-is (e.g. CA).
+ */
+function resolveMemberClassDisplay(user) {
+  const memberClass = String(user?.salesforceMemberClass || '').trim();
+
+  if (!memberClass || isNonMemberValue(memberClass)) {
+    return { text: 'AI Fluency Learner', color: 'info' };
+  }
+
+  return { text: memberClass, color: memberClassLabelColor(memberClass) };
+}
+
 function booleanLabelColor(value) {
   if (value === true) return 'success';
   if (value === false) return 'default';
@@ -100,31 +123,16 @@ export function hasSalesforceProfileData(user) {
 function MembershipDetailsTable({ user }) {
   const theme = useTheme();
 
+  const memberClassDisplay = resolveMemberClassDisplay(user);
+
   const rows = [
     {
       key: 'memberClass',
       label: 'Member class',
-      value: user.salesforceMemberClass ? (
-        <Label color={memberClassLabelColor(user.salesforceMemberClass)} variant="soft" sx={{ fontWeight: 800, fontSize: '0.8125rem', py: 0.75, px: 1.25 }}>
-          {user.salesforceMemberClass}
+      value: (
+        <Label color={memberClassDisplay.color} variant="soft" sx={{ fontWeight: 800, fontSize: '0.8125rem', py: 0.75, px: 1.25 }}>
+          {memberClassDisplay.text}
         </Label>
-      ) : (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          —
-        </Typography>
-      ),
-    },
-    {
-      key: 'accountType',
-      label: 'Account type',
-      value: user.salesforceAccountType ? (
-        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-          {user.salesforceAccountType}
-        </Typography>
-      ) : (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          —
-        </Typography>
       ),
     },
     {
@@ -303,25 +311,15 @@ export function buildSalesforceProfileDetailRows(user) {
     return [{ label: 'Status', value: 'No eServices data synced' }];
   }
 
+  const memberClassDisplay = resolveMemberClassDisplay(user);
+
   return [
     {
       label: 'Member class',
-      value: user.salesforceMemberClass ? (
-        <Label color={memberClassLabelColor(user.salesforceMemberClass)} variant="soft" sx={{ fontWeight: 800 }}>
-          {user.salesforceMemberClass}
+      value: (
+        <Label color={memberClassDisplay.color} variant="soft" sx={{ fontWeight: 800 }}>
+          {memberClassDisplay.text}
         </Label>
-      ) : (
-        '—'
-      ),
-    },
-    {
-      label: 'Account type',
-      value: user.salesforceAccountType ? (
-        <Typography variant="subtitle2" component="span" sx={{ fontWeight: 700 }}>
-          {user.salesforceAccountType}
-        </Typography>
-      ) : (
-        '—'
       ),
     },
     {
