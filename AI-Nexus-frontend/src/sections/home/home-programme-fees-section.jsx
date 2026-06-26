@@ -323,22 +323,30 @@ export function HomeProgrammeFeesSection() {
                       justifyContent: 'center',
                     })}
                   >
-                    <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={{ xs: 1.25, sm: 2 }}
+                      alignItems="center"
+                      justifyContent="center"
+                      sx={{ width: 1 }}
+                    >
                       {agencyLogo ? (
                         <Box
                           component="img"
                           src={agencyLogo}
                           alt=""
                           sx={{
-                            width: { xs: 120, sm: 150, md: 180 },
+                            width: { xs: '100%', sm: 150, md: 180 },
+                            maxWidth: { xs: 150, sm: 'none' },
                             height: 'auto',
                             maxHeight: { xs: 80, sm: 96, md: 112 },
                             objectFit: 'contain',
-                            flexShrink: 0,
+                            flexShrink: 1,
+                            minWidth: 0,
                           }}
                         />
                       ) : null}
-                      <Box sx={{ minWidth: 0 }}>
+                      <Box sx={{ minWidth: 0, textAlign: { xs: 'center', sm: 'left' } }}>
                         <Typography
                           sx={{
                             fontWeight: 700,
