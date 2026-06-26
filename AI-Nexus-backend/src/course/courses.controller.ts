@@ -1427,16 +1427,16 @@ export class CourseController {
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
     @ApiConsumes('multipart/form-data')
-    @ApiOperation({ summary: 'Upload section learning materials (PDF, Word, Excel, PowerPoint, etc.)' })
+    @ApiOperation({ summary: 'Upload section learning materials (PDF, Word, Excel, PowerPoint, ZIP, etc.)' })
     @UseInterceptors(
         FilesInterceptor('files', 20, {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
             fileFilter: (_req, file, cb) => {
                 const name = String(file.originalname || '').toLowerCase();
-                const allowedExt = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt)$/i.test(name);
+                const allowedExt = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|zip)$/i.test(name);
                 const allowedMime =
-                    /^application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-excel|vnd\.ms-powerpoint)$/i.test(
+                    /^application\/(pdf|msword|zip|x-zip-compressed|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-excel|vnd\.ms-powerpoint)$/i.test(
                         file.mimetype,
                     ) ||
                     /^text\/(plain|csv)$/i.test(file.mimetype);

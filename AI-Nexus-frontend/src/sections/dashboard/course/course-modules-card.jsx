@@ -47,6 +47,8 @@ const SECTION_LEARNING_MATERIAL_ACCEPT = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
   'text/plain': ['.txt'],
   'text/csv': ['.csv'],
+  'application/zip': ['.zip'],
+  'application/x-zip-compressed': ['.zip'],
 };
 
 function normalizeEditorHtml(value) {
@@ -1365,7 +1367,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                 }
                 accept={SECTION_LEARNING_MATERIAL_ACCEPT}
                 maxSize={52428800}
-                helperText="PDF, Word, Excel, PowerPoint, CSV, or TXT — uploaded when you save (max 50MB each)"
+                helperText="PDF, Word, Excel, PowerPoint, CSV, TXT, or ZIP — uploaded when you save (max 50MB each)"
               />
             </Box>
             <Box>
