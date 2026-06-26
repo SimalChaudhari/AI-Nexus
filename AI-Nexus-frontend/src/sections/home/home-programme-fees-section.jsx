@@ -315,16 +315,24 @@ export function HomeProgrammeFeesSection() {
 
               {hasAgency ? (
                 <Grid xs={12} md={hasFundingPartners ? 6 : 12} sx={{ display: 'flex', minWidth: 0 }}>
-                  <Box sx={(theme) => INNER_PANEL_SX(theme)}>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Box
+                    sx={(theme) => ({
+                      ...INNER_PANEL_SX(theme),
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    })}
+                  >
+                    <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
                       {agencyLogo ? (
                         <Box
                           component="img"
                           src={agencyLogo}
                           alt=""
                           sx={{
-                            width: 56,
-                            height: 56,
+                            width: { xs: 120, sm: 150, md: 180 },
+                            height: 'auto',
+                            maxHeight: { xs: 80, sm: 96, md: 112 },
                             objectFit: 'contain',
                             flexShrink: 0,
                           }}
