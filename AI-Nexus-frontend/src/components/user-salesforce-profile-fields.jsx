@@ -78,8 +78,7 @@ function BooleanValue({ value }) {
 function InlineField({ label, children, index, total }) {
   const theme = useTheme();
   const line = `1px solid ${alpha(theme.palette.divider, 0.8)}`;
-  const isLeftCol = index % 2 === 0;
-  const isTopRow = index < 2;
+  const isLast = index === total - 1;
 
   return (
     <Box
@@ -87,21 +86,41 @@ function InlineField({ label, children, index, total }) {
         flex: { md: '1 1 0' },
         minWidth: 0,
         px: { xs: 2, md: 2.5 },
-        py: { xs: 1.75, md: 2 },
+        py: { xs: 1.5, md: 2 },
+        display: { xs: 'flex', md: 'block' },
+        flexWrap: { xs: 'wrap', md: 'nowrap' },
+        alignItems: { xs: 'center', md: 'stretch' },
+        justifyContent: { xs: 'space-between', md: 'flex-start' },
+        gap: { xs: 0.75, md: 0 },
         borderRight: {
-          xs: isLeftCol && index < total - 1 ? line : 'none',
-          md: index < total - 1 ? line : 'none',
+          xs: 'none',
+          md: isLast ? 'none' : line,
         },
         borderBottom: {
-          xs: isTopRow ? line : 'none',
+          xs: isLast ? 'none' : line,
           md: 'none',
         },
       }}
     >
-      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block', mb: 0.75 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontWeight: 700, display: 'block', mb: { xs: 0, md: 0.75 }, flexShrink: 0 }}
+      >
         {label}
       </Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>{children}</Box>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 0.5,
+          minWidth: 0,
+          justifyContent: { xs: 'flex-end', md: 'flex-start' },
+        }}
+      >
+        {children}
+      </Box>
     </Box>
   );
 }
@@ -130,7 +149,21 @@ function MembershipDetailsTable({ user }) {
       key: 'memberClass',
       label: 'Member class',
       value: (
-        <Label color={memberClassDisplay.color} variant="soft" sx={{ fontWeight: 800, fontSize: '0.8125rem', py: 0.75, px: 1.25 }}>
+        <Label
+          color={memberClassDisplay.color}
+          variant="soft"
+          sx={{
+            fontWeight: 800,
+            fontSize: '0.8125rem',
+            py: 0.75,
+            px: 1.25,
+            height: 'auto',
+            maxWidth: '100%',
+            whiteSpace: 'normal',
+            textAlign: { xs: 'right', md: 'left' },
+            lineHeight: 1.3,
+          }}
+        >
           {memberClassDisplay.text}
         </Label>
       ),
@@ -160,8 +193,8 @@ function MembershipDetailsTable({ user }) {
     >
       <Box
         sx={{
-          display: { xs: 'grid', md: 'flex' },
-          gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'none' },
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
         }}
       >
         {rows.map((row, index) => (
