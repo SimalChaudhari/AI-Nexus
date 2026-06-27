@@ -44,6 +44,8 @@ import {
   STUDENT_MEMBERSHIP_SYSTEM_PROMPT,
   STUDENT_CARD_IMAGE_SYSTEM_PROMPT,
   STUDENT_CARD_IMAGE_USER_PROMPT,
+  ACCOUNTING_CERT_SYSTEM_PROMPT,
+  ACCOUNTING_CERT_USER_PROMPT,
 } from '../ai-prompts/membership-prompts';
 import {
   buildNricSingleImageUserPrompt,
@@ -3605,6 +3607,134 @@ export class AuthService {
         ? 'Logged out successfully from both app and SSO'
         : 'Logged out successfully',
       browserLogoutUrl,
+    };
+  }
+
+  async submitAccountingDeclarationHrEmail(params: {
+    nricFin?: string;
+    learnerName?: string;
+    hrEmail?: string;
+  }) {
+    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
+    const learnerName = String(params?.learnerName || '').trim() || 'Applicant';
+    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
+      throw new BadRequestException('Please enter a valid HR email address.');
+    }
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    try {
+      await this.emailService.sendFeeWaiverHrVerificationEmail({
+        hrEmail,
+        learnerEmail: String(params?.nricFin || '').trim(),
+        learnerName,
+        verificationToken,
+      });
+    } catch (err) {
+      this.logger.warn(`Accounting declaration HR email failed: ${(err as Error)?.message}`);
+    }
+    return { success: true, message: 'Verification email sent to your employer.' };
+  }
+
+  async verifyAccountingDeclarationCertificate(params: {
+    certificate?: Express.Multer.File;
+    nricFin?: string;
+  }) {
+    if (!params?.certificate?.buffer?.length) {
+      throw new BadRequestException('Please upload your certificate.');
+    }
+    if (params.certificate.size > 8 * 1024 * 1024) {
+      throw new BadRequestException('File is too large. Maximum size is 8MB.');
+    }
+    const mime = String(params.certificate.mimetype || '').toLowerCase();
+    const isImage = mime.startsWith('image/');
+    try {
+      if (isImage) {
+        return await this.assessAccountingCertFromImage(params.certificate);
+      }
+      const text = await this.extractResumePlainTextFromUpload(params.certificate);
+      return await this.assessAccountingCertFromText(text);
+    } catch (err) {
+      this.logger.warn(`Accounting cert AI verification failed: ${(err as Error)?.message}`);
+      return {
+        verified: false,
+        status: 'rejected',
+        score: 0,
+        candidateName: '',
+        qualificationName: '',
+        institutionName: '',
+        awardingUniversity: '',
+        graduationDate: '',
+        certificateNumber: '',
+        isAccountingRelated: false,
+        needsManualReview: false,
+        reason: '',
+        message: 'This qualification does not appear to be accounting-related.',
+      };
+    }
+  }
+
+  private async assessAccountingCertFromText(text: string) {
+    const result = await this.llmService.chat({
+      useCase: 'experienced',
+      temperature: 0,
+      maxTokens: 600,
+      messages: [
+        { role: 'system', content: ACCOUNTING_CERT_SYSTEM_PROMPT },
+        { role: 'user', content: JSON.stringify({ documentTextExcerpt: text.slice(0, 8000) }) },
+      ],
+    });
+    return this.parseAccountingCertAiResponse(result.text);
+  }
+
+  private async assessAccountingCertFromImage(file: Express.Multer.File) {
+    const result = await this.llmService.chat({
+      useCase: 'experienced',
+      temperature: 0,
+      maxTokens: 800,
+      messages: [
+        { role: 'system', content: ACCOUNTING_CERT_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: ACCOUNTING_CERT_USER_PROMPT },
+            { type: 'image_url', image_url: { url: this.buildDataUrl(file) } },
+          ],
+        },
+      ],
+    });
+    return this.parseAccountingCertAiResponse(result.text);
+  }
+
+  private parseAccountingCertAiResponse(text: string) {
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`No JSON found in AI response: ${cleaned.slice(0, 200)}`);
+    }
+    const raw = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const confidence = Number(raw.confidence ?? 0);
+    const score = Math.round(confidence * 100);
+    const isValid = Boolean(raw.isValidDocument);
+    const isAccounting = Boolean(raw.isAccountingRelated);
+    const needsReview = Boolean(raw.needsManualReview);
+    const finalStatus: 'approved' | 'rejected' =
+      isValid && isAccounting && !needsReview && score >= 70 ? 'approved' : 'rejected';
+    return {
+      verified: finalStatus === 'approved',
+      status: finalStatus,
+      score,
+      candidateName: String(raw.candidateName || ''),
+      qualificationName: String(raw.qualificationName || ''),
+      institutionName: String(raw.institutionName || ''),
+      awardingUniversity: String(raw.awardingUniversity || ''),
+      graduationDate: String(raw.graduationDate || ''),
+      certificateNumber: raw.certificateNumber ? String(raw.certificateNumber) : '',
+      isAccountingRelated: isAccounting,
+      needsManualReview: needsReview,
+      reason: String(raw.reason || ''),
+      message:
+        finalStatus === 'approved'
+          ? 'Your qualification has been verified as accounting-related.'
+          : 'This qualification does not appear to be accounting-related.',
     };
   }
 }

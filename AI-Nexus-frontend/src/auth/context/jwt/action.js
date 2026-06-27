@@ -519,6 +519,47 @@ export const submitFeeWaiverAuditCertificate = async ({
   }
 };
 
+/** **************************************
+ * Accounting declaration: submit employer HR email (pre-registration, uses nricFin)
+ *************************************** */
+export const submitAccountingDeclarationHrEmail = async ({ hrEmail, nricFin, learnerName }) => {
+  try {
+    const res = await axios.post('/auth/accounting-declaration/hr-email', {
+      hrEmail,
+      nricFin: nricFin || undefined,
+      learnerName: learnerName || undefined,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not send employer verification email.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Accounting declaration: submit academic qualification certificate (pre-registration)
+ *************************************** */
+export const submitAccountingDeclarationCertificate = async ({ certificate, nricFin }) => {
+  try {
+    const formData = new FormData();
+    formData.append('certificate', certificate);
+    if (nricFin) formData.append('nricFin', nricFin);
+    const res = await axios.post('/auth/accounting-declaration/verify-certificate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not submit qualification. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
 /** Complete HR fee-waiver job role verification from email link. */
 export const verifyFeeWaiverHrToken = async ({ token }) => {
   try {

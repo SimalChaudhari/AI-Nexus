@@ -40,6 +40,8 @@ import {
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
   clearMembershipSignupDraftUserId,
   getMembershipSignupDraftUserId,
+  submitAccountingDeclarationHrEmail,
+  submitAccountingDeclarationCertificate,
 } from 'src/auth/context/jwt';
 import { CONFIG } from 'src/config-global';
 import { paths } from 'src/routes/paths';
@@ -379,6 +381,9 @@ const INITIAL_STATE = {
   verifiedNricFirstName: '',
   verifiedNricLastName: '',
   spPrVerified: null,
+  accountingDeclarationAnswered: null,
+  accountingVerificationMethod: null,
+  accountingVerificationCompleted: false,
   wantsIscaMembership: null,
   eligibilityType: '',
   eligibilityRequirementsAcknowledged: false,
@@ -644,6 +649,9 @@ function buildNoYesNoFlowFromFailedCompanyRoute(state) {
     iscaMemberVerificationPassed: null,
     nricSgPrCheckFailed: false,
     spPrVerified: null,
+    accountingDeclarationAnswered: null,
+    accountingVerificationMethod: null,
+    accountingVerificationCompleted: false,
     nricUploadAcknowledged: false,
   };
 }
@@ -689,6 +697,9 @@ function buildNoNoNoFlowFromNoYesYesNricFailure(state) {
     nricSgPrCheckFailed: false,
     nricFailureProceedAcknowledged: false,
     spPrVerified: null,
+    accountingDeclarationAnswered: null,
+    accountingVerificationMethod: null,
+    accountingVerificationCompleted: false,
     nricUploadAcknowledged: false,
   };
 }
@@ -734,6 +745,12 @@ function getNoYesNoQuestionnaireProgressMeta(step, state) {
 }
 
 function resolveNricVerifiedPostVerifyStep(state) {
+  if (state.accountingDeclarationAnswered === null) {
+    return 'accounting-declaration';
+  }
+  if (state.accountingDeclarationAnswered === true && !state.accountingVerificationCompleted) {
+    return 'accounting-verification';
+  }
   if (state.salesforceExistingAccountFound) {
     return 'result';
   }
@@ -2428,6 +2445,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   const [experiencedResumeVerifying, setExperiencedResumeVerifying] = useState(false);
   const [experiencedResumeVerificationError, setExperiencedResumeVerificationError] = useState('');
   const [experiencedResumeAssessment, setExperiencedResumeAssessment] = useState(null);
+  const [accountingVerifFile, setAccountingVerifFile] = useState(null);
+  const [accountingVerifHrEmail, setAccountingVerifHrEmail] = useState('');
+  const [accountingVerifSubmitting, setAccountingVerifSubmitting] = useState(false);
+  const [accountingVerifError, setAccountingVerifError] = useState('');
+  const [accountingVerifSuccess, setAccountingVerifSuccess] = useState('');
+  const [accountingCertResult, setAccountingCertResult] = useState(null);
   const resetExperiencedResumeLocalState = () => {
     setExperiencedResumeVerifying(false);
     setExperiencedResumeVerificationError('');
@@ -2467,6 +2490,15 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     setNricManualIdentifierValidating(false);
     setNricManualIdentifierError('');
     setNricVerificationMode('image');
+  };
+
+  const resetAccountingVerifLocalState = () => {
+    setAccountingVerifFile(null);
+    setAccountingVerifHrEmail('');
+    setAccountingVerifSubmitting(false);
+    setAccountingVerifError('');
+    setAccountingVerifSuccess('');
+    setAccountingCertResult(null);
   };
 
   const switchToNricManualMode = () => {
@@ -3037,6 +3069,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       workingEducationalBackground: '',
       nricUploadAcknowledged: false,
       spPrVerified: null,
+      accountingDeclarationAnswered: null,
+      accountingVerificationMethod: null,
+      accountingVerificationCompleted: false,
       wantsIscaMembership: null,
       eligibilityType: '',
       eligibilityRequirementsAcknowledged: false,
@@ -3074,6 +3109,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       ...(fromHomeGetStarted && value === false ? { wantsIscaMembership: true } : {}),
       nricUploadAcknowledged: false,
       spPrVerified: null,
+      accountingDeclarationAnswered: null,
+      accountingVerificationMethod: null,
+      accountingVerificationCompleted: false,
       ...(fromHomeGetStarted ? {} : { wantsIscaMembership: null }),
       eligibilityType: '',
       eligibilityRequirementsAcknowledged: false,
@@ -3224,6 +3262,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       nricSgPrCheckFailed: false,
       nricFailureProceedAcknowledged: false,
       spPrVerified: null,
+      accountingDeclarationAnswered: null,
+      accountingVerificationMethod: null,
+      accountingVerificationCompleted: false,
       nricUploadAcknowledged: false,
       feeWaiverViaCompanyReference: false,
     }));
@@ -3269,6 +3310,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       showCitizenshipRecordGap: false,
       citizenshipUpdateMode: true,
       spPrVerified: null,
+      accountingDeclarationAnswered: null,
+      accountingVerificationMethod: null,
+      accountingVerificationCompleted: false,
       nricUploadAcknowledged: false,
       nricSgPrCheckFailed: false,
       nricFailureProceedAcknowledged: false,
@@ -3696,6 +3740,69 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
 
   const continueAfterNricAiVerified = () => {
     continueToFeeWaiverSignup('fee-waiver-signup');
+  };
+
+  const handleAccountingDeclarationYes = () => {
+    setFlowState((prev) => ({ ...prev, accountingDeclarationAnswered: true }));
+  };
+
+  const handleAccountingDeclarationNo = () => {
+    setFlowState((prev) => ({ ...prev, accountingDeclarationAnswered: false }));
+  };
+
+  const accountingVerifHrEmailError = (() => {
+    const value = String(accountingVerifHrEmail || '').trim();
+    if (!value) return '';
+    return getPersonalEmailValidationMessage(value) || '';
+  })();
+
+  const handleAccountingVerifSubmitCertificate = async () => {
+    if (!accountingVerifFile) return;
+    setAccountingVerifError('');
+    setAccountingVerifSuccess('');
+    setAccountingCertResult(null);
+    setAccountingVerifSubmitting(true);
+    let result = null;
+    try {
+      result = await submitAccountingDeclarationCertificate({
+        certificate: accountingVerifFile,
+        nricFin: flowState.verifiedNricFin || undefined,
+      });
+    } catch {
+      // fire-and-forget — errors do not block access
+    } finally {
+      setAccountingVerifSubmitting(false);
+    }
+    setAccountingCertResult(result);
+    // both success and failure show result UI with a button — no auto-advance
+  };
+
+  const handleAccountingVerifTriggerHrEmail = async () => {
+    const email = String(accountingVerifHrEmail || '').trim();
+    if (!email || accountingVerifHrEmailError) return;
+    setAccountingVerifError('');
+    setAccountingVerifSuccess('');
+    setAccountingVerifSubmitting(true);
+    try {
+      await submitAccountingDeclarationHrEmail({
+        hrEmail: email,
+        nricFin: flowState.verifiedNricFin || undefined,
+        learnerName:
+          [flowState.verifiedNricFirstName, flowState.verifiedNricLastName]
+            .filter(Boolean)
+            .join(' ') || flowState.verifiedNricNameAsPerId || '',
+      });
+    } catch {
+      // fire-and-forget — errors do not block access
+    } finally {
+      setAccountingVerifSubmitting(false);
+    }
+    setAccountingVerifSuccess('Verification email sent to your employer. You can now continue.');
+    setFlowState((prev) => ({
+      ...prev,
+      accountingVerificationMethod: 'employer',
+      accountingVerificationCompleted: true,
+    }));
   };
 
   const continueAfterNricOtherOptions = () => {
@@ -5113,6 +5220,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     if (targetStep === 'nric') {
       resetNricCheckState();
     }
+    if (targetStep === 'accounting-declaration' || targetStep === 'accounting-verification') {
+      resetAccountingVerifLocalState();
+    }
     if (targetStep === 'student-membership-check' || targetStep === 'student-fee-payment') {
       resetStudentVerificationState();
     }
@@ -5179,6 +5289,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         feeWaiverViaCompanyReference: false,
         nricSgPrCheckFailed: false,
         spPrVerified: null,
+        accountingDeclarationAnswered: null,
+        accountingVerificationMethod: null,
+        accountingVerificationCompleted: false,
       }));
       return;
     }
@@ -5197,6 +5310,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           feeWaiverViaCompanyReference: false,
           nricSgPrCheckFailed: false,
           spPrVerified: null,
+          accountingDeclarationAnswered: null,
+          accountingVerificationMethod: null,
+          accountingVerificationCompleted: false,
           nricUploadAcknowledged: false,
         }));
         return;
@@ -5206,6 +5322,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           ...prev,
           nricSgPrCheckFailed: false,
           spPrVerified: null,
+          accountingDeclarationAnswered: null,
+          accountingVerificationMethod: null,
+          accountingVerificationCompleted: false,
           nricUploadAcknowledged: false,
         }));
       }
@@ -5312,6 +5431,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
           ...prev,
           nricUploadAcknowledged: false,
           spPrVerified: null,
+          accountingDeclarationAnswered: null,
+          accountingVerificationMethod: null,
+          accountingVerificationCompleted: false,
           wantsIscaMembership: null,
           eligibilityType: '',
         }));
@@ -5687,6 +5809,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: null,
+          accountingDeclarationAnswered: null,
+          accountingVerificationMethod: null,
+          accountingVerificationCompleted: false,
           verifiedNricFin: '',
           verifiedNricIdType: '',
           verifiedNricNameAsPerId: '',
@@ -5767,6 +5892,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: null,
+          accountingDeclarationAnswered: null,
+          accountingVerificationMethod: null,
+          accountingVerificationCompleted: false,
           nricUploadAcknowledged: false,
           feeWaiverViaCompanyReference: false,
         }));
@@ -5777,6 +5905,9 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         setFlowState((prev) => ({
           ...prev,
           spPrVerified: null,
+          accountingDeclarationAnswered: null,
+          accountingVerificationMethod: null,
+          accountingVerificationCompleted: false,
           nricUploadAcknowledged: false,
         }));
         return;
@@ -5846,7 +5977,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         return;
       }
       if (flowState.spPrVerified === true) {
-        setFlowState((prev) => ({ ...prev, spPrVerified: null }));
+        setFlowState((prev) => ({ ...prev, spPrVerified: null, accountingDeclarationAnswered: null, accountingVerificationMethod: null, accountingVerificationCompleted: false }));
         return;
       }
       if (flowState.studentMembershipOptIn !== null) {
@@ -7518,6 +7649,230 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
                     )}
                   </Stack>
                 </Box>
+            )}
+          </Stack>
+        )}
+        {step === 'accounting-declaration' && (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Declaration
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Are you currently a professional in accounting and related roles?
+            </Typography>
+            <FormControl component="fieldset">
+              <RadioGroup
+                value={
+                  flowState.accountingDeclarationAnswered === true
+                    ? 'yes'
+                    : flowState.accountingDeclarationAnswered === false
+                      ? 'no'
+                      : ''
+                }
+                onChange={(event) => {
+                  if (event.target.value === 'yes') handleAccountingDeclarationYes();
+                  else handleAccountingDeclarationNo();
+                }}
+              >
+                <FormControlLabel value="yes" control={<Radio />} label="Yes" />
+                <FormControlLabel value="no" control={<Radio />} label="No" />
+              </RadioGroup>
+            </FormControl>
+          </Stack>
+        )}
+        {step === 'accounting-verification' && (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Verify your accounting background
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Please choose one of the options below to verify your accounting profession.
+            </Typography>
+
+            <FormControl component="fieldset">
+              <FormLabel component="legend" sx={{ mb: 0.5, fontSize: 13, fontWeight: 600, color: 'text.primary' }}>
+                Verification method
+              </FormLabel>
+              <RadioGroup
+                value={flowState.accountingVerificationMethod || ''}
+                onChange={(event) => {
+                  setFlowState((prev) => ({
+                    ...prev,
+                    accountingVerificationMethod: event.target.value,
+                    accountingVerificationCompleted: false,
+                  }));
+                  setAccountingVerifError('');
+                  setAccountingVerifSuccess('');
+                  setAccountingVerifFile(null);
+                  setAccountingVerifHrEmail('');
+                  setAccountingCertResult(null);
+                }}
+              >
+                <FormControlLabel
+                  value="academic"
+                  control={<Radio />}
+                  label="Verify by uploading your academic qualification"
+                />
+                <FormControlLabel
+                  value="employer"
+                  control={<Radio />}
+                  label="Verify your job position via your employer"
+                />
+              </RadioGroup>
+            </FormControl>
+
+            {flowState.accountingVerificationMethod === 'academic' && (
+              <Stack spacing={1.5}>
+                <Divider />
+                <Typography variant="body2" color="text.secondary">
+                  Upload your degree or accounting-related certificate. Our system will review it to confirm your qualification.
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    color="inherit"
+                    startIcon={<Iconify icon="solar:upload-bold" />}
+                    sx={{ justifyContent: 'flex-start', flex: 1, minHeight: 44 }}
+                    disabled={accountingVerifSubmitting}
+                  >
+                    {accountingVerifFile ? accountingVerifFile.name : 'Upload qualification certificate'}
+                    <input
+                      hidden
+                      type="file"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp"
+                      onChange={(event) => {
+                        setAccountingVerifFile(event.target.files?.[0] || null);
+                        setAccountingVerifError('');
+                        setAccountingVerifSuccess('');
+                        setAccountingCertResult(null);
+                      }}
+                    />
+                  </Button>
+                  {accountingVerifFile && (
+                    <Chip
+                      size="small"
+                      label="Selected"
+                      icon={<Iconify icon="solar:verified-check-bold" width={16} />}
+                      sx={(theme) => ({
+                        fontWeight: 600,
+                        color: theme.palette.success.dark,
+                        bgcolor: alpha(theme.palette.success.main, 0.12),
+                        border: `1px solid ${alpha(theme.palette.success.main, 0.35)}`,
+                        '& .MuiChip-icon': { color: theme.palette.success.main },
+                      })}
+                    />
+                  )}
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  Accepted: PDF, Word document, or image (JPG, PNG). AI verification runs in the background.
+                </Typography>
+                {accountingCertResult?.status === 'approved' && (
+                  <Alert
+                    severity="success"
+                    icon={<Iconify icon="solar:verified-check-bold" width={20} />}
+                    sx={{ mt: 1 }}
+                  >
+                    <Typography variant="subtitle2" fontWeight={700} mb={0.5}>
+                      Verification Successful
+                    </Typography>
+                    <Typography variant="body2" mb={1}>
+                      {accountingCertResult.message}
+                    </Typography>
+                    <Stack spacing={0.3} mb={1}>
+                      {accountingCertResult.candidateName && (
+                        <Typography variant="caption"><strong>Name:</strong> {accountingCertResult.candidateName}</Typography>
+                      )}
+                      {accountingCertResult.qualificationName && (
+                        <Typography variant="caption"><strong>Qualification:</strong> {accountingCertResult.qualificationName}</Typography>
+                      )}
+                      {accountingCertResult.institutionName && (
+                        <Typography variant="caption"><strong>Institution:</strong> {accountingCertResult.institutionName}</Typography>
+                      )}
+                      {accountingCertResult.awardingUniversity && (
+                        <Typography variant="caption"><strong>Awarding University:</strong> {accountingCertResult.awardingUniversity}</Typography>
+                      )}
+                      {accountingCertResult.graduationDate && (
+                        <Typography variant="caption"><strong>Graduation Date:</strong> {accountingCertResult.graduationDate}</Typography>
+                      )}
+                    </Stack>
+                  </Alert>
+                )}
+                {accountingCertResult?.status === 'rejected' && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={700} mb={0.5}>
+                      Verification Failed
+                    </Typography>
+                    <Typography variant="body2" mb={1}>
+                      {accountingCertResult.message || 'This qualification does not appear to be accounting-related.'}
+                    </Typography>
+                    {(accountingCertResult.candidateName || accountingCertResult.qualificationName || accountingCertResult.institutionName || accountingCertResult.awardingUniversity) && (
+                      <Stack spacing={0.3} mb={1}>
+                        {accountingCertResult.candidateName && (
+                          <Typography variant="caption"><strong>Name:</strong> {accountingCertResult.candidateName}</Typography>
+                        )}
+                        {accountingCertResult.qualificationName && (
+                          <Typography variant="caption"><strong>Qualification:</strong> {accountingCertResult.qualificationName}</Typography>
+                        )}
+                        {accountingCertResult.institutionName && (
+                          <Typography variant="caption"><strong>Institution:</strong> {accountingCertResult.institutionName}</Typography>
+                        )}
+                        {accountingCertResult.awardingUniversity && (
+                          <Typography variant="caption"><strong>Awarding University:</strong> {accountingCertResult.awardingUniversity}</Typography>
+                        )}
+                        {accountingCertResult.graduationDate && (
+                          <Typography variant="caption"><strong>Graduation Date:</strong> {accountingCertResult.graduationDate}</Typography>
+                        )}
+                        {accountingCertResult.certificateNumber && (
+                          <Typography variant="caption"><strong>Certificate No:</strong> {accountingCertResult.certificateNumber}</Typography>
+                        )}
+                      </Stack>
+                    )}
+                    {accountingCertResult.reason && (
+                      <Typography variant="caption" color="error.dark" display="block">
+                        {accountingCertResult.reason}
+                      </Typography>
+                    )}
+                  </Alert>
+                )}
+              </Stack>
+            )}
+
+            {flowState.accountingVerificationMethod === 'employer' && (
+              <Stack spacing={1.5}>
+                <Divider />
+                <Typography variant="body2" color="text.secondary">
+                  Enter your employer or HR contact email. A verification email will be sent to confirm your job role.
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Employer / HR email address"
+                  placeholder="hr@company.com"
+                  value={accountingVerifHrEmail}
+                  onChange={(event) => {
+                    setAccountingVerifHrEmail(event.target.value);
+                    setAccountingVerifError('');
+                    setAccountingVerifSuccess('');
+                  }}
+                  error={Boolean(accountingVerifHrEmailError)}
+                  helperText={
+                    accountingVerifHrEmailError
+                    || 'A verification email will be sent to this address to confirm your job role.'
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  disabled={accountingVerifSubmitting}
+                  size="small"
+                />
+              </Stack>
+            )}
+
+            {!!accountingVerifError && (
+              <Alert severity="error">{accountingVerifError}</Alert>
+            )}
+            {!!accountingVerifSuccess && (
+              <Alert severity="success" icon={<Iconify icon="solar:verified-check-bold" width={20} />}>
+                {accountingVerifSuccess}
+              </Alert>
             )}
           </Stack>
         )}
@@ -9374,6 +9729,72 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               ? 'Open student membership application'
               : 'Open membership application'}
           </Button>
+        )}
+        {step === 'accounting-verification' && !flowState.accountingVerificationCompleted && (
+          <>
+            {flowState.accountingVerificationMethod === 'academic' && (
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                disabled={!accountingVerifFile || accountingVerifSubmitting || !!accountingCertResult}
+                onClick={handleAccountingVerifSubmitCertificate}
+                sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700 }}
+              >
+                {accountingVerifSubmitting ? 'Submitting...' : 'Submit qualification'}
+              </Button>
+            )}
+            {flowState.accountingVerificationMethod === 'academic' && accountingCertResult?.status === 'approved' && (
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700 }}
+                onClick={() =>
+                  setFlowState((prev) => ({
+                    ...prev,
+                    accountingVerificationMethod: 'academic',
+                    accountingVerificationCompleted: true,
+                  }))
+                }
+              >
+                Continue
+              </Button>
+            )}
+            {flowState.accountingVerificationMethod === 'academic' && accountingCertResult?.status === 'rejected' && (
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="large"
+                sx={{ minHeight: 46, textTransform: 'none', fontWeight: 600 }}
+                onClick={() =>
+                  setFlowState((prev) => ({
+                    ...prev,
+                    accountingVerificationMethod: 'academic',
+                    accountingVerificationCompleted: true,
+                  }))
+                }
+              >
+                Continue anyway
+              </Button>
+            )}
+            {flowState.accountingVerificationMethod === 'employer' && (
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                disabled={
+                  !String(accountingVerifHrEmail || '').trim()
+                  || Boolean(accountingVerifHrEmailError)
+                  || accountingVerifSubmitting
+                }
+                onClick={handleAccountingVerifTriggerHrEmail}
+                sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700 }}
+              >
+                {accountingVerifSubmitting ? 'Sending...' : 'Trigger Verification Email'}
+              </Button>
+            )}
+          </>
         )}
         {step === 'result' && result.outcome === 'student-fee-waiver' && (
           <>

@@ -424,4 +424,40 @@ export class AuthController {
   async verifyFeeWaiverAuditHr(@Query('token') token: string) {
     return this.authService.verifyFeeWaiverAuditHrToken(token);
   }
+
+  @Post('accounting-declaration/hr-email')
+  @ApiOperation({ summary: 'Send HR notification email for accounting declaration (pre-registration)' })
+  async submitAccountingDeclarationHrEmail(
+    @Body('nricFin') nricFin: string,
+    @Body('learnerName') learnerName: string,
+    @Body('hrEmail') hrEmail: string,
+  ) {
+    return this.authService.submitAccountingDeclarationHrEmail({ nricFin, learnerName, hrEmail });
+  }
+
+  @Post('accounting-declaration/verify-certificate')
+  @ApiOperation({ summary: 'AI-verify accounting qualification certificate (pre-registration)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        certificate: { type: 'string', format: 'binary' },
+        nricFin: { type: 'string' },
+      },
+      required: ['certificate'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('certificate', {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async verifyAccountingDeclarationCertificate(
+    @UploadedFile() certificate: Express.Multer.File,
+    @Body('nricFin') nricFin: string,
+  ) {
+    return this.authService.verifyAccountingDeclarationCertificate({ certificate, nricFin });
+  }
 }

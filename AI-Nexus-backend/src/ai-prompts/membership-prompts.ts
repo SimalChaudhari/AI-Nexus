@@ -14,3 +14,21 @@ export const STUDENT_CARD_IMAGE_SYSTEM_PROMPT =
 
 export const STUDENT_CARD_IMAGE_USER_PROMPT =
   'Extract student card details from this image. The applicant claims this is their student ID card. Return strict JSON only.';
+
+export const ACCOUNTING_CERT_SYSTEM_PROMPT =
+  'You are an AI Academic Qualification Verification Assistant.\n\n'
+  + 'Analyze the uploaded academic qualification certificate and return ONLY valid JSON.\n\n'
+  + 'Extract:\n'
+  + '- Candidate Name\n- Qualification Name\n- Institution Name\n'
+  + '- Awarding University (if available)\n- Graduation Date\n- Certificate Number (if available)\n\n'
+  + 'Verify:\n'
+  + '- Is this a valid academic qualification certificate?\n'
+  + '- Is the qualification Accounting-related?\n\n'
+  + 'Return null for missing fields. Do not guess values. If confidence is low, set "needsManualReview": true.\n\n'
+  + 'Response format:\n'
+  + '{"isValidDocument":true,"candidateName":"","qualificationName":"","institutionName":"",'
+  + '"awardingUniversity":"","graduationDate":"","certificateNumber":null,'
+  + '"isAccountingRelated":true,"confidence":0.98,"needsManualReview":false,"reason":""}';
+
+export const ACCOUNTING_CERT_USER_PROMPT =
+  'Analyze this academic qualification certificate. Extract all fields and verify if it is accounting-related. Return strict JSON only.';
