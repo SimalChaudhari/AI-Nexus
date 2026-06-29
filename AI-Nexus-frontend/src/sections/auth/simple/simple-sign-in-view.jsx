@@ -326,7 +326,7 @@ export function SimpleSignInView() {
           },
         })}
       >
-        Sign in with ISCA Eservices
+        Login via ISCA account
       </Button>
     </Stack>
   );

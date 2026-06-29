@@ -115,6 +115,7 @@ interface StudentAcademicVerificationChecks {
   academicEmailValid: boolean;
   personalEmailValid: boolean | null;
   studentCardReadable: boolean;
+  institutionVisible: boolean;
   cardEmailMatchesAcademic: boolean | null;
 }
 
@@ -139,6 +140,7 @@ const QUESTIONNAIRE_ACADEMIC_EMAIL_SUFFIXES = [
   'nyp.edu.sg',
   'tp.edu.sg',
   'rp.edu.sg',
+  'isca.org.sg',
 ];
 
 @Injectable()
@@ -2028,11 +2030,19 @@ export class AuthService {
       reasons.push(extracted.reason || 'Could not confirm a valid student ID card from the upload.');
     }
 
+    const institutionVisible = String(extracted.institution || '').trim().length > 0;
+    if (institutionVisible) {
+      score += 33;
+      reasons.push('Institution is visible on the student card.');
+    } else {
+      reasons.push('No institution was visible on the student card.');
+    }
+
     let cardEmailMatchesAcademic: boolean | null = null;
     if (extracted.email && academicEmail) {
       cardEmailMatchesAcademic = extracted.email === academicEmail;
       if (cardEmailMatchesAcademic) {
-        score += 33;
+        score += 14;
         reasons.push('Email on student card matches the academic email.');
       } else {
         reasons.push('Email on student card does not match the academic email.');
@@ -2044,7 +2054,7 @@ export class AuthService {
 
     const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
     let status: StudentEligibilityAssessment['status'] = 'ineligible';
-    if (cardEmailMatchesAcademic === false || !academicEmailValid || !studentCardReadable) {
+    if (!academicEmailValid || !studentCardReadable || !institutionVisible) {
       status = normalizedScore >= 50 ? 'manual_review' : 'ineligible';
     } else if (normalizedScore >= 70) {
       status = 'eligible';
@@ -2056,7 +2066,7 @@ export class AuthService {
       academicEmailValid
       && personalEmailValid
       && studentCardReadable
-      && cardEmailMatchesAcademic !== false
+      && institutionVisible
       && status === 'eligible';
 
     return {
@@ -2070,6 +2080,7 @@ export class AuthService {
         academicEmailValid,
         personalEmailValid,
         studentCardReadable,
+        institutionVisible,
         cardEmailMatchesAcademic,
       },
       extracted: {

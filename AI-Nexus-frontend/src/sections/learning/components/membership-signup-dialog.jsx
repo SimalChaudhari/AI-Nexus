@@ -153,7 +153,7 @@ const ELIGIBILITY_COMPANY_REFERENCE_INVALID_MESSAGE =
   'Sorry, the company reference ID you entered is invalid, please try again or proceed to the next step of your eligibility check';
 
 const ELIGIBILITY_STUDENT_ACADEMIC_NOT_VERIFIED_MESSAGE =
-  'Sorry, we are not able to verify your student details from the academic email and student card uploaded, please try again or proceed to the next step of your eligibility check';
+  'Sorry, we are not able to verify your student details from the student card uploaded, please try again or proceed to the next step of your eligibility check';
 
 const WORKING_MEMBERSHIP_PATHWAY_URLS = {
   associate:
@@ -554,6 +554,7 @@ const STUDENT_ACADEMIC_EMAIL_SUFFIXES = [
   'nyp.edu.sg',
   'tp.edu.sg',
   'rp.edu.sg',
+  'isca.org.sg',
 ];
 
 function isAcademicEmail(email) {
@@ -6124,6 +6125,17 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               Select Yes to answer a few eligibility questions. Select No to continue to sign up with payment
               for the full programme fee.
             </Typography>
+            <Typography variant="caption" color="text.disabled" sx={{ lineHeight: 1.5 }}>
+              By signing up, I agree to the{' '}
+              <Typography component="span" variant="caption" color="primary.main" sx={{ cursor: 'pointer' }}>
+                Terms of Use
+              </Typography>
+              {' '}and{' '}
+              <Typography component="span" variant="caption" color="primary.main" sx={{ cursor: 'pointer' }}>
+                Privacy Policy
+              </Typography>
+              .
+            </Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1}
@@ -6914,7 +6926,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         {step === 'student-academic-email' && (
           <Stack spacing={1.25}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Enter academic and personal details
+              Enter academic and student details
             </Typography>
             {studentCardVerifying ? (
               <Stack spacing={1}>
@@ -7020,6 +7032,12 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
 
             {!!studentCardVerificationError && (
               <Alert severity="error">{studentCardVerificationError}</Alert>
+            )}
+
+            {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === true && (
+              <Alert severity="success">
+                Your student card was verified successfully. Eligibility is based on your uploaded student card and academic email domain.
+              </Alert>
             )}
 
             {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === false && (
