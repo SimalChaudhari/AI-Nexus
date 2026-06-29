@@ -2472,10 +2472,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
     window.addEventListener('resize', fitYoutubeToFrame);
     window.addEventListener('orientationchange', fitYoutubeToFrame);
+    let ro;
+    if (typeof ResizeObserver !== 'undefined' && youtubeContainerRef.current) {
+      ro = new ResizeObserver(fitYoutubeToFrame);
+      ro.observe(youtubeContainerRef.current);
+    }
 
     return () => {
       window.removeEventListener('resize', fitYoutubeToFrame);
       window.removeEventListener('orientationchange', fitYoutubeToFrame);
+      if (ro) ro.disconnect();
       if (intervalId) clearInterval(intervalId);
       if (player && typeof player.destroy === 'function') player.destroy();
       youtubePlayerRef.current = null;

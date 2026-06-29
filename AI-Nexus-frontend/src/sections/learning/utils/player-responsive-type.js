@@ -89,16 +89,23 @@ export const LESSON_MEDIA_FRAME_HEIGHT = {
 /** @deprecated Use LESSON_MEDIA_FRAME_HEIGHT */
 export const LESSON_FRAME_HEIGHT = LESSON_MEDIA_FRAME_HEIGHT;
 
-export function getLessonMediaFrameSx(theme, frameHeight = LESSON_MEDIA_FRAME_HEIGHT) {
+export function getLessonMediaFrameSx(theme, _frameHeight = LESSON_MEDIA_FRAME_HEIGHT) {
   return {
     position: 'relative',
     overflow: 'hidden',
     bgcolor: 'grey.900',
     width: '100%',
-    maxWidth: '100%',
     aspectRatio: '16 / 9',
-    height: 'auto',
-    maxHeight: frameHeight,
+    // Paired maxHeight + maxWidth keeps the frame at exactly 16:9 when height is constrained.
+    // Using maxHeight alone with width:100% lets the frame grow wider than 16:9 in flex containers.
+    maxHeight: { xs: 'none', sm: '56vh', md: '60vh', lg: '65vh', xl: '72vh' },
+    maxWidth: {
+      xs: '100%',
+      sm: 'min(100%, calc(56vh * 16 / 9))',
+      md: 'min(100%, calc(60vh * 16 / 9))',
+      lg: 'min(100%, calc(65vh * 16 / 9))',
+      xl: 'min(100%, calc(72vh * 16 / 9))',
+    },
     margin: '0 auto',
     borderRadius: 0,
     boxShadow: `0 12px 40px ${alpha(theme.palette.common.black, 0.14)}`,
