@@ -157,6 +157,10 @@ function sanitizeSingaporeNricFormNamePart(value = '') {
     .trim();
 }
 
+function toTitleCase(str) {
+  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function parseSingaporeNricDisplayName(fullName = '') {
   const cleaned = String(fullName || '')
     .trim()
@@ -169,17 +173,17 @@ export function parseSingaporeNricDisplayName(fullName = '') {
 
   const parts = cleaned.split(' ').filter(Boolean);
   if (parts.length === 1) {
-    const lastName = sanitizeSingaporeNricFormNamePart(parts[0]);
+    const lastName = toTitleCase(sanitizeSingaporeNricFormNamePart(parts[0]));
     return { firstName: '', lastName, nameAsPerId: parts[0] };
   }
 
-  const lastName = sanitizeSingaporeNricFormNamePart(parts[0]);
+  const lastName = toTitleCase(sanitizeSingaporeNricFormNamePart(parts[0]));
   const givenNamesOnCard = parts
     .slice(1)
     .join(' ')
     .replace(/\s*,\s*/g, ', ')
     .trim();
-  const firstName = sanitizeSingaporeNricFormNamePart(givenNamesOnCard);
+  const firstName = toTitleCase(sanitizeSingaporeNricFormNamePart(givenNamesOnCard));
 
   return {
     firstName,
