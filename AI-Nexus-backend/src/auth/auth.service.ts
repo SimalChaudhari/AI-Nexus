@@ -34,6 +34,7 @@ import {
   assertNricFinNotAlreadyRegistered,
   assignVerifiedNricFinToUser,
   canReuseUserForNricVerification,
+  findUserByVerifiedNricFin,
 } from './utils/nric-registration-guard.util';
 import { LlmService } from '../llm/llm.service';
 import { LlmProvider } from '../llm/llm.types';
@@ -691,19 +692,30 @@ export class AuthService {
     }
 
     const draftUserId = String(userDto.draftUserId || '').trim();
-    if (!draftUserId) {
-      return null;
+    if (draftUserId) {
+      const existingDraft = await this.userRepository.findOne({ where: { id: draftUserId } });
+      if (existingDraft?.isDraft) {
+        return existingDraft;
+      }
     }
 
-    const existingDraft = await this.userRepository.findOne({
-      where: { id: draftUserId },
-    });
-
-    if (!existingDraft || !existingDraft.isDraft) {
-      return null;
+    // Fall back: match existing draft by NRIC so repeat attempts update instead of creating duplicates
+    const snapshot = userDto.eligibilitySnapshot;
+    if (snapshot && typeof snapshot === 'object') {
+      const nricFin = String(
+        (snapshot.verifiedNricFin as string)
+        || ((snapshot.nricAudit as Record<string, unknown>)?.identifier as string)
+        || '',
+      ).trim();
+      if (nricFin) {
+        const byNric = await findUserByVerifiedNricFin(this.userRepository, nricFin);
+        if (byNric?.isDraft) {
+          return byNric;
+        }
+      }
     }
 
-    return existingDraft;
+    return null;
   }
 
   async saveMembershipSignupDraft(userDto: UserDto): Promise<{ message: string; draftUserId: string; user: UserEntity }> {
@@ -1699,6 +1711,18 @@ export class AuthService {
     const normalizedNricFin = normalizeSingaporeNricFin(extracted.identifier || '');
     if (canReuseUserForNricVerification(resolvedUser, normalizedNricFin)) {
       return { user: resolvedUser!, createdAsDraft: false };
+    }
+
+    // Reuse an existing draft with the same NRIC instead of creating a duplicate
+    if (normalizedNricFin) {
+      const existingByNric = await findUserByVerifiedNricFin(this.userRepository, normalizedNricFin);
+      if (existingByNric?.isDraft) {
+        const draftName = this.buildDraftName(extracted.profile.fullName);
+        existingByNric.firstname = draftName.firstname;
+        existingByNric.lastname = draftName.lastname;
+        await this.userRepository.save(existingByNric);
+        return { user: existingByNric, createdAsDraft: false };
+      }
     }
 
     const draftName = this.buildDraftName(extracted.profile.fullName);

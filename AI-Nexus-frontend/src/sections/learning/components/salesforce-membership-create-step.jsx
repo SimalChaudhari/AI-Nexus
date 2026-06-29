@@ -1128,7 +1128,8 @@ export function SalesforceNexusUserUpdateStep({
     const pendingLast = String(flowState?.salesforcePendingAccountLastName || '').trim();
     const verifiedFirst = String(flowState?.verifiedNricFirstName || '').trim();
     const verifiedLast = String(flowState?.verifiedNricLastName || '').trim();
-    const nationality = String(flowState?.verifiedNricNationality || 'Singapore').trim() || 'Singapore';
+    const rawNationality = String(flowState?.verifiedNricNationality || '').trim();
+    const nationality = NATIONALITY_OPTIONS.includes(rawNationality) ? rawNationality : 'Singapore';
     const idType =
       String(nricIdentity?.idType || flowState?.verifiedNricIdType || SALESFORCE_ID_TYPE_BLUE).trim()
       || SALESFORCE_ID_TYPE_BLUE;
