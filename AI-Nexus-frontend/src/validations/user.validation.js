@@ -95,6 +95,7 @@ const individualSignupJobFunctionValues = [
 const individualSignupCitizenshipValues = ['singaporean', 'permanent-resident-singapore', 'others'];
 
 const individualSignupSharedFields = {
+  salutation: zod.string().min(1, { message: 'Salutation is required!' }),
   company: zod.string().min(1, { message: 'Company is required!' }),
   jobFunction: zod
     .string()

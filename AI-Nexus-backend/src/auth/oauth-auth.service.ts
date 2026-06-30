@@ -69,6 +69,9 @@ export interface SalesforceNexusUserInfo {
   isSCAQCandidate?: boolean;
   isAssociateMember?: boolean;
   isAINexusUser?: boolean;
+  Is_paid?: boolean;
+  Paid_date?: string;
+  paid_amount?: number;
   idType?: string;
   NRIC_Number?: string;
   [key: string]: unknown;
@@ -2425,6 +2428,12 @@ export class OAuthAuthService {
     citizenshipGap: boolean;
   }> {
     const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+
+    if (nexusInfo?.Is_paid === true) {
+      console.log('[SSO Login] Is_paid=true — granting direct platform login, skipping all deferral checks.');
+      return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
+    }
+
     const needsPaidSignup = this.requiresPaidSignupAfterSso(user);
     const citizenshipGap = this.requiresCitizenshipGapBeforePlatformLogin(nexusInfo);
     const useDeferredAuth = deferredAuthFromState || needsPaidSignup || citizenshipGap;

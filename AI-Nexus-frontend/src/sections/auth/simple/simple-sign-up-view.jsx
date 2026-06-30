@@ -160,13 +160,7 @@ export function SimpleSignUpView() {
   const signInHref = returnTo
     ? `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(returnTo)}`
     : paths.auth.simple.signIn;
-  const buildPaymentCompleteSignInHref = (email = '') => {
-    const nextSearch = new URLSearchParams();
-    if (returnTo) nextSearch.set('returnTo', returnTo);
-    if (email) nextSearch.set('email', email);
-    nextSearch.set('membershipPaymentConfirmed', '1');
-    return `${paths.auth.simple.signIn}?${nextSearch.toString()}`;
-  };
+  const buildPaymentCompleteSignInHref = () => paths.auth.oauth.start;
   const membershipInfoText = isVerifiedNricSignupFlow
     ? 'Verified document membership rate applied. Base fee is SGD 300 (excluding GST).'
     : 'Membership paid plan selected. Base fee is SGD 900 (excluding GST).';
@@ -216,6 +210,7 @@ export function SimpleSignUpView() {
 
   const defaultValues = {
     username: '',
+    salutation: '',
     firstName: '',
     lastName: '',
     email: '',
@@ -449,6 +444,9 @@ export function SimpleSignUpView() {
       setCompanyPrefilled(profilePrefill.companyPrefilled);
 
       reset({
+        salutation: parsed.values.salutation || '',
+        ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
+        salutation: parsed.values.salutation || '',
         username: parsed.values.username || '',
         firstName: parsed.values.firstName || '',
         lastName: parsed.values.lastName || '',
@@ -462,7 +460,6 @@ export function SimpleSignUpView() {
           profilePrefill.yearsOfExperience || parsed.values.yearsOfExperience || '',
         countryOfResidence:
           profilePrefill.countryOfResidence || parsed.values.countryOfResidence || '',
-        ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
       });
       membershipDraftRestoredRef.current = true;
     } catch {
@@ -493,7 +490,7 @@ export function SimpleSignUpView() {
     }
 
     if (paymentRedirectCountdown <= 0) {
-      router.replace(buildPaymentCompleteSignInHref(paymentCompletedState.email));
+      router.replace(buildPaymentCompleteSignInHref());
       return undefined;
     }
 
@@ -562,6 +559,8 @@ export function SimpleSignUpView() {
           sessionStorage.removeItem(membershipEligibilityStorageKey);
           sessionStorage.removeItem(pendingMembershipSessionKey);
           sessionStorage.removeItem(pendingMembershipRefKey);
+          sessionStorage.removeItem('salesforceNexusUsername');
+          localStorage.removeItem('membershipSalesforceSession');
         }
 
         const verifiedEmail = response?.email || getValues('email') || '';
@@ -689,7 +688,7 @@ export function SimpleSignUpView() {
 
     const createResult = await createSalesforceNexusUser(
       buildSalesforceNexusUserPayloadFromSignup({
-        salutation: 'Mr.',
+        salutation: data.salutation || '',
         firstName: formValues.firstName,
         lastName: formValues.lastName,
         email: formValues.email,
@@ -821,6 +820,7 @@ export function SimpleSignUpView() {
             eligibility: eligibilityData,
             paymentConsentChecked: true,
             values: {
+              salutation: data.salutation,
               username: data.username,
               firstName: data.firstName,
               lastName: data.lastName,
@@ -1000,6 +1000,19 @@ export function SimpleSignUpView() {
           )}
         </Stack>
       )}
+
+      <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+        <Field.Select
+          name="salutation"
+          label="Salutation"
+          required
+          InputLabelProps={{ shrink: true }}
+        >
+          {['Mr', 'Mrs', 'Ms', 'Dr', 'Prof'].map((s) => (
+            <MenuItem key={s} value={s}>{s}</MenuItem>
+          ))}
+        </Field.Select>
+      </Box>
 
       <Box>
         <Field.Text
@@ -1353,7 +1366,9 @@ export function SimpleSignUpView() {
         alignItems: 'start',
       }}
     >
-      <Box>{renderAccountFields}</Box>
+      <Box sx={isPaymentReturnProcessing ? { pointerEvents: 'none', opacity: 0.5 } : {}}>
+        {renderAccountFields}
+      </Box>
       {renderMembershipPanel}
     </Box>
   );
@@ -1421,16 +1436,10 @@ export function SimpleSignUpView() {
         </Stack>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-          <Button variant="contained" onClick={() => router.replace(buildPaymentCompleteSignInHref(paymentCompletedState.email))}>
+          <Button variant="contained" onClick={() => router.replace(buildPaymentCompleteSignInHref())}>
             Go to sign in now
           </Button>
-          <Button
-            variant="outlined"
-            component={RouterLink}
-            href={paymentCompletedState.email ? `${paths.auth.simple.verify}?email=${encodeURIComponent(paymentCompletedState.email)}` : paths.auth.simple.verify}
-          >
-            Open email verification page
-          </Button>
+          
         </Stack>
       </Stack>
     </Box>
