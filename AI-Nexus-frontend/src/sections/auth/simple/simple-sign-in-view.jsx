@@ -48,6 +48,7 @@ export function SimpleSignInView() {
   const [isResending, setIsResending] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [showResendOption, setShowResendOption] = useState(false);
+  const [showCorporateForm, setShowCorporateForm] = useState(false);
   const password = useBoolean();
 
   const defaultValues = {
@@ -206,37 +207,75 @@ export function SimpleSignInView() {
       </Box>
 
       <Typography variant="h5" sx={{ textAlign: 'center' }}>
-        Sign in to your account
+        {showCorporateForm ? 'Corporate Sign In' : 'Sign in to your account'}
       </Typography>
 
       <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
         Access your dashboard, courses, and AI tools securely.
       </Typography>
+    </Stack>
+  );
 
-      <Stack direction="row" spacing={0.5} justifyContent="center">
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          Don&apos;t have an account?
-        </Typography>
-        <Link
-          component="button"
-          type="button"
-          variant="subtitle2"
-          onClick={() => {
-            if (!shouldOpenResumedMembershipSignupModal()) {
-              clearMembershipEligibilityDraftOnModalClose();
-            }
-            setSignupModalOpen(true);
-          }}
-          sx={{ cursor: 'pointer', border: 'none', background: 'none', p: 0, font: 'inherit' }}
-        >
-          Sign up
-        </Link>
-      </Stack>
+  const renderLandingButtons = (
+    <Stack spacing={1.5}>
+      <Button
+        fullWidth
+        size="large"
+        variant="contained"
+        color="primary"
+        component={RouterLink}
+        href={paths.auth.oauth.start}
+        startIcon={<Iconify icon="solar:login-3-bold-duotone" />}
+        sx={{ height: 48, fontWeight: 700 }}
+      >
+        Login with ISCA Account
+      </Button>
+
+      <Divider sx={{ borderStyle: 'dashed' }} />
+
+      <Button
+        fullWidth
+        size="large"
+        variant="outlined"
+        color="inherit"
+        startIcon={<Iconify icon="solar:user-plus-bold-duotone" />}
+        onClick={() => navigateToPaidMembershipSignup(router.push, returnTo || paths.home)}
+        sx={{ height: 48, fontWeight: 600 }}
+      >
+        Sign Up / Non-Member Account
+      </Button>
+
+      <Button
+        fullWidth
+        size="large"
+        variant="outlined"
+        color="inherit"
+        startIcon={<Iconify icon="solar:buildings-2-bold-duotone" />}
+        onClick={() => setShowCorporateForm(true)}
+        sx={{ height: 48, fontWeight: 600 }}
+      >
+        Corporate Sign In
+      </Button>
     </Stack>
   );
 
   const renderForm = (
     <Stack spacing={2}>
+      <Button
+        size="small"
+        color="inherit"
+        startIcon={<Iconify icon="solar:arrow-left-bold" />}
+        onClick={() => {
+          setShowCorporateForm(false);
+          setErrorMsg('');
+          setSuccessMsg('');
+          setShowResendOption(false);
+        }}
+        sx={{ alignSelf: 'flex-start', mb: 0.5 }}
+      >
+        Back
+      </Button>
+
       <Field.Text
         name="identifier"
         label="Email or username"
@@ -297,37 +336,6 @@ export function SimpleSignInView() {
       >
         Sign in
       </LoadingButton>
-
-      <Divider sx={{ borderStyle: 'dashed', my: 0.25 }}>or</Divider>
-
-      <Button
-        fullWidth
-        size="large"
-        variant="outlined"
-        color="inherit"
-        component={RouterLink}
-        href={paths.auth.oauth.start}
-        startIcon={<Iconify icon="solar:login-3-bold-duotone" />}
-        sx={(theme) => ({
-          height: 44,
-          borderStyle: 'dashed',
-          fontWeight: 600,
-          [theme.breakpoints.down('sm')]: {
-            whiteSpace: 'nowrap',
-            fontSize: 12.5,
-            px: 1.25,
-            '& .MuiButton-startIcon': {
-              mr: 0.5,
-              '& svg': {
-                width: 18,
-                height: 18,
-              },
-            },
-          },
-        })}
-      >
-        Login via ISCA account
-      </Button>
     </Stack>
   );
 
@@ -385,9 +393,13 @@ export function SimpleSignInView() {
           boxShadow: `0 20px 40px ${alpha(theme.palette.grey[500], 0.12)}`,
         })}
       >
-        <Form methods={methods} onSubmit={onSubmit}>
-          {renderForm}
-        </Form>
+        {showCorporateForm ? (
+          <Form methods={methods} onSubmit={onSubmit}>
+            {renderForm}
+          </Form>
+        ) : (
+          renderLandingButtons
+        )}
       </Box>
 
       <MembershipSignupDialog
