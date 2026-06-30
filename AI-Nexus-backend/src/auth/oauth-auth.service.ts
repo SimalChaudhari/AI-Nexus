@@ -1276,50 +1276,70 @@ export class OAuthAuthService {
 
     console.log('[Salesforce] Setting Nexus user password via Apex REST:', { url, username });
 
-    try {
-      const res = await axios.post<Record<string, unknown>>(url, body, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        timeout: 30000,
-      });
-      console.log('[Salesforce] setpasswordfornexus response status:', res.status);
-      const resData = res.data || {};
-      let isError = false;
-      let errorMsg = '';
-      if (resData && typeof resData === 'object') {
-        if ('isError' in resData && (resData.isError === true || resData.isError === 'true')) {
-          isError = true;
-          errorMsg = String(resData.Message || resData.message || '');
-        } else if ('success' in resData && (resData.success === false || resData.success === 'false')) {
-          isError = true;
-          errorMsg = String(resData.message || resData.Message || '');
-        }
-      }
-      if (isError) {
-        console.error('[Salesforce] setpasswordfornexus API returned error:', errorMsg);
-        const desc = this.mapSetNexusPasswordErrorMessage(errorMsg);
-        throw new BadRequestException(desc || 'Failed to set Salesforce password.');
-      }
-      return resData;
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        console.error('[Salesforce] setpasswordfornexus failed:', {
-          status: err.response?.status,
-          data: err.response?.data,
-          message: err.message,
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 3000;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const res = await axios.post<Record<string, unknown>>(url, body, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 30000,
         });
-        const rawDescription = this.extractSalesforceErrorDescription(
-          err.response?.data,
-          err.message,
-        );
-        const desc = this.mapSetNexusPasswordErrorMessage(rawDescription);
-        throw new BadRequestException(desc || 'Failed to set Salesforce password.');
+        console.log('[Salesforce] setpasswordfornexus response status:', res.status);
+        const resData = res.data || {};
+        let isError = false;
+        let errorMsg = '';
+        if (resData && typeof resData === 'object') {
+          if ('isError' in resData && (resData.isError === true || resData.isError === 'true')) {
+            isError = true;
+            errorMsg = String(resData.Message || resData.message || '');
+          } else if ('success' in resData && (resData.success === false || resData.success === 'false')) {
+            isError = true;
+            errorMsg = String(resData.message || resData.Message || '');
+          }
+        }
+        if (isError) {
+          console.error('[Salesforce] setpasswordfornexus API returned error:', errorMsg);
+          if (errorMsg.toLowerCase().includes('user not found') && attempt < MAX_RETRIES) {
+            console.warn(`[Salesforce] setpasswordfornexus: user not found (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS}ms...`);
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            continue;
+          }
+          const desc = this.mapSetNexusPasswordErrorMessage(errorMsg);
+          throw new BadRequestException(desc || 'Failed to set Salesforce password.');
+        }
+        return resData;
+      } catch (err: unknown) {
+        if (err instanceof BadRequestException) throw err;
+        if (axios.isAxiosError(err)) {
+          console.error('[Salesforce] setpasswordfornexus failed:', {
+            attempt,
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+          });
+          lastError = err;
+          if (attempt < MAX_RETRIES) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            continue;
+          }
+          const rawDescription = this.extractSalesforceErrorDescription(
+            err.response?.data,
+            err.message,
+          );
+          const desc = this.mapSetNexusPasswordErrorMessage(rawDescription);
+          throw new BadRequestException(desc || 'Failed to set Salesforce password.');
+        }
+        throw err;
       }
-      throw err;
     }
+
+    throw lastError ?? new BadRequestException('Failed to set Salesforce password.');
   }
 
   /**
