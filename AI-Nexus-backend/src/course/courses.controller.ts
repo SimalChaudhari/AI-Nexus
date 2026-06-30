@@ -705,6 +705,52 @@ export class CourseController {
         });
     }
 
+    @Post(':courseId/question-bank/:questionId/assignment/reference/upload')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiConsumes('multipart/form-data')
+    @ApiOperation({ summary: 'Upload admin reference file for an assignment question' })
+    @UseInterceptors(
+        FileInterceptor('file', {
+            storage: memoryStorage(),
+            limits: { fileSize: IMAGE_LIMIT_BYTES },
+            fileFilter: (_req, file, cb) => {
+                const name = String(file.originalname || '').toLowerCase();
+                const allowedExt = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|zip|rar|png|jpg|jpeg|webp)$/i.test(name);
+                const allowedMime = /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/vnd\.ms-excel|application\/vnd\.ms-powerpoint|text\/plain|image\/.*|application\/zip)$/i.test(file.mimetype);
+                cb(null, Boolean(allowedExt || allowedMime));
+            },
+        }),
+    )
+    async uploadAssignmentReferenceFile(
+        @Param('courseId') courseId: string,
+        @Param('questionId') questionId: string,
+        @UploadedFile() file: Express.Multer.File,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        if (!file) {
+            return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
+        }
+
+        const savedUrl = await this.localStorageService.saveFile(file, 'course-assignment-references', {
+            fileName: `${Date.now()}-${file.originalname.replace(/[^a-z0-9.-]/gi, '-')}`,
+        });
+
+        // update question metadata
+        await this.courseQuestionBankService.update(questionId, {
+            referenceFileUrl: savedUrl,
+            referenceFileName: String(file.originalname || ''),
+        } as any);
+
+        return response.status(HttpStatus.OK).json({ message: 'Reference file uploaded', data: { fileUrl: savedUrl, originalFileName: file.originalname } });
+    }
+
     @Post(':courseId/question-bank/:questionId/check')
     @UseGuards(OptionalJwtAuthGuard)
     @ApiOperation({ summary: 'Check learner answer (does not expose correct answer in list)' })

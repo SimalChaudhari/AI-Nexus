@@ -448,8 +448,8 @@ export function LearningCourseGridCard({
                     icon={<Iconify icon="solar:document-add-bold" width={14} />}
                     label={
                       pendingAssignments > 0
-                        ? `${pendingAssignments} assignment${pendingAssignments !== 1 ? 's' : ''} pending`
-                        : `${totalAssignments} assignment${totalAssignments !== 1 ? 's' : ''} submitted`
+                        ? `${pendingAssignments} assessment${pendingAssignments !== 1 ? 's' : ''} pending`
+                        : `${totalAssignments} assessment${totalAssignments !== 1 ? 's' : ''} submitted`
                     }
                     color={pendingAssignments > 0 ? 'warning' : 'success'}
                     variant="soft"

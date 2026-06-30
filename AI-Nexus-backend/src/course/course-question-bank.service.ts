@@ -286,6 +286,8 @@ export class CourseQuestionBankService {
         questionType === CourseQuestionType.Assignment
           ? this.normalizeAssignedUserIds(dto.assignedUserIds)
           : null,
+      referenceFileUrl: questionType === CourseQuestionType.Assignment ? (dto as any).referenceFileUrl ?? null : null,
+      referenceFileName: questionType === CourseQuestionType.Assignment ? (dto as any).referenceFileName ?? null : null,
       sortOrder,
     });
     return this.repo.save(entity);
@@ -340,6 +342,8 @@ export class CourseQuestionBankService {
     if (dto.prompt !== undefined) row.prompt = dto.prompt;
     if (dto.questionType !== undefined) row.questionType = dto.questionType;
     if (dto.explanation !== undefined) row.explanation = dto.explanation ?? null;
+    if (dto.referenceFileUrl !== undefined) row.referenceFileUrl = dto.referenceFileUrl ?? null;
+    if (dto.referenceFileName !== undefined) row.referenceFileName = dto.referenceFileName ?? null;
     if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
     if (dto.assignedUserIds !== undefined) {
       row.assignedUserIds =

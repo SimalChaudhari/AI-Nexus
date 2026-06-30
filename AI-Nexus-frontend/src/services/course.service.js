@@ -1140,4 +1140,20 @@ export const courseService = {
       throw error;
     }
   },
+
+  async uploadAssignmentReferenceFile(courseId, questionId, file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/reference/upload`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error uploading assignment reference file:', error);
+      throw error;
+    }
+  },
 };

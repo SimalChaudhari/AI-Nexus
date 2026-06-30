@@ -46,6 +46,13 @@ export class CourseQuestionBankEntity {
   @Column({ type: 'text', nullable: true })
   explanation?: string | null;
 
+  /** assignment: optional reference file uploaded by admin for learners to download */
+  @Column({ type: 'text', nullable: true })
+  referenceFileUrl?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  referenceFileName?: string | null;
+
   /** assignment: optional list of user ids; empty/null means all enrolled learners */
   @Column({ type: 'jsonb', nullable: true })
   assignedUserIds?: string[] | null;

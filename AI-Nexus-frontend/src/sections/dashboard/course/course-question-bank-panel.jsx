@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -24,6 +24,8 @@ import Autocomplete from '@mui/material/Autocomplete';
 import { courseService } from 'src/services/course.service';
 import { userService } from 'src/services/user.service';
 import { Iconify } from 'src/components/iconify';
+import { resolveAssetUrl } from 'src/utils/asset-url';
+import { Upload } from 'src/components/upload';
 import { toast } from 'src/components/snackbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 
@@ -33,13 +35,13 @@ const QUESTION_TYPES = [
   { value: 'mcq', label: 'Multiple choice' },
   { value: 'true_false', label: 'True / False' },
   { value: 'short_text', label: 'Short text' },
-  { value: 'assignment', label: 'Assignment (file upload)' },
+  { value: 'assignment', label: 'Assessment (file upload)' },
 ];
 
 function questionTypeChipLabel(type) {
   if (type === 'true_false') return 'T/F';
   if (type === 'short_text') return 'Text';
-  if (type === 'assignment') return 'Assignment';
+  if (type === 'assignment') return 'Assessment';
   return 'MCQ';
 }
 
@@ -68,6 +70,9 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
   const [formAssignedUsers, setFormAssignedUsers] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [referenceFile, setReferenceFile] = useState(null);
+  const [referenceFilePreview, setReferenceFilePreview] = useState(null);
+  const refFileInput = useRef(null);
 
   const loadAll = useCallback(async () => {
     if (!courseId) return;
@@ -127,6 +132,12 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
     setFormAssignedUsers(
       ids.map((id) => userOptions.find((u) => u.id === id) || { id, name: id, email: '' })
     );
+    setReferenceFile(null);
+    setReferenceFilePreview(
+      editing.referenceFileUrl
+        ? { url: editing.referenceFileUrl, name: editing.referenceFileName || 'Reference file' }
+        : null
+    );
   }, [editing, userOptions]);
 
   const moduleLabelById = useMemo(() => {
@@ -146,6 +157,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
     setFormTfCorrect('true');
     setFormShortCorrect('');
     setFormAssignedUsers([]);
+    setReferenceFile(null);
     setDialogOpen(true);
   };
 
@@ -174,6 +186,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
       setFormTfCorrect(row.correctAnswer === 'false' ? 'false' : 'true');
     } else if (t === 'assignment') {
       setFormAssignedUsers(resolveAssignedUsersFromRow(row));
+      setReferenceFile(null);
     } else {
       setFormShortCorrect(row.correctAnswer || '');
     }
@@ -182,7 +195,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
 
   const buildPayload = () => {
     const base = {
-      prompt: formPrompt.trim(),
+      prompt: formPrompt.trim() || (formType === 'assignment' ? 'Assessment' : ''),
       explanation: formExplanation.trim() || undefined,
     };
     if (formModuleId) {
@@ -236,7 +249,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
   const handleSave = async () => {
     const payload = buildPayload();
     if (!payload) return;
-    if (!payload.prompt) {
+    if (formType !== 'assignment' && !payload.prompt) {
       toast.error('Question text is required');
       return;
     }
@@ -244,9 +257,25 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
     try {
       if (editing?.id) {
         await courseService.updateCourseQuestion(editing.id, payload);
+        if (referenceFile) {
+          try {
+            await courseService.uploadAssignmentReferenceFile(courseId, editing.id, referenceFile);
+            toast.success('Reference file uploaded');
+          } catch (err) {
+            toast.error('Reference file upload failed');
+          }
+        }
         toast.success('Question updated');
       } else {
-        await courseService.createCourseQuestion(courseId, payload);
+        const created = await courseService.createCourseQuestion(courseId, payload);
+        if (referenceFile && created?.id) {
+          try {
+            await courseService.uploadAssignmentReferenceFile(courseId, created.id, referenceFile);
+            toast.success('Reference file uploaded');
+          } catch (err) {
+            toast.error('Reference file upload failed');
+          }
+        }
         toast.success('Question added');
       }
       setDialogOpen(false);
@@ -301,7 +330,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
 
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Link questions to a <strong>module</strong> (one bank per module). Learners use “Module practice” after
-        finishing all lessons in that module. Use <strong>Assignment</strong> for file uploads assigned to specific
+        finishing all lessons in that module. Use <strong>Assessment</strong> for file uploads assigned to specific
         learners (or all enrolled learners if none are selected).
       </Typography>
 
@@ -311,7 +340,7 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
         </Typography>
       ) : questions.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          No questions yet. Add MCQ, true/false, short-text, or assignment items.
+          No questions yet. Add MCQ, true/false, short-text, or assessment items.
         </Typography>
       ) : (
         <Table size="small">
@@ -407,15 +436,17 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
                 </Select>
               </FormControl>
 
-              <TextField
-                label="Question"
-                value={formPrompt}
-                onChange={(e) => setFormPrompt(e.target.value)}
-                multiline
-                minRows={3}
-                fullWidth
-                required
-              />
+              {formType !== 'assignment' && (
+                <TextField
+                  label="Question"
+                  value={formPrompt}
+                  onChange={(e) => setFormPrompt(e.target.value)}
+                  multiline
+                  minRows={3}
+                  fullWidth
+                  required
+                />
+              )}
 
               <FormControl fullWidth size="small">
                 <InputLabel>Module (optional)</InputLabel>
@@ -524,6 +555,27 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
                       <TextField {...params} label="Assigned learners" placeholder="Search learners" />
                     )}
                   />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      Optional admin reference file for learners (PDF, images, ZIP, etc.).
+                    </Typography>
+                    <Upload
+                      value={referenceFile || (referenceFilePreview?.url || null)}
+                      multiple={false}
+                      showViewButton
+                      coverPreview
+                      onDrop={(acceptedFiles) => {
+                        const f = Array.isArray(acceptedFiles) ? acceptedFiles[0] : acceptedFiles;
+                        setReferenceFile(f || null);
+                        if (f) setReferenceFilePreview(null);
+                      }}
+                      onDelete={() => {
+                        setReferenceFile(null);
+                        setReferenceFilePreview(null);
+                      }}
+                      helperText="PDF, Word, Excel, PowerPoint, CSV, TXT, or ZIP — uploaded when you save (max 50MB each)"
+                    />
+                  </Box>
                 </>
               )}
 

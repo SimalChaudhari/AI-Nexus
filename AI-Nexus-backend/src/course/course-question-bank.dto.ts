@@ -53,6 +53,16 @@ export class CreateCourseQuestionBankDto {
   @IsUUID('4', { each: true })
   assignedUserIds?: string[];
 
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  referenceFileUrl?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  referenceFileName?: string;
+
   @IsOptional()
   @IsString()
   explanation?: string;
@@ -97,6 +107,14 @@ export class UpdateCourseQuestionBankDto {
   @IsArray()
   @IsUUID('4', { each: true })
   assignedUserIds?: string[] | null;
+
+  @IsOptional()
+  @IsString()
+  referenceFileUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  referenceFileName?: string | null;
 
   @IsOptional()
   @IsString()

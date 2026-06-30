@@ -432,7 +432,7 @@ export function CourseDetailsView({ course, loading, error }) {
           <Tab value="overview" label="Overview" icon={<Iconify icon="solar:info-circle-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
           <Tab value="curriculum" label="Curriculum" icon={<Iconify icon="solar:widget-5-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
           <Tab value="question-bank" label="Question bank" icon={<Iconify icon="solar:clipboard-list-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
-          <Tab value="assignments" label="Assignment files" icon={<Iconify icon="solar:document-add-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+          <Tab value="assignments" label="Assessment files" icon={<Iconify icon="solar:document-add-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
           <Tab value="reviews" label="Reviews" icon={<Iconify icon="solar:chat-round-dots-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
         </Tabs>
 

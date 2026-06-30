@@ -120,7 +120,11 @@ export function Upload({
 
         {/* Single file */}
         {hasFile ? (
-          <SingleFilePreview file={value} objectFit={coverPreview ? 'cover' : 'contain'} />
+          <SingleFilePreview
+            file={value}
+            objectFit={coverPreview ? 'cover' : 'contain'}
+            showViewButton={showViewButton}
+          />
         ) : (
           <UploadPlaceholder />
         )}

@@ -68,7 +68,7 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
       await courseService.deleteAssignmentSubmission(courseId, row.questionId, {
         userId: row.userId,
       });
-      toast.success('Assignment file deleted');
+      toast.success('Assessment file deleted');
       setRows((prev) => prev.filter((item) => item.id !== row.id));
       setDeleteTarget(null);
     } catch (e) {
@@ -85,13 +85,13 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <Iconify icon="solar:document-add-bold" width={24} />
-          <Typography variant="h6">Assignment submissions</Typography>
+          <Typography variant="h6">Assessment submissions</Typography>
         </Stack>
         <Chip size="small" label={`${rows.length} file${rows.length !== 1 ? 's' : ''}`} variant="soft" />
       </Stack>
 
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-        Uploaded assignment files from learners. Only admins and the submitting learner can access each file.
+        Uploaded assessment files from learners. Only admins and the submitting learner can access each file.
       </Typography>
 
       {userOptions.length > 1 ? (
@@ -121,14 +121,14 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
         </Stack>
       ) : rows.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          No assignment files uploaded yet.
+          No assessment files uploaded yet.
         </Typography>
       ) : (
         <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell>Learner</TableCell>
-              <TableCell>Assignment</TableCell>
+              <TableCell>Assessment</TableCell>
               <TableCell>Module</TableCell>
               <TableCell>File</TableCell>
               <TableCell>Uploaded</TableCell>
@@ -190,7 +190,7 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
-        title="Delete assignment file"
+        title="Delete assessment file"
         content={
           deleteTarget
             ? `Remove the uploaded file from ${deleteTarget.userName || 'this learner'}? This cannot be undone.`

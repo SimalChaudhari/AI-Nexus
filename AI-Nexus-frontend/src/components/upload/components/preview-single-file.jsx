@@ -7,7 +7,7 @@ import { Iconify } from '../../iconify';
 
 // ----------------------------------------------------------------------
 
-export function SingleFilePreview({ file, objectFit = 'contain' }) {
+export function SingleFilePreview({ file, objectFit = 'contain', showViewButton = false }) {
   const fileName = typeof file === 'string' ? file : file.name;
 
   const previewUrl = typeof file === 'string' ? file : URL.createObjectURL(file);
@@ -34,6 +34,27 @@ export function SingleFilePreview({ file, objectFit = 'contain' }) {
           objectFit,
         }}
       />
+
+      {showViewButton && (
+        <IconButton
+          size="small"
+          component="a"
+          href={previewUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{
+            left: 16,
+            top: 16,
+            zIndex: 9,
+            position: 'absolute',
+            color: (theme) => varAlpha(theme.vars.palette.common.whiteChannel, 0.8),
+            bgcolor: (theme) => varAlpha(theme.vars.palette.grey['900Channel'], 0.72),
+            '&:hover': { bgcolor: (theme) => varAlpha(theme.vars.palette.grey['900Channel'], 0.48) },
+          }}
+        >
+          <Iconify icon="solar:eye-bold" width={18} />
+        </IconButton>
+      )}
     </Box>
   );
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, QueryFailedError } from 'typeorm';
+import { CourseEntity, CourseLevel } from './courses.entity';
 import { CourseSectionWatchProgressEntity } from './course-section-watch-progress.entity';
 import { CourseModuleSectionEntity } from './course-module-section.entity';
 import { CourseModuleEntity } from './course-module.entity';
@@ -41,6 +42,13 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || ''),
   );
+}
+
+function normalizeCourseLevel(level?: string): 'beginner' | 'intermediate' | 'advanced' {
+  const normalized = String(level || '').trim().toLowerCase();
+  if (normalized === 'intermediate') return 'intermediate';
+  if (normalized === 'advanced' || normalized === 'advance') return 'advanced';
+  return 'beginner';
 }
 
 function parseCoverageRangePairs(raw: unknown): [number, number][] {
@@ -110,6 +118,8 @@ export class CourseSectionWatchProgressService {
     private readonly sectionRepository: Repository<CourseModuleSectionEntity>,
     @InjectRepository(CourseModuleEntity)
     private readonly moduleRepository: Repository<CourseModuleEntity>,
+    @InjectRepository(CourseEntity)
+    private readonly courseRepository: Repository<CourseEntity>,
   ) {}
 
   private formatSecondsToHhMmSs(totalSeconds: number): string {
@@ -172,7 +182,7 @@ export class CourseSectionWatchProgressService {
     return watched >= required - 1;
   }
 
-  private async resolveSectionTiming(
+  private async resolveCourseTiming(
     courseId: string,
     sectionId: string,
   ): Promise<{ watchtimeSeconds: number; durationTimeSeconds: number }> {
@@ -192,44 +202,219 @@ export class CourseSectionWatchProgressService {
     };
   }
 
-  private async getOrderedCourseSections(courseId: string): Promise<string[]> {
+  private async resolveCourseLevel(courseId: string): Promise<'beginner' | 'intermediate' | 'advanced'> {
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['level'],
+    });
+    return normalizeCourseLevel(course?.level);
+  }
+
+  private async getOrderedCourseSections(courseId: string): Promise<Array<{ sectionId: string; moduleId: string }>> {
     const modules = await this.moduleRepository.find({
       where: { courseId },
       select: ['id', 'sortOrder'],
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
     if (!modules.length) return [];
+
     const moduleIds = modules.map((module) => module.id);
     const sections = await this.sectionRepository.find({
       where: moduleIds.map((moduleId) => ({ moduleId })),
       select: ['id', 'moduleId', 'sortOrder'],
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
-    const sectionByModule = new Map<string, string[]>();
+
+    const sectionByModule = new Map<string, Array<{ id: string; moduleId: string }>>();
     modules.forEach((module) => sectionByModule.set(module.id, []));
     sections.forEach((section) => {
       const existing = sectionByModule.get(section.moduleId) || [];
-      existing.push(section.id);
+      existing.push({ id: section.id, moduleId: section.moduleId });
       sectionByModule.set(section.moduleId, existing);
     });
-    return modules.flatMap((module) => sectionByModule.get(module.id) || []);
+
+    return modules.flatMap((module) => sectionByModule.get(module.id) || []).map((s) => ({
+      sectionId: s.id,
+      moduleId: s.moduleId,
+    }));
+  }
+
+  private async getModulesAndSections(courseId: string) {
+    const modules = await this.moduleRepository.find({
+      where: { courseId },
+      select: ['id', 'sortOrder'],
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+
+    const sections = modules.length
+      ? await this.sectionRepository.find({
+          where: modules.map((module) => ({ moduleId: module.id })),
+          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime'],
+          order: { sortOrder: 'ASC', createdAt: 'ASC' },
+        })
+      : [];
+
+    return { modules, sections } as {
+      modules: CourseModuleEntity[];
+      sections: CourseModuleSectionEntity[];
+    };
+  }
+
+  private groupSectionsByModule(modules: CourseModuleEntity[], sections: CourseModuleSectionEntity[]) {
+    const sectionsByModule = new Map<string, CourseModuleSectionEntity[]>();
+    modules.forEach((module) => sectionsByModule.set(module.id, []));
+    sections.forEach((section) => {
+      const entries = sectionsByModule.get(section.moduleId) || [];
+      entries.push(section);
+      sectionsByModule.set(section.moduleId, entries);
+    });
+    sectionsByModule.forEach((entries) =>
+      entries.sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)),
+    );
+    return sectionsByModule;
   }
 
   private async resolveSectionLockedState(userId: string, courseId: string, sectionId: string): Promise<boolean> {
-    const orderedSectionIds = await this.getOrderedCourseSections(courseId);
+    const courseLevel = await this.resolveCourseLevel(courseId);
+    if (courseLevel === 'advanced') {
+      return false;
+    }
+
+    const { modules, sections } = await this.getModulesAndSections(courseId);
+    if (!modules.length || !sections.length) return false;
+
+    const sectionsByModule = this.groupSectionsByModule(modules, sections);
+    const firstModuleId = modules[0].id;
+    const currentSection = sections.find((section) => section.id === sectionId);
+    if (!currentSection) return false;
+
+    const deriveSectionDone = (sectionIdToCheck: string) => {
+      const progress = this.sectionProgressRepository.findOne({
+        where: { userId, courseId, sectionId: sectionIdToCheck },
+      });
+      return progress.then((existing) => {
+        const section = sections.find((item) => item.id === sectionIdToCheck);
+        return this.deriveSectionProgressComputation(
+          existing ?? undefined,
+          parseWatchtimeToSeconds(section?.watchtime),
+          parseWatchtimeToSeconds(section?.durationTime),
+        ).isCompleted;
+      });
+    };
+
+    const isFirstModuleComplete = async () => {
+      const firstModuleSections = sectionsByModule.get(firstModuleId) || [];
+      if (firstModuleSections.length === 0) return true;
+      for (const section of firstModuleSections) {
+        const done = await deriveSectionDone(section.id);
+        if (!done) return false;
+      }
+      return true;
+    };
+
+    if (courseLevel === 'intermediate' && currentSection.moduleId !== firstModuleId) {
+      const firstModuleComplete = await isFirstModuleComplete();
+      if (!firstModuleComplete) return true;
+      const currentModuleSections = sectionsByModule.get(currentSection.moduleId) || [];
+      const currentIndex = currentModuleSections.findIndex((section) => section.id === sectionId);
+      if (currentIndex <= 0) return false;
+      return !(await deriveSectionDone(currentModuleSections[currentIndex - 1].id));
+    }
+
+    if (courseLevel === 'intermediate' && currentSection.moduleId === firstModuleId) {
+      const firstModuleSections = sectionsByModule.get(firstModuleId) || [];
+      const currentIndex = firstModuleSections.findIndex((section) => section.id === sectionId);
+      if (currentIndex <= 0) return false;
+      return !(await deriveSectionDone(firstModuleSections[currentIndex - 1].id));
+    }
+
+    const orderedSectionIds = modules.flatMap((module) =>
+      (sectionsByModule.get(module.id) || []).map((section) => section.id),
+    );
     const currentIndex = orderedSectionIds.findIndex((id) => id === sectionId);
     if (currentIndex <= 0) return false;
+
     const previousSectionId = orderedSectionIds[currentIndex - 1];
-    const previousProgress = await this.sectionProgressRepository.findOne({
-      where: { userId, courseId, sectionId: previousSectionId },
+    return !(await deriveSectionDone(previousSectionId));
+  }
+
+  async getAllSectionProgressForCourse(
+    userId: string,
+    courseId: string,
+  ): Promise<Record<string, ReturnType<CourseSectionWatchProgressService['formatSectionProgressResponse']>>> {
+    const { modules, sections } = await this.getModulesAndSections(courseId);
+    if (modules.length === 0 || sections.length === 0) {
+      return {};
+    }
+
+    const sectionsByModule = this.groupSectionsByModule(modules, sections);
+    const sectionIds = sections.map((s) => s.id);
+    const progressRows = await this.sectionProgressRepository.find({
+      where: { userId, courseId, sectionId: In(sectionIds) },
     });
-    const resolvedTiming = await this.resolveSectionTiming(courseId, previousSectionId);
-    const prevDone = this.deriveSectionProgressComputation(
-      previousProgress ?? undefined,
-      resolvedTiming.watchtimeSeconds,
-      resolvedTiming.durationTimeSeconds,
-    ).isCompleted;
-    return !prevDone;
+    const progressBySection = new Map(progressRows.map((r) => [r.sectionId, r]));
+
+    const resolvedTimingBySection = new Map<string, { watchtimeSeconds: number; durationTimeSeconds: number }>();
+    sections.forEach((section) => {
+      resolvedTimingBySection.set(section.id, {
+        watchtimeSeconds: parseWatchtimeToSeconds(section.watchtime),
+        durationTimeSeconds: parseWatchtimeToSeconds(section.durationTime),
+      });
+    });
+
+    const sectionCompletion = new Map<string, boolean>();
+    sectionIds.forEach((sectionId) => {
+      const progress = progressBySection.get(sectionId);
+      const resolvedTiming = resolvedTimingBySection.get(sectionId) ?? { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+      const completed = this.deriveSectionProgressComputation(
+        progress,
+        resolvedTiming.watchtimeSeconds,
+        resolvedTiming.durationTimeSeconds,
+      ).isCompleted;
+      sectionCompletion.set(sectionId, completed);
+    });
+
+    const courseLevel = await this.resolveCourseLevel(courseId);
+    const firstModuleId = modules[0].id;
+    const firstModuleComplete = (() => {
+      const firstModuleSections = sectionsByModule.get(firstModuleId) || [];
+      if (firstModuleSections.length === 0) return true;
+      return firstModuleSections.every((section) => sectionCompletion.get(section.id) === true);
+    })();
+
+    const result: Record<string, ReturnType<CourseSectionWatchProgressService['formatSectionProgressResponse']>> = {};
+    modules.forEach((module) => {
+      const moduleSections = sectionsByModule.get(module.id) || [];
+      moduleSections.forEach((section, idx) => {
+        let isLocked = false;
+        if (courseLevel === 'advanced') {
+          isLocked = false;
+        } else if (courseLevel === 'intermediate') {
+          if (module.id !== firstModuleId) {
+            isLocked = !firstModuleComplete;
+            if (!isLocked && idx > 0) {
+              isLocked = sectionCompletion.get(moduleSections[idx - 1].id) !== true;
+            }
+          } else if (idx > 0) {
+            isLocked = sectionCompletion.get(moduleSections[idx - 1].id) !== true;
+          }
+        } else {
+          const orderedSectionIds = modules.flatMap((m) => (sectionsByModule.get(m.id) || []).map((s) => s.id));
+          const currentIndex = orderedSectionIds.findIndex((id) => id === section.id);
+          isLocked = currentIndex > 0 && sectionCompletion.get(orderedSectionIds[currentIndex - 1]) !== true;
+        }
+        result[section.id] = this.formatSectionProgressResponse(
+          courseId,
+          section.id,
+          progressBySection.get(section.id),
+          resolvedTimingBySection.get(section.id)?.watchtimeSeconds ?? 0,
+          resolvedTimingBySection.get(section.id)?.durationTimeSeconds ?? 0,
+          isLocked,
+        );
+      });
+    });
+
+    return result;
   }
 
   /**
@@ -328,77 +513,6 @@ export class CourseSectionWatchProgressService {
     };
   }
 
-  async getAllSectionProgressForCourse(
-    userId: string,
-    courseId: string,
-  ): Promise<Record<string, ReturnType<CourseSectionWatchProgressService['formatSectionProgressResponse']>>> {
-    const orderedIds = await this.getOrderedCourseSections(courseId);
-    if (orderedIds.length === 0) {
-      return {};
-    }
-
-    const sections = await this.sectionRepository.find({
-      where: { id: In(orderedIds) },
-      select: ['id', 'moduleId', 'watchtime', 'durationTime'],
-    });
-    const moduleIds = [...new Set(sections.map((s) => s.moduleId))];
-    const modules =
-      moduleIds.length > 0
-        ? await this.moduleRepository.find({
-            where: { id: In(moduleIds) },
-            select: ['id', 'courseId'],
-          })
-        : [];
-    const moduleCourse = new Map(modules.map((m) => [m.id, m.courseId]));
-
-    const resolvedTimingBySection = new Map<string, { watchtimeSeconds: number; durationTimeSeconds: number }>();
-    sections.forEach((s) => {
-      if (moduleCourse.get(s.moduleId) === courseId) {
-        resolvedTimingBySection.set(s.id, {
-          watchtimeSeconds: parseWatchtimeToSeconds(s.watchtime),
-          durationTimeSeconds: parseWatchtimeToSeconds(s.durationTime),
-        });
-      }
-    });
-
-    const progressRows = await this.sectionProgressRepository.find({
-      where: { userId, courseId },
-    });
-    const progressBySection = new Map(progressRows.map((r) => [r.sectionId, r]));
-
-    const result: Record<string, ReturnType<CourseSectionWatchProgressService['formatSectionProgressResponse']>> = {};
-    orderedIds.forEach((sectionId, idx) => {
-      const prevId = idx > 0 ? orderedIds[idx - 1] : null;
-      const prevExisting = prevId ? progressBySection.get(prevId) : undefined;
-      const prevResolved = prevId
-        ? resolvedTimingBySection.get(prevId) ?? { watchtimeSeconds: 0, durationTimeSeconds: 0 }
-        : { watchtimeSeconds: 0, durationTimeSeconds: 0 };
-      const previousSectionComplete =
-        idx === 0 ||
-        (prevId != null &&
-          this.deriveSectionProgressComputation(
-            prevExisting,
-            prevResolved.watchtimeSeconds,
-            prevResolved.durationTimeSeconds,
-          ).isCompleted);
-      const isLocked = idx > 0 && !previousSectionComplete;
-      const existing = progressBySection.get(sectionId);
-      const resolved = resolvedTimingBySection.get(sectionId) ?? {
-        watchtimeSeconds: 0,
-        durationTimeSeconds: 0,
-      };
-      result[sectionId] = this.formatSectionProgressResponse(
-        courseId,
-        sectionId,
-        existing,
-        resolved.watchtimeSeconds,
-        resolved.durationTimeSeconds,
-        isLocked,
-      );
-    });
-    return result;
-  }
-
   async getUserTouchedCourseIds(userId: string): Promise<string[]> {
     const rows = await this.sectionProgressRepository
       .createQueryBuilder('sp')
@@ -435,7 +549,7 @@ export class CourseSectionWatchProgressService {
     const existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
-    const resolvedTiming = await this.resolveSectionTiming(courseId, sectionId);
+    const resolvedTiming = await this.resolveCourseTiming(courseId, sectionId);
     const isLocked = await this.resolveSectionLockedState(userId, courseId, sectionId);
     return this.formatSectionProgressResponse(
       courseId,
@@ -473,7 +587,7 @@ export class CourseSectionWatchProgressService {
     const existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
-    const resolvedTiming = await this.resolveSectionTiming(courseId, sectionId);
+    const resolvedTiming = await this.resolveCourseTiming(courseId, sectionId);
     const incomingDuration = typeof dto.durationSeconds === 'number' ? dto.durationSeconds : 0;
     const observedDuration = Math.max(
       existing?.durationSeconds ?? 0,

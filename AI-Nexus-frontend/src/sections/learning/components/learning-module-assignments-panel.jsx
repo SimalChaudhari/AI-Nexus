@@ -12,6 +12,8 @@ import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { Upload } from 'src/components/upload';
+import { LessonLearningMaterialsPanel } from './lesson-learning-materials-panel';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { toast } from 'src/components/snackbar';
 import { courseService } from 'src/services/course.service';
@@ -53,7 +55,7 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
     setUploading(true);
     try {
       const row = await courseService.uploadAssignmentSubmission(courseId, assignment.id, file);
-      toast.success(submission ? 'Assignment file replaced' : 'Assignment uploaded');
+      toast.success(submission ? 'Assessment file replaced' : 'Assessment uploaded');
       onUploaded?.(assignment.id, row);
     } catch (e) {
       toast.error(e?.response?.data?.message || e?.message || 'Upload failed');
@@ -67,7 +69,7 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
     setDeleting(true);
     try {
       await courseService.deleteAssignmentSubmission(courseId, assignment.id);
-      toast.success('Assignment file deleted');
+      toast.success('Assessment file deleted');
       onDeleted?.(assignment.id);
     } catch (e) {
       toast.error(e?.response?.data?.message || e?.message || 'Delete failed');
@@ -297,7 +299,7 @@ function AssignmentListHeader() {
         borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
       }}
     >
-      {['#', 'Assignment', 'Action'].map((label) => (
+      {['#', 'Assessment', 'Action'].map((label) => (
         <Typography
           key={label}
           variant="caption"
@@ -322,6 +324,19 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
     onUploaded,
     onDeleted
   );
+
+  const handleDropUpload = async (acceptedFiles) => {
+    const file = Array.isArray(acceptedFiles) ? acceptedFiles[0] : acceptedFiles;
+    if (!file) return;
+    try {
+      // show local uploading state via toast and rely on onUploaded to update UI
+      const row = await courseService.uploadAssignmentSubmission(courseId, assignment.id, file);
+        toast.success(submission ? 'Assessment file replaced' : 'Assessment uploaded');
+      onUploaded?.(assignment.id, row);
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || 'Upload failed');
+    }
+  };
 
   const handleConfirmDelete = async () => {
     setDeleteOpen(false);
@@ -363,16 +378,43 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
       <Box sx={{ minWidth: 0, gridColumn: { xs: '1 / -1', md: 'auto' } }}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, display: { md: 'none' } }}>
           <Typography variant="caption" fontWeight={800} color="primary.main">
-            Assignment {index + 1}
+            Assessment {index + 1}
           </Typography>
         </Stack>
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.45 }}>
           {assignment.prompt}
         </Typography>
+        {!submission && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" color="text.secondary">
+               No file yet — use the upload button on the right to submit your assessment.
+            </Typography>
+          </Box>
+        )}
+
+        {submission ? (
+          <Box sx={{ mt: 2 }}>
+            <LessonLearningMaterialsPanel materials={[resolveAssetUrl(submission.fileUrl)]} />
+          </Box>
+        ) : null}
         {assignment.explanation ? (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.5, fontSize: '0.8125rem' }}>
             {assignment.explanation}
           </Typography>
+        ) : null}
+        {assignment.referenceFileUrl ? (
+          <Box sx={{ mt: 1 }}>
+            <Button
+              size="small"
+              component="a"
+              href={resolveAssetUrl(assignment.referenceFileUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              startIcon={<Iconify icon="solar:download-bold" width={16} />}
+            >
+              {assignment.referenceFileName || 'Download reference'}
+            </Button>
+          </Box>
         ) : null}
         <Box sx={{ mt: 1 }}>
           <SubmissionSummary submission={submission} />
@@ -394,7 +436,7 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        title="Delete assignment file"
+          title="Delete assessment file"
         content="Remove your uploaded file? You can upload again later."
         action={
           <Button variant="contained" color="error" disabled={deleting} onClick={handleConfirmDelete}>
@@ -510,7 +552,7 @@ export function LearningModuleAssignmentsPanel({
             {moduleTitle}
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}>
-            Assignment · {submittedCount} of {items.length} submitted
+            Assessment · {submittedCount} of {items.length} submitted
           </Typography>
         </Box>
         <Chip

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -27,6 +27,7 @@ import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-document-viewer';
 import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
+import { Upload } from 'src/components/upload';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
 import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
 import { isSpotlightrUrl, parseSpotlightrUrl } from 'src/utils/spotlightr';
@@ -686,6 +687,9 @@ const FEEDBACK_SECTION_ID = 'section-feedback';
 const MODULE_PRACTICE_PREFIX = '__mp__';
 /** Pseudo lesson id: `${MODULE_ASSIGNMENT_PREFIX}${courseModuleUuid}` — main area shows module assignments. */
 const MODULE_ASSIGNMENT_PREFIX = '__ma__';
+/** Course-end pseudo ids — Beginner / Advanced: single quiz + assignment after all modules done. */
+const COURSE_END_PRACTICE_ID = '__course_end_quiz__';
+const COURSE_END_ASSIGNMENT_ID = '__course_end_assignment__';
 
 function getModuleIdFromPracticeLessonId(lessonId) {
   if (!lessonId || typeof lessonId !== 'string' || !lessonId.startsWith(MODULE_PRACTICE_PREFIX)) {
@@ -1304,6 +1308,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     () => courseService.getCoursePlayerContext(course.id),
     swrOptions
   );
+  const { mutate } = useSWRConfig();
 
   const questionBankSwrKey = course?.id ? ['course-question-bank', course.id] : null;
   const { data: questionBankList = [] } = useSWR(
@@ -1330,6 +1335,26 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     return m;
   }, [questionBankList]);
 
+  const courseLevel = String(playerContext?.course?.level || course?.level || '').toLowerCase();
+  const isCourseEndModel = courseLevel === 'beginner' || courseLevel === 'advanced';
+  const courseEndAssignmentAllowed = courseLevel === 'beginner' || courseLevel === 'intermediate';
+
+  const courseEndQuizCount = useMemo(
+    () =>
+      isCourseEndModel || courseLevel === 'intermediate'
+        ? (questionBankList || []).filter((q) => !q?.moduleId && q.questionType !== 'assignment').length
+        : 0,
+    [questionBankList, isCourseEndModel, courseLevel]
+  );
+
+  const courseEndAssignmentCount = useMemo(
+    () =>
+      courseEndAssignmentAllowed
+        ? (questionBankList || []).filter((q) => !q?.moduleId && q.questionType === 'assignment').length
+        : 0,
+    [questionBankList, courseEndAssignmentAllowed]
+  );
+
   const modulePracticeModuleId = useMemo(
     () => getModuleIdFromPracticeLessonId(activeLessonId),
     [activeLessonId]
@@ -1354,9 +1379,28 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     );
   }, [questionBankList, moduleAssignmentModuleId]);
 
+  const courseEndQuizQuestions = useMemo(
+    () =>
+      activeLessonId === COURSE_END_PRACTICE_ID
+        ? (questionBankList || []).filter((q) => !q?.moduleId && q.questionType !== 'assignment')
+        : [],
+    [questionBankList, activeLessonId]
+  );
+
+  const courseEndAssignmentQuestions = useMemo(
+    () =>
+      activeLessonId === COURSE_END_ASSIGNMENT_ID
+        ? (questionBankList || []).filter((q) => !q?.moduleId && q.questionType === 'assignment')
+        : [],
+    [questionBankList, activeLessonId]
+  );
+
   useEffect(() => {
     if (!practiceQuizOn) return;
-    if (!getModuleIdFromPracticeLessonId(activeLessonId)) {
+    if (
+      !getModuleIdFromPracticeLessonId(activeLessonId) &&
+      activeLessonId !== COURSE_END_PRACTICE_ID
+    ) {
       const sec = searchParams.get('section');
       if (sec) setSearchParams({ section: sec }, { replace: true });
     }
@@ -2553,7 +2597,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           kind: 'lesson',
         });
       });
-      if ((quizCountByModuleId[module.id] || 0) > 0) {
+      if (!isCourseEndModel && (quizCountByModuleId[module.id] || 0) > 0) {
         steps.push({
           id: `${MODULE_PRACTICE_PREFIX}${module.id}`,
           sectionId: module.id,
@@ -2561,7 +2605,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           kind: 'practice',
         });
       }
-      if ((assignmentCountByModuleId[module.id] || 0) > 0) {
+      if (!isCourseEndModel && (assignmentCountByModuleId[module.id] || 0) > 0) {
         steps.push({
           id: `${MODULE_ASSIGNMENT_PREFIX}${module.id}`,
           sectionId: module.id,
@@ -2570,8 +2614,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         });
       }
     });
+    if (isCourseEndModel && courseEndQuizCount > 0) {
+      steps.push({ id: COURSE_END_PRACTICE_ID, sectionId: null, videoUrl: null, kind: 'course-end-practice' });
+    }
+    if (courseEndAssignmentAllowed && courseEndAssignmentCount > 0) {
+      steps.push({ id: COURSE_END_ASSIGNMENT_ID, sectionId: null, videoUrl: null, kind: 'course-end-assignment' });
+    }
     return steps;
-  }, [modules, quizCountByModuleId, assignmentCountByModuleId]);
+  }, [modules, quizCountByModuleId, assignmentCountByModuleId, isCourseEndModel, courseEndQuizCount, courseEndAssignmentCount]);
 
   const currentIndex = activeLessonIndex;
   const currentStepIndex = useMemo(
@@ -2744,6 +2794,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     });
     return result;
   }, [modules, viewedSectionIds, liveSectionProgressMap]);
+
+  const allModulesDone = useMemo(
+    () =>
+      modules.length > 0 &&
+      modules.every((mod) => {
+        const stats = moduleProgressById[mod.id];
+        return stats && stats.total > 0 && stats.completed >= stats.total;
+      }),
+    [modules, moduleProgressById]
+  );
 
   const activeModuleIndex = useMemo(
     () => modules.findIndex((m) => (m.lessons || []).some((l) => l.id === activeLessonId)),
@@ -3209,7 +3269,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       const isViewed = isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds);
                       // Lock state: backend flag + local viewed list so next lesson unlocks immediately.
                       let isLocked = lesson.sectionProgress?.isLocked === true;
-                      // If this is the first lesson, never lock.
                       const lessonFlatIndex = flatLessons.findIndex((l) => l.id === lesson.id);
                       const prevLessonRow =
                         lessonFlatIndex > 0 ? flatLessons[lessonFlatIndex - 1] : null;
@@ -3427,6 +3486,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     })}
 
                     {(() => {
+                      if (isCourseEndModel) return null;
                       const modPracticeCount = quizCountByModuleId[section.id] || 0;
                       if (modPracticeCount === 0) return null;
                       const stats = moduleProgressById[section.id];
@@ -3553,6 +3613,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     })()}
 
                     {(() => {
+                      if (isCourseEndModel) return null;
                       const modAssignmentCount = assignmentCountByModuleId[section.id] || 0;
                       if (modAssignmentCount === 0) return null;
                       const stats = moduleProgressById[section.id];
@@ -3563,8 +3624,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         <Tooltip
                           title={
                             moduleDone
-                              ? `Open assignment (${modAssignmentCount} item${modAssignmentCount !== 1 ? 's' : ''})`
-                              : 'Complete every lesson in this module to unlock assignment'
+                              ? `Open assessment (${modAssignmentCount} item${modAssignmentCount !== 1 ? 's' : ''})`
+                              : 'Complete every lesson in this module to unlock assessment'
                           }
                           placement="left"
                           arrow
@@ -3576,7 +3637,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             onClick={() => {
                               if (!moduleDone) {
                                 toast.info(
-                                  'Complete every lesson in this module to unlock assignment'
+                                  'Complete every lesson in this module to unlock assessment'
                                 );
                                 return;
                               }
@@ -3655,7 +3716,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               </Box>
                               <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                                  Assignment
+                                  Assessment
                                 </Typography>
                                 <Typography
                                   variant="caption"
@@ -3700,6 +3761,102 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             );
           })}
 
+        {isCourseEndModel && (courseEndQuizCount > 0 || courseEndAssignmentCount > 0) && (
+          <Box sx={{ mt: 1.5, px: 1.5, pb: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: 0.06, textTransform: 'uppercase', px: 0.5 }}
+            >
+              End of Course
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              {courseEndQuizCount > 0 && (() => {
+                const unlocked = allModulesDone;
+                return (
+                  <Tooltip
+                    key="course-end-quiz"
+                    title={unlocked ? `Open final quiz (${courseEndQuizCount} question${courseEndQuizCount !== 1 ? 's' : ''})` : 'Complete all modules to unlock the final quiz'}
+                    placement="left"
+                    arrow
+                  >
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      onClick={() => {
+                        if (!unlocked) { toast.info('Complete all modules to unlock the final quiz'); return; }
+                        setActiveLessonId(COURSE_END_PRACTICE_ID);
+                        setSidebarOpen(false);
+                        setSearchParams({ section: COURSE_END_PRACTICE_ID }, { replace: true });
+                      }}
+                      sx={{
+                        py: 1.35, px: 1.5, borderRadius: 1.5,
+                        cursor: unlocked ? 'pointer' : 'not-allowed',
+                        opacity: unlocked ? 1 : 0.55,
+                        bgcolor: unlocked && activeLessonId === COURSE_END_PRACTICE_ID ? alpha(sidebarAccent, 0.1) : unlocked ? alpha(theme.palette.info.main, 0.06) : alpha(theme.palette.grey[500], 0.04),
+                        border: `1px solid ${unlocked && activeLessonId === COURSE_END_PRACTICE_ID ? alpha(sidebarAccent, 0.4) : unlocked ? alpha(theme.palette.info.main, 0.25) : sidebarMutedBorder}`,
+                        color: unlocked && activeLessonId === COURSE_END_PRACTICE_ID ? 'primary.dark' : unlocked ? 'info.dark' : 'text.primary',
+                        '&:hover': { bgcolor: unlocked ? activeLessonId === COURSE_END_PRACTICE_ID ? alpha(sidebarAccent, 0.14) : alpha(theme.palette.info.main, 0.1) : alpha(theme.palette.grey[500], 0.06) },
+                      }}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>
+                        <Box sx={{ width: 64, height: 40, borderRadius: 1, overflow: 'hidden', bgcolor: alpha(theme.palette.info.dark, 0.85), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Iconify icon="solar:clipboard-list-bold" width={22} sx={{ color: 'common.white' }} />
+                        </Box>
+                        <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>Final Quiz</Typography>
+                          <Typography variant="caption" sx={{ color: 'info.dark', fontWeight: 700 }} noWrap>{courseEndQuizCount} question{courseEndQuizCount !== 1 ? 's' : ''}</Typography>
+                        </Stack>
+                        {!unlocked && <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} />}
+                      </Stack>
+                    </Stack>
+                  </Tooltip>
+                );
+              })()}
+              {courseEndAssignmentCount > 0 && (() => {
+                const unlocked = allModulesDone;
+                return (
+                  <Tooltip
+                    key="course-end-assignment"
+                    title={unlocked ? `Open final assessment (${courseEndAssignmentCount} item${courseEndAssignmentCount !== 1 ? 's' : ''})` : 'Complete all modules to unlock the final assessment'}
+                    placement="left"
+                    arrow
+                  >
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      onClick={() => {
+                        if (!unlocked) { toast.info('Complete all modules to unlock the final assessment'); return; }
+                        setActiveLessonId(COURSE_END_ASSIGNMENT_ID);
+                        setSidebarOpen(false);
+                        setSearchParams({ section: COURSE_END_ASSIGNMENT_ID }, { replace: true });
+                      }}
+                      sx={{
+                        py: 1.35, px: 1.5, borderRadius: 1.5,
+                        cursor: unlocked ? 'pointer' : 'not-allowed',
+                        opacity: unlocked ? 1 : 0.55,
+                        bgcolor: unlocked && activeLessonId === COURSE_END_ASSIGNMENT_ID ? alpha(sidebarAccent, 0.1) : unlocked ? alpha(theme.palette.warning.main, 0.06) : alpha(theme.palette.grey[500], 0.04),
+                        border: `1px solid ${unlocked && activeLessonId === COURSE_END_ASSIGNMENT_ID ? alpha(sidebarAccent, 0.4) : unlocked ? alpha(theme.palette.warning.main, 0.25) : sidebarMutedBorder}`,
+                        color: unlocked && activeLessonId === COURSE_END_ASSIGNMENT_ID ? 'primary.dark' : unlocked ? 'warning.dark' : 'text.primary',
+                        '&:hover': { bgcolor: unlocked ? activeLessonId === COURSE_END_ASSIGNMENT_ID ? alpha(sidebarAccent, 0.14) : alpha(theme.palette.warning.main, 0.1) : alpha(theme.palette.grey[500], 0.06) },
+                      }}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>
+                        <Box sx={{ width: 64, height: 40, borderRadius: 1, overflow: 'hidden', bgcolor: alpha(theme.palette.warning.dark, 0.85), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Iconify icon="solar:document-add-bold" width={22} sx={{ color: 'common.white' }} />
+                        </Box>
+                        <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>Final Assessment</Typography>
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 700 }} noWrap>{courseEndAssignmentCount} item{courseEndAssignmentCount !== 1 ? 's' : ''}</Typography>
+                        </Stack>
+                        {!unlocked && <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} />}
+                      </Stack>
+                    </Stack>
+                  </Tooltip>
+                );
+              })()}
+            </Stack>
+          </Box>
+        )}
         </>
       )}
 
@@ -3996,7 +4153,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const isModuleAssignmentView = Boolean(
     activeLessonId !== FEEDBACK_LESSON_ID && moduleAssignmentModuleId && course?.id
   );
-  const isModulePanelView = isModulePracticePanelView || isModuleAssignmentView;
+  const isCourseEndPracticeView = activeLessonId === COURSE_END_PRACTICE_ID;
+  const isCourseEndAssignmentView = activeLessonId === COURSE_END_ASSIGNMENT_ID;
+  const isModulePanelView = isModulePracticePanelView || isModuleAssignmentView || isCourseEndPracticeView || isCourseEndAssignmentView;
   const isModulePracticeQuiz = isModulePracticePanelView && practiceQuizOn;
   /** Quiz + assignment fill panel; lessons scroll separately. */
   const isScrollableLessonPanel = !isModulePanelView;
@@ -4004,7 +4163,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     activeLesson &&
       activeLessonId !== FEEDBACK_LESSON_ID &&
       !modulePracticeModuleId &&
-      !moduleAssignmentModuleId
+      !moduleAssignmentModuleId &&
+      !isCourseEndPracticeView &&
+      !isCourseEndAssignmentView
   );
 
   const handleLessonDetailTabChange = (_, value) => {
@@ -4133,7 +4294,58 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           </Box>
           ) : null}
 
-          {activeLessonId === FEEDBACK_LESSON_ID ? null : moduleAssignmentModuleId && course?.id ? (
+          {activeLessonId === FEEDBACK_LESSON_ID ? null : isCourseEndAssignmentView ? (
+            <Box
+              sx={{
+                width: '100%',
+                ...playerPracticeFillSx,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                bgcolor: 'background.paper',
+                borderRadius: 0,
+                boxShadow: 'none',
+                border: 'none',
+              }}
+            >
+              <LearningModuleAssignmentsPanel
+                courseId={course?.id}
+                moduleTitle="Final Assessment"
+                assignments={courseEndAssignmentQuestions}
+                fillContainer
+              />
+            </Box>
+          ) : isCourseEndPracticeView ? (
+            <Box
+              sx={{
+                width: '100%',
+                ...playerPracticeFillSx,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                bgcolor: practiceQuizOn ? 'background.paper' : 'transparent',
+                borderRadius: 0,
+                boxShadow: 'none',
+                border: 'none',
+              }}
+            >
+              {practiceQuizOn && courseEndQuizQuestions.length > 0 ? (
+                <LearningModulePracticeQuiz
+                  key={COURSE_END_PRACTICE_ID}
+                  courseId={course?.id}
+                  moduleId={null}
+                  questions={courseEndQuizQuestions}
+                  fillContainer
+                />
+              ) : (
+                <LearningModulePracticeIntro
+                  moduleTitle="Final Quiz"
+                  questionCount={courseEndQuizCount}
+                  onStartTest={() => setSearchParams({ section: COURSE_END_PRACTICE_ID, practiceQuiz: '1' }, { replace: true })}
+                />
+              )}
+            </Box>
+          ) : moduleAssignmentModuleId && course?.id ? (
             playerLoading || modules.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
                 <Typography color="text.secondary">Loading module…</Typography>
@@ -4768,14 +4980,46 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     </Typography>
                   )}
                 </Box>
-                {hasLearningMaterials ? (
-                  <Box sx={{ display: lessonDetailTab === 1 ? 'block' : 'none' }}>
+                <Box sx={{ display: lessonDetailTab === 1 ? 'block' : 'none' }}>
+                  {hasLearningMaterials ? (
                     <LessonLearningMaterialsPanel
                       key={`materials-${activeLessonId}`}
                       materials={activeLesson.learningMaterials}
                     />
-                  </Box>
-                ) : null}
+                  ) : null}
+
+                  {/* Admin upload area when no materials or to add more */}
+                  {authenticated && user?.role === 'admin' ? (
+                    <Box sx={{ mt: 2 }}>
+                      <Upload
+                        value={null}
+                        multiple
+                        coverPreview
+                        onDrop={async (acceptedFiles) => {
+                          if (!activeLesson?.id) return;
+                          const files = Array.isArray(acceptedFiles) ? acceptedFiles : [acceptedFiles];
+                          try {
+                            const uploaded = await courseService.uploadSectionLearningMaterials(files);
+                            const existing = Array.isArray(activeLesson.learningMaterials)
+                              ? activeLesson.learningMaterials
+                              : [];
+                            const newList = [...existing, ...uploaded];
+                            await courseService.updateModuleSection(activeLesson.id, { learningMaterials: newList });
+                            toast.success('Learning materials uploaded');
+                            if (playerKey) await mutate(playerKey);
+                          } catch (err) {
+                            toast.error(err?.response?.data?.message || err?.message || 'Upload failed');
+                          }
+                        }}
+                        onDelete={async () => {
+                          // Deleting handled from admin modules panel; refresh player context
+                          if (playerKey) await mutate(playerKey);
+                        }}
+                        helperText="Drop files here or click to browse — uploaded when you save (max 50MB each)"
+                      />
+                    </Box>
+                  ) : null}
+                </Box>
               </Box>
             </Box>
           ) : null}

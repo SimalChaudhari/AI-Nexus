@@ -656,7 +656,7 @@ export function SimpleSignUpView() {
     const { idType, idNumber } = resolveVerifiedNricSalesforceFields({
       flow,
       storedValues,
-      formData: data,
+      formData: { ...storedValues, ...data },
       eligibilityData,
       verifiedPrefill: verifiedSignupPrefill,
     });
@@ -671,6 +671,7 @@ export function SimpleSignUpView() {
     }
 
     const formValues = {
+      salutation: data?.salutation || storedValues?.salutation || '',
       firstName: data?.firstName || storedValues?.firstName || '',
       lastName: data?.lastName || storedValues?.lastName || '',
       email: data?.email || storedValues?.email || '',
@@ -678,6 +679,7 @@ export function SimpleSignUpView() {
       jobFunction: data?.jobFunction || storedValues?.jobFunction || '',
       countryOfResidence: data?.countryOfResidence || storedValues?.countryOfResidence || '',
       yearsOfExperience: data?.yearsOfExperience ?? storedValues?.yearsOfExperience ?? '',
+      password: data?.password || storedValues?.password || '',
     };
 
     console.info('[MembershipPayment] Creating Salesforce account', {
@@ -688,7 +690,7 @@ export function SimpleSignUpView() {
 
     const createResult = await createSalesforceNexusUser(
       buildSalesforceNexusUserPayloadFromSignup({
-        salutation: data.salutation || '',
+        salutation: formValues.salutation,
         firstName: formValues.firstName,
         lastName: formValues.lastName,
         email: formValues.email,
@@ -705,10 +707,10 @@ export function SimpleSignUpView() {
       })
     );
 
-    const username = resolveSalesforceNexusUsernameFromCreateResponse(createResult, data.email);
+    const username = resolveSalesforceNexusUsernameFromCreateResponse(createResult, formValues.email);
 
-    if (data.password && username) {
-      await setSalesforceNexusPassword({ username, password: data.password });
+    if (formValues.password && username) {
+      await setSalesforceNexusPassword({ username, password: formValues.password });
     }
 
     if (typeof window !== 'undefined' && username) {

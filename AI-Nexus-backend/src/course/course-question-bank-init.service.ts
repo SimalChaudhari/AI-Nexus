@@ -27,6 +27,8 @@ export class CourseQuestionBankInitService implements OnModuleInit {
             "correctIndex" int,
             "correctAnswer" text,
             "explanation" text,
+            "referenceFileUrl" text,
+            "referenceFileName" text,
             "assignedUserIds" jsonb,
             "sortOrder" int NOT NULL DEFAULT 0,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -80,6 +82,20 @@ export class CourseQuestionBankInitService implements OnModuleInit {
         try {
           await queryRunner.query(
             `ALTER TABLE "course_question_bank" ADD COLUMN "assignedUserIds" jsonb`,
+          );
+        } catch (e) {
+          if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+        }
+        try {
+          await queryRunner.query(
+            `ALTER TABLE "course_question_bank" ADD COLUMN "referenceFileUrl" text`,
+          );
+        } catch (e) {
+          if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+        }
+        try {
+          await queryRunner.query(
+            `ALTER TABLE "course_question_bank" ADD COLUMN "referenceFileName" text`,
           );
         } catch (e) {
           if (e instanceof Error && !e.message?.includes('already exists')) throw e;

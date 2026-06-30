@@ -1470,7 +1470,7 @@ const PRICING_CARDS = [
     badgeBg: '#dbeafe',
     badgeColor: '#1d4ed8',
     accentColor: '#2563eb',
-    title: 'Government Agencies & Non-Profit Organisations',
+    title: 'Government Agencies, Non-Profit Organisations & Institutes of Higher Learning',
     description: 'Tiered pricing based on the total number of enrolled learners.',
     type: 'table',
     rows: [
@@ -1484,9 +1484,9 @@ const PRICING_CARDS = [
   },
   {
     badge: 'Corporate & Accounting',
-    badgeBg: '#ede9fe',
-    badgeColor: '#6d28d9',
-    accentColor: '#7c3aed',
+    badgeBg: '#fee2e2',
+    badgeColor: '#b91c1c',
+    accentColor: '#dc2626',
     title: 'Corporates & Accounting Firms',
     description: 'Tiered pricing based on the total number of enrolled learners.',
     type: 'table',
@@ -1497,25 +1497,24 @@ const PRICING_CARDS = [
     ],
     ctaLabel: 'Get a Quote',
     ctaHref: 'mailto:hello@ainexus.isca.org.sg',
-    ctaBg: '#7c3aed',
+    ctaBg: '#dc2626',
   },
   {
     badge: 'Strategic Partners',
     badgeBg: '#d1fae5',
     badgeColor: '#065f46',
     accentColor: '#059669',
-    title: 'Strategic Partners & Education Providers',
+    title: 'Strategic Partners',
     description: 'Custom quotation available for the following organisation types.',
     type: 'list',
     orgs: [
       'ISCA Corporate Members',
       'ISCA Approved Training Organisations',
-      'Institutes of Higher Learning',
       'Commercial CPD Providers',
-      'Professional Bodies',
+      'Professional Bodies and Business Associations',
     ],
     note: 'Pricing can be tailored based on learner volume, partnership scope, delivery model, and implementation requirements.',
-    ctaLabel: 'Contact Us',
+    ctaLabel: 'Get a Quote',
     ctaHref: 'mailto:hello@ainexus.isca.org.sg',
     ctaBg: '#059669',
   },
@@ -1529,7 +1528,7 @@ function PricingSection() {
           Simple, Transparent Pricing
         </Typography>
         <Typography sx={{ ...PARTNER_BODY_SX, maxWidth: 560, mx: 'auto', color: '#5a6478' }}>
-          Choose the plan that fits your organisation. Volume discounts available — the more learners, the lower the cost per seat.
+          Choose the plan that fits your organisation. Volume discounts are available, and the more learners you enrol, the lower the cost per seat.
         </Typography>
       </Box>
 
@@ -1673,7 +1672,7 @@ function PricingSection() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        Custom quote
+                        Custom Quote
                       </Typography>
                     </Box>
                   ))}

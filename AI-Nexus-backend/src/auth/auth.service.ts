@@ -973,7 +973,8 @@ export class AuthService {
     draftUser.role = draftUser.role || UserRole.User;
     draftUser.status = draftUser.status || UserStatus.Active;
     draftUser.isVerified = false;
-    draftUser.isDraft = true;
+    draftUser.isDraft = false;
+    draftUser.authProvider = AuthProvider.OAUTH;
     draftUser.verificationToken = verificationToken;
     draftUser.verificationTokenExpires = verificationTokenExpires;
     draftUser.signupAccessTokenHash = null;
