@@ -239,10 +239,10 @@ export function SimpleSignInView() {
         variant="outlined"
         color="inherit"
         startIcon={<Iconify icon="solar:user-plus-bold-duotone" />}
-        onClick={() => navigateToPaidMembershipSignup(router.push, returnTo || paths.home)}
+        onClick={() => setSignupModalOpen(true)}
         sx={{ height: 48, fontWeight: 600 }}
       >
-        Sign Up / Non-Member Account
+        Sign up an ISCA account
       </Button>
 
       <Button
@@ -254,7 +254,7 @@ export function SimpleSignInView() {
         onClick={() => setShowCorporateForm(true)}
         sx={{ height: 48, fontWeight: 600 }}
       >
-        Corporate Sign In
+        Login/Sign up a Corporate Account
       </Button>
     </Stack>
   );

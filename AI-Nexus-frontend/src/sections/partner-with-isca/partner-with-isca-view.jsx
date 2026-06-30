@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
+import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Unstable_Grid2';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -1463,6 +1464,255 @@ function CtaSection({ section }) {
 
 // ----------------------------------------------------------------------
 
+const PRICING_CARDS = [
+  {
+    badge: 'Public Sector & Non-Profit',
+    badgeBg: '#dbeafe',
+    badgeColor: '#1d4ed8',
+    accentColor: '#2563eb',
+    title: 'Government Agencies & Non-Profit Organisations',
+    description: 'Tiered pricing based on the total number of enrolled learners.',
+    type: 'table',
+    rows: [
+      { label: '10 – 99 learners', price: 'S$298 / learner' },
+      { label: '100 – 499 learners', price: 'S$218 / learner' },
+      { label: '500 learners & above', price: 'Custom quotation', isCustom: true },
+    ],
+    ctaLabel: 'Get a Quote',
+    ctaBg: '#2563eb',
+  },
+  {
+    badge: 'Corporate & Accounting',
+    badgeBg: '#ede9fe',
+    badgeColor: '#6d28d9',
+    accentColor: '#7c3aed',
+    title: 'Corporates & Accounting Firms',
+    description: 'Tiered pricing based on the total number of enrolled learners.',
+    type: 'table',
+    rows: [
+      { label: '10 – 99 learners', price: 'S$388 / learner' },
+      { label: '100 – 499 learners', price: 'S$272 / learner' },
+      { label: '500 learners & above', price: 'Custom quotation', isCustom: true },
+    ],
+    ctaLabel: 'Get a Quote',
+    ctaBg: '#7c3aed',
+  },
+  {
+    badge: 'Strategic Partners',
+    badgeBg: '#d1fae5',
+    badgeColor: '#065f46',
+    accentColor: '#059669',
+    title: 'Strategic Partners & Education Providers',
+    description: 'Custom quotation available for the following organisation types.',
+    type: 'list',
+    orgs: [
+      'ISCA Corporate Members',
+      'ISCA Approved Training Organisations',
+      'Institutes of Higher Learning',
+      'Commercial CPD Providers',
+      'Professional Bodies',
+    ],
+    note: 'Pricing can be tailored based on learner volume, partnership scope, delivery model, and implementation requirements.',
+    ctaLabel: 'Contact Us',
+    ctaBg: '#059669',
+  },
+];
+
+function PricingSection() {
+  return (
+    <PartnerLayoutSection id="pricing" sx={{ py: { xs: 7, md: 10 }, bgcolor: '#f4f6f9' }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 5, md: 6 } }}>
+        <Typography component="h2" sx={{ ...PARTNER_SECTION_TITLE_SX, mb: 1.25 }}>
+          Simple, Transparent Pricing
+        </Typography>
+        <Typography sx={{ ...PARTNER_BODY_SX, maxWidth: 560, mx: 'auto', color: '#5a6478' }}>
+          Choose the plan that fits your organisation. Volume discounts available — the more learners, the lower the cost per seat.
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+          gap: { xs: 3, md: 3.5 },
+        }}
+      >
+        {PRICING_CARDS.map((card) => (
+          <Box
+            key={card.badge}
+            sx={{
+              bgcolor: '#fff',
+              borderRadius: '16px',
+              p: { xs: '28px 24px 24px', md: '36px 32px 32px' },
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 3,
+              borderTop: `5px solid ${card.accentColor}`,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 10px 36px rgba(0,0,0,0.12)',
+              },
+            }}
+          >
+            <Box>
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-block',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  px: 1.25,
+                  py: 0.5,
+                  borderRadius: '20px',
+                  bgcolor: card.badgeBg,
+                  color: card.badgeColor,
+                  mb: 1.25,
+                }}
+              >
+                {card.badge}
+              </Box>
+              <Typography
+                component="h3"
+                sx={{
+                  fontSize: { xs: '1rem', md: '1.125rem' },
+                  fontWeight: 700,
+                  color: '#1a1a2e',
+                  lineHeight: 1.3,
+                  mb: 0.75,
+                }}
+              >
+                {card.title}
+              </Typography>
+              <Typography sx={{ ...PARTNER_BODY_SX, color: '#5a6478' }}>{card.description}</Typography>
+            </Box>
+
+            <Divider />
+
+            {card.type === 'table' ? (
+              <Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', pb: 1.25 }}>
+                  {['Learner Volume', 'Price'].map((h) => (
+                    <Typography
+                      key={h}
+                      sx={{
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.07em',
+                        color: '#8a94a6',
+                        textAlign: h === 'Price' ? 'right' : 'left',
+                      }}
+                    >
+                      {h}
+                    </Typography>
+                  ))}
+                </Box>
+                {card.rows.map((row) => (
+                  <Box
+                    key={row.label}
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr auto',
+                      borderTop: '1px solid #f0f2f7',
+                      py: 1.5,
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.9rem', color: '#2d3748', lineHeight: 1.4 }}>
+                      {row.label}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: row.isCustom ? '0.82rem' : '0.9rem',
+                        fontWeight: row.isCustom ? 600 : 700,
+                        fontStyle: row.isCustom ? 'italic' : 'normal',
+                        color: row.isCustom ? '#8a94a6' : card.accentColor,
+                        whiteSpace: 'nowrap',
+                        textAlign: 'right',
+                      }}
+                    >
+                      {row.price}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                {card.orgs.map((org, i) => (
+                  <Box
+                    key={org}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderTop: i === 0 ? 'none' : '1px solid #f0f2f7',
+                      py: 1.25,
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.9rem', color: '#2d3748', flex: 1, pr: 1.5 }}>
+                      {org}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        fontStyle: 'italic',
+                        color: '#065f46',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Custom quote
+                    </Typography>
+                  </Box>
+                ))}
+                <Box
+                  sx={{
+                    bgcolor: '#f0fdf4',
+                    borderLeft: '3px solid #059669',
+                    borderRadius: '6px',
+                    px: 1.75,
+                    py: 1.5,
+                    mt: 1.5,
+                  }}
+                >
+                  <Typography sx={{ fontSize: '0.8rem', color: '#374151', lineHeight: 1.55 }}>
+                    <Box component="strong" sx={{ color: '#065f46' }}>Note: </Box>
+                    {card.note}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
+            <Button
+              fullWidth
+              variant="contained"
+              sx={{
+                mt: 'auto',
+                bgcolor: card.ctaBg,
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                borderRadius: '10px',
+                py: 1.5,
+                textTransform: 'none',
+                boxShadow: 'none',
+                '&:hover': { bgcolor: card.ctaBg, opacity: 0.88, boxShadow: 'none' },
+              }}
+            >
+              {card.ctaLabel}
+            </Button>
+          </Box>
+        ))}
+      </Box>
+    </PartnerLayoutSection>
+  );
+}
+
+// ----------------------------------------------------------------------
+
 export function PartnerWithIscaView() {
   const [content, setContent] = useState(() => resolvePartnerWithIscaContent(null));
 
@@ -1504,6 +1754,7 @@ export function PartnerWithIscaView() {
       }}
     >
       <HeroSection hero={content.hero} stats={content.stats} />
+      <PricingSection />
       <BenefitsSection section={content.benefits} />
       <DashboardSection section={content.dashboard} />
       <HowItWorksSection section={content.howItWorks} />
