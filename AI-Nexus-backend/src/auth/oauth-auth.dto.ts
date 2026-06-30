@@ -1,5 +1,5 @@
 // src/auth/oauth-auth.dto.ts
-import { IsString, IsOptional, IsEmail, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsNotEmpty, IsNumber, IsBoolean } from 'class-validator';
 
 export class OAuthExchangeDto {
   @IsString()
@@ -40,6 +40,34 @@ export class CreateSalesforceNexusUserDto {
   @IsString()
   @IsOptional()
   id_number?: string;
+
+  @IsString()
+  @IsOptional()
+  company?: string;
+
+  @IsString()
+  @IsOptional()
+  jobFunction?: string;
+
+  @IsString()
+  @IsOptional()
+  countryOfResidence?: string;
+
+  @IsNumber()
+  @IsOptional()
+  noOfYearOfRelevantWorkExperience?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  Is_paid?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  paid_amount?: number;
+
+  @IsString()
+  @IsOptional()
+  Paid_date?: string;
 }
 
 export class SetSalesforceNexusPasswordDto {

@@ -33,11 +33,12 @@ import {
   buildPaidIndividualSignUpSchema,
 } from 'src/validations/user.validation';
 
-import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser } from 'src/auth/context/jwt';
+import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, setSalesforceNexusPassword } from 'src/auth/context/jwt';
 import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
 import {
   buildSalesforceNexusUserPayloadFromSignup,
   resolveVerifiedNricSalesforceFields,
+  resolveSalesforceNexusUsernameFromCreateResponse,
 } from 'src/utils/nric-id-type';
 import {
   isApprovedSalesforceStudentMember,
@@ -535,12 +536,24 @@ export function SimpleSignUpView() {
     });
 
     confirmMembershipPayment({ ref: normalizedPaymentRef, sessionId: fallbackSessionId })
-      .then((response) => {
+      .then(async (response) => {
         if (!active) return;
         console.info('[MembershipPayment] Confirmation success', {
           refId: trimPaymentLogValue(normalizedPaymentRef),
           userId: trimPaymentLogValue(response?.userId),
         });
+
+        try {
+          const formValues = getValues();
+          await ensureSalesforceNexusUserForMembershipSignup(formValues, {
+            isPaid: true,
+            paidAmount: Number(totalAmount.toFixed(2)),
+            paidDate: new Date().toLocaleDateString('en-GB'),
+            forceCreate: true,
+          });
+        } catch (salesforceError) {
+          console.error('[MembershipPayment] Salesforce account creation failed after payment', salesforceError);
+        }
 
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('membershipDraftUserId');
@@ -624,7 +637,7 @@ export function SimpleSignUpView() {
   const buildSubmittedEligibilityData = (data) =>
     mergeSignupEligibilityData(eligibilityData, data, isFreeIndividualSignup);
 
-  const ensureSalesforceNexusUserForVerifiedNric = async (data) => {
+  const ensureSalesforceNexusUserForMembershipSignup = async (data, paymentMeta = {}) => {
     let flow = eligibilityData?.snapshot || null;
     let storedValues = {};
 
@@ -649,36 +662,55 @@ export function SimpleSignUpView() {
       verifiedPrefill: verifiedSignupPrefill,
     });
 
-    if (!idType || !idNumber) {
-      return null;
-    }
-
     const salesforceUsernameKey = 'salesforceNexusUsername';
+    const forceCreate = paymentMeta.forceCreate === true;
     if (typeof window !== 'undefined') {
       const existing = sessionStorage.getItem(salesforceUsernameKey);
-      if (existing) {
+      if (existing && !forceCreate) {
         return existing;
       }
     }
 
+    const formValues = {
+      firstName: data?.firstName || storedValues?.firstName || '',
+      lastName: data?.lastName || storedValues?.lastName || '',
+      email: data?.email || storedValues?.email || '',
+      company: data?.company || storedValues?.company || '',
+      jobFunction: data?.jobFunction || storedValues?.jobFunction || '',
+      countryOfResidence: data?.countryOfResidence || storedValues?.countryOfResidence || '',
+      yearsOfExperience: data?.yearsOfExperience ?? storedValues?.yearsOfExperience ?? '',
+    };
+
+    console.info('[MembershipPayment] Creating Salesforce account', {
+      email: formValues.email,
+      forceCreate,
+      isPaid: paymentMeta.isPaid === true,
+    });
+
     const createResult = await createSalesforceNexusUser(
       buildSalesforceNexusUserPayloadFromSignup({
         salutation: 'Mr.',
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        nameAsPerId: [data.firstName, data.lastName].filter(Boolean).join(' ').trim(),
+        firstName: formValues.firstName,
+        lastName: formValues.lastName,
+        email: formValues.email,
+        nameAsPerId: [formValues.firstName, formValues.lastName].filter(Boolean).join(' ').trim(),
         idType,
         idNumber,
+        company: formValues.company,
+        jobFunction: formValues.jobFunction,
+        countryOfResidence: formValues.countryOfResidence,
+        yearsOfExperience: formValues.yearsOfExperience,
+        isPaid: paymentMeta.isPaid === true,
+        paidAmount: paymentMeta.paidAmount,
+        paidDate: paymentMeta.paidDate,
       })
     );
 
-    const salesforce = createResult?.salesforce ?? createResult;
-    const username =
-      (typeof salesforce === 'object' && salesforce
-        ? salesforce.username || salesforce.Username
-        : '')
-      || data.email;
+    const username = resolveSalesforceNexusUsernameFromCreateResponse(createResult, data.email);
+
+    if (data.password && username) {
+      await setSalesforceNexusPassword({ username, password: data.password });
+    }
 
     if (typeof window !== 'undefined' && username) {
       sessionStorage.setItem(salesforceUsernameKey, String(username).trim());
@@ -719,7 +751,7 @@ export function SimpleSignUpView() {
       setUsernameSuggestions([]);
       setShowAllSuggestions(false);
       setAppliedSuggestion('');
-      await ensureSalesforceNexusUserForVerifiedNric(data);
+      await ensureSalesforceNexusUserForMembershipSignup(data);
       const signupResult = await signUp({
         username: data.username,
         email: data.email,
@@ -764,8 +796,6 @@ export function SimpleSignUpView() {
         source: membershipSource,
         flow: membershipOutcome || 'default',
       });
-
-      await ensureSalesforceNexusUserForVerifiedNric(data);
 
       const cachedDraftUserId =
         typeof window !== 'undefined' ? sessionStorage.getItem('membershipDraftUserId') || '' : '';

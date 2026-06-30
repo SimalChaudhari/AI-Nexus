@@ -969,11 +969,10 @@ export class AuthService {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    draftUser.authProvider = AuthProvider.LOCAL;
     draftUser.role = draftUser.role || UserRole.User;
     draftUser.status = draftUser.status || UserStatus.Active;
     draftUser.isVerified = false;
-    draftUser.isDraft = false;
+    draftUser.isDraft = true;
     draftUser.verificationToken = verificationToken;
     draftUser.verificationTokenExpires = verificationTokenExpires;
     draftUser.signupAccessTokenHash = null;
@@ -989,7 +988,7 @@ export class AuthService {
     }
 
     return {
-      message: 'Membership payment confirmed. Account created successfully. Please verify your email.',
+      message: 'Membership payment confirmed. Salesforce account creation should continue from the frontend flow.',
       user: draftUser,
       alreadyCompleted: false,
     };

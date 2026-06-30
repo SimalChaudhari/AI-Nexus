@@ -203,6 +203,13 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   nameAsPerId = '',
   idType = '',
   idNumber = '',
+  company = '',
+  jobFunction = '',
+  countryOfResidence = '',
+  yearsOfExperience = '',
+  isPaid = false,
+  paidAmount = '',
+  paidDate = '',
 } = {}) {
   const payload = {
     salutation: String(salutation || 'Mr.').trim(),
@@ -219,7 +226,57 @@ export function buildSalesforceNexusUserPayloadFromSignup({
     payload.id_number = resolvedIdNumber;
   }
 
+  const resolvedCompany = String(company || '').trim();
+  if (resolvedCompany) {
+    payload.company = resolvedCompany;
+  }
+
+  const resolvedJobFunction = String(jobFunction || '').trim();
+  if (resolvedJobFunction) {
+    payload.jobFunction = resolvedJobFunction;
+  }
+
+  const resolvedCountryOfResidence = String(countryOfResidence || '').trim();
+  if (resolvedCountryOfResidence) {
+    payload.countryOfResidence = resolvedCountryOfResidence;
+  }
+
+  const resolvedYearsOfExperience = yearsOfExperience === 0 || yearsOfExperience
+    ? Number(yearsOfExperience)
+    : '';
+  if (resolvedYearsOfExperience !== '' && !Number.isNaN(resolvedYearsOfExperience)) {
+    payload.noOfYearOfRelevantWorkExperience = resolvedYearsOfExperience;
+  }
+
+  if (isPaid) {
+    payload.Is_paid = true;
+  }
+
+  const resolvedPaidAmount = paidAmount === 0 || paidAmount
+    ? Number(paidAmount)
+    : '';
+  if (resolvedPaidAmount !== '' && !Number.isNaN(resolvedPaidAmount)) {
+    payload.paid_amount = resolvedPaidAmount;
+  }
+
+  const resolvedPaidDate = String(paidDate || '').trim();
+  if (resolvedPaidDate) {
+    payload.Paid_date = resolvedPaidDate;
+  }
+
   return payload;
+}
+
+export function resolveSalesforceNexusUsernameFromCreateResponse(createResult, fallbackEmail = '') {
+  const salesforce = createResult?.salesforce ?? createResult;
+  if (salesforce && typeof salesforce === 'object') {
+    const candidate =
+      String(salesforce.username || salesforce.Username || salesforce.userName || salesforce.UserName || '').trim();
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return String(fallbackEmail || '').trim();
 }
 
 /**

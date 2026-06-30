@@ -309,6 +309,13 @@ export class OAuthAuthController {
       email: dto.email,
       id_type: dto.id_type,
       id_number: dto.id_number,
+      company: dto.company,
+      jobFunction: dto.jobFunction,
+      countryOfResidence: dto.countryOfResidence,
+      noOfYearOfRelevantWorkExperience: dto.noOfYearOfRelevantWorkExperience,
+      Is_paid: dto.Is_paid,
+      paid_amount: dto.paid_amount,
+      Paid_date: dto.Paid_date,
     });
     return {
       success: true,

@@ -1107,6 +1107,13 @@ export class OAuthAuthService {
     email: string;
     id_type?: string;
     id_number?: string;
+    company?: string;
+    jobFunction?: string;
+    countryOfResidence?: string;
+    noOfYearOfRelevantWorkExperience?: string | number;
+    Is_paid?: boolean;
+    paid_amount?: string | number;
+    Paid_date?: string;
   }): Promise<Record<string, unknown>> {
     const email = normalizeEmail(payload.email);
     if (!email) {
@@ -1119,7 +1126,8 @@ export class OAuthAuthService {
       if (!idType || !idNumber) {
         throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.missingIdDetails);
       }
-      if (idType !== 'Blue NRIC' && idType !== 'Pink NRIC') {
+      const allowedIdTypes = new Set(['Blue NRIC', 'Pink NRIC', 'NRIC number', 'NRIC']);
+      if (!allowedIdTypes.has(idType)) {
         throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidIdType);
       }
       let validation;
@@ -1137,7 +1145,7 @@ export class OAuthAuthService {
 
     const accessToken = await this.getIntegrationAccessToken();
     const url = this.createNexusUserUrl;
-    const body: Record<string, string> = {
+    const body: Record<string, string | number | boolean> = {
       salutation: payload.salutation.trim(),
       first_name: payload.first_name.trim(),
       last_name: payload.last_name.trim(),
@@ -1147,6 +1155,50 @@ export class OAuthAuthService {
     if (idType && idNumber) {
       body.id_type = idType;
       body.id_number = idNumber;
+    }
+
+    const company = payload.company?.trim();
+    if (company) {
+      body.company = company;
+    }
+
+    const jobFunction = payload.jobFunction?.trim();
+    if (jobFunction) {
+      body.jobFunction = jobFunction;
+    }
+
+    const countryOfResidence = payload.countryOfResidence?.trim();
+    if (countryOfResidence) {
+      body.countryOfResidence = countryOfResidence;
+    }
+
+    const yearsOfExperienceRaw = payload.noOfYearOfRelevantWorkExperience;
+    if (yearsOfExperienceRaw !== undefined && yearsOfExperienceRaw !== null && String(yearsOfExperienceRaw).trim() !== '') {
+      const normalizedYears = typeof yearsOfExperienceRaw === 'number'
+        ? yearsOfExperienceRaw
+        : Number(yearsOfExperienceRaw);
+      if (!Number.isNaN(normalizedYears)) {
+        body.noOfYearOfRelevantWorkExperience = normalizedYears;
+      } else {
+        body.noOfYearOfRelevantWorkExperience = String(yearsOfExperienceRaw).trim();
+      }
+    }
+
+    if (typeof payload.Is_paid === 'boolean') {
+      body.Is_paid = payload.Is_paid;
+    }
+
+    const paidAmount = payload.paid_amount;
+    if (paidAmount !== undefined && paidAmount !== null && String(paidAmount).trim() !== '') {
+      const normalizedPaidAmount = typeof paidAmount === 'number' ? paidAmount : Number(paidAmount);
+      if (!Number.isNaN(normalizedPaidAmount)) {
+        body.paid_amount = normalizedPaidAmount;
+      }
+    }
+
+    const paidDate = payload.Paid_date?.trim();
+    if (paidDate) {
+      body.Paid_date = paidDate;
     }
 
     console.log('[Salesforce] Creating Nexus user via Apex REST:', {
