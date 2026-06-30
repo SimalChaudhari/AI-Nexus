@@ -1220,7 +1220,24 @@ export class OAuthAuthService {
         timeout: 30000,
       });
       console.log('[Salesforce] createuserfornexus response status:', res.status);
-      return res.data || { success: true };
+      const resData = res.data || {};
+      let isError = false;
+      let errorMsg = '';
+      if (resData && typeof resData === 'object') {
+        if ('isError' in resData && (resData.isError === true || resData.isError === 'true')) {
+          isError = true;
+          errorMsg = String(resData.Message || resData.message || '');
+        } else if ('success' in resData && (resData.success === false || resData.success === 'false')) {
+          isError = true;
+          errorMsg = String(resData.message || resData.Message || '');
+        }
+      }
+      if (isError) {
+        console.error('[Salesforce] createuserfornexus API returned error:', errorMsg);
+        const desc = this.mapCreateNexusUserErrorMessage(errorMsg);
+        throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
+      }
+      return resData;
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         console.error('[Salesforce] createuserfornexus failed:', {
@@ -1269,7 +1286,24 @@ export class OAuthAuthService {
         timeout: 30000,
       });
       console.log('[Salesforce] setpasswordfornexus response status:', res.status);
-      return res.data || { success: true };
+      const resData = res.data || {};
+      let isError = false;
+      let errorMsg = '';
+      if (resData && typeof resData === 'object') {
+        if ('isError' in resData && (resData.isError === true || resData.isError === 'true')) {
+          isError = true;
+          errorMsg = String(resData.Message || resData.message || '');
+        } else if ('success' in resData && (resData.success === false || resData.success === 'false')) {
+          isError = true;
+          errorMsg = String(resData.message || resData.Message || '');
+        }
+      }
+      if (isError) {
+        console.error('[Salesforce] setpasswordfornexus API returned error:', errorMsg);
+        const desc = this.mapSetNexusPasswordErrorMessage(errorMsg);
+        throw new BadRequestException(desc || 'Failed to set Salesforce password.');
+      }
+      return resData;
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         console.error('[Salesforce] setpasswordfornexus failed:', {
