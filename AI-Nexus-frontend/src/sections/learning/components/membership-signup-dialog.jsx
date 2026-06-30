@@ -555,6 +555,7 @@ const STUDENT_ACADEMIC_EMAIL_SUFFIXES = [
   'tp.edu.sg',
   'rp.edu.sg',
   'isca.org.sg',
+
 ];
 
 function isAcademicEmail(email) {

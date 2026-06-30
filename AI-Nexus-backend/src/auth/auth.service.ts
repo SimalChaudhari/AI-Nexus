@@ -141,6 +141,7 @@ const QUESTIONNAIRE_ACADEMIC_EMAIL_SUFFIXES = [
   'tp.edu.sg',
   'rp.edu.sg',
   'isca.org.sg',
+
 ];
 
 @Injectable()
@@ -2157,6 +2158,38 @@ export class AuthService {
         };
         await this.userRepository.save(auditUser);
         assessment.cardImageUrl = cardUrl;
+      }
+
+      if (assessment.verified && academicEmail) {
+        try {
+          const hrVerificationToken = crypto.randomBytes(32).toString('hex');
+          await this.emailService.sendFeeWaiverHrVerificationEmail({
+            hrEmail: academicEmail,
+            learnerEmail: auditUser?.email || personalEmail || academicEmail,
+            learnerName: assessment.extracted?.fullName?.trim()
+              || (auditUser ? `${auditUser.firstname || ''} ${auditUser.lastname || ''}`.trim() : '')
+              || 'Learner',
+            verificationToken: hrVerificationToken,
+          });
+          if (auditUser?.id) {
+            this.mergeFeeWaiverAuditSnapshot(auditUser, {
+              method: 'student-academic',
+              hrEmail: academicEmail,
+              learnerEmail: auditUser.email || personalEmail || academicEmail,
+              status: 'pending_hr_verification',
+              auditSubmitted: true,
+              hrVerificationToken,
+              hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(hrVerificationToken),
+              submittedAt: new Date().toISOString(),
+            });
+            auditUser.feeWaiverJobVerified = false;
+            await this.userRepository.save(auditUser);
+          }
+        } catch (emailError) {
+          this.logger.warn(
+            `Could not send student academic HR verification email: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
+          );
+        }
       }
     } catch (error) {
       this.logger.warn(
