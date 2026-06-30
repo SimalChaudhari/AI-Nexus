@@ -225,8 +225,8 @@ export function SimpleSignInView() {
         color="primary"
         component={RouterLink}
         href={paths.auth.oauth.start}
-        startIcon={<Iconify icon="solar:login-3-bold-duotone" />}
-        sx={{ height: 48, fontWeight: 700 }}
+        startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
+        sx={{ height: 48, fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
       >
         Login with ISCA Account
       </Button>
@@ -238,9 +238,9 @@ export function SimpleSignInView() {
         size="large"
         variant="outlined"
         color="inherit"
-        startIcon={<Iconify icon="solar:user-plus-bold-duotone" />}
+        startIcon={<Iconify icon="solar:user-plus-bold-duotone" width={18} />}
         onClick={() => setSignupModalOpen(true)}
-        sx={{ height: 48, fontWeight: 600 }}
+        sx={{ height: 48, fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
       >
         Sign up an ISCA account
       </Button>
@@ -250,9 +250,9 @@ export function SimpleSignInView() {
         size="large"
         variant="outlined"
         color="inherit"
-        startIcon={<Iconify icon="solar:buildings-2-bold-duotone" />}
+        startIcon={<Iconify icon="solar:buildings-2-bold-duotone" width={18} />}
         onClick={() => setShowCorporateForm(true)}
-        sx={{ height: 48, fontWeight: 600 }}
+        sx={{ height: 48, fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
       >
         Login/Sign up a Corporate Account
       </Button>

@@ -1463,7 +1463,7 @@ function CtaSection({ section }) {
 }
 
 // ----------------------------------------------------------------------
-
+//
 const PRICING_CARDS = [
   {
     badge: 'Public Sector & Non-Profit',
@@ -1475,10 +1475,11 @@ const PRICING_CARDS = [
     type: 'table',
     rows: [
       { label: '10 – 99 learners', price: 'S$298 / learner' },
-      { label: '100 – 499 learners', price: 'S$218 / learner' },
-      { label: '500 learners & above', price: 'Custom quotation', isCustom: true },
+      { label: '100 – 300 learners', price: 'S$218 / learner' },
+      { label: '301+ learners', price: 'Custom quotation', isCustom: true },
     ],
     ctaLabel: 'Get a Quote',
+    ctaHref: 'mailto:hello@ainexus.isca.org.sg',
     ctaBg: '#2563eb',
   },
   {
@@ -1491,10 +1492,11 @@ const PRICING_CARDS = [
     type: 'table',
     rows: [
       { label: '10 – 99 learners', price: 'S$388 / learner' },
-      { label: '100 – 499 learners', price: 'S$272 / learner' },
-      { label: '500 learners & above', price: 'Custom quotation', isCustom: true },
+      { label: '100 – 300 learners', price: 'S$272 / learner' },
+      { label: '301+ learners', price: 'Custom quotation', isCustom: true },
     ],
     ctaLabel: 'Get a Quote',
+    ctaHref: 'mailto:hello@ainexus.isca.org.sg',
     ctaBg: '#7c3aed',
   },
   {
@@ -1514,6 +1516,7 @@ const PRICING_CARDS = [
     ],
     note: 'Pricing can be tailored based on learner volume, partnership scope, delivery model, and implementation requirements.',
     ctaLabel: 'Contact Us',
+    ctaHref: 'mailto:hello@ainexus.isca.org.sg',
     ctaBg: '#059669',
   },
 ];
@@ -1532,9 +1535,12 @@ function PricingSection() {
 
       <Box
         sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
-          gap: { xs: 3, md: 3.5 },
+          display: { xs: 'flex', md: 'grid' },
+          flexDirection: 'column',
+          gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' },
+          gridTemplateRows: { md: 'auto auto 1fr auto' },
+          columnGap: { md: 3.5 },
+          rowGap: { xs: 3, md: 0 },
         }}
       >
         {PRICING_CARDS.map((card) => (
@@ -1543,10 +1549,6 @@ function PricingSection() {
             sx={{
               bgcolor: '#fff',
               borderRadius: '16px',
-              p: { xs: '28px 24px 24px', md: '36px 32px 32px' },
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 3,
               borderTop: `5px solid ${card.accentColor}`,
               boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
               transition: 'transform 0.2s ease, box-shadow 0.2s ease',
@@ -1554,9 +1556,13 @@ function PricingSection() {
                 transform: 'translateY(-4px)',
                 boxShadow: '0 10px 36px rgba(0,0,0,0.12)',
               },
+              display: 'grid',
+              gridRow: { md: '1 / 5' },
+              gridTemplateRows: { xs: 'auto auto 1fr auto', md: 'subgrid' },
             }}
           >
-            <Box>
+            {/* Row 1 — Header */}
+            <Box sx={{ px: { xs: 3, md: 4 }, pt: { xs: '28px', md: '36px' }, pb: 2.5 }}>
               <Box
                 component="span"
                 sx={{
@@ -1590,120 +1596,128 @@ function PricingSection() {
               <Typography sx={{ ...PARTNER_BODY_SX, color: '#5a6478' }}>{card.description}</Typography>
             </Box>
 
+            {/* Row 2 — Divider */}
             <Divider />
 
-            {card.type === 'table' ? (
-              <Box>
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', pb: 1.25 }}>
-                  {['Learner Volume', 'Price'].map((h) => (
-                    <Typography
-                      key={h}
+            {/* Row 3 — Content */}
+            <Box sx={{ px: { xs: 3, md: 4 }, py: 3 }}>
+              {card.type === 'table' ? (
+                <Box>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', pb: 1.25 }}>
+                    {['Learner Volume', 'Price'].map((h) => (
+                      <Typography
+                        key={h}
+                        sx={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.07em',
+                          color: '#8a94a6',
+                          textAlign: h === 'Price' ? 'right' : 'left',
+                        }}
+                      >
+                        {h}
+                      </Typography>
+                    ))}
+                  </Box>
+                  {card.rows.map((row) => (
+                    <Box
+                      key={row.label}
                       sx={{
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.07em',
-                        color: '#8a94a6',
-                        textAlign: h === 'Price' ? 'right' : 'left',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto',
+                        borderTop: '1px solid #f0f2f7',
+                        py: 1.5,
                       }}
                     >
-                      {h}
-                    </Typography>
+                      <Typography sx={{ fontSize: '0.9rem', color: '#2d3748', lineHeight: 1.4 }}>
+                        {row.label}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontSize: row.isCustom ? '0.82rem' : '0.9rem',
+                          fontWeight: row.isCustom ? 600 : 700,
+                          fontStyle: row.isCustom ? 'italic' : 'normal',
+                          color: row.isCustom ? '#8a94a6' : card.accentColor,
+                          whiteSpace: 'nowrap',
+                          textAlign: 'right',
+                        }}
+                      >
+                        {row.price}
+                      </Typography>
+                    </Box>
                   ))}
                 </Box>
-                {card.rows.map((row) => (
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  {card.orgs.map((org, i) => (
+                    <Box
+                      key={org}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderTop: i === 0 ? 'none' : '1px solid #f0f2f7',
+                        py: 1.25,
+                      }}
+                    >
+                      <Typography sx={{ fontSize: '0.9rem', color: '#2d3748', flex: 1, pr: 1.5 }}>
+                        {org}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          fontStyle: 'italic',
+                          color: '#065f46',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Custom quote
+                      </Typography>
+                    </Box>
+                  ))}
                   <Box
-                    key={row.label}
                     sx={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr auto',
-                      borderTop: '1px solid #f0f2f7',
+                      bgcolor: '#f0fdf4',
+                      borderLeft: '3px solid #059669',
+                      borderRadius: '6px',
+                      px: 1.75,
                       py: 1.5,
+                      mt: 1.5,
                     }}
                   >
-                    <Typography sx={{ fontSize: '0.9rem', color: '#2d3748', lineHeight: 1.4 }}>
-                      {row.label}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: row.isCustom ? '0.82rem' : '0.9rem',
-                        fontWeight: row.isCustom ? 600 : 700,
-                        fontStyle: row.isCustom ? 'italic' : 'normal',
-                        color: row.isCustom ? '#8a94a6' : card.accentColor,
-                        whiteSpace: 'nowrap',
-                        textAlign: 'right',
-                      }}
-                    >
-                      {row.price}
+                    <Typography sx={{ fontSize: '0.8rem', color: '#374151', lineHeight: 1.55 }}>
+                      <Box component="strong" sx={{ color: '#065f46' }}>Note: </Box>
+                      {card.note}
                     </Typography>
                   </Box>
-                ))}
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                {card.orgs.map((org, i) => (
-                  <Box
-                    key={org}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      borderTop: i === 0 ? 'none' : '1px solid #f0f2f7',
-                      py: 1.25,
-                    }}
-                  >
-                    <Typography sx={{ fontSize: '0.9rem', color: '#2d3748', flex: 1, pr: 1.5 }}>
-                      {org}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: '0.82rem',
-                        fontWeight: 700,
-                        fontStyle: 'italic',
-                        color: '#065f46',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Custom quote
-                    </Typography>
-                  </Box>
-                ))}
-                <Box
-                  sx={{
-                    bgcolor: '#f0fdf4',
-                    borderLeft: '3px solid #059669',
-                    borderRadius: '6px',
-                    px: 1.75,
-                    py: 1.5,
-                    mt: 1.5,
-                  }}
-                >
-                  <Typography sx={{ fontSize: '0.8rem', color: '#374151', lineHeight: 1.55 }}>
-                    <Box component="strong" sx={{ color: '#065f46' }}>Note: </Box>
-                    {card.note}
-                  </Typography>
                 </Box>
-              </Box>
-            )}
+              )}
+            </Box>
 
-            <Button
-              fullWidth
-              variant="contained"
-              sx={{
-                mt: 'auto',
-                bgcolor: card.ctaBg,
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                borderRadius: '10px',
-                py: 1.5,
-                textTransform: 'none',
-                boxShadow: 'none',
-                '&:hover': { bgcolor: card.ctaBg, opacity: 0.88, boxShadow: 'none' },
-              }}
-            >
-              {card.ctaLabel}
-            </Button>
+            {/* Row 4 — Button */}
+            <Box sx={{ px: { xs: 3, md: 4 }, pt: 2, pb: { xs: '24px', md: '32px' } }}>
+              <Button
+                fullWidth
+                variant="contained"
+                component="a"
+                href={card.ctaHref}
+                sx={{
+                  bgcolor: card.ctaBg,
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                  borderRadius: '10px',
+                  py: 1.5,
+                  textTransform: 'none',
+                  boxShadow: 'none',
+                  '&:hover': { bgcolor: card.ctaBg, opacity: 0.88, boxShadow: 'none' },
+                }}
+              >
+                {card.ctaLabel}
+              </Button>
+            </Box>
           </Box>
         ))}
       </Box>
