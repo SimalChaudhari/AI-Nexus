@@ -2829,6 +2829,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [modules, moduleProgressById]
   );
 
+  const courseEndLocked = isCourseEndModel && !allModulesDone;
+
+  useEffect(() => {
+    if (!courseEndLocked) return;
+    if (
+      activeLessonId !== COURSE_END_PRACTICE_ID &&
+      activeLessonId !== COURSE_END_ASSIGNMENT_ID
+    ) {
+      return;
+    }
+    toast.info('Complete all modules to unlock the final quiz and assessment');
+    const firstLesson = flatLessons[0];
+    if (firstLesson?.id) {
+      setActiveLessonId(firstLesson.id);
+      setSearchParams({ section: firstLesson.id }, { replace: true });
+    }
+  }, [courseEndLocked, activeLessonId, flatLessons, setSearchParams]);
+
   const activeModuleIndex = useMemo(
     () => modules.findIndex((m) => (m.lessons || []).some((l) => l.id === activeLessonId)),
     [modules, activeLessonId]
@@ -4328,6 +4346,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           ) : null}
 
           {activeLessonId === FEEDBACK_LESSON_ID ? null : isCourseEndAssignmentView ? (
+            courseEndLocked ? (
+              <Box sx={{ py: 8, px: 3, textAlign: 'center' }}>
+                <Iconify icon="solar:lock-keyhole-bold" width={40} sx={{ color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" sx={{ mb: 1 }}>
+                  Final assessment locked
+                </Typography>
+                <Typography color="text.secondary">
+                  Complete every lesson in all modules to unlock the final assessment.
+                </Typography>
+              </Box>
+            ) : (
             <Box
               sx={{
                 width: '100%',
@@ -4348,7 +4377,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 fillContainer
               />
             </Box>
+            )
           ) : isCourseEndPracticeView ? (
+            courseEndLocked ? (
+              <Box sx={{ py: 8, px: 3, textAlign: 'center' }}>
+                <Iconify icon="solar:lock-keyhole-bold" width={40} sx={{ color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" sx={{ mb: 1 }}>
+                  Final quiz locked
+                </Typography>
+                <Typography color="text.secondary">
+                  Complete every lesson in all modules to unlock the final quiz.
+                </Typography>
+              </Box>
+            ) : (
             <Box
               sx={{
                 width: '100%',
@@ -4378,6 +4419,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 />
               )}
             </Box>
+            )
           ) : moduleAssignmentModuleId && course?.id ? (
             playerLoading || modules.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>

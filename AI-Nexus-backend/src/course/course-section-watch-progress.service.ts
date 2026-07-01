@@ -44,13 +44,6 @@ function isUuid(value: string): boolean {
   );
 }
 
-function normalizeCourseLevel(level?: string): 'beginner' | 'intermediate' | 'advanced' {
-  const normalized = String(level || '').trim().toLowerCase();
-  if (normalized === 'intermediate') return 'intermediate';
-  if (normalized === 'advanced' || normalized === 'advance') return 'advanced';
-  return 'beginner';
-}
-
 function parseCoverageRangePairs(raw: unknown): [number, number][] {
   if (!raw || !Array.isArray(raw)) return [];
   const out: [number, number][] = [];
@@ -202,14 +195,6 @@ export class CourseSectionWatchProgressService {
     };
   }
 
-  private async resolveCourseLevel(courseId: string): Promise<'beginner' | 'intermediate' | 'advanced'> {
-    const course = await this.courseRepository.findOne({
-      where: { id: courseId },
-      select: ['level'],
-    });
-    return normalizeCourseLevel(course?.level);
-  }
-
   private async getOrderedCourseSections(courseId: string): Promise<Array<{ sectionId: string; moduleId: string }>> {
     const modules = await this.moduleRepository.find({
       where: { courseId },
@@ -274,65 +259,9 @@ export class CourseSectionWatchProgressService {
     return sectionsByModule;
   }
 
-  private async resolveSectionLockedState(userId: string, courseId: string, sectionId: string): Promise<boolean> {
-    const courseLevel = await this.resolveCourseLevel(courseId);
-    if (courseLevel === 'advanced') {
-      return false;
-    }
-
-    const { modules, sections } = await this.getModulesAndSections(courseId);
-    if (!modules.length || !sections.length) return false;
-
-    const sectionsByModule = this.groupSectionsByModule(modules, sections);
-    const firstModuleId = modules[0].id;
-    const currentSection = sections.find((section) => section.id === sectionId);
-    if (!currentSection) return false;
-
-    const deriveSectionDone = (sectionIdToCheck: string) => {
-      const progress = this.sectionProgressRepository.findOne({
-        where: { userId, courseId, sectionId: sectionIdToCheck },
-      });
-      return progress.then((existing) => {
-        const section = sections.find((item) => item.id === sectionIdToCheck);
-        return this.deriveSectionProgressComputation(
-          existing ?? undefined,
-          parseWatchtimeToSeconds(section?.watchtime),
-          parseWatchtimeToSeconds(section?.durationTime),
-        ).isCompleted;
-      });
-    };
-
-    const isFirstModuleComplete = async () => {
-      const firstModuleSections = sectionsByModule.get(firstModuleId) || [];
-      if (firstModuleSections.length === 0) return true;
-      for (const section of firstModuleSections) {
-        const done = await deriveSectionDone(section.id);
-        if (!done) return false;
-      }
-      return true;
-    };
-
-    if (courseLevel === 'intermediate' && currentSection.moduleId !== firstModuleId) {
-      const firstModuleComplete = await isFirstModuleComplete();
-      // Pillar 2: intro (first) module sequential; after it is done, all other modules fully open.
-      return !firstModuleComplete;
-    }
-
-    if (courseLevel === 'intermediate' && currentSection.moduleId === firstModuleId) {
-      const firstModuleSections = sectionsByModule.get(firstModuleId) || [];
-      const currentIndex = firstModuleSections.findIndex((section) => section.id === sectionId);
-      if (currentIndex <= 0) return false;
-      return !(await deriveSectionDone(firstModuleSections[currentIndex - 1].id));
-    }
-
-    const orderedSectionIds = modules.flatMap((module) =>
-      (sectionsByModule.get(module.id) || []).map((section) => section.id),
-    );
-    const currentIndex = orderedSectionIds.findIndex((id) => id === sectionId);
-    if (currentIndex <= 0) return false;
-
-    const previousSectionId = orderedSectionIds[currentIndex - 1];
-    return !(await deriveSectionDone(previousSectionId));
+  private async resolveSectionLockedState(_userId: string, _courseId: string, _sectionId: string): Promise<boolean> {
+    // Pillar 1–3: all lessons open; quiz/assessment gating is handled in the player UI.
+    return false;
   }
 
   async getAllSectionProgressForCourse(
@@ -359,45 +288,12 @@ export class CourseSectionWatchProgressService {
       });
     });
 
-    const sectionCompletion = new Map<string, boolean>();
-    sectionIds.forEach((sectionId) => {
-      const progress = progressBySection.get(sectionId);
-      const resolvedTiming = resolvedTimingBySection.get(sectionId) ?? { watchtimeSeconds: 0, durationTimeSeconds: 0 };
-      const completed = this.deriveSectionProgressComputation(
-        progress,
-        resolvedTiming.watchtimeSeconds,
-        resolvedTiming.durationTimeSeconds,
-      ).isCompleted;
-      sectionCompletion.set(sectionId, completed);
-    });
-
-    const courseLevel = await this.resolveCourseLevel(courseId);
-    const firstModuleId = modules[0].id;
-    const firstModuleComplete = (() => {
-      const firstModuleSections = sectionsByModule.get(firstModuleId) || [];
-      if (firstModuleSections.length === 0) return true;
-      return firstModuleSections.every((section) => sectionCompletion.get(section.id) === true);
-    })();
-
     const result: Record<string, ReturnType<CourseSectionWatchProgressService['formatSectionProgressResponse']>> = {};
     modules.forEach((module) => {
       const moduleSections = sectionsByModule.get(module.id) || [];
-      moduleSections.forEach((section, idx) => {
-        let isLocked = false;
-        if (courseLevel === 'advanced') {
-          isLocked = false;
-        } else if (courseLevel === 'intermediate') {
-          if (module.id !== firstModuleId) {
-            // Pillar 2: specialization modules unlock entirely once the first module is complete.
-            isLocked = !firstModuleComplete;
-          } else if (idx > 0) {
-            isLocked = sectionCompletion.get(moduleSections[idx - 1].id) !== true;
-          }
-        } else {
-          const orderedSectionIds = modules.flatMap((m) => (sectionsByModule.get(m.id) || []).map((s) => s.id));
-          const currentIndex = orderedSectionIds.findIndex((id) => id === section.id);
-          isLocked = currentIndex > 0 && sectionCompletion.get(orderedSectionIds[currentIndex - 1]) !== true;
-        }
+      moduleSections.forEach((section) => {
+        // Pillar 1–3: every lesson unlocked from the start.
+        const isLocked = false;
         result[section.id] = this.formatSectionProgressResponse(
           courseId,
           section.id,
