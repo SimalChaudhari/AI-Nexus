@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { existsSync } from 'fs';
-import { mkdir, readdir, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
+import mime from 'mime-types';
 
 type SaveFileOptions = {
   fileName?: string;
@@ -49,6 +50,26 @@ export class LocalStorageService {
     }
 
     await unlink(absolutePath).catch(() => undefined);
+  }
+
+  async readFileByUrl(
+    fileUrl?: string | null,
+  ): Promise<{ buffer: Buffer; mimeType: string; fileName: string } | null> {
+    if (!fileUrl || !fileUrl.startsWith('/uploads/')) {
+      return null;
+    }
+
+    const relativePath = fileUrl.replace(/^\/uploads\//, '');
+    const absolutePath = join(this.uploadRootDir, relativePath);
+
+    if (!existsSync(absolutePath)) {
+      return null;
+    }
+
+    const buffer = await readFile(absolutePath);
+    const fileName = relativePath.split('/').pop() || 'file';
+    const mimeType = String(mime.lookup(fileName) || 'application/octet-stream');
+    return { buffer, mimeType, fileName };
   }
 
   async clearFolder(folder: string): Promise<void> {

@@ -7,6 +7,7 @@ import {
     Post,
     Delete,
     Put,
+    Patch,
     Body,
     Query,
     Req,
@@ -56,6 +57,7 @@ import {
   CompleteCourseQuestionAttemptDto,
   StartCourseQuestionAttemptDto,
 } from './course-question-bank-attempt.dto';
+import { ManualVerifyAssignmentSubmissionDto } from './course-assignment-manual-verify.dto';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/paginated-list.util';
@@ -1013,6 +1015,56 @@ export class CourseController {
             (fileUrl) => this.localStorageService.deleteFileByUrl(fileUrl),
         );
         return response.status(HttpStatus.OK).json(result);
+    }
+
+    @Patch(':courseId/question-bank/assignments/submissions/:submissionId/manual-verify')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin manually pass/fail an assignment submission' })
+    @ApiBody({ type: ManualVerifyAssignmentSubmissionDto })
+    async manualVerifyAssignmentSubmission(
+        @Param('courseId') courseId: string,
+        @Param('submissionId') submissionId: string,
+        @Body() dto: ManualVerifyAssignmentSubmissionDto,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const role = (request as any).user?.role;
+        const data = await this.courseQuestionBankService.manualVerifyAssignmentSubmission(
+            userId,
+            role,
+            courseId,
+            submissionId,
+            dto,
+        );
+        return response.status(HttpStatus.OK).json({ message: 'Submission verified', data });
+    }
+
+    @Post(':courseId/question-bank/assignments/submissions/:submissionId/regrade')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin re-run AI grading for a submission' })
+    async regradeAssignmentSubmission(
+        @Param('courseId') courseId: string,
+        @Param('submissionId') submissionId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const role = (request as any).user?.role;
+        const data = await this.courseQuestionBankService.regradeAssignmentSubmission(
+            role,
+            courseId,
+            submissionId,
+        );
+        return response.status(HttpStatus.OK).json({ message: 'Regrading started', data });
     }
 
     @Get(':courseId/modules/:moduleId/sections')

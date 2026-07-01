@@ -1145,6 +1145,31 @@ export const courseService = {
     }
   },
 
+  async manualVerifyAssignmentSubmission(courseId, submissionId, payload) {
+    try {
+      const response = await axios.patch(
+        `/courses/${courseId}/question-bank/assignments/submissions/${submissionId}/manual-verify`,
+        payload
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error verifying assignment submission:', error);
+      throw error;
+    }
+  },
+
+  async regradeAssignmentSubmission(courseId, submissionId) {
+    try {
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/assignments/submissions/${submissionId}/regrade`
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error regrading assignment submission:', error);
+      throw error;
+    }
+  },
+
   async getMyAssignmentSummary() {
     try {
       const response = await axios.get('/courses/assignments/my-summary');

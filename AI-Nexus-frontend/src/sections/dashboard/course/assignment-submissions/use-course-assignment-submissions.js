@@ -15,6 +15,9 @@ export function useCourseAssignmentSubmissions(courseId) {
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [verifyTarget, setVerifyTarget] = useState(null);
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [regradingId, setRegradingId] = useState(null);
 
   const loadRows = useCallback(async () => {
     if (!courseId) return;
@@ -47,6 +50,18 @@ export function useCourseAssignmentSubmissions(courseId) {
   useEffect(() => {
     setSelectedModuleId(null);
   }, [courseId]);
+
+  useEffect(() => {
+    if (!courseId) return undefined;
+    const hasPending = rows.some(
+      (row) => row.evaluationStatus === 'pending' || row.evaluationStatus === 'processing'
+    );
+    if (!hasPending) return undefined;
+    const timer = setInterval(() => {
+      loadRows();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [courseId, rows, loadRows]);
 
   const moduleSummaries = useMemo(
     () => buildSubmissionModuleSummaries(rows, moduleChoices),
@@ -82,6 +97,45 @@ export function useCourseAssignmentSubmissions(courseId) {
     }
   }, [courseId, deleteTarget]);
 
+  const handleManualVerify = useCallback(
+    async ({ passed, feedback }) => {
+      if (!courseId || !verifyTarget?.id) return;
+      setVerifyingId(verifyTarget.id);
+      try {
+        const updated = await courseService.manualVerifyAssignmentSubmission(
+          courseId,
+          verifyTarget.id,
+          { passed, feedback }
+        );
+        setRows((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        toast.success(passed ? 'Marked as pass' : 'Marked as fail');
+        setVerifyTarget(null);
+      } catch (e) {
+        toast.error(e?.response?.data?.message || e?.message || 'Manual verification failed');
+      } finally {
+        setVerifyingId(null);
+      }
+    },
+    [courseId, verifyTarget]
+  );
+
+  const handleRegrade = useCallback(
+    async (row) => {
+      if (!courseId || !row?.id) return;
+      setRegradingId(row.id);
+      try {
+        await courseService.regradeAssignmentSubmission(courseId, row.id);
+        toast.success('AI regrading started');
+        await loadRows();
+      } catch (e) {
+        toast.error(e?.response?.data?.message || e?.message || 'Regrade failed');
+      } finally {
+        setRegradingId(null);
+      }
+    },
+    [courseId, loadRows]
+  );
+
   return {
     loading,
     rows,
@@ -95,6 +149,13 @@ export function useCourseAssignmentSubmissions(courseId) {
     deletingId,
     deleteTarget,
     setDeleteTarget,
+    verifyTarget,
+    setVerifyTarget,
+    verifyingId,
+    regradingId,
     handleConfirmDelete,
+    handleManualVerify,
+    handleRegrade,
+    loadRows,
   };
 }

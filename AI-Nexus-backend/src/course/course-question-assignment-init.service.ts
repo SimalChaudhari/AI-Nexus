@@ -32,6 +32,18 @@ export class CourseQuestionAssignmentInitService implements OnModuleInit {
             "userId" uuid NOT NULL,
             "fileUrl" text NOT NULL,
             "originalFileName" text NOT NULL,
+            "evaluationStatus" varchar(32) NOT NULL DEFAULT 'pending',
+            "aiScore" integer,
+            "aiPassed" boolean,
+            "aiFeedback" text,
+            "aiRawResult" jsonb,
+            "aiEvaluatedAt" TIMESTAMP,
+            "manualPassed" boolean,
+            "manualFeedback" text,
+            "manualVerifiedAt" TIMESTAMP,
+            "manualVerifiedBy" uuid,
+            "attemptCount" integer NOT NULL DEFAULT 1,
+            "attemptHistory" jsonb,
             "uploadedAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_course_question_assignment_submissions" PRIMARY KEY ("id"),
@@ -41,6 +53,31 @@ export class CourseQuestionAssignmentInitService implements OnModuleInit {
             CONSTRAINT "FK_course_question_assignment_submissions_user" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE
           )
         `);
+      }
+
+      const evaluationColumns: Array<[string, string]> = [
+        ['evaluationStatus', `varchar(32) NOT NULL DEFAULT 'pending'`],
+        ['aiScore', 'integer'],
+        ['aiPassed', 'boolean'],
+        ['aiFeedback', 'text'],
+        ['aiRawResult', 'jsonb'],
+        ['aiEvaluatedAt', 'TIMESTAMP'],
+        ['manualPassed', 'boolean'],
+        ['manualFeedback', 'text'],
+        ['manualVerifiedAt', 'TIMESTAMP'],
+        ['manualVerifiedBy', 'uuid'],
+        ['attemptCount', 'integer NOT NULL DEFAULT 1'],
+        ['attemptHistory', 'jsonb'],
+      ];
+
+      for (const [column, definition] of evaluationColumns) {
+        try {
+          await queryRunner.query(
+            `ALTER TABLE "course_question_assignment_submissions" ADD COLUMN "${column}" ${definition}`,
+          );
+        } catch (e) {
+          if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+        }
       }
 
       await queryRunner.release();

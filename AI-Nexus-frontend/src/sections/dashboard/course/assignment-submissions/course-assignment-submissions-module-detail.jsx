@@ -12,8 +12,13 @@ import { CourseAssignmentSubmissionsTable } from './course-assignment-submission
 export function CourseAssignmentSubmissionsModuleDetail({
   moduleSummary,
   deletingId,
+  verifyingId,
+  regradingId,
   onBack,
   onDeleteRow,
+  onVerifyRow,
+  onRegradeRow,
+  onViewLogRow,
 }) {
   const count = moduleSummary?.submissions.length || 0;
 
@@ -41,7 +46,12 @@ export function CourseAssignmentSubmissionsModuleDetail({
       <CourseAssignmentSubmissionsTable
         rows={moduleSummary?.submissions || []}
         deletingId={deletingId}
+        verifyingId={verifyingId}
+        regradingId={regradingId}
         onDeleteRow={onDeleteRow}
+        onVerifyRow={onVerifyRow}
+        onRegradeRow={onRegradeRow}
+        onViewLogRow={onViewLogRow}
       />
     </Stack>
   );

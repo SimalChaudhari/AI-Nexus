@@ -25,6 +25,16 @@ import {
 } from './course-question-bank-attempt.entity';
 import { CourseQuestionAssignmentSubmissionEntity } from './course-question-assignment-submission.entity';
 import { UserRole } from '../user/users.entity';
+import { CourseAssignmentGradingService } from './course-assignment-grading.service';
+import { ManualVerifyAssignmentSubmissionDto } from './course-assignment-manual-verify.dto';
+import {
+  buildSubmissionAttemptRecord,
+  extractVerificationLog,
+  mapSubmissionEvaluationFields,
+  isSubmissionPassedLocked,
+  type AssignmentSubmissionAttemptRecord,
+    type AssignmentVerificationLogEntry,
+} from './course-assignment-submission-evaluation.types';
 
 function normalizeTrueFalse(value: string): 'true' | 'false' {
   const v = String(value).trim().toLowerCase();
@@ -83,6 +93,21 @@ export type CourseQuestionAssignmentSubmissionRow = {
   fileUrl: string;
   originalFileName: string;
   uploadedAt: Date;
+  evaluationStatus: string;
+  aiScore: number | null;
+  aiPassed: boolean | null;
+  aiFeedback: string | null;
+  aiRawResult: Record<string, unknown> | null;
+  verificationLog: AssignmentVerificationLogEntry[];
+  aiEvaluatedAt: Date | null;
+  manualPassed: boolean | null;
+  manualFeedback: string | null;
+  manualVerifiedAt: Date | null;
+  manualVerifiedBy: string | null;
+  passed: boolean | null;
+  passedSource: 'manual' | 'ai' | null;
+  attemptCount: number;
+  attemptHistory: AssignmentSubmissionAttemptRecord[];
 };
 export type CourseAssignmentSummaryRow = {
   courseId: string;
@@ -108,6 +133,7 @@ export class CourseQuestionBankService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly courseService: CourseService,
     private readonly courseEnrollmentService: CourseEnrollmentService,
+    private readonly assignmentGradingService: CourseAssignmentGradingService,
   ) {}
 
   private async assertModuleBelongsToCourse(
@@ -675,20 +701,148 @@ export class CourseQuestionBankService {
     const existing = await this.assignmentSubmissionRepo.findOne({
       where: { questionId, userId },
     });
-    if (existing) {
-      existing.fileUrl = fileUrl;
-      existing.originalFileName = originalFileName;
-      return this.assignmentSubmissionRepo.save(existing);
+
+    if (existing && isSubmissionPassedLocked(existing)) {
+      throw new BadRequestException(
+        'This assessment is already passed. You cannot replace the submitted file.',
+      );
     }
 
-    const row = this.assignmentSubmissionRepo.create({
-      questionId,
-      courseId,
-      userId,
-      fileUrl,
-      originalFileName,
+    const resetEvaluation = (row: CourseQuestionAssignmentSubmissionEntity) => {
+      row.evaluationStatus = 'pending';
+      row.aiScore = null;
+      row.aiPassed = null;
+      row.aiFeedback = null;
+      row.aiRawResult = null;
+      row.aiEvaluatedAt = null;
+      row.manualPassed = null;
+      row.manualFeedback = null;
+      row.manualVerifiedAt = null;
+      row.manualVerifiedBy = null;
+    };
+
+    let saved: CourseQuestionAssignmentSubmissionEntity;
+    if (existing) {
+      const previousAttemptNumber = existing.attemptCount || 1;
+      const historyEntry = buildSubmissionAttemptRecord(existing, previousAttemptNumber);
+      existing.attemptHistory = [...(existing.attemptHistory || []), historyEntry];
+      existing.attemptCount = previousAttemptNumber + 1;
+      existing.fileUrl = fileUrl;
+      existing.originalFileName = originalFileName;
+      resetEvaluation(existing);
+      saved = await this.assignmentSubmissionRepo.save(existing);
+    } else {
+      const row = this.assignmentSubmissionRepo.create({
+        questionId,
+        courseId,
+        userId,
+        fileUrl,
+        originalFileName,
+        evaluationStatus: 'pending',
+        attemptCount: 1,
+        attemptHistory: [],
+      });
+      saved = await this.assignmentSubmissionRepo.save(row);
+    }
+
+    this.assignmentGradingService.queueGrading(saved.id);
+    return saved;
+  }
+
+  async manualVerifyAssignmentSubmission(
+    adminId: string,
+    requesterRole: string | undefined,
+    courseId: string,
+    submissionId: string,
+    dto: ManualVerifyAssignmentSubmissionDto,
+  ): Promise<CourseQuestionAssignmentSubmissionRow> {
+    if (requesterRole !== UserRole.Admin) {
+      throw new ForbiddenException('Only admins can manually verify submissions');
+    }
+
+    const submission = await this.assignmentSubmissionRepo.findOne({
+      where: { id: submissionId, courseId },
     });
-    return this.assignmentSubmissionRepo.save(row);
+    if (!submission) throw new NotFoundException('Submission not found');
+
+    submission.manualPassed = dto.passed;
+    submission.manualFeedback = String(dto.feedback || '').trim() || null;
+    submission.manualVerifiedAt = new Date();
+    submission.manualVerifiedBy = adminId;
+    if (submission.evaluationStatus === 'pending' || submission.evaluationStatus === 'processing') {
+      submission.evaluationStatus = 'completed';
+    }
+    const saved = await this.assignmentSubmissionRepo.save(submission);
+
+    const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
+    const row = rows.find((item) => item.id === saved.id);
+    if (!row) throw new NotFoundException('Submission not found after update');
+    return row;
+  }
+
+  async regradeAssignmentSubmission(
+    requesterRole: string | undefined,
+    courseId: string,
+    submissionId: string,
+  ): Promise<CourseQuestionAssignmentSubmissionEntity | null> {
+    if (requesterRole !== UserRole.Admin) {
+      throw new ForbiddenException('Only admins can trigger regrading');
+    }
+    const submission = await this.assignmentSubmissionRepo.findOne({
+      where: { id: submissionId, courseId },
+    });
+    if (!submission) throw new NotFoundException('Submission not found');
+
+    submission.evaluationStatus = 'pending';
+    submission.aiScore = null;
+    submission.aiPassed = null;
+    submission.aiFeedback = null;
+    submission.aiRawResult = null;
+    submission.aiEvaluatedAt = null;
+    await this.assignmentSubmissionRepo.save(submission);
+    this.assignmentGradingService.queueGrading(submission.id);
+    return submission;
+  }
+
+  private mapSubmissionRow(
+    s: CourseQuestionAssignmentSubmissionEntity,
+    q: CourseQuestionBankEntity | undefined,
+    u: UserEntity | undefined,
+    mod: CourseModuleEntity | null | undefined,
+  ): CourseQuestionAssignmentSubmissionRow {
+    const first = String(u?.firstname || '').trim();
+    const last = String(u?.lastname || '').trim();
+    const full = `${first} ${last}`.trim();
+    const evaluation = mapSubmissionEvaluationFields(s);
+    return {
+      id: s.id,
+      questionId: s.questionId,
+      courseId: s.courseId,
+      userId: s.userId,
+      userName: full || u?.username || 'Unknown user',
+      userEmail: u?.email || '',
+      questionPrompt: q?.prompt || '',
+      moduleId: q?.moduleId ?? null,
+      moduleTitle: mod?.title ?? null,
+      fileUrl: s.fileUrl,
+      originalFileName: s.originalFileName,
+      uploadedAt: s.uploadedAt,
+      evaluationStatus: evaluation.evaluationStatus,
+      aiScore: evaluation.aiScore,
+      aiPassed: evaluation.aiPassed,
+      aiFeedback: evaluation.aiFeedback,
+      aiRawResult: evaluation.aiRawResult,
+      verificationLog: extractVerificationLog(s.aiRawResult),
+      aiEvaluatedAt: evaluation.aiEvaluatedAt,
+      manualPassed: evaluation.manualPassed,
+      manualFeedback: evaluation.manualFeedback,
+      manualVerifiedAt: evaluation.manualVerifiedAt,
+      manualVerifiedBy: evaluation.manualVerifiedBy,
+      passed: evaluation.passed,
+      passedSource: evaluation.passedSource,
+      attemptCount: s.attemptCount || 1,
+      attemptHistory: Array.isArray(s.attemptHistory) ? s.attemptHistory : [],
+    };
   }
 
   async deleteAssignmentSubmission(
@@ -720,6 +874,12 @@ export class CourseQuestionBankService {
       where: { questionId, userId: effectiveUserId, courseId },
     });
     if (!existing) throw new NotFoundException('Submission not found');
+
+    if (!isAdmin && isSubmissionPassedLocked(existing)) {
+      throw new BadRequestException(
+        'This assessment is already passed. You cannot delete the submitted file.',
+      );
+    }
 
     const fileUrl = existing.fileUrl;
     await this.assignmentSubmissionRepo.remove(existing);
@@ -778,24 +938,8 @@ export class CourseQuestionBankService {
     return submissions.map((s) => {
       const q = questionById.get(s.questionId);
       const u = userById.get(s.userId);
-      const first = String(u?.firstname || '').trim();
-      const last = String(u?.lastname || '').trim();
-      const full = `${first} ${last}`.trim();
       const mod = q?.moduleId ? moduleById.get(q.moduleId) : null;
-      return {
-        id: s.id,
-        questionId: s.questionId,
-        courseId: s.courseId,
-        userId: s.userId,
-        userName: full || u?.username || 'Unknown user',
-        userEmail: u?.email || '',
-        questionPrompt: q?.prompt || '',
-        moduleId: q?.moduleId ?? null,
-        moduleTitle: mod?.title ?? null,
-        fileUrl: s.fileUrl,
-        originalFileName: s.originalFileName,
-        uploadedAt: s.uploadedAt,
-      };
+      return this.mapSubmissionRow(s, q, u, mod);
     });
   }
 

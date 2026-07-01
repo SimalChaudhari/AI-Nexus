@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -13,12 +14,15 @@ import { ConfirmDialog } from 'src/components/custom-dialog';
 
 import { CourseAssignmentSubmissionsModuleList } from './assignment-submissions/course-assignment-submissions-module-list';
 import { CourseAssignmentSubmissionsModuleDetail } from './assignment-submissions/course-assignment-submissions-module-detail';
+import { CourseAssignmentSubmissionsManualVerifyDialog } from './assignment-submissions/course-assignment-submissions-manual-verify-dialog';
+import { CourseAssignmentVerificationLogDialog } from './assignment-submissions/course-assignment-verification-log-dialog';
 import { useCourseAssignmentSubmissions } from './assignment-submissions/use-course-assignment-submissions';
 
 // ----------------------------------------------------------------------
 
 export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
   const submissions = useCourseAssignmentSubmissions(courseId);
+  const [logTarget, setLogTarget] = useState(null);
 
   if (!courseId) return null;
 
@@ -37,7 +41,8 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
       </Stack>
 
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-        Learner assessment uploads grouped by module. Select a module to review submitted files.
+        Learner assessment uploads grouped by module. AI grades submissions automatically; use manual
+        verify when review is needed.
       </Typography>
 
       {submissions.userOptions.length > 1 ? (
@@ -71,10 +76,29 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
         <CourseAssignmentSubmissionsModuleDetail
           moduleSummary={submissions.activeModule}
           deletingId={submissions.deletingId}
+          verifyingId={submissions.verifyingId}
+          regradingId={submissions.regradingId}
           onBack={() => submissions.setSelectedModuleId(null)}
           onDeleteRow={submissions.setDeleteTarget}
+          onVerifyRow={submissions.setVerifyTarget}
+          onRegradeRow={submissions.handleRegrade}
+          onViewLogRow={setLogTarget}
         />
       )}
+
+      <CourseAssignmentVerificationLogDialog
+        open={Boolean(logTarget)}
+        submission={logTarget}
+        onClose={() => setLogTarget(null)}
+      />
+
+      <CourseAssignmentSubmissionsManualVerifyDialog
+        open={Boolean(submissions.verifyTarget)}
+        row={submissions.verifyTarget}
+        saving={Boolean(submissions.verifyingId)}
+        onClose={() => submissions.setVerifyTarget(null)}
+        onSubmit={submissions.handleManualVerify}
+      />
 
       <ConfirmDialog
         open={Boolean(submissions.deleteTarget)}
