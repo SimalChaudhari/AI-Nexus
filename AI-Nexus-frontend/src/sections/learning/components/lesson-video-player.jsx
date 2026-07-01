@@ -39,7 +39,7 @@ export function LessonVideoPlayer({
           ref={videoRef}
           poster={videoPoster || undefined}
           controls
-          controlsList="nodownload nofullscreen"
+          controlsList="nodownload"
           playsInline
           disablePictureInPicture
           preload="metadata"
