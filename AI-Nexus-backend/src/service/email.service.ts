@@ -216,6 +216,58 @@ export class EmailService {
         }
     }
 
+    async sendStudentAcademicVerificationEmail(params: {
+        academicEmail: string;
+        learnerName: string;
+        verificationToken: string;
+    }): Promise<void> {
+        const academicEmail = String(params.academicEmail || '').trim();
+        const learnerName = String(params.learnerName || 'Student').trim() || 'Student';
+        const safeLearnerName = escapeHtml(learnerName);
+        const verificationUrl = `${this.resolveFrontendBaseUrl()}/auth/student-verification/confirm?token=${encodeURIComponent(params.verificationToken)}`;
+        const declarationLine =
+            "By clicking on the verification button below, you declare that you are an accounting student in one of Singapore's local universities/ polytechnics.";
+
+        const bodyHtml = `
+            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
+                You recently submitted your student details for the ISCA AI Fluency Programme fee waiver application using this academic email address.
+            </p>
+            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
+                Please verify your academic email to continue your registration.
+            </p>
+            <div style="margin-top:16px; background:#D8E4F3; border:1px solid #c3d5ea; border-radius:10px; padding:12px 14px; color:#1C4270; font-size:14px; line-height:1.6;">
+                ${escapeHtml(declarationLine)}
+            </div>
+        `;
+
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'ISCA AI Fluency Programme – Student email verification',
+            greetingName: safeLearnerName,
+            intro: 'Thank you for applying for the ISCA AI Fluency Programme student fee waiver.',
+            bodyHtml,
+            ctaLabel: 'Verify my academic email',
+            ctaUrl: verificationUrl,
+            note: 'This verification link does not expire. You may use it at any time to complete verification.',
+            footer: 'ISCA AI Fluency Programme',
+        });
+
+        const mailOptions = {
+            from: this.fromEmail,
+            to: academicEmail,
+            subject: 'ISCA AI Fluency Programme – Verify your academic email',
+            text: `Hello ${learnerName},\n\nThank you for applying for the ISCA AI Fluency Programme student fee waiver.\n\nPlease verify your academic email to continue your registration.\n\n${declarationLine}\n\n${verificationUrl}`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Student academic verification email sent to ${academicEmail}`);
+        } catch (error) {
+            console.error('Error sending student academic verification email:', error);
+            throw new Error('Failed to send student academic verification email');
+        }
+    }
+
     /**
      * Send credentials when an admin creates a user account (temporary or chosen password).
      */

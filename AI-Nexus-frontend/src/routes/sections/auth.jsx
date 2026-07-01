@@ -366,6 +366,7 @@ const Simple = {
   ResetPasswordPage: lazy(() => import('src/pages/auth/simple/reset-password')),
   VerifyPage: lazy(() => import('src/pages/auth/simple/verify')),
   FeeWaiverHrVerifyPage: lazy(() => import('src/pages/auth/simple/fee-waiver-audit-hr-verify')),
+  StudentAcademicVerifyPage: lazy(() => import('src/pages/auth/simple/student-academic-verify')),
 };
 
 const authSimple = {
@@ -427,6 +428,10 @@ const authSimple = {
     {
       path: 'fee-waiver-audit/hr-verify',
       element: <Simple.FeeWaiverHrVerifyPage />,
+    },
+    {
+      path: 'student-verification/confirm',
+      element: <Simple.StudentAcademicVerifyPage />,
     },
   ],
 };

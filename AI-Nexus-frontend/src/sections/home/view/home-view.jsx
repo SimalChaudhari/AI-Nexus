@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
@@ -9,6 +9,7 @@ import { HomeFooter } from 'src/layouts/main/footer';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
 import { useAuthContext } from 'src/auth/hooks';
+import { getStudentFeeWaiverResumeFlow, setMembershipSignupDraftUserId } from 'src/auth/context/jwt';
 import {
   MembershipSignupDialog,
   MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
@@ -17,6 +18,8 @@ import {
   clearMembershipEligibilityDraftOnModalClose,
   continueMembershipSignupDialog,
   ensureNoYesYesFlowAfterEservicesFailure,
+  isStudentAcademicFeeWaiverResumeFlow,
+  persistStudentFeeWaiverResumeFlow,
   readResumedMembershipEligibilityFlow,
   RESUME_MEMBERSHIP_SIGNUP_QUERY,
   shouldOpenResumedMembershipSignupModal,
@@ -48,6 +51,9 @@ export function HomeView() {
   const footerReady = useHomePageApisReady();
   useMembershipApplicationPaymentReturn();
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
+  const [membershipResumeFlow, setMembershipResumeFlow] = useState(null);
+  const [membershipResumeOutcome, setMembershipResumeOutcome] = useState('');
+  const studentResumeTokenLoadingRef = useRef('');
   const returnPath = `${location.pathname}${location.search || ''}`;
 
   useEffect(() => {
@@ -69,7 +75,10 @@ export function HomeView() {
 
     if (params.get('membershipNotEligible') === '1') {
       const resumed = readResumedMembershipEligibilityFlow();
-      if (!resumed?.flow?.showCitizenshipRecordGap) {
+      if (
+        !resumed?.flow?.showCitizenshipRecordGap
+        && !isStudentAcademicFeeWaiverResumeFlow(resumed?.flow, resumed?.parsed?.membershipOutcome)
+      ) {
         ensureNoYesYesFlowAfterEservicesFailure();
       }
       params.delete('membershipNotEligible');
@@ -79,7 +88,66 @@ export function HomeView() {
       setMembershipSignupOpen(true);
       return;
     }
+
+    const studentFeeWaiverResumeToken = params.get('studentFeeWaiverResumeToken');
+    if (studentFeeWaiverResumeToken) {
+      if (studentResumeTokenLoadingRef.current === studentFeeWaiverResumeToken) {
+        return;
+      }
+      studentResumeTokenLoadingRef.current = studentFeeWaiverResumeToken;
+
+      void (async () => {
+        try {
+          const result = await getStudentFeeWaiverResumeFlow({
+            token: studentFeeWaiverResumeToken,
+          });
+          const persisted = persistStudentFeeWaiverResumeFlow(result);
+          if (persisted?.draftUserId) {
+            setMembershipSignupDraftUserId(persisted.draftUserId);
+          }
+          setMembershipResumeFlow(persisted.flow);
+          setMembershipResumeOutcome(persisted.membershipOutcome || 'student-fee-waiver');
+          params.delete('studentFeeWaiverResumeToken');
+          params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+          const next = params.toString();
+          navigate(`${location.pathname}${next ? `?${next}` : ''}`, { replace: true });
+          setMembershipSignupOpen(true);
+        } catch {
+          params.delete('studentFeeWaiverResumeToken');
+          const next = params.toString();
+          navigate(`${location.pathname}${next ? `?${next}` : ''}`, { replace: true });
+        } finally {
+          studentResumeTokenLoadingRef.current = '';
+        }
+      })();
+      return;
+    }
+
+    if (params.get('studentAcademicVerified') === '1') {
+      const resumed = readResumedMembershipEligibilityFlow();
+      params.delete('studentAcademicVerified');
+      if (
+        isStudentAcademicFeeWaiverResumeFlow(
+          resumed?.flow,
+          resumed?.parsed?.membershipOutcome
+        )
+      ) {
+        params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+        const next = params.toString();
+        navigate(`${location.pathname}${next ? `?${next}` : ''}`, { replace: true });
+        setMembershipResumeFlow(resumed.flow);
+        setMembershipResumeOutcome(resumed?.parsed?.membershipOutcome || 'student-fee-waiver');
+        setMembershipSignupOpen(true);
+      } else {
+        const next = params.toString();
+        navigate(`${location.pathname}${next ? `?${next}` : ''}`, { replace: true });
+      }
+      return;
+    }
     if (params.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1') {
+      if (studentResumeTokenLoadingRef.current) {
+        return;
+      }
       if (!shouldOpenResumedMembershipSignupModal()) {
         clearMembershipEligibilityDraftOnModalClose();
         const nextPath = stripResumeMembershipSignupFromPath(
@@ -99,6 +167,8 @@ export function HomeView() {
 
   const handleCloseMembershipSignup = useCallback(() => {
     clearMembershipEligibilityDraftOnModalClose();
+    setMembershipResumeFlow(null);
+    setMembershipResumeOutcome('');
     setMembershipSignupOpen(false);
   }, []);
 
@@ -153,6 +223,8 @@ export function HomeView() {
       <MembershipSignupDialog
         entrySource={MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED}
         open={membershipSignupOpen}
+        resumeFlowOverride={membershipResumeFlow}
+        resumeMembershipOutcome={membershipResumeOutcome}
         onClose={handleCloseMembershipSignup}
         onContinue={(payload) => {
           setMembershipSignupOpen(false);

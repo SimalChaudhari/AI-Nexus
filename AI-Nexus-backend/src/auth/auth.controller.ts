@@ -425,6 +425,27 @@ export class AuthController {
     return this.authService.verifyFeeWaiverAuditHrToken(token);
   }
 
+  @Get('student-verification/confirm')
+  @ApiOperation({ summary: 'Complete student academic email verification from email link' })
+  async verifyStudentAcademicEmail(@Query('token') token: string) {
+    return this.authService.verifyStudentAcademicEmailToken(token);
+  }
+
+  @Get('student-verification/academic-email-status')
+  @ApiOperation({ summary: 'Check whether student academic email verification is complete' })
+  async getStudentAcademicEmailVerificationStatus(
+    @Query('academicEmail') academicEmail?: string,
+    @Query('userId') userId?: string,
+  ) {
+    return this.authService.getStudentAcademicEmailVerificationStatus({ academicEmail, userId });
+  }
+
+  @Get('student-verification/resume-flow')
+  @ApiOperation({ summary: 'Load membership flow state to open fee-waiver modal after student email verification' })
+  async getStudentFeeWaiverResumeFlow(@Query('token') token: string) {
+    return this.authService.getStudentFeeWaiverResumeFlow(token);
+  }
+
   @Post('accounting-declaration/hr-email')
   @ApiOperation({ summary: 'Send HR notification email for accounting declaration (pre-registration)' })
   async submitAccountingDeclarationHrEmail(

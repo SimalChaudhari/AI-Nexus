@@ -31,7 +31,7 @@ import {
   MembershipSignupDialog,
   MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
 } from 'src/sections/learning/components/membership-signup-dialog';
-import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY, shouldOpenResumedMembershipSignupModal, stripResumeMembershipSignupFromPath, clearMembershipEligibilityDraftOnModalClose, ensureNoYesYesFlowAfterEservicesFailure, readResumedMembershipEligibilityFlow } from 'src/utils/membership-eligibility-sso';
+import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY, shouldOpenResumedMembershipSignupModal, stripResumeMembershipSignupFromPath, clearMembershipEligibilityDraftOnModalClose, ensureNoYesYesFlowAfterEservicesFailure, isStudentAcademicFeeWaiverResumeFlow, readResumedMembershipEligibilityFlow } from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -91,11 +91,23 @@ export function SimpleSignInView() {
 
     if (searchParams.get('membershipNotEligible') === '1') {
       const resumed = readResumedMembershipEligibilityFlow();
-      if (!resumed?.flow?.showCitizenshipRecordGap) {
+      if (
+        !resumed?.flow?.showCitizenshipRecordGap
+        && !isStudentAcademicFeeWaiverResumeFlow(resumed?.flow, resumed?.parsed?.membershipOutcome)
+      ) {
         ensureNoYesYesFlowAfterEservicesFailure();
       }
       const params = new URLSearchParams(window.location.search || '');
       params.delete('membershipNotEligible');
+      params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+      const next = params.toString();
+      router.replace(`${window.location.pathname}${next ? `?${next}` : ''}`);
+      setSignupModalOpen(true);
+      return;
+    }
+    if (searchParams.get('studentAcademicVerified') === '1') {
+      const params = new URLSearchParams(window.location.search || '');
+      params.delete('studentAcademicVerified');
       params.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
       const next = params.toString();
       router.replace(`${window.location.pathname}${next ? `?${next}` : ''}`);

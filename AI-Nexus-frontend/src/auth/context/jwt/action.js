@@ -576,6 +576,57 @@ export const verifyFeeWaiverHrToken = async ({ token }) => {
   }
 };
 
+/** Complete student academic email verification from email link. */
+export const verifyStudentAcademicEmailToken = async ({ token }) => {
+  try {
+    const res = await axios.get('/auth/student-verification/confirm', {
+      params: { token },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not complete student verification.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** Poll student academic email verification status after verification email is sent. */
+export const getStudentAcademicEmailVerificationStatus = async ({ academicEmail, userId } = {}) => {
+  try {
+    const res = await axios.get('/auth/student-verification/academic-email-status', {
+      params: {
+        ...(academicEmail ? { academicEmail: String(academicEmail).trim() } : {}),
+        ...(userId ? { userId: String(userId).trim() } : {}),
+      },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not check student email verification status.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** Load membership flow after student academic email verification (new tab / no sessionStorage). */
+export const getStudentFeeWaiverResumeFlow = async ({ token } = {}) => {
+  try {
+    const res = await axios.get('/auth/student-verification/resume-flow', {
+      params: { token: String(token || '').trim() },
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not resume student registration.');
+    throw new Error(errorMessage);
+  }
+};
+
 /** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */

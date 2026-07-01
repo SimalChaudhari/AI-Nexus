@@ -40,6 +40,8 @@ import {
   verifyStudentVerificationPin as verifyStudentVerificationPinRequest,
   clearMembershipSignupDraftUserId,
   getMembershipSignupDraftUserId,
+  setMembershipSignupDraftUserId,
+  getStudentAcademicEmailVerificationStatus,
   submitAccountingDeclarationHrEmail,
   submitAccountingDeclarationCertificate,
 } from 'src/auth/context/jwt';
@@ -74,7 +76,10 @@ import {
   readStoredFeeWaiverSignupFlow,
   isFeeWaiverResumeMembershipOutcome,
   isQuestionnaireEservicesResumeOutcome,
+  isStudentAcademicFeeWaiverResumeFlow,
   readQuestionnaireEservicesResumeFlow,
+  buildStudentAcademicEmailVerifiedFlowUpdate,
+  subscribeStudentAcademicEmailVerified,
   isQuestionnaireEservicesMemberFallback,
   applyQuestionnaireIscaNonMemberFallback,
   readCitizenshipGapSocialToken,
@@ -355,6 +360,7 @@ const INITIAL_STATE = {
   studentDetailsSubmitted: false,
   studentVerificationTriggered: false,
   studentAcademicEmailVerified: null,
+  studentAcademicEmailVerificationPending: false,
   studentVerificationFailureAcknowledged: false,
   studentAcademicVerificationScore: null,
   workingEducationalBackground: '',
@@ -555,6 +561,7 @@ const STUDENT_ACADEMIC_EMAIL_SUFFIXES = [
   'tp.edu.sg',
   'rp.edu.sg',
   'isca.org.sg',
+  'gmail.com',
 
 ];
 
@@ -578,39 +585,44 @@ function getAcademicEmailValidationMessage(email) {
 }
 
 function getStudentFlowAfterAcademicEmailStep(state) {
-  const pastFailedAcademicVerification =
-    state.studentVerificationFailureAcknowledged
-    && state.studentDetailsSubmitted
-    && state.studentAcademicEmailVerified === false;
-
-  if (!pastFailedAcademicVerification) {
-    if (
-      !state.studentAcademicEmail?.trim()
-      || !state.studentPersonalEmail?.trim()
-      || !state.studentCardImageName
-    ) {
-      return 'student-academic-email';
-    }
-    if (!state.studentDetailsSubmitted || state.studentAcademicEmailVerified === null) {
-      return 'student-academic-email';
-    }
-  }
   if (state.studentAcademicEmailVerified === true) {
     return 'result';
   }
-  if (!state.studentVerificationFailureAcknowledged) {
-    return 'student-academic-email';
-  }
-  if (state.studentMemberOrAssociate === null) {
-    return 'student-member-associate-check';
-  }
-  if (state.studentMemberOrAssociate === true) {
+
+  if (
+    state.studentDetailsSubmitted
+    && state.studentAcademicEmailVerified === false
+    && !state.studentAcademicEmailVerificationPending
+  ) {
+    if (state.studentMemberOrAssociate === null) {
+      return 'student-member-associate-check';
+    }
+    if (state.studentMemberOrAssociate === true) {
+      return 'result';
+    }
+    if (state.studentNonFinalInterested === null) {
+      return 'student-non-final-options';
+    }
     return 'result';
   }
-  if (state.studentNonFinalInterested === null) {
-    return 'student-non-final-options';
+
+  if (
+    !state.studentAcademicEmail?.trim()
+    || !state.studentPersonalEmail?.trim()
+    || !state.studentCardImageName
+  ) {
+    return 'student-academic-email';
   }
-  return 'result';
+
+  if (
+    !state.studentDetailsSubmitted
+    || state.studentAcademicEmailVerified === null
+    || state.studentAcademicEmailVerificationPending
+  ) {
+    return 'student-academic-email';
+  }
+
+  return 'student-academic-email';
 }
 
 function isQuestionnaireSgPrPath(state) {
@@ -828,7 +840,20 @@ function buildStudentPersonaProgressSteps(state) {
     }
   } else {
     steps.push('student-academic-email');
-    steps.push('result');
+    if (state.studentAcademicEmailVerified === true) {
+      steps.push('result');
+    } else if (
+      state.studentDetailsSubmitted
+      && state.studentAcademicEmailVerified === false
+      && !state.studentAcademicEmailVerificationPending
+    ) {
+      steps.push('student-member-associate-check');
+      if (state.studentMemberOrAssociate === true) {
+        steps.push('result');
+      } else if (state.studentMemberOrAssociate === false) {
+        steps.push('student-non-final-options', 'result');
+      }
+    }
   }
   return [...new Set(steps)];
 }
@@ -870,18 +895,6 @@ function getStudentWorkingPersonaProgressMeta(state, step) {
     && state.studentMemberOrAssociate === false
   ) {
     normalizedStep = 'student-non-final-options';
-  }
-  if (
-    state.registrationPersona === 'student'
-    && state.studentFinalYearLocal === true
-    && state.studentVerificationFailureAcknowledged
-  ) {
-    if (normalizedStep === 'student-member-associate-check') {
-      normalizedStep = 'student-academic-email';
-    }
-    if (normalizedStep === 'student-non-final-options') {
-      normalizedStep = 'result';
-    }
   }
   let steps;
   if (!state.registrationPersona) {
@@ -1235,6 +1248,13 @@ function canShowMembershipFlowBackButton(step, flowState, flowHistoryDepth) {
 function getFlowStep(state) {
   state = resolveQuestionnaireNonMemberFlowState(state);
 
+  if (
+    state.registrationPersona === 'student'
+    && state.studentAcademicEmailVerified === true
+  ) {
+    return 'result';
+  }
+
   if (isHomeGetStartedFlow(state)) {
     return getHomeFluencyFlowStep(state);
   }
@@ -1245,6 +1265,19 @@ function getFlowStep(state) {
 
   if (state.showCitizenshipRecordGap === true) {
     return 'citizenship-record-gap';
+  }
+
+  if (
+    state.registrationPersona === 'student'
+    && state.studentFinalYearLocal === true
+    && state.studentDetailsSubmitted
+    && state.studentAcademicEmailVerified === false
+    && !state.studentAcademicEmailVerificationPending
+  ) {
+    if (state.studentMemberOrAssociate === null) return 'student-member-associate-check';
+    if (state.studentMemberOrAssociate === true) return 'result';
+    if (state.studentNonFinalInterested === null) return 'student-non-final-options';
+    return 'result';
   }
 
   if (
@@ -1354,13 +1387,6 @@ function getFlowStep(state) {
         return 'result';
       }
       if (
-        state.studentVerificationFailureAcknowledged
-        && state.studentDetailsSubmitted
-        && state.studentAcademicEmailVerified === false
-      ) {
-        return getStudentFlowAfterAcademicEmailStep(state);
-      }
-      if (
         !state.studentAcademicEmail?.trim()
         || !state.studentPersonalEmail?.trim()
         || !state.studentCardImageName
@@ -1396,13 +1422,6 @@ function getFlowStep(state) {
       if (state.studentMemberOrAssociate === true) return 'result';
       if (state.studentNonFinalInterested === null) return 'student-non-final-options';
       return 'result';
-    }
-    if (
-      state.studentVerificationFailureAcknowledged
-      && state.studentDetailsSubmitted
-      && state.studentAcademicEmailVerified === false
-    ) {
-      return getStudentFlowAfterAcademicEmailStep(state);
     }
     if (
       !state.studentAcademicEmail?.trim()
@@ -2407,7 +2426,15 @@ function getProgressMeta(state, step) {
   };
 }
 
-export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFeeWaiver, entrySource }) {
+export function MembershipSignupDialog({
+  open,
+  onClose,
+  onContinue,
+  onDeclineFeeWaiver,
+  entrySource,
+  resumeFlowOverride = null,
+  resumeMembershipOutcome = '',
+}) {
   const [flowState, setFlowState] = useState(INITIAL_STATE);
   const [charteredUploadedFiles, setCharteredUploadedFiles] = useState({});
   const [nricFrontImage, setNricFrontImage] = useState(null);
@@ -2444,6 +2471,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   const [studentCardVerifying, setStudentCardVerifying] = useState(false);
   const [studentCardVerification, setStudentCardVerification] = useState(null);
   const [studentCardVerificationError, setStudentCardVerificationError] = useState('');
+  const [showStudentAcademicEmailSentModal, setShowStudentAcademicEmailSentModal] = useState(false);
   const [experiencedResumeVerifying, setExperiencedResumeVerifying] = useState(false);
   const [experiencedResumeVerificationError, setExperiencedResumeVerificationError] = useState('');
   const [experiencedResumeAssessment, setExperiencedResumeAssessment] = useState(null);
@@ -2634,11 +2662,38 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       );
     };
 
+    if (resumeFlowOverride && typeof resumeFlowOverride === 'object') {
+      const overrideResumed = {
+        flow: resumeFlowOverride,
+        parsed: {
+          membershipOutcome: resumeMembershipOutcome || 'student-fee-waiver',
+        },
+      };
+      nextState = loadResumedQuestionnaireFlow(overrideResumed) || resolveFlowStateOnOpen(resumeFlowOverride, false);
+      nextState = {
+        ...nextState,
+        signupEntrySource: fromAuthSignUp
+          ? MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP
+          : entrySource || nextState.signupEntrySource || '',
+      };
+      setFlowState(resolveQuestionnaireNonMemberFlowState(nextState));
+      return;
+    }
+
     if (fromHomeGetStarted) {
       let resumed = readQuestionnaireEservicesResumeFlow();
       if (!resumed?.flow) {
         const genericResumed = readResumedMembershipEligibilityFlow();
-        if (genericResumed?.flow && isQuestionnaireEservicesMemberFallback(genericResumed.flow)) {
+        if (
+          genericResumed?.flow
+          && (
+            isQuestionnaireEservicesMemberFallback(genericResumed.flow)
+            || isStudentAcademicFeeWaiverResumeFlow(
+              genericResumed.flow,
+              genericResumed.parsed?.membershipOutcome
+            )
+          )
+        ) {
           resumed = genericResumed;
         }
       }
@@ -2704,7 +2759,76 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
     };
 
     setFlowState(resolveQuestionnaireNonMemberFlowState(nextState));
-  }, [open, entrySource]);
+  }, [open, entrySource, resumeFlowOverride, resumeMembershipOutcome]);
+
+  useEffect(() => {
+    if (
+      !open
+      || !flowState.studentAcademicEmailVerificationPending
+      || flowState.studentAcademicEmailVerified === true
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const applyVerifiedStudentFlow = () => {
+      if (cancelled) return;
+      setFlowState((prev) => {
+        const nextFlow = buildStudentAcademicEmailVerifiedFlowUpdate(prev);
+        persistMembershipEligibilityFlowForResume(nextFlow, 'student-fee-waiver');
+        applyStudentMembershipEmailPrefillFromEligibilityFlow(nextFlow);
+        return nextFlow;
+      });
+    };
+
+    const unsubscribeBroadcast = subscribeStudentAcademicEmailVerified(() => {
+      applyVerifiedStudentFlow();
+    });
+
+    const checkStudentAcademicEmailVerification = async () => {
+      try {
+        const status = await getStudentAcademicEmailVerificationStatus({
+          academicEmail: flowState.studentAcademicEmail,
+          userId: getMembershipSignupDraftUserId(),
+        });
+        if (cancelled || !status?.verified) return;
+
+        applyVerifiedStudentFlow();
+      } catch {
+        // Ignore polling errors; student can return via email link redirect.
+      }
+    };
+
+    checkStudentAcademicEmailVerification();
+    const intervalId = window.setInterval(checkStudentAcademicEmailVerification, 5000);
+
+    return () => {
+      cancelled = true;
+      unsubscribeBroadcast();
+      window.clearInterval(intervalId);
+    };
+  }, [
+    open,
+    flowState.studentAcademicEmail,
+    flowState.studentAcademicEmailVerificationPending,
+    flowState.studentAcademicEmailVerified,
+  ]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (
+      flowState.registrationPersona === 'student'
+      && flowState.studentAcademicEmailVerified === true
+    ) {
+      applyStudentMembershipEmailPrefillFromEligibilityFlow(flowState);
+    }
+  }, [
+    open,
+    flowState.registrationPersona,
+    flowState.studentAcademicEmailVerified,
+    flowState.studentPersonalEmail,
+  ]);
 
   const flowHistoryRef = useRef([]);
   const skipFlowHistoryRef = useRef(false);
@@ -3464,21 +3588,56 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         studentCardImage,
       });
 
+      if (assessment?.draftUserId) {
+        setMembershipSignupDraftUserId(assessment.draftUserId);
+      }
+
       setStudentCardVerification(assessment || null);
-      setFlowState((prev) => ({
-        ...prev,
-        studentAcademicEmailVerified: assessment?.verified === true,
-        studentAcademicVerificationScore: assessment?.score ?? null,
-        studentVerificationFailureAcknowledged: false,
-      }));
+
+      if (assessment?.pendingEmailVerification || assessment?.emailVerificationSent) {
+        const pendingFlow = {
+          ...flowState,
+          studentDetailsSubmitted: true,
+          studentVerificationTriggered: true,
+          studentAcademicEmailVerificationPending: true,
+          studentAcademicEmailVerified: null,
+          studentVerificationFailureAcknowledged: false,
+          studentAcademicVerificationScore: assessment?.score ?? null,
+        };
+        setFlowState(pendingFlow);
+        persistMembershipEligibilityFlowForResume(pendingFlow, 'student-fee-waiver');
+        setShowStudentAcademicEmailSentModal(true);
+        return;
+      }
+
+      setFlowState((prev) => {
+        const nextFlow = {
+          ...prev,
+          studentDetailsSubmitted: true,
+          studentAcademicEmailVerified: assessment?.verified === true,
+          studentAcademicEmailVerificationPending: false,
+          studentAcademicVerificationScore: assessment?.score ?? null,
+          studentVerificationFailureAcknowledged: false,
+        };
+        if (nextFlow.studentAcademicEmailVerified !== true) {
+          persistMembershipEligibilityFlowForResume(nextFlow, '');
+        }
+        return nextFlow;
+      });
     } catch (error) {
       setStudentCardVerification(null);
-      setFlowState((prev) => ({
-        ...prev,
-        studentAcademicEmailVerified: false,
-        studentAcademicVerificationScore: null,
-        studentVerificationFailureAcknowledged: false,
-      }));
+      setFlowState((prev) => {
+        const nextFlow = {
+          ...prev,
+          studentDetailsSubmitted: true,
+          studentAcademicEmailVerified: false,
+          studentAcademicEmailVerificationPending: false,
+          studentAcademicVerificationScore: null,
+          studentVerificationFailureAcknowledged: false,
+        };
+        persistMembershipEligibilityFlowForResume(nextFlow, '');
+        return nextFlow;
+      });
       setStudentCardVerificationError(error?.message || 'Student verification failed. Please try again.');
     } finally {
       setStudentCardVerifying(false);
@@ -3493,6 +3652,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
       studentDetailsSubmitted: false,
       studentVerificationTriggered: false,
       studentAcademicEmailVerified: null,
+      studentAcademicEmailVerificationPending: false,
       studentVerificationFailureAcknowledged: false,
       studentAcademicVerificationScore: null,
     }));
@@ -5999,6 +6159,7 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
   };
 
   return (
+    <>
     <Dialog
       open={open}
       disableScrollLock
@@ -7035,44 +7196,47 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
               <Alert severity="error">{studentCardVerificationError}</Alert>
             )}
 
-            {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === true && (
-              <Alert severity="success">
-                Your student card was verified successfully. Eligibility is based on your uploaded student card and academic email domain.
+            {flowState.studentAcademicEmailVerificationPending
+              && flowState.studentAcademicEmailVerified !== true && (
+              <Alert severity="info">
+                A verification email has been sent to your academic email address. Please open the email and click the verification link to continue.
               </Alert>
             )}
 
-            {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === false && (
+            {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === true && (
+              <Alert severity="success">
+                Your academic email has been verified. You can continue to registration.
+              </Alert>
+            )}
+
+            {flowState.studentDetailsSubmitted
+              && flowState.studentAcademicEmailVerified === false
+              && !flowState.studentAcademicEmailVerificationPending && (
               <Alert severity="error">
                 {ELIGIBILITY_STUDENT_ACADEMIC_NOT_VERIFIED_MESSAGE}
               </Alert>
             )}
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
-              {flowState.studentDetailsSubmitted && flowState.studentAcademicEmailVerified === false ? (
-                <>
-                  <Button variant="outlined" onClick={retryStudentAcademicVerification}>
-                    Try again
-                  </Button>
-                  <Button variant="contained" onClick={proceedAfterStudentAcademicVerificationFailure}>
-                    Proceed to next step
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  variant="contained"
-                  onClick={submitStudentAcademicDetails}
-                  disabled={
-                    studentCardVerifying
-                    || !flowState.studentAcademicEmail?.trim()
-                    || !isAcademicEmail(flowState.studentAcademicEmail)
-                    || !flowState.studentPersonalEmail?.trim()
-                    || !isValidPersonalEmail(flowState.studentPersonalEmail)
-                    || !studentCardImage
-                  }
-                >
-                  {studentCardVerifying ? 'Verifying...' : 'Continue'}
-                </Button>
-              )}
+              <Button
+                variant="contained"
+                onClick={submitStudentAcademicDetails}
+                disabled={
+                  studentCardVerifying
+                  || flowState.studentAcademicEmailVerificationPending
+                  || !flowState.studentAcademicEmail?.trim()
+                  || !isAcademicEmail(flowState.studentAcademicEmail)
+                  || !flowState.studentPersonalEmail?.trim()
+                  || !isValidPersonalEmail(flowState.studentPersonalEmail)
+                  || !studentCardImage
+                }
+              >
+                {studentCardVerifying
+                  ? 'Verifying...'
+                  : flowState.studentAcademicEmailVerificationPending
+                    ? 'Verification email sent'
+                    : 'Continue'}
+              </Button>
             </Stack>
           </Stack>
         )}
@@ -9859,5 +10023,31 @@ export function MembershipSignupDialog({ open, onClose, onContinue, onDeclineFee
         )}
       </DialogActions>
     </Dialog>
+
+    <Dialog
+      open={showStudentAcademicEmailSentModal}
+      onClose={() => setShowStudentAcademicEmailSentModal(false)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle sx={{ fontWeight: 700 }}>Verification email sent</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+          An email has been sent to your academic email address
+          {flowState.studentAcademicEmail ? ` (${flowState.studentAcademicEmail})` : ''}.
+          Please open the email and click the verification button to continue your registration.
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button
+          variant="contained"
+          onClick={() => setShowStudentAcademicEmailSentModal(false)}
+          sx={{ textTransform: 'none', fontWeight: 700 }}
+        >
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }

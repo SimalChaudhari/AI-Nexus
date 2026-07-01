@@ -929,6 +929,199 @@ export function buildResumeMembershipSignupReturnUrl(path = '') {
   return `${base}${separator}${RESUME_MEMBERSHIP_SIGNUP_QUERY}=1&membershipNotEligible=1`;
 }
 
+export function isStudentAcademicFeeWaiverResumeFlow(flow = {}, membershipOutcome = '') {
+  const outcome = String(membershipOutcome || '').trim();
+  return (
+    outcome === 'student-fee-waiver'
+    || (
+      flow?.registrationPersona === 'student'
+      && (
+        flow?.studentAcademicEmailVerified === true
+        || flow?.studentAcademicEmailVerificationPending === true
+      )
+    )
+  );
+}
+
+export function buildResumeStudentAcademicVerificationReturnUrl(path = '', resumeToken = '') {
+  const token = String(resumeToken || '').trim();
+  const base = String(path || paths.home).trim() || paths.home;
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(base, window.location.origin);
+      url.searchParams.set(RESUME_MEMBERSHIP_SIGNUP_QUERY, '1');
+      if (token) {
+        url.searchParams.set('studentFeeWaiverResumeToken', token);
+      } else {
+        url.searchParams.set('studentAcademicVerified', '1');
+      }
+      const search = url.searchParams.toString();
+      return `${url.pathname}${search ? `?${search}` : ''}`;
+    } catch {
+      // fall through
+    }
+  }
+  const separator = base.includes('?') ? '&' : '?';
+  if (token) {
+    return `${base}${separator}${RESUME_MEMBERSHIP_SIGNUP_QUERY}=1&studentFeeWaiverResumeToken=${encodeURIComponent(token)}`;
+  }
+  return `${base}${separator}${RESUME_MEMBERSHIP_SIGNUP_QUERY}=1&studentAcademicVerified=1`;
+}
+
+/** Persist student fee-waiver flow from backend resume token API. */
+export function persistStudentFeeWaiverResumeFlow(apiResult = {}) {
+  const membershipOutcome = String(apiResult?.membershipOutcome || 'student-fee-waiver').trim();
+  const flow = buildFeeWaiverResumeFlow({
+    ...(apiResult?.flow && typeof apiResult.flow === 'object' ? apiResult.flow : {}),
+    registrationPersona: 'student',
+    studentFinalYearLocal: true,
+    studentDetailsSubmitted: true,
+    studentAcademicEmailVerified: true,
+    studentAcademicEmailVerificationPending: false,
+    initialQuestionnaireSubmitted: true,
+    isIscaMember: false,
+    isSingaporePr: false,
+    companyRegistrationUnderCompany: false,
+  });
+  persistMembershipEligibilityFlowForResume(flow, membershipOutcome);
+  applyStudentMembershipEmailPrefillFromEligibilityFlow(flow);
+  return { flow, membershipOutcome, draftUserId: apiResult?.draftUserId || null };
+}
+
+export const STUDENT_ACADEMIC_VERIFY_CHANNEL = 'student-academic-email-verified';
+
+/** Flow patch applied when student academic email verification completes. */
+export function buildStudentAcademicEmailVerifiedFlowUpdate(flow = {}) {
+  return {
+    ...flow,
+    initialQuestionnaireSubmitted: flow.initialQuestionnaireSubmitted ?? true,
+    isIscaMember: flow.isIscaMember ?? false,
+    isSingaporePr: flow.isSingaporePr ?? false,
+    companyRegistrationUnderCompany: flow.companyRegistrationUnderCompany ?? false,
+    registrationPersona: flow.registrationPersona || 'student',
+    studentFinalYearLocal: flow.studentFinalYearLocal ?? true,
+    studentDetailsSubmitted: true,
+    studentAcademicEmailVerificationPending: false,
+    studentAcademicEmailVerified: true,
+    iscaMemberEservicesFallback: false,
+    iscaMemberFailureAcknowledged: false,
+    iscaMemberVerificationPassed: null,
+  };
+}
+
+/** Notify the original registration tab and wait briefly for acknowledgement. */
+export function publishStudentAcademicEmailVerified(resumeToken = '') {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') {
+      resolve(false);
+      return;
+    }
+
+    const token = String(resumeToken || '').trim();
+    let channel;
+
+    try {
+      channel = new BroadcastChannel(STUDENT_ACADEMIC_VERIFY_CHANNEL);
+    } catch {
+      resolve(false);
+      return;
+    }
+
+    let settled = false;
+    const finish = (handled) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      channel.close();
+      resolve(handled);
+    };
+
+    channel.onmessage = (event) => {
+      if (event?.data?.type === 'student-academic-verify-ack') {
+        finish(true);
+      }
+    };
+
+    channel.postMessage({
+      type: 'student-academic-email-verified',
+      resumeToken: token,
+      at: Date.now(),
+    });
+
+    const timeoutId = window.setTimeout(() => finish(false), 700);
+  });
+}
+
+/** Registration tab listens for email-link verification in another tab. */
+export function subscribeStudentAcademicEmailVerified(onVerified) {
+  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') {
+    return () => {};
+  }
+
+  let channel;
+
+  try {
+    channel = new BroadcastChannel(STUDENT_ACADEMIC_VERIFY_CHANNEL);
+  } catch {
+    return () => {};
+  }
+
+  channel.onmessage = (event) => {
+    if (event?.data?.type !== 'student-academic-email-verified') return;
+
+    Promise.resolve(onVerified(event.data))
+      .catch(() => undefined)
+      .finally(() => {
+        try {
+          channel.postMessage({ type: 'student-academic-verify-ack', at: Date.now() });
+        } catch {
+          // ignore
+        }
+      });
+  };
+
+  return () => channel.close();
+}
+
+/** Prefer updating the opener tab instead of opening a second home tab. */
+export function tryStudentAcademicVerifyOpenerHandoff(path = '', resumeToken = '') {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const opener = window.opener;
+    if (!opener || opener.closed) return false;
+
+    opener.location.assign(buildResumeStudentAcademicVerificationReturnUrl(path, resumeToken));
+    window.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * After email-link verification, resume in one tab only.
+ * Returns 'handoff' when another tab handled it, 'redirect' when navigating here.
+ */
+export async function resumeStudentAcademicVerificationInSingleTab(path = '', resumeToken = '') {
+  const token = String(resumeToken || '').trim();
+  if (!token) return 'error';
+
+  applyStudentAcademicEmailVerifiedToStoredFlow();
+
+  if (tryStudentAcademicVerifyOpenerHandoff(path, token)) {
+    return 'handoff';
+  }
+
+  const handledByRegistrationTab = await publishStudentAcademicEmailVerified(token);
+  if (handledByRegistrationTab) {
+    return 'handoff';
+  }
+
+  window.location.assign(buildResumeStudentAcademicVerificationReturnUrl(path, token));
+  return 'redirect';
+}
+
 export function isQuestionnaireEservicesResumeOutcome(outcome = '') {
   const normalized = String(outcome || '').trim();
   return normalized === 'isca-member-eservices-login' || normalized === 'isca-member-sso-check';
@@ -958,6 +1151,8 @@ export function stripResumeMembershipSignupFromPath(path = '') {
     const url = new URL(raw, window.location.origin);
     url.searchParams.delete(RESUME_MEMBERSHIP_SIGNUP_QUERY);
     url.searchParams.delete('membershipNotEligible');
+    url.searchParams.delete('studentAcademicVerified');
+    url.searchParams.delete('studentFeeWaiverResumeToken');
     const search = url.searchParams.toString();
     return `${url.pathname}${search ? `?${search}` : ''}`;
   } catch {
@@ -1020,6 +1215,36 @@ export function persistMembershipEligibilityFlowForResume(flow, membershipOutcom
     );
   } catch {
     // ignore
+  }
+}
+
+/** After student academic email link verification, resume eligibility modal at result step. */
+export function applyStudentAcademicEmailVerifiedToStoredFlow() {
+  try {
+    const raw = sessionStorage.getItem(MEMBERSHIP_ELIGIBILITY_FLOW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const flow = parsed?.flow;
+    if (!flow || typeof flow !== 'object') return null;
+
+    const updatedFlow = buildStudentAcademicEmailVerifiedFlowUpdate({
+      ...flow,
+    });
+
+    sessionStorage.setItem(
+      MEMBERSHIP_ELIGIBILITY_FLOW_KEY,
+      JSON.stringify({
+        ...parsed,
+        membershipOutcome: 'student-fee-waiver',
+        flow: updatedFlow,
+        resumeMembershipSignup: true,
+        savedAt: new Date().toISOString(),
+      })
+    );
+    applyStudentMembershipEmailPrefillFromEligibilityFlow(updatedFlow);
+    return updatedFlow;
+  } catch {
+    return null;
   }
 }
 
@@ -1327,6 +1552,10 @@ export function ensureNoYesYesFlowAfterEservicesFailure() {
       if (parsed?.flow && typeof parsed.flow === 'object') {
         sourceFlow = parsed.flow;
       }
+    }
+
+    if (isStudentAcademicFeeWaiverResumeFlow(sourceFlow, parsed.membershipOutcome)) {
+      return sourceFlow;
     }
 
     if (

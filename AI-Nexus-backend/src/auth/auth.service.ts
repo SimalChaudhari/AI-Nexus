@@ -128,6 +128,9 @@ interface StudentAcademicVerificationResult extends StudentEligibilityAssessment
     studentId: string;
   };
   cardImageUrl?: string | null;
+  emailVerificationSent?: boolean;
+  pendingEmailVerification?: boolean;
+  draftUserId?: string | null;
 }
 
 const QUESTIONNAIRE_ACADEMIC_EMAIL_SUFFIXES = [
@@ -141,6 +144,7 @@ const QUESTIONNAIRE_ACADEMIC_EMAIL_SUFFIXES = [
   'tp.edu.sg',
   'rp.edu.sg',
   'isca.org.sg',
+  'gmail.com',
 
 ];
 
@@ -1682,6 +1686,41 @@ export class AuthService {
   /**
    * Resolves the user to update for NRIC verification from either an explicit userId or a bearer token.
    */
+  private async resolveOrCreateUserForStudentAcademicVerification(
+    userId?: string,
+    authorizationHeader?: string,
+    params?: { personalEmail?: string; learnerName?: string },
+  ): Promise<UserEntity | null> {
+    const resolvedUser = await this.resolveUserForNricVerification(userId, authorizationHeader);
+    if (resolvedUser?.id) return resolvedUser;
+
+    const personalEmail = this.normalizeStudentSchoolEmail(params?.personalEmail || '');
+    if (!personalEmail || !this.isBasicEmailFormat(personalEmail)) return null;
+
+    const existingDraft = await this.userRepository.findOne({
+      where: { email: personalEmail, isDraft: true },
+    });
+    if (existingDraft?.id) return existingDraft;
+
+    const learnerName = String(params?.learnerName || 'Student Applicant').trim() || 'Student Applicant';
+    const nameParts = learnerName.split(/\s+/).filter(Boolean);
+    const draftUser = this.userRepository.create({
+      username: `student_${crypto.randomBytes(8).toString('hex')}`,
+      firstname: nameParts[0] || 'Student',
+      lastname: nameParts.slice(1).join(' ') || 'Applicant',
+      email: personalEmail,
+      password: null,
+      authProvider: AuthProvider.LOCAL,
+      role: UserRole.User,
+      status: UserStatus.Active,
+      isVerified: false,
+      isDraft: true,
+      persona: 'student',
+    });
+
+    return this.userRepository.save(draftUser);
+  }
+
   private async resolveUserForNricVerification(userId?: string, authorizationHeader?: string) {
     const trimmedUserId = String(userId || '').trim();
     if (trimmedUserId) {
@@ -2127,12 +2166,18 @@ export class AuthService {
       extracted,
       source: this.llmService.getActiveProvider(),
     });
+    let emailVerificationSent = false;
+    let draftUserId: string | null = null;
 
     try {
-      const auditUser = await this.resolveUserForNricVerification(
+      const learnerName = assessment.extracted?.fullName?.trim() || 'Student Applicant';
+      const auditUser = await this.resolveOrCreateUserForStudentAcademicVerification(
         params?.userId,
         params?.authorizationHeader,
+        { personalEmail, learnerName },
       );
+      draftUserId = auditUser?.id || null;
+
       if (auditUser?.id) {
         const cardUrl = await this.localStorageService.saveFile(
           params!.studentCardImage!,
@@ -2164,14 +2209,14 @@ export class AuthService {
       if (assessment.verified && academicEmail) {
         try {
           const hrVerificationToken = crypto.randomBytes(32).toString('hex');
-          await this.emailService.sendFeeWaiverHrVerificationEmail({
-            hrEmail: academicEmail,
-            learnerEmail: auditUser?.email || personalEmail || academicEmail,
+          await this.emailService.sendStudentAcademicVerificationEmail({
+            academicEmail,
             learnerName: assessment.extracted?.fullName?.trim()
               || (auditUser ? `${auditUser.firstname || ''} ${auditUser.lastname || ''}`.trim() : '')
-              || 'Learner',
+              || 'Student',
             verificationToken: hrVerificationToken,
           });
+          emailVerificationSent = true;
           if (auditUser?.id) {
             this.mergeFeeWaiverAuditSnapshot(auditUser, {
               method: 'student-academic',
@@ -2188,7 +2233,7 @@ export class AuthService {
           }
         } catch (emailError) {
           this.logger.warn(
-            `Could not send student academic HR verification email: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
+            `Could not send student academic verification email: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
           );
         }
       }
@@ -2198,7 +2243,70 @@ export class AuthService {
       );
     }
 
-    return assessment;
+    const pendingEmailVerification = emailVerificationSent;
+    const requiresEmailVerification = assessment.verified && Boolean(academicEmail);
+
+    return {
+      ...assessment,
+      verified: requiresEmailVerification ? false : assessment.verified,
+      emailVerificationSent,
+      pendingEmailVerification,
+      draftUserId,
+    };
+  }
+
+  async getStudentAcademicEmailVerificationStatus(params: {
+    academicEmail?: string;
+    userId?: string;
+  }) {
+    const academicEmail = this.normalizeStudentSchoolEmail(params?.academicEmail || '');
+    const userId = String(params?.userId || '').trim();
+    if (!academicEmail && !userId) {
+      throw new BadRequestException('Academic email or user ID is required.');
+    }
+
+    let user: UserEntity | null = null;
+    if (userId) {
+      user = await this.userRepository.findOne({ where: { id: userId } });
+    }
+
+    if (!user && academicEmail) {
+      user = await this.userRepository
+        .createQueryBuilder('usr')
+        .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+          auditFilter: JSON.stringify({
+            feeWaiverAudit: { hrEmail: academicEmail, method: 'student-academic' },
+          }),
+        })
+        .getOne();
+    }
+
+    if (!user) {
+      return {
+        verified: false,
+        pending: Boolean(academicEmail),
+        academicEmail: academicEmail || null,
+      };
+    }
+
+    const audit = user.eligibilitySnapshot?.feeWaiverAudit;
+    const auditRecord =
+      audit && typeof audit === 'object' ? (audit as Record<string, unknown>) : null;
+    const method = String(auditRecord?.method || '').trim();
+    const status = String(auditRecord?.status || '').trim();
+    const storedAcademicEmail = this.normalizeStudentSchoolEmail(String(auditRecord?.hrEmail || ''));
+    const emailMatches = !academicEmail || storedAcademicEmail === academicEmail;
+    const verified =
+      emailMatches
+      && method === 'student-academic'
+      && (status === 'hr_verified' || user.feeWaiverJobVerified === true);
+
+    return {
+      verified,
+      pending: emailMatches && method === 'student-academic' && !verified,
+      academicEmail: storedAcademicEmail || academicEmail || null,
+      draftUserId: user.id,
+    };
   }
 
   private getExperiencedAiMaxTokens(): number {
@@ -2642,6 +2750,10 @@ export class AuthService {
       throw new BadRequestException('This HR verification link is invalid.');
     }
 
+    if (String(auditRecord.method || '').trim() === 'student-academic') {
+      throw new BadRequestException('This verification link is invalid.');
+    }
+
     const learnerName =
       `${user.firstname || ''} ${user.lastname || ''}`.trim()
       || String(auditRecord.learnerEmail || user.email || 'Learner');
@@ -2671,6 +2783,169 @@ export class AuthService {
       learnerEmail: user.email,
       message: 'Thank you. The learner job role has been verified successfully.',
     };
+  }
+
+  async verifyStudentAcademicEmailToken(token?: string) {
+    const trimmedToken = String(token || '').trim();
+    if (!trimmedToken) {
+      throw new BadRequestException('Verification token is required.');
+    }
+
+    const user = await this.findUserByFeeWaiverHrToken(trimmedToken);
+    if (!user) {
+      throw new BadRequestException('This student verification link is invalid.');
+    }
+
+    const audit = user.eligibilitySnapshot?.feeWaiverAudit;
+    const auditRecord =
+      audit && typeof audit === 'object' ? (audit as Record<string, unknown>) : null;
+    if (!auditRecord || String(auditRecord.method || '').trim() !== 'student-academic') {
+      throw new BadRequestException('This student verification link is invalid.');
+    }
+
+    const learnerName =
+      `${user.firstname || ''} ${user.lastname || ''}`.trim()
+      || String(auditRecord.learnerEmail || user.email || 'Student');
+
+    if (auditRecord.status === 'hr_verified' || user.feeWaiverJobVerified === true) {
+      const resumeToken = await this.ensureStudentFeeWaiverResumeToken(user);
+      return {
+        verified: true,
+        alreadyVerified: true,
+        learnerName,
+        learnerEmail: user.email,
+        resumeToken,
+        draftUserId: user.id,
+        message: 'Your student status has already been verified. Thank you.',
+      };
+    }
+
+    const resumeToken = crypto.randomBytes(32).toString('hex');
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      status: 'hr_verified',
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'student-academic-email-link',
+      hrVerificationToken: trimmedToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(trimmedToken),
+      studentFeeWaiverResumeToken: resumeToken,
+      studentFeeWaiverResumeTokenHash: this.hashFeeWaiverHrVerificationToken(resumeToken),
+    });
+    await this.userRepository.save(user);
+
+    return {
+      verified: true,
+      learnerName,
+      learnerEmail: user.email,
+      resumeToken,
+      draftUserId: user.id,
+      message: 'Thank you. Your student status has been verified successfully.',
+    };
+  }
+
+  async getStudentFeeWaiverResumeFlow(resumeToken?: string) {
+    const trimmedToken = String(resumeToken || '').trim();
+    if (!trimmedToken) {
+      throw new BadRequestException('Resume token is required.');
+    }
+
+    const user = await this.findUserByStudentFeeWaiverResumeToken(trimmedToken);
+    if (!user) {
+      throw new BadRequestException('This registration resume link is invalid or expired.');
+    }
+
+    const audit = user.eligibilitySnapshot?.feeWaiverAudit;
+    const auditRecord =
+      audit && typeof audit === 'object' ? (audit as Record<string, unknown>) : null;
+    if (!auditRecord || String(auditRecord.method || '').trim() !== 'student-academic') {
+      throw new BadRequestException('This registration resume link is invalid or expired.');
+    }
+
+    const status = String(auditRecord.status || '').trim();
+    if (status !== 'hr_verified' && user.feeWaiverJobVerified !== true) {
+      throw new BadRequestException('Student academic email verification is not complete yet.');
+    }
+
+    const snapshot =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? user.eligibilitySnapshot
+        : {};
+    const studentCardAudit =
+      snapshot.studentCardAudit && typeof snapshot.studentCardAudit === 'object'
+        ? (snapshot.studentCardAudit as Record<string, unknown>)
+        : {};
+
+    const academicEmail = this.normalizeStudentSchoolEmail(String(studentCardAudit.academicEmail || auditRecord.hrEmail || ''));
+    const personalEmail = String(studentCardAudit.personalEmail || auditRecord.learnerEmail || user.email || '').trim();
+
+    return {
+      membershipOutcome: 'student-fee-waiver',
+      draftUserId: user.id,
+      flow: {
+        feeWaiverApplicationChoice: true,
+        initialQuestionnaireSubmitted: true,
+        isIscaMember: false,
+        isSingaporePr: false,
+        companyRegistrationUnderCompany: false,
+        registrationPersona: 'student',
+        studentFinalYearLocal: true,
+        studentDetailsSubmitted: true,
+        studentVerificationTriggered: true,
+        studentAcademicEmailVerified: true,
+        studentAcademicEmailVerificationPending: false,
+        studentAcademicEmail: academicEmail,
+        studentPersonalEmail: personalEmail,
+        studentCardImageName: academicEmail ? 'student-card-verified' : '',
+        studentVerificationFailureAcknowledged: false,
+        iscaMemberEservicesFallback: false,
+        iscaMemberFailureAcknowledged: false,
+        iscaMemberVerificationPassed: null,
+        eligibilityVerified: true,
+        studentMembershipApplicationAgreed: true,
+        studentMembershipOptIn: true,
+        eligibilityType: 'student',
+      },
+    };
+  }
+
+  private async ensureStudentFeeWaiverResumeToken(user: UserEntity) {
+    const audit = user.eligibilitySnapshot?.feeWaiverAudit;
+    const auditRecord =
+      audit && typeof audit === 'object' ? (audit as Record<string, unknown>) : {};
+    const existingToken = String(auditRecord.studentFeeWaiverResumeToken || '').trim();
+    if (existingToken) {
+      return existingToken;
+    }
+
+    const resumeToken = crypto.randomBytes(32).toString('hex');
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      studentFeeWaiverResumeToken: resumeToken,
+      studentFeeWaiverResumeTokenHash: this.hashFeeWaiverHrVerificationToken(resumeToken),
+    });
+    await this.userRepository.save(user);
+    return resumeToken;
+  }
+
+  private async findUserByStudentFeeWaiverResumeToken(token: string) {
+    const tokenHash = this.hashFeeWaiverHrVerificationToken(token);
+    const byHash = await this.userRepository
+      .createQueryBuilder('usr')
+      .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+        auditFilter: JSON.stringify({
+          feeWaiverAudit: { studentFeeWaiverResumeTokenHash: tokenHash },
+        }),
+      })
+      .getOne();
+
+    if (byHash) return byHash;
+
+    return this.userRepository
+      .createQueryBuilder('usr')
+      .where(`usr."eligibilitySnapshot"::jsonb @> :auditFilter::jsonb`, {
+        auditFilter: JSON.stringify({
+          feeWaiverAudit: { studentFeeWaiverResumeToken: token },
+        }),
+      })
+      .getOne();
   }
 
   async verifyFeeWaiverAuditCertificate(params: {
