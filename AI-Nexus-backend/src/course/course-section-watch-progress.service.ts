@@ -314,11 +314,8 @@ export class CourseSectionWatchProgressService {
 
     if (courseLevel === 'intermediate' && currentSection.moduleId !== firstModuleId) {
       const firstModuleComplete = await isFirstModuleComplete();
-      if (!firstModuleComplete) return true;
-      const currentModuleSections = sectionsByModule.get(currentSection.moduleId) || [];
-      const currentIndex = currentModuleSections.findIndex((section) => section.id === sectionId);
-      if (currentIndex <= 0) return false;
-      return !(await deriveSectionDone(currentModuleSections[currentIndex - 1].id));
+      // Pillar 2: intro (first) module sequential; after it is done, all other modules fully open.
+      return !firstModuleComplete;
     }
 
     if (courseLevel === 'intermediate' && currentSection.moduleId === firstModuleId) {
@@ -391,10 +388,8 @@ export class CourseSectionWatchProgressService {
           isLocked = false;
         } else if (courseLevel === 'intermediate') {
           if (module.id !== firstModuleId) {
+            // Pillar 2: specialization modules unlock entirely once the first module is complete.
             isLocked = !firstModuleComplete;
-            if (!isLocked && idx > 0) {
-              isLocked = sectionCompletion.get(moduleSections[idx - 1].id) !== true;
-            }
           } else if (idx > 0) {
             isLocked = sectionCompletion.get(moduleSections[idx - 1].id) !== true;
           }
