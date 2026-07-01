@@ -4,6 +4,7 @@ import IconButton from '@mui/material/IconButton';
 import ListItemText from '@mui/material/ListItemText';
 
 import { fData } from 'src/utils/format-number';
+import { resolveAssetUrl } from 'src/utils/asset-url';
 
 import { varAlpha } from 'src/theme/styles';
 
@@ -65,7 +66,8 @@ export function MultiFilePreview({
 
       {files.map((file) => {
         const { name, size } = fileData(file);
-        const viewUrl = typeof file === 'string' ? file : URL.createObjectURL(file);
+        const viewUrl =
+          typeof file === 'string' ? resolveAssetUrl(file) : URL.createObjectURL(file);
 
         if (thumbnail) {
           return (
