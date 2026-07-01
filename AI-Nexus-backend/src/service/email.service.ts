@@ -4,9 +4,11 @@ import { Injectable } from '@nestjs/common';
 import {
     buildBrandTemplate,
     buildCredentialsBodyHtml,
+    buildFeeWaiverHrVerificationBodyHtml,
     buildForumReplyBodyHtml,
     buildOrderReceiptBodyHtml,
-    escapeHtml,
+    buildStudentAcademicVerificationEmailHtml,
+    buildStudentVerificationPinBodyHtml,
 } from './email-template.util';
 
 @Injectable()
@@ -15,27 +17,14 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
-        const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
-
-        this.fromEmail = process.env.SMTP_USER || process.env.SMTP_USER || 'no-reply@localhost';
-
-        if (isDevelopment) {
-            this.transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS,
-                },
-            });
-            return;
-        }
-
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
         const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
         const user = process.env.SMTP_USER || '';
         const pass = process.env.SMTP_PASS || '';
         const rejectUnauthorized = String(process.env.SMTP_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
+
+        this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
         const transportOptions: SMTPTransport.Options = {
             host,
@@ -52,6 +41,7 @@ export class EmailService {
 
         this.transporter = nodemailer.createTransport(transportOptions);
     }
+
 
     private resolveFrontendBaseUrl(): string {
         const raw = String(process.env.FRONTEND_URL || 'http://localhost:3000').trim();
@@ -121,23 +111,7 @@ export class EmailService {
     }
 
     async sendStudentVerificationPinEmail(email: string, pin: string, schoolName: string): Promise<void> {
-        const safePin = escapeHtml(String(pin || '').trim());
-        const bodyHtml = `
-            <div style="margin-top:18px; background:#ffffff; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden;">
-                <div style="background:#D8E4F3; color:#1C4270; padding:10px 14px; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                    Student Verification PIN
-                </div>
-                <div style="padding:18px 14px;">
-                    <p style="margin:0 0 12px; color:#475569; font-size:14px; line-height:1.6;">
-                        Use the following verification PIN in the AI Nexus membership eligibility dialog to continue your student verification.
-                    </p>
-                    <div style="display:inline-block; background:#fff6f5; border:1px solid #f3c2bf; color:#E32B24; padding:10px 14px; border-radius:10px; font-family:Consolas, 'Courier New', monospace; font-size:22px; font-weight:700; letter-spacing:0.18em;">
-                        ${safePin}
-                    </div>
-                </div>
-            </div>
-        `;
-
+        const bodyHtml = buildStudentVerificationPinBodyHtml(pin);
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
             heading: 'Your Student Verification PIN',
             greetingName: schoolName || 'Student',
@@ -171,26 +145,13 @@ export class EmailService {
         verificationToken: string;
     }): Promise<void> {
         const hrEmail = String(params.hrEmail || '').trim();
-        const learnerEmail = String(params.learnerEmail || '').trim();
         const learnerName = String(params.learnerName || 'Learner').trim() || 'Learner';
-        const safeLearnerName = escapeHtml(learnerName);
         const verificationUrl = `${this.resolveFrontendBaseUrl()}/auth/fee-waiver-audit/hr-verify?token=${encodeURIComponent(params.verificationToken)}`;
-
-        const bodyHtml = `
-            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
-                ${safeLearnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.
-            </p>
-            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
-                As part of IMDA's and audit purposes, we will need your assistance to verify that ${safeLearnerName} is currently working in an accounting and finance related job role.
-            </p>
-            <p style="margin:0; color:#334155; line-height:1.6;">
-                Please click the button below to complete the verification.
-            </p>
-        `;
+        const bodyHtml = buildFeeWaiverHrVerificationBodyHtml(learnerName);
 
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
             heading: 'ISCA AI Fluency Programme – Job function verification',
-            greetingName: `HR of ${safeLearnerName}`,
+            greetingName: `HR of ${learnerName}`,
             intro: '',
             bodyHtml,
             ctaLabel: 'Verify that the mentioned learner is working in an accounting and finance related job role',
@@ -223,32 +184,12 @@ export class EmailService {
     }): Promise<void> {
         const academicEmail = String(params.academicEmail || '').trim();
         const learnerName = String(params.learnerName || 'Student').trim() || 'Student';
-        const safeLearnerName = escapeHtml(learnerName);
         const verificationUrl = `${this.resolveFrontendBaseUrl()}/auth/student-verification/confirm?token=${encodeURIComponent(params.verificationToken)}`;
         const declarationLine =
             "By clicking on the verification button below, you declare that you are an accounting student in one of Singapore's local universities/ polytechnics.";
-
-        const bodyHtml = `
-            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
-                You recently submitted your student details for the ISCA AI Fluency Programme fee waiver application using this academic email address.
-            </p>
-            <p style="margin:0 0 12px; color:#334155; line-height:1.6;">
-                Please verify your academic email to continue your registration.
-            </p>
-            <div style="margin-top:16px; background:#D8E4F3; border:1px solid #c3d5ea; border-radius:10px; padding:12px 14px; color:#1C4270; font-size:14px; line-height:1.6;">
-                ${escapeHtml(declarationLine)}
-            </div>
-        `;
-
-        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
-            heading: 'ISCA AI Fluency Programme – Student email verification',
-            greetingName: safeLearnerName,
-            intro: 'Thank you for applying for the ISCA AI Fluency Programme student fee waiver.',
-            bodyHtml,
-            ctaLabel: 'Verify my academic email',
-            ctaUrl: verificationUrl,
-            note: 'This verification link does not expire. You may use it at any time to complete verification.',
-            footer: 'ISCA AI Fluency Programme',
+        const html = buildStudentAcademicVerificationEmailHtml({
+            learnerName,
+            verificationUrl,
         });
 
         const mailOptions = {

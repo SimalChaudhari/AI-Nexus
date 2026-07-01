@@ -1,7 +1,7 @@
 const BRAND_PRIMARY = '#E32B24';
 const BRAND_SECONDARY = '#1C4270';
-const BRAND_PRIMARY_LIGHT = '#F8D6D3';
 const BRAND_SECONDARY_LIGHT = '#D8E4F3';
+const BRAND_GRADIENT = `linear-gradient(115deg, ${BRAND_PRIMARY} 0%, ${BRAND_SECONDARY} 100%)`;
 
 export type BrandTemplateParams = {
     heading: string;
@@ -22,76 +22,153 @@ export const escapeHtml = (value: string): string =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 
-export const buildBrandTemplate = (
-    frontendBaseUrl: string,
-    { heading, greetingName, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
-): string => {
+const buildEmailCtaButton = (label: string, url: string): string => {
+    const safeLabel = escapeHtml(label);
+    const safeUrl = escapeHtml(url);
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="border-collapse:collapse; margin:26px auto 10px;">
+                                <tr>
+                                    <td align="center" bgcolor="${BRAND_PRIMARY}" style="border-radius:10px; background:${BRAND_GRADIENT}; background-color:${BRAND_PRIMARY};">
+                                        <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:12px 26px; color:#ffffff; text-decoration:none; font-size:14px; line-height:1.4; font-weight:700; letter-spacing:0.02em;">${safeLabel}</a>
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
+const buildEmailNoteBox = (note: string): string => {
+    const safeNote = escapeHtml(note);
+    if (!safeNote) return '';
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:16px; background-color:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:10px;">
+                                <tr>
+                                    <td style="padding:10px 12px; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.55;">${safeNote}</td>
+                                </tr>
+                            </table>`;
+};
+
+/** Shared table-based email shell with fully inline CSS. */
+export const buildInlineBrandEmailHtml = ({
+    title,
+    heading,
+    greetingName,
+    intro,
+    bodyHtml = '',
+    ctaLabel,
+    ctaUrl,
+    note = '',
+    footer = 'This is an automated email from AI Nexus.',
+}: {
+    title: string;
+    heading: string;
+    greetingName: string;
+    intro: string;
+    bodyHtml?: string;
+    ctaLabel?: string;
+    ctaUrl?: string;
+    note?: string;
+    footer?: string;
+}): string => {
+    const safeTitle = escapeHtml(title);
     const safeHeading = escapeHtml(heading);
     const safeGreetingName = escapeHtml(greetingName || 'there');
     const safeIntro = escapeHtml(intro);
-    const safeNote = escapeHtml(note || '');
-    const safeFooter = escapeHtml(footer || 'This is an automated email from AI Nexus.');
-    const brandGradient = `linear-gradient(115deg, ${BRAND_PRIMARY} 0%, ${BRAND_SECONDARY} 100%)`;
+    const safeFooter = escapeHtml(footer);
+    const introBlock = safeIntro
+        ? `<p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">${safeIntro}</p>`
+        : '';
+    const ctaBlock = ctaLabel && ctaUrl ? buildEmailCtaButton(ctaLabel, ctaUrl) : '';
+    const noteBlock = buildEmailNoteBox(note);
 
-    return `
-        <div style="background:#f3f6fb; padding:24px 10px;">
-            <div style="font-family:'Segoe UI', Arial, sans-serif; max-width:640px; margin:auto; border-radius:20px; overflow:hidden; border:1px solid #dbe4f0; background:#ffffff; box-shadow:0 10px 28px rgba(15, 23, 42, 0.08);">
-                <div style="background:${brandGradient}; padding:26px 28px; text-align:center;">
-                    <div style="color:${BRAND_SECONDARY_LIGHT}; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; margin-bottom:8px;">AI Nexus</div>
-                    <h2 style="margin:0; color:#ffffff; font-size:24px; line-height:1.25; font-weight:800;">${safeHeading}</h2>
-                </div>
-                <div style="padding:28px 26px 22px;">
-                    <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; font-weight:700;">Hello ${safeGreetingName},</p>
-                    <p style="margin:0; color:#334155; font-size:15px; line-height:1.65;">${safeIntro}</p>
-                    ${bodyHtml || ''}
-                    ${
-                        ctaLabel && ctaUrl
-                            ? `<div style="text-align:center; margin:26px 0 10px;">
-                                <a href="${ctaUrl}" style="display:inline-block; text-decoration:none; background:${brandGradient}; color:#ffffff; padding:12px 26px; border-radius:10px; font-weight:700; font-size:14px; letter-spacing:0.02em; box-shadow:0 8px 18px rgba(28, 66, 112, 0.28);">${escapeHtml(ctaLabel)}</a>
-                            </div>`
-                            : ''
-                    }
-                    ${
-                        safeNote
-                            ? `<div style="margin-top:16px; background:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:10px; padding:10px 12px; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.55;">${safeNote}</div>`
-                            : ''
-                    }
-                </div>
-                <div style="border-top:1px solid #e2e8f0; padding:14px 22px 18px; text-align:center; color:#94a3b8; font-size:12px; line-height:1.55;">
-                    ${safeFooter}<br />
-                    <span style="display:inline-block; margin-top:3px;">If you did not expect this email, please contact support.</span>
-                </div>
-            </div>
-        </div>
-    `;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${safeTitle}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f3f6fb; font-family:'Segoe UI', Arial, sans-serif; color:#334155;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; background-color:#f3f6fb; margin:0; padding:0;">
+        <tr>
+            <td align="center" style="padding:24px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="border-collapse:collapse; max-width:640px; width:100%; border:1px solid #dbe4f0; border-radius:20px; background-color:#ffffff; overflow:hidden;">
+                    <tr>
+                        <td align="center" style="padding:26px 28px; background:${BRAND_GRADIENT}; background-color:${BRAND_PRIMARY};">
+                            <p style="margin:0 0 8px; color:${BRAND_SECONDARY_LIGHT}; font-size:12px; line-height:1.4; letter-spacing:0.18em; text-transform:uppercase; font-weight:700;">AI Nexus</p>
+                            <h1 style="margin:0; color:#ffffff; font-size:24px; line-height:1.25; font-weight:800;">${safeHeading}</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:28px 26px 22px; background-color:#ffffff;">
+                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:700;">Hello ${safeGreetingName},</p>
+                            ${introBlock}
+                            ${bodyHtml}
+                            ${ctaBlock}
+                            ${noteBlock}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:14px 22px 18px; border-top:1px solid #e2e8f0; background-color:#ffffff; color:#94a3b8; font-size:12px; line-height:1.55;">
+                            ${safeFooter}<br />
+                            <span style="display:inline-block; margin-top:3px;">If you did not expect this email, please contact support.</span>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
 };
+
+export const buildBrandTemplate = (
+    _frontendBaseUrl: string,
+    { heading, greetingName, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
+): string =>
+    buildInlineBrandEmailHtml({
+        title: heading,
+        heading,
+        greetingName,
+        intro,
+        bodyHtml,
+        ctaLabel,
+        ctaUrl,
+        note,
+        footer,
+    });
 
 export const buildCredentialsBodyHtml = (username: string, plainPassword: string): string => {
     const safeUsername = escapeHtml(username);
     const safePassword = escapeHtml(plainPassword);
 
     return `
-        <div style="margin-top:18px; background:#ffffff; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden;">
-            <div style="background:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; padding:10px 14px; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                Account Credentials
-            </div>
-            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
-                <tr>
-                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Username</td>
-                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeUsername}</td>
-                </tr>
-                <tr>
-                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Temporary Password</td>
-                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">
-                        <span style="display:inline-block; background:#fff6f5; border:1px solid #f3c2bf; color:${BRAND_PRIMARY}; padding:5px 9px; border-radius:7px; font-family:Consolas, 'Courier New', monospace; letter-spacing:0.02em;">${safePassword}</span>
-                    </td>
-                </tr>
-            </table>
-            <div style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5;">
-                Please keep these credentials private and update your password after first login.
-            </div>
-        </div>
-    `;
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Account Credentials
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0; background-color:#ffffff;">
+                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Username</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeUsername}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Temporary Password</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">
+                                                    <span style="display:inline-block; background-color:#fff6f5; border:1px solid #f3c2bf; color:${BRAND_PRIMARY}; padding:5px 9px; border-radius:7px; font-family:Consolas, 'Courier New', monospace; letter-spacing:0.02em;">${safePassword}</span>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5; background-color:#ffffff;">
+                                        Please keep these credentials private and update your password after first login.
+                                    </td>
+                                </tr>
+                            </table>`;
 };
 
 export const buildForumReplyBodyHtml = (postTitle: string, replierName: string, replyPreview: string): string => {
@@ -100,11 +177,14 @@ export const buildForumReplyBodyHtml = (postTitle: string, replierName: string, 
     const safeReplyPreview = escapeHtml(replyPreview || 'A new reply was posted.');
 
     return `
-        <div style="margin-top:14px; background:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:12px; padding:14px;">
-            <p style="margin:0 0 8px; color:${BRAND_SECONDARY}; font-size:15px; font-weight:700;">${safePostTitle}</p>
-            <p style="margin:0; color:#475569; font-size:14px; line-height:1.6;"><strong>${safeReplier}</strong> replied: ${safeReplyPreview}</p>
-        </div>
-    `;
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:14px; background-color:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:12px;">
+                                <tr>
+                                    <td style="padding:14px;">
+                                        <p style="margin:0 0 8px; color:${BRAND_SECONDARY}; font-size:15px; line-height:1.5; font-weight:700;">${safePostTitle}</p>
+                                        <p style="margin:0; color:#475569; font-size:14px; line-height:1.6;"><strong style="font-weight:700;">${safeReplier}</strong> replied: ${safeReplyPreview}</p>
+                                    </td>
+                                </tr>
+                            </table>`;
 };
 
 export const buildOrderReceiptBodyHtml = (params: {
@@ -119,27 +199,133 @@ export const buildOrderReceiptBodyHtml = (params: {
     const safeItemLabel = escapeHtml(params.itemLabel || 'Order payment');
 
     return `
-        <div style="margin-top:18px; background:#ffffff; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden;">
-            <div style="background:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; padding:10px 14px; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                Payment Receipt
-            </div>
-            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
-                <tr>
-                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Order ID</td>
-                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeOrderId}</td>
-                </tr>
-                <tr>
-                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Item</td>
-                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeItemLabel}</td>
-                </tr>
-                <tr>
-                    <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; font-weight:700; border-top:1px solid #e6edf7;">Amount Paid</td>
-                    <td style="padding:12px 14px; color:#0f172a; font-size:14px; border-top:1px solid #e6edf7;">${safeCurrency} ${safeAmount}</td>
-                </tr>
-            </table>
-            <div style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5;">
-                Your PDF receipt is attached to this email for your records.
-            </div>
-        </div>
-    `;
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Payment Receipt
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0; background-color:#ffffff;">
+                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Order ID</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeOrderId}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Item</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeItemLabel}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Amount Paid</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeCurrency} ${safeAmount}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5; background-color:#ffffff;">
+                                        Your PDF receipt is attached to this email for your records.
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
+export const buildStudentVerificationPinBodyHtml = (pin: string): string => {
+    const safePin = escapeHtml(String(pin || '').trim());
+
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Student Verification PIN
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:18px 14px; background-color:#ffffff;">
+                                        <p style="margin:0 0 12px; color:#475569; font-size:14px; line-height:1.6;">
+                                            Use the following verification PIN in the AI Nexus membership eligibility dialog to continue your student verification.
+                                        </p>
+                                        <span style="display:inline-block; background-color:#fff6f5; border:1px solid #f3c2bf; color:${BRAND_PRIMARY}; padding:10px 14px; border-radius:10px; font-family:Consolas, 'Courier New', monospace; font-size:22px; line-height:1.2; font-weight:700; letter-spacing:0.18em;">${safePin}</span>
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
+export const buildFeeWaiverHrVerificationBodyHtml = (learnerName: string): string => {
+    const safeLearnerName = escapeHtml(learnerName);
+
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Job Function Verification
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:18px 14px; background-color:#ffffff;">
+                                        <p style="margin:0 0 12px; color:#334155; font-size:14px; line-height:1.6;">
+                                            ${safeLearnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.
+                                        </p>
+                                        <p style="margin:0 0 12px; color:#334155; font-size:14px; line-height:1.6;">
+                                            As part of IMDA's and audit purposes, we will need your assistance to verify that ${safeLearnerName} is currently working in an accounting and finance related job role.
+                                        </p>
+                                        <p style="margin:0; color:#334155; font-size:14px; line-height:1.6;">
+                                            Please click the button below to complete the verification.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
+export type StudentAcademicVerificationEmailParams = {
+    learnerName: string;
+    verificationUrl: string;
+};
+
+/** Fully inline, table-based HTML for student academic email verification (email-client safe). */
+export const buildStudentAcademicVerificationEmailHtml = ({
+    learnerName,
+    verificationUrl,
+}: StudentAcademicVerificationEmailParams): string => {
+    const declarationLine =
+        "By clicking on the verification button below, you declare that you are an accounting student in one of Singapore's local universities/ polytechnics.";
+
+    const bodyHtml = `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Student Academic Email Verification
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:18px 14px; background-color:#ffffff;">
+                                        <p style="margin:0 0 12px; color:#334155; font-size:14px; line-height:1.6;">
+                                            You recently submitted your student details for the ISCA AI Fluency Programme fee waiver application using this academic email address.
+                                        </p>
+                                        <p style="margin:0 0 16px; color:#334155; font-size:14px; line-height:1.6;">
+                                            Please verify your academic email to continue your registration.
+                                        </p>
+                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; background-color:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:10px;">
+                                            <tr>
+                                                <td style="padding:12px 14px; color:${BRAND_SECONDARY}; font-size:14px; line-height:1.6; font-weight:600;">
+                                                    ${escapeHtml(declarationLine)}
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>`;
+
+    return buildInlineBrandEmailHtml({
+        title: 'ISCA AI Fluency Programme – Verify your academic email',
+        heading: 'ISCA AI Fluency Programme – Student email verification',
+        greetingName: learnerName,
+        intro: 'Thank you for applying for the ISCA AI Fluency Programme student fee waiver.',
+        bodyHtml,
+        ctaLabel: 'Verify my academic email',
+        ctaUrl: verificationUrl,
+        note: 'This verification link does not expire. You may use it at any time to complete verification.',
+        footer: 'ISCA AI Fluency Programme',
+    });
 };
