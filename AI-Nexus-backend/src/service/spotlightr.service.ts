@@ -3,6 +3,7 @@ import axios from 'axios';
 
 const SPOTLIGHTR_CREATE_VIDEO_URL = 'https://api.spotlightr.com/api/createVideo';
 const SPOTLIGHTR_LIST_VIDEOS_URL = 'https://api.spotlightr.com/api/videos';
+const SPOTLIGHTR_UPDATE_SETTINGS_URL = 'https://api.spotlightr.com/video/updateSettings';
 
 @Injectable()
 export class SpotlightrService {
@@ -47,7 +48,9 @@ export class SpotlightrService {
                 });
                 throw new Error('Spotlightr upload succeeded but no video URL was returned');
             }
-            return url.trim().split('?')[0];
+            const trimmedUrl = url.trim().split('?')[0];
+            await this.allowForwardSeekingForWatchUrl(trimmedUrl);
+            return trimmedUrl;
         } catch (error) {
             const message = axios.isAxiosError(error)
                 ? String(error.response?.data || error.message)
@@ -56,6 +59,78 @@ export class SpotlightrService {
                   : 'Spotlightr upload failed';
             this.logger.error(`Spotlightr upload failed: ${message}`);
             throw new Error(message);
+        }
+    }
+
+    /**
+     * Enable free timeline seeking for a Spotlightr watch URL and return a direct MP4 when available.
+     * Direct MP4 bypasses the Spotlightr iframe player (and theme forward-seek lock) entirely.
+     */
+    async preparePlaybackForWatchUrl(watchUrl: string): Promise<{
+        directUrl: string | null;
+        settingsUpdated: boolean;
+    }> {
+        const settingsUpdated = await this.allowForwardSeekingForWatchUrl(watchUrl);
+        const videoId = this.extractWatchUrlVideoId(watchUrl);
+        if (!videoId) {
+            return { directUrl: null, settingsUpdated };
+        }
+        const directUrl = await this.resolveVideoFileUrl(videoId);
+        return { directUrl, settingsUpdated };
+    }
+
+    /** Allow timeline forward/backward jumps for course playback (overrides theme default). */
+    async allowForwardSeekingForWatchUrl(watchUrl: string): Promise<boolean> {
+        const videoId = this.extractWatchUrlVideoId(watchUrl);
+        if (!videoId) return false;
+        return this.updateVideoPlayerSettings(videoId, {
+            disable_forward_seek: false,
+            disableForwardSeek: false,
+            forward_seek_disabled: false,
+            forwardSeekDisabled: false,
+        });
+    }
+
+    private extractWatchUrlVideoId(watchUrl: string): string | null {
+        const match = String(watchUrl || '').trim().match(/\/watch\/([^/?#]+)/i);
+        if (!match) return null;
+        return decodeURIComponent(match[1]);
+    }
+
+    private async updateVideoPlayerSettings(
+        videoId: string,
+        settings: Record<string, unknown>,
+    ): Promise<boolean> {
+        const vooKey = String(process.env.SPOTLIGHTR_API_KEY || '').trim();
+        if (!vooKey) return false;
+
+        const candidates = this.buildVideoIdCandidates(videoId);
+        const numericId = candidates.find((candidate) => /^\d+$/.test(candidate));
+        if (!numericId) {
+            this.logger.warn(`Spotlightr settings update skipped; no numeric id for ${videoId}`);
+            return false;
+        }
+
+        try {
+            await axios.post(
+                SPOTLIGHTR_UPDATE_SETTINGS_URL,
+                {
+                    vooKey,
+                    id: Number(numericId),
+                    settings,
+                },
+                { timeout: 20000 },
+            );
+            this.logger.log(`Spotlightr player settings updated for video id=${numericId}`);
+            return true;
+        } catch (error) {
+            const message = axios.isAxiosError(error)
+                ? String(error.response?.data || error.message)
+                : error instanceof Error
+                  ? error.message
+                  : 'Spotlightr settings update failed';
+            this.logger.warn(`Spotlightr settings update failed for id=${numericId}: ${message}`);
+            return false;
         }
     }
 

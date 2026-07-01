@@ -1,16 +1,18 @@
 import { useEffect, useRef } from 'react';
 
 import {
-  buildSpotlightrEmbedUrl,
+  buildSpotlightrWatchEmbedUrl,
   callSpotlightrApi,
   isAppleMobileDevice,
   isSpotlightrApiAvailable,
   loadSpotlightrScript,
+  mountSpotlightrEmbed,
   normalizeSpotlightrTime,
   readSpotlightrPlayerDuration,
   readSpotlightrPlayerTime,
   resolveSpotlightrApiId,
   seekSpotlightrPlayer,
+  spotlightrPlayerIdsMatch,
   waitForSpotlightrPlayer,
 } from 'src/utils/spotlightr';
 
@@ -29,6 +31,7 @@ const isUuid = (value) =>
 /** Spotlightr iframe + JS API — mirrors YouTube player progress / seek-lock behavior. */
 export function useSpotlightrLessonPlayer({
   spotlightrMeta,
+  spotlightrPlaybackPreparedAt = 0,
   activeLessonId,
   activeLessonGateBlocked,
   watchtimeSeconds,
@@ -117,12 +120,6 @@ export function useSpotlightrLessonPlayer({
     const getContainer = () => spotlightrContainerRef.current;
 
     const releaseForwardSeekLock = () => {
-      if (!forwardSeekLockOnRef.current) return;
-      const apiId =
-        apiVideoIdRef.current || resolveSpotlightrApiId(spotlightrVideoId, getContainer());
-      if (apiId) {
-        callSpotlightrApi(apiId, 'disableForwardSeeking', false, null, { container: getContainer() });
-      }
       forwardSeekLockOnRef.current = false;
     };
 
@@ -144,7 +141,7 @@ export function useSpotlightrLessonPlayer({
       return undefined;
     }
 
-    const sessionKey = `${activeLessonId}|${spotlightrVideoId}`;
+    const sessionKey = `${activeLessonId}|${spotlightrVideoId}|${spotlightrPlaybackPreparedAt || 0}`;
     const { videoId, scriptUrl } = spotlightrMeta;
     const wrapper = getContainer();
     const hasLiveIframe = Boolean(wrapper?.querySelector('iframe'));
@@ -316,51 +313,7 @@ export function useSpotlightrLessonPlayer({
       needsPlayerRefSync = false;
     }
 
-    const ensureForwardSeekLock = (force = false) => {
-      if (!apiEnabled) return;
-      if (!shouldBlockForwardSeek()) {
-        releaseForwardSeekLock();
-        return;
-      }
-      const now = Date.now();
-      if (!force && forwardSeekLockOnRef.current && now - lastSeekLockApplyAtRef.current < 2500) {
-        return;
-      }
-      callPlayerApi('disableForwardSeeking', true);
-      forwardSeekLockOnRef.current = true;
-      lastSeekLockApplyAtRef.current = now;
-    };
-
-    /** Same rules as YouTube rollbackYoutubeIfSeekPastAllowed — poll + onSeeked, with cooldown. */
-    const rollbackSpotlightrIfSeekPastAllowed = (currentTime) => {
-      if (Date.now() < seekRollbackUntilRef.current) return false;
-
-      if (!shouldBlockForwardSeek()) return false;
-      if (cb().isVideoSeekClampGraceActive()) return false;
-
-      const prog = spotlightrProgressRef.current;
-      const sp = getSectionProgress();
-      const t = Math.max(0, Number(currentTime) || 0);
-      const d = resolveDurationSeconds(prog.duration);
-      const previousTime = Math.max(0, Number(prog.lastTime || 0));
-      const durRounded = Math.round(Number(d) || 0);
-      const maxAllowed = cb().computeMaxAllowedTimeline(videoCoverageRangesRef, prog, sp, durRounded);
-      const jumpDelta = Math.abs(t - previousTime);
-      const isLikelySeekJump = jumpDelta > 2.5;
-      const pastAllowed = t > maxAllowed + 0.35;
-      if (!pastAllowed) return false;
-      const isApple = isAppleMobileDevice();
-      const forwardPastMax = isApple && t > previousTime + 0.25 && t > maxAllowed + 0.35;
-      const forwardSeekPastAllowed = t > previousTime + 0.5 && pastAllowed;
-      if (!isLikelySeekJump && !forwardPastMax && !forwardSeekPastAllowed) return false;
-
-      const target = Math.max(0, maxAllowed);
-      seekRollbackUntilRef.current = Date.now() + SEEK_ROLLBACK_COOLDOWN_MS;
-      seekSpotlightrPlayer(getApiVideoId(), target, null, { container: getContainer() });
-      prog.lastTime = target;
-      syncPlayerRef();
-      return true;
-    };
+    const rollbackSpotlightrIfSeekPastAllowed = () => false;
 
     const mergeCoverageRangesForSnapshot = (ranges) => {
       const pairs = Array.isArray(ranges) ? ranges : [];
@@ -433,15 +386,10 @@ export function useSpotlightrLessonPlayer({
       const last = Math.max(0, Number(prog.lastTime) || 0);
 
       if (!shouldBlockForwardSeek()) {
-        releaseForwardSeekLock();
         prog.lastTime = t;
         syncPlayerRef();
         return;
       }
-
-      ensureForwardSeekLock();
-
-      if (t <= 0 && last > 5) return;
 
       if (rollbackSpotlightrIfSeekPastAllowed(t)) return;
 
@@ -513,30 +461,21 @@ export function useSpotlightrLessonPlayer({
       prog.lastTime = target;
       prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, target);
       syncPlayerRef();
-
-      window.setTimeout(() => {
-        if (!cancelled && shouldBlockForwardSeek()) ensureForwardSeekLock(true);
-      }, SEEK_RELOCK_AFTER_RESUME_MS);
-      window.setTimeout(() => {
-        if (!cancelled && shouldBlockForwardSeek()) ensureForwardSeekLock(true);
-      }, SEEK_RELOCK_AFTER_RESUME_MS + 800);
     };
 
-    const scheduleForwardSeekLockRetries = () => {
-      if (!shouldBlockForwardSeek()) return;
-      const isCoarsePointer =
-        typeof window !== 'undefined' &&
-        window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-      const retryDelays = isCoarsePointer
-        ? [0, 400, 1000, 2500, 5000, 8000, 12000]
-        : [0, 400, 1000, 2500, 5000];
-      retryDelays.forEach((delayMs) => {
-        window.setTimeout(() => {
-          if (!cancelled && shouldBlockForwardSeek()) {
-            ensureForwardSeekLock(true);
-          }
-        }, delayMs);
-      });
+    const onVooPlayerReady = (event) => {
+      const detailId =
+        event?.detail?.video ??
+        event?.detail?.playerId ??
+        event?.detail?.videoId ??
+        event?.detail?.id ??
+        event?.playerId ??
+        event?.videoId;
+      if (detailId && videoId && !spotlightrPlayerIdsMatch(detailId, videoId)) return;
+      if (detailId) apiVideoIdRef.current = String(detailId);
+      if (isSpotlightrApiAvailable() && !apiEnabled && !cancelled) {
+        bindPlayerApi();
+      }
     };
 
     const bindPlayerApi = () => {
@@ -547,13 +486,7 @@ export function useSpotlightrLessonPlayer({
       refreshDurationFromPlayer();
       window.setTimeout(() => refreshDurationFromPlayer(), 2000);
       window.setTimeout(() => refreshDurationFromPlayer(), 5000);
-      if (shouldBlockForwardSeek()) {
-        ensureForwardSeekLock(true);
-        scheduleForwardSeekLockRetries();
-        applyResumeOnce();
-      } else {
-        releaseForwardSeekLock();
-      }
+      applyResumeOnce();
       startProgressPoll();
 
       const needsListeners = listenersBoundSessionRef.current !== sessionKey;
@@ -568,17 +501,10 @@ export function useSpotlightrLessonPlayer({
       callPlayerApi('onPlay', null, () => {
         spotlightrProgressRef.current.isPlaying = true;
         if (!pollIntervalIdRef.current) startProgressPoll();
-        if (!shouldBlockForwardSeek()) {
-          releaseForwardSeekLock();
-          refreshDurationFromPlayer();
-          return;
-        }
         refreshDurationFromPlayer();
         const target = getResumeSeconds();
-        if (target > 2 && !resumeOnceRef.current) {
+        if (target > 2 && !resumeOnceRef.current && shouldBlockForwardSeek()) {
           applyResumeOnce();
-        } else {
-          ensureForwardSeekLock(true);
         }
       });
 
@@ -587,25 +513,11 @@ export function useSpotlightrLessonPlayer({
         prog.isPlaying = false;
         const current = Math.max(0, Number(prog.lastTime) || 0);
         saveProgressOnPause(current, prog.duration);
-        if (shouldBlockForwardSeek()) {
-          ensureForwardSeekLock(true);
-        }
       });
 
       callPlayerApi('onSeeked', null, (rawTime) => {
         const t = normalizeSpotlightrTime(rawTime);
-        if (rollbackSpotlightrIfSeekPastAllowed(t)) return;
-        const prog = spotlightrProgressRef.current;
-        const sp = getSectionProgress();
-        if (!shouldBlockForwardSeek()) return;
-        const durRounded = Math.round(resolveDurationSeconds(prog.duration));
-        const maxAllowed = cb().computeMaxAllowedTimeline(
-          videoCoverageRangesRef,
-          prog,
-          sp,
-          durRounded
-        );
-        prog.lastTime = Math.min(t, maxAllowed);
+        spotlightrProgressRef.current.lastTime = Math.max(0, t);
         syncPlayerRef();
       });
 
@@ -670,6 +582,8 @@ export function useSpotlightrLessonPlayer({
     const setupPlayer = async () => {
       if (cancelled) return;
 
+      document.addEventListener('vooPlayerReady', onVooPlayerReady);
+
       if (hasLiveIframe && playerSessionRef.current === sessionKey) {
         syncPlayerRef();
         if (isSpotlightrApiAvailable()) {
@@ -678,7 +592,9 @@ export function useSpotlightrLessonPlayer({
             timeoutMs: spotlightrApiTimeoutMs,
           });
           if (resolvedId) apiVideoIdRef.current = resolvedId;
-          if (!cancelled) bindPlayerApi();
+          if (!cancelled) {
+            bindPlayerApi();
+          }
         }
         return;
       }
@@ -686,7 +602,14 @@ export function useSpotlightrLessonPlayer({
       const mountWrapper = getContainer();
       if (!mountWrapper) return;
 
-      while (mountWrapper.firstChild) mountWrapper.removeChild(mountWrapper.firstChild);
+      const resumeAt = getResumeSeconds();
+      mountSpotlightrEmbed(mountWrapper, {
+        watchUrl: spotlightrMeta.watchUrl,
+        videoId,
+        scriptUrl,
+        startSeconds: resumeAt,
+        title: 'Course video',
+      });
 
       try {
         await loadSpotlightrScript(scriptUrl);
@@ -694,24 +617,6 @@ export function useSpotlightrLessonPlayer({
         // iframe still plays without JS API
       }
       if (cancelled || !getContainer()) return;
-
-      const resumeAt = getResumeSeconds();
-      const iframe = document.createElement('iframe');
-      iframe.className = 'spotlightr video-player-container';
-      iframe.dataset.playerid = videoId;
-      iframe.setAttribute('data-playerid', videoId);
-      iframe.src = buildSpotlightrEmbedUrl(spotlightrMeta.watchUrl, resumeAt);
-      iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
-      iframe.allowFullscreen = true;
-      iframe.setAttribute('playsinline', 'true');
-      iframe.setAttribute('webkit-playsinline', 'true');
-      iframe.setAttribute('allowtransparency', 'true');
-      iframe.frameBorder = '0';
-      iframe.scrolling = 'no';
-      iframe.name = 'videoPlayer';
-      iframe.title = 'Course video';
-      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
-      mountWrapper.appendChild(iframe);
 
       const lesson = flatLessonsRef.current.find((l) => l.id === activeLessonId);
       const seedDur =
@@ -744,11 +649,13 @@ export function useSpotlightrLessonPlayer({
 
     return () => {
       cancelled = true;
+      document.removeEventListener('vooPlayerReady', onVooPlayerReady);
       clearPoll();
     };
   }, [
     spotlightrVideoId,
     spotlightrMeta?.watchUrl,
+    spotlightrPlaybackPreparedAt,
     activeLessonId,
     activeLessonGateBlocked,
     resumeSeekAppliedRef,
@@ -799,7 +706,9 @@ export function useSpotlightrLessonPlayer({
       return undefined;
     }
 
-    iframe.src = buildSpotlightrEmbedUrl(spotlightrMeta.watchUrl, resumeSeconds);
+    iframe.src = buildSpotlightrWatchEmbedUrl(spotlightrMeta.watchUrl, resumeSeconds, {
+      useFallback: !isSpotlightrApiAvailable(),
+    });
 
     return undefined;
   }, [

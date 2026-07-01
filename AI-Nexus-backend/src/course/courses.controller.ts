@@ -1193,6 +1193,31 @@ export class CourseController {
     }
 
 
+    @Post('spotlightr/prepare-playback')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary: 'Enable Spotlightr forward seek and resolve direct MP4 playback URL when available',
+    })
+    async prepareSpotlightrPlayback(
+        @Body() body: { url?: string },
+        @Res() response: Response,
+    ) {
+        const url = String(body?.url || '').trim();
+        if (!url || !/spotlightr\.com\/watch\//i.test(url)) {
+            return response.status(HttpStatus.BAD_REQUEST).json({
+                message: 'Valid Spotlightr watch URL is required',
+            });
+        }
+        if (!this.spotlightrService.isConfigured()) {
+            return response.status(HttpStatus.OK).json({
+                data: { directUrl: null, settingsUpdated: false },
+            });
+        }
+        const data = await this.spotlightrService.preparePlaybackForWatchUrl(url);
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
     @Get('enrolled/list')
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')

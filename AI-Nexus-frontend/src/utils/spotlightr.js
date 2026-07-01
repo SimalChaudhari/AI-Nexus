@@ -6,46 +6,121 @@
 export function parseSpotlightrUrl(url) {
   if (!url || typeof url !== 'string') return null;
   const trimmed = url.trim();
-  const match = trimmed.match(
-    /https?:\/\/([a-z0-9-]+)\.cdn\.spotlightr\.com\/watch\/([^/?#]+)/i
-  );
-  if (!match) return null;
+  const match = trimmed.match(/https?:\/\/([^/?#]+)\/watch\/([^/?#]+)/i);
+  if (!match || !/spotlightr\.com/i.test(match[1])) return null;
 
-  const cdnHost = match[1];
+  const host = String(match[1]).replace(/\/+$/, '');
   const videoId = decodeURIComponent(match[2]);
-  const watchUrl = `https://${cdnHost}.cdn.spotlightr.com/watch/${videoId}`;
+  const watchUrl = trimmed.split('?')[0].split('#')[0];
+  const scriptHost = host.includes('.cdn.') ? host : `${host.split('.')[0]}.cdn.spotlightr.com`;
 
   return {
-    cdnHost,
+    cdnHost: host.replace(/\.spotlightr\.com$/i, ''),
     videoId,
     watchUrl,
     embedUrl: buildSpotlightrEmbedUrl(watchUrl),
-    scriptUrl: `https://${cdnHost}.cdn.spotlightr.com/assets/spotlightr.js`,
+    scriptUrl: `https://${scriptHost}/assets/spotlightr.js`,
   };
 }
 
-/** Spotlightr watch URL with `fallback=true` and optional resume start (`s` seconds). */
-export function buildSpotlightrEmbedUrl(watchUrl, startSeconds = 0) {
+/**
+ * Spotlightr iframe src — advanced embed (no fallback) when spotlightr.js is loaded;
+ * optional `fallback=true` when the script is unavailable.
+ */
+export function buildSpotlightrWatchEmbedUrl(watchUrl, startSeconds = 0, options = {}) {
   const trimmed = String(watchUrl || '').trim();
   if (!trimmed) return '';
   const base = trimmed.split('?')[0];
   const params = new URLSearchParams();
-  params.set('fallback', 'true');
+  if (options?.useFallback === true) params.set('fallback', 'true');
   const start = Math.floor(Number(startSeconds) || 0);
   if (start > 2) params.set('s', String(start));
-  return `${base}?${params.toString()}`;
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
+/** Standard embed URL with `fallback=true` for reliable iframe playback. */
+export function buildSpotlightrEmbedUrl(watchUrl, startSeconds = 0) {
+  return buildSpotlightrWatchEmbedUrl(watchUrl, startSeconds, { useFallback: true });
 }
 
 /** Update iframe src to resume at `startSeconds` (Spotlightr `s` query param). */
-export function applySpotlightrEmbedStart(container, watchUrl, startSeconds) {
+export function applySpotlightrEmbedStart(container, watchUrl, startSeconds, options = {}) {
   const start = Math.floor(Number(startSeconds) || 0);
   if (!(start > 2) || !container) return false;
   const iframe = container.querySelector('iframe');
   if (!iframe) return false;
-  const nextSrc = buildSpotlightrEmbedUrl(watchUrl, start);
+  const nextSrc = buildSpotlightrWatchEmbedUrl(watchUrl, start, options);
   if (iframe.src === nextSrc) return false;
   iframe.src = nextSrc;
   return true;
+}
+
+/** Turn off Spotlightr theme forward-seek lock (single call — invalid methods spam console errors). */
+export function unlockSpotlightrForwardSeeking(videoId, container = null, preferredId = null) {
+  if (!isSpotlightrApiAvailable()) return false;
+
+  const api = window.spotlightrAPI || window.vooAPI;
+  const id = preferredId
+    ? String(preferredId)
+    : resolveSpotlightrApiId(videoId, container);
+  if (!id) return false;
+
+  try {
+    api(id, 'disableForwardSeeking', false);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Official Spotlightr advanced embed: script tag immediately before iframe in the same container.
+ * @returns {HTMLIFrameElement|null}
+ */
+export function mountSpotlightrEmbed(container, options = {}) {
+  if (!container) return null;
+
+  const watchUrl = String(options?.watchUrl || '').trim();
+  const videoId = String(options?.videoId || '').trim();
+  const scriptUrl = String(options?.scriptUrl || '').trim();
+  const startSeconds = Number(options?.startSeconds || 0);
+  const useFallback = options?.useFallback !== false;
+  if (!watchUrl || !videoId) return null;
+
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  if (scriptUrl) {
+    let script = document.querySelector(`script[data-spotlightr="${scriptUrl}"]`);
+    if (!script) {
+      script = document.createElement('script');
+      script.src = scriptUrl;
+      script.async = true;
+      script.dataset.spotlightr = scriptUrl;
+      container.appendChild(script);
+    }
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.className = 'video-player-container spotlightr';
+  iframe.dataset.playerid = videoId;
+  iframe.setAttribute('data-playerid', videoId);
+  iframe.setAttribute('watch-type', '');
+  iframe.setAttribute('url-params', '');
+  iframe.src = buildSpotlightrWatchEmbedUrl(watchUrl, startSeconds, { useFallback });
+  iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+  iframe.allowFullscreen = true;
+  iframe.setAttribute('playsinline', 'true');
+  iframe.setAttribute('webkit-playsinline', 'true');
+  iframe.setAttribute('allowtransparency', 'true');
+  iframe.frameBorder = '0';
+  iframe.scrolling = 'no';
+  iframe.name = 'videoPlayerframe';
+  iframe.title = options?.title || 'Course video';
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+  container.appendChild(iframe);
+
+  return iframe;
 }
 
 /** @param {string} url */
@@ -226,24 +301,58 @@ export function callSpotlightrApi(videoId, method, param, callback, options = {}
   }
 }
 
-/** Load spotlightr.js once per CDN host. */
-export function loadSpotlightrScript(scriptUrl) {
+/** Load spotlightr.js once per CDN host; resolves when vooAPI / spotlightrAPI is callable. */
+export function loadSpotlightrScript(scriptUrl, options = {}) {
+  const timeoutMs = options?.timeoutMs ?? 15000;
+
   return new Promise((resolve, reject) => {
     if (typeof document === 'undefined') {
-      resolve();
+      resolve(false);
       return;
     }
+
+    const finish = (loaded) => resolve(Boolean(loaded));
+
+    const waitForApi = (startedAt) => {
+      if (window.spotlightrAPI || window.vooAPI) {
+        finish(true);
+        return;
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        finish(false);
+        return;
+      }
+      window.setTimeout(() => waitForApi(startedAt), 50);
+    };
+
+    const markLoaded = (script) => {
+      if (script) script.dataset.loaded = 'true';
+    };
 
     const existing = document.querySelector(`script[data-spotlightr="${scriptUrl}"]`);
     if (existing) {
       if (window.spotlightrAPI || window.vooAPI) {
-        resolve();
+        markLoaded(existing);
+        finish(true);
         return;
       }
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Failed to load Spotlightr player')), {
-        once: true,
-      });
+      if (existing.dataset.loaded === 'true') {
+        waitForApi(Date.now());
+        return;
+      }
+      existing.addEventListener(
+        'load',
+        () => {
+          markLoaded(existing);
+          waitForApi(Date.now());
+        },
+        { once: true }
+      );
+      existing.addEventListener(
+        'error',
+        () => reject(new Error('Failed to load Spotlightr player')),
+        { once: true }
+      );
       return;
     }
 
@@ -251,7 +360,10 @@ export function loadSpotlightrScript(scriptUrl) {
     script.src = scriptUrl;
     script.async = true;
     script.dataset.spotlightr = scriptUrl;
-    script.onload = () => resolve();
+    script.onload = () => {
+      markLoaded(script);
+      waitForApi(Date.now());
+    };
     script.onerror = () => reject(new Error('Failed to load Spotlightr player'));
     document.head.appendChild(script);
   });

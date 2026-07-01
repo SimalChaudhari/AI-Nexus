@@ -22,7 +22,6 @@ export function LessonVideoPlayer({
   onPause,
   onEnded,
   onTimeUpdate,
-  onSeeking,
   onSeeked,
   floatingOverlay,
 }) {
@@ -40,7 +39,7 @@ export function LessonVideoPlayer({
           ref={videoRef}
           poster={videoPoster || undefined}
           controls
-          controlsList="noseek nodownload nofullscreen"
+          controlsList="nodownload nofullscreen"
           playsInline
           disablePictureInPicture
           preload="metadata"
@@ -49,27 +48,7 @@ export function LessonVideoPlayer({
           onPause={onPause}
           onEnded={onEnded}
           onTimeUpdate={onTimeUpdate}
-          onSeeking={onSeeking}
           onSeeked={onSeeked}
-          onKeyDown={(event) => {
-            const code = String(event.code || '').toLowerCase();
-            const key = String(event.key || '').toLowerCase();
-            const blocked =
-              code === 'arrowleft' ||
-              code === 'arrowright' ||
-              code === 'home' ||
-              code === 'end' ||
-              key === 'arrowleft' ||
-              key === 'arrowright' ||
-              key === 'home' ||
-              key === 'end' ||
-              key === 'j' ||
-              key === 'l';
-            if (blocked) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-          }}
           sx={{
             ...getLessonVideoSurfaceSx(),
             objectFit: 'contain',

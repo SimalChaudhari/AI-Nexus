@@ -618,6 +618,20 @@ export const courseService = {
     }
   },
 
+  /** Enable Spotlightr forward seek server-side; returns direct MP4 URL when Spotlightr API allows. */
+  async prepareSpotlightrPlayback(watchUrl) {
+    const url = String(watchUrl || '').trim();
+    if (!url) return { directUrl: null, settingsUpdated: false };
+    try {
+      const response = await axios.post('/courses/spotlightr/prepare-playback', { url });
+      return response.data?.data ?? { directUrl: null, settingsUpdated: false };
+    } catch (error) {
+      if (error?.response?.status === 401) return { directUrl: null, settingsUpdated: false };
+      console.error('Error preparing Spotlightr playback:', error);
+      return { directUrl: null, settingsUpdated: false };
+    }
+  },
+
   async getMyCertificates() {
     try {
       const response = await axios.get('/courses/certificates/my');
