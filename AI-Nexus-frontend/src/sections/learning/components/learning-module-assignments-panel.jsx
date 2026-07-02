@@ -13,7 +13,6 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { Upload } from 'src/components/upload';
-import { LessonLearningMaterialsPanel } from './lesson-learning-materials-panel';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { toast } from 'src/components/snackbar';
 import { courseService } from 'src/services/course.service';
@@ -23,9 +22,12 @@ import {
   formatSubmissionAttemptLabel,
   getSubmissionAttemptCount,
   getSubmissionEvaluationDisplay,
+  getSubmissionFileList,
+  isSubmissionDraft,
   isSubmissionPassedLocked,
   mapSubmissionFromApi,
 } from 'src/sections/dashboard/course/assignment-submissions/course-assignment-submissions-utils';
+import { LEARNER_SUBMISSION_ACCEPT } from 'src/sections/dashboard/course/question-bank/course-question-bank-utils';
 import { CourseAssignmentVerificationLogDialog } from 'src/sections/dashboard/course/assignment-submissions/course-assignment-verification-log-dialog';
 import {
   playerScrollPanelSx,
@@ -53,22 +55,22 @@ function formatDateTime(value) {
 function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDeleted) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const openPicker = () => inputRef.current?.click();
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || !courseId || !assignment?.id) return;
+  const uploadFiles = async (fileList) => {
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (!files.length || !courseId || !assignment?.id) return;
     if (isSubmissionPassedLocked(submission)) {
-      toast.error('This assessment is already passed. You cannot replace the file.');
+      toast.error('This assessment is already passed. You cannot replace files.');
       return;
     }
     setUploading(true);
     try {
-      const row = await courseService.uploadAssignmentSubmission(courseId, assignment.id, file);
-      toast.success(submission ? 'Assessment file replaced' : 'Assessment uploaded');
+      const row = await courseService.uploadAssignmentSubmission(courseId, assignment.id, files);
+      toast.success(files.length > 1 ? `${files.length} files uploaded` : 'File uploaded');
       onUploaded?.(assignment.id, mapSubmissionFromApi(row));
     } catch (e) {
       toast.error(e?.response?.data?.message || e?.message || 'Upload failed');
@@ -77,16 +79,40 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
     }
   };
 
+  const handleFileChange = async (event) => {
+    await uploadFiles(event.target.files);
+    event.target.value = '';
+  };
+
+  const handleSubmit = async () => {
+    if (!courseId || !assignment?.id) return;
+    if (!submission || !getSubmissionFileList(submission).length) {
+      toast.error('Upload at least one file before submitting.');
+      return;
+    }
+    if (isSubmissionPassedLocked(submission)) return;
+    setSubmitting(true);
+    try {
+      const row = await courseService.submitAssignmentSubmission(courseId, assignment.id);
+      toast.success('Assessment submitted for grading');
+      onUploaded?.(assignment.id, mapSubmissionFromApi(row));
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || 'Submit failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const performDelete = async () => {
     if (!courseId || !assignment?.id || !submission) return;
     if (isSubmissionPassedLocked(submission)) {
-      toast.error('This assessment is already passed. You cannot delete the file.');
+      toast.error('This assessment is already passed. You cannot delete files.');
       return;
     }
     setDeleting(true);
     try {
       await courseService.deleteAssignmentSubmission(courseId, assignment.id);
-      toast.success('Assessment file deleted');
+      toast.success('Submission cleared');
       onDeleted?.(assignment.id);
     } catch (e) {
       toast.error(e?.response?.data?.message || e?.message || 'Delete failed');
@@ -100,12 +126,13 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
       ref={inputRef}
       type="file"
       hidden
-      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip,.rar,.png,.jpg,.jpeg,.webp"
+      multiple
+      accept=".png,.jpg,.jpeg,.pdf,.doc,.docx,.xlsx,.xlsm,.pptx,.txt"
       onChange={handleFileChange}
     />
   );
 
-  return { uploading, deleting, openPicker, performDelete, fileInput };
+  return { uploading, submitting, deleting, openPicker, uploadFiles, handleSubmit, performDelete, fileInput };
 }
 
 // ----------------------------------------------------------------------
@@ -113,7 +140,10 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
 function SubmissionSummary({ submission }) {
   const theme = useTheme();
   const submitted = Boolean(submission);
-  const submittedAt = submitted ? formatDateTime(submission.uploadedAt) : null;
+  const isDraft = isSubmissionDraft(submission);
+  const submittedAt = submitted
+    ? formatDateTime(submission.submittedAt || (isDraft ? null : submission.uploadedAt))
+    : null;
   const evaluation = submitted ? getSubmissionEvaluationDisplay(submission) : null;
   const statusColor =
     evaluation?.color === 'success'
@@ -128,7 +158,7 @@ function SubmissionSummary({ submission }) {
               ? theme.palette.success.main
               : theme.palette.warning.main;
   const statusLabel = submitted
-    ? evaluation?.label || 'Submitted'
+    ? evaluation?.label || (isDraft ? 'Draft' : 'Submitted')
     : 'Pending';
   const attemptCount = submitted ? getSubmissionAttemptCount(submission) : 0;
 
@@ -193,10 +223,10 @@ function SubmissionSummary({ submission }) {
           wordBreak: 'break-word',
         }}
       >
-        {submittedAt || 'Not submitted yet'}
+        {submittedAt || (isDraft ? 'Files uploaded — not submitted yet' : 'Not submitted yet')}
       </Typography>
 
-      {submitted && attemptCount > 0 ? (
+      {submitted && attemptCount > 0 && !isDraft ? (
         <>
           <Typography variant="caption" sx={{ color: 'text.disabled', lineHeight: 1 }}>
             ·
@@ -229,12 +259,53 @@ function SubmissionSummary({ submission }) {
   );
 }
 
-function ActionColumn({ submission, uploading, deleting, openPicker, onDeleteClick, fileInput }) {
+function SubmissionFeedback({ submission }) {
+  if (!submission || isSubmissionDraft(submission)) return null;
+  const strengths = Array.isArray(submission.strengths) ? submission.strengths : [];
+  const weaknesses = Array.isArray(submission.weaknesses) ? submission.weaknesses : [];
+  if (!submission.aiFeedback && !strengths.length && !weaknesses.length) return null;
+
+  return (
+    <Stack spacing={0.75} sx={{ mt: 1 }}>
+      {submission.aiFeedback ? (
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
+          {submission.aiFeedback}
+        </Typography>
+      ) : null}
+      {strengths.length ? (
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          {strengths.map((item) => (
+            <Chip key={item} size="small" color="success" variant="soft" label={item} />
+          ))}
+        </Stack>
+      ) : null}
+      {weaknesses.length ? (
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          {weaknesses.map((item) => (
+            <Chip key={item} size="small" color="warning" variant="soft" label={item} />
+          ))}
+        </Stack>
+      ) : null}
+    </Stack>
+  );
+}
+
+function ActionColumn({
+  submission,
+  uploading,
+  submitting,
+  deleting,
+  openPicker,
+  onDeleteClick,
+  onSubmit,
+  fileInput,
+}) {
   const theme = useTheme();
-  const fileUrl = submission ? resolveAssetUrl(submission.fileUrl) : null;
-  const fileName = submission?.originalFileName;
-  const busy = uploading || deleting;
+  const files = getSubmissionFileList(submission);
+  const busy = uploading || deleting || submitting;
   const isLocked = isSubmissionPassedLocked(submission);
+  const isDraft = isSubmissionDraft(submission);
+  const canSubmit = isDraft && files.length > 0 && !busy;
 
   const iconButtonSx = {
     width: 36,
@@ -259,99 +330,94 @@ function ActionColumn({ submission, uploading, deleting, openPicker, onDeleteCli
 
   return (
     <Stack
-      spacing={0.75}
+      spacing={1}
       alignItems={{ xs: 'flex-start', md: 'flex-end' }}
       sx={{ minWidth: { md: 168 }, width: 1 }}
     >
       {!isLocked ? fileInput : null}
-      <Stack direction="row" spacing={0.5} justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
-        {submission ? (
-          <Tooltip title="View file" arrow>
-            <IconButton
-              size="small"
-              component="a"
-              href={fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              disabled={busy}
-              sx={{ ...iconButtonSx, color: 'primary.main' }}
-            >
-              <Iconify icon="solar:eye-bold" width={18} />
-            </IconButton>
-          </Tooltip>
-        ) : null}
+
+      <Stack direction="row" spacing={0.5} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
         {!isLocked ? (
-          <>
-            <Tooltip title={uploading ? 'Uploading…' : submission ? 'Replace file' : 'Upload file'} arrow>
-              <span>
-                <IconButton
-                  size="small"
-                  disabled={busy}
-                  onClick={openPicker}
-                  sx={{
-                    ...iconButtonSx,
-                    color: submission ? 'text.secondary' : 'primary.main',
-                    ...(submission
-                      ? {}
-                      : {
-                          bgcolor: alpha(theme.palette.primary.main, 0.08),
-                          borderColor: alpha(theme.palette.primary.main, 0.28),
-                        }),
-                  }}
-                >
-                  {uploading ? (
-                    <CircularProgress size={18} color="inherit" />
-                  ) : (
-                    <Iconify icon={submission ? 'solar:refresh-bold' : 'solar:upload-bold'} width={18} />
-                  )}
-                </IconButton>
-              </span>
-            </Tooltip>
-            {submission ? (
-              <Tooltip title={deleting ? 'Deleting…' : 'Delete file'} arrow>
-                <span>
-                  <IconButton
-                    size="small"
-                    disabled={busy}
-                    onClick={onDeleteClick}
-                    sx={deleteButtonSx}
-                  >
-                    {deleting ? (
-                      <CircularProgress size={18} color="inherit" />
-                    ) : (
-                      <Iconify icon="solar:trash-bin-trash-bold" width={18} />
-                    )}
-                  </IconButton>
-                </span>
-              </Tooltip>
-            ) : null}
-          </>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={busy}
+            onClick={openPicker}
+            startIcon={
+              uploading ? <CircularProgress size={16} /> : <Iconify icon="solar:upload-bold" width={16} />
+            }
+          >
+            {files.length ? 'Add files' : 'Upload files'}
+          </Button>
+        ) : null}
+
+        {canSubmit ? (
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            disabled={busy}
+            onClick={onSubmit}
+            startIcon={
+              submitting ? <CircularProgress size={16} color="inherit" /> : <Iconify icon="solar:check-circle-bold" width={16} />
+            }
+          >
+            Submit
+          </Button>
+        ) : null}
+
+        {submission && !isLocked ? (
+          <Tooltip title={deleting ? 'Deleting…' : 'Clear submission'} arrow>
+            <span>
+              <IconButton size="small" disabled={busy} onClick={onDeleteClick} sx={deleteButtonSx}>
+                {deleting ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                )}
+              </IconButton>
+            </span>
+          </Tooltip>
         ) : null}
       </Stack>
 
-      {isLocked ? (
-        <Typography variant="caption" color="success.main" sx={{ textAlign: { xs: 'left', md: 'right' }, width: 1 }}>
-          Passed — file locked
-        </Typography>
-      ) : fileName ? (
-        <Typography
-          variant="caption"
-          sx={{
-            width: 1,
-            fontWeight: 600,
-            color: 'text.secondary',
-            wordBreak: 'break-word',
-            lineHeight: 1.4,
-            textAlign: { xs: 'left', md: 'right' },
-          }}
-        >
-          {fileName}
-        </Typography>
+      {files.length ? (
+        <Stack spacing={0.5} sx={{ width: 1 }}>
+          {files.map((file) => (
+            <Button
+              key={`${file.fileUrl}-${file.originalFileName}`}
+              size="small"
+              component="a"
+              href={resolveAssetUrl(file.fileUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              startIcon={<Iconify icon="solar:document-bold" width={16} />}
+              sx={{
+                justifyContent: { xs: 'flex-start', md: 'flex-end' },
+                textTransform: 'none',
+                fontWeight: 600,
+                color: 'text.secondary',
+              }}
+            >
+              {file.originalFileName}
+            </Button>
+          ))}
+        </Stack>
       ) : (
         <Typography variant="caption" color="text.disabled" sx={{ textAlign: { xs: 'left', md: 'right' }, width: 1 }}>
-          No file yet
+          No files yet
         </Typography>
       )}
+
+      {isLocked ? (
+        <Typography variant="caption" color="success.main" sx={{ textAlign: { xs: 'left', md: 'right' }, width: 1 }}>
+          Passed — submission locked
+        </Typography>
+      ) : isDraft && files.length ? (
+        <Typography variant="caption" color="warning.main" sx={{ textAlign: { xs: 'left', md: 'right' }, width: 1 }}>
+          Draft — click Submit when ready
+        </Typography>
+      ) : null}
     </Stack>
   );
 }
@@ -390,29 +456,25 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const submission = assignment.mySubmission;
-  const { uploading, deleting, openPicker, performDelete, fileInput } = useAssignmentUpload(
-    courseId,
-    assignment,
-    submission,
-    onUploaded,
-    onDeleted
-  );
+  const { uploading, submitting, deleting, openPicker, uploadFiles, handleSubmit, performDelete, fileInput } =
+    useAssignmentUpload(courseId, assignment, submission, onUploaded, onDeleted);
+
+  const questionFileUrl = assignment.questionFileUrl
+    ? resolveAssetUrl(assignment.questionFileUrl)
+    : null;
+  const guideFileUrl = assignment.guideFileUrl || assignment.referenceFileUrl
+    ? resolveAssetUrl(assignment.guideFileUrl || assignment.referenceFileUrl)
+    : null;
+  const guideFileName =
+    assignment.guideFileName || assignment.referenceFileName || 'Download guide';
 
   const handleDropUpload = async (acceptedFiles) => {
-    const file = Array.isArray(acceptedFiles) ? acceptedFiles[0] : acceptedFiles;
-    if (!file) return;
+    if (!acceptedFiles?.length) return;
     if (isSubmissionPassedLocked(submission)) {
-      toast.error('This assessment is already passed. You cannot replace the file.');
+      toast.error('This assessment is already passed. You cannot replace files.');
       return;
     }
-    try {
-      // show local uploading state via toast and rely on onUploaded to update UI
-      const row = await courseService.uploadAssignmentSubmission(courseId, assignment.id, file);
-        toast.success(submission ? 'Assessment file replaced' : 'Assessment uploaded');
-      onUploaded?.(assignment.id, mapSubmissionFromApi(row));
-    } catch (e) {
-      toast.error(e?.response?.data?.message || e?.message || 'Upload failed');
-    }
+    await uploadFiles(acceptedFiles);
   };
 
   const handleConfirmDelete = async () => {
@@ -461,17 +523,52 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.45 }}>
           {assignment.prompt}
         </Typography>
-        {!submission && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="caption" color="text.secondary">
-               No file yet — use the upload button on the right to submit your assessment.
-            </Typography>
+
+        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+          {questionFileUrl ? (
+            <Button
+              size="small"
+              component="a"
+              href={questionFileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              startIcon={<Iconify icon="solar:download-bold" width={16} />}
+            >
+              {assignment.questionFileName || 'Download assessment'}
+            </Button>
+          ) : null}
+          {guideFileUrl ? (
+            <Button
+              size="small"
+              variant="outlined"
+              component="a"
+              href={guideFileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              startIcon={<Iconify icon="solar:book-2-bold" width={16} />}
+            >
+              {guideFileName}
+            </Button>
+          ) : null}
+        </Stack>
+
+        {!submission ? (
+          <Box sx={{ mt: 2, display: { md: 'none' } }}>
+            <Upload
+              multiple
+              value={[]}
+              accept={LEARNER_SUBMISSION_ACCEPT}
+              maxSize={52428800}
+              onDrop={handleDropUpload}
+              helperText="Select multiple files — PNG, JPG, PDF, Word, Excel, PowerPoint, TXT"
+            />
           </Box>
-        )}
+        ) : null}
 
         {submission ? (
           <Box sx={{ mt: 1.5 }}>
             <SubmissionSummary submission={submission} />
+            <SubmissionFeedback submission={submission} />
             {canShowVerificationLog(submission) ? (
               <Button
                 size="small"
@@ -486,29 +583,10 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
           </Box>
         ) : null}
 
-        {submission ? (
-          <Box sx={{ mt: 2 }}>
-            <LessonLearningMaterialsPanel materials={[resolveAssetUrl(submission.fileUrl)]} />
-          </Box>
-        ) : null}
         {assignment.explanation ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.5, fontSize: '0.8125rem' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.5, fontSize: '0.8125rem' }}>
             {assignment.explanation}
           </Typography>
-        ) : null}
-        {assignment.referenceFileUrl ? (
-          <Box sx={{ mt: 1 }}>
-            <Button
-              size="small"
-              component="a"
-              href={resolveAssetUrl(assignment.referenceFileUrl)}
-              target="_blank"
-              rel="noopener noreferrer"
-              startIcon={<Iconify icon="solar:download-bold" width={16} />}
-            >
-              {assignment.referenceFileName || 'Download reference'}
-            </Button>
-          </Box>
         ) : null}
       </Box>
 
@@ -516,8 +594,10 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
         <ActionColumn
           submission={submission}
           uploading={uploading}
+          submitting={submitting}
           deleting={deleting}
           openPicker={openPicker}
+          onSubmit={handleSubmit}
           onDeleteClick={() => setDeleteOpen(true)}
           fileInput={fileInput}
         />
@@ -533,8 +613,8 @@ function AssignmentRow({ index, courseId, assignment, onUploaded, onDeleted }) {
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-          title="Delete assessment file"
-        content="Remove your uploaded file? You can upload again later."
+          title="Clear assessment submission"
+        content="Remove all uploaded files? You can upload and submit again later."
         action={
           <Button variant="contained" color="error" disabled={deleting} onClick={handleConfirmDelete}>
             Delete
@@ -654,7 +734,9 @@ export function LearningModuleAssignmentsPanel({
 
   if (!items.length) return null;
 
-  const submittedCount = items.filter((a) => a.mySubmission).length;
+  const submittedCount = items.filter(
+    (a) => a.mySubmission && !isSubmissionDraft(a.mySubmission)
+  ).length;
   const progressPercent = items.length > 0 ? Math.round((submittedCount / items.length) * 100) : 0;
   const allDone = submittedCount === items.length;
 

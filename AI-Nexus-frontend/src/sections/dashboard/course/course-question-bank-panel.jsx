@@ -72,6 +72,10 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
         formAssignedUsers={bank.formAssignedUsers}
         userOptions={bank.userOptions}
         usersLoading={bank.usersLoading}
+        formPassingPercentage={bank.formPassingPercentage}
+        questionMaterials={bank.questionMaterials}
+        answerSheetMaterials={bank.answerSheetMaterials}
+        guideMaterials={bank.guideMaterials}
         referenceMaterials={bank.referenceMaterials}
         onClose={bank.closeDialog}
         onSave={bank.handleSave}
@@ -83,6 +87,10 @@ export function CourseQuestionBankPanel({ courseId, sx }) {
         onFormTfCorrectChange={(e) => bank.setFormTfCorrect(e.target.value)}
         onFormShortCorrectChange={(e) => bank.setFormShortCorrect(e.target.value)}
         onFormAssignedUsersChange={bank.setFormAssignedUsers}
+        onFormPassingPercentageChange={(e) => bank.setFormPassingPercentage(Number(e.target.value))}
+        onQuestionMaterialsChange={bank.setQuestionMaterials}
+        onAnswerSheetMaterialsChange={bank.setAnswerSheetMaterials}
+        onGuideMaterialsChange={bank.setGuideMaterials}
         onReferenceMaterialsChange={bank.setReferenceMaterials}
         onAddOption={bank.addOption}
         onSetOptionAt={bank.setOptionAt}

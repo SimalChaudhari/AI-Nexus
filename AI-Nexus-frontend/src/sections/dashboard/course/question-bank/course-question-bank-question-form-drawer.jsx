@@ -16,7 +16,9 @@ import { Iconify } from 'src/components/iconify';
 import { Upload } from 'src/components/upload';
 
 import {
-  ASSIGNMENT_REFERENCE_ACCEPT,
+  ASSESSMENT_ANSWER_SHEET_ACCEPT,
+  ASSESSMENT_GUIDE_ACCEPT,
+  ASSESSMENT_QUESTION_ACCEPT,
   QUESTION_TYPES,
 } from './course-question-bank-utils';
 
@@ -40,6 +42,10 @@ export function CourseQuestionBankQuestionFormDrawer({
   formAssignedUsers,
   userOptions,
   usersLoading,
+  formPassingPercentage,
+  questionMaterials,
+  answerSheetMaterials,
+  guideMaterials,
   referenceMaterials,
   onClose,
   onSave,
@@ -51,6 +57,10 @@ export function CourseQuestionBankQuestionFormDrawer({
   onFormTfCorrectChange,
   onFormShortCorrectChange,
   onFormAssignedUsersChange,
+  onFormPassingPercentageChange,
+  onQuestionMaterialsChange,
+  onAnswerSheetMaterialsChange,
+  onGuideMaterialsChange,
   onReferenceMaterialsChange,
   onAddOption,
   onSetOptionAt,
@@ -210,6 +220,24 @@ export function CourseQuestionBankQuestionFormDrawer({
 
             {formType === 'assignment' && (
               <>
+                <TextField
+                  label="Assessment title"
+                  value={formPrompt}
+                  onChange={onFormPromptChange}
+                  fullWidth
+                  required
+                  placeholder="e.g. AI Fundamentals Assessment"
+                />
+                <TextField
+                  label="Passing percentage"
+                  type="number"
+                  value={formPassingPercentage}
+                  onChange={onFormPassingPercentageChange}
+                  fullWidth
+                  required
+                  inputProps={{ min: 0, max: 100 }}
+                  helperText="Minimum score (0–100) required to pass"
+                />
                 <Typography variant="caption" color="text.secondary">
                   Assign to specific learners (optional). Leave empty to allow all enrolled learners.
                 </Typography>
@@ -231,23 +259,56 @@ export function CourseQuestionBankQuestionFormDrawer({
                 />
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Reference file (optional)
+                    Assessment question file
                   </Typography>
                   <Upload
-                    multiple
-                    value={referenceMaterials}
+                    value={questionMaterials[0] ?? null}
                     showViewButton
-                    accept={ASSIGNMENT_REFERENCE_ACCEPT}
+                    accept={ASSESSMENT_QUESTION_ACCEPT}
+                    maxSize={52428800}
+                    onDrop={(acceptedFiles) => {
+                      if (acceptedFiles?.length) onQuestionMaterialsChange([acceptedFiles[0]]);
+                    }}
+                    onDelete={() => onQuestionMaterialsChange([])}
+                    helperText="PDF, Word, or ZIP — learners download this to complete the assessment"
+                  />
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Official answer sheet
+                  </Typography>
+                  <Upload
+                    value={answerSheetMaterials[0] ?? null}
+                    showViewButton
+                    accept={ASSESSMENT_ANSWER_SHEET_ACCEPT}
+                    maxSize={52428800}
+                    onDrop={(acceptedFiles) => {
+                      if (acceptedFiles?.length) onAnswerSheetMaterialsChange([acceptedFiles[0]]);
+                    }}
+                    onDelete={() => onAnswerSheetMaterialsChange([])}
+                    helperText="PDF, Word, or ZIP — used by AI to grade submissions (not shown to learners)"
+                  />
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Assessment guide (optional)
+                  </Typography>
+                  <Upload
+                    value={guideMaterials[0] ?? null}
+                    showViewButton
+                    accept={ASSESSMENT_GUIDE_ACCEPT}
                     maxSize={52428800}
                     onDrop={(acceptedFiles) => {
                       if (acceptedFiles?.length) {
+                        onGuideMaterialsChange([acceptedFiles[0]]);
                         onReferenceMaterialsChange([acceptedFiles[0]]);
                       }
                     }}
-                    onRemove={(item) =>
-                      onReferenceMaterialsChange(referenceMaterials.filter((i) => i !== item))
-                    }
-                    helperText="PDF, Word, Excel, PowerPoint, CSV, TXT, or ZIP — uploaded when you save (max 50MB each)"
+                    onDelete={() => {
+                      onGuideMaterialsChange([]);
+                      onReferenceMaterialsChange([]);
+                    }}
+                    helperText="PDF or Word — optional instructions for learners"
                   />
                 </Box>
               </>
@@ -256,7 +317,7 @@ export function CourseQuestionBankQuestionFormDrawer({
             <TextField
               label={
                 formType === 'assignment'
-                  ? 'Instructions (optional)'
+                  ? 'Description (optional)'
                   : 'Explanation (shown after check)'
               }
               value={formExplanation}

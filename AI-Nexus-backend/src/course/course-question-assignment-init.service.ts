@@ -68,6 +68,8 @@ export class CourseQuestionAssignmentInitService implements OnModuleInit {
         ['manualVerifiedBy', 'uuid'],
         ['attemptCount', 'integer NOT NULL DEFAULT 1'],
         ['attemptHistory', 'jsonb'],
+        ['submissionFiles', 'jsonb'],
+        ['submittedAt', 'TIMESTAMP'],
       ];
 
       for (const [column, definition] of evaluationColumns) {

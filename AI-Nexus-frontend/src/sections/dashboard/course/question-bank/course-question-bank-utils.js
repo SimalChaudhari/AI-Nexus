@@ -41,14 +41,36 @@ export const ASSIGNMENT_REFERENCE_ACCEPT = {
   'application/pdf': ['.pdf'],
   'application/msword': ['.doc'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-  'application/vnd.ms-excel': ['.xls'],
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-  'application/vnd.ms-powerpoint': ['.ppt'],
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
-  'text/plain': ['.txt'],
-  'text/csv': ['.csv'],
   'application/zip': ['.zip'],
   'application/x-zip-compressed': ['.zip'],
+};
+
+export const ASSESSMENT_QUESTION_ACCEPT = {
+  'application/pdf': ['.pdf'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/zip': ['.zip'],
+  'application/x-zip-compressed': ['.zip'],
+};
+
+export const ASSESSMENT_ANSWER_SHEET_ACCEPT = ASSESSMENT_QUESTION_ACCEPT;
+
+export const ASSESSMENT_GUIDE_ACCEPT = {
+  'application/pdf': ['.pdf'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+};
+
+export const LEARNER_SUBMISSION_ACCEPT = {
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'application/pdf': ['.pdf'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'application/vnd.ms-excel.sheet.macroEnabled.12': ['.xlsm'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+  'text/plain': ['.txt'],
 };
 
 export function questionTypeChipLabel(type) {
