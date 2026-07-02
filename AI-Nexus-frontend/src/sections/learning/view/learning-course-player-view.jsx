@@ -3002,6 +3002,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     <Box
       sx={{
         width: 1,
+        minWidth: 0,
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -3085,7 +3087,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         <Box
           onClick={() => setCourseContentExpanded((prev) => !prev)}
           sx={{
-            mx: 2.5,
+            mx: { xs: 1.5, sm: 2.5 },
             mb: courseContentExpanded ? 1.25 : 0,
             px: 2,
             py: 1.75,
@@ -3156,7 +3158,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
         {courseContentExpanded && (
         <>
-          {modules.map((section, sectionIndex) => {
+          {modules.map((section) => {
             const modulePracticeRowId = `${MODULE_PRACTICE_PREFIX}${section.id}`;
             const moduleAssignmentRowId = `${MODULE_ASSIGNMENT_PREFIX}${section.id}`;
             const sectionHasActiveLesson =
@@ -3176,7 +3178,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 disableGutters
                 elevation={0}
                 sx={{
-                  mx: 2.5,
+                  mx: { xs: 1.5, sm: 2.5 },
                   mb: 1.5,
                   borderRadius: 2.5,
                   overflow: 'hidden',
@@ -3196,11 +3198,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   }
                   sx={{
                     minHeight: 56,
-                    px: 0.5,
+                    px: { xs: 1, sm: 1.25 },
+                    py: 0.25,
                     borderLeft: `4px solid ${
                       sectionHasActiveLesson ? sidebarAccent : alpha(theme.palette.grey[500], 0.25)
                     }`,
-                    '& .MuiAccordionSummary-content': { my: 1.25, alignItems: 'center' },
+                    '& .MuiAccordionSummary-content': {
+                      my: 1,
+                      alignItems: 'center',
+                      minWidth: 0,
+                      overflow: 'hidden',
+                    },
+                    '& .MuiAccordionSummary-expandIconWrapper': {
+                      flexShrink: 0,
+                      ml: 0.25,
+                    },
                     '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) },
                     ...(sectionHasActiveLesson && {
                       bgcolor: alpha(sidebarAccent, 0.06),
@@ -3208,43 +3220,53 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     }),
                   }}
                 >
-                  <Box sx={{ width: 1, pr: 0.5 }}>
-                    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 0.5 }}>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontWeight: 800,
-                          color: sectionHasActiveLesson ? 'primary.dark' : 'text.disabled',
-                          letterSpacing: 0.04,
-                          minWidth: 28,
-                        }}
-                      >
-                        {String(sectionIndex + 1).padStart(2, '0')}
-                      </Typography>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }} noWrap>
-                        {section.title}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: 'text.secondary',
-                          flexShrink: 0,
-                          fontWeight: 700,
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: 10,
-                          bgcolor: alpha(theme.palette.grey[500], 0.12),
-                        }}
-                      >
-                        {sectionStats.completed}/{sectionStats.total}
-                      </Typography>
-                    </Stack>
+                  <Box
+                    sx={{
+                      width: 1,
+                      minWidth: 0,
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) auto',
+                      columnGap: 1,
+                      rowGap: 0.5,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 700,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: { xs: 2, sm: 1 },
+                        WebkitBoxOrient: 'vertical',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {section.title}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'text.secondary',
+                        flexShrink: 0,
+                        fontWeight: 700,
+                        px: 1,
+                        py: 0.25,
+                        borderRadius: 10,
+                        bgcolor: alpha(theme.palette.grey[500], 0.12),
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {sectionStats.completed}/{sectionStats.total}
+                    </Typography>
                     {sectionStats.total > 0 && (
                       <LinearProgress
                         variant="determinate"
                         value={sectionStats.percent}
                         sx={{
-                          mt: 0.5,
+                          gridColumn: '1 / -1',
                           height: 5,
                           borderRadius: 10,
                           bgcolor: alpha(theme.palette.grey[500], 0.14),
@@ -3261,7 +3283,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   sx={{
                     pt: 0,
                     pb: 1.5,
-                    px: 1.5,
+                    px: { xs: 1, sm: 1.5 },
+                    minWidth: 0,
+                    overflow: 'hidden',
                     bgcolor: alpha(theme.palette.grey[500], 0.04),
                     borderTop: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
                   }}
@@ -3398,8 +3422,20 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                 <Iconify icon="solar:document-text-bold" width={16} sx={{ color: 'common.white' }} />
                               )}
                             </Box>
-                            <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, pr: 0.5 }} noWrap>
+                            <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 600,
+                                  minWidth: 0,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  lineHeight: 1.35,
+                                }}
+                              >
                                 {lesson.title}
                               </Typography>
                               <Typography
@@ -3872,7 +3908,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         disableGutters
         elevation={0}
         sx={{
-          mx: 2.5,
+          mx: { xs: 1.5, sm: 2.5 },
           mb: 2.5,
           mt: 0.5,
           borderRadius: 2.5,
@@ -3888,9 +3924,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           expandIcon={<Iconify icon="eva:chevron-down-fill" width={20} sx={{ color: 'text.secondary' }} />}
           sx={{
             minHeight: 52,
-            px: 0.5,
+            px: { xs: 1, sm: 1.25 },
             borderLeft: `4px solid ${alpha(theme.palette.warning.main, progressPercent >= 100 ? 0.9 : 0.35)}`,
-            '& .MuiAccordionSummary-content': { my: 1.25 },
+            '& .MuiAccordionSummary-content': { my: 1.25, minWidth: 0, overflow: 'hidden' },
             '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) },
           }}
         >
