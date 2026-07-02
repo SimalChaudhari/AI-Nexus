@@ -2048,11 +2048,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (!activeLessonId) return;
     const lessonDone =
       sectionProgressData?.isCompleted === true || sectionProgressData?.isWatched === true;
+    const snap = sectionPlayerSnapshotRef.current?.[activeLessonId] || null;
     const resumeSeconds = lessonDone
       ? 0
-      : sectionProgressData
-        ? Number(sectionProgressData.lastPositionSeconds || 0)
-        : 0;
+      : Math.max(
+          Number(sectionProgressData?.lastPositionSeconds || 0),
+          Number(snap?.lastPositionSeconds || 0)
+        );
     const prev = resumeSeekAppliedRef.current;
     if (prev.sectionId !== activeLessonId) {
       resumeSeekAppliedRef.current = {

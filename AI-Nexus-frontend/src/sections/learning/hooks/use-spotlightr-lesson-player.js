@@ -11,7 +11,6 @@ import {
   readSpotlightrPlayerDuration,
   readSpotlightrPlayerTime,
   resolveSpotlightrApiId,
-  seekSpotlightrPlayer,
   spotlightrPlayerIdsMatch,
   waitForSpotlightrPlayer,
 } from 'src/utils/spotlightr';
@@ -27,6 +26,28 @@ const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || '')
   );
+
+/** True when the Spotlightr iframe URL already requests a start offset (`?s=`). */
+const iframeSrcHasStartParam = (iframe) => /[?&]s=\d+/i.test(String(iframe?.src || ''));
+
+/** Mark resume handled without calling setTime (avoids Video.js handleStartTime loops). */
+const markResumeHandled = ({
+  resumeOnceRef,
+  resumeMeta,
+  activeLessonId,
+  seconds,
+  spotlightrProgressRef,
+}) => {
+  const target = Math.max(0, Number(seconds) || 0);
+  resumeOnceRef.current = true;
+  if (resumeMeta.sectionId === activeLessonId) {
+    resumeMeta.applied = true;
+    resumeMeta.seconds = target;
+  }
+  const prog = spotlightrProgressRef.current;
+  prog.lastTime = Math.max(prog.lastTime || 0, target);
+  prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline || 0, target);
+};
 
 /** Spotlightr iframe + JS API — mirrors YouTube player progress / seek-lock behavior. */
 export function useSpotlightrLessonPlayer({
@@ -234,10 +255,12 @@ export function useSpotlightrLessonPlayer({
       if (isLessonPlaybackComplete()) return 0;
       const resumeMeta = resumeSeekAppliedRef.current;
       const sp = getSectionProgress();
+      const snap = sectionPlayerSnapshotRef?.current?.[activeLessonId] || null;
       const serverSeconds = Math.max(0, Number(sp?.lastPositionSeconds || 0));
+      const snapSeconds = Math.max(0, Number(snap?.lastPositionSeconds || 0));
       const metaSeconds =
         resumeMeta.sectionId === activeLessonId ? Math.max(0, Number(resumeMeta.seconds || 0)) : 0;
-      return Math.max(serverSeconds, metaSeconds);
+      return Math.max(serverSeconds, snapSeconds, metaSeconds);
     };
 
     const getAdminDurationSeconds = () => {
@@ -386,8 +409,40 @@ export function useSpotlightrLessonPlayer({
       const last = Math.max(0, Number(prog.lastTime) || 0);
 
       if (!shouldBlockForwardSeek()) {
+        const d = resolveDurationSeconds(prog.duration);
+        const requiredSec = cb().effectiveRequiredSeconds(watchtimeSecondsRef.current, d);
+        const durRounded = Math.round(Number(d) || 0);
+        const previousTime = Math.max(0, Number(prog.lastTime || 0));
+
+        if (!prog.isPlaying && t > previousTime + 0.05 && Math.abs(t - previousTime) <= 2.5) {
+          prog.isPlaying = true;
+        }
+
+        if (prog.isPlaying) {
+          if (Math.abs(t - previousTime) <= 2.5) {
+            prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
+          }
+          cb().appendCoverageSlicePlayer(videoCoverageRangesRef, previousTime, t, durRounded);
+          const cov =
+            durRounded > 0
+              ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
+              : 0;
+          if (durRounded > 0 && (cov >= durRounded - 1 || t >= durRounded - 0.5)) {
+            cb().syncProgressOnFullDuration(activeLessonIdRef.current, t, d);
+          }
+          prog.watchedSeconds = cov;
+          prog.pendingDeltaSeconds = 0;
+          if (requiredSec > 0 && cov >= requiredSec) {
+            prog.markedComplete = true;
+            videoWatchedEnoughRef.current?.();
+          }
+        }
+
         prog.lastTime = t;
         syncPlayerRef();
+        if (prog.isPlaying || t > 0) {
+          persistSectionSnapshot(t, prog.duration);
+        }
         return;
       }
 
@@ -442,25 +497,29 @@ export function useSpotlightrLessonPlayer({
       pollIntervalIdRef.current = setInterval(pollCurrentTime, pollMs);
     };
 
-    const applyResumeOnce = () => {
-      if (!apiEnabled || resumeOnceRef.current || isLessonPlaybackComplete()) return;
-      const resumeMeta = resumeSeekAppliedRef.current;
-      const target = getResumeSeconds();
-      if (resumeMeta.sectionId !== activeLessonId || !(target > 2)) return;
+    /** Reload iframe with `?s=` when resume is needed — never API setTime (Video.js stack overflow). */
+    const reloadIframeForResume = (targetSeconds) => {
+      const iframe = getContainer()?.querySelector('iframe');
+      if (!iframe || iframeSrcHasStartParam(iframe)) return false;
 
-      resumeOnceRef.current = true;
-      resumeMeta.applied = true;
-      resumeMeta.seconds = target;
-
-      releaseForwardSeekLock();
+      markResumeHandled({
+        resumeOnceRef,
+        resumeMeta: resumeSeekAppliedRef.current,
+        activeLessonId,
+        seconds: targetSeconds,
+        spotlightrProgressRef,
+      });
       cb().markVideoSeekClampGrace(RESUME_GRACE_MS);
-      seekRollbackUntilRef.current = Date.now() + SEEK_ROLLBACK_COOLDOWN_MS;
-      seekSpotlightrPlayer(getApiVideoId(), target, null, { container: getContainer() });
 
-      const prog = spotlightrProgressRef.current;
-      prog.lastTime = target;
-      prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, target);
+      listenersBoundSessionRef.current = '';
+      apiVideoIdRef.current = null;
+      clearPoll();
+
+      iframe.src = buildSpotlightrWatchEmbedUrl(spotlightrMeta.watchUrl, targetSeconds, {
+        useFallback: !isSpotlightrApiAvailable(),
+      });
       syncPlayerRef();
+      return true;
     };
 
     const onVooPlayerReady = (event) => {
@@ -473,7 +532,7 @@ export function useSpotlightrLessonPlayer({
         event?.videoId;
       if (detailId && videoId && !spotlightrPlayerIdsMatch(detailId, videoId)) return;
       if (detailId) apiVideoIdRef.current = String(detailId);
-      if (isSpotlightrApiAvailable() && !apiEnabled && !cancelled) {
+      if (isSpotlightrApiAvailable() && !cancelled) {
         bindPlayerApi();
       }
     };
@@ -486,7 +545,30 @@ export function useSpotlightrLessonPlayer({
       refreshDurationFromPlayer();
       window.setTimeout(() => refreshDurationFromPlayer(), 2000);
       window.setTimeout(() => refreshDurationFromPlayer(), 5000);
-      applyResumeOnce();
+
+      const resumeMeta = resumeSeekAppliedRef.current;
+      const resumeTarget = getResumeSeconds();
+      if (
+        !resumeOnceRef.current &&
+        !isLessonPlaybackComplete() &&
+        resumeMeta.sectionId === activeLessonId &&
+        resumeTarget > 2
+      ) {
+        const iframe = getContainer()?.querySelector('iframe');
+        if (iframe && iframeSrcHasStartParam(iframe)) {
+          markResumeHandled({
+            resumeOnceRef,
+            resumeMeta,
+            activeLessonId,
+            seconds: resumeTarget,
+            spotlightrProgressRef,
+          });
+          syncPlayerRef();
+        } else if (reloadIframeForResume(resumeTarget)) {
+          return;
+        }
+      }
+
       startProgressPoll();
 
       const needsListeners = listenersBoundSessionRef.current !== sessionKey;
@@ -502,10 +584,6 @@ export function useSpotlightrLessonPlayer({
         spotlightrProgressRef.current.isPlaying = true;
         if (!pollIntervalIdRef.current) startProgressPoll();
         refreshDurationFromPlayer();
-        const target = getResumeSeconds();
-        if (target > 2 && !resumeOnceRef.current && shouldBlockForwardSeek()) {
-          applyResumeOnce();
-        }
       });
 
       callPlayerApi('onPause', null, () => {
@@ -611,6 +689,16 @@ export function useSpotlightrLessonPlayer({
         title: 'Course video',
       });
 
+      if (resumeAt > 2) {
+        markResumeHandled({
+          resumeOnceRef,
+          resumeMeta: resumeSeekAppliedRef.current,
+          activeLessonId,
+          seconds: resumeAt,
+          spotlightrProgressRef,
+        });
+      }
+
       try {
         await loadSpotlightrScript(scriptUrl);
       } catch {
@@ -681,7 +769,8 @@ export function useSpotlightrLessonPlayer({
     const resumeSeconds = getResumeSecondsFromData(
       sectionProgressData,
       resumeSeekAppliedRef,
-      activeLessonId
+      activeLessonId,
+      sectionPlayerSnapshotRef?.current?.[activeLessonId]
     );
     if (!(resumeSeconds > 2)) return undefined;
 
@@ -702,8 +791,24 @@ export function useSpotlightrLessonPlayer({
     }
 
     const iframe = spotlightrContainerRef.current?.querySelector('iframe');
-    if (!iframe || /[?&]s=\d+/i.test(String(iframe.src || ''))) {
+    if (!iframe || iframeSrcHasStartParam(iframe)) {
       return undefined;
+    }
+
+    markResumeHandled({
+      resumeOnceRef,
+      resumeMeta,
+      activeLessonId,
+      seconds: resumeSeconds,
+      spotlightrProgressRef,
+    });
+    callbacksRef.current.markVideoSeekClampGrace?.(RESUME_GRACE_MS);
+
+    listenersBoundSessionRef.current = '';
+    apiVideoIdRef.current = null;
+    if (pollIntervalIdRef.current) {
+      clearInterval(pollIntervalIdRef.current);
+      pollIntervalIdRef.current = null;
     }
 
     iframe.src = buildSpotlightrWatchEmbedUrl(spotlightrMeta.watchUrl, resumeSeconds, {
@@ -723,11 +828,17 @@ export function useSpotlightrLessonPlayer({
   ]);
 }
 
-function getResumeSecondsFromData(sectionProgressData, resumeSeekAppliedRef, activeLessonId) {
+function getResumeSecondsFromData(
+  sectionProgressData,
+  resumeSeekAppliedRef,
+  activeLessonId,
+  sectionSnapshot = null
+) {
   if (sectionProgressData?.isCompleted || sectionProgressData?.isWatched) return 0;
   const resumeMeta = resumeSeekAppliedRef.current;
   const serverSeconds = Math.max(0, Number(sectionProgressData?.lastPositionSeconds || 0));
+  const snapSeconds = Math.max(0, Number(sectionSnapshot?.lastPositionSeconds || 0));
   const metaSeconds =
     resumeMeta.sectionId === activeLessonId ? Math.max(0, Number(resumeMeta.seconds || 0)) : 0;
-  return Math.max(serverSeconds, metaSeconds);
+  return Math.max(serverSeconds, snapSeconds, metaSeconds);
 }
