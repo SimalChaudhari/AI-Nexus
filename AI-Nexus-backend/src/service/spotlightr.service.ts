@@ -229,7 +229,8 @@ export class SpotlightrService {
         const streamDuration = await this.resolveHlsStreamDurationSeconds(record);
 
         if (streamDuration != null && meta != null) {
-            if (streamDuration < meta && streamDuration >= meta * 0.9) return streamDuration;
+            // Metadata and source MP4 often include tail padding trimmed from the HLS stream.
+            if (streamDuration < meta) return streamDuration;
             return meta;
         }
         if (streamDuration != null) return streamDuration;
