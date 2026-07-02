@@ -20,6 +20,14 @@ import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 const SECTION_GREY = '#eceef1';
 const PARTNERS_BG = '#F7F9FA';
 
+export const PARTNERS_WITH_ISCA_HEADING = 'Early Adopter';
+
+function resolvePartnersHeading(headingOverride, apiHeading) {
+  const override = String(headingOverride ?? '').trim();
+  if (override) return override;
+  return String(apiHeading || '').trim();
+}
+
 function resolveAssetUrl(url) {
   const raw = String(url || '').trim();
   if (!raw) return '';
@@ -151,7 +159,7 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
 
 // ----------------------------------------------------------------------
 
-export function HomeSupportingPartnersSection() {
+export function HomeSupportingPartnersSection({ headingOverride } = {}) {
   const theme = useTheme();
   const secondary = theme.palette.secondary;
 
@@ -194,9 +202,11 @@ export function HomeSupportingPartnersSection() {
 
   if (!logos.length) return null;
 
+  const heading = resolvePartnersHeading(headingOverride, partnersHeading);
+
   return (
     <PartnersLogoSection
-      heading={partnersHeading}
+      heading={heading}
       logos={logos}
       secondaryColor={secondary.main}
     />
