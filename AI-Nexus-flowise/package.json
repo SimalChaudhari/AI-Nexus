@@ -21,6 +21,7 @@
         "start:prod": "run-script-os",
         "start:prod:windows": "set NODE_ENV=production&& pnpm start",
         "start:prod:default": "NODE_ENV=production pnpm start",
+        "start:ui:prod": "pnpm --filter flowise-ui build && pnpm --filter flowise-ui start:prod",
         "prod": "pnpm build && pnpm start:prod",
         "start-worker": "run-script-os",
         "start-worker:windows": "cd packages/server/bin && run worker",
