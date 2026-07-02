@@ -29,7 +29,6 @@ import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-do
 import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
 import { Upload } from 'src/components/upload';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
-import { LessonVideoCoverageStrip } from 'src/sections/learning/components/lesson-video-coverage-strip';
 import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
 import { isSpotlightrUrl, parseSpotlightrUrl, seekSpotlightrPlayer } from 'src/utils/spotlightr';
 import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
@@ -2563,52 +2562,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     liveSectionProgressMap,
   });
 
-  const handleCoverageStripSeek = useCallback(
-    (seconds) => {
-      if (activeLessonGateBlocked) return;
-      markVideoSeekClampGrace();
-      const t = Math.max(0, Number(seconds) || 0);
-
-      const native = videoRef.current;
-      if (native?.tagName === 'VIDEO') {
-        try {
-          native.currentTime = t;
-          nativeVideoProgressRef.current.lastTime = t;
-        } catch {
-          // ignore seek errors
-        }
-        return;
-      }
-
-      const yt = youtubePlayerRef.current;
-      if (yt && typeof yt.seekTo === 'function') {
-        try {
-          yt.seekTo(t, true);
-          youtubeProgressRef.current.lastTime = t;
-        } catch {
-          // ignore seek errors
-        }
-        return;
-      }
-
-      const container = spotlightrContainerRef.current;
-      const iframeVideoId =
-        container?.querySelector('iframe')?.dataset?.playerid ||
-        activeSpotlightrMeta?.videoId ||
-        spotlightrMeta?.videoId;
-      if (iframeVideoId && container) {
-        seekSpotlightrPlayer(iframeVideoId, t, null, { container });
-        spotlightrProgressRef.current.lastTime = t;
-      }
-    },
-    [
-      activeLessonGateBlocked,
-      markVideoSeekClampGrace,
-      activeSpotlightrMeta?.videoId,
-      spotlightrMeta?.videoId,
-    ]
-  );
-
   const navigationSteps = useMemo(() => {
     const steps = [];
     (modules || []).forEach((module) => {
@@ -3020,33 +2973,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         videoCoverageLessonIdRef
       )
     : null;
-
-  const activeVideoCoverageStrip =
-    hasVideo && activeLesson && activeLessonId && !activeLessonGateBlocked
-      ? (() => {
-          const fallbackDur = lessonFallbackDurationSeconds(activeLesson, liveSectionProgressMap);
-          const duration = Math.max(
-            Number(activeLessonSidebarPlayback?.durationSec || 0),
-            fallbackDur,
-            Number(sectionProgressData?.durationSeconds || 0)
-          );
-          if (duration <= 0) return null;
-
-          const ranges =
-            videoCoverageLessonIdRef.current === activeLessonId
-              ? videoCoverageRangesRef.current
-              : sectionProgressData?.watchedCoverageRanges ||
-                sectionPlayerSnapshotRef.current[activeLessonId]?.watchedCoverageRanges;
-
-          return {
-            durationSeconds: duration,
-            watchedRanges: ranges || [],
-            currentTimeSec: activeLessonSidebarPlayback?.currentSec ?? null,
-            requiredSeconds: effectiveRequiredSeconds(watchtimeSeconds, duration),
-            isComplete: isLessonDoneForUi(activeLesson, liveSectionProgressMap, viewedSectionIds),
-          };
-        })()
-      : null;
 
   const sidebarAccent = theme.palette.primary.main;
   const sidebarMutedBorder = alpha(theme.palette.grey[500], 0.16);
@@ -4612,7 +4538,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               </Stack>
             </Box>
           ) : hasVideo ? (
-            <>
               <LessonVideoPlayer
               key={`video-${activeLessonId || ''}-${embedUrl || ''}-${spotlightrMeta?.videoId || ''}-${spotlightrDirectSrc || ''}-${videoSrc || ''}`}
               embedUrl={!activeLessonGateBlocked ? embedUrl : null}
@@ -4841,17 +4766,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 }
               }}
             />
-              {activeVideoCoverageStrip ? (
-                <LessonVideoCoverageStrip
-                  durationSeconds={activeVideoCoverageStrip.durationSeconds}
-                  watchedRanges={activeVideoCoverageStrip.watchedRanges}
-                  currentTimeSec={activeVideoCoverageStrip.currentTimeSec}
-                  requiredSeconds={activeVideoCoverageStrip.requiredSeconds}
-                  isComplete={activeVideoCoverageStrip.isComplete}
-                  onSeekTo={handleCoverageStripSeek}
-                />
-              ) : null}
-            </>
           ) : hasImages ? (
             <LessonImageViewer
               images={activeLesson.images}
