@@ -85,7 +85,8 @@ export function mountSpotlightrEmbed(container, options = {}) {
   const videoId = String(options?.videoId || '').trim();
   const scriptUrl = String(options?.scriptUrl || '').trim();
   const startSeconds = Number(options?.startSeconds || 0);
-  const useFallback = options?.useFallback !== false;
+  // Advanced embed (spotlightr.js + plain watch URL). Fallback only when no script is loaded.
+  const useFallback = options?.useFallback ?? !scriptUrl;
   if (!watchUrl || !videoId) return null;
 
   while (container.firstChild) container.removeChild(container.firstChild);

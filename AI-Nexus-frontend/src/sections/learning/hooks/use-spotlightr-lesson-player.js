@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 
 import {
-  buildSpotlightrWatchEmbedUrl,
   callSpotlightrApi,
   isAppleMobileDevice,
   isSpotlightrApiAvailable,
@@ -11,6 +10,7 @@ import {
   readSpotlightrPlayerDuration,
   readSpotlightrPlayerTime,
   resolveSpotlightrApiId,
+  seekSpotlightrPlayer,
   spotlightrPlayerIdsMatch,
   waitForSpotlightrPlayer,
 } from 'src/utils/spotlightr';
@@ -26,9 +26,6 @@ const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || '')
   );
-
-/** True when the Spotlightr iframe URL already requests a start offset (`?s=`). */
-const iframeSrcHasStartParam = (iframe) => /[?&]s=\d+/i.test(String(iframe?.src || ''));
 
 /** Mark resume handled without calling setTime (avoids Video.js handleStartTime loops). */
 const markResumeHandled = ({
@@ -101,6 +98,7 @@ export function useSpotlightrLessonPlayer({
   const apiVideoIdRef = useRef(null);
   const listenersBoundSessionRef = useRef('');
   const resumeOnceRef = useRef(false);
+  const resumeViaApiRef = useRef(null);
   const seekRollbackUntilRef = useRef(0);
   const forwardSeekLockOnRef = useRef(false);
   const lastSeekLockApplyAtRef = useRef(0);
@@ -497,30 +495,54 @@ export function useSpotlightrLessonPlayer({
       pollIntervalIdRef.current = setInterval(pollCurrentTime, pollMs);
     };
 
-    /** Reload iframe with `?s=` when resume is needed — never API setTime (Video.js stack overflow). */
-    const reloadIframeForResume = (targetSeconds) => {
-      const iframe = getContainer()?.querySelector('iframe');
-      if (!iframe || iframeSrcHasStartParam(iframe)) return false;
+    /**
+     * Resume via API setTime only — never `?s=` in the embed URL.
+     * Some Spotlightr HLS videos infinite-loop in handleStartTime when `?s=` is set.
+     */
+    const applyApiResumeOnce = (targetSeconds) => {
+      if (resumeOnceRef.current || isLessonPlaybackComplete()) return false;
+      const resumeMeta = resumeSeekAppliedRef.current;
+      const target = Math.max(0, Number(targetSeconds) || 0);
+      if (resumeMeta.sectionId !== activeLessonId || !(target > 2)) return false;
 
       markResumeHandled({
         resumeOnceRef,
-        resumeMeta: resumeSeekAppliedRef.current,
+        resumeMeta,
         activeLessonId,
-        seconds: targetSeconds,
+        seconds: target,
         spotlightrProgressRef,
       });
       cb().markVideoSeekClampGrace(RESUME_GRACE_MS);
-
-      listenersBoundSessionRef.current = '';
-      apiVideoIdRef.current = null;
-      clearPoll();
-
-      iframe.src = buildSpotlightrWatchEmbedUrl(spotlightrMeta.watchUrl, targetSeconds, {
-        useFallback: !isSpotlightrApiAvailable(),
-      });
+      seekRollbackUntilRef.current = Date.now() + SEEK_ROLLBACK_COOLDOWN_MS;
       syncPlayerRef();
+
+      const attemptSeek = (tryNum = 0) => {
+        if (cancelled || playerTeardownRef.current) return;
+        if (tryNum > 12) return;
+
+        readSpotlightrPlayerTime(
+          getApiVideoId(),
+          (current) => {
+            if (cancelled || playerTeardownRef.current) return;
+            const pos = Math.max(0, Number(current) || 0);
+            if (pos >= target - 2) return;
+
+            if (tryNum < 4 && pos < 0.5) {
+              window.setTimeout(() => attemptSeek(tryNum + 1), 350 + tryNum * 150);
+              return;
+            }
+
+            seekSpotlightrPlayer(getApiVideoId(), target, null, { container: getContainer() });
+          },
+          { container: getContainer() }
+        );
+      };
+
+      window.setTimeout(() => attemptSeek(0), 500);
       return true;
     };
+
+    resumeViaApiRef.current = applyApiResumeOnce;
 
     const onVooPlayerReady = (event) => {
       const detailId =
@@ -554,19 +576,7 @@ export function useSpotlightrLessonPlayer({
         resumeMeta.sectionId === activeLessonId &&
         resumeTarget > 2
       ) {
-        const iframe = getContainer()?.querySelector('iframe');
-        if (iframe && iframeSrcHasStartParam(iframe)) {
-          markResumeHandled({
-            resumeOnceRef,
-            resumeMeta,
-            activeLessonId,
-            seconds: resumeTarget,
-            spotlightrProgressRef,
-          });
-          syncPlayerRef();
-        } else if (reloadIframeForResume(resumeTarget)) {
-          return;
-        }
+        applyApiResumeOnce(resumeTarget);
       }
 
       startProgressPoll();
@@ -680,24 +690,15 @@ export function useSpotlightrLessonPlayer({
       const mountWrapper = getContainer();
       if (!mountWrapper) return;
 
-      const resumeAt = getResumeSeconds();
+      // Plain watch URL (no ?fallback=true) — matches direct Spotlightr links; fallback uses broken Video.js on some HLS streams.
       mountSpotlightrEmbed(mountWrapper, {
         watchUrl: spotlightrMeta.watchUrl,
         videoId,
         scriptUrl,
-        startSeconds: resumeAt,
+        startSeconds: 0,
+        useFallback: false,
         title: 'Course video',
       });
-
-      if (resumeAt > 2) {
-        markResumeHandled({
-          resumeOnceRef,
-          resumeMeta: resumeSeekAppliedRef.current,
-          activeLessonId,
-          seconds: resumeAt,
-          spotlightrProgressRef,
-        });
-      }
 
       try {
         await loadSpotlightrScript(scriptUrl);
@@ -737,6 +738,7 @@ export function useSpotlightrLessonPlayer({
 
     return () => {
       cancelled = true;
+      resumeViaApiRef.current = null;
       document.removeEventListener('vooPlayerReady', onVooPlayerReady);
       clearPoll();
     };
@@ -790,30 +792,9 @@ export function useSpotlightrLessonPlayer({
       return undefined;
     }
 
-    const iframe = spotlightrContainerRef.current?.querySelector('iframe');
-    if (!iframe || iframeSrcHasStartParam(iframe)) {
-      return undefined;
-    }
+    if (!isSpotlightrApiAvailable()) return undefined;
 
-    markResumeHandled({
-      resumeOnceRef,
-      resumeMeta,
-      activeLessonId,
-      seconds: resumeSeconds,
-      spotlightrProgressRef,
-    });
-    callbacksRef.current.markVideoSeekClampGrace?.(RESUME_GRACE_MS);
-
-    listenersBoundSessionRef.current = '';
-    apiVideoIdRef.current = null;
-    if (pollIntervalIdRef.current) {
-      clearInterval(pollIntervalIdRef.current);
-      pollIntervalIdRef.current = null;
-    }
-
-    iframe.src = buildSpotlightrWatchEmbedUrl(spotlightrMeta.watchUrl, resumeSeconds, {
-      useFallback: !isSpotlightrApiAvailable(),
-    });
+    resumeViaApiRef.current?.(resumeSeconds);
 
     return undefined;
   }, [
