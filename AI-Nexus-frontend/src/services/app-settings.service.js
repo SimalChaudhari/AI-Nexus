@@ -275,6 +275,7 @@ function transformEmployerContent(source) {
 function transformEmployeeContent(source) {
   if (!source || typeof source !== 'object') return null;
   const rawBenefits = Array.isArray(source.benefits) ? source.benefits : [];
+  const rawLogos = Array.isArray(source.logos) ? source.logos : [];
   return {
     eyebrow: source.eyebrow != null ? String(source.eyebrow) : '',
     heading: source.heading != null ? String(source.heading) : '',
@@ -285,6 +286,10 @@ function transformEmployeeContent(source) {
     heroPanelSubtitle: source.heroPanelSubtitle != null ? String(source.heroPanelSubtitle) : '',
     benefitsLabel: source.benefitsLabel != null ? String(source.benefitsLabel) : '',
     partnersHeading: source.partnersHeading != null ? String(source.partnersHeading) : '',
+    logos: rawLogos.slice(0, 12).map((row) => ({
+      name: row?.name != null ? String(row.name) : '',
+      logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
+    })),
     benefits: rawBenefits.slice(0, 6).map((row) => ({
       icon: row?.icon != null ? String(row.icon) : '',
       iconColor: row?.iconColor != null ? String(row.iconColor) : '',
@@ -876,6 +881,22 @@ export const appSettingsService = {
 
   async removeHomeEmployeeHero() {
     const response = await axios.delete('/app-settings/home-employee-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadHomeEmployeePartnerLogo(index, file) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await axios.post(`/app-settings/home-employee-partner-logo/${index}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeHomeEmployeePartnerLogo(index) {
+    const response = await axios.delete(`/app-settings/home-employee-partner-logo/${index}`);
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

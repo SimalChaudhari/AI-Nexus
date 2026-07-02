@@ -37,7 +37,7 @@ export class PaymentController {
       source === 'membership-verified-signup'
         ? 'membership-verified-signup'
         : 'membership-paid-signup';
-    const baseAmount = membershipSource === 'membership-verified-signup' ? 300 : 900;
+    const baseAmount = membershipSource === 'membership-verified-signup' ? 300 : 365.14;
     const gstAmount = Number((baseAmount * 0.09).toFixed(2));
     const totalAmount = Number((baseAmount + gstAmount).toFixed(2));
 

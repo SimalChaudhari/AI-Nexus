@@ -22,10 +22,7 @@ import { HomeFooter } from 'src/layouts/main/footer';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
 import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles';
-import {
-  HomeSupportingPartnersSection,
-  PARTNERS_WITH_ISCA_HEADING,
-} from 'src/sections/home/home-supporting-partners-section';
+import { HomeSupportingPartnersSection } from 'src/sections/home/home-supporting-partners-section';
 import { FLUID_FONT_SIZES, FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 import {
   PARTNER_BODY_MD_SX,
@@ -1781,7 +1778,7 @@ export function PartnerWithIscaView() {
       <FaqSection section={content.faq} />
       <CtaSection section={content.cta} />
       <HomeSupportingPartnersSection />
-      <HomeSupportingPartnersSection headingOverride={PARTNERS_WITH_ISCA_HEADING} />
+      <HomeSupportingPartnersSection logosSource="employee" />
 
       <HomeFooter sx={{ mt: 0 }} />
     </Box>

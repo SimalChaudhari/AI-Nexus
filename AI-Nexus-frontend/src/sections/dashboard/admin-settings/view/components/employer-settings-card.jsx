@@ -15,6 +15,7 @@ import { Iconify } from 'src/components/iconify';
 import { categoryIcons } from 'src/_mock/_category-icons';
 import { CONFIG } from 'src/config-global';
 import { HERO_TYPOGRAPHY } from 'src/theme/hero-typography';
+import { EMPLOYEE_LOGOS_MAX } from 'src/sections/home/employee-defaults';
 import { EMPLOYER_BENEFITS_MAX, EMPLOYER_LOGOS_MAX } from 'src/sections/home/employer-defaults';
 import { HeroImageCard } from './hero-image-card';
 import { IconPickerDrawer } from './icon-picker-drawer';
@@ -44,10 +45,17 @@ export function EmployerSettingsCard({
   onUploadLogo,
   onRemoveLogo,
   uploadingLogoIndex = null,
+  earlyAdoptersContent,
+  setEarlyAdoptersContent,
+  onUploadEarlyAdopterLogo,
+  onRemoveEarlyAdopterLogo,
+  uploadingEarlyAdopterLogoIndex = null,
 }) {
   const benefits = Array.isArray(content?.benefits) ? content.benefits : [];
   const logos = Array.isArray(content?.logos) ? content.logos : [];
+  const earlyAdoptersLogos = Array.isArray(earlyAdoptersContent?.logos) ? earlyAdoptersContent.logos : [];
   const canAddLogo = logos.length < EMPLOYER_LOGOS_MAX;
+  const canAddEarlyAdopterLogo = earlyAdoptersLogos.length < EMPLOYEE_LOGOS_MAX;
   const displayHeroUrl = resolvePreviewUrl(heroUrl || content?.heroImageUrl);
 
   const [iconToolOpen, setIconToolOpen] = useState(false);
@@ -121,7 +129,7 @@ export function EmployerSettingsCard({
                 Employer section content
               </Typography>
               <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
-                Heading, subtitle, CTA, benefits grid, and partner logos.
+                Heading, subtitle, CTA, benefits grid, company logos, and Early Adopters logos.
               </Typography>
             </Box>
 
@@ -175,7 +183,7 @@ export function EmployerSettingsCard({
               onChange={(e) => setContent((prev) => ({ ...prev, partnersHeading: e.target.value }))}
               fullWidth
               placeholder="Supporting Partners"
-              helperText="Shown above the scrolling partner logos on the home page employee section."
+              helperText="Shown above the company logo row on the home page."
             />
 
             <Stack spacing={1.25}>
@@ -296,6 +304,155 @@ export function EmployerSettingsCard({
                     </Grid>
                   );
                 })}
+              </Grid>
+            </Stack>
+
+            <Divider />
+
+            <TextField
+              label="Early Adopters heading"
+              value={earlyAdoptersContent?.partnersHeading || ''}
+              onChange={(e) =>
+                setEarlyAdoptersContent?.((prev) => ({ ...prev, partnersHeading: e.target.value }))
+              }
+              fullWidth
+              placeholder="Early Adopters"
+              helperText="Shown above the Early Adopters logo row on the home and Partner with ISCA pages."
+            />
+
+            <Stack spacing={1.25}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Stack spacing={0.25}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Early Adopters
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {earlyAdoptersLogos.length} / {EMPLOYEE_LOGOS_MAX}
+                  </Typography>
+                </Stack>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={!canAddEarlyAdopterLogo || submitting || !setEarlyAdoptersContent}
+                  onClick={() =>
+                    setEarlyAdoptersContent?.((prev) => ({
+                      ...prev,
+                      logos: [
+                        ...(Array.isArray(prev?.logos) ? prev.logos : []),
+                        { name: '', logoUrl: '' },
+                      ],
+                    }))
+                  }
+                >
+                  Add logo
+                </Button>
+              </Stack>
+              {earlyAdoptersLogos.length === 0 ? (
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  No Early Adopters logos yet. Click Add logo.
+                </Typography>
+              ) : null}
+              <Grid container spacing={1.25}>
+                {earlyAdoptersLogos.map((row, index) => (
+                  <Grid key={`early-adopter-logo-${index}`} item xs={12} sm={6} md={4} lg={3}>
+                    <Stack
+                      spacing={1}
+                      sx={{
+                        p: 1.2,
+                        borderRadius: 1.5,
+                        border: (theme) => `1px solid ${theme.palette.divider}`,
+                        bgcolor: 'background.neutral',
+                        height: 1,
+                      }}
+                    >
+                      <TextField
+                        size="small"
+                        label={`Logo ${index + 1} name`}
+                        value={row.name || ''}
+                        onChange={(e) =>
+                          setEarlyAdoptersContent?.((prev) => {
+                            const next = Array.isArray(prev?.logos) ? [...prev.logos] : [];
+                            while (next.length <= index) next.push({ name: '', logoUrl: '' });
+                            next[index] = { ...next[index], name: e.target.value };
+                            return { ...prev, logos: next };
+                          })
+                        }
+                      />
+                      <Box
+                        sx={{
+                          height: 44,
+                          borderRadius: 1,
+                          border: (theme) => `1px dashed ${theme.palette.divider}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: 'background.paper',
+                        }}
+                      >
+                        {row.logoUrl ? (
+                          <Box
+                            component="img"
+                            src={resolvePreviewUrl(row.logoUrl)}
+                            alt=""
+                            sx={{ height: 28, maxWidth: '100%', objectFit: 'contain' }}
+                          />
+                        ) : (
+                          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                            No logo
+                          </Typography>
+                        )}
+                      </Box>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          component="label"
+                          disabled={uploadingEarlyAdopterLogoIndex === index}
+                        >
+                          {uploadingEarlyAdopterLogoIndex === index ? 'Uploading...' : 'Upload'}
+                          <input
+                            hidden
+                            type="file"
+                            accept="image/*"
+                            onChange={async (event) => {
+                              const file = event.target.files?.[0];
+                              event.target.value = '';
+                              if (!file) return;
+                              await onUploadEarlyAdopterLogo?.(index, file);
+                            }}
+                          />
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          disabled={
+                            !String(row.logoUrl || '').trim() || uploadingEarlyAdopterLogoIndex === index
+                          }
+                          onClick={() => onRemoveEarlyAdopterLogo?.(index)}
+                        >
+                          Remove
+                        </Button>
+                        <Button
+                          size="small"
+                          color="inherit"
+                          variant="text"
+                          disabled={uploadingEarlyAdopterLogoIndex === index}
+                          onClick={() =>
+                            setEarlyAdoptersContent?.((prev) => ({
+                              ...prev,
+                              logos: (Array.isArray(prev?.logos) ? prev.logos : []).filter(
+                                (_, i) => i !== index
+                              ),
+                            }))
+                          }
+                        >
+                          Delete
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Grid>
+                ))}
               </Grid>
             </Stack>
 

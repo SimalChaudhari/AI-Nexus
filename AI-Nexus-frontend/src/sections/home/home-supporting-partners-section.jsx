@@ -11,7 +11,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { CONFIG } from 'src/config-global';
 import { appSettingsService } from 'src/services/app-settings.service';
 
-import { resolveEmployeeContent } from './employee-defaults';
+import { normalizeEmployeeContent } from './employee-defaults';
 import { normalizeEmployerContent } from './employer-defaults';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
@@ -20,7 +20,7 @@ import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 const SECTION_GREY = '#eceef1';
 const PARTNERS_BG = '#F7F9FA';
 
-export const PARTNERS_WITH_ISCA_HEADING = 'Early Adopter';
+export const PARTNERS_WITH_ISCA_HEADING = 'Early Adopters';
 
 function resolvePartnersHeading(headingOverride, apiHeading) {
   const override = String(headingOverride ?? '').trim();
@@ -159,12 +159,13 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
 
 // ----------------------------------------------------------------------
 
-export function HomeSupportingPartnersSection({ headingOverride } = {}) {
+export function HomeSupportingPartnersSection({ headingOverride, logosSource = 'employer' } = {}) {
   const theme = useTheme();
   const secondary = theme.palette.secondary;
 
   const [partnersHeading, setPartnersHeading] = useState('');
   const [logos, setLogos] = useState([]);
+  const useEmployeeLogos = logosSource === 'employee';
 
   useEffect(() => {
     let active = true;
@@ -172,14 +173,15 @@ export function HomeSupportingPartnersSection({ headingOverride } = {}) {
       .getPublic()
       .then((settings) => {
         if (!active) return;
-        const employeeContent = resolveEmployeeContent(
-          settings?.homeEmployeeContent,
-          settings?.homeEmployerContent
-        );
         const employerContent = normalizeEmployerContent(settings?.homeEmployerContent);
-        const rawLogos = Array.isArray(employerContent.logos) ? employerContent.logos : [];
+        const normalizedEmployee = normalizeEmployeeContent(settings?.homeEmployeeContent);
+        const rawLogos = useEmployeeLogos ? normalizedEmployee.logos : employerContent.logos;
 
-        setPartnersHeading(String(employeeContent.partnersHeading || '').trim());
+        setPartnersHeading(
+          useEmployeeLogos
+            ? String(normalizedEmployee.partnersHeading || PARTNERS_WITH_ISCA_HEADING).trim()
+            : String(employerContent.partnersHeading || '').trim()
+        );
         setLogos(
           rawLogos
             .map((row) => ({
@@ -198,7 +200,7 @@ export function HomeSupportingPartnersSection({ headingOverride } = {}) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [useEmployeeLogos]);
 
   if (!logos.length) return null;
 

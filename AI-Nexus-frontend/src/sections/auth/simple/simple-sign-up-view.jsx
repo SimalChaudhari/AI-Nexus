@@ -149,7 +149,7 @@ export function SimpleSignUpView() {
     if (!normalized) return '(none)';
     return normalized.length > keep ? `${normalized.slice(0, keep)}...` : normalized;
   };
-  const membershipBaseAmount = isVerifiedNricSignupFlow ? 300 : 900;
+  const membershipBaseAmount = isVerifiedNricSignupFlow ? 300 : 365.14;
   const gstRate = 0.09;
   const gstAmount = membershipBaseAmount * gstRate;
   const totalAmount = membershipBaseAmount + gstAmount;
@@ -163,7 +163,7 @@ export function SimpleSignUpView() {
   const buildPaymentCompleteSignInHref = () => paths.auth.oauth.start;
   const membershipInfoText = isVerifiedNricSignupFlow
     ? 'Verified document membership rate applied. Base fee is SGD 300 (excluding GST).'
-    : 'Membership paid plan selected. Base fee is SGD 900 (excluding GST).';
+    : 'Membership paid plan selected. Base fee is SGD 365.14 (excluding GST).';
   const membershipSource = isVerifiedNricSignupFlow ? 'membership-verified-signup' : 'membership-paid-signup';
   const membershipBadgeLabel = isVerifiedNricSignupFlow ? 'Discount applied' : 'GST included';
   const isPaymentReturnProcessing = paymentConfirming;
@@ -1255,7 +1255,7 @@ export function SimpleSignUpView() {
       {scaqSsoPrefillNotice && (
         <Alert severity="info" sx={{ borderRadius: 1.5 }}>
           You signed in with Salesforce, but you are not registered as an SCAQ candidate. Your name and email are
-          pre-filled below. Complete paid signup (SGD 900 excluding GST) to continue.
+          pre-filled below. Complete paid signup (SGD 365.14 excluding GST) to continue.
         </Alert>
       )}
       <Box

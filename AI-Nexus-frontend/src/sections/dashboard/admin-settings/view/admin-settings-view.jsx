@@ -68,6 +68,7 @@ import {
   resolveEmployerContent,
   normalizeEmployerContent,
 } from 'src/sections/home/employer-defaults';
+import { normalizeEmployeeContent } from 'src/sections/home/employee-defaults';
 import { normalizePartnerWithIscaContent } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
 import { normalizeFooterContent } from 'src/layouts/main/footer-defaults';
 import {
@@ -240,6 +241,7 @@ export function AdminSettingsView() {
   );
   const [testimonialsContentSubmitting, setTestimonialsContentSubmitting] = useState(false);
   const [employerContent, setEmployerContent] = useState(() => normalizeEmployerContent(null));
+  const [employeeContent, setEmployeeContent] = useState(() => normalizeEmployeeContent(null));
   const [programmeStructureContent, setProgrammeStructureContent] = useState(() =>
     resolveProgrammeStructureContent(null)
   );
@@ -271,6 +273,7 @@ export function AdminSettingsView() {
   const [employerHeroFile, setEmployerHeroFile] = useState(null);
   const [employerHeroSubmitting, setEmployerHeroSubmitting] = useState(false);
   const [employerLogoUploadingIndex, setEmployerLogoUploadingIndex] = useState(null);
+  const [earlyAdopterLogoUploadingIndex, setEarlyAdopterLogoUploadingIndex] = useState(null);
   const [partnerWithIscaContent, setPartnerWithIscaContent] = useState(() =>
     normalizePartnerWithIscaContent(null)
   );
@@ -567,6 +570,7 @@ export function AdminSettingsView() {
       );
       setCeoLaunchContent(resolveCeoLaunchContent(appSettings.homeCeoLaunchContent));
       setEmployerContent(resolveEmployerContent(appSettings.homeEmployerContent));
+      setEmployeeContent(normalizeEmployeeContent(appSettings.homeEmployeeContent));
       setPartnerWithIscaContent(
         normalizePartnerWithIscaContent(appSettings.partnerWithIscaContent)
       );
@@ -1594,8 +1598,12 @@ export function AdminSettingsView() {
   const handleSaveEmployerContent = async () => {
     try {
       setEmployerContentSubmitting(true);
-      const updated = await appSettingsService.updateHomeEmployerContent(employerContent);
-      setEmployerContent(resolveEmployerContent(updated?.homeEmployerContent));
+      const [employerUpdated, employeeUpdated] = await Promise.all([
+        appSettingsService.updateHomeEmployerContent(employerContent),
+        appSettingsService.updateHomeEmployeeContent(employeeContent),
+      ]);
+      setEmployerContent(resolveEmployerContent(employerUpdated?.homeEmployerContent));
+      setEmployeeContent(normalizeEmployeeContent(employeeUpdated?.homeEmployeeContent));
       toast.success('Employer section updated');
     } catch (error) {
       toast.error(error?.message || 'Failed to update employer section');
@@ -1685,6 +1693,38 @@ export function AdminSettingsView() {
       toast.error(error?.message || 'Failed to remove employer logo');
     } finally {
       setEmployerLogoUploadingIndex(null);
+    }
+  };
+
+  const handleUploadEarlyAdopterLogo = async (index, file) => {
+    if (!file) return;
+    try {
+      setEarlyAdopterLogoUploadingIndex(index);
+      const updated = await appSettingsService.uploadHomeEmployeePartnerLogo(index, file);
+      setEmployeeContent(normalizeEmployeeContent(updated?.homeEmployeeContent));
+      toast.success('Early Adopters logo uploaded');
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 413) {
+        toast.error('Logo file is too large. Try a smaller image (under 500 KB).');
+      } else {
+        toast.error(error?.message || 'Failed to upload Early Adopters logo');
+      }
+    } finally {
+      setEarlyAdopterLogoUploadingIndex(null);
+    }
+  };
+
+  const handleRemoveEarlyAdopterLogo = async (index) => {
+    try {
+      setEarlyAdopterLogoUploadingIndex(index);
+      const updated = await appSettingsService.removeHomeEmployeePartnerLogo(index);
+      setEmployeeContent(normalizeEmployeeContent(updated?.homeEmployeeContent));
+      toast.success('Early Adopters logo removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove Early Adopters logo');
+    } finally {
+      setEarlyAdopterLogoUploadingIndex(null);
     }
   };
 
@@ -2523,6 +2563,11 @@ export function AdminSettingsView() {
       onUploadLogo={handleUploadEmployerLogo}
       onRemoveLogo={handleRemoveEmployerLogo}
       uploadingLogoIndex={employerLogoUploadingIndex}
+      earlyAdoptersContent={employeeContent}
+      setEarlyAdoptersContent={setEmployeeContent}
+      onUploadEarlyAdopterLogo={handleUploadEarlyAdopterLogo}
+      onRemoveEarlyAdopterLogo={handleRemoveEarlyAdopterLogo}
+      uploadingEarlyAdopterLogoIndex={earlyAdopterLogoUploadingIndex}
     />
   );
 
