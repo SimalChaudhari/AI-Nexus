@@ -759,14 +759,14 @@ function getNoYesNoQuestionnaireProgressMeta(step, state) {
 }
 
 function resolveNricVerifiedPostVerifyStep(state) {
+  if (state.salesforceExistingAccountFound) {
+    return 'result';
+  }
   if (state.accountingDeclarationAnswered === null) {
     return 'accounting-declaration';
   }
   if (state.accountingDeclarationAnswered === true && !state.accountingVerificationCompleted) {
     return 'accounting-verification';
-  }
-  if (state.salesforceExistingAccountFound) {
-    return 'result';
   }
   if (shouldUseNricVerifiedSalesforceUpdateStep(state)) {
     return 'salesforce-nexus-user-update';
