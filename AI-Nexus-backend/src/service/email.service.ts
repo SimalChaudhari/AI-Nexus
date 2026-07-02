@@ -161,7 +161,7 @@ export class EmailService {
         });
 
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: this.fromEmail,
             to: hrEmail,
             subject: 'ISCA AI Fluency Programme – Job function verification',
             text: `Dear HR of ${learnerName},\n\n${learnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.\n\nAs part of IMDA's and audit purposes, we will need your assistance to verify that ${learnerName} is currently working in an accounting and finance related job role. Please open the verification link in this email to complete the verification.\n\n${verificationUrl}`,

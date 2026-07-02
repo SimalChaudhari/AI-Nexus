@@ -3958,8 +3958,11 @@ export function MembershipSignupDialog({
             .filter(Boolean)
             .join(' ') || flowState.verifiedNricNameAsPerId || '',
       });
-    } catch {
-      // fire-and-forget — errors do not block access
+    } catch (error) {
+      setAccountingVerifError(
+        error?.message || 'Could not send employer verification email. Please try again.'
+      );
+      return;
     } finally {
       setAccountingVerifSubmitting(false);
     }
