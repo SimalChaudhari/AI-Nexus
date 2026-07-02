@@ -33,8 +33,14 @@ import {
   mapSubmissionEvaluationFields,
   isSubmissionPassedLocked,
   type AssignmentSubmissionAttemptRecord,
-    type AssignmentVerificationLogEntry,
+  type AssignmentVerificationLogEntry,
 } from './course-assignment-submission-evaluation.types';
+import {
+  AssignmentSubmissionFileRecord,
+  getSubmissionFilesFromEntity,
+  isLearnerZipFile,
+  summarizeSubmissionFiles,
+} from './course-assignment-file.types';
 
 function normalizeTrueFalse(value: string): 'true' | 'false' {
   const v = String(value).trim().toLowerCase();
@@ -90,8 +96,10 @@ export type CourseQuestionAssignmentSubmissionRow = {
   questionPrompt: string;
   moduleId: string | null;
   moduleTitle: string | null;
-  fileUrl: string;
-  originalFileName: string;
+  fileUrl: string | null;
+  originalFileName: string | null;
+  submissionFiles: AssignmentSubmissionFileRecord[];
+  submittedAt: Date | null;
   uploadedAt: Date;
   evaluationStatus: string;
   aiScore: number | null;
@@ -206,7 +214,39 @@ export class CourseQuestionBankService {
       assignedUserIds: _u,
       ...rest
     } = row;
+    if (!rest.guideFileUrl && rest.referenceFileUrl) {
+      rest.guideFileUrl = rest.referenceFileUrl;
+      rest.guideFileName = rest.referenceFileName ?? null;
+    }
     return rest;
+  }
+
+  private mapMySubmissionForLearner(
+    sub: CourseQuestionAssignmentSubmissionEntity,
+  ): Record<string, unknown> {
+    const files = getSubmissionFilesFromEntity(sub);
+    const evaluation = mapSubmissionEvaluationFields(sub);
+    const first = files[0];
+    return {
+      id: sub.id,
+      fileUrl: first?.fileUrl ?? sub.fileUrl ?? null,
+      originalFileName:
+        summarizeSubmissionFiles(files) || sub.originalFileName || null,
+      submissionFiles: files,
+      uploadedAt: sub.uploadedAt,
+      submittedAt: sub.submittedAt ?? null,
+      evaluationStatus: evaluation.evaluationStatus,
+      aiScore: evaluation.aiScore,
+      aiPassed: evaluation.aiPassed,
+      aiFeedback: evaluation.aiFeedback,
+      aiRawResult: evaluation.aiRawResult,
+      aiEvaluatedAt: evaluation.aiEvaluatedAt,
+      manualPassed: evaluation.manualPassed,
+      manualFeedback: evaluation.manualFeedback,
+      passed: evaluation.passed,
+      passedSource: evaluation.passedSource,
+      attemptCount: sub.attemptCount || 1,
+    };
   }
 
   async findByCourseId(
@@ -245,23 +285,15 @@ export class CourseQuestionBankService {
 
     return visibleRows.map((r) => {
       const publicRow = this.toPublicRow(r) as CourseQuestionBankPublic & {
-        mySubmission?: {
-          id: string;
-          fileUrl: string;
-          originalFileName: string;
-          uploadedAt: Date;
-        } | null;
+        mySubmission?: Record<string, unknown> | null;
       };
+      if (!includeAnswers && r.questionType === CourseQuestionType.Assignment) {
+        delete (publicRow as Record<string, unknown>).answerSheetFileUrl;
+        delete (publicRow as Record<string, unknown>).answerSheetFileName;
+      }
       if (r.questionType === CourseQuestionType.Assignment) {
         const sub = submissionByQuestionId.get(r.id);
-        publicRow.mySubmission = sub
-          ? {
-              id: sub.id,
-              fileUrl: sub.fileUrl,
-              originalFileName: sub.originalFileName,
-              uploadedAt: sub.uploadedAt,
-            }
-          : null;
+        publicRow.mySubmission = sub ? this.mapMySubmissionForLearner(sub) : null;
       }
       return publicRow;
     });
@@ -312,8 +344,15 @@ export class CourseQuestionBankService {
         questionType === CourseQuestionType.Assignment
           ? this.normalizeAssignedUserIds(dto.assignedUserIds)
           : null,
-      referenceFileUrl: questionType === CourseQuestionType.Assignment ? (dto as any).referenceFileUrl ?? null : null,
-      referenceFileName: questionType === CourseQuestionType.Assignment ? (dto as any).referenceFileName ?? null : null,
+      referenceFileUrl: questionType === CourseQuestionType.Assignment ? dto.referenceFileUrl ?? null : null,
+      referenceFileName: questionType === CourseQuestionType.Assignment ? dto.referenceFileName ?? null : null,
+      questionFileUrl: questionType === CourseQuestionType.Assignment ? dto.questionFileUrl ?? null : null,
+      questionFileName: questionType === CourseQuestionType.Assignment ? dto.questionFileName ?? null : null,
+      answerSheetFileUrl: questionType === CourseQuestionType.Assignment ? dto.answerSheetFileUrl ?? null : null,
+      answerSheetFileName: questionType === CourseQuestionType.Assignment ? dto.answerSheetFileName ?? null : null,
+      guideFileUrl: questionType === CourseQuestionType.Assignment ? dto.guideFileUrl ?? null : null,
+      guideFileName: questionType === CourseQuestionType.Assignment ? dto.guideFileName ?? null : null,
+      passingPercentage: questionType === CourseQuestionType.Assignment ? dto.passingPercentage ?? null : null,
       sortOrder,
     });
     return this.repo.save(entity);
@@ -370,6 +409,13 @@ export class CourseQuestionBankService {
     if (dto.explanation !== undefined) row.explanation = dto.explanation ?? null;
     if (dto.referenceFileUrl !== undefined) row.referenceFileUrl = dto.referenceFileUrl ?? null;
     if (dto.referenceFileName !== undefined) row.referenceFileName = dto.referenceFileName ?? null;
+    if (dto.questionFileUrl !== undefined) row.questionFileUrl = dto.questionFileUrl ?? null;
+    if (dto.questionFileName !== undefined) row.questionFileName = dto.questionFileName ?? null;
+    if (dto.answerSheetFileUrl !== undefined) row.answerSheetFileUrl = dto.answerSheetFileUrl ?? null;
+    if (dto.answerSheetFileName !== undefined) row.answerSheetFileName = dto.answerSheetFileName ?? null;
+    if (dto.guideFileUrl !== undefined) row.guideFileUrl = dto.guideFileUrl ?? null;
+    if (dto.guideFileName !== undefined) row.guideFileName = dto.guideFileName ?? null;
+    if (dto.passingPercentage !== undefined) row.passingPercentage = dto.passingPercentage ?? null;
     if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
     if (dto.assignedUserIds !== undefined) {
       row.assignedUserIds =
@@ -675,28 +721,95 @@ export class CourseQuestionBankService {
     };
   }
 
-  async uploadAssignmentSubmission(
-    userId: string,
+  async uploadAssessmentAdminFile(
     courseId: string,
     questionId: string,
     file: Express.Multer.File,
+    field: 'question' | 'answerSheet' | 'guide',
     saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
-  ): Promise<CourseQuestionAssignmentSubmissionEntity> {
+  ): Promise<CourseQuestionBankEntity> {
     await this.courseService.getById(courseId);
     const question = await this.repo.findOne({ where: { id: questionId, courseId } });
     if (!question) throw new NotFoundException('Question not found');
     if (question.questionType !== CourseQuestionType.Assignment) {
-      throw new BadRequestException('This question is not an assignment');
+      throw new BadRequestException('This question is not an assessment');
+    }
+    if (!file) throw new BadRequestException('File is required');
+
+    const fileUrl = await saveFile(file, 'course-assignment-references');
+    const originalFileName = String(file.originalname || 'file').trim();
+
+    if (field === 'question') {
+      question.questionFileUrl = fileUrl;
+      question.questionFileName = originalFileName;
+    } else if (field === 'answerSheet') {
+      question.answerSheetFileUrl = fileUrl;
+      question.answerSheetFileName = originalFileName;
+    } else {
+      question.guideFileUrl = fileUrl;
+      question.guideFileName = originalFileName;
+    }
+    return this.repo.save(question);
+  }
+
+  private async assertAssignmentAccess(
+    userId: string,
+    courseId: string,
+    questionId: string,
+  ): Promise<CourseQuestionBankEntity> {
+    await this.courseService.getById(courseId);
+    const question = await this.repo.findOne({ where: { id: questionId, courseId } });
+    if (!question) throw new NotFoundException('Question not found');
+    if (question.questionType !== CourseQuestionType.Assignment) {
+      throw new BadRequestException('This question is not an assessment');
     }
     if (!this.isAssignmentVisibleToUser(question, userId)) {
-      throw new ForbiddenException('This assignment is not assigned to you');
+      throw new ForbiddenException('This assessment is not assigned to you');
     }
-    if (!file) {
-      throw new BadRequestException('File is required');
+    return question;
+  }
+
+  private resetSubmissionEvaluation(row: CourseQuestionAssignmentSubmissionEntity) {
+    row.evaluationStatus = 'draft';
+    row.aiScore = null;
+    row.aiPassed = null;
+    row.aiFeedback = null;
+    row.aiRawResult = null;
+    row.aiEvaluatedAt = null;
+    row.manualPassed = null;
+    row.manualFeedback = null;
+    row.manualVerifiedAt = null;
+    row.manualVerifiedBy = null;
+    row.submittedAt = null;
+  }
+
+  async uploadAssignmentSubmissionFiles(
+    userId: string,
+    courseId: string,
+    questionId: string,
+    files: Express.Multer.File[],
+    saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
+  ): Promise<CourseQuestionAssignmentSubmissionEntity> {
+    await this.assertAssignmentAccess(userId, courseId, questionId);
+    if (!files?.length) {
+      throw new BadRequestException('At least one file is required');
     }
 
-    const fileUrl = await saveFile(file, 'course-assignment-submissions');
-    const originalFileName = String(file.originalname || 'submission').trim();
+    const savedFiles: AssignmentSubmissionFileRecord[] = [];
+    for (const file of files) {
+      const originalFileName = String(file.originalname || 'submission').trim();
+      if (isLearnerZipFile(originalFileName, file.mimetype)) {
+        throw new BadRequestException(
+          'ZIP files are not allowed. Upload individual files (PDF, images, Excel, etc.).',
+        );
+      }
+      const fileUrl = await saveFile(file, 'course-assignment-submissions');
+      savedFiles.push({
+        fileUrl,
+        originalFileName,
+        mimeType: file.mimetype || null,
+      });
+    }
 
     const existing = await this.assignmentSubmissionRepo.findOne({
       where: { questionId, userId },
@@ -704,49 +817,127 @@ export class CourseQuestionBankService {
 
     if (existing && isSubmissionPassedLocked(existing)) {
       throw new BadRequestException(
-        'This assessment is already passed. You cannot replace the submitted file.',
+        'This assessment is already passed. You cannot replace your submission.',
       );
     }
 
-    const resetEvaluation = (row: CourseQuestionAssignmentSubmissionEntity) => {
-      row.evaluationStatus = 'pending';
-      row.aiScore = null;
-      row.aiPassed = null;
-      row.aiFeedback = null;
-      row.aiRawResult = null;
-      row.aiEvaluatedAt = null;
-      row.manualPassed = null;
-      row.manualFeedback = null;
-      row.manualVerifiedAt = null;
-      row.manualVerifiedBy = null;
-    };
+    const canAppendDraft =
+      existing &&
+      (existing.evaluationStatus === 'draft' ||
+        (!existing.submittedAt && existing.evaluationStatus === 'pending'));
 
     let saved: CourseQuestionAssignmentSubmissionEntity;
     if (existing) {
-      const previousAttemptNumber = existing.attemptCount || 1;
-      const historyEntry = buildSubmissionAttemptRecord(existing, previousAttemptNumber);
-      existing.attemptHistory = [...(existing.attemptHistory || []), historyEntry];
-      existing.attemptCount = previousAttemptNumber + 1;
-      existing.fileUrl = fileUrl;
-      existing.originalFileName = originalFileName;
-      resetEvaluation(existing);
+      const isResubmit =
+        existing.submittedAt &&
+        existing.evaluationStatus !== 'draft' &&
+        !isSubmissionPassedLocked(existing);
+
+      if (isResubmit) {
+        const previousAttemptNumber = existing.attemptCount || 1;
+        const historyEntry = buildSubmissionAttemptRecord(existing, previousAttemptNumber);
+        existing.attemptHistory = [...(existing.attemptHistory || []), historyEntry];
+        existing.attemptCount = previousAttemptNumber + 1;
+        existing.submissionFiles = savedFiles;
+        existing.fileUrl = savedFiles[0]?.fileUrl ?? null;
+        existing.originalFileName = summarizeSubmissionFiles(savedFiles) || null;
+        this.resetSubmissionEvaluation(existing);
+      } else if (canAppendDraft) {
+        const merged = [
+          ...getSubmissionFilesFromEntity(existing),
+          ...savedFiles.filter(
+            (f) =>
+              !getSubmissionFilesFromEntity(existing).some(
+                (e) => e.originalFileName === f.originalFileName,
+              ),
+          ),
+        ];
+        existing.submissionFiles = merged;
+        existing.fileUrl = merged[0]?.fileUrl ?? null;
+        existing.originalFileName = summarizeSubmissionFiles(merged) || null;
+        existing.evaluationStatus = 'draft';
+      } else {
+        existing.submissionFiles = savedFiles;
+        existing.fileUrl = savedFiles[0]?.fileUrl ?? null;
+        existing.originalFileName = summarizeSubmissionFiles(savedFiles) || null;
+        this.resetSubmissionEvaluation(existing);
+      }
       saved = await this.assignmentSubmissionRepo.save(existing);
     } else {
       const row = this.assignmentSubmissionRepo.create({
         questionId,
         courseId,
         userId,
-        fileUrl,
-        originalFileName,
-        evaluationStatus: 'pending',
+        fileUrl: savedFiles[0]?.fileUrl ?? null,
+        originalFileName: summarizeSubmissionFiles(savedFiles) || null,
+        submissionFiles: savedFiles,
+        evaluationStatus: 'draft',
         attemptCount: 1,
         attemptHistory: [],
       });
       saved = await this.assignmentSubmissionRepo.save(row);
     }
 
+    return saved;
+  }
+
+  async submitAssignmentSubmission(
+    userId: string,
+    courseId: string,
+    questionId: string,
+  ): Promise<CourseQuestionAssignmentSubmissionEntity> {
+    await this.assertAssignmentAccess(userId, courseId, questionId);
+
+    const existing = await this.assignmentSubmissionRepo.findOne({
+      where: { questionId, userId },
+    });
+    if (!existing) {
+      throw new BadRequestException('Upload your submission files before submitting.');
+    }
+    if (isSubmissionPassedLocked(existing)) {
+      throw new BadRequestException('This assessment is already passed.');
+    }
+
+    const files = getSubmissionFilesFromEntity(existing);
+    if (!files.length) {
+      throw new BadRequestException('Upload at least one file before submitting.');
+    }
+
+    if (
+      existing.evaluationStatus === 'pending' ||
+      existing.evaluationStatus === 'processing'
+    ) {
+      throw new BadRequestException('Your submission is already being graded.');
+    }
+
+    existing.submittedAt = new Date();
+    existing.evaluationStatus = 'pending';
+    existing.fileUrl = files[0]?.fileUrl ?? existing.fileUrl ?? null;
+    existing.originalFileName =
+      summarizeSubmissionFiles(files) || existing.originalFileName || null;
+    existing.submissionFiles = files;
+    const saved = await this.assignmentSubmissionRepo.save(existing);
+
     this.assignmentGradingService.queueGrading(saved.id);
     return saved;
+  }
+
+  /** @deprecated Use uploadAssignmentSubmissionFiles — kept for backward compatibility */
+  async uploadAssignmentSubmission(
+    userId: string,
+    courseId: string,
+    questionId: string,
+    file: Express.Multer.File,
+    saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
+  ): Promise<CourseQuestionAssignmentSubmissionEntity> {
+    const saved = await this.uploadAssignmentSubmissionFiles(
+      userId,
+      courseId,
+      questionId,
+      [file],
+      saveFile,
+    );
+    return this.submitAssignmentSubmission(userId, courseId, questionId).catch(() => saved);
   }
 
   async manualVerifyAssignmentSubmission(
@@ -814,6 +1005,8 @@ export class CourseQuestionBankService {
     const last = String(u?.lastname || '').trim();
     const full = `${first} ${last}`.trim();
     const evaluation = mapSubmissionEvaluationFields(s);
+    const files = getSubmissionFilesFromEntity(s);
+    const primary = files[0];
     return {
       id: s.id,
       questionId: s.questionId,
@@ -824,8 +1017,11 @@ export class CourseQuestionBankService {
       questionPrompt: q?.prompt || '',
       moduleId: q?.moduleId ?? null,
       moduleTitle: mod?.title ?? null,
-      fileUrl: s.fileUrl,
-      originalFileName: s.originalFileName,
+      fileUrl: primary?.fileUrl ?? s.fileUrl ?? null,
+      originalFileName:
+        summarizeSubmissionFiles(files) || s.originalFileName || null,
+      submissionFiles: files,
+      submittedAt: s.submittedAt ?? null,
       uploadedAt: s.uploadedAt,
       evaluationStatus: evaluation.evaluationStatus,
       aiScore: evaluation.aiScore,
@@ -881,10 +1077,12 @@ export class CourseQuestionBankService {
       );
     }
 
-    const fileUrl = existing.fileUrl;
+    const fileUrls = getSubmissionFilesFromEntity(existing).map((f) => f.fileUrl);
     await this.assignmentSubmissionRepo.remove(existing);
-    if (deleteFile && fileUrl) {
-      await deleteFile(fileUrl).catch(() => undefined);
+    if (deleteFile) {
+      for (const fileUrl of fileUrls) {
+        if (fileUrl) await deleteFile(fileUrl).catch(() => undefined);
+      }
     }
 
     return { message: 'Assignment submission deleted successfully' };

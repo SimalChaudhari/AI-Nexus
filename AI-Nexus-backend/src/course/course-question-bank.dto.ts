@@ -63,6 +63,43 @@ export class CreateCourseQuestionBankDto {
   @IsString()
   referenceFileName?: string;
 
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  questionFileUrl?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  questionFileName?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  answerSheetFileUrl?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  answerSheetFileName?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  guideFileUrl?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsString()
+  guideFileName?: string;
+
+  @ValidateIf((o) => o.questionType === CourseQuestionType.Assignment)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  passingPercentage?: number;
+
   @IsOptional()
   @IsString()
   explanation?: string;
@@ -115,6 +152,36 @@ export class UpdateCourseQuestionBankDto {
   @IsOptional()
   @IsString()
   referenceFileName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  questionFileUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  questionFileName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  answerSheetFileUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  answerSheetFileName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  guideFileUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  guideFileName?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  passingPercentage?: number | null;
 
   @IsOptional()
   @IsString()

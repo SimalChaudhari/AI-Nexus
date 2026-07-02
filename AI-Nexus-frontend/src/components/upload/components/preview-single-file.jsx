@@ -8,10 +8,37 @@ import { resolveAssetUrl } from 'src/utils/asset-url';
 
 // ----------------------------------------------------------------------
 
-export function SingleFilePreview({ file, objectFit = 'contain', showViewButton = false }) {
-  const fileName = typeof file === 'string' ? file : file.name;
+function getPreviewFileName(file) {
+  if (file && typeof file === 'object' && !(file instanceof Blob) && file.name) {
+    return String(file.name);
+  }
+  if (typeof file === 'string') {
+    const path = file.split('?')[0];
+    return decodeURIComponent(path.split('/').pop() || 'File');
+  }
+  return file?.name || 'File';
+}
 
-  const previewUrl = typeof file === 'string' ? resolveAssetUrl(file) : URL.createObjectURL(file);
+function getPreviewUrl(file) {
+  if (file && typeof file === 'object' && !(file instanceof Blob) && file.url) {
+    return resolveAssetUrl(String(file.url));
+  }
+  if (typeof file === 'string') return resolveAssetUrl(file);
+  if (file instanceof Blob) return URL.createObjectURL(file);
+  return null;
+}
+
+export function SingleFilePreview({ file, objectFit = 'contain', showViewButton = false }) {
+  const fileName = getPreviewFileName(file);
+  const previewUrl = getPreviewUrl(file);
+  const isImagePreview =
+    (file && typeof file === 'object' && !(file instanceof Blob) && file.url
+      ? /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(file.url))
+      : typeof file === 'string'
+        ? /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(file)
+        : String(file?.type || '').startsWith('image/'));
+
+  if (!previewUrl) return null;
 
   return (
     <Box
@@ -24,17 +51,41 @@ export function SingleFilePreview({ file, objectFit = 'contain', showViewButton 
         position: 'absolute',
       }}
     >
-      <Box
-        component="img"
-        alt={fileName}
-        src={previewUrl}
-        sx={{
-          width: 1,
-          height: 1,
-          borderRadius: 1,
-          objectFit,
-        }}
-      />
+      {isImagePreview ? (
+        <Box
+          component="img"
+          alt={fileName}
+          src={previewUrl}
+          sx={{
+            width: 1,
+            height: 1,
+            borderRadius: 1,
+            objectFit,
+          }}
+        />
+      ) : (
+        <Box
+          sx={{
+            width: 1,
+            height: 1,
+            borderRadius: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: 1,
+            bgcolor: (theme) => theme.vars.palette.background.neutral,
+            color: 'text.secondary',
+            px: 2,
+            textAlign: 'center',
+          }}
+        >
+          <Iconify icon="solar:document-bold" width={40} />
+          <Box component="span" sx={{ typography: 'caption', fontWeight: 600, wordBreak: 'break-word' }}>
+            {fileName}
+          </Box>
+        </Box>
+      )}
 
       {showViewButton && (
         <IconButton

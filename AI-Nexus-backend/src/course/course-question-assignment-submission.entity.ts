@@ -10,6 +10,7 @@ import {
   AssignmentEvaluationStatus,
   AssignmentSubmissionAttemptRecord,
 } from './course-assignment-submission-evaluation.types';
+import { AssignmentSubmissionFileRecord } from './course-assignment-file.types';
 
 @Entity('course_question_assignment_submissions')
 export class CourseQuestionAssignmentSubmissionEntity {
@@ -25,11 +26,17 @@ export class CourseQuestionAssignmentSubmissionEntity {
   @Column({ type: 'uuid' })
   userId!: string;
 
-  @Column({ type: 'text' })
-  fileUrl!: string;
+  @Column({ type: 'text', nullable: true })
+  fileUrl?: string | null;
 
-  @Column({ type: 'text' })
-  originalFileName!: string;
+  @Column({ type: 'text', nullable: true })
+  originalFileName?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  submissionFiles?: AssignmentSubmissionFileRecord[] | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  submittedAt?: Date | null;
 
   @Column({ type: 'varchar', length: 32, default: 'pending' })
   evaluationStatus!: AssignmentEvaluationStatus;

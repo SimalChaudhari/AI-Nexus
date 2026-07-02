@@ -1103,10 +1103,11 @@ export const courseService = {
     }
   },
 
-  async uploadAssignmentSubmission(courseId, questionId, file) {
+  async uploadAssignmentSubmission(courseId, questionId, files) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      const list = Array.isArray(files) ? files : [files];
+      list.filter(Boolean).forEach((file) => formData.append('files', file));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/upload`,
         formData,
@@ -1115,6 +1116,18 @@ export const courseService = {
       return response.data?.data ?? response.data;
     } catch (error) {
       console.error('Error uploading assignment:', error);
+      throw error;
+    }
+  },
+
+  async submitAssignmentSubmission(courseId, questionId) {
+    try {
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/submit`
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error submitting assignment:', error);
       throw error;
     }
   },
@@ -1185,14 +1198,50 @@ export const courseService = {
       const formData = new FormData();
       formData.append('file', file);
       const response = await axios.post(
-        `/courses/${courseId}/question-bank/${questionId}/assignment/reference/upload`,
+        `/courses/${courseId}/question-bank/${questionId}/assignment/guide/upload`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
       return response.data?.data ?? response.data;
     } catch (error) {
-      console.error('Error uploading assignment reference file:', error);
+      console.error('Error uploading assignment guide file:', error);
       throw error;
     }
+  },
+
+  async uploadAssessmentQuestionFile(courseId, questionId, file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/question/upload`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error uploading assessment question file:', error);
+      throw error;
+    }
+  },
+
+  async uploadAssessmentAnswerSheetFile(courseId, questionId, file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/answer-sheet/upload`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error uploading assessment answer sheet:', error);
+      throw error;
+    }
+  },
+
+  async uploadAssessmentGuideFile(courseId, questionId, file) {
+    return this.uploadAssignmentReferenceFile(courseId, questionId, file);
   },
 };

@@ -1,4 +1,11 @@
+import {
+  AssignmentSubmissionFileRecord,
+  getSubmissionFilesFromEntity,
+  summarizeSubmissionFiles,
+} from './course-assignment-file.types';
+
 export type AssignmentEvaluationStatus =
+  | 'draft'
   | 'pending'
   | 'processing'
   | 'completed'
@@ -6,7 +13,11 @@ export type AssignmentEvaluationStatus =
   | 'failed';
 
 /** Minimum AI score (0–100) required to pass. Override with ASSIGNMENT_PASS_SCORE_THRESHOLD in .env */
-export function getAssignmentPassScoreThreshold(): number {
+export function getAssignmentPassScoreThreshold(assessmentPassingPercentage?: number | null): number {
+  const perAssessment = Number(assessmentPassingPercentage);
+  if (Number.isFinite(perAssessment) && perAssessment >= 0 && perAssessment <= 100) {
+    return Math.round(perAssessment);
+  }
   const raw = Number(process.env.ASSIGNMENT_PASS_SCORE_THRESHOLD);
   if (Number.isFinite(raw) && raw >= 0 && raw <= 100) {
     return Math.round(raw);
@@ -14,9 +25,12 @@ export function getAssignmentPassScoreThreshold(): number {
   return 70;
 }
 
-export function resolvePassFromScore(score: number | null | undefined): boolean | null {
+export function resolvePassFromScore(
+  score: number | null | undefined,
+  assessmentPassingPercentage?: number | null,
+): boolean | null {
   if (score == null || !Number.isFinite(Number(score))) return null;
-  return Number(score) >= getAssignmentPassScoreThreshold();
+  return Number(score) >= getAssignmentPassScoreThreshold(assessmentPassingPercentage);
 }
 
 export type AssignmentVerificationLogEntry = {
@@ -115,9 +129,12 @@ export function mapSubmissionEvaluationFields(
 
 export function buildSubmissionAttemptRecord(
   submission: {
-    originalFileName: string;
+    originalFileName?: string | null;
+    submissionFiles?: AssignmentSubmissionFileRecord[] | null;
+    fileUrl?: string | null;
     uploadedAt?: Date | null;
     updatedAt?: Date | null;
+    submittedAt?: Date | null;
     evaluationStatus?: string | null;
     aiScore?: number | null;
     aiPassed?: boolean | null;
@@ -132,14 +149,19 @@ export function buildSubmissionAttemptRecord(
   attemptNumber: number,
 ): AssignmentSubmissionAttemptRecord {
   const evaluation = mapSubmissionEvaluationFields(submission);
+  const files = getSubmissionFilesFromEntity(submission);
+  const fileLabel =
+    summarizeSubmissionFiles(files) ||
+    String(submission.originalFileName || '').trim() ||
+    'Submission files';
   const uploadedAt =
     attemptNumber <= 1
-      ? submission.uploadedAt || submission.updatedAt || new Date()
-      : submission.updatedAt || submission.uploadedAt || new Date();
+      ? submission.submittedAt || submission.uploadedAt || submission.updatedAt || new Date()
+      : submission.submittedAt || submission.updatedAt || submission.uploadedAt || new Date();
   const evaluatedAt = evaluation.aiEvaluatedAt || evaluation.manualVerifiedAt || null;
   return {
     attemptNumber,
-    originalFileName: submission.originalFileName,
+    originalFileName: fileLabel,
     uploadedAt: uploadedAt.toISOString(),
     evaluatedAt: evaluatedAt ? evaluatedAt.toISOString() : null,
     evaluationStatus: evaluation.evaluationStatus,

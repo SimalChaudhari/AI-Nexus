@@ -331,7 +331,7 @@ export class CourseSectionWatchProgressService {
     const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
     const watchedFromCoverage =
       storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
-    const watchedForDisplay = Math.max(watchedFromCoverage, existing?.lastPositionSeconds ?? 0);
+    const watchedForDisplay = watchedFromCoverage;
     const computed = this.buildComputed(
       existing?.lastPositionSeconds ?? 0,
       watchedForDisplay,
@@ -515,8 +515,7 @@ export class CourseSectionWatchProgressService {
       const incoming = clipCoverageRangesToDuration(parseCoverageRangePairs(dto.watchedCoverageRanges), duration);
       mergedRanges = clipCoverageRangesToDuration(mergeCoverageRanges([...mergedRanges, ...incoming]), duration);
       const covered = coverageMeasureSeconds(mergedRanges, duration);
-      // Product behavior: progress should not fall behind explicit lastPosition (e.g. seek/save near end).
-      watchedWithDelta = Math.max(covered, lastPos);
+      watchedWithDelta = covered;
       nextCoverageColumn = mergedRanges.length ? mergedRanges : null;
     } else {
       const baseWatched = existing?.watchedSeconds ?? 0;
@@ -540,7 +539,7 @@ export class CourseSectionWatchProgressService {
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
     // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
     const finalLastPosition = Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
-    const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched), finalLastPosition);
+    const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
     const finalRemaining = Math.max(0, finalDuration - finalWatched);
     const finalPercent =
       finalDuration > 0 ? Number(((finalWatched / finalDuration) * 100).toFixed(2)) : 0;

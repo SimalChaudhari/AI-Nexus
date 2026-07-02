@@ -15,9 +15,11 @@ import {
   getAssignmentPassScoreThreshold,
   resolvePassFromScore,
 } from './course-assignment-submission-evaluation.types';
+import { getSubmissionFilesFromEntity } from './course-assignment-file.types';
 
 type PreparedFileContent = {
   label: string;
+  fileName: string;
   text?: string;
   imageDataUrl?: string;
   couldRead: boolean;
@@ -55,6 +57,9 @@ export class CourseAssignmentGradingService {
     });
     if (!question) return null;
 
+    const passThreshold = getAssignmentPassScoreThreshold(question.passingPercentage);
+    const learnerFiles = getSubmissionFilesFromEntity(submission);
+
     submission.evaluationStatus = 'processing';
     submission.aiScore = null;
     submission.aiPassed = null;
@@ -71,49 +76,98 @@ export class CourseAssignmentGradingService {
         );
       }
 
-      const learnerFile = await this.localStorageService.readFileByUrl(submission.fileUrl);
-      if (!learnerFile) {
+      if (!learnerFiles.length) {
         return this.saveManualRequired(
           submission,
-          'Learner file could not be read. An admin will review manually.',
+          'No submission files found. An admin will review manually.',
         );
       }
 
-      const referenceFile = question.referenceFileUrl
-        ? await this.localStorageService.readFileByUrl(question.referenceFileUrl)
+      const answerSheetUrl =
+        question.answerSheetFileUrl || question.referenceFileUrl || null;
+      const answerSheetName =
+        question.answerSheetFileName || question.referenceFileName || null;
+
+      const questionFile = question.questionFileUrl
+        ? await this.localStorageService.readFileByUrl(question.questionFileUrl)
         : null;
 
-      const learnerPrepared = await this.prepareFileContent(
-        learnerFile.buffer,
-        learnerFile.mimeType,
-        learnerFile.fileName,
-        'Learner submission',
-      );
-      const referencePrepared = referenceFile
+      const answerSheetFile = answerSheetUrl
+        ? await this.localStorageService.readFileByUrl(answerSheetUrl)
+        : null;
+
+      const questionPrepared = questionFile
         ? await this.prepareFileContent(
-            referenceFile.buffer,
-            referenceFile.mimeType,
-            referenceFile.fileName,
-            'Admin reference / marking guide',
+            questionFile.buffer,
+            questionFile.mimeType,
+            questionFile.fileName,
+            'Assessment question',
           )
         : null;
 
-      if (!learnerPrepared.couldRead) {
-        return this.saveManualRequired(
-          submission,
-          'AI could not read the uploaded file format. An admin will review manually.',
+      const answerSheetPrepared = answerSheetFile
+        ? await this.prepareFileContent(
+            answerSheetFile.buffer,
+            answerSheetFile.mimeType,
+            answerSheetFile.fileName,
+            'Official answer sheet',
+          )
+        : null;
+
+      const learnerPrepared: PreparedFileContent[] = [];
+      for (const file of learnerFiles) {
+        const stored = await this.localStorageService.readFileByUrl(file.fileUrl);
+        if (!stored) {
+          learnerPrepared.push({
+            label: 'Learner submission',
+            fileName: file.originalFileName,
+            couldRead: false,
+          });
+          continue;
+        }
+        learnerPrepared.push(
+          await this.prepareFileContent(
+            stored.buffer,
+            stored.mimeType,
+            stored.fileName || file.originalFileName,
+            `Learner file: ${file.originalFileName}`,
+          ),
         );
       }
 
-      const result = await this.runAiGrading(question, referencePrepared, learnerPrepared);
-      const passThreshold = getAssignmentPassScoreThreshold();
+      const readableLearner = learnerPrepared.filter((f) => f.couldRead);
+      if (!readableLearner.length) {
+        return this.saveManualRequired(
+          submission,
+          'AI could not read the uploaded file formats. An admin will review manually.',
+        );
+      }
+
+      if (!answerSheetPrepared?.couldRead) {
+        return this.saveManualRequired(
+          submission,
+          answerSheetUrl
+            ? 'The official answer sheet could not be read. An admin will review manually.'
+            : 'No official answer sheet is configured for this assessment. An admin will review manually.',
+        );
+      }
+
+      const result = await this.runAiGrading(
+        question,
+        passThreshold,
+        questionPrepared,
+        answerSheetPrepared,
+        learnerPrepared,
+      );
+
       const aiRawResult = this.buildStoredAiRawResult(result, {
         passThreshold,
         question,
-        referencePrepared,
+        questionPrepared,
+        answerSheetPrepared,
+        answerSheetName,
         learnerPrepared,
-        learnerFileName: submission.originalFileName,
-        referenceFileName: question.referenceFileName,
+        learnerFileNames: learnerFiles.map((f) => f.originalFileName),
       });
 
       if (!result.couldVerify) {
@@ -165,18 +219,21 @@ export class CourseAssignmentGradingService {
     context: {
       passThreshold: number;
       question: CourseQuestionBankEntity;
-      referencePrepared: PreparedFileContent | null;
-      learnerPrepared: PreparedFileContent;
-      learnerFileName: string;
-      referenceFileName?: string | null;
+      questionPrepared: PreparedFileContent | null;
+      answerSheetPrepared: PreparedFileContent | null;
+      answerSheetName?: string | null;
+      learnerPrepared: PreparedFileContent[];
+      learnerFileNames: string[];
     },
   ): Record<string, unknown> {
     return {
       ...(result.raw || {}),
       verificationLog: this.buildVerificationLog(result, context),
       passThreshold: context.passThreshold,
-      learnerFileName: context.learnerFileName,
-      referenceFileName: context.referenceFileName || null,
+      learnerFileNames: context.learnerFileNames,
+      answerSheetFileName: context.answerSheetName || null,
+      strengths: result.raw?.strengths ?? [],
+      weaknesses: result.raw?.weaknesses ?? [],
       confidence: result.confidence,
       couldVerify: result.couldVerify,
       gradedAt: new Date().toISOString(),
@@ -188,46 +245,59 @@ export class CourseAssignmentGradingService {
     context: {
       passThreshold: number;
       question: CourseQuestionBankEntity;
-      referencePrepared: PreparedFileContent | null;
-      learnerPrepared: PreparedFileContent;
-      learnerFileName: string;
-      referenceFileName?: string | null;
+      questionPrepared: PreparedFileContent | null;
+      answerSheetPrepared: PreparedFileContent | null;
+      answerSheetName?: string | null;
+      learnerPrepared: PreparedFileContent[];
+      learnerFileNames: string[];
     },
   ): AssignmentVerificationLogEntry[] {
     const logs: AssignmentVerificationLogEntry[] = [
       {
         step: 'Assessment loaded',
         status: 'info',
-        detail: context.question.prompt || 'Assessment prompt loaded',
+        detail: context.question.prompt || 'Assessment loaded',
       },
     ];
 
-    if (context.referencePrepared) {
+    if (context.questionPrepared) {
       logs.push({
-        step: 'Admin reference / marking guide',
-        status: context.referencePrepared.couldRead ? 'pass' : 'fail',
-        detail: context.referencePrepared.couldRead
-          ? context.referencePrepared.imageDataUrl
-            ? `Image reference read (${context.referenceFileName || 'file'})`
-            : `Text extracted from ${context.referenceFileName || 'reference file'}`
-          : `Could not read ${context.referenceFileName || 'reference file'}`,
-      });
-    } else {
-      logs.push({
-        step: 'Admin reference / marking guide',
-        status: 'warn',
-        detail: 'No reference file uploaded — graded from instructions only',
+        step: 'Assessment question file',
+        status: context.questionPrepared.couldRead ? 'pass' : 'warn',
+        detail: context.questionPrepared.couldRead
+          ? 'Question file processed'
+          : 'Question file could not be fully read',
       });
     }
 
-    logs.push({
-      step: 'Learner submission file',
-      status: context.learnerPrepared.couldRead ? 'pass' : 'fail',
-      detail: context.learnerPrepared.couldRead
-        ? context.learnerPrepared.imageDataUrl
-          ? `Image submission read (${context.learnerFileName})`
-          : `Text extracted from ${context.learnerFileName}`
-        : `Could not read ${context.learnerFileName}`,
+    if (context.answerSheetPrepared) {
+      logs.push({
+        step: 'Official answer sheet',
+        status: context.answerSheetPrepared.couldRead ? 'pass' : 'fail',
+        detail: context.answerSheetPrepared.couldRead
+          ? context.answerSheetPrepared.imageDataUrl
+            ? `Image answer sheet read (${context.answerSheetName || 'file'})`
+            : `Text extracted from ${context.answerSheetName || 'answer sheet'}`
+          : `Could not read ${context.answerSheetName || 'answer sheet'}`,
+      });
+    } else {
+      logs.push({
+        step: 'Official answer sheet',
+        status: 'fail',
+        detail: 'No answer sheet configured',
+      });
+    }
+
+    context.learnerPrepared.forEach((file, index) => {
+      logs.push({
+        step: `Learner file ${index + 1}`,
+        status: file.couldRead ? 'pass' : 'fail',
+        detail: file.couldRead
+          ? file.imageDataUrl
+            ? `Image read (${file.fileName})`
+            : `Text extracted from ${file.fileName}`
+          : `Could not read ${file.fileName}`,
+      });
     });
 
     if (!result.couldVerify) {
@@ -240,11 +310,11 @@ export class CourseAssignmentGradingService {
     }
 
     logs.push({
-      step: 'AI compared submission to rubric',
+      step: 'AI compared submission to answer sheet',
       status: 'pass',
       detail: result.confidence
         ? `Comparison completed (confidence: ${result.confidence})`
-        : 'Submission compared against assessment requirements',
+        : 'Submission compared against official answer sheet',
     });
 
     const aiChecks = result.raw?.checks;
@@ -254,11 +324,7 @@ export class CourseAssignmentGradingService {
         const row = check as Record<string, unknown>;
         const statusRaw = String(row.status || 'unknown').toLowerCase();
         const status =
-          statusRaw === 'pass'
-            ? 'pass'
-            : statusRaw === 'fail'
-              ? 'fail'
-              : 'info';
+          statusRaw === 'pass' ? 'pass' : statusRaw === 'fail' ? 'fail' : 'info';
         logs.push({
           step: String(row.label || `Check ${index + 1}`),
           status,
@@ -294,18 +360,26 @@ export class CourseAssignmentGradingService {
 
   private async runAiGrading(
     question: CourseQuestionBankEntity,
-    referencePrepared: PreparedFileContent | null,
-    learnerPrepared: PreparedFileContent,
+    passThreshold: number,
+    questionPrepared: PreparedFileContent | null,
+    answerSheetPrepared: PreparedFileContent,
+    learnerPrepared: PreparedFileContent[],
   ): Promise<AssignmentAiGradingResult> {
-    const passThreshold = getAssignmentPassScoreThreshold();
     const systemPrompt = `You grade course assessment submissions.
-Compare the learner submission against the assessment instructions and any admin reference/marking guide.
-Supported admin/learner file types include PDF, Word, PowerPoint, and images.
+DO NOT solve the assessment question yourself.
+Use the OFFICIAL ANSWER SHEET as the authoritative reference for what a correct submission should contain.
+Compare the learner's submission files against the official answer sheet.
+
+Evaluate on: accuracy, completeness, missing steps, correctness, and quality.
+
 Return ONLY valid JSON with this shape:
 {
   "score": <integer 0-100>,
+  "pass": <true|false>,
   "passed": <true|false>,
   "feedback": "<short learner-facing explanation>",
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "weaknesses": ["<weakness 1>"],
   "confidence": "<high|medium|low>",
   "couldVerify": <true|false>,
   "checks": [
@@ -313,60 +387,80 @@ Return ONLY valid JSON with this shape:
   ]
 }
 Rules:
-- score is the main result: 0 = no requirements met, 100 = fully correct.
-- The platform passes learners at score >= ${passThreshold}. Set passed true only when score >= ${passThreshold}.
+- score is the main result: 0 = no requirements met, 100 = fully matches the answer sheet.
+- The platform passes learners at score >= ${passThreshold}. Set pass/passed true only when score >= ${passThreshold}.
 - Set couldVerify to false when files are unreadable, unrelated, or there is not enough evidence to grade.
-- Be practical: screenshots, documents, and presentations may contain the answer in text or visuals.
-- Do not invent requirements that are not in the assessment or marking guide.`;
+- Be practical: screenshots, documents, spreadsheets, and presentations may contain answers in text or visuals.
+- Do not invent requirements beyond what the answer sheet shows.`;
+
+    const learnerTextBlocks = learnerPrepared
+      .filter((f) => f.text)
+      .map((f) => `--- ${f.fileName} ---\n${f.text}`)
+      .join('\n\n');
 
     const userParts: LlmChatContentPart[] = [
       {
         type: 'text',
         text: [
-          'ASSESSMENT TITLE / PROMPT:',
+          'ASSESSMENT TITLE:',
           question.prompt || '(no title)',
           '',
-          'ASSESSMENT INSTRUCTIONS:',
+          'ASSESSMENT DESCRIPTION / INSTRUCTIONS:',
           question.explanation || '(none provided)',
           '',
-          referencePrepared?.text
-            ? `ADMIN REFERENCE / MARKING GUIDE (extracted text):\n${referencePrepared.text}`
-            : 'ADMIN REFERENCE / MARKING GUIDE: (none uploaded)',
+          questionPrepared?.text
+            ? `ASSESSMENT QUESTION FILE (extracted text):\n${questionPrepared.text}`
+            : 'ASSESSMENT QUESTION FILE: (not provided or unreadable)',
           '',
-          learnerPrepared.text
-            ? `LEARNER SUBMISSION (extracted text):\n${learnerPrepared.text}`
-            : 'LEARNER SUBMISSION: see attached image(s).',
+          answerSheetPrepared.text
+            ? `OFFICIAL ANSWER SHEET (extracted text):\n${answerSheetPrepared.text}`
+            : 'OFFICIAL ANSWER SHEET: see attached image(s).',
+          '',
+          learnerTextBlocks
+            ? `LEARNER SUBMISSION FILES (extracted text):\n${learnerTextBlocks}`
+            : 'LEARNER SUBMISSION FILES: see attached image(s) below.',
         ].join('\n'),
       },
     ];
 
-    if (referencePrepared?.imageDataUrl) {
+    if (questionPrepared?.imageDataUrl) {
       userParts.push({
         type: 'image_url',
-        image_url: { url: referencePrepared.imageDataUrl },
+        image_url: { url: questionPrepared.imageDataUrl },
       });
     }
-    if (learnerPrepared.imageDataUrl) {
+    if (answerSheetPrepared.imageDataUrl) {
       userParts.push({
         type: 'image_url',
-        image_url: { url: learnerPrepared.imageDataUrl },
+        image_url: { url: answerSheetPrepared.imageDataUrl },
       });
     }
+    learnerPrepared
+      .filter((f) => f.imageDataUrl)
+      .forEach((f) => {
+        userParts.push({
+          type: 'image_url',
+          image_url: { url: f.imageDataUrl! },
+        });
+      });
 
     const response = await this.llmService.chat({
       useCase: 'default',
       temperature: 0.1,
-      maxTokens: 1200,
+      maxTokens: 1600,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userParts },
       ],
     });
 
-    return this.parseAiResult(response.text);
+    return this.parseAiResult(response.text, question.passingPercentage);
   }
 
-  private parseAiResult(text: string): AssignmentAiGradingResult {
+  private parseAiResult(
+    text: string,
+    passingPercentage?: number | null,
+  ): AssignmentAiGradingResult {
     const rawText = String(text || '').trim();
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -383,9 +477,15 @@ Rules:
       const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
       const couldVerify = parsed.couldVerify === true;
       const scoreRaw = Number(parsed.score);
-      const score = Number.isFinite(scoreRaw) ? Math.max(0, Math.min(100, Math.round(scoreRaw))) : null;
-      const passThreshold = getAssignmentPassScoreThreshold();
-      const passed = resolvePassFromScore(score);
+      const score = Number.isFinite(scoreRaw)
+        ? Math.max(0, Math.min(100, Math.round(scoreRaw)))
+        : null;
+      const passThreshold = getAssignmentPassScoreThreshold(passingPercentage);
+      const passedFromAi = parsed.pass ?? parsed.passed;
+      const passed =
+        passedFromAi === true || passedFromAi === false
+          ? passedFromAi
+          : resolvePassFromScore(score, passingPercentage);
       let feedback = String(parsed.feedback || '').trim() || 'Graded by AI.';
       if (couldVerify && score != null && passed === false && !feedback.toLowerCase().includes('pass')) {
         feedback = `${feedback} Score ${score}% — need at least ${passThreshold}% to pass.`.trim();
@@ -426,6 +526,7 @@ Rules:
     if (this.isImageMime(mimeType, ext)) {
       return {
         label,
+        fileName,
         imageDataUrl: this.buildDataUrl(buffer, mimeType),
         couldRead: true,
       };
@@ -433,29 +534,39 @@ Rules:
 
     if (ext === '.pdf' || mimeType === 'application/pdf') {
       const text = await this.extractPdfText(buffer);
-      return { label, text: this.truncateText(text), couldRead: text.length > 0 };
+      return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
     }
 
     if (ext === '.docx' || mimeType.includes('wordprocessingml')) {
       const text = await this.extractDocxText(buffer);
-      return { label, text: this.truncateText(text), couldRead: text.length > 0 };
+      return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
     }
 
     if (ext === '.doc' || mimeType === 'application/msword') {
       const text = await this.extractDocText(buffer);
-      return { label, text: this.truncateText(text), couldRead: text.length > 0 };
+      return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
     }
 
     if (ext === '.pptx' || mimeType.includes('presentationml')) {
       const text = await this.extractPptxText(buffer);
-      return { label, text: this.truncateText(text), couldRead: text.length > 0 };
+      return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
+    }
+
+    if (ext === '.txt' || mimeType === 'text/plain') {
+      const text = String(buffer.toString('utf8') || '').trim();
+      return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
+    }
+
+    if (ext === '.xlsx' || ext === '.xlsm' || mimeType.includes('spreadsheetml')) {
+      const text = await this.extractXlsxText(buffer);
+      return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
     }
 
     if (ext === '.ppt' || mimeType.includes('powerpoint')) {
-      return { label, text: '', couldRead: false };
+      return { label, fileName, text: '', couldRead: false };
     }
 
-    return { label, text: '', couldRead: false };
+    return { label, fileName, text: '', couldRead: false };
   }
 
   private isImageMime(mimeType: string, ext: string): boolean {
@@ -471,6 +582,8 @@ Rules:
     if (mimeType === 'application/msword') return '.doc';
     if (mimeType.includes('presentationml')) return '.pptx';
     if (mimeType.includes('powerpoint')) return '.ppt';
+    if (mimeType.includes('spreadsheetml')) return '.xlsx';
+    if (mimeType === 'text/plain') return '.txt';
     return '';
   }
 
@@ -512,7 +625,10 @@ Rules:
     const fs = await import('fs/promises');
     const os = await import('os');
     const path = await import('path');
-    const tmp = path.join(os.tmpdir(), `assignment-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
+    const tmp = path.join(
+      os.tmpdir(),
+      `assignment-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`,
+    );
     await fs.writeFile(tmp, buffer);
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
@@ -560,5 +676,47 @@ Rules:
       return '';
     }
   }
-}
 
+  private async extractXlsxText(buffer: Buffer): Promise<string> {
+    try {
+      const { promisify } = await import('util');
+      const zlib = await import('zlib');
+      const inflateRaw = promisify(zlib.inflateRaw);
+      const chunks: string[] = [];
+      const source = buffer.toString('binary');
+      const localHeaders = [...source.matchAll(/\x50\x4b\x03\x04/g)];
+      for (let i = 0; i < localHeaders.length; i += 1) {
+        const start = localHeaders[i].index ?? 0;
+        const nameLength = source.charCodeAt(start + 26) + (source.charCodeAt(start + 27) << 8);
+        const extraLength = source.charCodeAt(start + 28) + (source.charCodeAt(start + 29) << 8);
+        const compressedSize =
+          source.charCodeAt(start + 18) +
+          (source.charCodeAt(start + 19) << 8) +
+          (source.charCodeAt(start + 20) << 16) +
+          (source.charCodeAt(start + 21) << 24);
+        const fileName = source.slice(start + 30, start + 30 + nameLength);
+        const dataStart = start + 30 + nameLength + extraLength;
+        const compressed = Buffer.from(source.slice(dataStart, dataStart + compressedSize), 'binary');
+        if (
+          !fileName.startsWith('xl/worksheets/sheet') ||
+          !fileName.endsWith('.xml')
+        ) {
+          if (fileName === 'xl/sharedStrings.xml') {
+            const xmlBuffer = await inflateRaw(compressed);
+            const xml = xmlBuffer.toString('utf8');
+            const texts = [...xml.matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map((m) => m[1]);
+            if (texts.length) chunks.push(texts.join(' '));
+          }
+          continue;
+        }
+        const xmlBuffer = await inflateRaw(compressed);
+        const xml = xmlBuffer.toString('utf8');
+        const texts = [...xml.matchAll(/<v>([^<]*)<\/v>/g)].map((m) => m[1]);
+        if (texts.length) chunks.push(texts.join(' '));
+      }
+      return chunks.join(' ').trim();
+    } catch {
+      return '';
+    }
+  }
+}

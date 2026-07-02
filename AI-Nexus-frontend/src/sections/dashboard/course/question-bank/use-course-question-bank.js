@@ -44,6 +44,10 @@ export function useCourseQuestionBank(courseId) {
   const [formAssignedUsers, setFormAssignedUsers] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [formPassingPercentage, setFormPassingPercentage] = useState(70);
+  const [questionMaterials, setQuestionMaterials] = useState([]);
+  const [answerSheetMaterials, setAnswerSheetMaterials] = useState([]);
+  const [guideMaterials, setGuideMaterials] = useState([]);
   const [referenceMaterials, setReferenceMaterials] = useState([]);
 
   const loadAll = useCallback(async () => {
@@ -174,6 +178,10 @@ export function useCourseQuestionBank(courseId) {
     setFormTfCorrect('true');
     setFormShortCorrect('');
     setFormAssignedUsers([]);
+    setFormPassingPercentage(70);
+    setQuestionMaterials([]);
+    setAnswerSheetMaterials([]);
+    setGuideMaterials([]);
     setReferenceMaterials([]);
   }, []);
 
@@ -225,9 +233,33 @@ export function useCourseQuestionBank(courseId) {
         setFormTfCorrect(row.correctAnswer === 'false' ? 'false' : 'true');
       } else if (t === 'assignment') {
         setFormAssignedUsers(resolveAssignedUsersFromRow(row));
-        setReferenceMaterials(
-          row.referenceFileUrl ? [resolveAssetUrl(row.referenceFileUrl)] : []
+        setFormPassingPercentage(
+          row.passingPercentage != null ? Number(row.passingPercentage) : 70
         );
+        setQuestionMaterials(
+          row.questionFileUrl
+            ? [
+                {
+                  url: resolveAssetUrl(row.questionFileUrl),
+                  name: row.questionFileName || 'Question file',
+                },
+              ]
+            : []
+        );
+        setAnswerSheetMaterials(
+          row.answerSheetFileUrl
+            ? [
+                {
+                  url: resolveAssetUrl(row.answerSheetFileUrl),
+                  name: row.answerSheetFileName || 'Answer sheet',
+                },
+              ]
+            : []
+        );
+        const guideUrl = row.guideFileUrl || row.referenceFileUrl;
+        const guideName = row.guideFileName || row.referenceFileName || 'Guide';
+        setGuideMaterials(guideUrl ? [{ url: resolveAssetUrl(guideUrl), name: guideName }] : []);
+        setReferenceMaterials(guideUrl ? [{ url: resolveAssetUrl(guideUrl), name: guideName }] : []);
       } else {
         setFormShortCorrect(row.correctAnswer || '');
       }
@@ -272,10 +304,13 @@ export function useCourseQuestionBank(courseId) {
     }
     if (formType === 'assignment') {
       const assignedUserIds = formAssignedUsers.map((u) => u.id).filter(Boolean);
+      const title = formPrompt.trim() || 'Assessment';
       return {
         ...base,
+        prompt: title,
         questionType: 'assignment',
         assignedUserIds: assignedUserIds.length ? assignedUserIds : null,
+        passingPercentage: Number(formPassingPercentage) || 70,
       };
     }
     if (!formShortCorrect.trim()) {
@@ -290,6 +325,7 @@ export function useCourseQuestionBank(courseId) {
   }, [
     editing,
     formAssignedUsers,
+    formPassingPercentage,
     formCorrectIndex,
     formExplanation,
     formModuleId,
@@ -300,6 +336,57 @@ export function useCourseQuestionBank(courseId) {
     formType,
   ]);
 
+  const uploadAssessmentFiles = useCallback(async (questionId) => {
+    const newQuestionFile = questionMaterials.find((item) => item instanceof File);
+    const newAnswerSheetFile = answerSheetMaterials.find((item) => item instanceof File);
+    const newGuideFile = guideMaterials.find((item) => item instanceof File);
+
+    const hasExistingQuestion = questionMaterials.some(
+      (item) => typeof item === 'string' || (item && typeof item === 'object' && item.url)
+    );
+    const hasExistingAnswerSheet = answerSheetMaterials.some(
+      (item) => typeof item === 'string' || (item && typeof item === 'object' && item.url)
+    );
+    const hasExistingGuide = guideMaterials.some(
+      (item) => typeof item === 'string' || (item && typeof item === 'object' && item.url)
+    );
+
+    if (newQuestionFile) {
+      await courseService.uploadAssessmentQuestionFile(courseId, questionId, newQuestionFile);
+    } else if (!hasExistingQuestion && editing?.questionFileUrl) {
+      await courseService.updateCourseQuestion(questionId, {
+        questionFileUrl: null,
+        questionFileName: null,
+      });
+    }
+
+    if (newAnswerSheetFile) {
+      await courseService.uploadAssessmentAnswerSheetFile(courseId, questionId, newAnswerSheetFile);
+    } else if (!hasExistingAnswerSheet && editing?.answerSheetFileUrl) {
+      await courseService.updateCourseQuestion(questionId, {
+        answerSheetFileUrl: null,
+        answerSheetFileName: null,
+      });
+    }
+
+    if (newGuideFile) {
+      await courseService.uploadAssessmentGuideFile(courseId, questionId, newGuideFile);
+    } else if (!hasExistingGuide && (editing?.guideFileUrl || editing?.referenceFileUrl)) {
+      await courseService.updateCourseQuestion(questionId, {
+        guideFileUrl: null,
+        guideFileName: null,
+        referenceFileUrl: null,
+        referenceFileName: null,
+      });
+    }
+  }, [
+    answerSheetMaterials,
+    courseId,
+    editing,
+    guideMaterials,
+    questionMaterials,
+  ]);
+
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
     if (!payload) return;
@@ -307,38 +394,48 @@ export function useCourseQuestionBank(courseId) {
       toast.error('Question text is required');
       return;
     }
+    if (formType === 'assignment') {
+      const hasStoredFile = (items) =>
+        items.some(
+          (item) =>
+            item instanceof File ||
+            typeof item === 'string' ||
+            (item && typeof item === 'object' && item.url)
+        );
+      const hasQuestion = hasStoredFile(questionMaterials) || Boolean(editing?.questionFileUrl);
+      const hasAnswerSheet =
+        hasStoredFile(answerSheetMaterials) || Boolean(editing?.answerSheetFileUrl);
+      if (!hasQuestion) {
+        toast.error('Upload an assessment question file');
+        return;
+      }
+      if (!hasAnswerSheet) {
+        toast.error('Upload an official answer sheet');
+        return;
+      }
+    }
     setSaving(true);
     try {
-      const newReferenceFile = referenceMaterials.find((item) => item instanceof File);
-      const hasExistingReference = referenceMaterials.some((item) => typeof item === 'string');
-
       if (editing?.id) {
         await courseService.updateCourseQuestion(editing.id, payload);
-        if (newReferenceFile) {
+        if (formType === 'assignment') {
           try {
-            await courseService.uploadAssignmentReferenceFile(courseId, editing.id, newReferenceFile);
-            toast.success('Reference file uploaded');
-          } catch (err) {
-            toast.error('Reference file upload failed');
+            await uploadAssessmentFiles(editing.id);
+          } catch {
+            toast.error('One or more assessment files failed to upload');
           }
-        } else if (!hasExistingReference && editing.referenceFileUrl) {
-          await courseService.updateCourseQuestion(editing.id, {
-            referenceFileUrl: null,
-            referenceFileName: null,
-          });
         }
-        toast.success('Question updated');
+        toast.success(formType === 'assignment' ? 'Assessment updated' : 'Question updated');
       } else {
         const created = await courseService.createCourseQuestion(courseId, payload);
-        if (newReferenceFile && created?.id) {
+        if (formType === 'assignment' && created?.id) {
           try {
-            await courseService.uploadAssignmentReferenceFile(courseId, created.id, newReferenceFile);
-            toast.success('Reference file uploaded');
-          } catch (err) {
-            toast.error('Reference file upload failed');
+            await uploadAssessmentFiles(created.id);
+          } catch {
+            toast.error('One or more assessment files failed to upload');
           }
         }
-        toast.success('Question added');
+        toast.success(formType === 'assignment' ? 'Assessment created' : 'Question added');
       }
       setDialogOpen(false);
       setFormCategoryContext(null);
@@ -348,7 +445,16 @@ export function useCourseQuestionBank(courseId) {
     } finally {
       setSaving(false);
     }
-  }, [buildPayload, courseId, editing, formType, loadAll, referenceMaterials]);
+  }, [
+    answerSheetMaterials,
+    buildPayload,
+    courseId,
+    editing,
+    formType,
+    loadAll,
+    questionMaterials,
+    uploadAssessmentFiles,
+  ]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget?.id) return;
@@ -419,6 +525,10 @@ export function useCourseQuestionBank(courseId) {
     formAssignedUsers,
     userOptions,
     usersLoading,
+    formPassingPercentage,
+    questionMaterials,
+    answerSheetMaterials,
+    guideMaterials,
     referenceMaterials,
     openCreate,
     openEdit,
@@ -435,6 +545,10 @@ export function useCourseQuestionBank(courseId) {
     setFormTfCorrect,
     setFormShortCorrect,
     setFormAssignedUsers,
+    setFormPassingPercentage,
+    setQuestionMaterials,
+    setAnswerSheetMaterials,
+    setGuideMaterials,
     setReferenceMaterials,
     handleFormTypeChange,
   };

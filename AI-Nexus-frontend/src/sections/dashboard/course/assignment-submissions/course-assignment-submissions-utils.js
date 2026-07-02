@@ -54,6 +54,9 @@ export function getSubmissionEvaluationDisplay(row) {
         (row.aiScore != null ? `Score ${row.aiScore}% — need at least 70% to pass` : 'Did not meet pass threshold'),
     };
   }
+  if (row?.evaluationStatus === 'draft') {
+    return { label: 'Draft', color: 'default', detail: 'Upload files and submit when ready' };
+  }
   if (row?.evaluationStatus === 'manual_required') {
     return {
       label: 'Review needed',
@@ -69,17 +72,26 @@ export function getSubmissionEvaluationDisplay(row) {
 
 export function mapSubmissionFromApi(row) {
   if (!row) return null;
+  const submissionFiles = Array.isArray(row.submissionFiles) ? row.submissionFiles : [];
+  const primary = submissionFiles[0];
   return {
     id: row.id,
     questionId: row.questionId,
-    fileUrl: row.fileUrl,
-    originalFileName: row.originalFileName,
+    fileUrl: primary?.fileUrl ?? row.fileUrl ?? null,
+    originalFileName:
+      submissionFiles.length > 1
+        ? `${submissionFiles.length} files`
+        : primary?.originalFileName ?? row.originalFileName ?? null,
+    submissionFiles,
     uploadedAt: row.uploadedAt,
+    submittedAt: row.submittedAt ?? null,
     evaluationStatus: row.evaluationStatus || 'pending',
     aiScore: row.aiScore ?? null,
     aiPassed: row.aiPassed ?? null,
     aiFeedback: row.aiFeedback ?? null,
     aiRawResult: row.aiRawResult ?? null,
+    strengths: Array.isArray(row.aiRawResult?.strengths) ? row.aiRawResult.strengths : [],
+    weaknesses: Array.isArray(row.aiRawResult?.weaknesses) ? row.aiRawResult.weaknesses : [],
     aiEvaluatedAt: row.aiEvaluatedAt ?? null,
     manualPassed: row.manualPassed ?? null,
     manualFeedback: row.manualFeedback ?? null,
@@ -90,6 +102,26 @@ export function mapSubmissionFromApi(row) {
     attemptCount: Math.max(1, Number(row.attemptCount) || 1),
     attemptHistory: Array.isArray(row.attemptHistory) ? row.attemptHistory : [],
   };
+}
+
+export function isSubmissionDraft(submission) {
+  return submission?.evaluationStatus === 'draft';
+}
+
+export function getSubmissionFileList(submission) {
+  if (!submission) return [];
+  if (Array.isArray(submission.submissionFiles) && submission.submissionFiles.length) {
+    return submission.submissionFiles;
+  }
+  if (submission.fileUrl) {
+    return [
+      {
+        fileUrl: submission.fileUrl,
+        originalFileName: submission.originalFileName || 'Submission',
+      },
+    ];
+  }
+  return [];
 }
 
 export function getSubmissionAttemptCount(submission) {

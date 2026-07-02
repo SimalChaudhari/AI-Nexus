@@ -100,6 +100,24 @@ export class CourseQuestionBankInitService implements OnModuleInit {
         } catch (e) {
           if (e instanceof Error && !e.message?.includes('already exists')) throw e;
         }
+        const assessmentColumns: Array<[string, string]> = [
+          ['questionFileUrl', 'text'],
+          ['questionFileName', 'text'],
+          ['answerSheetFileUrl', 'text'],
+          ['answerSheetFileName', 'text'],
+          ['guideFileUrl', 'text'],
+          ['guideFileName', 'text'],
+          ['passingPercentage', 'integer'],
+        ];
+        for (const [column, definition] of assessmentColumns) {
+          try {
+            await queryRunner.query(
+              `ALTER TABLE "course_question_bank" ADD COLUMN "${column}" ${definition}`,
+            );
+          } catch (e) {
+            if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+          }
+        }
       }
 
       await queryRunner.release();

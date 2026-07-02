@@ -20,6 +20,7 @@ import {
   canShowVerificationLog,
   formatSubmissionAttemptLabel,
   getSubmissionAttemptCount,
+  getSubmissionFileList,
 } from './course-assignment-submissions-utils';
 
 // ----------------------------------------------------------------------
@@ -72,16 +73,22 @@ export function CourseAssignmentSubmissionsTable({
               </TableCell>
               <TableCell>{truncateSubmissionText(row.questionPrompt)}</TableCell>
               <TableCell>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<Iconify icon="solar:download-bold" width={16} />}
-                  href={resolveAssetUrl(row.fileUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {truncateSubmissionText(row.originalFileName, 28)}
-                </Button>
+                <Stack spacing={0.5}>
+                  {getSubmissionFileList(row).map((file) => (
+                    <Button
+                      key={`${row.id}-${file.fileUrl}`}
+                      size="small"
+                      variant="outlined"
+                      startIcon={<Iconify icon="solar:download-bold" width={16} />}
+                      href={resolveAssetUrl(file.fileUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{ justifyContent: 'flex-start' }}
+                    >
+                      {truncateSubmissionText(file.originalFileName, 28)}
+                    </Button>
+                  ))}
+                </Stack>
               </TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>
                 <Stack spacing={0.25}>
