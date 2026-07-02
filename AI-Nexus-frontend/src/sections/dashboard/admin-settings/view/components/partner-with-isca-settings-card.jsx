@@ -27,6 +27,7 @@ import {
   PARTNER_DASHBOARD_FEATURES_MAX,
   PARTNER_FAQS_MAX,
   PARTNER_MOCKUP_STAFF_ROWS_MAX,
+  PARTNER_STATS_MAX,
   PARTNER_STEPS_MAX,
 } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
 import { HeroImageCard } from './hero-image-card';
@@ -495,15 +496,38 @@ export function PartnerWithIscaSettingsCard({
   const renderStatsTab = (
     <Card sx={{ p: 3 }}>
       <Stack spacing={2.5}>
-        <SectionCardHeader title="Stats bar" description="Four stats shown in the dark navy band below the hero." />
+        <SectionCardHeader title="Stats bar" description="Up to four stats shown in the dark navy band below the hero." />
+        <Stack direction="row" justifyContent="flex-end">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Iconify icon="mingcute:add-line" width={16} />}
+            disabled={stats.length >= PARTNER_STATS_MAX || submitting}
+            onClick={() => addListItem('stats', { icon: 'solar:star-bold-duotone', title: '', label: '' })}
+          >
+            Add stat
+          </Button>
+        </Stack>
         <Grid container spacing={1.5}>
           {stats.map((stat, index) => (
             <Grid key={`stat-${index}`} item xs={12} md={6}>
               <FieldBox>
                 <Stack spacing={1.5}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                    Stat {index + 1}
-                  </Typography>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                      Stat {index + 1}
+                    </Typography>
+                    <Tooltip title="Remove stat">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        disabled={submitting}
+                        onClick={() => removeListItem('stats', index)}
+                      >
+                        <Iconify icon="solar:trash-bin-trash-bold" width={16} />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Box sx={{ width: 40, height: 40, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.paper', border: (t) => `1px solid ${t.palette.divider}` }}>
                       <Iconify icon={stat.icon || 'solar:star-bold-duotone'} width={22} />

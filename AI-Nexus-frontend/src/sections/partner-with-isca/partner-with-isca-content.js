@@ -16,11 +16,6 @@ export const PARTNER_ISCA_STATS = [
     title: 'Digital Badge',
     label: 'Verifiable on LinkedIn',
   },
-  {
-    icon: 'solar:shield-check-bold-duotone',
-    title: 'NAIIP',
-    label: 'Endorsed by IMDA',
-  },
 ];
 
 export const PARTNER_ISCA_BENEFITS = [

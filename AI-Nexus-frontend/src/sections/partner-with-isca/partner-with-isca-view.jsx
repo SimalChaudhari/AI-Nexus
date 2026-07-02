@@ -323,6 +323,9 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
   );
   if (!rows.length) return null;
 
+  const mdCols = Math.max(1, Math.min(4, Math.floor(12 / rows.length)));
+  const xsCols = rows.length === 1 ? 12 : 6;
+
   return (
     <Box
       sx={{
@@ -342,8 +345,8 @@ function HeroStatsBar({ stats = [], iconSize = 26 }) {
         {rows.map((row, index) => (
           <Grid
             key={`partner-hero-stat-${index}`}
-            xs={6}
-            md={3}
+            xs={xsCols}
+            md={mdCols}
             sx={{
               position: 'relative',
               px: { xs: 1.5, sm: 2.5, md: 3.5 },
@@ -1777,6 +1780,7 @@ export function PartnerWithIscaView() {
       <HowItWorksSection section={content.howItWorks} />
       <FaqSection section={content.faq} />
       <CtaSection section={content.cta} />
+      <HomeSupportingPartnersSection />
       <HomeSupportingPartnersSection headingOverride={PARTNERS_WITH_ISCA_HEADING} />
 
       <HomeFooter sx={{ mt: 0 }} />
