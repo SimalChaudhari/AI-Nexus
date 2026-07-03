@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { varFade, MotionViewport } from 'src/components/animate';
@@ -38,8 +39,12 @@ function resolveAssetUrl(url) {
 }
 
 function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation = false }) {
+  const isCoarsePointer = useMediaQuery('(hover: none) and (pointer: coarse)');
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const safeLogos = Array.isArray(logos) ? logos : [];
-  const shouldScroll = safeLogos.length > 6;
+  // Marquee + overflow:hidden traps vertical touch scroll on phones — wrap logos instead.
+  const shouldMarquee =
+    safeLogos.length > 6 && !isCoarsePointer && !prefersReducedMotion;
 
   const sectionProps = disableAnimation
     ? { component: 'section' }
@@ -56,7 +61,6 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
         py: { xs: 4, md: 5 },
         borderTop: `1px solid ${alpha(SECTION_GREY, 0.65)}`,
         flexShrink: 0,
-        touchAction: 'pan-y',
       }}
     >
       <DashboardContent
@@ -66,6 +70,7 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
           pt: 0,
           pb: 0,
           flex: '0 0 auto',
+          minHeight: 0,
         }}
       >
         <Stack spacing={{ xs: 3, md: 3.5 }} alignItems="center" sx={{ width: 1 }}>
@@ -105,16 +110,12 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
           <Box
             sx={{
               width: 1,
-              overflow: shouldScroll ? 'hidden' : 'visible',
-              touchAction: 'pan-y',
+              maxWidth: '100%',
+              overflowX: shouldMarquee ? 'clip' : 'visible',
+              overflowY: 'visible',
               '@keyframes supportingPartnersScroll': {
                 from: { transform: 'translateX(0)' },
                 to: { transform: 'translateX(-50%)' },
-              },
-              '@media (prefers-reduced-motion: reduce)': {
-                '& > *': {
-                  animation: 'none !important',
-                },
               },
             }}
           >
@@ -122,16 +123,20 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
               direction="row"
               alignItems="center"
               sx={{
-                width: shouldScroll ? 'max-content' : 1,
-                minWidth: shouldScroll ? '100%' : 'auto',
-                animation: shouldScroll ? 'supportingPartnersScroll 40s linear infinite' : 'none',
-                justifyContent: shouldScroll ? 'flex-start' : 'center',
-                flexWrap: shouldScroll ? 'nowrap' : 'wrap',
+                width: shouldMarquee ? 'max-content' : 1,
+                minWidth: shouldMarquee ? '100%' : 'auto',
+                animation: shouldMarquee ? 'supportingPartnersScroll 40s linear infinite' : 'none',
+                justifyContent: shouldMarquee ? 'flex-start' : 'center',
+                flexWrap: shouldMarquee ? 'nowrap' : 'wrap',
                 gap: { xs: 2.5, sm: 3.5, md: 4.5, lg: 5 },
                 px: { xs: 0.5, md: 1 },
+                pointerEvents: shouldMarquee ? 'none' : 'auto',
+                '@media (prefers-reduced-motion: reduce)': {
+                  animation: 'none !important',
+                },
               }}
             >
-              {(shouldScroll ? [...safeLogos, ...safeLogos] : safeLogos).map((row, index) => (
+              {(shouldMarquee ? [...safeLogos, ...safeLogos] : safeLogos).map((row, index) => (
                 <Box
                   key={`supporting-partner-logo-${index}`}
                   sx={{
@@ -283,20 +288,28 @@ export function PartnerWithIscaPartnerLogosSections() {
     };
   }, []);
 
+  if (!supportingLogos.length && !earlyAdopterLogos.length) {
+    return null;
+  }
+
   return (
-    <Box component="section" sx={{ width: '100%', flexShrink: 0, touchAction: 'pan-y', overflow: 'visible' }}>
-      <PartnersLogoSection
-        heading={supportingHeading}
-        logos={supportingLogos}
-        secondaryColor={secondary.main}
-        disableAnimation
-      />
-      <PartnersLogoSection
-        heading={earlyAdopterHeading}
-        logos={earlyAdopterLogos}
-        secondaryColor={secondary.main}
-        disableAnimation
-      />
+    <Box component="section" sx={{ width: '100%', flexShrink: 0, overflow: 'visible' }}>
+      {supportingLogos.length > 0 ? (
+        <PartnersLogoSection
+          heading={supportingHeading}
+          logos={supportingLogos}
+          secondaryColor={secondary.main}
+          disableAnimation
+        />
+      ) : null}
+      {earlyAdopterLogos.length > 0 ? (
+        <PartnersLogoSection
+          heading={earlyAdopterHeading}
+          logos={earlyAdopterLogos}
+          secondaryColor={secondary.main}
+          disableAnimation
+        />
+      ) : null}
     </Box>
   );
 }
