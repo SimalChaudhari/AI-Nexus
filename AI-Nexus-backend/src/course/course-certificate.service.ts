@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CourseCertificateEntity, CourseCertificateStatus } from './course-certificate.entity';
 import { CourseSectionWatchProgressService } from './course-section-watch-progress.service';
 import { CourseService } from './courses.service';
+import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 
 @Injectable()
 export class CourseCertificateService {
@@ -12,6 +13,8 @@ export class CourseCertificateService {
     private readonly certificateRepository: Repository<CourseCertificateEntity>,
     private readonly courseSectionWatchProgressService: CourseSectionWatchProgressService,
     private readonly courseService: CourseService,
+    @Inject(forwardRef(() => CourseQuizAssessmentProgressService))
+    private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
   ) {}
 
   private buildCertificateNo(courseId: string, userId: string): string {
@@ -41,6 +44,15 @@ export class CourseCertificateService {
 
     if (!isCompleted) {
       return { issued: false, certificate: null, reason: 'not_completed' as const };
+    }
+
+    const quizAssessmentMet =
+      await this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(
+        userId,
+        courseId,
+      );
+    if (!quizAssessmentMet) {
+      return { issued: false, certificate: null, reason: 'quiz_assessment_incomplete' as const };
     }
 
     const certificate = this.certificateRepository.create({

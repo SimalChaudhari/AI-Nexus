@@ -49,6 +49,9 @@ export class CourseQuestionBankAttemptEntity {
   @Column({ type: 'float', default: 0 })
   scorePercent!: number;
 
+  @Column({ type: 'boolean', default: false })
+  isCompleted!: boolean;
+
   @Column({ type: 'jsonb', nullable: true })
   answers!: Record<string, unknown>[] | null;
 

@@ -988,6 +988,26 @@ export class CourseController {
         });
     }
 
+    @Get(':courseId/question-bank/my-quiz-assessment-progress')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Learner quiz and assessment completion progress for a course' })
+    async getMyQuizAssessmentProgress(
+        @Param('courseId') courseId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const data = await this.courseQuestionBankService.getLearnerQuizAssessmentProgress(
+            userId,
+            courseId,
+        );
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
     @Delete('question-bank/attempts/:attemptId')
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)

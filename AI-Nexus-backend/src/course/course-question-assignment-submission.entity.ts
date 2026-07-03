@@ -71,6 +71,9 @@ export class CourseQuestionAssignmentSubmissionEntity {
   @Column({ type: 'int', default: 1 })
   attemptCount!: number;
 
+  @Column({ type: 'boolean', default: false })
+  isCompleted!: boolean;
+
   @Column({ type: 'jsonb', nullable: true })
   attemptHistory?: AssignmentSubmissionAttemptRecord[] | null;
 

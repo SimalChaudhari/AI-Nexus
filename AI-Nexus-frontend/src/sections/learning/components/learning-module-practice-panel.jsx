@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Divider from '@mui/material/Divider';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -117,33 +116,20 @@ export function LearningModulePracticeIntro({
             alignItems="center"
             sx={{ minHeight: 0 }}
           >
-            <Stack spacing={0.5} sx={{ width: '100%', alignItems: 'center' }}>
-              <Typography
-                variant="subtitle1"
-                sx={{
-                  fontWeight: 700,
-                  color: 'text.primary',
-                  textAlign: 'center',
-                  whiteSpace: 'normal',
-                  wordBreak: 'break-word',
-                  fontSize: { xs: '0.9375rem', md: '0.875rem', xl: '1rem' },
-                  lineHeight: 1.3,
-                }}
-              >
-                {moduleTitle}
-              </Typography>
-              <Chip
-                label="Non-graded Assessment"
-                size="small"
-                sx={{
-                  fontWeight: 600,
-                  height: { xs: 24, md: 22, xl: 24 },
-                  fontSize: { xs: '0.6875rem', md: '0.625rem', xl: '0.6875rem' },
-                  bgcolor: alpha(theme.palette.secondary.main, 0.12),
-                  color: 'secondary.dark',
-                }}
-              />
-            </Stack>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+                color: 'text.primary',
+                textAlign: 'center',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                fontSize: { xs: '0.9375rem', md: '0.875rem', xl: '1rem' },
+                lineHeight: 1.3,
+              }}
+            >
+              Quiz
+            </Typography>
             <Box
               sx={{
                 width: { xs: 56, sm: 60, md: 48, lg: 52, xl: 72 },
@@ -174,7 +160,7 @@ export function LearningModulePracticeIntro({
                 lineHeight: 1.3,
               }}
             >
-              Ready for a non-graded assessment?
+              Ready for Quiz?
             </Typography>
             <Typography
               variant="body2"
@@ -206,7 +192,7 @@ export function LearningModulePracticeIntro({
                 fontSize: { xs: '0.8125rem', md: '0.75rem', xl: '0.875rem' },
               }}
             >
-              Start Test
+              Start Quiz
             </Button>
           </Stack>
         </Paper>
@@ -223,6 +209,7 @@ export function LearningModulePracticeQuiz({
   moduleTitle,
   questions,
   onBackToIntro,
+  onAttemptCompleted,
   /** When true, fill the course player panel (no viewport calc / double scroll). */
   fillContainer = false,
 }) {
@@ -361,12 +348,19 @@ export function LearningModulePracticeQuiz({
       }
       setAnswers(next);
       setPhase('summary');
+      const perfect =
+        completeData?.isCompleted === true ||
+        (Number(completeData?.scorePercent) >= 100 &&
+          Number(completeData?.correctAnswers) >= Number(completeData?.totalQuestions));
+      if (perfect) {
+        onAttemptCompleted?.(completeData);
+      }
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Could not submit answers');
     } finally {
       setSubmitting(false);
     }
-  }, [answers, attemptId, courseId, moduleId, questions]);
+  }, [answers, attemptId, courseId, moduleId, onAttemptCompleted, questions]);
 
   const goNext = useCallback(() => {
     if (index < total - 1) {
@@ -473,6 +467,15 @@ export function LearningModulePracticeQuiz({
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               Below is a breakdown for each question, including explanations where available.
             </Typography>
+            {correct < totalQs ? (
+              <Typography variant="body2" sx={{ mt: 1.5, color: 'warning.dark', fontWeight: 600 }}>
+                Score 100% on this quiz to unlock the assessment.
+              </Typography>
+            ) : (
+              <Typography variant="body2" sx={{ mt: 1.5, color: 'success.dark', fontWeight: 600 }}>
+                Perfect score — the assessment is now unlocked.
+              </Typography>
+            )}
           </Paper>
 
           <Stack spacing={2.5}>

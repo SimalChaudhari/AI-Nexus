@@ -26,6 +26,7 @@ import {
 import { CourseQuestionAssignmentSubmissionEntity } from './course-question-assignment-submission.entity';
 import { UserRole } from '../user/users.entity';
 import { CourseAssignmentGradingService } from './course-assignment-grading.service';
+import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 import { ManualVerifyAssignmentSubmissionDto } from './course-assignment-manual-verify.dto';
 import {
   buildSubmissionAttemptRecord,
@@ -142,6 +143,7 @@ export class CourseQuestionBankService {
     private readonly courseService: CourseService,
     private readonly courseEnrollmentService: CourseEnrollmentService,
     private readonly assignmentGradingService: CourseAssignmentGradingService,
+    private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
   ) {}
 
   private async assertModuleBelongsToCourse(
@@ -583,7 +585,17 @@ export class CourseQuestionBankService {
     attempt.correctAnswers = correctAnswers;
     attempt.scorePercent = scorePercent;
     attempt.answers = answerRows;
-    return this.attemptRepo.save(attempt);
+    this.quizAssessmentProgressService.markQuizAttemptCompleted(attempt);
+    const saved = await this.attemptRepo.save(attempt);
+    if (saved.isCompleted) {
+      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(userId, courseId);
+    }
+    return saved;
+  }
+
+  async getLearnerQuizAssessmentProgress(userId: string, courseId: string) {
+    await this.courseService.getById(courseId);
+    return this.quizAssessmentProgressService.getLearnerProgress(userId, courseId);
   }
 
   async listAttemptsForAdmin(
@@ -781,6 +793,7 @@ export class CourseQuestionBankService {
     row.manualVerifiedAt = null;
     row.manualVerifiedBy = null;
     row.submittedAt = null;
+    row.isCompleted = false;
   }
 
   async uploadAssignmentSubmissionFiles(
@@ -790,7 +803,12 @@ export class CourseQuestionBankService {
     files: Express.Multer.File[],
     saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
   ): Promise<CourseQuestionAssignmentSubmissionEntity> {
-    await this.assertAssignmentAccess(userId, courseId, questionId);
+    const question = await this.assertAssignmentAccess(userId, courseId, questionId);
+    await this.quizAssessmentProgressService.assertQuizPerfectScoreForAssignment(
+      userId,
+      courseId,
+      question,
+    );
     if (!files?.length) {
       throw new BadRequestException('At least one file is required');
     }
@@ -886,7 +904,12 @@ export class CourseQuestionBankService {
     courseId: string,
     questionId: string,
   ): Promise<CourseQuestionAssignmentSubmissionEntity> {
-    await this.assertAssignmentAccess(userId, courseId, questionId);
+    const question = await this.assertAssignmentAccess(userId, courseId, questionId);
+    await this.quizAssessmentProgressService.assertQuizPerfectScoreForAssignment(
+      userId,
+      courseId,
+      question,
+    );
 
     const existing = await this.assignmentSubmissionRepo.findOne({
       where: { questionId, userId },
@@ -963,7 +986,11 @@ export class CourseQuestionBankService {
     if (submission.evaluationStatus === 'pending' || submission.evaluationStatus === 'processing') {
       submission.evaluationStatus = 'completed';
     }
+    this.quizAssessmentProgressService.markSubmissionCompleted(submission, dto.passed === true);
     const saved = await this.assignmentSubmissionRepo.save(submission);
+    if (saved.isCompleted) {
+      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
+    }
 
     const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
     const row = rows.find((item) => item.id === saved.id);

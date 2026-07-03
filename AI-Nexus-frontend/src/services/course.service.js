@@ -1083,6 +1083,16 @@ export const courseService = {
     }
   },
 
+  async getQuizAssessmentProgress(courseId) {
+    try {
+      const response = await axios.get(`/courses/${courseId}/question-bank/my-quiz-assessment-progress`);
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error fetching quiz/assessment progress:', error);
+      throw error;
+    }
+  },
+
   async deleteCourseQuestionAttempt(attemptId) {
     try {
       const response = await axios.delete(`/courses/question-bank/attempts/${attemptId}`);

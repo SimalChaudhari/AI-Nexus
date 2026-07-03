@@ -43,6 +43,7 @@ import { LanguageModule } from '../language/language.module';
 import { ReviewModule } from '../review/review.module';
 import { CourseCertificateEntity } from './course-certificate.entity';
 import { CourseCertificateService } from './course-certificate.service';
+import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 import { CourseCertificateInitService } from './course-certificate-init.service';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { CategoryEntity } from '../category/categories.entity';
@@ -61,9 +62,9 @@ import { ReviewEntity } from '../review/review.entity';
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseAssignmentGradingService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService, SpotlightrService, VideoDurationService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseAssignmentGradingService, CourseQuizAssessmentProgressService, CourseCertificateService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService, SpotlightrService, VideoDurationService],
     controllers: [CourseController],
-    exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseCertificateService],
+    exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseQuizAssessmentProgressService, CourseCertificateService],
 })
 export class CourseModule {}
 

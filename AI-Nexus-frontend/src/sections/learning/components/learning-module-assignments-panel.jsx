@@ -632,6 +632,7 @@ export function LearningModuleAssignmentsPanel({
   moduleTitle,
   assignments,
   onAssignmentsChange,
+  onAssessmentCompleted,
   fillContainer = false,
 }) {
   const theme = useTheme();
@@ -692,6 +693,9 @@ export function LearningModuleAssignmentsPanel({
               mySubmission: byQuestionId.get(item.id) || item.mySubmission || null,
             }));
             onAssignmentsChange?.(next);
+            if (next.some((item) => isSubmissionPassedLocked(item.mySubmission))) {
+              onAssessmentCompleted?.();
+            }
             return next;
           });
         })

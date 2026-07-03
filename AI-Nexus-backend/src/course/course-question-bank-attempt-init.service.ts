@@ -41,6 +41,14 @@ export class CourseQuestionBankAttemptInitService implements OnModuleInit {
         `);
       }
 
+      try {
+        await queryRunner.query(
+          `ALTER TABLE "course_question_bank_attempt" ADD COLUMN "isCompleted" boolean NOT NULL DEFAULT false`,
+        );
+      } catch (e) {
+        if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+      }
+
       await queryRunner.release();
     } catch (error) {
       console.error(

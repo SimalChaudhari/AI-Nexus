@@ -70,6 +70,7 @@ export class CourseQuestionAssignmentInitService implements OnModuleInit {
         ['attemptHistory', 'jsonb'],
         ['submissionFiles', 'jsonb'],
         ['submittedAt', 'TIMESTAMP'],
+        ['isCompleted', 'boolean NOT NULL DEFAULT false'],
       ];
 
       for (const [column, definition] of evaluationColumns) {

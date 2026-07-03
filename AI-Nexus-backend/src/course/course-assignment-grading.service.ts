@@ -14,8 +14,10 @@ import {
   AssignmentVerificationLogEntry,
   getAssignmentPassScoreThreshold,
   resolvePassFromScore,
+  resolveSubmissionPassed,
 } from './course-assignment-submission-evaluation.types';
 import { getSubmissionFilesFromEntity } from './course-assignment-file.types';
+import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 
 type PreparedFileContent = {
   label: string;
@@ -36,6 +38,7 @@ export class CourseAssignmentGradingService {
     private readonly questionRepo: Repository<CourseQuestionBankEntity>,
     private readonly llmService: LlmService,
     private readonly localStorageService: LocalStorageService,
+    private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
   ) {}
 
   queueGrading(submissionId: string): void {
@@ -185,7 +188,7 @@ export class CourseAssignmentGradingService {
       submission.aiFeedback = result.feedback;
       submission.aiRawResult = aiRawResult;
       submission.aiEvaluatedAt = new Date();
-      return this.submissionRepo.save(submission);
+      return this.finalizeSubmissionSave(submission);
     } catch (error) {
       submission.evaluationStatus = 'manual_required';
       submission.aiPassed = null;
@@ -195,8 +198,24 @@ export class CourseAssignmentGradingService {
           ? `Automatic grading failed: ${error.message}. An admin will review manually.`
           : 'Automatic grading failed. An admin will review manually.';
       submission.aiEvaluatedAt = new Date();
+      submission.isCompleted = false;
       return this.submissionRepo.save(submission);
     }
+  }
+
+  private async finalizeSubmissionSave(
+    submission: CourseQuestionAssignmentSubmissionEntity,
+  ): Promise<CourseQuestionAssignmentSubmissionEntity> {
+    const { passed } = resolveSubmissionPassed(submission);
+    this.quizAssessmentProgressService.markSubmissionCompleted(submission, passed);
+    const saved = await this.submissionRepo.save(submission);
+    if (saved.isCompleted) {
+      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(
+        saved.userId,
+        saved.courseId,
+      );
+    }
+    return saved;
   }
 
   private async saveManualRequired(
@@ -211,6 +230,7 @@ export class CourseAssignmentGradingService {
     submission.aiFeedback = feedback;
     submission.aiRawResult = aiRawResult ?? result?.raw ?? null;
     submission.aiEvaluatedAt = new Date();
+    submission.isCompleted = false;
     return this.submissionRepo.save(submission);
   }
 

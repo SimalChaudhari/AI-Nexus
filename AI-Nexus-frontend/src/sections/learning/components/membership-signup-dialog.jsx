@@ -7668,7 +7668,7 @@ export function MembershipSignupDialog({
                       Name as per ID
                     </Typography>
                   <TextField
-                    placeholder="e.g. LIU XIANLONG, EDMUND"
+                    placeholder="e.g. John Doe"
                     value={nricManualNameAsPerId}
                     onChange={(event) => handleNricManualNameAsPerIdChange(event.target.value)}
                     fullWidth

@@ -1257,6 +1257,67 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     swrOptions
   );
 
+  const quizAssessmentProgressKey =
+    course?.id && authenticated ? ['course-quiz-assessment-progress', course.id] : null;
+  const { data: quizAssessmentProgress, mutate: mutateQuizAssessmentProgress } = useSWR(
+    quizAssessmentProgressKey,
+    () => courseService.getQuizAssessmentProgress(course.id),
+    swrOptions
+  );
+
+  const [localQuizCompletedKeys, setLocalQuizCompletedKeys] = useState(() => new Set());
+
+  const markLocalQuizCompleted = useCallback(
+    (moduleId) => {
+      const key = moduleId || '__course_end__';
+      setLocalQuizCompletedKeys((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+      mutateQuizAssessmentProgress();
+    },
+    [mutateQuizAssessmentProgress]
+  );
+
+  useEffect(() => {
+    const scopes = quizAssessmentProgress?.scopes;
+    if (!Array.isArray(scopes) || !scopes.length) return;
+    setLocalQuizCompletedKeys((prev) => {
+      const next = new Set(prev);
+      scopes.forEach((scope) => {
+        if (!scope?.quizCompleted) return;
+        next.add(scope.moduleId || '__course_end__');
+      });
+      return next;
+    });
+  }, [quizAssessmentProgress]);
+
+  const quizAssessmentScopeByModuleId = useMemo(() => {
+    const map = {};
+    (quizAssessmentProgress?.scopes || []).forEach((scope) => {
+      if (scope?.moduleId) map[scope.moduleId] = scope;
+    });
+    return map;
+  }, [quizAssessmentProgress]);
+
+  const courseEndQuizAssessmentScope = useMemo(
+    () => (quizAssessmentProgress?.scopes || []).find((scope) => !scope?.moduleId) || null,
+    [quizAssessmentProgress]
+  );
+
+  const isModuleQuizPerfect = useCallback(
+    (moduleId) => {
+      if (localQuizCompletedKeys.has(moduleId)) return true;
+      return Boolean(quizAssessmentScopeByModuleId[moduleId]?.quizCompleted);
+    },
+    [localQuizCompletedKeys, quizAssessmentScopeByModuleId]
+  );
+
+  const isCourseEndQuizPerfect =
+    localQuizCompletedKeys.has('__course_end__') ||
+    Boolean(courseEndQuizAssessmentScope?.quizCompleted);
+
   const quizCountByModuleId = useMemo(() => {
     const m = {};
     (questionBankList || []).forEach((q) => {
@@ -2801,6 +2862,54 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     }
   }, [courseEndLocked, activeLessonId, flatLessons, setSearchParams]);
 
+  const activeModuleAssignmentQuizLocked = Boolean(
+    moduleAssignmentModuleId &&
+      (quizCountByModuleId[moduleAssignmentModuleId] || 0) > 0 &&
+      !isModuleQuizPerfect(moduleAssignmentModuleId)
+  );
+
+  const courseEndAssignmentQuizLocked = Boolean(
+    activeLessonId === COURSE_END_ASSIGNMENT_ID &&
+      courseEndQuizCount > 0 &&
+      !isCourseEndQuizPerfect
+  );
+
+  useEffect(() => {
+    if (!activeModuleAssignmentQuizLocked && !courseEndAssignmentQuizLocked) return;
+    toast.info('Score 100% on the quiz before starting the assessment');
+    if (activeModuleAssignmentQuizLocked && moduleAssignmentModuleId) {
+      const practiceId = `${MODULE_PRACTICE_PREFIX}${moduleAssignmentModuleId}`;
+      setActiveLessonId(practiceId);
+      setSearchParams({ section: practiceId }, { replace: true });
+      return;
+    }
+    if (courseEndAssignmentQuizLocked) {
+      setActiveLessonId(COURSE_END_PRACTICE_ID);
+      setSearchParams({ section: COURSE_END_PRACTICE_ID }, { replace: true });
+    }
+  }, [
+    activeModuleAssignmentQuizLocked,
+    courseEndAssignmentQuizLocked,
+    moduleAssignmentModuleId,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
+    if (!course?.id || !authenticated || !allModulesDone) return;
+    if (!quizAssessmentProgress?.quizAssessmentCompleted) return;
+    let active = true;
+    courseService
+      .issueCourseCertificate(course.id)
+      .then((result) => {
+        if (!active || !result?.issued) return;
+        toast.success('Congratulations! Your course certificate is ready.');
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [course?.id, authenticated, allModulesDone, quizAssessmentProgress?.quizAssessmentCompleted]);
+
   const activeModuleIndex = useMemo(
     () => modules.findIndex((m) => (m.lessons || []).some((l) => l.id === activeLessonId)),
     [modules, activeLessonId]
@@ -3659,17 +3768,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       const modAssignmentCount = assignmentCountByModuleId[section.id] || 0;
                       if (modAssignmentCount === 0) return null;
                       const stats = moduleProgressById[section.id];
-                      const moduleDone =
+                      const modQuizCount = quizCountByModuleId[section.id] || 0;
+                      const moduleVideosDone =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
                         (stats && stats.total > 0 && stats.completed >= stats.total);
-                      const assignmentUnlockedStyle = moduleDone;
+                      const moduleQuizPassed =
+                        modQuizCount === 0 || isModuleQuizPerfect(section.id);
+                      const assessmentUnlocked =
+                        modQuizCount > 0 ? moduleQuizPassed : moduleVideosDone;
+                      const assignmentTooltip =
+                        modQuizCount > 0 && !moduleQuizPassed
+                          ? 'Score 100% on the quiz to unlock assessment'
+                          : modQuizCount === 0 && !moduleVideosDone
+                            ? 'Complete every lesson in this module to unlock assessment'
+                            : `Open assessment (${modAssignmentCount} item${modAssignmentCount !== 1 ? 's' : ''})`;
+                      const assignmentUnlockedStyle = assessmentUnlocked;
                       return (
                         <Tooltip
-                          title={
-                            moduleDone
-                              ? `Open assessment (${modAssignmentCount} item${modAssignmentCount !== 1 ? 's' : ''})`
-                              : 'Complete every lesson in this module to unlock assessment'
-                          }
+                          title={assignmentTooltip}
                           placement="left"
                           arrow
                         >
@@ -3678,7 +3794,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             alignItems="center"
                             justifyContent="flex-start"
                             onClick={() => {
-                              if (!moduleDone) {
+                              if (modQuizCount > 0 && !moduleQuizPassed) {
+                                toast.info('Score 100% on the quiz before starting the assessment');
+                                return;
+                              }
+                              if (modQuizCount === 0 && !moduleVideosDone) {
                                 toast.info(
                                   'Complete every lesson in this module to unlock assessment'
                                 );
@@ -3694,16 +3814,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               py: 1.35,
                               px: 1.5,
                               borderRadius: 1.5,
-                              cursor: moduleDone ? 'pointer' : 'not-allowed',
-                              opacity: moduleDone ? 1 : 0.55,
+                              cursor: assessmentUnlocked ? 'pointer' : 'not-allowed',
+                              opacity: assessmentUnlocked ? 1 : 0.55,
                               bgcolor:
-                                moduleDone && activeLessonId === moduleAssignmentRowId
+                                assessmentUnlocked && activeLessonId === moduleAssignmentRowId
                                   ? alpha(sidebarAccent, 0.1)
                                   : assignmentUnlockedStyle
                                     ? alpha(theme.palette.warning.main, 0.06)
                                     : alpha(theme.palette.grey[500], 0.04),
                               border: `1px solid ${
-                                moduleDone && activeLessonId === moduleAssignmentRowId
+                                assessmentUnlocked && activeLessonId === moduleAssignmentRowId
                                   ? alpha(sidebarAccent, 0.4)
                                   : assignmentUnlockedStyle
                                     ? alpha(theme.palette.warning.main, 0.25)
@@ -3711,13 +3831,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               }`,
                               boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
                               color:
-                                moduleDone && activeLessonId === moduleAssignmentRowId
+                                assessmentUnlocked && activeLessonId === moduleAssignmentRowId
                                   ? 'primary.dark'
                                   : assignmentUnlockedStyle
                                     ? 'warning.dark'
                                     : 'text.primary',
                               '&:hover': {
-                                bgcolor: moduleDone
+                                bgcolor: assessmentUnlocked
                                   ? activeLessonId === moduleAssignmentRowId
                                     ? alpha(sidebarAccent, 0.14)
                                     : alpha(theme.palette.warning.main, 0.1)
@@ -3738,7 +3858,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   borderRadius: 1,
                                   overflow: 'hidden',
                                   border: `1px solid ${
-                                    moduleDone && activeLessonId === moduleAssignmentRowId
+                                    assessmentUnlocked && activeLessonId === moduleAssignmentRowId
                                       ? sidebarAccent
                                       : assignmentUnlockedStyle
                                         ? alpha(theme.palette.warning.main, 0.5)
@@ -3769,7 +3889,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   {modAssignmentCount} item{modAssignmentCount !== 1 ? 's' : ''}
                                 </Typography>
                               </Stack>
-                              {!moduleDone && (
+                              {!assessmentUnlocked && (
                                 <Iconify
                                   icon="solar:lock-keyhole-bold"
                                   width={14}
@@ -3856,11 +3976,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 );
               })()}
               {courseEndAssignmentCount > 0 && (() => {
-                const unlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const modulesUnlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const unlocked =
+                  courseEndQuizCount > 0 ? isCourseEndQuizPerfect : modulesUnlocked;
+                const assignmentTooltip =
+                  courseEndQuizCount > 0 && !isCourseEndQuizPerfect
+                    ? 'Score 100% on the final quiz to unlock the final assessment'
+                    : courseEndQuizCount === 0 && !modulesUnlocked
+                      ? 'Complete all modules to unlock the final assessment'
+                      : `Open final assessment (${courseEndAssignmentCount} item${courseEndAssignmentCount !== 1 ? 's' : ''})`;
                 return (
                   <Tooltip
                     key="course-end-assignment"
-                    title={unlocked ? `Open final assessment (${courseEndAssignmentCount} item${courseEndAssignmentCount !== 1 ? 's' : ''})` : 'Complete all modules to unlock the final assessment'}
+                    title={assignmentTooltip}
                     placement="left"
                     arrow
                   >
@@ -3868,7 +3996,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       direction="row"
                       alignItems="center"
                       onClick={() => {
-                        if (!unlocked) { toast.info('Complete all modules to unlock the final assessment'); return; }
+                        if (courseEndQuizCount > 0 && !isCourseEndQuizPerfect) {
+                          toast.info('Score 100% on the final quiz before starting the final assessment');
+                          return;
+                        }
+                        if (courseEndQuizCount === 0 && !modulesUnlocked) {
+                          toast.info('Complete all modules to unlock the final assessment');
+                          return;
+                        }
                         setActiveLessonId(COURSE_END_ASSIGNMENT_ID);
                         setSidebarOpen(false);
                         setSearchParams({ section: COURSE_END_ASSIGNMENT_ID }, { replace: true });
@@ -4348,6 +4483,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   Complete every lesson in all modules to unlock the final assessment.
                 </Typography>
               </Box>
+            ) : courseEndAssignmentQuizLocked ? (
+              <Box sx={{ py: 8, px: 3, textAlign: 'center' }}>
+                <Iconify icon="solar:lock-keyhole-bold" width={40} sx={{ color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" sx={{ mb: 1 }}>
+                  Final assessment locked
+                </Typography>
+                <Typography color="text.secondary">
+                  Score 100% on the final quiz before starting the final assessment.
+                </Typography>
+              </Box>
             ) : (
             <Box
               sx={{
@@ -4367,6 +4512,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 moduleTitle="Final Assessment"
                 assignments={courseEndAssignmentQuestions}
                 fillContainer
+                onAssessmentCompleted={() => mutateQuizAssessmentProgress()}
               />
             </Box>
             )
@@ -4402,6 +4548,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   moduleId={null}
                   questions={courseEndQuizQuestions}
                   fillContainer
+                  onAttemptCompleted={() => markLocalQuizCompleted(null)}
                 />
               ) : (
                 <LearningModulePracticeIntro
@@ -4420,6 +4567,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             ) : !moduleAssignmentModuleMeta ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
                 <Typography color="text.secondary">This module could not be found.</Typography>
+              </Box>
+            ) : activeModuleAssignmentQuizLocked ? (
+              <Box sx={{ py: 8, px: 3, textAlign: 'center' }}>
+                <Iconify icon="solar:lock-keyhole-bold" width={40} sx={{ color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" sx={{ mb: 1 }}>
+                  Assessment locked
+                </Typography>
+                <Typography color="text.secondary">
+                  Score 100% on the module quiz before starting the assessment.
+                </Typography>
               </Box>
             ) : (
               <Box
@@ -4440,6 +4597,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   moduleTitle={moduleAssignmentModuleMeta.title || 'Module'}
                   assignments={moduleAssignmentQuestions}
                   fillContainer
+                  onAssessmentCompleted={() => mutateQuizAssessmentProgress()}
                 />
               </Box>
             )
@@ -4474,6 +4632,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     moduleTitle={modulePracticeModuleMeta.title || 'Module'}
                     questions={modulePracticeQuestions}
                     fillContainer
+                    onAttemptCompleted={() => markLocalQuizCompleted(modulePracticeModuleId)}
                     onBackToIntro={() => {
                       setSearchParams({ section: activeLessonId }, { replace: true });
                     }}
