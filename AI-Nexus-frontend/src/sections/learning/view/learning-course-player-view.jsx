@@ -2827,6 +2827,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (totalLessons === 0) return 0;
 
     const completionSum = flatLessons.reduce((sum, lesson) => {
+      if (isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds)) {
+        return sum + 100;
+      }
       const merged = mergeProgressForSidebar(lesson, liveSectionProgressMap);
       const pct = Number(merged.completionPercent ?? 0);
       return sum + Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));

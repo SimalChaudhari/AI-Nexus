@@ -331,7 +331,8 @@ export class CourseSectionWatchProgressService {
     const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
     const watchedFromCoverage =
       storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
-    const watchedForDisplay = watchedFromCoverage;
+    // Legacy rows may have higher watchedSeconds than partial coverage ranges (pre-migration rewatches).
+    const watchedForDisplay = Math.max(watchedFromCoverage, legacyWatchedCap);
     const computed = this.buildComputed(
       existing?.lastPositionSeconds ?? 0,
       watchedForDisplay,
@@ -340,12 +341,21 @@ export class CourseSectionWatchProgressService {
     const isCompleted = Boolean(
       existing?.isCompleted ||
         this.watchProgressMeetsCompletionRequirement(
-          computed.watched,
+          watchedForDisplay,
           required,
           resolvedWatchtimeSeconds,
         ),
     );
     const isWatched = isCompleted;
+    const computedForResponse =
+      isCompleted && duration > 0
+        ? {
+            ...computed,
+            watched: duration,
+            remaining: 0,
+            percent: 100,
+          }
+        : computed;
     return {
       duration,
       required,
@@ -353,7 +363,7 @@ export class CourseSectionWatchProgressService {
       legacyWatchedCap,
       watchedFromCoverage,
       watchedForDisplay,
-      computed,
+      computed: computedForResponse,
       isCompleted,
       isWatched,
     };
@@ -379,6 +389,11 @@ export class CourseSectionWatchProgressService {
     let watchedCoverageRangesOut: [number, number][] = storedRanges;
     if (storedRanges.length === 0 && legacyWatchedCap > 0 && duration > 0) {
       watchedCoverageRangesOut = [[0, legacyWatchedCap]];
+    } else if (isCompleted && duration > 0) {
+      const covered = coverageMeasureSeconds(watchedCoverageRangesOut, duration);
+      if (covered < duration) {
+        watchedCoverageRangesOut = [[0, duration]];
+      }
     }
 
     // Completed sections stay accessible forever; sequential gate does not re-lock them.
