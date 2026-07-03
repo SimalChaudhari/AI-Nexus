@@ -21,6 +21,7 @@ const SECTION_GREY = '#eceef1';
 const PARTNERS_BG = '#F7F9FA';
 
 export const PARTNERS_WITH_ISCA_HEADING = 'Early Adopters';
+export const SUPPORTING_PARTNERS_HEADING = 'Supporting Partners';
 
 function resolvePartnersHeading(headingOverride, apiHeading) {
   const override = String(headingOverride ?? '').trim();
@@ -37,7 +38,8 @@ function resolveAssetUrl(url) {
 }
 
 function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation = false }) {
-  const shouldScroll = logos.length > 6;
+  const safeLogos = Array.isArray(logos) ? logos : [];
+  const shouldScroll = safeLogos.length > 6;
 
   const sectionProps = disableAnimation
     ? { component: 'section' }
@@ -99,10 +101,11 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
             </Stack>
           ) : null}
 
+          {safeLogos.length > 0 ? (
           <Box
             sx={{
               width: 1,
-              overflow: 'hidden',
+              overflow: shouldScroll ? 'hidden' : 'visible',
               touchAction: 'pan-y',
               '@keyframes supportingPartnersScroll': {
                 from: { transform: 'translateX(0)' },
@@ -128,7 +131,7 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
                 px: { xs: 0.5, md: 1 },
               }}
             >
-              {(shouldScroll ? [...logos, ...logos] : logos).map((row, index) => (
+              {(shouldScroll ? [...safeLogos, ...safeLogos] : safeLogos).map((row, index) => (
                 <Box
                   key={`supporting-partner-logo-${index}`}
                   sx={{
@@ -165,6 +168,7 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
               ))}
             </Stack>
           </Box>
+          ) : null}
         </Stack>
       </DashboardContent>
     </Box>
@@ -229,13 +233,24 @@ export function HomeSupportingPartnersSection({ headingOverride, logosSource = '
   );
 }
 
-/** Partner-with-ISCA page: both logo strips in one fetch (Supporting Partners + Early Adopter). */
+function mapLogoRows(rawLogos) {
+  return (Array.isArray(rawLogos) ? rawLogos : [])
+    .map((row) => ({
+      name: String(row?.name || '').trim(),
+      logoUrl: resolveAssetUrl(row?.logoUrl),
+    }))
+    .filter((row) => row.logoUrl);
+}
+
+/** Partner-with-ISCA page: Supporting Partners (employer logos) + Early Adopters (employee logos). */
 export function PartnerWithIscaPartnerLogosSections() {
   const theme = useTheme();
   const secondary = theme.palette.secondary;
 
-  const [partnersHeading, setPartnersHeading] = useState('');
-  const [logos, setLogos] = useState([]);
+  const [supportingHeading, setSupportingHeading] = useState(SUPPORTING_PARTNERS_HEADING);
+  const [earlyAdopterHeading, setEarlyAdopterHeading] = useState(PARTNERS_WITH_ISCA_HEADING);
+  const [supportingLogos, setSupportingLogos] = useState([]);
+  const [earlyAdopterLogos, setEarlyAdopterLogos] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -243,27 +258,24 @@ export function PartnerWithIscaPartnerLogosSections() {
       .getPublic()
       .then((settings) => {
         if (!active) return;
-        const employeeContent = resolveEmployeeContent(
-          settings?.homeEmployeeContent,
-          settings?.homeEmployerContent
-        );
         const employerContent = normalizeEmployerContent(settings?.homeEmployerContent);
-        const rawLogos = Array.isArray(employerContent.logos) ? employerContent.logos : [];
+        const employeeContent = normalizeEmployeeContent(settings?.homeEmployeeContent);
 
-        setPartnersHeading(String(employeeContent.partnersHeading || '').trim());
-        setLogos(
-          rawLogos
-            .map((row) => ({
-              name: String(row?.name || '').trim(),
-              logoUrl: resolveAssetUrl(row?.logoUrl),
-            }))
-            .filter((row) => row.logoUrl)
+        setSupportingHeading(
+          String(employerContent.partnersHeading || SUPPORTING_PARTNERS_HEADING).trim()
         );
+        setEarlyAdopterHeading(
+          String(employeeContent.partnersHeading || PARTNERS_WITH_ISCA_HEADING).trim()
+        );
+        setSupportingLogos(mapLogoRows(employerContent.logos));
+        setEarlyAdopterLogos(mapLogoRows(employeeContent.logos));
       })
       .catch(() => {
         if (active) {
-          setPartnersHeading('');
-          setLogos([]);
+          setSupportingHeading(SUPPORTING_PARTNERS_HEADING);
+          setEarlyAdopterHeading(PARTNERS_WITH_ISCA_HEADING);
+          setSupportingLogos([]);
+          setEarlyAdopterLogos([]);
         }
       });
     return () => {
@@ -271,29 +283,20 @@ export function PartnerWithIscaPartnerLogosSections() {
     };
   }, []);
 
-  if (!logos.length) return null;
-
-  const supportingHeading = resolvePartnersHeading('', partnersHeading);
-  const earlyAdopterHeading = resolvePartnersHeading(PARTNERS_WITH_ISCA_HEADING, '');
-
   return (
-    <Box component="section" sx={{ width: '100%', flexShrink: 0, touchAction: 'pan-y' }}>
-      {supportingHeading ? (
-        <PartnersLogoSection
-          heading={supportingHeading}
-          logos={logos}
-          secondaryColor={secondary.main}
-          disableAnimation
-        />
-      ) : null}
-      {earlyAdopterHeading ? (
-        <PartnersLogoSection
-          heading={earlyAdopterHeading}
-          logos={logos}
-          secondaryColor={secondary.main}
-          disableAnimation
-        />
-      ) : null}
+    <Box component="section" sx={{ width: '100%', flexShrink: 0, touchAction: 'pan-y', overflow: 'visible' }}>
+      <PartnersLogoSection
+        heading={supportingHeading}
+        logos={supportingLogos}
+        secondaryColor={secondary.main}
+        disableAnimation
+      />
+      <PartnersLogoSection
+        heading={earlyAdopterHeading}
+        logos={earlyAdopterLogos}
+        secondaryColor={secondary.main}
+        disableAnimation
+      />
     </Box>
   );
 }
