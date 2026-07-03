@@ -6,6 +6,7 @@ const BRAND_GRADIENT = `linear-gradient(115deg, ${BRAND_PRIMARY} 0%, ${BRAND_SEC
 export type BrandTemplateParams = {
     heading: string;
     greetingName: string;
+    greetingPrefix?: string;
     intro: string;
     bodyHtml?: string;
     ctaLabel?: string;
@@ -51,6 +52,7 @@ export const buildInlineBrandEmailHtml = ({
     title,
     heading,
     greetingName,
+    greetingPrefix = 'Hello',
     intro,
     bodyHtml = '',
     ctaLabel,
@@ -61,6 +63,7 @@ export const buildInlineBrandEmailHtml = ({
     title: string;
     heading: string;
     greetingName: string;
+    greetingPrefix?: string;
     intro: string;
     bodyHtml?: string;
     ctaLabel?: string;
@@ -71,8 +74,9 @@ export const buildInlineBrandEmailHtml = ({
     const safeTitle = escapeHtml(title);
     const safeHeading = escapeHtml(heading);
     const safeGreetingName = escapeHtml(greetingName || 'there');
+    const safeGreetingPrefix = escapeHtml(greetingPrefix);
     const safeIntro = escapeHtml(intro);
-    const safeFooter = escapeHtml(footer);
+    const safeFooter = escapeHtml(footer).replace(/\n/g, '<br />');
     const introBlock = safeIntro
         ? `<p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">${safeIntro}</p>`
         : '';
@@ -99,7 +103,7 @@ export const buildInlineBrandEmailHtml = ({
                     </tr>
                     <tr>
                         <td style="padding:28px 26px 22px; background-color:#ffffff;">
-                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:700;">Hello ${safeGreetingName},</p>
+                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:700;">${safeGreetingPrefix} ${safeGreetingName},</p>
                             ${introBlock}
                             ${bodyHtml}
                             ${ctaBlock}
@@ -122,12 +126,13 @@ export const buildInlineBrandEmailHtml = ({
 
 export const buildBrandTemplate = (
     _frontendBaseUrl: string,
-    { heading, greetingName, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
+    { heading, greetingName, greetingPrefix, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
 ): string =>
     buildInlineBrandEmailHtml({
         title: heading,
         heading,
         greetingName,
+        greetingPrefix,
         intro,
         bodyHtml,
         ctaLabel,
@@ -256,26 +261,15 @@ export const buildFeeWaiverHrVerificationBodyHtml = (learnerName: string): strin
     const safeLearnerName = escapeHtml(learnerName);
 
     return `
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
-                                <tr>
-                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                                        Job Function Verification
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:18px 14px; background-color:#ffffff;">
-                                        <p style="margin:0 0 12px; color:#334155; font-size:14px; line-height:1.6;">
-                                            ${safeLearnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.
-                                        </p>
-                                        <p style="margin:0 0 12px; color:#334155; font-size:14px; line-height:1.6;">
-                                            As part of IMDA's and audit purposes, we will need your assistance to verify that ${safeLearnerName} is currently working in an accounting and finance related job role.
-                                        </p>
-                                        <p style="margin:0; color:#334155; font-size:14px; line-height:1.6;">
-                                            Please click the button below to complete the verification.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>`;
+                            <p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">
+                                ${safeLearnerName} has applied for the ISCA AI Fluency Programme, which is designed for accounting and finance professionals.
+                            </p>
+                            <p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">
+                                As part of the application verification process, we kindly request your assistance in confirming that ${safeLearnerName} is currently employed in an accounting and finance-related role within your organisation.
+                            </p>
+                            <p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">
+                                Please click the verification button below to complete the employment confirmation.
+                            </p>`;
 };
 
 export type StudentAcademicVerificationEmailParams = {

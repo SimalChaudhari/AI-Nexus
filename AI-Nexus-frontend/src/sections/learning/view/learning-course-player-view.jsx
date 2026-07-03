@@ -47,6 +47,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import {
   IMAGE_VIEW_COMPLETE_DELAY_MS,
   TEXT_VIEW_COMPLETE_DELAY_MS,
+  UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO,
 } from 'src/config/constants';
 import { toast } from 'src/components/snackbar';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -2781,7 +2782,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [modules, moduleProgressById]
   );
 
-  const courseEndLocked = isCourseEndModel && !allModulesDone;
+  const courseEndLocked =
+    isCourseEndModel && !allModulesDone && !UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
 
   useEffect(() => {
     if (!courseEndLocked) return;
@@ -3530,7 +3532,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (modPracticeCount === 0) return null;
                       const stats = moduleProgressById[section.id];
                       const moduleDone =
-                        stats && stats.total > 0 && stats.completed >= stats.total;
+                        UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        (stats && stats.total > 0 && stats.completed >= stats.total);
                       const practiceUnlockedStyle = moduleDone;
                       return (
                         <Tooltip
@@ -3657,7 +3660,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (modAssignmentCount === 0) return null;
                       const stats = moduleProgressById[section.id];
                       const moduleDone =
-                        stats && stats.total > 0 && stats.completed >= stats.total;
+                        UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        (stats && stats.total > 0 && stats.completed >= stats.total);
                       const assignmentUnlockedStyle = moduleDone;
                       return (
                         <Tooltip
@@ -3810,7 +3814,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Typography>
             <Stack spacing={1} sx={{ mt: 1 }}>
               {courseEndQuizCount > 0 && (() => {
-                const unlocked = allModulesDone;
+                const unlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
                 return (
                   <Tooltip
                     key="course-end-quiz"
@@ -3852,7 +3856,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 );
               })()}
               {courseEndAssignmentCount > 0 && (() => {
-                const unlocked = allModulesDone;
+                const unlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
                 return (
                   <Tooltip
                     key="course-end-assignment"
