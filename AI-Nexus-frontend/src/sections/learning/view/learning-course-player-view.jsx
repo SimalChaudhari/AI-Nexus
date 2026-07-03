@@ -2817,6 +2817,40 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const progressPercent = totalLessons
     ? Math.min(100, Math.round((completedCount / totalLessons) * 100))
     : 0;
+  const courseOverviewProgressPercent = useMemo(() => {
+    if (totalLessons === 0) return 0;
+
+    const completionSum = flatLessons.reduce((sum, lesson) => {
+      const merged = mergeProgressForSidebar(lesson, liveSectionProgressMap);
+      const pct = Number(merged.completionPercent ?? 0);
+      return sum + Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+    }, 0);
+
+    let percent = Math.round(completionSum / totalLessons);
+    const videosCompleted =
+      flatLessons.length > 0 &&
+      flatLessons.every((lesson) => isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds));
+    const needsQuizAssessment = (quizAssessmentProgress?.scopes || []).some(
+      (scope) => Number(scope?.quizCount || 0) > 0 || Number(scope?.assignmentCount || 0) > 0
+    );
+    const quizAssessmentMet = Boolean(quizAssessmentProgress?.quizAssessmentCompleted);
+    const isFullyCompleted = videosCompleted && (!needsQuizAssessment || quizAssessmentMet);
+
+    if (isFullyCompleted) {
+      percent = 100;
+    } else if (needsQuizAssessment && videosCompleted && !quizAssessmentMet) {
+      percent = Math.min(99, percent);
+    }
+
+    return Math.max(0, Math.min(100, percent));
+  }, [flatLessons, totalLessons, liveSectionProgressMap, viewedSectionIds, quizAssessmentProgress]);
+  const pendingQuizForFullCompletion =
+    courseOverviewProgressPercent < 100 &&
+    progressPercent >= 100 &&
+    (quizAssessmentProgress?.scopes || []).some(
+      (scope) => Number(scope?.quizCount || 0) > 0 || Number(scope?.assignmentCount || 0) > 0
+    ) &&
+    !quizAssessmentProgress?.quizAssessmentCompleted;
   const currentLessonNumber =
     currentIndex >= 0 && totalLessons > 0 ? Math.min(totalLessons, currentIndex + 1) : 0;
   const moduleProgressById = useMemo(() => {
@@ -3153,7 +3187,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     Course progress
                   </Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary', lineHeight: 1.2, mt: 0.25 }}>
-                    {Math.min(100, Math.round(progressPercent))}%
+                    {Math.min(100, Math.round(courseOverviewProgressPercent))}%
                   </Typography>
                 </Box>
                 <Box
@@ -3173,14 +3207,19 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   </Typography>
                 </Box>
               </Stack>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.25, fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingQuizForFullCompletion ? 0.5 : 1.25, fontWeight: 500 }}>
                 {currentLessonNumber > 0
                   ? `Current: lesson ${currentLessonNumber} of ${totalLessons}`
                   : `Select a lesson to begin (${totalLessons} total)`}
               </Typography>
+              {pendingQuizForFullCompletion ? (
+                <Typography variant="caption" sx={{ color: 'warning.dark', display: 'block', mb: 1.25, fontWeight: 600 }}>
+                  Lessons complete — finish practice quizzes to reach 100%.
+                </Typography>
+              ) : null}
               <LinearProgress
                 variant="determinate"
-                value={Math.min(100, progressPercent)}
+                value={Math.min(100, courseOverviewProgressPercent)}
                 sx={{
                   height: 8,
                   borderRadius: 10,
