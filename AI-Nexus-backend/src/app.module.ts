@@ -23,12 +23,13 @@ import { AppSettingsModule } from './app-settings/app-settings.module';
 import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { LlmModule } from './llm/llm.module';
+import { DatabaseIndexModule } from './common/database-index.module';
 
 const resolveTypeOrmPoolMax = (): number => {
   const raw = process.env.TYPEORM_POOL_MAX;
   if (raw !== undefined && raw !== '') {
     const n = parseInt(raw, 10);
-    if (!Number.isNaN(n) && n >= 1) return Math.min(n, 20);
+    if (!Number.isNaN(n) && n >= 1) return Math.min(n, 50);
   }
   // Default pool for long-lived Node (own server / Docker). Many *InitService hooks run onModuleInit
   // in parallel; a single connection would serialize them and slow boot.
@@ -38,6 +39,7 @@ const resolveTypeOrmPoolMax = (): number => {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    DatabaseIndexModule,
     LlmModule,
     TypeOrmModule.forRoot({
       type: 'postgres',

@@ -22,7 +22,11 @@ import { HomeFooter } from 'src/layouts/main/footer';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
 import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles';
+<<<<<<< HEAD
 import { HomeSupportingPartnersSection } from 'src/sections/home/home-supporting-partners-section';
+=======
+import { PartnerWithIscaPartnerLogosSections } from 'src/sections/home/home-supporting-partners-section';
+>>>>>>> c949d78b75865e1948b94a7a21eecd0878074a02
 import { FLUID_FONT_SIZES, FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 import {
   PARTNER_BODY_MD_SX,
@@ -504,10 +508,8 @@ function HeroSection({ hero, stats }) {
         position: 'relative',
         width: '100%',
         maxWidth: '100%',
-        overflow: 'hidden',
         overflowX: 'hidden',
-        overflowY: 'clip',
-        isolation: 'isolate',
+        overflowY: 'visible',
         bgcolor: '#ffffff',
         minHeight: { xs: 'auto', md: 560 },
         background: {
@@ -1755,6 +1757,8 @@ export function PartnerWithIscaView() {
         width: '100%',
         maxWidth: '100%',
         overflowX: 'hidden',
+        overflowY: 'visible',
+        flex: '0 0 auto',
         bgcolor: '#ffffff',
         color: 'text.primary',
         fontFamily: PAGE_FONT_FAMILY,
@@ -1777,8 +1781,12 @@ export function PartnerWithIscaView() {
       <HowItWorksSection section={content.howItWorks} />
       <FaqSection section={content.faq} />
       <CtaSection section={content.cta} />
+<<<<<<< HEAD
       <HomeSupportingPartnersSection />
       <HomeSupportingPartnersSection logosSource="employee" />
+=======
+      <PartnerWithIscaPartnerLogosSections />
+>>>>>>> c949d78b75865e1948b94a7a21eecd0878074a02
 
       <HomeFooter sx={{ mt: 0 }} />
     </Box>
