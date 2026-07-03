@@ -24,35 +24,50 @@ export class CourseCertificateService {
     return `AINX-${date}-${coursePart}-${userPart}`;
   }
 
-  async issueIfCourseCompleted(userId: string, courseId: string) {
-    const existing = await this.certificateRepository.findOne({ where: { userId, courseId } });
-    if (existing) {
-      if (existing.status === CourseCertificateStatus.Deleted) {
-        return { issued: false, certificate: existing, reason: 'deleted_by_admin' as const };
-      }
-      return { issued: false, certificate: existing, reason: 'already_exists' as const };
-    }
-
-    // Ensure the course exists before validating completion.
+  private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
     await this.courseService.getById(courseId);
 
     const sectionProgressMap =
       await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
     const rows = Object.values(sectionProgressMap || {});
     const hasSections = rows.length > 0;
-    const isCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+    const videosCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+    if (!videosCompleted) return false;
 
-    if (!isCompleted) {
-      return { issued: false, certificate: null, reason: 'not_completed' as const };
+    return this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(userId, courseId);
+  }
+
+  /**
+   * Issue, re-activate, or revoke a learner certificate based on current course completion.
+   * Auto-revoke uses Blocked status so a later pass can restore the same certificate row.
+   */
+  async syncCertificateWithCourseCompletion(userId: string, courseId: string) {
+    const existing = await this.certificateRepository.findOne({ where: { userId, courseId } });
+    const fullyComplete = await this.isCourseFullyCompleted(userId, courseId);
+
+    if (!fullyComplete) {
+      if (existing?.status === CourseCertificateStatus.Active) {
+        existing.status = CourseCertificateStatus.Blocked;
+        const saved = await this.certificateRepository.save(existing);
+        return { action: 'revoked' as const, certificate: saved };
+      }
+      return { action: 'unchanged' as const, certificate: existing ?? null };
     }
 
-    const quizAssessmentMet =
-      await this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(
-        userId,
-        courseId,
-      );
-    if (!quizAssessmentMet) {
-      return { issued: false, certificate: null, reason: 'quiz_assessment_incomplete' as const };
+    if (existing?.status === CourseCertificateStatus.Deleted) {
+      return { action: 'admin_deleted' as const, certificate: existing };
+    }
+
+    if (existing?.status === CourseCertificateStatus.Active) {
+      return { action: 'already_active' as const, certificate: existing };
+    }
+
+    if (existing?.status === CourseCertificateStatus.Blocked) {
+      existing.status = CourseCertificateStatus.Active;
+      existing.completedAt = new Date();
+      existing.deletedAt = null;
+      const saved = await this.certificateRepository.save(existing);
+      return { action: 'reissued' as const, certificate: saved };
     }
 
     const certificate = this.certificateRepository.create({
@@ -64,7 +79,38 @@ export class CourseCertificateService {
       deletedAt: null,
     });
     const saved = await this.certificateRepository.save(certificate);
-    return { issued: true, certificate: saved, reason: 'issued' as const };
+    return { action: 'issued' as const, certificate: saved };
+  }
+
+  async issueIfCourseCompleted(userId: string, courseId: string) {
+    const result = await this.syncCertificateWithCourseCompletion(userId, courseId);
+    if (result.action === 'issued' || result.action === 'reissued') {
+      return { issued: true, certificate: result.certificate, reason: result.action };
+    }
+    if (result.action === 'revoked') {
+      return { issued: false, certificate: result.certificate, reason: 'revoked' as const };
+    }
+    if (result.action === 'admin_deleted') {
+      return { issued: false, certificate: result.certificate, reason: 'deleted_by_admin' as const };
+    }
+    if (result.action === 'already_active') {
+      return { issued: false, certificate: result.certificate, reason: 'already_exists' as const };
+    }
+
+    const fullyComplete = await this.isCourseFullyCompleted(userId, courseId);
+    if (!fullyComplete) {
+      const sectionProgressMap =
+        await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
+      const rows = Object.values(sectionProgressMap || {});
+      const hasSections = rows.length > 0;
+      const videosCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+      if (!videosCompleted) {
+        return { issued: false, certificate: null, reason: 'not_completed' as const };
+      }
+      return { issued: false, certificate: null, reason: 'quiz_assessment_incomplete' as const };
+    }
+
+    return { issued: false, certificate: null, reason: 'not_completed' as const };
   }
 
   async getUserCertificates(userId: string) {

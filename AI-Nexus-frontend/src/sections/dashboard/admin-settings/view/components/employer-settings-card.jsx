@@ -133,6 +133,106 @@ export function EmployerSettingsCard({
               </Typography>
             </Box>
 
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              justifyContent="space-between"
+              spacing={1}
+            >
+              <Stack spacing={0.25}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  Benefits
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  {benefits.length} / {EMPLOYER_BENEFITS_MAX} items
+                </Typography>
+              </Stack>
+              <Button variant="outlined" size="small" onClick={addBenefit} disabled={!canAddMore || submitting}>
+                Add benefit
+              </Button>
+            </Stack>
+
+            {benefits.length === 0 ? (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                No benefits yet. Home page shows icon + title only.
+              </Typography>
+            ) : null}
+
+            <Grid container spacing={1.5}>
+              {benefits.map((row, index) => (
+                <Grid key={`admin-employer-benefit-${index}`} item xs={12} sm={6} md={4}>
+                  <Stack
+                    spacing={1.25}
+                    sx={{
+                      p: 1.5,
+                      height: 1,
+                      borderRadius: 1,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                      bgcolor: 'background.neutral',
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Box
+                          onClick={() => openIconPicker(index)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              openIconPicker(index);
+                            }
+                          }}
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bgcolor: 'background.paper',
+                            border: (theme) => `1px solid ${theme.palette.divider}`,
+                            color: 'primary.main',
+                            cursor: 'pointer',
+                            '&:hover': { bgcolor: 'action.hover' },
+                          }}
+                        >
+                          <Iconify icon={row?.icon || emptyBenefit().icon} width={20} />
+                        </Box>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => openIconPicker(index)}
+                          disabled={submitting}
+                        >
+                          Change icon
+                        </Button>
+                      </Stack>
+                      <Button size="small" color="inherit" onClick={() => removeBenefit(index)} disabled={submitting}>
+                        Remove
+                      </Button>
+                    </Stack>
+
+                    <TextField
+                      size="small"
+                      label="Title"
+                      value={row.title || ''}
+                      onChange={(e) => updateBenefit(index, 'title', e.target.value)}
+                      fullWidth
+                    />
+                  </Stack>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
+              <LoadingButton variant="contained" loading={submitting} onClick={onSave} sx={{ width: 'auto' }}>
+                Save employer section
+              </LoadingButton>
+            </Box>
+
+            <Divider />
+
             <TextField
               label="Section heading"
               value={content?.heading || ''}
@@ -455,106 +555,6 @@ export function EmployerSettingsCard({
                 ))}
               </Grid>
             </Stack>
-
-            <Divider />
-
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              alignItems={{ xs: 'flex-start', sm: 'center' }}
-              justifyContent="space-between"
-              spacing={1}
-            >
-              <Stack spacing={0.25}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  Benefits
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {benefits.length} / {EMPLOYER_BENEFITS_MAX} items
-                </Typography>
-              </Stack>
-              <Button variant="outlined" size="small" onClick={addBenefit} disabled={!canAddMore || submitting}>
-                Add benefit
-              </Button>
-            </Stack>
-
-            {benefits.length === 0 ? (
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                No benefits yet. Home page shows icon + title only.
-              </Typography>
-            ) : null}
-
-            <Grid container spacing={1.5}>
-              {benefits.map((row, index) => (
-                <Grid key={`admin-employer-benefit-${index}`} item xs={12} sm={6} md={4}>
-                  <Stack
-                    spacing={1.25}
-                    sx={{
-                      p: 1.5,
-                      height: 1,
-                      borderRadius: 1,
-                      border: (theme) => `1px solid ${theme.palette.divider}`,
-                      bgcolor: 'background.neutral',
-                    }}
-                  >
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box
-                          onClick={() => openIconPicker(index)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              openIconPicker(index);
-                            }
-                          }}
-                          sx={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bgcolor: 'background.paper',
-                            border: (theme) => `1px solid ${theme.palette.divider}`,
-                            color: 'primary.main',
-                            cursor: 'pointer',
-                            '&:hover': { bgcolor: 'action.hover' },
-                          }}
-                        >
-                          <Iconify icon={row?.icon || emptyBenefit().icon} width={20} />
-                        </Box>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => openIconPicker(index)}
-                          disabled={submitting}
-                        >
-                          Change icon
-                        </Button>
-                      </Stack>
-                      <Button size="small" color="inherit" onClick={() => removeBenefit(index)} disabled={submitting}>
-                        Remove
-                      </Button>
-                    </Stack>
-
-                    <TextField
-                      size="small"
-                      label="Title"
-                      value={row.title || ''}
-                      onChange={(e) => updateBenefit(index, 'title', e.target.value)}
-                      fullWidth
-                    />
-                  </Stack>
-                </Grid>
-              ))}
-            </Grid>
-
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
-              <LoadingButton variant="contained" loading={submitting} onClick={onSave} sx={{ width: 'auto' }}>
-                Save employer section
-              </LoadingButton>
-            </Box>
           </Stack>
         </Card>
       </Stack>

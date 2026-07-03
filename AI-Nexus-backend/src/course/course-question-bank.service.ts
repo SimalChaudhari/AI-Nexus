@@ -587,9 +587,7 @@ export class CourseQuestionBankService {
     attempt.answers = answerRows;
     this.quizAssessmentProgressService.markQuizAttemptCompleted(attempt);
     const saved = await this.attemptRepo.save(attempt);
-    if (saved.isCompleted) {
-      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(userId, courseId);
-    }
+    void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(userId, courseId);
     return saved;
   }
 
@@ -988,9 +986,7 @@ export class CourseQuestionBankService {
     }
     this.quizAssessmentProgressService.markSubmissionCompleted(submission, dto.passed === true);
     const saved = await this.assignmentSubmissionRepo.save(submission);
-    if (saved.isCompleted) {
-      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
-    }
+    void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
 
     const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
     const row = rows.find((item) => item.id === saved.id);

@@ -152,14 +152,19 @@ export function MyProgress({ onNavigateToCertificates }) {
             })
           );
         if (!hasMeaningfulProgress) return null;
-        const progressPercent = totalLessons ? Math.min(100, Math.round((viewedCount / totalLessons) * 100)) : 0;
+        const progressPercent = Math.max(
+          0,
+          Math.min(100, Number(progress?.completionPercent ?? 0)),
+        );
+        const isFullyCompleted =
+          progress?.isCompleted === true || progress?.status === 'completed';
         const currentSectionId = progress?.currentSectionId;
         const currentIndex = flatSections.findIndex((s) => s.id === currentSectionId);
         const nextSection = currentIndex >= 0 && currentIndex < flatSections.length - 1 ? flatSections[currentIndex + 1] : null;
         const firstSection = flatSections[0];
         let nextLessonLabel = '—';
         if (nextSection?.title) nextLessonLabel = nextSection.title;
-        else if (progressPercent >= 100) nextLessonLabel = 'Course completed';
+        else if (isFullyCompleted) nextLessonLabel = 'Course completed';
         else if (firstSection?.title) nextLessonLabel = `Start: ${firstSection.title}`;
 
         return {
@@ -168,7 +173,7 @@ export function MyProgress({ onNavigateToCertificates }) {
           image: c.image || DEFAULT_COURSE_IMAGE,
           progress: progressPercent,
           lessons: totalLessons ? `${viewedCount}/${totalLessons}` : '0/0',
-          timeRemaining: progressPercent >= 100 ? 'Completed' : '—',
+          timeRemaining: isFullyCompleted ? 'Completed' : '—',
           lastAccessed: progress?.lastAccessedAt ? formatLastAccessed(progress.lastAccessedAt) : '—',
           nextLesson: nextLessonLabel,
         };

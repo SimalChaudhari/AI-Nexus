@@ -116,20 +116,7 @@ export function LearningModulePracticeIntro({
             alignItems="center"
             sx={{ minHeight: 0 }}
           >
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: 700,
-                color: 'text.primary',
-                textAlign: 'center',
-                whiteSpace: 'normal',
-                wordBreak: 'break-word',
-                fontSize: { xs: '0.9375rem', md: '0.875rem', xl: '1rem' },
-                lineHeight: 1.3,
-              }}
-            >
-              Quiz
-            </Typography>
+        
             <Box
               sx={{
                 width: { xs: 56, sm: 60, md: 48, lg: 52, xl: 72 },

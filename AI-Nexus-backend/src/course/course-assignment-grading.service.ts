@@ -199,7 +199,12 @@ export class CourseAssignmentGradingService {
           : 'Automatic grading failed. An admin will review manually.';
       submission.aiEvaluatedAt = new Date();
       submission.isCompleted = false;
-      return this.submissionRepo.save(submission);
+      const saved = await this.submissionRepo.save(submission);
+      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(
+        saved.userId,
+        saved.courseId,
+      );
+      return saved;
     }
   }
 
@@ -209,12 +214,10 @@ export class CourseAssignmentGradingService {
     const { passed } = resolveSubmissionPassed(submission);
     this.quizAssessmentProgressService.markSubmissionCompleted(submission, passed);
     const saved = await this.submissionRepo.save(submission);
-    if (saved.isCompleted) {
-      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(
-        saved.userId,
-        saved.courseId,
-      );
-    }
+    void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(
+      saved.userId,
+      saved.courseId,
+    );
     return saved;
   }
 
@@ -231,7 +234,12 @@ export class CourseAssignmentGradingService {
     submission.aiRawResult = aiRawResult ?? result?.raw ?? null;
     submission.aiEvaluatedAt = new Date();
     submission.isCompleted = false;
-    return this.submissionRepo.save(submission);
+    const saved = await this.submissionRepo.save(submission);
+    void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(
+      saved.userId,
+      saved.courseId,
+    );
+    return saved;
   }
 
   private buildStoredAiRawResult(

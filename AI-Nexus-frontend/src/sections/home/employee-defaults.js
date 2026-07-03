@@ -1,7 +1,7 @@
 import { normalizeEmployerContent } from './employer-defaults';
 
 export const EMPLOYEE_BENEFITS_MAX = 6;
-export const EMPLOYEE_LOGOS_MAX = 12;
+export const EMPLOYEE_LOGOS_MAX = 100;
 
 const BENEFIT_ICON_COLORS = ['#E32B24', '#EE6A64', '#B7221D', '#E32B24'];
 const TRUSTED_SECTION_LABEL = /trusted\s+by\s+leading\s+organisations/i;

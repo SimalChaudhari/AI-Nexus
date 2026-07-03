@@ -67,6 +67,7 @@ import { SpeakerEntity } from '../speaker/speaker.entity';
 import { LanguageService } from '../language/language.service';
 import { ReviewService } from '../review/review.service';
 import { CourseCertificateService } from './course-certificate.service';
+import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
@@ -288,6 +289,7 @@ export class CourseController {
         private readonly languageService: LanguageService,
         private readonly reviewService: ReviewService,
         private readonly courseCertificateService: CourseCertificateService,
+        private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
         private readonly appSettingsService: AppSettingsService,
     ) {}
 
@@ -1575,15 +1577,32 @@ export class CourseController {
                     (sum, row) => sum + Math.max(0, Math.min(100, Number(row?.completionPercent ?? row?.currentProgress ?? 0))),
                     0,
                 );
-                const completionPercent =
-                    totalSections > 0 ? Math.round(completionSum / totalSections) : 0;
                 const completedSectionsCount = progressRows.filter(
                     (row) =>
                         row?.isCompleted === true ||
                         row?.isWatched === true ||
                         Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99,
                 ).length;
-                const isCompleted = totalSections > 0 && completedSectionsCount >= totalSections;
+                const videosCompleted =
+                    totalSections > 0 && completedSectionsCount >= totalSections;
+                const quizAssessmentProgress =
+                    await this.courseQuizAssessmentProgressService.getLearnerProgress(
+                        userId,
+                        courseId,
+                    );
+                const needsQuizAssessment = quizAssessmentProgress.scopes.some(
+                    (scope) => scope.quizCount > 0 || scope.assignmentCount > 0,
+                );
+                const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
+                let completionPercent =
+                    totalSections > 0 ? Math.round(completionSum / totalSections) : 0;
+                const isCompleted =
+                    videosCompleted && (!needsQuizAssessment || quizAssessmentMet);
+                if (isCompleted) {
+                    completionPercent = 100;
+                } else if (needsQuizAssessment && videosCompleted && !quizAssessmentMet) {
+                    completionPercent = Math.min(99, completionPercent);
+                }
                 const status = isCompleted ? 'completed' : 'in_progress';
 
                 const modules = await this.courseModuleService.findByCourseId(courseId);
@@ -1612,6 +1631,8 @@ export class CourseController {
                         completionPercent,
                         isCompleted,
                         status,
+                        quizAssessmentCompleted: quizAssessmentMet,
+                        videosCompleted,
                         viewedSectionIds,
                         currentSectionId: currentSectionId ? String(currentSectionId) : null,
                         lastAccessedAt,

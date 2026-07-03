@@ -131,8 +131,8 @@ const getCourseContentMeta = (course = {}) => {
 };
 
 const getCourseProgressStatus = (status, courseProgress) => {
-  if (status === 'completed' || courseProgress >= 100) return { label: 'Completed', color: 'success' };
-  if (status === 'in_progress' || courseProgress > 0) return { label: 'In Progress', color: 'warning' };
+  if (status === 'completed') return { label: 'Completed', color: 'success' };
+  if (courseProgress > 0 || status === 'in_progress') return { label: 'In Progress', color: 'warning' };
   return { label: 'Not Started', color: 'default' };
 };
 

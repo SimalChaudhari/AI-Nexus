@@ -205,9 +205,9 @@ export class CourseQuizAssessmentProgressService {
   async notifyLearnerProgressUpdate(userId: string, courseId: string): Promise<void> {
     if (!userId || !courseId) return;
     try {
-      await this.certificateService.issueIfCourseCompleted(userId, courseId);
+      await this.certificateService.syncCertificateWithCourseCompletion(userId, courseId);
     } catch {
-      // Certificate issuance is best-effort after quiz/assessment updates.
+      // Certificate sync is best-effort after quiz/assessment updates.
     }
   }
 }

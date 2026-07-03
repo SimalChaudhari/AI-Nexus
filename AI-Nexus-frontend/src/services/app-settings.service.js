@@ -286,7 +286,7 @@ function transformEmployeeContent(source) {
     heroPanelSubtitle: source.heroPanelSubtitle != null ? String(source.heroPanelSubtitle) : '',
     benefitsLabel: source.benefitsLabel != null ? String(source.benefitsLabel) : '',
     partnersHeading: source.partnersHeading != null ? String(source.partnersHeading) : '',
-    logos: rawLogos.slice(0, 12).map((row) => ({
+    logos: rawLogos.slice(0, 100).map((row) => ({
       name: row?.name != null ? String(row.name) : '',
       logoUrl: normalizeAssetUrl(row?.logoUrl || ''),
     })),
