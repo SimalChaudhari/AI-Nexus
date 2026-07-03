@@ -29,6 +29,7 @@ import {
 import { decryptToken, encryptToken, generateSafeCopy } from '../../utils/tempTokenUtils'
 import { getAuthStrategy } from './AuthStrategy'
 import { initializeDBClientAndStore, initializeRedisClientAndStore } from './SessionPersistance'
+import { getSecureAppUrl } from '../../utils/url.util'
 import { isFlowiseTokenOnlyAuthEnabled } from '../../utils/tokenOnlyAuth.util'
 
 const localStrategy = require('passport-local').Strategy
@@ -328,7 +329,12 @@ export const setTokenOrCookies = async (
     returnUser.isSSO = !isSSO ? false : isSSO
 
     if (redirect) {
-        const dashboardUrl = `/`
+        let dashboardUrl = '/'
+        try {
+            dashboardUrl = getSecureAppUrl('/')
+        } catch {
+            dashboardUrl = '/'
+        }
 
         // Return the token as a cookie in our response.
         let resWithCookies = res

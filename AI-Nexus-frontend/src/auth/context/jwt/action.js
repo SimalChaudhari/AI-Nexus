@@ -1,6 +1,6 @@
 import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
-import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { resolveFlowisePublicBaseUrl, resolveFlowiseApiBaseUrl } from 'src/utils/flowise-public-url';
 import { clearAuthSession } from './utils';
 import { fetchCurrentUser, writeCachedUser } from './session';
 import { clearClientSalesforceSessions } from './logout-payload';
@@ -827,8 +827,8 @@ export const promoteSalesforceAssociateMember = async () => {
  *************************************** */
 export const signOut = async () => {
   const triggerFlowiseLogout = async () => {
-    const flowiseBase = resolveFlowisePublicBaseUrl();
-    if (!flowiseBase) return;
+    const flowiseApiBase = resolveFlowiseApiBaseUrl();
+    if (!flowiseApiBase) return;
 
     // Use hidden iframe + POST form to avoid CORS issues while still sending HttpOnly cookies.
     await new Promise((resolve) => {
@@ -839,7 +839,7 @@ export const signOut = async () => {
 
       const form = document.createElement('form');
       form.method = 'POST';
-      form.action = `${flowiseBase}/api/v1/account/logout`;
+      form.action = `${flowiseApiBase.replace(/\/$/, '')}/api/v1/account/logout`;
       form.target = targetName;
       form.style.display = 'none';
 

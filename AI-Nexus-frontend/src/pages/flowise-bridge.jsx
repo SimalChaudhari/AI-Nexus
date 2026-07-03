@@ -4,7 +4,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 import axios from 'src/utils/axios';
-import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { resolveFlowisePublicBaseUrl, buildFlowiseExternalLoginUrl } from 'src/utils/flowise-public-url';
 import { redirectFlowiseAuthFromBridge, redirectTopOrSameTab } from 'src/utils/flowise-embed-nav';
 import { paths } from 'src/routes/paths';
 
@@ -36,7 +36,13 @@ export default function FlowiseBridgePage() {
           return;
         }
 
-        const target = `${flowiseBase}/api/v1/auth/external-login?token=${encodeURIComponent(accessToken)}`;
+        const target = buildFlowiseExternalLoginUrl(accessToken);
+        if (!target) {
+          redirectTopOrSameTab(
+            `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.flowiseBridge)}`
+          );
+          return;
+        }
         redirectFlowiseAuthFromBridge(target);
       } catch {
         redirectTopOrSameTab(

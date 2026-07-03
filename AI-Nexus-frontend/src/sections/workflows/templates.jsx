@@ -13,7 +13,7 @@ import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
-import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { resolveFlowisePublicBaseUrl, buildFlowiseExternalLoginUrl } from 'src/utils/flowise-public-url';
 import { WorkflowFlowiseCardIframe } from 'src/components/workflow-flowise-card-iframe/workflow-flowise-card-iframe';
 import { Iconify } from 'src/components/iconify';
 import { Image } from 'src/components/image';
@@ -100,7 +100,6 @@ export function Templates() {
   const [visibilityUpdatingId, setVisibilityUpdatingId] = useState('');
   const [pitchIntro, setPitchIntro] = useState(null);
   const flowiseUrl = resolveFlowisePublicBaseUrl() || 'http://localhost:3000';
-  const flowiseEntryUrl = `${flowiseUrl.replace(/\/$/, '')}/api/v1/auth/external-login`;
 
   const loadFlowiseTemplates = useCallback(async () => {
     setFlowiseTemplatesLoading(true);
@@ -180,13 +179,17 @@ export function Templates() {
           window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
           return;
         }
-        const redirectUrl = `${flowiseEntryUrl}?token=${encodeURIComponent(accessToken)}`;
+        const redirectUrl = buildFlowiseExternalLoginUrl(accessToken);
+        if (!redirectUrl) {
+          window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
         window.open(redirectUrl, '_blank', 'noopener,noreferrer');
       } catch {
         window.open(flowiseUrl, '_blank', 'noopener,noreferrer');
       }
     },
-    [flowiseEntryUrl, flowiseUrl]
+    [flowiseUrl]
   );
 
   const isOwnedFlowiseTemplate = useCallback(
