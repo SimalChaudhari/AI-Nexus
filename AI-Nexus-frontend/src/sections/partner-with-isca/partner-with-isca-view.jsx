@@ -175,6 +175,7 @@ function HeroFullWidthBackdrop({ imageSrc, overlayHeader = false }) {
         zIndex: 0,
         width: '100%',
         overflow: 'hidden',
+        pointerEvents: 'none',
         bgcolor: '#ffffff',
         willChange: 'opacity, transform',
       }}
@@ -524,8 +525,8 @@ function HeroSection({ hero, stats }) {
           flexDirection: 'column',
           width: '100%',
           maxWidth: '100%',
-          overflow: 'hidden',
           overflowX: 'hidden',
+          overflowY: 'visible',
           boxSizing: 'border-box',
           px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
           pt: { xs: 2.5, md: 4 },
@@ -543,7 +544,8 @@ function HeroSection({ hero, stats }) {
             alignItems: { xs: 'flex-start', md: 'flex-start' },
             width: '100%',
             maxWidth: '100%',
-            overflow: 'hidden',
+            overflowX: 'hidden',
+            overflowY: 'visible',
             pb: { xs: 2, md: 4 },
             pt: { md: 0 },
           }}
