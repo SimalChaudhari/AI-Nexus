@@ -86,18 +86,28 @@ export function normalizeEmployeeContent(source) {
   };
 }
 
-export function hasEmployeeContent(content) {
+/** Hero copy, image, benefits, and CTAs shown in the learners section above the journey timeline. */
+export function hasEmployeeHeroContent(content) {
   const c = content || {};
-  if (String(c.partnersHeading || '').trim()) return true;
-  const logos = Array.isArray(c.logos) ? c.logos : [];
-  if (logos.some((r) => r?.name?.trim() || r?.logoUrl?.trim())) return true;
   if (String(c.heroImageUrl || '').trim()) return true;
   if (String(c.eyebrow || '').trim()) return true;
   if (String(c.heading || '').trim() || String(c.headingAccent || '').trim()) return true;
   if (String(c.subtitle || '').trim()) return true;
   if (String(c.primaryCtaLabel || '').trim() && String(c.primaryCtaHref || '').trim()) return true;
+  if (String(c.secondaryCtaLabel || '').trim() && String(c.secondaryCtaHref || '').trim()) return true;
   const benefits = Array.isArray(c.benefits) ? c.benefits : [];
   return benefits.some((r) => r?.title?.trim());
+}
+
+export function hasEmployeePartnerContent(content) {
+  const c = content || {};
+  if (String(c.partnersHeading || '').trim()) return true;
+  const logos = Array.isArray(c.logos) ? c.logos : [];
+  return logos.some((r) => r?.name?.trim() || r?.logoUrl?.trim());
+}
+
+export function hasEmployeeContent(content) {
+  return hasEmployeeHeroContent(content) || hasEmployeePartnerContent(content);
 }
 
 export function isEmployeeContentEmpty(source) {
@@ -105,17 +115,18 @@ export function isEmployeeContentEmpty(source) {
   return !hasEmployeeContent(normalizeEmployeeContent(source));
 }
 
+export function isEmployeeHeroContentEmpty(source) {
+  if (!source || typeof source !== 'object') return true;
+  return !hasEmployeeHeroContent(normalizeEmployeeContent(source));
+}
+
 /** Map legacy employer API shape into employee section when dedicated API is empty */
 export function mapEmployerToEmployee(employer) {
   if (!employer || typeof employer !== 'object') return null;
-  const heading = String(employer.heading || '').trim();
-  const parts = heading.split(/\s+/);
-  const accent = parts.length > 1 ? parts.pop() : '';
-  const main = parts.join(' ') || heading;
   return normalizeEmployeeContent({
     eyebrow: '',
-    heading: main,
-    headingAccent: accent,
+    heading: String(employer.heading || '').trim(),
+    headingAccent: '',
     subtitle: employer.subtitle,
     heroImageUrl: employer.heroImageUrl,
     heroPanelTitle: '',
@@ -149,10 +160,15 @@ export function resolveEmployeeContent(employeeSource, employerSource) {
       ? normalizeEmployerContent(employerSource)
       : null;
 
-  if (!isEmployeeContentEmpty(employeeSource)) {
+  const partnerExtras = {
+    partnersHeading: resolvePartnersHeading(employee.partnersHeading, employerNorm),
+    logos: employee.logos,
+  };
+
+  if (hasEmployeeHeroContent(employee)) {
     const merged = {
       ...employee,
-      partnersHeading: resolvePartnersHeading(employee.partnersHeading, employerNorm),
+      ...partnerExtras,
     };
     if (!String(employee.heroImageUrl || '').trim() && employerMapped?.heroImageUrl) {
       merged.heroImageUrl = employerMapped.heroImageUrl;
@@ -160,16 +176,18 @@ export function resolveEmployeeContent(employeeSource, employerSource) {
     return merged;
   }
 
-  if (employerMapped && hasEmployeeContent(employerMapped)) {
+  if (employerMapped && hasEmployeeHeroContent(employerMapped)) {
     return {
       ...employerMapped,
-      partnersHeading: resolvePartnersHeading(employee.partnersHeading, employerNorm),
-      logos: employee.logos,
+      ...partnerExtras,
     };
   }
 
-  if (String(employee.partnersHeading || '').trim() || employee.logos.length) {
-    return employee;
+  if (hasEmployeePartnerContent(employee)) {
+    return {
+      ...normalizeEmployeeContent(null),
+      ...partnerExtras,
+    };
   }
 
   return normalizeEmployeeContent(null);

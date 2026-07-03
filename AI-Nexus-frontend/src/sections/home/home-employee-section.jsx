@@ -16,7 +16,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { CONFIG } from 'src/config-global';
 import { appSettingsService } from 'src/services/app-settings.service';
 
-import { resolveEmployeeContent, hasEmployeeContent } from './employee-defaults';
+import { resolveEmployeeContent, hasEmployeeHeroContent } from './employee-defaults';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 import { HOME_DASHBOARD_CONTENT_SX, HOME_SECTION_CARD_SX } from './home-section-styles';
 
@@ -374,7 +374,7 @@ export function HomeEmployeeSection() {
     };
   }, []);
 
-  if (!hasEmployeeContent(content)) return null;
+  if (!hasEmployeeHeroContent(content)) return null;
 
   const benefits = (content.benefits || []).filter((row) => String(row?.title || '').trim());
   const heroSrc = resolveAssetUrl(content.heroImageUrl);
