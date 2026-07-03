@@ -57,12 +57,13 @@ export function LessonImageViewer({
           direction="row"
           alignItems="center"
           justifyContent="space-between"
-          spacing={2}
+          spacing={{ xs: 1, sm: 2 }}
           sx={{
-            p: 1.5,
+            p: { xs: 1.25, sm: 1.5 },
             bgcolor: 'background.paper',
             border: (t) => `1px solid ${t.palette.divider}`,
             borderTop: 0,
+            flexWrap: 'nowrap',
           }}
         >
           <Button
@@ -71,10 +72,24 @@ export function LessonImageViewer({
             startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
             onClick={onPrev}
             disabled={!canPrev}
+            sx={{ flexShrink: 0, minWidth: { xs: 36, sm: 'auto' }, px: { xs: 1, sm: 1.5 } }}
           >
-            Previous
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+              Previous
+            </Box>
           </Button>
-          <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              textAlign: 'center',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              minWidth: { xs: 48, sm: 56 },
+            }}
+          >
             {safeIndex + 1} / {images.length}
           </Typography>
           <Button
@@ -83,8 +98,11 @@ export function LessonImageViewer({
             endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
             onClick={onNext}
             disabled={!canNext}
+            sx={{ flexShrink: 0, minWidth: { xs: 36, sm: 'auto' }, px: { xs: 1, sm: 1.5 } }}
           >
-            Next
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+              Next
+            </Box>
           </Button>
         </Stack>
       )}

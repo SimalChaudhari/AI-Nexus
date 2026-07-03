@@ -2768,8 +2768,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     activeModuleLessons.length > 0 &&
     activeModuleLessons[activeModuleLessons.length - 1]?.id === activeLessonId;
   if (isOnLastLessonOfActiveModule) {
-    // Keep bottom Next disabled at module boundary; user should use "Next Module" CTA.
-    canGoNextLesson = false;
+    const hasSameModuleFollowUp =
+      nextLesson &&
+      nextLesson.sectionId === activeModuleForNav?.id &&
+      (nextLesson.kind === 'practice' || nextLesson.kind === 'assignment');
+    if (!hasSameModuleFollowUp) {
+      // Cross-module navigation uses the dedicated "Next Module" CTA.
+      canGoNextLesson = false;
+    }
   }
   if (nextLesson && flatLessons.length > 0) {
     const nextPseudoModuleId = getModuleIdFromPseudoLessonId(nextLesson.id);
@@ -4978,11 +4984,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   Math.min(activeLesson.images.length - 1, i + 1)
                 )
               }
-              canPrev={!activeLessonGateBlocked && sectionImageIndex > 0}
-              canNext={
-                !activeLessonGateBlocked &&
-                sectionImageIndex < activeLesson.images.length - 1
-              }
+              canPrev={sectionImageIndex > 0}
+              canNext={sectionImageIndex < activeLesson.images.length - 1}
               lockedOverlay={lessonLockOverlay}
               frameHeight={LESSON_MEDIA_FRAME_HEIGHT}
             />
@@ -5216,11 +5219,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Box>
           ) : null}
 
-          {activeLesson && flatLessons.length > 1 && (
+          {activeLesson && navigationSteps.length > 1 && (
             <Box
               sx={{
                 mt: 2.5,
-                p: 2,
+                p: { xs: 1.5, sm: 2 },
                 borderRadius: 2.5,
                 bgcolor: 'background.paper',
                 border: playerCardBorder,
@@ -5231,7 +5234,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 direction="row"
                 alignItems="center"
                 justifyContent="space-between"
-                spacing={2}
+                spacing={{ xs: 1, sm: 2 }}
+                sx={{ flexWrap: 'nowrap' }}
               >
                 <Button
                   variant="outlined"
@@ -5240,27 +5244,38 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   onClick={goToPrevLesson}
                   disabled={!prevLesson}
                   sx={{
-                    minWidth: { xs: 96, sm: 128 },
+                    flexShrink: 0,
+                    minWidth: { xs: 40, sm: 128 },
+                    px: { xs: 1, sm: 2 },
                     borderRadius: 1.5,
                     fontWeight: 600,
                     fontSize: playerFluidType.body,
                   }}
                 >
-                  Previous
+                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                    Previous
+                  </Box>
                 </Button>
                 <Typography
                   variant="caption"
                   sx={{
                     color: 'text.secondary',
                     fontWeight: 700,
-                    fontSize: playerFluidType.caption,
-                    px: 1.5,
+                    fontSize: { xs: theme.typography.pxToRem(12), sm: playerFluidType.caption },
+                    px: { xs: 1, sm: 1.5 },
                     py: 0.5,
                     borderRadius: 1,
                     bgcolor: alpha(theme.palette.grey[500], 0.08),
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    textAlign: 'center',
+                    lineHeight: 1.3,
+                    minWidth: { xs: 52, sm: 64 },
                   }}
                 >
-                  {currentIndex >= 0 ? `${currentIndex + 1} / ${flatLessons.length}` : ''}
+                  {currentStepIndex >= 0
+                    ? `${currentStepIndex + 1} / ${navigationSteps.length}`
+                    : ''}
                 </Typography>
                 <LoadingButton
                   variant="contained"
@@ -5270,13 +5285,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   loading={nextLoading}
                   disabled={!canGoNextLesson}
                   sx={{
-                    minWidth: { xs: 96, sm: 128 },
+                    flexShrink: 0,
+                    minWidth: { xs: 40, sm: 128 },
+                    px: { xs: 1, sm: 2 },
                     borderRadius: 1.5,
                     fontWeight: 600,
                     fontSize: playerFluidType.body,
                   }}
                 >
-                  Next
+                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                    Next
+                  </Box>
                 </LoadingButton>
               </Stack>
             </Box>

@@ -134,12 +134,13 @@ export function LessonDocumentViewer({
           direction="row"
           alignItems="center"
           justifyContent="space-between"
-          spacing={2}
+          spacing={{ xs: 1, sm: 2 }}
           sx={{
-            p: 1.5,
+            p: { xs: 1.25, sm: 1.5 },
             bgcolor: 'background.paper',
             border: (t) => `1px solid ${t.palette.divider}`,
             borderTop: 0,
+            flexWrap: 'nowrap',
           }}
         >
           <Button
@@ -148,10 +149,24 @@ export function LessonDocumentViewer({
             startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
             onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
             disabled={currentIndex <= 0}
+            sx={{ flexShrink: 0, minWidth: { xs: 36, sm: 'auto' }, px: { xs: 1, sm: 1.5 } }}
           >
-            Previous
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+              Previous
+            </Box>
           </Button>
-          <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              textAlign: 'center',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              minWidth: { xs: 48, sm: 56 },
+            }}
+          >
             {currentIndex + 1} / {attachments.length}
           </Typography>
           <Button
@@ -160,8 +175,11 @@ export function LessonDocumentViewer({
             endIcon={<Iconify icon="eva:arrow-ios-forward-fill" />}
             onClick={() => setActiveIndex((i) => Math.min(attachments.length - 1, i + 1))}
             disabled={currentIndex >= attachments.length - 1}
+            sx={{ flexShrink: 0, minWidth: { xs: 36, sm: 'auto' }, px: { xs: 1, sm: 1.5 } }}
           >
-            Next
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+              Next
+            </Box>
           </Button>
         </Stack>
       )}
