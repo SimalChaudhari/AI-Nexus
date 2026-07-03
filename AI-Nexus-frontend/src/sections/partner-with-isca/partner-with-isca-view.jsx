@@ -1761,7 +1761,6 @@ export function PartnerWithIscaView() {
         color: 'text.primary',
         fontFamily: PAGE_FONT_FAMILY,
         lineHeight: 1.6,
-        scrollBehavior: 'smooth',
         '--layout-dashboard-content-px': {
           xs: '16px',
           sm: '24px',
@@ -1781,7 +1780,7 @@ export function PartnerWithIscaView() {
       <CtaSection section={content.cta} />
       <PartnerWithIscaPartnerLogosSections />
 
-      <HomeFooter sx={{ mt: 0 }} />
+      <HomeFooter sx={{ mt: 0, pb: { xs: 10, sm: 8, md: 6 } }} />
     </Box>
   );
 }

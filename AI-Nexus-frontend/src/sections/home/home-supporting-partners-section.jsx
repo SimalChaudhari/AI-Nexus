@@ -1,19 +1,17 @@
-import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme } from '@mui/material/styles';
 
-import { varFade, MotionViewport } from 'src/components/animate';
-import { DashboardContent } from 'src/layouts/dashboard';
 import { CONFIG } from 'src/config-global';
+import { DashboardContent } from 'src/layouts/dashboard';
 import { appSettingsService } from 'src/services/app-settings.service';
 
 import { normalizeEmployeeContent } from './employee-defaults';
 import { normalizeEmployerContent } from './employer-defaults';
+import { HOME_DASHBOARD_CONTENT_SX } from './home-section-styles';
 import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
@@ -31,46 +29,107 @@ function resolvePartnersHeading(headingOverride, apiHeading) {
 }
 
 function resolveAssetUrl(url) {
-  const raw = String(url || '').trim();
+  const raw = String(url || '')
+    .trim()
+    .replace(/\\/g, '/');
   if (!raw) return '';
-  if (/^https?:\/\//i.test(raw)) return raw;
-  const base = CONFIG.site.serverUrl.replace(/\/api\/?$/, '');
-  return `${base}${raw.startsWith('/') ? raw : `/${raw}`}`;
+
+  let resolved = '';
+  if (/^https?:\/\//i.test(raw)) {
+    resolved = raw;
+  } else {
+    const assetBase = String(CONFIG.site.assetURL || '')
+      .trim()
+      .replace(/\/$/, '');
+    if (assetBase) {
+      resolved = `${assetBase}${raw.startsWith('/') ? raw : `/${raw}`}`;
+    } else {
+      const base = CONFIG.site.serverUrl.replace(/\/api\/?$/, '');
+      resolved = `${base}${raw.startsWith('/') ? raw : `/${raw}`}`;
+    }
+  }
+
+  if (
+    typeof window !== 'undefined'
+    && window.location.protocol === 'https:'
+    && /^http:\/\//i.test(resolved)
+  ) {
+    resolved = resolved.replace(/^http:\/\//i, 'https://');
+  }
+
+  return resolved;
 }
 
-function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation = false }) {
-  const isCoarsePointer = useMediaQuery('(hover: none) and (pointer: coarse)');
-  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
-  const safeLogos = Array.isArray(logos) ? logos : [];
-  // Marquee + overflow:hidden traps vertical touch scroll on phones — wrap logos instead.
-  const shouldMarquee =
-    safeLogos.length > 6 && !isCoarsePointer && !prefersReducedMotion;
+function PartnerLogoImage({ src, alt }) {
+  const [failed, setFailed] = useState(false);
+  const label = String(alt || 'Partner').trim();
 
-  const sectionProps = disableAnimation
-    ? { component: 'section' }
-    : { component: m.section, variants: varFade({ distance: 16 }).inUp };
-
-  const contentWrapper = disableAnimation ? Box : MotionViewport;
+  if (!src || failed) {
+    return (
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.disabled',
+          textAlign: 'center',
+          lineHeight: 1.3,
+          px: 0.5,
+          wordBreak: 'break-word',
+        }}
+      >
+        {label || 'Logo'}
+      </Typography>
+    );
+  }
 
   return (
     <Box
-      {...sectionProps}
+      component="img"
+      src={src}
+      alt={label}
+      loading="eager"
+      decoding="async"
+      onError={() => setFailed(true)}
+      sx={{
+        display: 'block',
+        height: { xs: 40, sm: 44, md: 52 },
+        width: 'auto',
+        maxWidth: '100%',
+        objectFit: 'contain',
+        filter: 'grayscale(1)',
+        opacity: 0.72,
+        transition: (theme) => theme.transitions.create(['opacity', 'filter'], { duration: 200 }),
+        '@media (hover: hover) and (pointer: fine)': {
+          '&:hover': {
+            opacity: 0.95,
+            filter: 'grayscale(0)',
+          },
+        },
+      }}
+    />
+  );
+}
+
+function PartnersLogoSection({ heading, logos }) {
+  const theme = useTheme();
+  const secondaryColor = theme.palette.secondary.main;
+  const safeLogos = Array.isArray(logos) ? logos : [];
+
+  return (
+    <Box
+      component="section"
       sx={{
         width: '100%',
         bgcolor: PARTNERS_BG,
         py: { xs: 4, md: 5 },
         borderTop: `1px solid ${alpha(SECTION_GREY, 0.65)}`,
-        flexShrink: 0,
       }}
     >
       <DashboardContent
-        component={contentWrapper}
         sx={{
-          width: 1,
-          pt: 0,
+          ...HOME_DASHBOARD_CONTENT_SX,
+          py: 0,
           pb: 0,
           flex: '0 0 auto',
-          minHeight: 0,
         }}
       >
         <Stack spacing={{ xs: 3, md: 3.5 }} alignItems="center" sx={{ width: 1 }}>
@@ -98,81 +157,44 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
                   height: 4,
                   borderRadius: 999,
                   flexShrink: 0,
-                  background: (theme) =>
-                    `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${secondaryColor || theme.palette.secondary.main} 100%)`,
-                  boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.primary.main, 0.25)}`,
+                  background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${secondaryColor} 100%)`,
+                  boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.25)}`,
                 }}
               />
             </Stack>
           ) : null}
 
           {safeLogos.length > 0 ? (
-          <Box
-            sx={{
-              width: 1,
-              maxWidth: '100%',
-              overflowX: shouldMarquee ? 'clip' : 'visible',
-              overflowY: 'visible',
-              '@keyframes supportingPartnersScroll': {
-                from: { transform: 'translateX(0)' },
-                to: { transform: 'translateX(-50%)' },
-              },
-            }}
-          >
-            <Stack
-              direction="row"
-              alignItems="center"
+            <Box
               sx={{
-                width: shouldMarquee ? 'max-content' : 1,
-                minWidth: shouldMarquee ? '100%' : 'auto',
-                animation: shouldMarquee ? 'supportingPartnersScroll 40s linear infinite' : 'none',
-                justifyContent: shouldMarquee ? 'flex-start' : 'center',
-                flexWrap: shouldMarquee ? 'nowrap' : 'wrap',
-                gap: { xs: 2.5, sm: 3.5, md: 4.5, lg: 5 },
-                px: { xs: 0.5, md: 1 },
-                pointerEvents: shouldMarquee ? 'none' : 'auto',
-                '@media (prefers-reduced-motion: reduce)': {
-                  animation: 'none !important',
-                },
+                width: 1,
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                alignItems: 'center',
+                alignContent: 'center',
+                gap: { xs: 2, sm: 2.5, md: 3.5, lg: 4 },
               }}
             >
-              {(shouldMarquee ? [...safeLogos, ...safeLogos] : safeLogos).map((row, index) => (
+              {safeLogos.map((row, index) => (
                 <Box
-                  key={`supporting-partner-logo-${index}`}
+                  key={`partner-logo-${index}-${row.logoUrl}`}
                   sx={{
-                    flexShrink: 0,
+                    flex: '0 1 auto',
+                    width: { xs: 130, sm: 140, md: 150 },
+                    maxWidth: 160,
+                    minHeight: { xs: 56, md: 64 },
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: { xs: 52, md: 64 },
-                    px: { xs: 0.5, md: 1 },
+                    px: { xs: 0.75, md: 1 },
+                    py: 0.5,
                   }}
                 >
-                  <Box
-                    component="img"
-                    src={row.logoUrl}
-                    alt={row.name}
-                    sx={{
-                      height: { xs: 40, sm: 44, md: 52 },
-                      maxWidth: { xs: 120, sm: 140, md: 160 },
-                      width: 'auto',
-                      objectFit: 'contain',
-                      display: 'block',
-                      filter: 'grayscale(1)',
-                      opacity: 0.72,
-                      transition: (theme) => theme.transitions.create(['opacity', 'filter'], { duration: 200 }),
-                      '@media (hover: hover) and (pointer: fine)': {
-                        '&:hover': {
-                          opacity: 0.95,
-                          filter: 'grayscale(0)',
-                        },
-                      },
-                    }}
-                  />
+                  <PartnerLogoImage src={row.logoUrl} alt={row.name} />
                 </Box>
               ))}
-            </Stack>
-          </Box>
+            </Box>
           ) : null}
         </Stack>
       </DashboardContent>
@@ -183,9 +205,6 @@ function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation 
 // ----------------------------------------------------------------------
 
 export function HomeSupportingPartnersSection({ headingOverride, logosSource = 'employer' } = {}) {
-  const theme = useTheme();
-  const secondary = theme.palette.secondary;
-
   const [partnersHeading, setPartnersHeading] = useState('');
   const [logos, setLogos] = useState([]);
   const useEmployeeLogos = logosSource === 'employee';
@@ -229,13 +248,7 @@ export function HomeSupportingPartnersSection({ headingOverride, logosSource = '
 
   const heading = resolvePartnersHeading(headingOverride, partnersHeading);
 
-  return (
-    <PartnersLogoSection
-      heading={heading}
-      logos={logos}
-      secondaryColor={secondary.main}
-    />
-  );
+  return <PartnersLogoSection heading={heading} logos={logos} />;
 }
 
 function mapLogoRows(rawLogos) {
@@ -249,9 +262,6 @@ function mapLogoRows(rawLogos) {
 
 /** Partner-with-ISCA page: Supporting Partners (employer logos) + Early Adopters (employee logos). */
 export function PartnerWithIscaPartnerLogosSections() {
-  const theme = useTheme();
-  const secondary = theme.palette.secondary;
-
   const [supportingHeading, setSupportingHeading] = useState(SUPPORTING_PARTNERS_HEADING);
   const [earlyAdopterHeading, setEarlyAdopterHeading] = useState(PARTNERS_WITH_ISCA_HEADING);
   const [supportingLogos, setSupportingLogos] = useState([]);
@@ -293,22 +303,18 @@ export function PartnerWithIscaPartnerLogosSections() {
   }
 
   return (
-    <Box component="section" sx={{ width: '100%', flexShrink: 0, overflow: 'visible' }}>
+    <Box
+      component="section"
+      sx={{
+        width: '100%',
+        pb: { xs: 2, md: 3 },
+      }}
+    >
       {supportingLogos.length > 0 ? (
-        <PartnersLogoSection
-          heading={supportingHeading}
-          logos={supportingLogos}
-          secondaryColor={secondary.main}
-          disableAnimation
-        />
+        <PartnersLogoSection heading={supportingHeading} logos={supportingLogos} />
       ) : null}
       {earlyAdopterLogos.length > 0 ? (
-        <PartnersLogoSection
-          heading={earlyAdopterHeading}
-          logos={earlyAdopterLogos}
-          secondaryColor={secondary.main}
-          disableAnimation
-        />
+        <PartnersLogoSection heading={earlyAdopterHeading} logos={earlyAdopterLogos} />
       ) : null}
     </Box>
   );
