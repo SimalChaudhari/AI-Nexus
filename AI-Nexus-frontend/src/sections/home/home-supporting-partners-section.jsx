@@ -36,26 +36,34 @@ function resolveAssetUrl(url) {
   return `${base}${raw.startsWith('/') ? raw : `/${raw}`}`;
 }
 
-function PartnersLogoSection({ heading, logos, secondaryColor }) {
+function PartnersLogoSection({ heading, logos, secondaryColor, disableAnimation = false }) {
   const shouldScroll = logos.length > 6;
+
+  const sectionProps = disableAnimation
+    ? { component: 'section' }
+    : { component: m.section, variants: varFade({ distance: 16 }).inUp };
+
+  const contentWrapper = disableAnimation ? Box : MotionViewport;
 
   return (
     <Box
-      component={m.section}
-      variants={varFade({ distance: 16 }).inUp}
+      {...sectionProps}
       sx={{
         width: '100%',
         bgcolor: PARTNERS_BG,
         py: { xs: 4, md: 5 },
         borderTop: `1px solid ${alpha(SECTION_GREY, 0.65)}`,
+        flexShrink: 0,
+        touchAction: 'pan-y',
       }}
     >
       <DashboardContent
-        component={MotionViewport}
+        component={contentWrapper}
         sx={{
           width: 1,
           pt: 0,
           pb: 0,
+          flex: '0 0 auto',
         }}
       >
         <Stack spacing={{ xs: 3, md: 3.5 }} alignItems="center" sx={{ width: 1 }}>
@@ -95,9 +103,15 @@ function PartnersLogoSection({ heading, logos, secondaryColor }) {
             sx={{
               width: 1,
               overflow: 'hidden',
+              touchAction: 'pan-y',
               '@keyframes supportingPartnersScroll': {
                 from: { transform: 'translateX(0)' },
                 to: { transform: 'translateX(-50%)' },
+              },
+              '@media (prefers-reduced-motion: reduce)': {
+                '& > *': {
+                  animation: 'none !important',
+                },
               },
             }}
           >
@@ -210,5 +224,74 @@ export function HomeSupportingPartnersSection({ headingOverride } = {}) {
       logos={logos}
       secondaryColor={secondary.main}
     />
+  );
+}
+
+/** Partner-with-ISCA page: both logo strips in one fetch (Supporting Partners + Early Adopter). */
+export function PartnerWithIscaPartnerLogosSections() {
+  const theme = useTheme();
+  const secondary = theme.palette.secondary;
+
+  const [partnersHeading, setPartnersHeading] = useState('');
+  const [logos, setLogos] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    appSettingsService
+      .getPublic()
+      .then((settings) => {
+        if (!active) return;
+        const employeeContent = resolveEmployeeContent(
+          settings?.homeEmployeeContent,
+          settings?.homeEmployerContent
+        );
+        const employerContent = normalizeEmployerContent(settings?.homeEmployerContent);
+        const rawLogos = Array.isArray(employerContent.logos) ? employerContent.logos : [];
+
+        setPartnersHeading(String(employeeContent.partnersHeading || '').trim());
+        setLogos(
+          rawLogos
+            .map((row) => ({
+              name: String(row?.name || '').trim(),
+              logoUrl: resolveAssetUrl(row?.logoUrl),
+            }))
+            .filter((row) => row.logoUrl)
+        );
+      })
+      .catch(() => {
+        if (active) {
+          setPartnersHeading('');
+          setLogos([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!logos.length) return null;
+
+  const supportingHeading = resolvePartnersHeading('', partnersHeading);
+  const earlyAdopterHeading = resolvePartnersHeading(PARTNERS_WITH_ISCA_HEADING, '');
+
+  return (
+    <Box component="section" sx={{ width: '100%', flexShrink: 0, touchAction: 'pan-y' }}>
+      {supportingHeading ? (
+        <PartnersLogoSection
+          heading={supportingHeading}
+          logos={logos}
+          secondaryColor={secondary.main}
+          disableAnimation
+        />
+      ) : null}
+      {earlyAdopterHeading ? (
+        <PartnersLogoSection
+          heading={earlyAdopterHeading}
+          logos={logos}
+          secondaryColor={secondary.main}
+          disableAnimation
+        />
+      ) : null}
+    </Box>
   );
 }

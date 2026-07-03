@@ -148,6 +148,8 @@ export function MainLayout({ sx, data, children }) {
               : marketingLandingPage
                 ? {
                     flex: '1 1 auto',
+                    minHeight: 'auto',
+                    overflow: 'visible',
                     bgcolor: '#ffffff',
                   }
                 : undefined
