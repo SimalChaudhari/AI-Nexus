@@ -17,8 +17,6 @@ import { HeaderBase } from '../core/header-base';
 import { LayoutSection } from '../core/layout-section';
 import { navData as mainNavData } from '../config-nav-main';
 import { _account } from '../config-nav-account';
-import { ChatbotWidget } from 'src/components/chatbot/chatbot-widget';
-
 import { layoutClasses } from '../classes';
 
 // ----------------------------------------------------------------------
@@ -157,7 +155,7 @@ export function MainLayout({ sx, data, children }) {
         >
           {children}
         </Main>
-        {marketingLandingPage ? <ChatbotWidget title="AI Nexus Chatbot" /> : null}
+        {/* ChatbotWidget hidden for now */}
       </LayoutSection>
     </>
   );

@@ -1573,10 +1573,17 @@ export class CourseController {
                 const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
                 const lastAccessedAt = latestByTime?.lastAccessedAt || null;
                 const totalSections = progressRows.length;
-                const completionSum = progressRows.reduce(
-                    (sum, row) => sum + Math.max(0, Math.min(100, Number(row?.completionPercent ?? row?.currentProgress ?? 0))),
-                    0,
-                );
+                const completionSum = progressRows.reduce((sum, row) => {
+                    const isDone =
+                        row?.isCompleted === true ||
+                        row?.isWatched === true ||
+                        Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99;
+                    if (isDone) return sum + 100;
+                    return (
+                        sum +
+                        Math.max(0, Math.min(100, Number(row?.completionPercent ?? row?.currentProgress ?? 0)))
+                    );
+                }, 0);
                 const completedSectionsCount = progressRows.filter(
                     (row) =>
                         row?.isCompleted === true ||

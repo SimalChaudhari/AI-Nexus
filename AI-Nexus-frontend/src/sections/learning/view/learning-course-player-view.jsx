@@ -343,6 +343,13 @@ function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById,
  * Lesson counts as done for sidebar/module % and unlocks when PUT progress shows full watch
  * even if `isWatched`/`isCompleted` flags lag one frame behind `completionPercent` (common after last save).
  */
+function getLessonCourseProgressPercent(lesson, liveById, viewedIds) {
+  if (isLessonDoneForUi(lesson, liveById, viewedIds)) return 100;
+  const merged = mergeProgressForSidebar(lesson, liveById);
+  const pct = Number(merged.completionPercent ?? 0);
+  return Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+}
+
 function isLessonDoneForUi(lesson, liveById, viewedIds) {
   if (!lesson?.id) return false;
   if (Array.isArray(viewedIds) && viewedIds.includes(lesson.id)) return true;
@@ -2826,14 +2833,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const courseOverviewProgressPercent = useMemo(() => {
     if (totalLessons === 0) return 0;
 
-    const completionSum = flatLessons.reduce((sum, lesson) => {
-      if (isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds)) {
-        return sum + 100;
-      }
-      const merged = mergeProgressForSidebar(lesson, liveSectionProgressMap);
-      const pct = Number(merged.completionPercent ?? 0);
-      return sum + Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-    }, 0);
+    const completionSum = flatLessons.reduce(
+      (sum, lesson) => sum + getLessonCourseProgressPercent(lesson, liveSectionProgressMap, viewedSectionIds),
+      0
+    );
 
     let percent = Math.round(completionSum / totalLessons);
     const videosCompleted =
@@ -3212,7 +3215,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     {completedCount}/{totalLessons}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: theme.typography.pxToRem(10) }}>
-                    lessons done
+                    completed
                   </Typography>
                 </Box>
               </Stack>

@@ -331,8 +331,13 @@ export class CourseSectionWatchProgressService {
     const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
     const watchedFromCoverage =
       storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
-    // Legacy rows may have higher watchedSeconds than partial coverage ranges (pre-migration rewatches).
-    const watchedForDisplay = Math.max(watchedFromCoverage, legacyWatchedCap);
+    // Trust coverage ranges for in-progress lessons; only lift legacy watchedSeconds for completed rows.
+    let watchedForDisplay = watchedFromCoverage;
+    if (storedRanges.length === 0) {
+      watchedForDisplay = legacyWatchedCap;
+    } else if (existing?.isCompleted) {
+      watchedForDisplay = Math.max(watchedFromCoverage, legacyWatchedCap);
+    }
     const computed = this.buildComputed(
       existing?.lastPositionSeconds ?? 0,
       watchedForDisplay,
