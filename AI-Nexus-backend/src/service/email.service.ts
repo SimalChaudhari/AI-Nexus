@@ -151,22 +151,20 @@ export class EmailService {
 
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
             heading: 'ISCA AI Fluency Programme – Job function verification',
-            greetingName: 'HR Representative',
-            greetingPrefix: 'Dear',
-            greetingBold: false,
+            greetingName: `HR of ${learnerName}`,
             intro: '',
             bodyHtml,
-            ctaLabel: 'Complete employment confirmation',
+            ctaLabel: 'Verify that the mentioned learner is working in an accounting and finance related job role',
             ctaUrl: verificationUrl,
-            footer:
-                'Thank you for your time and assistance. If you have any questions, please feel free to contact us.\n\nKind regards,\nInstitute of Singapore Chartered Accountants',
+            note: 'This verification link does not expire. You may use it at any time to complete verification.',
+            footer: 'ISCA AI Fluency Programme',
         });
 
         const mailOptions = {
             from: this.fromEmail,
             to: hrEmail,
             subject: 'ISCA AI Fluency Programme – Job function verification',
-            text: `Dear HR Representative,\n\n*${learnerName}* has applied for the *ISCA AI Fluency Programme*, which is designed for accounting and finance professionals.\n\nAs part of the application verification process, we kindly request your assistance in confirming that *${learnerName}* is currently employed in an accounting and finance-related role within your organisation.\n\nPlease open the verification link below to complete the employment confirmation.\n\n${verificationUrl}\n\nThank you for your time and assistance. If you have any questions, please feel free to contact us.\n\nKind regards,\nInstitute of Singapore Chartered Accountants`,
+            text: `Dear HR of ${learnerName},\n\n${learnerName} has applied for ISCA AI Fluency Programme – designed for Accounting and Finance professionals.\n\nAs part of IMDA's and audit purposes, we will need your assistance to verify that ${learnerName} is currently working in an accounting and finance related job role. Please open the verification link in this email to complete the verification.\n\n${verificationUrl}`,
             html,
         };
 
