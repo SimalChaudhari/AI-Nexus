@@ -601,12 +601,22 @@ export default function AiMaturityAssessmentPanel() {
                               color="info"
                               aria-label={question.text}
                               sx={{
-                                py: 0,
+                                py: 1,
                                 '& .MuiSlider-thumb': {
-                                  width: 12,
-                                  height: 12,
-                                  border: `2px solid ${theme.palette.background.paper}`,
-                                  boxShadow: `0 2px 8px ${alpha(theme.palette.info.main, 0.28)}`,
+                                  width: 22,
+                                  height: 22,
+                                  bgcolor: theme.palette.error.main,
+                                  border: `3px solid ${theme.palette.common.white}`,
+                                  boxShadow: `0 2px 10px ${alpha(theme.palette.error.main, 0.45)}, 0 0 0 1px ${alpha(theme.palette.error.main, 0.35)}`,
+                                  transition: theme.transitions.create(['box-shadow', 'transform'], {
+                                    duration: theme.transitions.duration.shorter,
+                                  }),
+                                  '&:hover, &.Mui-focusVisible, &.Mui-active': {
+                                    boxShadow: `0 4px 14px ${alpha(theme.palette.error.main, 0.55)}, 0 0 0 5px ${alpha(theme.palette.error.main, 0.2)}`,
+                                  },
+                                  '&:hover, &.Mui-active': {
+                                    transform: 'scale(1.1)',
+                                  },
                                 },
                                 '& .MuiSlider-track': {
                                   border: 'none',
@@ -630,8 +640,12 @@ export default function AiMaturityAssessmentPanel() {
                                   bgcolor: theme.palette.info.main,
                                 },
                                 '& .MuiSlider-valueLabel': {
-                                  bgcolor: theme.palette.info.main,
+                                  bgcolor: theme.palette.error.main,
+                                  color: theme.palette.error.main,
                                   fontWeight: 700,
+                                  '& .MuiSlider-valueLabelLabel': {
+                                    color: theme.palette.common.white,
+                                  },
                                 },
                               }}
                             />
