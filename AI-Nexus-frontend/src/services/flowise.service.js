@@ -1,8 +1,8 @@
 import { CONFIG } from 'src/config-global';
-import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { resolveFlowiseApiBaseUrl } from 'src/utils/flowise-public-url';
 
 function resolveFlowiseHost() {
-  return CONFIG.flowise.apiHost || resolveFlowisePublicBaseUrl() || '';
+  return resolveFlowiseApiBaseUrl() || '';
 }
 
 export const flowiseService = {

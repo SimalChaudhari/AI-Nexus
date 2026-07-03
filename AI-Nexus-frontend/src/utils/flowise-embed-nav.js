@@ -1,4 +1,4 @@
-import { resolveFlowisePublicBaseUrl } from 'src/utils/flowise-public-url';
+import { resolveFlowisePublicBaseUrl, resolveFlowiseApiBaseUrl } from 'src/utils/flowise-public-url';
 
 /** Flowise UI (other origin) asks the parent AI Nexus tab to open the bridge. */
 export const MSG_AINEXUS_NAVIGATE = 'AINEXUS_NAVIGATE';
@@ -11,10 +11,16 @@ export function isAllowedFlowiseExternalLoginUrl(url) {
     const u = new URL(url);
     const path = u.pathname.replace(/\/$/, '') || '/';
     if (path !== '/api/v1/auth/external-login') return false;
-    const base = resolveFlowisePublicBaseUrl();
-    if (!base) return false;
-    const expected = new URL(/^https?:\/\//i.test(base) ? base : `${window.location.origin}${base.startsWith('/') ? base : `/${base}`}`);
-    return u.origin === expected.origin;
+
+    const allowedOrigins = new Set();
+    for (const base of [resolveFlowiseApiBaseUrl(), resolveFlowisePublicBaseUrl()]) {
+      if (!base) continue;
+      const resolved = /^https?:\/\//i.test(base)
+        ? base
+        : `${window.location.origin}${base.startsWith('/') ? base : `/${base}`}`;
+      allowedOrigins.add(new URL(resolved).origin);
+    }
+    return allowedOrigins.has(u.origin);
   } catch {
     return false;
   }
