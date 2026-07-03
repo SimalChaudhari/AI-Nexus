@@ -153,6 +153,7 @@ export class EmailService {
             heading: 'ISCA AI Fluency Programme – Job function verification',
             greetingName: 'HR Representative',
             greetingPrefix: 'Dear',
+            greetingBold: false,
             intro: '',
             bodyHtml,
             ctaLabel: 'Complete employment confirmation',
@@ -165,7 +166,7 @@ export class EmailService {
             from: this.fromEmail,
             to: hrEmail,
             subject: 'ISCA AI Fluency Programme – Job function verification',
-            text: `Dear HR Representative,\n\n${learnerName} has applied for the ISCA AI Fluency Programme, which is designed for accounting and finance professionals.\n\nAs part of the application verification process, we kindly request your assistance in confirming that ${learnerName} is currently employed in an accounting and finance-related role within your organisation.\n\nPlease open the verification link below to complete the employment confirmation.\n\n${verificationUrl}\n\nThank you for your time and assistance. If you have any questions, please feel free to contact us.\n\nKind regards,\nInstitute of Singapore Chartered Accountants`,
+            text: `Dear HR Representative,\n\n*${learnerName}* has applied for the *ISCA AI Fluency Programme*, which is designed for accounting and finance professionals.\n\nAs part of the application verification process, we kindly request your assistance in confirming that *${learnerName}* is currently employed in an accounting and finance-related role within your organisation.\n\nPlease open the verification link below to complete the employment confirmation.\n\n${verificationUrl}\n\nThank you for your time and assistance. If you have any questions, please feel free to contact us.\n\nKind regards,\nInstitute of Singapore Chartered Accountants`,
             html,
         };
 

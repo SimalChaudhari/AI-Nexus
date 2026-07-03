@@ -7,6 +7,7 @@ export type BrandTemplateParams = {
     heading: string;
     greetingName: string;
     greetingPrefix?: string;
+    greetingBold?: boolean;
     intro: string;
     bodyHtml?: string;
     ctaLabel?: string;
@@ -53,6 +54,7 @@ export const buildInlineBrandEmailHtml = ({
     heading,
     greetingName,
     greetingPrefix = 'Hello',
+    greetingBold = true,
     intro,
     bodyHtml = '',
     ctaLabel,
@@ -64,6 +66,7 @@ export const buildInlineBrandEmailHtml = ({
     heading: string;
     greetingName: string;
     greetingPrefix?: string;
+    greetingBold?: boolean;
     intro: string;
     bodyHtml?: string;
     ctaLabel?: string;
@@ -82,6 +85,8 @@ export const buildInlineBrandEmailHtml = ({
         : '';
     const ctaBlock = ctaLabel && ctaUrl ? buildEmailCtaButton(ctaLabel, ctaUrl) : '';
     const noteBlock = buildEmailNoteBox(note);
+
+    const greetingWeight = greetingBold ? 700 : 400;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -103,7 +108,7 @@ export const buildInlineBrandEmailHtml = ({
                     </tr>
                     <tr>
                         <td style="padding:28px 26px 22px; background-color:#ffffff;">
-                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:700;">${safeGreetingPrefix} ${safeGreetingName},</p>
+                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:${greetingWeight};">${safeGreetingPrefix} ${safeGreetingName},</p>
                             ${introBlock}
                             ${bodyHtml}
                             ${ctaBlock}
@@ -126,13 +131,14 @@ export const buildInlineBrandEmailHtml = ({
 
 export const buildBrandTemplate = (
     _frontendBaseUrl: string,
-    { heading, greetingName, greetingPrefix, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
+    { heading, greetingName, greetingPrefix, greetingBold, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
 ): string =>
     buildInlineBrandEmailHtml({
         title: heading,
         heading,
         greetingName,
         greetingPrefix,
+        greetingBold,
         intro,
         bodyHtml,
         ctaLabel,
@@ -259,13 +265,14 @@ export const buildStudentVerificationPinBodyHtml = (pin: string): string => {
 
 export const buildFeeWaiverHrVerificationBodyHtml = (learnerName: string): string => {
     const safeLearnerName = escapeHtml(learnerName);
+    const boldLearnerName = `<strong style="font-weight:700;">${safeLearnerName}</strong>`;
 
     return `
                             <p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">
-                                ${safeLearnerName} has applied for the ISCA AI Fluency Programme, which is designed for accounting and finance professionals.
+                                ${boldLearnerName} has applied for the <strong style="font-weight:700;">ISCA AI Fluency Programme</strong>, which is designed for accounting and finance professionals.
                             </p>
                             <p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">
-                                As part of the application verification process, we kindly request your assistance in confirming that ${safeLearnerName} is currently employed in an accounting and finance-related role within your organisation.
+                                As part of the application verification process, we kindly request your assistance in confirming that ${boldLearnerName} is currently employed in an accounting and finance-related role within your organisation.
                             </p>
                             <p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">
                                 Please click the verification button below to complete the employment confirmation.
