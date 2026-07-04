@@ -1460,7 +1460,11 @@ export class CourseController {
                 message: 'Valid Spotlightr watch URL is required',
             });
         }
-        if (!this.spotlightrService.isConfigured()) {
+        if (
+            !this.spotlightrService.isConfigured() ||
+            !this.spotlightrService.isPreparePlaybackEnabled() ||
+            this.spotlightrService.isApiCircuitOpen()
+        ) {
             return response.status(HttpStatus.OK).json({
                 data: { directUrl: null, settingsUpdated: false },
             });

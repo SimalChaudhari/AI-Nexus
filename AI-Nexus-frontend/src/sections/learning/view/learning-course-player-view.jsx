@@ -1967,13 +1967,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
   const [spotlightrDirectSrc, setSpotlightrDirectSrc] = useState(null);
   const [spotlightrPlaybackPreparedAt, setSpotlightrPlaybackPreparedAt] = useState(0);
-  const [spotlightrPrepareDone, setSpotlightrPrepareDone] = useState(false);
 
+  // Do not block the iframe on Spotlightr API — under load prepare can time out for 8–20s.
+  // Show embed immediately; upgrade to direct MP4 if prepare succeeds later.
   useEffect(() => {
     setSpotlightrDirectSrc(null);
-    setSpotlightrPrepareDone(false);
     if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) {
-      setSpotlightrPrepareDone(true);
       return undefined;
     }
     let cancelled = false;
@@ -1988,19 +1987,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           setSpotlightrPlaybackPreparedAt(Date.now());
         }
       })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setSpotlightrPrepareDone(true);
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [spotlightrMeta?.watchUrl, activeLessonId, activeLessonGateBlocked]);
 
   const activeSpotlightrMeta = useMemo(() => {
-    if (!spotlightrMeta || spotlightrDirectSrc || !spotlightrPrepareDone) return null;
+    if (!spotlightrMeta || spotlightrDirectSrc) return null;
     return spotlightrMeta;
-  }, [spotlightrMeta, spotlightrDirectSrc, spotlightrPrepareDone]);
+  }, [spotlightrMeta, spotlightrDirectSrc]);
 
   // Direct MP4 must resume after prepare; iframe hook may have marked resume applied too early.
   useEffect(() => {
