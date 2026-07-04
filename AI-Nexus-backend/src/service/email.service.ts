@@ -17,26 +17,14 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
-        const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
-        this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
-
-        if (isDevelopment) {
-            this.transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS,
-                },
-            });
-            return;
-        }
-
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
         const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
         const user = process.env.SMTP_USER || '';
         const pass = process.env.SMTP_PASS || '';
         const rejectUnauthorized = String(process.env.SMTP_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
+
+        this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
         const transportOptions: SMTPTransport.Options = {
             host,
@@ -53,6 +41,7 @@ export class EmailService {
 
         this.transporter = nodemailer.createTransport(transportOptions);
     }
+
 
     private resolveFrontendBaseUrl(): string {
         const raw = String(process.env.FRONTEND_URL || 'http://localhost:3000').trim();
