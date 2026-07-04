@@ -308,7 +308,7 @@ export function CourseQuestionBankQuestionFormDrawer({
                       onGuideMaterialsChange([]);
                       onReferenceMaterialsChange([]);
                     }}
-                    helperText="PDF or Word — optional instructions for learners"
+                    helperText="PDF or Word — optional; learners skip the guidelines step if not uploaded"
                   />
                 </Box>
               </>

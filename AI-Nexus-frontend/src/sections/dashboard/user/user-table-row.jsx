@@ -23,6 +23,8 @@ import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
+import { getJobRoleAuditStatus } from './view/user-fee-waiver-audit-panel';
+
 // ----------------------------------------------------------------------
 
 export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
@@ -31,6 +33,7 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
 
   const popover = usePopover();
 
+  const jobRoleStatus = getJobRoleAuditStatus(row);
   const createdDate = row.createdAt ? new Date(row.createdAt) : null;
   const createdDateText = createdDate
     ? `${new Intl.DateTimeFormat('en-GB', {
@@ -120,6 +123,26 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
               width={16}
             />
             {row.isVerified ? 'Verified' : 'Unverified'}
+          </Label>
+        </TableCell>
+
+        <TableCell>
+          <Label
+            variant="soft"
+            color={jobRoleStatus.color}
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}
+          >
+            <Iconify
+              icon={
+                jobRoleStatus.label === 'Verified'
+                  ? 'solar:verified-check-bold'
+                  : jobRoleStatus.label === 'Rejected'
+                    ? 'solar:close-circle-bold'
+                    : 'solar:hourglass-line-bold'
+              }
+              width={16}
+            />
+            {jobRoleStatus.label}
           </Label>
         </TableCell>
 

@@ -16,7 +16,7 @@ import { resolveFooterContent } from './footer-defaults';
 
 // ----------------------------------------------------------------------
 
-/** Compact display for footer enrollment total (matches prior “12K+” style). */
+/** Compact display for footer live learner total (matches prior “12K+” style). */
 function formatEnrollmentDisplay(count) {
   if (count == null || !Number.isFinite(count) || count < 0) return null;
   const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(count);

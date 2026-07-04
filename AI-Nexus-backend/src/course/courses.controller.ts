@@ -58,6 +58,7 @@ import {
   StartCourseQuestionAttemptDto,
 } from './course-question-bank-attempt.dto';
 import { ManualVerifyAssignmentSubmissionDto } from './course-assignment-manual-verify.dto';
+import { SubmitAssignmentSubmissionDto } from './course-assignment-submit.dto';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { parseBooleanQuery, parsePositiveInteger } from '../common/pagination/paginated-list.util';
@@ -1137,6 +1138,28 @@ export class CourseController {
         });
     }
 
+    @Get(':courseId/question-bank/:questionId/assignment/outline')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Get structured assessment question outline for learner' })
+    async getAssignmentOutline(
+        @Param('courseId') courseId: string,
+        @Param('questionId') questionId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const data = await this.courseQuestionBankService.getAssignmentOutlineForLearner(
+            userId,
+            courseId,
+            questionId,
+        );
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
     @Post(':courseId/question-bank/:questionId/assignment/submit')
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
@@ -1144,6 +1167,7 @@ export class CourseController {
     async submitAssignmentSubmission(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
+        @Body() body: SubmitAssignmentSubmissionDto,
         @Req() request: Request,
         @Res() response: Response,
     ) {
@@ -1155,6 +1179,7 @@ export class CourseController {
             userId,
             courseId,
             questionId,
+            body,
         );
         return response.status(HttpStatus.OK).json({
             message: 'Assessment submitted for grading',

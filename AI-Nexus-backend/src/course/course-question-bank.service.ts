@@ -25,7 +25,9 @@ import {
 } from './course-question-bank-attempt.entity';
 import { CourseQuestionAssignmentSubmissionEntity } from './course-question-assignment-submission.entity';
 import { UserRole } from '../user/users.entity';
-import { CourseAssignmentGradingService } from './course-assignment-grading.service';
+import { AssignmentGradingRouterService } from './assignment-grading-router.service';
+import { BlueprintIngestionService } from '../assessment-evaluation/services/blueprint-ingestion.service';
+import { SubmitAssignmentSubmissionDto } from './course-assignment-submit.dto';
 import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 import { ManualVerifyAssignmentSubmissionDto } from './course-assignment-manual-verify.dto';
 import {
@@ -142,7 +144,8 @@ export class CourseQuestionBankService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly courseService: CourseService,
     private readonly courseEnrollmentService: CourseEnrollmentService,
-    private readonly assignmentGradingService: CourseAssignmentGradingService,
+    private readonly assignmentGradingService: AssignmentGradingRouterService,
+    private readonly blueprintIngestionService: BlueprintIngestionService,
     private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
   ) {}
 
@@ -759,7 +762,9 @@ export class CourseQuestionBankService {
       question.guideFileUrl = fileUrl;
       question.guideFileName = originalFileName;
     }
-    return this.repo.save(question);
+    const saved = await this.repo.save(question);
+    this.assignmentGradingService.queueBlueprintIngestion(saved.id, true);
+    return saved;
   }
 
   private async assertAssignmentAccess(
@@ -897,10 +902,20 @@ export class CourseQuestionBankService {
     return saved;
   }
 
+  async getAssignmentOutlineForLearner(
+    userId: string,
+    courseId: string,
+    questionId: string,
+  ) {
+    await this.assertAssignmentAccess(userId, courseId, questionId);
+    return this.blueprintIngestionService.getLearnerOutline(questionId);
+  }
+
   async submitAssignmentSubmission(
     userId: string,
     courseId: string,
     questionId: string,
+    dto?: SubmitAssignmentSubmissionDto,
   ): Promise<CourseQuestionAssignmentSubmissionEntity> {
     const question = await this.assertAssignmentAccess(userId, courseId, questionId);
     await this.quizAssessmentProgressService.assertQuizPerfectScoreForAssignment(
@@ -912,32 +927,56 @@ export class CourseQuestionBankService {
     const existing = await this.assignmentSubmissionRepo.findOne({
       where: { questionId, userId },
     });
+    const typedAnswers = Array.isArray(dto?.typedAnswers)
+      ? dto.typedAnswers.map((value) => String(value || '').trim())
+      : [];
+    const hasTypedAnswers = typedAnswers.some(Boolean);
+
     if (!existing) {
-      throw new BadRequestException('Upload your submission files before submitting.');
-    }
-    if (isSubmissionPassedLocked(existing)) {
+      if (!hasTypedAnswers) {
+        throw new BadRequestException('Upload your submission files before submitting.');
+      }
+    } else if (isSubmissionPassedLocked(existing)) {
       throw new BadRequestException('This assessment is already passed.');
     }
 
-    const files = getSubmissionFilesFromEntity(existing);
-    if (!files.length) {
-      throw new BadRequestException('Upload at least one file before submitting.');
-    }
+    const submission =
+      existing ||
+      this.assignmentSubmissionRepo.create({
+        questionId,
+        courseId,
+        userId,
+        evaluationStatus: 'draft',
+        attemptCount: 1,
+        attemptHistory: [],
+      });
 
     if (
-      existing.evaluationStatus === 'pending' ||
-      existing.evaluationStatus === 'processing'
+      submission.evaluationStatus === 'pending' ||
+      submission.evaluationStatus === 'processing'
     ) {
       throw new BadRequestException('Your submission is already being graded.');
     }
 
-    existing.submittedAt = new Date();
-    existing.evaluationStatus = 'pending';
-    existing.fileUrl = files[0]?.fileUrl ?? existing.fileUrl ?? null;
-    existing.originalFileName =
-      summarizeSubmissionFiles(files) || existing.originalFileName || null;
-    existing.submissionFiles = files;
-    const saved = await this.assignmentSubmissionRepo.save(existing);
+    const files = getSubmissionFilesFromEntity(submission);
+
+    if (!files.length && !hasTypedAnswers) {
+      throw new BadRequestException('Upload at least one file or type your answers before submitting.');
+    }
+
+    submission.submittedAt = new Date();
+    submission.evaluationStatus = 'pending';
+    submission.fileUrl = files[0]?.fileUrl ?? submission.fileUrl ?? null;
+    submission.originalFileName =
+      summarizeSubmissionFiles(files) || submission.originalFileName || null;
+    submission.submissionFiles = files;
+    submission.aiRawResult = {
+      ...(submission.aiRawResult && typeof submission.aiRawResult === 'object'
+        ? submission.aiRawResult
+        : {}),
+      typedAnswers,
+    };
+    const saved = await this.assignmentSubmissionRepo.save(submission);
 
     this.assignmentGradingService.queueGrading(saved.id);
     return saved;

@@ -18,27 +18,42 @@ import { userService } from 'src/services/user.service';
 
 // ----------------------------------------------------------------------
 
-function formatAuditStatus(user, audit) {
+export function getJobRoleAuditStatus(user) {
+  const snapshot = user?.eligibilitySnapshot || {};
+  const audit =
+    snapshot?.feeWaiverAudit && typeof snapshot.feeWaiverAudit === 'object'
+      ? snapshot.feeWaiverAudit
+      : null;
   const status = String(audit?.status || '').trim();
 
-  if (status === 'admin_rejected') return { label: 'Rejected', color: 'error' };
+  if (status === 'admin_rejected') {
+    return { label: 'Rejected', color: 'error', hasAudit: Boolean(audit) };
+  }
   if (
     user?.feeWaiverJobVerified
     || status === 'hr_verified'
     || status === 'certificate_verified'
     || status === 'admin_verified'
   ) {
-    return { label: 'Verified', color: 'success' };
+    return { label: 'Verified', color: 'success', hasAudit: Boolean(audit) };
   }
-  if (status === 'pending_hr_verification') return { label: 'Pending HR verification', color: 'warning' };
-  if (status === 'pending_certificate_review') return { label: 'Certificate under review', color: 'warning' };
-  if (status) return { label: status.replace(/-/g, ' '), color: 'default' };
-  return { label: 'Submitted', color: 'default' };
+  if (status === 'pending_hr_verification') {
+    return { label: 'Pending HR verification', color: 'warning', hasAudit: true };
+  }
+  if (status === 'pending_certificate_review') {
+    return { label: 'Certificate under review', color: 'warning', hasAudit: true };
+  }
+  if (audit) {
+    return { label: status ? status.replace(/[_-]/g, ' ') : 'Submitted', color: 'default', hasAudit: true };
+  }
+  return { label: 'Not submitted', color: 'default', hasAudit: false };
 }
 
 function formatMethodLabel(method) {
   if (method === 'hr-email') return 'HR email verification';
+  if (method === 'accounting-declaration-hr') return 'Employer / HR email verification';
   if (method === 'education-certificate') return 'Education certificate';
+  if (method === 'student-academic') return 'Student academic email';
   return method || '—';
 }
 
@@ -89,18 +104,14 @@ export function UserFeeWaiverAuditPanel({ user, onRefresh }) {
     ? snapshot.nricAudit
     : null;
 
-  const hasAuditContent = Boolean(audit || nricAudit);
-  const statusMeta = useMemo(() => formatAuditStatus(user, audit), [user, audit]);
+  const statusMeta = useMemo(() => getJobRoleAuditStatus(user), [user]);
 
   const certificateUrl = resolveAssetUrl(audit?.certificateUrl || '');
   const nricFrontUrl = resolveAssetUrl(nricAudit?.frontUrl || '');
   const nricBackUrl = resolveAssetUrl(nricAudit?.backUrl || '');
 
-  const canReview = Boolean(audit) && statusMeta.label !== 'Verified';
-
-  if (!hasAuditContent) {
-    return null;
-  }
+  const isVerified = statusMeta.label === 'Verified';
+  const canReview = !isVerified && statusMeta.label !== 'Rejected';
 
   const handleVerify = async () => {
     try {
@@ -147,7 +158,7 @@ export function UserFeeWaiverAuditPanel({ user, onRefresh }) {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Iconify icon="solar:document-text-bold" width={22} />
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Fee-waiver job audit
+              Job role / HR verification
             </Typography>
             <Chip label={statusMeta.label} color={statusMeta.color} size="small" sx={{ fontWeight: 600 }} />
           </Stack>
@@ -159,6 +170,12 @@ export function UserFeeWaiverAuditPanel({ user, onRefresh }) {
           />
         </Stack>
 
+        {!audit && !nricAudit ? (
+          <Alert severity="info" variant="outlined">
+            No HR email or certificate has been submitted for this user yet. You can still mark the job role as verified or rejected below.
+          </Alert>
+        ) : null}
+
         <Box
           sx={{
             display: 'grid',
@@ -168,6 +185,7 @@ export function UserFeeWaiverAuditPanel({ user, onRefresh }) {
         >
           <InfoItem label="Audit method" value={formatMethodLabel(audit?.method)} />
           <InfoItem label="HR email" value={audit?.hrEmail} />
+          <InfoItem label="Learner email" value={audit?.learnerEmail} />
           <InfoItem label="Submitted at" value={audit?.submittedAt ? new Date(audit.submittedAt).toLocaleString() : '—'} />
           <InfoItem label="Verified at" value={audit?.verifiedAt ? new Date(audit.verifiedAt).toLocaleString() : '—'} />
           {nricAudit?.maskedIdentifier ? <InfoItem label="NRIC/FIN (masked)" value={nricAudit.maskedIdentifier} /> : null}
@@ -271,7 +289,7 @@ export function UserFeeWaiverAuditPanel({ user, onRefresh }) {
           </>
         ) : null}
 
-        {statusMeta.label === 'Verified' && audit?.verifiedBy ? (
+        {isVerified && audit?.verifiedBy ? (
           <Typography variant="caption" color="text.secondary">
             Verified via {audit.verifiedBy}
             {audit.verifiedAt ? ` on ${new Date(audit.verifiedAt).toLocaleString()}` : ''}.

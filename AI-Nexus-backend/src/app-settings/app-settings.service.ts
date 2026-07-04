@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 
 import { AppSettingsEntity, WorkflowTemplatesPitchContent } from './app-settings.entity';
 import { LocalStorageService } from '../service/local-storage.service';
-import { UserEntity } from '../user/users.entity';
+import { UserEntity, UserRole, UserStatus } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
 import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
@@ -2580,11 +2580,17 @@ export class AppSettingsService {
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     partnerWithIscaContent: PartnerWithIscaContentPayload | null;
     footerContent: FooterContentPayload | null;
-    /** Total rows in course_enrollments (direct course enrollments). */
+    /** Active learner accounts on the platform (non-draft, non-admin). */
     totalCourseEnrollments: number;
   }> {
     const settings = await this.getSettings();
-    const totalCourseEnrollments = await this.courseEnrollmentRepository.count();
+    const totalCourseEnrollments = await this.userRepository.count({
+      where: {
+        status: UserStatus.Active,
+        isDraft: false,
+        role: UserRole.User,
+      },
+    });
 
     return {
       logoUrl: settings.logoUrl ?? null,

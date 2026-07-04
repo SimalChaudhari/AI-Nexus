@@ -18,7 +18,8 @@ export const USER_LIST_TABLE_HEAD = [
   // { id: 'company', label: 'Company', width: 220 },
   { id: 'authProvider', label: 'Auth provider', width: 140 },
   { id: 'createdAt', label: 'Created', width: 120 },
-  { id: 'isVerified', label: 'Verified', width: 120 },
+  { id: 'isVerified', label: 'Email verified', width: 130 },
+  { id: 'feeWaiverJobVerified', label: 'Job / HR', width: 150 },
   { id: 'status', label: 'Status', width: 100 },
   { id: 'action', label: 'Action', width: 88 },
 ];

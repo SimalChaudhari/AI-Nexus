@@ -70,10 +70,33 @@ export function getSubmissionEvaluationDisplay(row) {
   return { label: 'Pending', color: 'default', detail: 'Waiting for grading' };
 }
 
+export function getStructuredQuestionResults(submission) {
+  const raw = submission?.aiRawResult;
+  if (!raw || raw.mode !== 'structured_per_question') return [];
+  const results = Array.isArray(raw.questionResults) ? raw.questionResults : [];
+  return results.map((row) => ({
+    questionId: row.questionId,
+    questionNumber: row.questionNumber,
+    label: row.label || `Q${row.questionNumber}`,
+    score: Number(row.score) || 0,
+    maxScore: Number(row.maxScore) || 0,
+    feedback: row.feedback || '',
+    strengths: Array.isArray(row.strengths) ? row.strengths : [],
+    missingPoints: Array.isArray(row.missingPoints) ? row.missingPoints : [],
+    incorrectPoints: Array.isArray(row.incorrectPoints) ? row.incorrectPoints : [],
+  }));
+}
+
 export function mapSubmissionFromApi(row) {
   if (!row) return null;
   const submissionFiles = Array.isArray(row.submissionFiles) ? row.submissionFiles : [];
   const primary = submissionFiles[0];
+  const structuredResults = getStructuredQuestionResults({ aiRawResult: row.aiRawResult });
+  const legacyWeaknesses = Array.isArray(row.aiRawResult?.weaknesses) ? row.aiRawResult.weaknesses : [];
+  const structuredWeaknesses = structuredResults
+    .flatMap((item) => item.missingPoints || [])
+    .filter(Boolean)
+    .slice(0, 12);
   return {
     id: row.id,
     questionId: row.questionId,
@@ -90,8 +113,9 @@ export function mapSubmissionFromApi(row) {
     aiPassed: row.aiPassed ?? null,
     aiFeedback: row.aiFeedback ?? null,
     aiRawResult: row.aiRawResult ?? null,
+    structuredResults,
     strengths: Array.isArray(row.aiRawResult?.strengths) ? row.aiRawResult.strengths : [],
-    weaknesses: Array.isArray(row.aiRawResult?.weaknesses) ? row.aiRawResult.weaknesses : [],
+    weaknesses: structuredWeaknesses.length ? structuredWeaknesses : legacyWeaknesses,
     aiEvaluatedAt: row.aiEvaluatedAt ?? null,
     manualPassed: row.manualPassed ?? null,
     manualFeedback: row.manualFeedback ?? null,
@@ -184,6 +208,14 @@ export function canShowVerificationLog(submission) {
 export function getVerificationLogEntries(submission) {
   if (Array.isArray(submission?.verificationLog) && submission.verificationLog.length) {
     return submission.verificationLog;
+  }
+  const structured = getStructuredQuestionResults(submission);
+  if (structured.length) {
+    return structured.map((row) => ({
+      step: row.label || `Q${row.questionNumber}`,
+      status: row.score >= row.maxScore * 0.7 ? 'pass' : row.score > 0 ? 'warn' : 'fail',
+      detail: `${row.score}/${row.maxScore}${row.feedback ? ` — ${row.feedback}` : ''}`,
+    }));
   }
   const entries = [];
   if (submission?.aiScore != null) {

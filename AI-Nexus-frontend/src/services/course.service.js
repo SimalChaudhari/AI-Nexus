@@ -1130,15 +1130,28 @@ export const courseService = {
     }
   },
 
-  async submitAssignmentSubmission(courseId, questionId) {
+  async submitAssignmentSubmission(courseId, questionId, payload = {}) {
     try {
       const response = await axios.post(
-        `/courses/${courseId}/question-bank/${questionId}/assignment/submit`
+        `/courses/${courseId}/question-bank/${questionId}/assignment/submit`,
+        payload
       );
       return response.data?.data ?? response.data;
     } catch (error) {
       console.error('Error submitting assignment:', error);
       throw error;
+    }
+  },
+
+  async getAssessmentOutline(courseId, questionId) {
+    try {
+      const response = await axios.get(
+        `/courses/${courseId}/question-bank/${questionId}/assignment/outline`
+      );
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error fetching assessment outline:', error);
+      return { ready: false, questions: [] };
     }
   },
 

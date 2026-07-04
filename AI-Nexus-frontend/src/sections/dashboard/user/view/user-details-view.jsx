@@ -12,7 +12,7 @@ import { Iconify } from 'src/components/iconify';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 
 import { buildSalesforceProfileDetailRows } from 'src/components/user-salesforce-profile-fields';
-import { UserFeeWaiverAuditPanel } from './user-fee-waiver-audit-panel';
+import { getJobRoleAuditStatus, UserFeeWaiverAuditPanel } from './user-fee-waiver-audit-panel';
 
 // ----------------------------------------------------------------------
 
@@ -58,21 +58,16 @@ export function UserDetailsView({ user, loading, error, onRefresh }) {
       .join('') || '?';
 
   const snapshot = user?.eligibilitySnapshot || {};
-  const hasAuditPanel =
-    Boolean(snapshot?.feeWaiverAudit)
-    || Boolean(snapshot?.nricAudit);
+  const jobRoleStatus = getJobRoleAuditStatus(user);
 
   const headerChips = [
     { label: user.status || '-', color: statusColor },
     { label: user.role || 'User', color: 'info' },
+    {
+      label: `Job role: ${jobRoleStatus.label}`,
+      color: jobRoleStatus.color,
+    },
   ];
-
-  if (hasAuditPanel) {
-    headerChips.push({
-      label: user.feeWaiverJobVerified ? 'Job role verified' : 'Job audit pending',
-      color: user.feeWaiverJobVerified ? 'success' : 'warning',
-    });
-  }
 
   const profileRows = [
     { label: 'First name', value: user.firstname || '-' },
@@ -130,6 +125,17 @@ export function UserDetailsView({ user, loading, error, onRefresh }) {
           label: 'Registered on',
           value: user.createdAt ? new Date(user.createdAt).toLocaleString() : '—',
         },
+        {
+          label: 'Job role / HR verification',
+          value: (
+            <Chip
+              label={jobRoleStatus.label}
+              color={jobRoleStatus.color}
+              size="small"
+              sx={{ mt: 0.5, fontWeight: 600 }}
+            />
+          ),
+        },
       ],
     },
     {
@@ -159,9 +165,7 @@ export function UserDetailsView({ user, loading, error, onRefresh }) {
         chips: headerChips,
       }}
       sections={sections}
-      footer={
-        hasAuditPanel ? <UserFeeWaiverAuditPanel user={user} onRefresh={onRefresh} /> : null
-      }
+      footer={<UserFeeWaiverAuditPanel user={user} onRefresh={onRefresh} />}
     />
   );
 }

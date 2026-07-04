@@ -240,7 +240,7 @@ export function SimpleSignInView() {
         startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
         sx={{ height: 48, fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
       >
-        Login with ISCA Account
+        Login with ISCA account
       </Button>
 
       <Divider sx={{ borderStyle: 'dashed' }} />
@@ -254,7 +254,7 @@ export function SimpleSignInView() {
         onClick={() => setSignupModalOpen(true)}
         sx={{ height: 48, fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
       >
-        Sign up an ISCA account
+        Sign up for an ISCA account
       </Button>
 
       <Button
@@ -266,7 +266,7 @@ export function SimpleSignInView() {
         onClick={() => setShowCorporateForm(true)}
         sx={{ height: 48, fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
       >
-        Login/Sign up a Corporate Account
+        Login as a corporate account
       </Button>
     </Stack>
   );

@@ -2560,7 +2560,10 @@ export class AuthService {
       throw new BadRequestException('Learner email is required.');
     }
 
-    const byEmail = await this.userRepository.findOne({ where: { email: normalizedEmail } });
+    const byEmail = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.email) = LOWER(:email)', { email: normalizedEmail })
+      .getOne();
     if (!byEmail) {
       throw new BadRequestException('Could not find the registration record for this learner email.');
     }
@@ -2702,13 +2705,7 @@ export class AuthService {
       ? existingToken
       : crypto.randomBytes(32).toString('hex');
 
-    await this.emailService.sendFeeWaiverHrVerificationEmail({
-      hrEmail,
-      learnerEmail,
-      learnerName: learnerName || `${user.firstname || ''} ${user.lastname || ''}`.trim() || 'Learner',
-      verificationToken: hrVerificationToken,
-    });
-
+    // Persist token before emailing so the HR link is valid as soon as it is sent.
     this.mergeFeeWaiverAuditSnapshot(user, {
       method: 'hr-email',
       hrEmail,
@@ -2721,6 +2718,13 @@ export class AuthService {
     });
     user.feeWaiverJobVerified = false;
     await this.userRepository.save(user);
+
+    await this.emailService.sendFeeWaiverHrVerificationEmail({
+      hrEmail,
+      learnerEmail,
+      learnerName: learnerName || `${user.firstname || ''} ${user.lastname || ''}`.trim() || 'Learner',
+      verificationToken: hrVerificationToken,
+    });
 
     return {
       submitted: true,
@@ -3960,20 +3964,64 @@ export class AuthService {
   }) {
     const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
     const learnerName = String(params?.learnerName || '').trim() || 'Applicant';
+    const nricFin = normalizeSingaporeNricFin(params?.nricFin || '');
+
     if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
       throw new BadRequestException('Please enter a valid HR email address.');
     }
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    try {
-      await this.emailService.sendFeeWaiverHrVerificationEmail({
-        hrEmail,
-        learnerEmail: String(params?.nricFin || '').trim(),
-        learnerName,
-        verificationToken,
-      });
-    } catch (err) {
-      this.logger.warn(`Accounting declaration HR email failed: ${(err as Error)?.message}`);
+    if (!nricFin) {
+      throw new BadRequestException(
+        'Verified NRIC details are required to send employer verification.',
+      );
     }
+
+    const user = await findUserByVerifiedNricFin(this.userRepository, nricFin);
+    if (!user) {
+      throw new BadRequestException(
+        'Could not find the registration record for this applicant. Please complete NRIC verification again.',
+      );
+    }
+
+    const existingAudit =
+      user.eligibilitySnapshot?.feeWaiverAudit
+      && typeof user.eligibilitySnapshot.feeWaiverAudit === 'object'
+        ? (user.eligibilitySnapshot.feeWaiverAudit as Record<string, unknown>)
+        : null;
+    const existingToken = String(existingAudit?.hrVerificationToken || '').trim();
+    const canReuseToken =
+      existingAudit?.status === 'pending_hr_verification'
+      && String(existingAudit?.method || '').trim() === 'accounting-declaration-hr'
+      && existingToken.length > 0;
+
+    const hrVerificationToken = canReuseToken
+      ? existingToken
+      : crypto.randomBytes(32).toString('hex');
+
+    const learnerEmail =
+      this.normalizeAuditEmail(user.email) || nricFin;
+
+    // Persist token before emailing so the HR job-verification link resolves.
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      method: 'accounting-declaration-hr',
+      hrEmail,
+      learnerEmail,
+      nricFin,
+      status: 'pending_hr_verification',
+      auditSubmitted: true,
+      hrVerificationToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(hrVerificationToken),
+      submittedAt: new Date().toISOString(),
+    });
+    user.feeWaiverJobVerified = false;
+    await this.userRepository.save(user);
+
+    await this.emailService.sendFeeWaiverHrVerificationEmail({
+      hrEmail,
+      learnerEmail,
+      learnerName,
+      verificationToken: hrVerificationToken,
+    });
+
     return { success: true, message: 'Verification email sent to your employer.' };
   }
 

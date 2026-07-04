@@ -205,7 +205,7 @@ export function FooterSettingsCard({ content, setContent, submitting, onSave }) 
   const renderStatsTab = (
     <Stack spacing={1.5}>
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        Up to four stat cards. Turn on live enrollment to show the database learner count.
+        Up to four stat cards. Turn on live enrollment to show the count of active learner accounts on the platform.
       </Typography>
       <Box
         sx={{
