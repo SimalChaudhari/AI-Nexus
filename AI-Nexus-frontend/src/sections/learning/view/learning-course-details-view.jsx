@@ -39,6 +39,7 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
 import { LearningBundleHighlight } from '../components/course-bundle-badge';
+import { LearningProgramLinkedCourses } from '../components/learning-program-linked-courses';
 import { LearningCourseGridCard } from '../components/learning-course-grid-card';
 import {
   COURSE_DETAIL_META_SX,
@@ -980,6 +981,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
           {isBundleCourse && (
             <LearningBundleHighlight count={bundleCount} sx={{ mb: 3 }} />
           )}
+
+          <LearningProgramLinkedCourses courseId={course.id} />
 
           <Card
             sx={{

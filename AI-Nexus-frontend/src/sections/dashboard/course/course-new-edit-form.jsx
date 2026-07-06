@@ -32,6 +32,7 @@ import { createCourse, updateCourse } from 'src/store/slices/courseSlice';
 import { speakerService } from 'src/services/speaker.service';
 import { languageService } from 'src/services/language.service';
 import { categoryService } from 'src/services/category.service';
+import { programService } from 'src/services/program.service';
 import { courseService } from 'src/services/course.service';
 import {
   AI_EXPERIENCE_OPTIONS,
@@ -104,6 +105,7 @@ export const NewCourseSchema = zod.object({
   languageIds: zod.array(zod.string()).optional(),
   speakerIds: zod.array(zod.string()).optional(),
   categoryId: zod.string().optional(),
+  programId: zod.string().optional(),
   cpeHours: zod.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
     zod.number().min(0).optional()
@@ -142,6 +144,9 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const categoriesFetchDoneRef = useRef(false);
+  const [programs, setPrograms] = useState([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
+  const programsFetchDoneRef = useRef(false);
   /** Pending modules/sections when creating a course (before save); sent with create payload */
   const [pendingModules, setPendingModules] = useState([]);
   const [coursesCatalog, setCoursesCatalog] = useState([]);
@@ -175,7 +180,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       freeOrPaid: currentCourse?.freeOrPaid ?? false,
       amount: currentCourse?.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
       level: normalizeCourseLevelForForm(currentCourse?.level),
-      categoryId: currentCourse?.categoryId || '',
+      categoryId: currentCourse?.categoryId || currentCourse?.category?.id || '',
+      programId: currentCourse?.programId || currentCourse?.program?.id || '',
       roles: Array.isArray(currentCourse?.roles) ? currentCourse.roles : [],
       aiLevel: Array.isArray(currentCourse?.aiLevel) ? currentCourse.aiLevel : [],
       goals: Array.isArray(currentCourse?.goals) ? currentCourse.goals : [],
@@ -242,6 +248,24 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       });
   }, []);
 
+  const ensureProgramsLoaded = useCallback(() => {
+    if (programsFetchDoneRef.current) return;
+    programsFetchDoneRef.current = true;
+    setProgramsLoading(true);
+    programService
+      .getAllPrograms({ page: 1, limit: 500 })
+      .then((res) => {
+        const list = Array.isArray(res) ? res : res?.data || [];
+        setPrograms(list || []);
+      })
+      .catch(() => {
+        programsFetchDoneRef.current = false;
+      })
+      .finally(() => {
+        setProgramsLoading(false);
+      });
+  }, []);
+
   // Edit mode: load speakers if already assigned so chip labels show names without opening the dropdown
   useEffect(() => {
     const ids = getCourseSpeakerIds(currentCourse);
@@ -263,6 +287,12 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       ensureCategoriesLoaded();
     }
   }, [currentCourse?.categoryId, ensureCategoriesLoaded]);
+
+  useEffect(() => {
+    if (currentCourse?.programId || currentCourse?.program?.id) {
+      ensureProgramsLoaded();
+    }
+  }, [currentCourse?.program?.id, currentCourse?.programId, ensureProgramsLoaded]);
 
   const ensureCoursesCatalogLoaded = useCallback(() => {
     if (coursesCatalogFetchRef.current) return;
@@ -529,7 +559,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         freeOrPaid: currentCourse.freeOrPaid ?? false,
         amount: currentCourse.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
         level: normalizeCourseLevelForForm(currentCourse.level),
-        categoryId: currentCourse.categoryId || '',
+        categoryId: currentCourse.categoryId || currentCourse.category?.id || '',
+        programId: currentCourse.programId || currentCourse.program?.id || '',
         roles: Array.isArray(currentCourse.roles) ? currentCourse.roles : [],
         aiLevel: Array.isArray(currentCourse.aiLevel) ? currentCourse.aiLevel : [],
         goals: Array.isArray(currentCourse.goals) ? currentCourse.goals : [],
@@ -648,6 +679,9 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         amount: data.freeOrPaid && data.amount != null ? parseFloat(data.amount.toString()) : 0,
         level: data.level || 'Beginner',
         categoryId: data.categoryId || undefined,
+        ...(!data.isBundle
+          ? { programId: currentCourse ? data.programId || '' : data.programId || undefined }
+          : {}),
         roles: Array.isArray(data.roles) ? data.roles : undefined,
         aiLevel: Array.isArray(data.aiLevel) ? data.aiLevel : undefined,
         goals: Array.isArray(data.goals) ? data.goals : undefined,
@@ -799,6 +833,33 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     </IconButton>
                   </Stack>
                 </Grid>
+                {!watch('isBundle') && (
+                  <Grid xs={12} md={3}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Field.Autocomplete
+                          name="programId"
+                          label="Program"
+                          loading={programsLoading}
+                          options={(programs || []).map((p) => p.id)}
+                          getOptionLabel={(option) =>
+                            programs.find((p) => p.id === option)?.title || option || ''
+                          }
+                          isOptionEqualToValue={(option, value) => option === value}
+                          placeholder="Select program..."
+                          onOpen={() => ensureProgramsLoaded()}
+                        />
+                      </Box>
+                      <IconButton
+                        color="primary"
+                        sx={{ border: `1px solid ${alpha(theme.palette.primary.main, 0.32)}` }}
+                        onClick={() => router.push(paths.admin.program.new)}
+                      >
+                        <Iconify icon="solar:add-circle-bold" width={18} />
+                      </IconButton>
+                    </Stack>
+                  </Grid>
+                )}
                 <Grid xs={12}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Box sx={{ flexGrow: 1 }}>

@@ -136,6 +136,7 @@ export const navData = [
             activeExcludePaths: [paths.admin.course.new],
           },
           { title: 'Category', path: paths.admin.category.root, deepMatch: true },
+          { title: 'Program', path: paths.admin.program.root, deepMatch: true },
           { title: 'Quiz Attempts', path: paths.admin.course.attempts },
           { title: 'Certificates', path: paths.admin.course.certificates },
         ],

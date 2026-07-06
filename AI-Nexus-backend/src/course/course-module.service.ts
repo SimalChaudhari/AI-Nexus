@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { CourseModuleEntity } from './course-module.entity';
 import { CreateCourseModuleDto, UpdateCourseModuleDto } from './course-module.dto';
 import { CourseService } from './courses.service';
+import { CourseLearnerProgressCleanupService } from './course-learner-progress-cleanup.service';
+import { CourseCertificateService } from './course-certificate.service';
 
 @Injectable()
 export class CourseModuleService {
@@ -11,6 +13,8 @@ export class CourseModuleService {
     @InjectRepository(CourseModuleEntity)
     private readonly moduleRepository: Repository<CourseModuleEntity>,
     private readonly courseService: CourseService,
+    private readonly learnerProgressCleanupService: CourseLearnerProgressCleanupService,
+    private readonly certificateService: CourseCertificateService,
   ) {}
 
   async findByCourseId(courseId: string): Promise<CourseModuleEntity[]> {
@@ -57,6 +61,8 @@ export class CourseModuleService {
   async delete(id: string): Promise<{ message: string }> {
     const module = await this.moduleRepository.findOne({ where: { id } });
     if (!module) throw new NotFoundException('Course module not found');
+    await this.certificateService.assertModuleDeletionAllowed(module.courseId, module.id);
+    await this.learnerProgressCleanupService.cleanupModuleBeforeDelete(module.courseId, module.id);
     await this.moduleRepository.remove(module);
     return { message: 'Module deleted successfully' };
   }

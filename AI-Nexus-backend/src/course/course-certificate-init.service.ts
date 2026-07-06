@@ -48,6 +48,10 @@ export class CourseCertificateInitService implements OnModuleInit {
         ALTER TABLE "course_certificates"
         ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP NULL
       `);
+      await queryRunner.query(`
+        ALTER TABLE "course_certificates"
+        ADD COLUMN IF NOT EXISTS "programId" uuid NULL
+      `);
 
       await queryRunner.release();
     } catch (error) {

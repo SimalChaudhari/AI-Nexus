@@ -637,6 +637,23 @@ export class CourseController {
         });
     }
 
+    @Get(':courseId/content-deletion-guard')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary:
+            'Whether modules, sections, or the course cannot be deleted because certificates were issued',
+    })
+    async getCourseContentDeletionGuard(
+        @Param('courseId') courseId: string,
+        @Res() response: Response,
+    ) {
+        await this.courseService.getById(courseId);
+        const guard = await this.courseCertificateService.getCourseContentDeletionGuard(courseId);
+        return response.status(HttpStatus.OK).json({ data: guard });
+    }
+
     @Get(':courseId/player-context')
     @UseGuards(OptionalJwtAuthGuard)
     @ApiOperation({ summary: 'Get full player context for a course (course, enrollment, modules, section progress)' })

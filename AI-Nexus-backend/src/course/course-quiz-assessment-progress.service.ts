@@ -188,6 +188,32 @@ export class CourseQuizAssessmentProgressService {
     return progress.quizAssessmentCompleted;
   }
 
+  /** Pillar 2 programme rule: one module with its quiz + assessment passed (when they exist). */
+  async isModuleQuizAndAssessmentComplete(
+    userId: string,
+    courseId: string,
+    moduleId: string,
+  ): Promise<boolean> {
+    const questions = await this.questionRepo.find({
+      where: { courseId, moduleId },
+    });
+    const assignmentIds = questions
+      .filter((q) => q.questionType === CourseQuestionType.Assignment)
+      .map((q) => q.id);
+    const quizCount = questions.length - assignmentIds.length;
+    const hasQuiz = quizCount > 0;
+    const hasAssignment = assignmentIds.length > 0;
+
+    if (!hasQuiz && !hasAssignment) {
+      return false;
+    }
+
+    const quizOk = !hasQuiz || (await this.hasQuizPerfectScore(userId, courseId, moduleId));
+    const assignmentOk =
+      !hasAssignment || (await this.isAssessmentScopeCompleted(userId, courseId, assignmentIds));
+    return quizOk && assignmentOk;
+  }
+
   markQuizAttemptCompleted(attempt: CourseQuestionBankAttemptEntity): void {
     const total = Number(attempt.totalQuestions || 0);
     const correct = Number(attempt.correctAnswers || 0);

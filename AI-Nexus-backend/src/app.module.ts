@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/users.module';
 import { CategoryModule } from './category/categories.module';
+import { ProgramModule } from './program/programs.module';
 import { CourseModule } from './course/courses.module';
 import { LabelModule } from './label/labels.module';
 import { TagModule } from './tag/tags.module';
@@ -100,6 +101,7 @@ const resolveTypeOrmPoolMax = (): number => {
     AuthModule,
     UserModule,
     CategoryModule,
+    ProgramModule,
     CourseModule,
     LabelModule,
     TagModule,

@@ -32,6 +32,7 @@ export const COURSE_LIST_TABLE_HEAD = [
   { id: 'title', label: 'Course' },
   { id: 'level', label: 'Level', width: 140 },
   { id: 'category', label: 'Category', width: 180 },
+  { id: 'program', label: 'Program', width: 200 },
   { id: 'type', label: 'Type', width: 120 },
   { id: 'isBundle', label: 'Bundle', width: 168 },
   { id: 'action', label: 'Action', width: 88 },

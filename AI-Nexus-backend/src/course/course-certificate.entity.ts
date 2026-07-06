@@ -32,6 +32,9 @@ export class CourseCertificateEntity {
   @Column({ type: 'uuid' })
   courseId!: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  programId?: string | null;
+
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: UserEntity;

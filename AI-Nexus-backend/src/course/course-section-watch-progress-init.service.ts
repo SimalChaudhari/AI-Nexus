@@ -53,6 +53,14 @@ export class CourseSectionWatchProgressInitService implements OnModuleInit {
             ADD COLUMN "watchedCoverageRanges" json
           `);
         }
+        try {
+          await queryRunner.query(`
+            ALTER TABLE "course_section_watch_progress"
+            ADD COLUMN "sourceVideoUrl" varchar(500)
+          `);
+        } catch (e) {
+          if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+        }
       }
 
       await queryRunner.release();

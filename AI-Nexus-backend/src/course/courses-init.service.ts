@@ -176,6 +176,43 @@ export class CoursesInitService implements OnModuleInit {
           await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "bundleCourseIds" jsonb`);
           console.log('✅ bundleCourseIds column added successfully');
         }
+
+        const hasProgramIdColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'programId'
+        `);
+        if (!hasProgramIdColumn?.length) {
+          console.log('📋 Adding programId column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "programId" uuid`);
+          console.log('✅ programId column added successfully');
+        }
+
+        const hasProgramPillarIndexColumn = await queryRunner.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'courses' AND column_name = 'programPillarIndex'
+        `);
+        if (!hasProgramPillarIndexColumn?.length) {
+          console.log('📋 Adding programPillarIndex column to courses table...');
+          await queryRunner.query(`ALTER TABLE "courses" ADD COLUMN "programPillarIndex" smallint`);
+          console.log('✅ programPillarIndex column added successfully');
+        }
+
+        await queryRunner.query(`
+          UPDATE "courses"
+          SET "programPillarIndex" = CASE
+            WHEN lower(COALESCE("level"::text, '')) LIKE '%beginner%'
+              OR lower(COALESCE("level"::text, '')) LIKE '%foundation%'
+              OR lower(COALESCE("level"::text, '')) = 'basic' THEN 1
+            WHEN lower(COALESCE("level"::text, '')) LIKE '%intermediate%'
+              OR lower(COALESCE("level"::text, '')) LIKE '%workflow%' THEN 2
+            WHEN lower(COALESCE("level"::text, '')) LIKE '%advanced%'
+              OR lower(COALESCE("level"::text, '')) LIKE '%builder%'
+              OR lower(COALESCE("level"::text, '')) = 'advance' THEN 3
+            ELSE "programPillarIndex"
+          END
+          WHERE "programId" IS NOT NULL
+            AND ("programPillarIndex" IS NULL OR "programPillarIndex" = 0)
+        `);
       }
 
       console.log('🔍 Checking course_groups table...');

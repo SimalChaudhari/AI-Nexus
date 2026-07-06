@@ -246,7 +246,7 @@ export function CourseListView() {
             }
           />
           <Scrollbar>
-            <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 1120 }}>
+            <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 1320 }}>
               <TableHeadCustom
                 order={table.order}
                 orderBy={table.orderBy}

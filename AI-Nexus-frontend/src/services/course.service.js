@@ -114,6 +114,13 @@ const transformCourse = (course) => {
           icon: course.category.icon || '',
         }
       : null,
+    programId: course.programId || course.program?.id || null,
+    program: course.program
+      ? {
+          id: course.program.id || '',
+          title: course.program.title || '',
+        }
+      : null,
     roles: Array.isArray(course.roles) ? course.roles : [],
     aiLevel: Array.isArray(course.aiLevel) ? course.aiLevel : [],
     goals: Array.isArray(course.goals) ? course.goals : [],
@@ -304,6 +311,9 @@ export const courseService = {
       if (courseData.categoryId) {
         formData.append('categoryId', courseData.categoryId);
       }
+      if (courseData.programId) {
+        formData.append('programId', courseData.programId);
+      }
       if (Array.isArray(courseData.roles)) {
         formData.append('roles', JSON.stringify(courseData.roles));
       }
@@ -437,6 +447,9 @@ export const courseService = {
       if (courseData.categoryId !== undefined) {
         formData.append('categoryId', courseData.categoryId || '');
       }
+      if (courseData.programId !== undefined) {
+        formData.append('programId', courseData.programId || '');
+      }
       if (courseData.roles !== undefined) {
         formData.append('roles', JSON.stringify(Array.isArray(courseData.roles) ? courseData.roles : []));
       }
@@ -502,6 +515,16 @@ export const courseService = {
       return response.data;
     } catch (error) {
       console.error('Error deleting course:', error);
+      throw error;
+    }
+  },
+
+  async getCourseContentDeletionGuard(courseId) {
+    try {
+      const response = await axios.get(`/courses/${courseId}/content-deletion-guard`);
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error fetching course content deletion guard:', error);
       throw error;
     }
   },
@@ -618,7 +641,6 @@ export const courseService = {
     }
   },
 
-  /** Enable Spotlightr forward seek server-side; returns direct MP4 URL when Spotlightr API allows. */
   async prepareSpotlightrPlayback(watchUrl) {
     const url = String(watchUrl || '').trim();
     if (!url) return { directUrl: null, settingsUpdated: false };

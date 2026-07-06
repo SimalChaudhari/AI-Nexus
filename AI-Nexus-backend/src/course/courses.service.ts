@@ -1,5 +1,5 @@
 //courses.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, forwardRef, Inject } from '@nestjs/common';
 import { CourseEntity, CourseLevel } from './courses.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
@@ -19,9 +19,12 @@ import {
   normalizePaginatedQuery,
 } from '../common/pagination/paginated-list.util';
 import { CourseEnrollmentService } from './course-enrollment.service';
+import { resolveProgramPillarIndexFromLevel } from './program-pillar.util';
 import { CategoryEntity } from '../category/categories.entity';
+import { ProgramEntity } from '../program/programs.entity';
 import { CourseOptionEntity, CourseOptionType } from './course-option.entity';
 import { ReviewEntity } from '../review/review.entity';
+import { CourseCertificateService } from './course-certificate.service';
 
 function parseWatchtimeToSeconds(value?: string | null): number {
     const text = String(value || '').trim();
@@ -146,11 +149,15 @@ export class CourseService {
         private courseModuleSectionRepository: Repository<CourseModuleSectionEntity>,
         @InjectRepository(CategoryEntity)
         private categoryRepository: Repository<CategoryEntity>,
+        @InjectRepository(ProgramEntity)
+        private programRepository: Repository<ProgramEntity>,
         @InjectRepository(CourseOptionEntity)
         private courseOptionRepository: Repository<CourseOptionEntity>,
         @InjectRepository(ReviewEntity)
         private reviewRepository: Repository<ReviewEntity>,
         private readonly courseEnrollmentService: CourseEnrollmentService,
+        @Inject(forwardRef(() => CourseCertificateService))
+        private readonly courseCertificateService: CourseCertificateService,
     ) { }
 
     private normalizeCourseOptionType(type?: string): CourseOptionType {
@@ -200,12 +207,72 @@ export class CourseService {
         }));
     }
 
+    private async attachCoursePrograms(data: any[]): Promise<any[]> {
+        if (!Array.isArray(data) || data.length === 0) {
+            return data;
+        }
+
+        const programIds = [...new Set(data.map((course) => course?.programId).filter(Boolean))];
+        if (programIds.length === 0) {
+            return data.map((course) => ({ ...course, program: null }));
+        }
+
+        const programs = await this.programRepository.find({
+            where: { id: In(programIds) },
+            select: ['id', 'title'],
+        });
+        const programMap = new Map(
+            programs.map((program) => [program.id, { id: program.id, title: program.title }]),
+        );
+
+        return data.map((course) => ({
+            ...course,
+            program: course?.programId ? programMap.get(course.programId) || null : null,
+        }));
+    }
+
     private stripCategoryIdFromCourses(data: any[]): any[] {
         if (!Array.isArray(data)) return [];
         return data.map((course) => {
-            const { categoryId: _categoryId, ...rest } = course || {};
+            const { categoryId: _categoryId, programId: _programId, ...rest } = course || {};
             return rest;
         });
+    }
+
+    private async syncCourseToProgram(courseId: string, programId: string | null): Promise<void> {
+        if (!programId) {
+            await this.courseRepository.update(courseId, { programId: null, programPillarIndex: null });
+            return;
+        }
+
+        const program = await this.programRepository.findOne({ where: { id: programId } });
+        if (!program) {
+            throw new BadRequestException('Program not found');
+        }
+
+        const course = await this.courseRepository.findOne({ where: { id: courseId } });
+        if (!course) {
+            throw new NotFoundException('Course not found');
+        }
+        if (course.isBundle) {
+            throw new BadRequestException('Bundle courses cannot be linked to a program');
+        }
+
+        const pillarIndex = resolveProgramPillarIndexFromLevel(course.level);
+        if (!pillarIndex) {
+            throw new BadRequestException(
+                'Course level must be Beginner (Pillar 1), Intermediate (Pillar 2), or Advanced (Pillar 3) to join a program',
+            );
+        }
+
+        const conflict = await this.courseRepository.findOne({
+            where: { programId, programPillarIndex: pillarIndex },
+        });
+        if (conflict && conflict.id !== courseId) {
+            throw new BadRequestException(`This program already has a Pillar ${pillarIndex} course`);
+        }
+
+        await this.courseRepository.update(courseId, { programId, programPillarIndex: pillarIndex });
     }
 
     private async attachCourseContentCounts(data: any[]): Promise<any[]> {
@@ -502,7 +569,8 @@ export class CourseService {
             };
         });
         const withCategories = await this.attachCourseCategories(mappedData);
-        const withCounts = await this.attachCourseContentCounts(withCategories);
+        const withPrograms = await this.attachCoursePrograms(withCategories);
+        const withCounts = await this.attachCourseContentCounts(withPrograms);
         const withReviewStats = await this.attachReviewStats(withCounts);
         const data = this.stripCategoryIdFromCourses(withReviewStats);
 
@@ -639,6 +707,10 @@ export class CourseService {
             aiLevels: mapByType(CourseOptionType.AiLevel),
             goals: mapByType(CourseOptionType.Goal),
             useAreas: mapByType(CourseOptionType.UseArea),
+            programs: await this.programRepository.find({
+                select: ['id', 'title'],
+                order: { title: 'ASC' },
+            }),
         };
     }
 
@@ -850,10 +922,10 @@ export class CourseService {
                 select: ['id', 'title', 'slug', 'status', 'icon', 'image', 'description'],
             });
         }
-        return {
-            ...course,
-            category: category || null,
-        };
+        const [withProgram] = await this.attachCoursePrograms([
+            { ...course, category: category || null },
+        ]);
+        return withProgram;
     }
 
     async findRelatedCourses(courseId: string, level?: string, limit = 4): Promise<CourseEntity[]> {
@@ -916,10 +988,13 @@ export class CourseService {
                 courseIds.map((courseId) =>
                     this.courseEnrollmentService
                         .getEnrollmentBreakdown(userId, courseId)
-                        .then((breakdown) => ({ courseId, accessViaBundle: breakdown.accessViaBundle })),
+                        .then((breakdown: { enrolled: boolean; accessViaBundle: boolean }) => ({
+                            courseId,
+                            accessViaBundle: breakdown.accessViaBundle,
+                        })),
                 ),
             );
-            breakdowns.forEach(({ courseId, accessViaBundle }) => {
+            breakdowns.forEach(({ courseId, accessViaBundle }: { courseId: string; accessViaBundle: boolean }) => {
                 accessViaBundleById.set(courseId, accessViaBundle);
             });
         }
@@ -1036,6 +1111,16 @@ export class CourseService {
         const course = this.courseRepository.create(courseData);
 
         await this.courseRepository.save(course);
+
+        const programId = createCourseDto.programId?.trim() || null;
+        if (programId) {
+            await this.syncCourseToProgram(course.id, programId);
+            const refreshed = await this.courseRepository.findOne({ where: { id: course.id } });
+            if (refreshed) {
+                course.programId = refreshed.programId;
+            }
+        }
+
         return {
             message: 'Course created successfully',
             course: course,
@@ -1090,6 +1175,7 @@ export class CourseService {
         if (updateCourseDto.categoryId !== undefined) {
             course.categoryId = updateCourseDto.categoryId?.trim() || null;
         }
+        const programTouched = updateCourseDto.programId !== undefined;
         if (updateCourseDto.languageIds !== undefined) {
             course.languageIds = normalizeStringArray(updateCourseDto.languageIds);
         }
@@ -1126,10 +1212,29 @@ export class CourseService {
                     ? normalizeStringArray(updateCourseDto.bundleCourseIds)
                     : [...(course.bundleCourseIds || [])];
                 course.bundleCourseIds = await this.normalizeAndValidateBundleIds(raw, id);
+                if (course.programId) {
+                    await this.syncCourseToProgram(id, null);
+                    course.programId = null;
+                }
             }
         }
 
         await this.courseRepository.save(course);
+
+        if (programTouched) {
+            const nextProgramId = updateCourseDto.programId?.trim() || null;
+            await this.syncCourseToProgram(id, nextProgramId);
+            const refreshed = await this.courseRepository.findOne({ where: { id } });
+            if (refreshed) course.programId = refreshed.programId;
+        } else if (updateCourseDto.level !== undefined && course.programId) {
+            await this.syncCourseToProgram(id, course.programId);
+            const refreshed = await this.courseRepository.findOne({ where: { id } });
+            if (refreshed) {
+                course.programId = refreshed.programId;
+                course.programPillarIndex = refreshed.programPillarIndex;
+            }
+        }
+
         return {
             message: 'Course updated successfully',
             course: course,
@@ -1141,6 +1246,8 @@ export class CourseService {
         if (!course) {
             throw new NotFoundException('Course not found');
         }
+
+        await this.courseCertificateService.assertCourseContentDeletionAllowed(id);
 
         // Delete associated image file
         if (course.image) {
