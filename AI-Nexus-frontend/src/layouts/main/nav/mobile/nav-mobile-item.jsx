@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 
 import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
 import { styled, alpha } from '@mui/material/styles';
 import ButtonBase from '@mui/material/ButtonBase';
 
@@ -71,7 +72,7 @@ function NavItemIcon({ icon, iconColor, active, open, subItem }) {
 // ----------------------------------------------------------------------
 
 export const NavItem = forwardRef(
-  ({ title, path, icon, iconColor, open, active, hasChild, externalLink, ...other }, ref) => {
+  ({ title, path, icon, iconColor, open, active, hasChild, externalLink, showDot = false, ...other }, ref) => {
     const navItem = useNavItem({
       path,
       icon,
@@ -95,8 +96,37 @@ export const NavItem = forwardRef(
           open={open}
         />
 
-        <Box component="span" sx={{ flex: '1 1 auto', textAlign: 'left' }}>
+        <Box
+          component="span"
+          sx={{
+            flex: '1 1 auto',
+            textAlign: 'left',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: 0,
+          }}
+        >
           {title}
+          {showDot ? (
+            <Box
+              component="span"
+              aria-hidden
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                bgcolor: 'success.main',
+                flexShrink: 0,
+                animation: 'aiForumPulse 1.6s ease-in-out infinite',
+                '@keyframes aiForumPulse': {
+                  '0%': { transform: 'scale(1)', opacity: 1 },
+                  '50%': { transform: 'scale(1.25)', opacity: 0.75 },
+                  '100%': { transform: 'scale(1)', opacity: 1 },
+                },
+              }}
+            />
+          ) : null}
         </Box>
 
         {hasChild && (
@@ -173,13 +203,14 @@ const StyledNavItem = styled(ButtonBase, {
 // ----------------------------------------------------------------------
 
 export const NavSubItem = forwardRef(
-  ({ title, path, icon, iconColor, active, externalLink, ...other }, ref) => {
+  ({ title, path, icon, iconColor, active, externalLink, badge = 0, ...other }, ref) => {
     const navItem = useNavItem({
       path,
       icon,
       hasChild: false,
       externalLink,
     });
+    const badgeCount = Number(badge) > 0 ? Number(badge) : 0;
 
     return (
       <StyledSubNavItem
@@ -191,8 +222,39 @@ export const NavSubItem = forwardRef(
       >
         <NavItemIcon icon={icon} iconColor={iconColor} active={active} subItem />
 
-        <Box component="span" sx={{ flex: '1 1 auto', textAlign: 'left' }}>
+        <Box
+          component="span"
+          sx={{
+            flex: '1 1 auto',
+            textAlign: 'left',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: 0,
+          }}
+        >
           {title}
+          {badgeCount > 0 ? (
+            <Typography
+              component="span"
+              sx={{
+                minWidth: 20,
+                height: 20,
+                px: 0.75,
+                borderRadius: 10,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                typography: 'caption',
+                fontWeight: 700,
+                lineHeight: 1,
+                bgcolor: 'secondary.main',
+                color: 'common.white',
+              }}
+            >
+              {badgeCount > 99 ? '99+' : badgeCount}
+            </Typography>
+          ) : null}
         </Box>
       </StyledSubNavItem>
     );

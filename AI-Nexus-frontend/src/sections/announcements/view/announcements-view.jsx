@@ -20,8 +20,14 @@ import { HOME_SECTION_CARD_SX } from 'src/sections/home/home-section-styles';
 import { InfinitePagination } from 'src/components/infinite-pagination';
 import { AnnouncementItem } from '../announcement-item';
 import { announcementService } from 'src/services/announcement.service';
+import { notificationService } from 'src/services/notification.service';
 import { toast } from 'src/components/snackbar';
+import { useAuthContext } from 'src/auth/hooks';
 import { useAnnouncementsListSocket } from 'src/hooks/use-announcements-list-socket';
+import {
+  refreshAnnouncementUnreadCount,
+  useAnnouncementUnreadCount,
+} from 'src/hooks/use-announcement-unread-count';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { fDateTimePersonal } from 'src/utils/format-time';
 
@@ -56,11 +62,8 @@ const transformAnnouncement = (announcement) => {
     createdBy: announcement.createdBy || null,
     excerpt,
     views: announcement.viewCount || 0,
-    replies: announcement.comments?.length || 0,
-    comments: announcement.comments || [],
     lastActivity,
     createdAt,
-    participants: [],
     isPinned: announcement.isPinned || false,
     isHighlight: false,
   };
@@ -68,14 +71,48 @@ const transformAnnouncement = (announcement) => {
 
 export function AnnouncementsView() {
   const theme = useTheme();
+  const { authenticated } = useAuthContext();
+  const { count: unreadCount, refresh: refreshUnreadCount } = useAnnouncementUnreadCount({
+    enabled: authenticated,
+  });
   const [announcements, setAnnouncements] = useState([]);
+  /** announcementId -> notificationId for unread items */
+  const [unreadMap, setUnreadMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [markingRead, setMarkingRead] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
   const latestRequestRef = useRef(0);
+
+  const loadUnreadMap = useCallback(async () => {
+    if (!authenticated) {
+      setUnreadMap({});
+      return;
+    }
+    try {
+      const response = await notificationService.getNotifications({
+        page: 1,
+        limit: 50,
+        unreadOnly: true,
+      });
+      const nextMap = {};
+      (response.data || []).forEach((item) => {
+        if (item.referenceId) {
+          nextMap[item.referenceId] = item.id;
+        }
+      });
+      setUnreadMap(nextMap);
+    } catch (error) {
+      console.error('Failed to load unread announcement notifications:', error);
+    }
+  }, [authenticated]);
+
+  useEffect(() => {
+    loadUnreadMap();
+  }, [loadUnreadMap, unreadCount]);
 
   useEffect(() => {
     const normalizedSearch = searchQuery.trim();
@@ -200,22 +237,101 @@ export function AnnouncementsView() {
     [filterType]
   );
 
+  const handleViewCountUpdate = useCallback((announcementId, views) => {
+    setAnnouncements((prev) =>
+      prev.map((announcement) =>
+        announcement.id === announcementId ? { ...announcement, views } : announcement
+      )
+    );
+  }, []);
+
+  const handleMarkAsRead = useCallback(async () => {
+    if (!authenticated || markingRead || unreadCount < 1) return;
+    try {
+      setMarkingRead(true);
+      await notificationService.markAllAsRead();
+      setUnreadMap({});
+      await refreshUnreadCount();
+      refreshAnnouncementUnreadCount();
+      toast.success('All announcements marked as read');
+    } catch (error) {
+      console.error('Failed to mark notifications as read:', error);
+      toast.error('Failed to mark notifications as read');
+    } finally {
+      setMarkingRead(false);
+    }
+  }, [authenticated, markingRead, refreshUnreadCount, unreadCount]);
+
+  const handleMarkOneRead = useCallback(
+    async (announcementId) => {
+      const notificationId = unreadMap[announcementId];
+      if (!notificationId) return;
+
+      setUnreadMap((prev) => {
+        const next = { ...prev };
+        delete next[announcementId];
+        return next;
+      });
+
+      try {
+        let idToMark = notificationId;
+        if (idToMark === true) {
+          const response = await notificationService.getNotifications({
+            page: 1,
+            limit: 50,
+            unreadOnly: true,
+          });
+          idToMark = (response.data || []).find((item) => item.referenceId === announcementId)?.id;
+        }
+        if (idToMark && idToMark !== true) {
+          await notificationService.markAsRead(idToMark);
+        }
+        await refreshUnreadCount();
+        refreshAnnouncementUnreadCount();
+      } catch (error) {
+        console.error('Failed to mark announcement as read:', error);
+        setUnreadMap((prev) => ({ ...prev, [announcementId]: notificationId }));
+      }
+    },
+    [refreshUnreadCount, unreadMap]
+  );
+
+  // New announcements arriving live are unread until marked.
+  const handleAnnouncementCreated = useCallback(
+    (announcement) => {
+      const transformedAnnouncement = transformAnnouncement(announcement);
+      if (!matchesCurrentFilters(transformedAnnouncement)) return;
+
+      setAnnouncements((prev) => {
+        if (prev.some((item) => item.id === transformedAnnouncement.id)) return prev;
+        return [transformedAnnouncement, ...prev];
+      });
+
+      setPagination((prev) => ({
+        ...prev,
+        totalItems: prev.totalItems + 1,
+      }));
+
+      if (authenticated && transformedAnnouncement.id) {
+        // Optimistic unread highlight until notification rows are loaded.
+        setUnreadMap((prev) =>
+          prev[transformedAnnouncement.id]
+            ? prev
+            : { ...prev, [transformedAnnouncement.id]: true }
+        );
+        refreshUnreadCount();
+        // Resolve real notification ids shortly after backend fan-out.
+        setTimeout(() => {
+          loadUnreadMap();
+        }, 400);
+      }
+    },
+    [authenticated, loadUnreadMap, matchesCurrentFilters, refreshUnreadCount]
+  );
+
   useAnnouncementsListSocket(
     {
-      onAnnouncementCreated: (announcement) => {
-        const transformedAnnouncement = transformAnnouncement(announcement);
-        if (!matchesCurrentFilters(transformedAnnouncement)) return;
-
-        setAnnouncements((prev) => {
-          if (prev.some((item) => item.id === transformedAnnouncement.id)) return prev;
-          return [transformedAnnouncement, ...prev];
-        });
-
-        setPagination((prev) => ({
-          ...prev,
-          totalItems: prev.totalItems + 1,
-        }));
-      },
+      onAnnouncementCreated: handleAnnouncementCreated,
       onAnnouncementUpdated: (announcement) => {
         const transformedAnnouncement = transformAnnouncement(announcement);
 
@@ -270,13 +386,35 @@ export function AnnouncementsView() {
   return (
     <DashboardContent>
       <Box sx={DETAIL_PAGE_WRAPPER_SX}>
-        <PageSectionHeader
-          title="Announcements"
-          description="Stay updated with the latest news, features, and community updates"
-        />
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          justifyContent="space-between"
+          spacing={2}
+          sx={{ mb: 2 }}
+        >
+          <PageSectionHeader
+            title="Announcements"
+            description="Stay updated with the latest news, features, and community updates"
+            sx={{ mb: 0 }}
+          />
+          {authenticated && unreadCount > 0 ? (
+            <Button
+              variant="contained"
+              color="info"
+              size="small"
+              startIcon={<Iconify icon="eva:done-all-fill" />}
+              onClick={handleMarkAsRead}
+              disabled={markingRead}
+              sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 600 }}
+            >
+              {markingRead ? 'Marking…' : `Mark all as read (${unreadCount})`}
+            </Button>
+          ) : null}
+        </Stack>
 
-        <Card sx={{ ...HOME_SECTION_CARD_SX, mb: 3, p: 2 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <Card sx={{ ...HOME_SECTION_CARD_SX, mb: 2, p: 1.5 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <Box
               sx={{
                 flex: 1,
@@ -314,7 +452,7 @@ export function AnnouncementsView() {
                   width: '100%',
                   pl: 5,
                   pr: searchQuery ? 6 : 2,
-                  py: 1.25,
+                  py: 1,
                   fontSize: '0.875rem',
                 }}
               />
@@ -346,11 +484,12 @@ export function AnnouncementsView() {
                   startIcon={<Iconify icon={filter.icon} width={18} />}
                   variant={filterType === filter.value ? 'contained' : 'outlined'}
                   color="primary"
+                  size="small"
                   sx={{
                     minWidth: 'auto',
-                    px: 2,
+                    px: 1.75,
                     textTransform: 'none',
-                    fontWeight: 500,
+                    fontWeight: 600,
                   }}
                 >
                   {filter.label}
@@ -360,7 +499,7 @@ export function AnnouncementsView() {
           </Stack>
         </Card>
 
-        <Box sx={DETAIL_PAGE_LIST_SHELL_SX}>
+        <Box sx={{ ...DETAIL_PAGE_LIST_SHELL_SX, py: 0 }}>
           {showRefreshingState && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={28} />
@@ -371,35 +510,33 @@ export function AnnouncementsView() {
             <Box
               sx={{
                 textAlign: 'center',
-                py: 10,
+                py: 8,
                 px: 2,
                 color: 'text.secondary',
               }}
             >
               <Iconify
                 icon="solar:file-text-bold-duotone"
-                width={64}
-                sx={{ mb: 2, opacity: 0.5 }}
+                width={48}
+                sx={{ mb: 1.5, opacity: 0.5 }}
               />
-              <Typography variant="h6">No announcements found</Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
+              <Typography variant="subtitle1">No announcements found</Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
                 Try adjusting your search or filter
               </Typography>
             </Box>
           ) : (
-            <>
-              {displayedAnnouncements.map((announcement, index) => (
-                <Box key={announcement.id} sx={{ display: 'flex', alignItems: 'stretch', minWidth: 0 }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <AnnouncementItem
-                      announcement={announcement}
-                      onPinToggle={handlePinToggle}
-                      showBottomDivider={index < displayedAnnouncements.length - 1}
-                    />
-                  </Box>
-                </Box>
-              ))}
-            </>
+            displayedAnnouncements.map((announcement, index) => (
+              <AnnouncementItem
+                key={announcement.id}
+                announcement={announcement}
+                isUnread={Boolean(unreadMap[announcement.id])}
+                onPinToggle={handlePinToggle}
+                onViewCountUpdate={handleViewCountUpdate}
+                onMarkRead={handleMarkOneRead}
+                showBottomDivider={index < displayedAnnouncements.length - 1}
+              />
+            ))
           )}
         </Box>
 

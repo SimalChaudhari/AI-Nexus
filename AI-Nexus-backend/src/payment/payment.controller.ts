@@ -5,6 +5,8 @@ import { CreateCheckoutDto } from './create-checkout.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { CourseEnrollmentService } from '../course/course-enrollment.service';
 import { OrderService } from '../order/order.service';
+import { PaymentService } from './payment.service';
+import { PaymentSource, PaymentStatus } from './payment.entity';
 import { PaymentReferenceService } from './payment-reference.service';
 import { UserService } from '../user/users.service';
 import { CourseService } from '../course/courses.service';
@@ -20,6 +22,7 @@ export class PaymentController {
     private readonly courseEnrollmentService: CourseEnrollmentService,
     private readonly courseService: CourseService,
     private readonly orderService: OrderService,
+    private readonly paymentService: PaymentService,
     private readonly paymentReferenceService: PaymentReferenceService,
     private readonly userService: UserService,
     private readonly authService: AuthService,
@@ -339,6 +342,23 @@ export class PaymentController {
       });
 
       await this.paymentReferenceService.setSessionId(refId, session.id);
+      await this.paymentService.recordPending({
+        userId: user.id,
+        clientReferenceId: refId,
+        courseIds: [membershipSource],
+        items: [
+          {
+            id: membershipSource,
+            name: itemName,
+            price: totalAmount,
+            quantity: 1,
+          },
+        ],
+        amount: totalAmount,
+        currency,
+        wooshpaySessionId: session.id,
+        eventType: membershipSource,
+      });
       console.info(
         '[Payments] Membership checkout SUCCESS | refId=',
         this.trimPaymentLogValue(refId),
@@ -524,6 +544,23 @@ export class PaymentController {
       });
 
       await this.paymentReferenceService.setSessionId(refId, session.id);
+      await this.paymentService.recordPending({
+        userId: placeholderUserId,
+        clientReferenceId: refId,
+        courseIds: ['membership-application-billing', applicationId, accountId],
+        items: [
+          {
+            id: 'membership-application-billing',
+            name: pricing.itemName,
+            price: pricing.totalAmount,
+            quantity: 1,
+          },
+        ],
+        amount: pricing.totalAmount,
+        currency,
+        wooshpaySessionId: session.id,
+        eventType: 'membership-application-billing',
+      });
 
       return res.status(HttpStatus.OK).json({
         url: session.url,
@@ -793,6 +830,15 @@ export class PaymentController {
 
       console.log('[Payments] Create checkout SUCCESS | userId=', userId, 'refId=', refId, 'sessionId=', session.id, 'success_url=', finalSuccessUrl?.split('?')[0], 'cancel_url=', finalCancelUrl?.split('?')[0], 'checkout_link=', session.url ? `${session.url.slice(0, 50)}...` : '(none)');
       await this.paymentReferenceService.setSessionId(refId, session.id);
+      await this.paymentService.recordPending({
+        userId,
+        clientReferenceId: refId,
+        courseIds,
+        items: itemsSnapshot,
+        amount: itemsSnapshot.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0),
+        currency,
+        wooshpaySessionId: session.id,
+      });
       return res.status(HttpStatus.OK).json({
         url: session.url,
         sessionId: session.id,
@@ -865,7 +911,7 @@ export class PaymentController {
             amount_total: session.amount_total,
             currency: session.currency,
             id: session.id,
-          });
+          }, PaymentSource.MarkFailed);
           console.log('[Payments] Mark-failed SAFETY | payment already complete, fulfilled instead | refId=', refId, 'orderId=', result?.orderId, 'alreadyProcessed=', result?.alreadyProcessed);
           return res.status(HttpStatus.OK).json({
             created: false,
@@ -883,6 +929,17 @@ export class PaymentController {
     }
 
     const order = await this.orderService.createFailedFromReference(refId, ref);
+    await this.paymentService.recordFailed({
+      userId: ref.userId,
+      clientReferenceId: refId,
+      status: PaymentStatus.Canceled,
+      orderId: order?.id ?? null,
+      courseIds: ref.courseIds,
+      items: ref.items,
+      wooshpaySessionId: ref.wooshpaySessionId,
+      source: PaymentSource.MarkFailed,
+      failureReason: PaymentStatus.Canceled,
+    });
     console.log('[Payments] Mark-failed SUCCESS | refId=', refId, 'orderCreated=', !!order, 'orderId=', order?.id ?? '(already existed)');
     return res.status(HttpStatus.OK).json({ created: !!order, message: order ? 'Order marked as failed' : 'Order already exists' });
   }
@@ -973,7 +1030,25 @@ export class PaymentController {
       return res.status(HttpStatus.FORBIDDEN).json({ message: 'Not your payment reference' });
     }
 
-    // First prefer DB finalized state (webhook/confirm already processed).
+    // Prefer payments table (canonical payment status), then fall back to orders.
+    const existingPayment = await this.paymentService.findByClientReferenceId(trimmedRef);
+    if (existingPayment) {
+      const success = existingPayment.status === PaymentStatus.Paid;
+      const failed =
+        existingPayment.status === PaymentStatus.Failed ||
+        existingPayment.status === PaymentStatus.Canceled ||
+        existingPayment.status === PaymentStatus.WebhookVerificationFailed ||
+        existingPayment.status === PaymentStatus.Refunded;
+
+      return res.status(HttpStatus.OK).json({
+        state: success ? 'success' : failed ? 'failed' : 'processing',
+        finalized: success || failed,
+        paymentId: existingPayment.id,
+        orderId: existingPayment.orderId,
+        paymentStatus: existingPayment.status,
+      });
+    }
+
     const existingOrder = await this.orderService.findLatestByClientReferenceId(trimmedRef);
     if (existingOrder) {
       const failed =
@@ -1010,7 +1085,7 @@ export class PaymentController {
             amount_total: session.amount_total,
             currency: session.currency,
             id: session.id,
-          });
+          }, PaymentSource.StatusReconcile);
           return res.status(HttpStatus.OK).json({
             state: 'success',
             finalized: true,
@@ -1020,16 +1095,29 @@ export class PaymentController {
         }
 
         if (definitelyFailed) {
+          const failedStatus = session?.payment_status || session?.status || 'failed';
           const failedOrder = await this.orderService.createFailedFromReference(
             trimmedRef,
             ref,
-            session?.payment_status || session?.status || 'failed',
+            failedStatus,
           );
+          const payment = await this.paymentService.recordFailed({
+            userId: ref.userId,
+            clientReferenceId: trimmedRef,
+            status: failedStatus,
+            orderId: failedOrder?.id ?? null,
+            courseIds: ref.courseIds,
+            items: ref.items,
+            wooshpaySessionId: ref.wooshpaySessionId,
+            source: PaymentSource.StatusReconcile,
+            failureReason: failedStatus,
+          });
           return res.status(HttpStatus.OK).json({
             state: 'failed',
             finalized: true,
+            paymentId: payment.id,
             orderId: failedOrder?.id,
-            paymentStatus: session?.payment_status || session?.status || 'failed',
+            paymentStatus: payment.status,
           });
         }
       } catch (err: any) {
@@ -1107,7 +1195,7 @@ export class PaymentController {
         (obj as any).metadata?.checkout_id;
       if (clientRef) {
         try {
-          await this.fulfillPayment(clientRef, obj);
+          await this.fulfillPayment(clientRef, obj, PaymentSource.Webhook);
           console.log('[Payments] Webhook PAYMENT SUCCESS | order created/enrolled, clientRef=', String(clientRef).slice(0, 30));
         } catch (e) {
           console.error('[Payments] Webhook PAYMENT SUCCESS but fulfill FAILED | clientRef=', String(clientRef).slice(0, 30), 'error=', (e as Error)?.message);
@@ -1139,6 +1227,7 @@ export class PaymentController {
       id?: string;
       payment_intent?: string;
     },
+    source: PaymentSource | string = PaymentSource.ConfirmPayment,
   ): Promise<{ orderId?: string; alreadyProcessed?: boolean }> {
     let userId = '';
     let courseIds: string[] = [];
@@ -1193,8 +1282,22 @@ export class PaymentController {
 
       const alreadyProcessed = await this.orderService.existsByClientReferenceId(clientRef);
       if (alreadyProcessed) {
+        const existingOrder = await this.orderService.findLatestByClientReferenceId(clientRef);
+        await this.paymentService.recordPaid({
+          userId,
+          clientReferenceId: clientRef,
+          orderId: existingOrder?.id ?? null,
+          amount: existingOrder ? Number(existingOrder.totalAmount) : undefined,
+          currency: existingOrder?.currency,
+          courseIds,
+          items: itemsSnapshot,
+          wooshpaySessionId: obj?.id ?? existingOrder?.wooshpaySessionId ?? null,
+          wooshpayPaymentIntentId: obj?.payment_intent ?? existingOrder?.wooshpayPaymentIntentId ?? null,
+          eventType: membershipPurpose,
+          source,
+        });
         console.info('[Payments] Membership fulfill SKIP | already processed, refId=', this.trimPaymentLogValue(clientRef));
-        return { alreadyProcessed: true };
+        return { alreadyProcessed: true, orderId: existingOrder?.id };
       }
 
       const finalized = await this.authService.completeMembershipSignupAfterPayment(userId);
@@ -1221,6 +1324,19 @@ export class PaymentController {
         wooshpayPaymentIntentId: obj?.payment_intent ?? undefined,
         clientReferenceId: clientRef,
         eventType: membershipPurpose,
+      });
+      await this.paymentService.recordPaid({
+        userId,
+        clientReferenceId: clientRef,
+        orderId: order.id,
+        amount: amountInUnits,
+        currency: (obj?.currency ?? 'SGD').toUpperCase(),
+        courseIds,
+        items: itemsSnapshot,
+        wooshpaySessionId: obj?.id ?? null,
+        wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+        eventType: membershipPurpose,
+        source,
       });
       console.info(
         '[Payments] Membership fulfill SUCCESS | refId=',
@@ -1265,8 +1381,21 @@ export class PaymentController {
 
     const alreadyProcessed = await this.orderService.existsByClientReferenceId(clientRef);
     if (alreadyProcessed) {
+      const existingOrder = await this.orderService.findLatestByClientReferenceId(clientRef);
+      await this.paymentService.recordPaid({
+        userId,
+        clientReferenceId: clientRef,
+        orderId: existingOrder?.id ?? null,
+        amount: existingOrder ? Number(existingOrder.totalAmount) : undefined,
+        currency: existingOrder?.currency,
+        courseIds,
+        items: itemsSnapshot,
+        wooshpaySessionId: obj?.id ?? existingOrder?.wooshpaySessionId ?? null,
+        wooshpayPaymentIntentId: obj?.payment_intent ?? existingOrder?.wooshpayPaymentIntentId ?? null,
+        source,
+      });
       console.log('[Payments] Fulfill SKIP | order already exists (idempotent), clientRef=', clientRef?.slice(0, 20));
-      return { alreadyProcessed: true };
+      return { alreadyProcessed: true, orderId: existingOrder?.id };
     }
 
     await this.courseEnrollmentService.enrollMany(userId, courseIds);
@@ -1291,6 +1420,18 @@ export class PaymentController {
       clientReferenceId: clientRef,
       eventType: undefined,
     });
+    await this.paymentService.recordPaid({
+      userId,
+      clientReferenceId: clientRef,
+      orderId: order.id,
+      amount: amountInUnits,
+      currency: (obj?.currency ?? 'SGD').toUpperCase(),
+      courseIds,
+      items: itemsSnapshot,
+      wooshpaySessionId: obj?.id ?? null,
+      wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+      source,
+    });
 
     console.log('[Payments] Fulfill SUCCESS | orderId=', order.id, 'userId=', userId, 'clientRef=', clientRef?.slice(0, 20));
     return { orderId: order.id };
@@ -1313,6 +1454,17 @@ export class PaymentController {
       const ref = await this.paymentReferenceService.findById(clientRef.trim());
       if (ref) {
         const failedOrder = await this.orderService.createFailedFromReference(clientRef.trim(), ref, 'webhook_verification_failed');
+        await this.paymentService.recordFailed({
+          userId: ref.userId,
+          clientReferenceId: clientRef.trim(),
+          status: PaymentStatus.WebhookVerificationFailed,
+          orderId: failedOrder?.id ?? null,
+          courseIds: ref.courseIds,
+          items: ref.items,
+          wooshpaySessionId: ref.wooshpaySessionId,
+          source: PaymentSource.Webhook,
+          failureReason: PaymentStatus.WebhookVerificationFailed,
+        });
         console.log('[Payments] Webhook VERIFICATION FAILED | failed order recorded, orderId=', failedOrder?.id, 'clientRef=', String(clientRef).slice(0, 20));
       } else {
         console.log('[Payments] Webhook VERIFICATION FAILED | no ref in DB for clientRef=', String(clientRef).slice(0, 20));

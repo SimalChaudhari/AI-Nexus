@@ -7,6 +7,7 @@ import { paths } from 'src/routes/paths';
 import { prefetchMainPages } from 'src/routes/prefetch-main-pages';
 
 import { useBoolean } from 'src/hooks/use-boolean';
+import { useAnnouncementBrowserNotifications } from 'src/hooks/use-announcement-browser-notifications';
 import { useSettingsContext } from 'src/components/settings';
 
 import { Main } from './main';
@@ -27,6 +28,8 @@ export function MainLayout({ sx, data, children }) {
   const pathname = usePathname();
 
   const mobileNavOpen = useBoolean();
+
+  useAnnouncementBrowserNotifications();
 
   const settings = useSettingsContext();
 

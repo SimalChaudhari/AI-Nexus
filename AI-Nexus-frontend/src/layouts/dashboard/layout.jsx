@@ -5,10 +5,11 @@ import { useTheme } from '@mui/material/styles';
 import { iconButtonClasses } from '@mui/material/IconButton';
 
 import { useBoolean } from 'src/hooks/use-boolean';
+import { useAnnouncementBrowserNotifications } from 'src/hooks/use-announcement-browser-notifications';
 import { useAuthContext } from 'src/auth/hooks';
 
 import { allLangs } from 'src/locales';
-import { _contacts, _notifications } from 'src/_mock';
+import { _contacts } from 'src/_mock';
 import { varAlpha, stylesMode } from 'src/theme/styles';
 
 import { bulletColor } from 'src/components/nav-section';
@@ -36,6 +37,8 @@ export function DashboardLayout({ sx, children, data }) {
   const { user } = useAuthContext();
 
   const mobileNavOpen = useBoolean();
+
+  useAnnouncementBrowserNotifications();
 
   const settings = useSettingsContext();
 
@@ -81,7 +84,7 @@ export function DashboardLayout({ sx, children, data }) {
               account: accountNav,
               contacts: _contacts,
               workspaces: _workspaces,
-              notifications: _notifications,
+              notifications: undefined,
             }}
             slotsDisplay={{
               signIn: false,
@@ -89,7 +92,7 @@ export function DashboardLayout({ sx, children, data }) {
               helpLink: false,
               workspaces: settings.headerWorkspaces ?? false,
               localization: settings.headerLocalization ?? false,
-              notifications: settings.headerNotifications ?? false,
+              notifications: false,
               contacts: settings.headerContacts ?? false,
               settings: settings.headerSettings ?? true,
               account: settings.headerAccount ?? true,

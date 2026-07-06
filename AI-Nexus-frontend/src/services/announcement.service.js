@@ -24,7 +24,6 @@ const transformAnnouncement = (announcement) => ({
   title: announcement.title || '',
   description: announcement.description || '',
   viewCount: announcement.viewCount || 0,
-  comments: announcement.comments || [],
   createdBy: announcement.createdBy
     ? {
         id: announcement.createdBy.id,
@@ -36,47 +35,8 @@ const transformAnnouncement = (announcement) => ({
     : null,
   createdAt: announcement.createdAt || new Date(),
   updatedAt: announcement.updatedAt || new Date(),
-  isPinned: announcement.isPinned || false, // Preserve pinned status from API
+  isPinned: announcement.isPinned || false,
 });
-
-// Transform backend comment data to frontend format (exported for WebSocket payloads)
-export const transformComment = (comment) => ({
-  id: comment._id || comment.id,
-  content: comment.content || '',
-  userId: comment.userId || comment.user?.id,
-  user: comment.user || null,
-  announcementId: comment.announcementId || comment.announcement?.id,
-  parentCommentId: comment.parentCommentId ?? null,
-  createdAt: comment.createdAt || new Date(),
-  updatedAt: comment.updatedAt || new Date(),
-  likeCount: comment.likeCount ?? 0,
-  likedByCurrentUser: comment.likedByCurrentUser ?? false,
-});
-
-/** Build tree from flat announcement comments (for display with replies). */
-export function buildAnnouncementCommentTree(flatComments) {
-  const list = flatComments || [];
-  const byId = new Map(list.map((c) => [c.id, { ...c, replies: [] }]));
-  const roots = [];
-  const getParentId = (c) => c.parentCommentId ?? c.parent_comment_id ?? null;
-  list.forEach((c) => {
-    const node = byId.get(c.id);
-    if (!node) return;
-    const parentId = getParentId(c);
-    if (!parentId) {
-      roots.push(node);
-    } else {
-      const parent = byId.get(parentId);
-      if (parent) parent.replies.push(node);
-      else roots.push(node);
-    }
-  });
-  roots.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  byId.forEach((node) => {
-    node.replies.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  });
-  return roots;
-}
 
 export const announcementService = {
   async getAllAnnouncements(params = {}) {
@@ -140,59 +100,6 @@ export const announcementService = {
       return response.data;
     } catch (error) {
       console.error('Error deleting announcement:', error);
-      throw error;
-    }
-  },
-
-  async addComment(announcementId, commentData) {
-    try {
-      const response = await axios.post(`/announcements/${announcementId}/comments`, commentData);
-      const comment = response.data?.comment || response.data?.data || response.data;
-      return transformComment(comment);
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      throw error;
-    }
-  },
-
-  async getComments(announcementId) {
-    try {
-      const response = await axios.get(`/announcements/${announcementId}/comments`);
-      const comments = response.data?.data || response.data || [];
-      return comments.map(transformComment);
-    } catch (error) {
-      console.error('Error fetching comments:', error);
-      throw error;
-    }
-  },
-
-  async updateComment(commentId, commentData) {
-    try {
-      const response = await axios.put(`/announcements/comments/update/${commentId}`, commentData);
-      const comment = response.data?.comment || response.data?.data || response.data;
-      return transformComment(comment);
-    } catch (error) {
-      console.error('Error updating comment:', error);
-      throw error;
-    }
-  },
-
-  async deleteComment(commentId) {
-    try {
-      const response = await axios.delete(`/announcements/comments/delete/${commentId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error deleting comment:', error);
-      throw error;
-    }
-  },
-
-  async toggleCommentLike(commentId) {
-    try {
-      const response = await axios.post(`/announcements/comments/${commentId}/toggle-like`);
-      return response.data;
-    } catch (error) {
-      console.error('Error toggling comment like:', error);
       throw error;
     }
   },

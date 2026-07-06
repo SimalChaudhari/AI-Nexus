@@ -29,7 +29,6 @@ export const paths = {
   announcements: '/announcements',
   announcement: {
     root: '/announcements',
-    details: (id) => `/announcements/${id}`,
   },
   aiForum: {
     root: '/ai-forum',
@@ -268,7 +267,6 @@ export const paths = {
       root: `${ROOTS.ADMIN}/announcement`,
       new: `${ROOTS.ADMIN}/announcement/new`,
       list: `${ROOTS.ADMIN}/announcement/list`,
-      details: (id) => `${ROOTS.ADMIN}/announcement/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/announcement/${id}/edit`,
     },
     aiForum: {

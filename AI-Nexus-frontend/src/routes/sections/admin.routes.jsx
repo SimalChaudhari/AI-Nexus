@@ -58,7 +58,6 @@ const CategoryDetailsPage = lazy(() => import('src/pages/dashboard/category/deta
 const AnnouncementListPage = lazy(() => import('src/pages/dashboard/announcement/list'));
 const AnnouncementCreatePage = lazy(() => import('src/pages/dashboard/announcement/new'));
 const AnnouncementEditPage = lazy(() => import('src/pages/dashboard/announcement/edit'));
-const AnnouncementDetailsPage = lazy(() => import('src/pages/dashboard/announcement/details'));
 
 // AI Forum Management (Admin only)
 const AiForumListPage = lazy(() => import('../../pages/dashboard/ai-forum/list'));
@@ -213,7 +212,6 @@ export const adminRoutes = [
           { element: <AnnouncementListPage />, index: true },
           { path: 'list', element: <AnnouncementListPage /> },
           { path: 'new', element: <AnnouncementCreatePage /> },
-          { path: ':id', element: <AnnouncementDetailsPage /> },
           { path: ':id/edit', element: <AnnouncementEditPage /> },
         ],
       },

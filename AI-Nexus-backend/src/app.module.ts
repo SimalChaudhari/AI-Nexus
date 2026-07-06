@@ -9,6 +9,7 @@ import { LabelModule } from './label/labels.module';
 import { TagModule } from './tag/tags.module';
 import { WorkflowModule } from './workflow/workflows.module';
 import { AnnouncementModule } from './announcement/announcements.module';
+import { NotificationModule } from './notification/notification.module';
 import { AiForumModule } from './ai-forum/ai-forum.module';
 import { SpeakerModule } from './speaker/speaker.module';
 import { LanguageModule } from './language/language.module';
@@ -104,6 +105,7 @@ const resolveTypeOrmPoolMax = (): number => {
     TagModule,
     WorkflowModule,
     AnnouncementModule,
+    NotificationModule,
     AiForumModule,
     SpeakerModule,
     LanguageModule,

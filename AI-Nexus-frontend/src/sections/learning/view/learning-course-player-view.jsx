@@ -339,15 +339,47 @@ function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById,
   return { ...payload, durationSeconds: Math.round(dur) };
 }
 
+/** Client-side lesson % from unique watched coverage (same basis as sidebar). */
+function completionPercentFromCoverage(watchedSeconds, durationSeconds) {
+  const dur = Math.max(0, Number(durationSeconds) || 0);
+  const watched = Math.max(0, Number(watchedSeconds) || 0);
+  if (dur <= 0) return watched > 0 ? 1 : 0;
+  if (watched >= dur - 1) return 100;
+  return Math.min(99, Math.round((100 * watched) / dur));
+}
+
 /**
- * Lesson counts as done for sidebar/module % and unlocks when PUT progress shows full watch
- * even if `isWatched`/`isCompleted` flags lag one frame behind `completionPercent` (common after last save).
+ * Lesson % for the top course progress bar.
+ * Uses live coverage / playback (like the sidebar), not only server `completionPercent`
+ * (which otherwise only refreshes after a full page reload).
  */
-function getLessonCourseProgressPercent(lesson, liveById, viewedIds) {
+function getLessonCourseProgressPercent(lesson, liveById, viewedIds, playback = null) {
   if (isLessonDoneForUi(lesson, liveById, viewedIds)) return 100;
+
   const merged = mergeProgressForSidebar(lesson, liveById);
-  const pct = Number(merged.completionPercent ?? 0);
-  return Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  const fromServer = Number(merged.completionPercent ?? 0);
+  const serverPct = Number.isFinite(fromServer) ? Math.max(0, Math.min(100, fromServer)) : 0;
+
+  if (!lesson?.videoUrl) {
+    return serverPct;
+  }
+
+  const { totalSec, coverageSec, doneForUi } = resolveSidebarVideoProgress(
+    lesson,
+    liveById,
+    playback,
+    viewedIds
+  );
+  if (doneForUi) return 100;
+
+  const fromCoverage =
+    totalSec > 0
+      ? Math.min(99, Math.round((100 * coverageSec) / totalSec))
+      : coverageSec > 0
+        ? 1
+        : 0;
+
+  return Math.max(serverPct, fromCoverage);
 }
 
 function isLessonDoneForUi(lesson, liveById, viewedIds) {
@@ -1052,6 +1084,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         durationSeconds: durRounded,
         watchedSeconds,
         watchedCoverageRanges,
+        completionPercent: completionPercentFromCoverage(watchedSeconds, durRounded),
       };
       updateSectionPlayerSnapshotRef.current(sectionId, payload);
       setLiveSectionProgressMap((prev) => ({
@@ -1190,6 +1223,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         liveSectionProgressMapRef.current,
         viewedSectionIdsRef.current
       );
+      payload = {
+        ...payload,
+        completionPercent: completionPercentFromCoverage(
+          payload.watchedSeconds,
+          payload.durationSeconds
+        ),
+      };
       if (payload.watchedSeconds <= 0 && payload.lastPositionSeconds <= 0) return;
 
       const flushKey = [
@@ -2833,10 +2873,44 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const courseOverviewProgressPercent = useMemo(() => {
     if (totalLessons === 0) return 0;
 
-    const completionSum = flatLessons.reduce(
-      (sum, lesson) => sum + getLessonCourseProgressPercent(lesson, liveSectionProgressMap, viewedSectionIds),
-      0
-    );
+    const activeVideoLesson =
+      activeLessonId &&
+      activeLessonId !== FEEDBACK_LESSON_ID &&
+      !getModuleIdFromPseudoLessonId(activeLessonId)
+        ? flatLessons.find((l) => l.id === activeLessonId && l.videoUrl)
+        : null;
+    const activePlayback = activeVideoLesson
+      ? computeSidebarPlaybackSnapshot(
+          videoRef,
+          youtubePlayerRef,
+          spotlightrPlayerRef,
+          videoCoverageRangesRef,
+          lessonFallbackDurationSeconds(activeVideoLesson, liveSectionProgressMap),
+          spotlightrProgressRef,
+          activeVideoLesson.id,
+          videoCoverageLessonIdRef
+        )
+      : null;
+
+    const completionSum = flatLessons.reduce((sum, lesson) => {
+      let playback = null;
+      if (activeVideoLesson && lesson.id === activeVideoLesson.id) {
+        playback = activePlayback;
+      } else if (lesson.videoUrl) {
+        const snap = sectionPlayerSnapshotRef.current?.[lesson.id];
+        if (snap && (Number(snap.watchedSeconds) > 0 || Number(snap.durationSeconds) > 0)) {
+          playback = {
+            currentSec: Math.max(0, Number(snap.lastPositionSeconds) || 0),
+            durationSec: Math.max(0, Number(snap.durationSeconds) || 0),
+            watchedCoverageSec: Math.max(0, Number(snap.watchedSeconds) || 0),
+          };
+        }
+      }
+      return (
+        sum +
+        getLessonCourseProgressPercent(lesson, liveSectionProgressMap, viewedSectionIds, playback)
+      );
+    }, 0);
 
     let percent = Math.round(completionSum / totalLessons);
     const videosCompleted =
@@ -2855,7 +2929,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     }
 
     return Math.max(0, Math.min(100, percent));
-  }, [flatLessons, totalLessons, liveSectionProgressMap, viewedSectionIds, quizAssessmentProgress]);
+    // sidebarPlaybackTick: recompute while the active video plays (same tick as sidebar).
+  }, [
+    flatLessons,
+    totalLessons,
+    liveSectionProgressMap,
+    viewedSectionIds,
+    quizAssessmentProgress,
+    activeLessonId,
+    sidebarPlaybackTick,
+  ]);
   const pendingQuizForFullCompletion =
     courseOverviewProgressPercent < 100 &&
     progressPercent >= 100 &&

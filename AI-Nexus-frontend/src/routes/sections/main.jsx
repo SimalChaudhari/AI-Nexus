@@ -13,7 +13,6 @@ import { PublicGuard, AuthGuard } from 'src/auth/guard';
 const HomePage = lazy(() => import('src/pages/home'));
 const CategoriesPage = lazy(() => import('src/pages/categories'));
 const AnnouncementsPage = lazy(() => import('src/pages/announcements'));
-const AnnouncementDetailPage = lazy(() => import('src/pages/announcements/detail'));
 const AiForumPage = lazy(() => import('src/pages/ai-forum'));
 const AiForumDetailPage = lazy(() => import('src/pages/ai-forum/detail'));
 const AboutPage = lazy(() => import('src/pages/about-us'));
@@ -77,10 +76,7 @@ export const mainRoutes = [
           },
           {
             path: 'announcements',
-            children: [
-              { element: <AnnouncementsPage />, index: true },
-              { path: ':id', element: <AnnouncementDetailPage /> },
-            ],
+            element: <AnnouncementsPage />,
           },
           {
             path: 'ai-forum',

@@ -35,7 +35,7 @@ export function ContactForm({ whatsappLink = '' }) {
         `Email: ${form.email.trim()}`,
         `Phone: ${form.phone.trim()}`,
         '',
-        'Project details:',
+        'Message:',
         form.projectDetails.trim(),
       ].join('\n');
 
@@ -57,9 +57,9 @@ export function ContactForm({ whatsappLink = '' }) {
   return (
     <Stack spacing={0} sx={contactCardShellSx} component="form" onSubmit={handleSubmit}>
       <ContactCardHeader
-        title="Start Your Project Today"
-        titleHighlight="Today"
-        subtitle="Share your project details with us, and we'll get back to you within 24 hours."
+        title="Contact Us"
+        titleHighlight="Us"
+        subtitle="We're here to help! Fill in the form below and we'll get back to you within 24 hours."
       />
 
       <Box sx={{ ...contactCardBodySx, flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -69,8 +69,8 @@ export function ContactForm({ whatsappLink = '' }) {
               <TextField
                 fullWidth
                 required
-                label="Full Name *"
-                placeholder="John Doe"
+                label="Full Name"
+                placeholder="Enter your full name"
                 value={form.fullName}
                 onChange={updateField('fullName')}
               />
@@ -80,8 +80,8 @@ export function ContactForm({ whatsappLink = '' }) {
                 fullWidth
                 required
                 type="email"
-                label="Email Address *"
-                placeholder="john@example.com"
+                label="Email Address"
+                placeholder="Enter your email address"
                 value={form.email}
                 onChange={updateField('email')}
               />
@@ -90,8 +90,8 @@ export function ContactForm({ whatsappLink = '' }) {
               <TextField
                 fullWidth
                 required
-                label="Phone Number *"
-                placeholder="+91 XXXXX XXXXX"
+                label="Phone Number"
+                placeholder="Enter your phone number"
                 value={form.phone}
                 onChange={updateField('phone')}
               />
@@ -100,8 +100,9 @@ export function ContactForm({ whatsappLink = '' }) {
               <TextField
                 fullWidth
                 required
-                label="Project Details *"
-                placeholder="Tell us about your project..."
+                label="Your Message"
+                placeholder="Type your message here..."
+                helperText="Please let us know how we can assist you."
                 multiline
                 rows={4}
                 value={form.projectDetails}

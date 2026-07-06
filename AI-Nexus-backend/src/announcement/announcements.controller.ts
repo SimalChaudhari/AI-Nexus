@@ -22,7 +22,7 @@ import { Response, Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AnnouncementService } from './announcements.service';
-import { CreateAnnouncementDto, UpdateAnnouncementDto, CreateCommentDto, UpdateCommentDto } from './announcements.dto';
+import { CreateAnnouncementDto, UpdateAnnouncementDto } from './announcements.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { RolesGuard } from '../jwt/roles.guard';
@@ -136,7 +136,7 @@ export class AnnouncementController {
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
     @ApiConsumes('multipart/form-data')
-    @ApiOperation({ summary: 'Upload announcement media (images/documents) for posts and comments' })
+    @ApiOperation({ summary: 'Upload announcement media (images/documents) for posts' })
     @ApiBody({
         schema: {
             type: 'object',
@@ -189,138 +189,9 @@ export class AnnouncementController {
     @Delete('delete/:id')
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)
-    @ApiBearerAuth('bearer')
     @ApiOperation({ summary: 'Delete an announcement' })
     async deleteAnnouncement(@Param('id') id: string, @Res() response: Response) {
         const result = await this.announcementService.delete(id);
-        return response.status(HttpStatus.OK).json(result);
-    }
-
-    @Post(':id/comments')
-    @UseGuards(SessionGuard, JwtAuthGuard)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Add a comment to an announcement' })
-    @ApiBody({ type: CreateCommentDto })
-    async addComment(
-        @Param('id') announcementId: string,
-        @Body() createCommentDto: CreateCommentDto,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        if (!userId) {
-            return response.status(HttpStatus.UNAUTHORIZED).json({
-                message: 'User not authenticated',
-            });
-        }
-        const result = await this.announcementService.addComment(announcementId, userId, createCommentDto);
-        return response.status(HttpStatus.CREATED).json(result);
-    }
-
-    @Get(':id/comments')
-    @UseGuards(OptionalJwtAuthGuard)
-    @ApiOperation({ summary: 'List comments for an announcement' })
-    async getComments(
-        @Param('id') announcementId: string,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        const comments = await this.announcementService.getComments(announcementId, userId);
-        return response.status(HttpStatus.OK).json({
-            length: comments.length,
-            data: comments,
-        });
-    }
-
-    @Put('comments/update/:id')
-    @UseGuards(SessionGuard, JwtAuthGuard)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Update an announcement comment' })
-    @ApiBody({ type: UpdateCommentDto })
-    async updateComment(
-        @Param('id') commentId: string,
-        @Body() updateCommentDto: UpdateCommentDto,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        if (!userId) {
-            return response.status(HttpStatus.UNAUTHORIZED).json({
-                message: 'User not authenticated',
-            });
-        }
-        const result = await this.announcementService.updateComment(commentId, userId, updateCommentDto);
-        return response.status(HttpStatus.OK).json(result);
-    }
-
-    @Delete('comments/delete/:id')
-    @UseGuards(SessionGuard, JwtAuthGuard)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Delete an announcement comment' })
-    async deleteComment(
-        @Param('id') commentId: string,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        if (!userId) {
-            return response.status(HttpStatus.UNAUTHORIZED).json({
-                message: 'User not authenticated',
-            });
-        }
-        const result = await this.announcementService.deleteComment(commentId, userId);
-        return response.status(HttpStatus.OK).json(result);
-    }
-
-    @Post('comments/:id/like')
-    @UseGuards(SessionGuard, JwtAuthGuard)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Like an announcement comment' })
-    async likeComment(
-        @Param('id') commentId: string,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        if (!userId) {
-            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'User not authenticated' });
-        }
-        const result = await this.announcementService.likeComment(commentId, userId);
-        return response.status(HttpStatus.OK).json(result);
-    }
-
-    @Delete('comments/:id/like')
-    @UseGuards(SessionGuard, JwtAuthGuard)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Unlike an announcement comment' })
-    async unlikeComment(
-        @Param('id') commentId: string,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        if (!userId) {
-            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'User not authenticated' });
-        }
-        const result = await this.announcementService.unlikeComment(commentId, userId);
-        return response.status(HttpStatus.OK).json(result);
-    }
-
-    @Post('comments/:id/toggle-like')
-    @UseGuards(SessionGuard, JwtAuthGuard)
-    @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Toggle like on an announcement comment' })
-    async toggleCommentLike(
-        @Param('id') commentId: string,
-        @Req() request: Request,
-        @Res() response: Response,
-    ) {
-        const userId = request.user?.id;
-        if (!userId) {
-            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'User not authenticated' });
-        }
-        const result = await this.announcementService.toggleCommentLike(commentId, userId);
         return response.status(HttpStatus.OK).json(result);
     }
 
@@ -380,5 +251,4 @@ export class AnnouncementController {
         const result = await this.announcementService.togglePinAnnouncement(announcementId, userId);
         return response.status(HttpStatus.OK).json(result);
     }
-
 }
