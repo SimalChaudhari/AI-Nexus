@@ -44,6 +44,7 @@ import {
 import { CourseWatchProgressService } from './course-watch-progress.service';
 import { CourseSectionWatchProgressService } from './course-section-watch-progress.service';
 import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-progress.dto';
+import { resolveCoursePillarIndex } from './course-program-cpe-summary.util';
 import { CourseFavoriteService } from './course-favorite.service';
 import { CourseSectionFavoriteService } from './course-section-favorite.service';
 import { CourseEnrollmentService } from './course-enrollment.service';
@@ -708,13 +709,27 @@ export class CourseController {
             }),
         );
 
+        let programCpeSummary = null;
+        if (userId && courseRow.programId) {
+            const pillarIndex = resolveCoursePillarIndex(courseRow);
+            if (pillarIndex === 3) {
+                programCpeSummary = await this.courseSectionWatchProgressService.getProgramPillarWatchSummary(
+                    userId,
+                    courseRow.programId,
+                );
+            }
+        }
+
         return response.status(HttpStatus.OK).json({
             data: {
                 course,
                 enrolled,
                 modules: modulesWithSections,
             },
-            meta: unlockInfo,
+            meta: {
+                ...unlockInfo,
+                programCpeSummary,
+            },
         });
     }
 

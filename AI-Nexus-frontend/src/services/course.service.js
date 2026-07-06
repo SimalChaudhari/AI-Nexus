@@ -115,6 +115,8 @@ const transformCourse = (course) => {
         }
       : null,
     programId: course.programId || course.program?.id || null,
+    programPillarIndex:
+      course.programPillarIndex != null ? Number(course.programPillarIndex) : null,
     program: course.program
       ? {
           id: course.program.id || '',
@@ -272,6 +274,7 @@ export const courseService = {
         course: baseCourse,
         enrolled,
         modules,
+        programCpeSummary: response.data?.meta?.programCpeSummary || null,
       };
     } catch (error) {
       console.error('Error fetching course player context:', error);

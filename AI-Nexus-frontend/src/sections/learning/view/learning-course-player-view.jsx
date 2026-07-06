@@ -29,6 +29,7 @@ import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-do
 import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
 import { Upload } from 'src/components/upload';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
+import { ProgramCpeSummaryPanel } from 'src/sections/learning/components/program-cpe-summary-panel';
 import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
 import { isSpotlightrUrl, parseSpotlightrUrl, seekSpotlightrPlayer } from 'src/utils/spotlightr';
 import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
@@ -3057,6 +3058,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
 
   const isProgramCourse = Boolean(course?.programId || course?.program?.id);
+  const programCpeSummary = playerContext?.programCpeSummary ?? null;
+  const programCpeRefreshRef = useRef(null);
+
+  useEffect(() => {
+    if (!playerKey || !programCpeSummary) return undefined;
+    clearTimeout(programCpeRefreshRef.current);
+    programCpeRefreshRef.current = setTimeout(() => {
+      mutate(playerKey);
+    }, 2500);
+    return () => clearTimeout(programCpeRefreshRef.current);
+  }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
   const hasAnyCompletedModule = useMemo(
     () =>
@@ -4286,6 +4298,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Stack>
           </Box>
         )}
+
+        {programCpeSummary ? (
+          <Box sx={{ mt: 1.5, px: 1.5, pb: 1 }}>
+            <ProgramCpeSummaryPanel summary={programCpeSummary} compact />
+          </Box>
+        ) : null}
         </>
       )}
 
@@ -5407,6 +5425,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   ) : null}
                 </Box>
               </Box>
+            </Box>
+          ) : null}
+
+          {programCpeSummary && allModulesDone ? (
+            <Box
+              sx={{
+                mt: 2.5,
+                px: { xs: 2, md: 2.5 },
+              }}
+            >
+              <ProgramCpeSummaryPanel summary={programCpeSummary} />
             </Box>
           ) : null}
 

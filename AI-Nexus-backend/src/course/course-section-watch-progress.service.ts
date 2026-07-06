@@ -7,6 +7,14 @@ import { CourseModuleSectionEntity } from './course-module-section.entity';
 import { CourseModuleEntity } from './course-module.entity';
 import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-progress.dto';
 import { normalizeVideoUrlForCompare } from './course-video-url.util';
+import {
+  computeEarnedCpeHours,
+  formatSecondsToDisplayTime,
+  parseMarketDataCpeHours,
+  ProgramPillarWatchSummary,
+  resolveCoursePillarIndex,
+  secondsToWatchedHours,
+} from './course-program-cpe-summary.util';
 
 function isSectionProgressFkViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -649,6 +657,124 @@ export class CourseSectionWatchProgressService {
       where: { courseId, sectionId, isCompleted: true },
     });
     return count > 0;
+  }
+
+  /** Sum unique video watch coverage across all programme pillar courses (1–3). */
+  private async sumVideoWatchStatsForCourse(
+    userId: string,
+    courseId: string,
+  ): Promise<{
+    watchedSeconds: number;
+    totalVideoDurationSeconds: number;
+    allVideosCompleted: boolean;
+    totalVideoSections: number;
+    completedVideoSections: number;
+  }> {
+    const { sections } = await this.getModulesAndSections(courseId);
+    const videoSections = sections.filter((section) => Boolean(String(section.videoUrl || '').trim()));
+    if (!videoSections.length) {
+      return {
+        watchedSeconds: 0,
+        totalVideoDurationSeconds: 0,
+        allVideosCompleted: false,
+        totalVideoSections: 0,
+        completedVideoSections: 0,
+      };
+    }
+
+    const progressMap = await this.getAllSectionProgressForCourse(userId, courseId);
+    let watchedSeconds = 0;
+    let totalVideoDurationSeconds = 0;
+    let completedVideoSections = 0;
+
+    for (const section of videoSections) {
+      const progress = progressMap[section.id];
+      const watched = Math.max(0, Number(progress?.watchedSeconds || 0));
+      const duration = Math.max(0, Number(progress?.durationSeconds || 0));
+      watchedSeconds += watched;
+      totalVideoDurationSeconds += duration;
+      if (progress?.isCompleted) {
+        completedVideoSections += 1;
+      }
+    }
+
+    return {
+      watchedSeconds,
+      totalVideoDurationSeconds,
+      allVideosCompleted: completedVideoSections === videoSections.length,
+      totalVideoSections: videoSections.length,
+      completedVideoSections,
+    };
+  }
+
+  async getProgramPillarWatchSummary(
+    userId: string,
+    programId: string,
+  ): Promise<ProgramPillarWatchSummary> {
+    const courses = await this.courseRepository.find({
+      where: { programId, isBundle: false },
+      select: ['id', 'title', 'programPillarIndex', 'level', 'marketData', 'createdAt'],
+      order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
+    });
+
+    const courseByPillar = new Map<number, (typeof courses)[number]>();
+    for (const course of courses) {
+      const pillarIndex = resolveCoursePillarIndex(course);
+      if (!pillarIndex || courseByPillar.has(pillarIndex)) continue;
+      courseByPillar.set(pillarIndex, course);
+    }
+
+    const pillarBreakdown: ProgramPillarWatchSummary['pillarBreakdown'] = [];
+    let totalWatchedSeconds = 0;
+    let totalVideoDurationSeconds = 0;
+    let totalAllocatedCpeHours = 0;
+    let totalEarnedCpeHours = 0;
+    let hasAnyAllocatedCpe = false;
+
+    for (const pillarIndex of [1, 2, 3]) {
+      const course = courseByPillar.get(pillarIndex);
+      if (!course) continue;
+
+      const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
+      const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
+      const earnedCpeHours = computeEarnedCpeHours(
+        videoStats.watchedSeconds,
+        videoStats.totalVideoDurationSeconds,
+        allocatedCpeHours,
+        videoStats.allVideosCompleted,
+      );
+
+      if (allocatedCpeHours != null) {
+        totalAllocatedCpeHours += allocatedCpeHours;
+        hasAnyAllocatedCpe = true;
+      }
+      totalEarnedCpeHours += earnedCpeHours;
+      totalWatchedSeconds += videoStats.watchedSeconds;
+      totalVideoDurationSeconds += videoStats.totalVideoDurationSeconds;
+
+      pillarBreakdown.push({
+        pillarIndex,
+        courseId: course.id,
+        courseTitle: course.title,
+        watchedSeconds: videoStats.watchedSeconds,
+        watchedHours: secondsToWatchedHours(videoStats.watchedSeconds),
+        watchedTime: formatSecondsToDisplayTime(videoStats.watchedSeconds),
+        totalVideoDurationSeconds: videoStats.totalVideoDurationSeconds,
+        allocatedCpeHours,
+        earnedCpeHours,
+        allVideosCompleted: videoStats.allVideosCompleted,
+      });
+    }
+
+    return {
+      pillarBreakdown,
+      totalWatchedSeconds,
+      totalWatchedHours: secondsToWatchedHours(totalWatchedSeconds),
+      totalWatchedTime: formatSecondsToDisplayTime(totalWatchedSeconds),
+      totalAllocatedCpeHours: hasAnyAllocatedCpe ? Math.round(totalAllocatedCpeHours * 100) / 100 : null,
+      totalEarnedCpeHours: Math.round(totalEarnedCpeHours * 100) / 100,
+      totalCpeHours: Math.round(totalEarnedCpeHours * 100) / 100,
+    };
   }
 }
 
