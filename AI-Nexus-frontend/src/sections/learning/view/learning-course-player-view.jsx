@@ -721,6 +721,8 @@ const MODULE_ASSIGNMENT_PREFIX = '__ma__';
 /** Course-end pseudo ids — Beginner / Advanced: single quiz + assignment after all modules done. */
 const COURSE_END_PRACTICE_ID = '__course_end_quiz__';
 const COURSE_END_ASSIGNMENT_ID = '__course_end_assignment__';
+const PROGRAM_CPE_SUMMARY_ID = '__program_cpe_summary__';
+const PROGRAM_CPE_SECTION_ID = 'section-program-cpe';
 
 function getModuleIdFromPracticeLessonId(lessonId) {
   if (!lessonId || typeof lessonId !== 'string' || !lessonId.startsWith(MODULE_PRACTICE_PREFIX)) {
@@ -1327,6 +1329,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     swrOptions
   );
   const { mutate } = useSWRConfig();
+  const programCpeSummary = playerContext?.programCpeSummary ?? null;
+  const programCpeRefreshRef = useRef(null);
+
+  useEffect(() => {
+    if (!playerKey || !programCpeSummary) return undefined;
+    clearTimeout(programCpeRefreshRef.current);
+    programCpeRefreshRef.current = setTimeout(() => {
+      mutate(playerKey);
+    }, 2500);
+    return () => clearTimeout(programCpeRefreshRef.current);
+  }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
   const questionBankSwrKey = course?.id ? ['course-question-bank', course.id] : null;
   const { data: questionBankList = [] } = useSWR(
@@ -1990,6 +2003,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       return;
     }
 
+    if (sectionIdFromUrl === PROGRAM_CPE_SUMMARY_ID && playerContext?.programCpeSummary) {
+      setExpandedSection(PROGRAM_CPE_SECTION_ID);
+      urlSectionProcessedRef.current = processedKey;
+      return;
+    }
+
     if (
       typeof sectionIdFromUrl === 'string' &&
       sectionIdFromUrl.startsWith(MODULE_PRACTICE_PREFIX)
@@ -2046,15 +2065,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     });
     // Mark as processed even if URL parameter not found or invalid
     urlSectionProcessedRef.current = course.id;
-  }, [modules, course?.id, playerLoading, searchParams, setSearchParams, activeLessonId]);
+  }, [modules, course?.id, playerLoading, searchParams, setSearchParams, activeLessonId, playerContext?.programCpeSummary]);
 
   // Handle default section/lesson selection.
   // If URL section exists, respect it. Otherwise auto-open first available lesson.
   useEffect(() => {
     if (modules.length === 0) return;
     if (activeLessonId === FEEDBACK_LESSON_ID) return;
-    // Don't override when user has opened the Feedback accordion
     if (expandedSection === FEEDBACK_SECTION_ID) return;
+    if (expandedSection === PROGRAM_CPE_SECTION_ID) return;
 
     const sectionIdFromUrl = searchParams.get('section');
     if (!sectionIdFromUrl) {
@@ -2791,7 +2810,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       steps.push({ id: COURSE_END_ASSIGNMENT_ID, sectionId: null, videoUrl: null, kind: 'course-end-assignment' });
     }
     return steps;
-  }, [modules, quizCountByModuleId, assignmentCountByModuleId, isCourseEndModel, courseEndQuizCount, courseEndAssignmentCount]);
+  }, [
+    modules,
+    quizCountByModuleId,
+    assignmentCountByModuleId,
+    isCourseEndModel,
+    courseEndQuizCount,
+    courseEndAssignmentCount,
+    courseEndAssignmentAllowed,
+  ]);
 
   const currentIndex = activeLessonIndex;
   const currentStepIndex = useMemo(
@@ -3058,17 +3085,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
 
   const isProgramCourse = Boolean(course?.programId || course?.program?.id);
-  const programCpeSummary = playerContext?.programCpeSummary ?? null;
-  const programCpeRefreshRef = useRef(null);
-
-  useEffect(() => {
-    if (!playerKey || !programCpeSummary) return undefined;
-    clearTimeout(programCpeRefreshRef.current);
-    programCpeRefreshRef.current = setTimeout(() => {
-      mutate(playerKey);
-    }, 2500);
-    return () => clearTimeout(programCpeRefreshRef.current);
-  }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
   const hasAnyCompletedModule = useMemo(
     () =>
@@ -4299,13 +4315,98 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           </Box>
         )}
 
-        {programCpeSummary ? (
-          <Box sx={{ mt: 1.5, px: 1.5, pb: 1 }}>
-            <ProgramCpeSummaryPanel summary={programCpeSummary} compact />
-          </Box>
-        ) : null}
         </>
       )}
+
+      {programCpeSummary ? (
+        <Accordion
+          expanded={expandedSection === PROGRAM_CPE_SECTION_ID}
+          onChange={() => {
+            const next =
+              expandedSection === PROGRAM_CPE_SECTION_ID ? '' : PROGRAM_CPE_SECTION_ID;
+            setExpandedSection(next);
+            if (next === PROGRAM_CPE_SECTION_ID) {
+              setSearchParams({ section: PROGRAM_CPE_SUMMARY_ID }, { replace: true });
+            }
+          }}
+          disableGutters
+          elevation={0}
+          sx={{
+            mx: { xs: 1.5, sm: 2.5 },
+            mb: 1,
+            mt: 0.5,
+            borderRadius: 2.5,
+            overflow: 'hidden',
+            bgcolor: 'background.paper',
+            border: playerCardBorder,
+            boxShadow: playerElevatedShadow,
+            '&:before': { display: 'none' },
+          }}
+        >
+          <AccordionSummary
+            expandIcon={<Iconify icon="eva:chevron-down-fill" width={20} sx={{ color: 'text.secondary' }} />}
+            sx={{
+              minHeight: 52,
+              px: { xs: 1, sm: 1.25 },
+              borderLeft: `4px solid ${alpha(theme.palette.success.main, 0.9)}`,
+              '& .MuiAccordionSummary-content': { my: 1.25, minWidth: 0, overflow: 'hidden' },
+              '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) },
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: alpha(theme.palette.success.main, 0.12),
+                  color: 'success.dark',
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.25)}`,
+                }}
+              >
+                <Iconify icon="solar:clock-circle-bold" width={20} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, letterSpacing: -0.01 }}>
+                  Programme CPE summary
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                  {Number(programCpeSummary.totalEarnedCpeHours ?? programCpeSummary.totalCpeHours ?? 0)}{' '}
+                  CPE Hour
+                  {Number(programCpeSummary.totalEarnedCpeHours ?? programCpeSummary.totalCpeHours ?? 0) === 1
+                    ? ''
+                    : 's'}{' '}
+                  earned · {programCpeSummary.totalWatchedTime || '0:00'} watched
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails
+            sx={{
+              pt: 0,
+              pb: 2,
+              px: 2,
+              bgcolor: alpha(theme.palette.grey[500], 0.04),
+              borderTop: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+            }}
+          >
+            <Box
+              sx={{
+                bgcolor: 'background.paper',
+                boxShadow: `0 2px 8px ${alpha(theme.palette.common.black, 0.06)}`,
+                p: 2,
+                border: `1px solid ${sidebarMutedBorder}`,
+                borderRadius: 1.5,
+              }}
+            >
+              <ProgramCpeSummaryPanel summary={programCpeSummary} compact />
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+      ) : null}
 
       {/* Feedback — same visual language as modules */}
       <Accordion
@@ -4602,7 +4703,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
   const isCourseEndPracticeView = activeLessonId === COURSE_END_PRACTICE_ID;
   const isCourseEndAssignmentView = activeLessonId === COURSE_END_ASSIGNMENT_ID;
-  const isModulePanelView = isModulePracticePanelView || isModuleAssignmentView || isCourseEndPracticeView || isCourseEndAssignmentView;
+  const isModulePanelView =
+    isModulePracticePanelView ||
+    isModuleAssignmentView ||
+    isCourseEndPracticeView ||
+    isCourseEndAssignmentView;
   const isModulePracticeQuiz = isModulePracticePanelView && practiceQuizOn;
   /** Quiz + assignment fill panel; lessons scroll separately. */
   const isScrollableLessonPanel = !isModulePanelView;
@@ -5425,17 +5530,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   ) : null}
                 </Box>
               </Box>
-            </Box>
-          ) : null}
-
-          {programCpeSummary && allModulesDone ? (
-            <Box
-              sx={{
-                mt: 2.5,
-                px: { xs: 2, md: 2.5 },
-              }}
-            >
-              <ProgramCpeSummaryPanel summary={programCpeSummary} />
             </Box>
           ) : null}
 

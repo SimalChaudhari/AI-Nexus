@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -26,7 +27,7 @@ function formatWatchTimeLabel(summary) {
   return `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
-export function ProgramCpeSummaryPanel({ summary, compact = false }) {
+export function ProgramCpeSummaryPanel({ summary, compact = false, onNavigate, navigateLabel = 'View full summary' }) {
   const theme = useTheme();
   const breakdown = Array.isArray(summary?.pillarBreakdown) ? summary.pillarBreakdown : [];
   if (!breakdown.length) return null;
@@ -44,11 +45,18 @@ export function ProgramCpeSummaryPanel({ summary, compact = false }) {
         border: `1px solid ${alpha(theme.palette.success.main, 0.22)}`,
       }}
     >
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-        <Iconify icon="solar:clock-circle-bold" width={18} sx={{ color: 'success.dark' }} />
-        <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.06, textTransform: 'uppercase', color: 'success.dark' }}>
-          Programme CPE summary
-        </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Iconify icon="solar:clock-circle-bold" width={18} sx={{ color: 'success.dark' }} />
+          <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.06, textTransform: 'uppercase', color: 'success.dark' }}>
+            Programme CPE summary
+          </Typography>
+        </Stack>
+        {typeof onNavigate === 'function' ? (
+          <Button size="small" variant="outlined" color="success" onClick={onNavigate} sx={{ flexShrink: 0, fontWeight: 700 }}>
+            {navigateLabel}
+          </Button>
+        ) : null}
       </Stack>
 
       <Typography variant={compact ? 'h6' : 'h5'} sx={{ fontWeight: 800, color: 'text.primary', lineHeight: 1.2 }}>
