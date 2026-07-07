@@ -108,6 +108,24 @@ export function CourseTableRow({ row, selected, onEditRow, onSelectRow, onDelete
         </TableCell>
 
         <TableCell>
+          {row.program ? (
+            <Link
+              component={RouterLink}
+              href={paths.admin.program.details(row.program.id)}
+              color="inherit"
+              underline="hover"
+              sx={{ typography: 'body2', fontWeight: 600 }}
+            >
+              {row.program.title}
+            </Link>
+          ) : (
+            <Box component="span" sx={{ color: 'text.disabled', typography: 'body2' }}>
+              Not linked
+            </Box>
+          )}
+        </TableCell>
+
+        <TableCell>
           <Chip
             label={row.freeOrPaid ? 'Paid' : 'AI Fluency'}
             color={row.freeOrPaid ? 'success' : 'default'}

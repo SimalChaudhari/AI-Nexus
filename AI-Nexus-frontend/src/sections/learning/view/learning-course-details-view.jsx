@@ -39,7 +39,9 @@ import { useCheckoutContext } from 'src/sections/checkout/context';
 import { downloadMyCourseReceiptPdf } from 'src/services/order.service';
 
 import { LearningBundleHighlight } from '../components/course-bundle-badge';
+import { LearningProgramLinkedCourses } from '../components/learning-program-linked-courses';
 import { LearningCourseGridCard } from '../components/learning-course-grid-card';
+import { LEARNING_ADD_TO_CART_ENABLED } from '../learning-feature-flags';
 import {
   COURSE_DETAIL_META_SX,
   COURSE_DETAIL_PAGE_TITLE_SX,
@@ -834,7 +836,7 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                         : 'No content added'
                     : 'Purchase to watch'}
               </Button>
-              {authenticated && paidCourse && !hasAccess && (
+              {LEARNING_ADD_TO_CART_ENABLED && authenticated && paidCourse && !hasAccess && (
                 <Button
                   variant={isInCart(course.id) ? 'soft' : 'outlined'}
                   color={isInCart(course.id) ? 'success' : 'primary'}
@@ -980,6 +982,8 @@ export function LearningCourseDetailsView({ course, loading, error }) {
           {isBundleCourse && (
             <LearningBundleHighlight count={bundleCount} sx={{ mb: 3 }} />
           )}
+
+          <LearningProgramLinkedCourses courseId={course.id} />
 
           <Card
             sx={{

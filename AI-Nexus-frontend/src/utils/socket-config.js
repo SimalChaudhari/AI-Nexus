@@ -1,6 +1,6 @@
 /**
  * Socket.IO client config.
- * Used by useAnnouncementsListSocket, useAiForumListSocket, useAnnouncementCommentsSocket, useAiForumCommentsSocket.
+ * Used by useAnnouncementsListSocket, useAiForumListSocket, useAiForumCommentsSocket, useAnnouncementBrowserNotifications.
  *
  * Vercel serverless does NOT support WebSockets (no long-lived connections).
  * When backend is deployed on Vercel, set VITE_SOCKET_ENABLED=false in your frontend env

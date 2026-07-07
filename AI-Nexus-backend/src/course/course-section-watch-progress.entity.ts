@@ -64,6 +64,10 @@ export class CourseSectionWatchProgressEntity {
   @Column({ type: 'boolean', default: false })
   isCompleted!: boolean;
 
+  /** Section videoUrl when this progress was saved — used to invalidate after admin replaces the video. */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  sourceVideoUrl?: string | null;
+
   @Column({ type: 'timestamp' })
   lastAccessedAt!: Date;
 

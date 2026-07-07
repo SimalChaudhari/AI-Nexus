@@ -4,7 +4,28 @@ Customer money is critical. This document explains the correct behaviour and env
 
 ---
 
-## 1. Order statuses (orders table)
+## 1. Payments table (`payments`) — canonical payment status
+
+Payment lifecycle is stored in the **`payments`** table (one row per `clientReferenceId`). Orders remain the fulfillment/enrollment record; payments are the audit trail for money status.
+
+| status                       | Meaning |
+|------------------------------|--------|
+| pending                      | Checkout session created; waiting for customer / provider. |
+| paid                         | Payment verified (webhook, confirm-payment, or reconcile). |
+| failed                       | Provider reported failure (or non-cancel failure). |
+| canceled                     | Customer canceled / abandoned checkout (`mark-failed`). |
+| webhook_verification_failed  | Webhook signature verification failed; not fulfilled from webhook. |
+| refunded                     | Payment refunded (manual / future support). |
+
+Key columns: `userId`, `orderId`, `clientReferenceId` (unique), `status`, `amount`, `currency`, `courseIds`, `items`, `wooshpaySessionId`, `wooshpayPaymentIntentId`, `eventType`, `source`, `failureReason`, `paidAt`, `createdAt`, `updatedAt`.
+
+`source` records how the row was last written: `checkout`, `webhook`, `confirm_payment`, `mark_failed`, `status_reconcile`, `backfill`.
+
+On startup, existing **orders** rows are backfilled into `payments` (idempotent by `clientReferenceId`) so historical payment status is preserved.
+
+---
+
+## 2. Order statuses (orders table)
 
 | status     | paymentStatus                 | Meaning |
 |-----------|-------------------------------|--------|
@@ -14,7 +35,7 @@ Customer money is critical. This document explains the correct behaviour and env
 
 ---
 
-## 2. Flows
+## 3. Flows
 
 ### A) Customer pays successfully (WooshPay)
 
@@ -39,7 +60,7 @@ Customer money is critical. This document explains the correct behaviour and env
 
 ---
 
-## 3. TEST (development / staging)
+## 4. TEST (development / staging)
 
 **Goal:** Payments work even when webhook secret is wrong or WooshPay test env differs.
 
@@ -59,7 +80,7 @@ Customer money is critical. This document explains the correct behaviour and env
 
 ---
 
-## 4. PRODUCTION (live)
+## 5. PRODUCTION (live)
 
 **Goal:** Only accept payments we can trust. Never honour unverified webhooks.
 
@@ -79,7 +100,7 @@ Customer money is critical. This document explains the correct behaviour and env
 
 ---
 
-## 5. Checklist before going live
+## 6. Checklist before going live
 
 1. Use **live** WooshPay keys: `PAYMENT_SECRET_KEY=sk_live_...`.
 2. Set **NODE_ENV=production**.
@@ -90,7 +111,7 @@ Customer money is critical. This document explains the correct behaviour and env
 
 ---
 
-## 6. Summary
+## 7. Summary
 
 - **Testing:** Use test keys, set `PAYMENT_WEBHOOK_ACCEPT_UNVERIFIED=true` and non-production `NODE_ENV` so failed verification still creates the order and you can test without “payment success but order failed”.
 - **Production:** Use live keys, `NODE_ENV=production`, correct `PAYMENT_WEBHOOK_SECRET`. Unverified webhooks are never accepted; we record a failed order and rely on success-page confirm or manual support to protect customer money and access.

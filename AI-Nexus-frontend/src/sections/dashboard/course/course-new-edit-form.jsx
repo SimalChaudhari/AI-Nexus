@@ -32,6 +32,7 @@ import { createCourse, updateCourse } from 'src/store/slices/courseSlice';
 import { speakerService } from 'src/services/speaker.service';
 import { languageService } from 'src/services/language.service';
 import { categoryService } from 'src/services/category.service';
+import { programService } from 'src/services/program.service';
 import { courseService } from 'src/services/course.service';
 import {
   AI_EXPERIENCE_OPTIONS,
@@ -104,6 +105,7 @@ export const NewCourseSchema = zod.object({
   languageIds: zod.array(zod.string()).optional(),
   speakerIds: zod.array(zod.string()).optional(),
   categoryId: zod.string().optional(),
+  programId: zod.string().optional(),
   cpeHours: zod.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
     zod.number().min(0).optional()
@@ -142,6 +144,9 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const categoriesFetchDoneRef = useRef(false);
+  const [programs, setPrograms] = useState([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
+  const programsFetchDoneRef = useRef(false);
   /** Pending modules/sections when creating a course (before save); sent with create payload */
   const [pendingModules, setPendingModules] = useState([]);
   const [coursesCatalog, setCoursesCatalog] = useState([]);
@@ -175,7 +180,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       freeOrPaid: currentCourse?.freeOrPaid ?? false,
       amount: currentCourse?.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
       level: normalizeCourseLevelForForm(currentCourse?.level),
-      categoryId: currentCourse?.categoryId || '',
+      categoryId: currentCourse?.categoryId || currentCourse?.category?.id || '',
+      programId: currentCourse?.programId || currentCourse?.program?.id || '',
       roles: Array.isArray(currentCourse?.roles) ? currentCourse.roles : [],
       aiLevel: Array.isArray(currentCourse?.aiLevel) ? currentCourse.aiLevel : [],
       goals: Array.isArray(currentCourse?.goals) ? currentCourse.goals : [],
@@ -242,6 +248,40 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       });
   }, []);
 
+  const ensureProgramsLoaded = useCallback(() => {
+    if (programsFetchDoneRef.current) return;
+    programsFetchDoneRef.current = true;
+    setProgramsLoading(true);
+    programService
+      .getAllPrograms({ page: 1, limit: 500 })
+      .then((res) => {
+        const list = Array.isArray(res) ? res : res?.data || [];
+        setPrograms(list || []);
+      })
+      .catch(() => {
+        programsFetchDoneRef.current = false;
+      })
+      .finally(() => {
+        setProgramsLoading(false);
+      });
+  }, []);
+
+  const reloadPrograms = useCallback(async () => {
+    setProgramsLoading(true);
+    try {
+      const res = await programService.getAllPrograms({ page: 1, limit: 500 });
+      const list = Array.isArray(res) ? res : res?.data || [];
+      setPrograms(list || []);
+      programsFetchDoneRef.current = true;
+      return list || [];
+    } catch (error) {
+      programsFetchDoneRef.current = false;
+      throw error;
+    } finally {
+      setProgramsLoading(false);
+    }
+  }, []);
+
   // Edit mode: load speakers if already assigned so chip labels show names without opening the dropdown
   useEffect(() => {
     const ids = getCourseSpeakerIds(currentCourse);
@@ -263,6 +303,12 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
       ensureCategoriesLoaded();
     }
   }, [currentCourse?.categoryId, ensureCategoriesLoaded]);
+
+  useEffect(() => {
+    if (currentCourse?.programId || currentCourse?.program?.id) {
+      ensureProgramsLoaded();
+    }
+  }, [currentCourse?.program?.id, currentCourse?.programId, ensureProgramsLoaded]);
 
   const ensureCoursesCatalogLoaded = useCallback(() => {
     if (coursesCatalogFetchRef.current) return;
@@ -338,6 +384,14 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
   const [editingOptionId, setEditingOptionId] = useState('');
   const [editingOptionValue, setEditingOptionValue] = useState('');
   const [optionSearch, setOptionSearch] = useState('');
+  const [programDrawerOpen, setProgramDrawerOpen] = useState(false);
+  const [programRows, setProgramRows] = useState([]);
+  const [programRowsLoading, setProgramRowsLoading] = useState(false);
+  const [programName, setProgramName] = useState('');
+  const [addingProgram, setAddingProgram] = useState(false);
+  const [editingProgramId, setEditingProgramId] = useState('');
+  const [editingProgramValue, setEditingProgramValue] = useState('');
+  const [programSearch, setProgramSearch] = useState('');
 
   const cardSx = {
     borderRadius: 2,
@@ -495,6 +549,102 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
     );
   }, [optionRows, optionSearch]);
 
+  const openProgramDrawer = useCallback(async () => {
+    setProgramDrawerOpen(true);
+    setProgramRowsLoading(true);
+    try {
+      const list = await reloadPrograms();
+      setProgramRows(Array.isArray(list) ? list : []);
+    } catch {
+      setProgramRows([]);
+    } finally {
+      setProgramRowsLoading(false);
+    }
+  }, [reloadPrograms]);
+
+  const closeProgramDrawer = useCallback(() => {
+    setProgramDrawerOpen(false);
+    setProgramName('');
+    setAddingProgram(false);
+    setEditingProgramId('');
+    setEditingProgramValue('');
+    setProgramSearch('');
+  }, []);
+
+  const handleCreateProgramFromDrawer = useCallback(async () => {
+    const title = String(programName || '').trim();
+    if (!title) {
+      toast.error('Please enter a program name');
+      return;
+    }
+    try {
+      setAddingProgram(true);
+      const created = await programService.createProgram({ title, description: '', status: 'active' });
+      const list = await reloadPrograms();
+      setProgramRows(Array.isArray(list) ? list : []);
+      if (created?.id) {
+        setValue('programId', created.id, { shouldValidate: true });
+      }
+      toast.success('Program created');
+      closeProgramDrawer();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to create program');
+      setAddingProgram(false);
+    }
+  }, [closeProgramDrawer, programName, reloadPrograms, setValue]);
+
+  const handleStartEditProgram = useCallback((row) => {
+    setEditingProgramId(row?.id || '');
+    setEditingProgramValue(String(row?.title || ''));
+  }, []);
+
+  const handleCancelEditProgram = useCallback(() => {
+    setEditingProgramId('');
+    setEditingProgramValue('');
+  }, []);
+
+  const handleSaveEditProgram = useCallback(async () => {
+    const nextTitle = String(editingProgramValue || '').trim();
+    if (!editingProgramId || !nextTitle) return;
+    try {
+      await programService.updateProgram(editingProgramId, { title: nextTitle });
+      const list = await reloadPrograms();
+      setProgramRows(Array.isArray(list) ? list : []);
+      toast.success('Program updated');
+      handleCancelEditProgram();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update program');
+    }
+  }, [editingProgramId, editingProgramValue, handleCancelEditProgram, reloadPrograms]);
+
+  const handleDeleteProgram = useCallback(
+    async (row) => {
+      try {
+        await programService.deleteProgram(row.id);
+        const list = await reloadPrograms();
+        setProgramRows(Array.isArray(list) ? list : []);
+        const currentProgramId = String(watch('programId') || '');
+        if (currentProgramId && currentProgramId === String(row.id)) {
+          setValue('programId', '', { shouldValidate: true });
+        }
+        toast.success('Program removed');
+      } catch (error) {
+        toast.error(error?.response?.data?.message || 'Failed to remove program');
+      }
+    },
+    [reloadPrograms, setValue, watch]
+  );
+
+  const filteredProgramRows = useMemo(() => {
+    const query = String(programSearch || '').trim().toLowerCase();
+    if (!query) return programRows;
+    return (programRows || []).filter((row) =>
+      String(row?.title || '')
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [programRows, programSearch]);
+
   const freeOrPaid = watch('freeOrPaid');
   const isBundle = watch('isBundle');
 
@@ -529,7 +679,8 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         freeOrPaid: currentCourse.freeOrPaid ?? false,
         amount: currentCourse.amount && currentCourse.amount > 0 ? currentCourse.amount : undefined,
         level: normalizeCourseLevelForForm(currentCourse.level),
-        categoryId: currentCourse.categoryId || '',
+        categoryId: currentCourse.categoryId || currentCourse.category?.id || '',
+        programId: currentCourse.programId || currentCourse.program?.id || '',
         roles: Array.isArray(currentCourse.roles) ? currentCourse.roles : [],
         aiLevel: Array.isArray(currentCourse.aiLevel) ? currentCourse.aiLevel : [],
         goals: Array.isArray(currentCourse.goals) ? currentCourse.goals : [],
@@ -648,6 +799,9 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
         amount: data.freeOrPaid && data.amount != null ? parseFloat(data.amount.toString()) : 0,
         level: data.level || 'Beginner',
         categoryId: data.categoryId || undefined,
+        ...(!data.isBundle
+          ? { programId: currentCourse ? data.programId || '' : data.programId || undefined }
+          : {}),
         roles: Array.isArray(data.roles) ? data.roles : undefined,
         aiLevel: Array.isArray(data.aiLevel) ? data.aiLevel : undefined,
         goals: Array.isArray(data.goals) ? data.goals : undefined,
@@ -751,7 +905,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                 <Grid xs={12} md={6}>
                   <Field.Text name="title" label="Title" required />
                 </Grid>
-                <Grid xs={12} md={3}>
+                <Grid xs={12} md={6}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Box sx={{ flexGrow: 1 }}>
                       <Field.Autocomplete
@@ -774,7 +928,7 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     </IconButton>
                   </Stack>
                 </Grid>
-                <Grid xs={12} md={3}>
+                <Grid xs={12} md={watch('isBundle') ? 12 : 6}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Box sx={{ flexGrow: 1 }}>
                       <Field.Autocomplete
@@ -799,6 +953,33 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
                     </IconButton>
                   </Stack>
                 </Grid>
+                {!watch('isBundle') && (
+                  <Grid xs={12} md={6}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Field.Autocomplete
+                          name="programId"
+                          label="Program"
+                          loading={programsLoading}
+                          options={(programs || []).map((p) => p.id)}
+                          getOptionLabel={(option) =>
+                            programs.find((p) => p.id === option)?.title || option || ''
+                          }
+                          isOptionEqualToValue={(option, value) => option === value}
+                          placeholder="Select program..."
+                          onOpen={() => ensureProgramsLoaded()}
+                        />
+                      </Box>
+                      <IconButton
+                        color="primary"
+                        sx={{ border: `1px solid ${alpha(theme.palette.primary.main, 0.32)}` }}
+                        onClick={openProgramDrawer}
+                      >
+                        <Iconify icon="solar:add-circle-bold" width={18} />
+                      </IconButton>
+                    </Stack>
+                  </Grid>
+                )}
                 <Grid xs={12}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Box sx={{ flexGrow: 1 }}>
@@ -1311,6 +1492,138 @@ export function CourseNewEditForm({ currentCourse, onCancel }) {
               Cancel
             </Button>
             <LoadingButton loading={addingOption} variant="contained" onClick={handleCreateOptionFromDialog}>
+              Add
+            </LoadingButton>
+          </Stack>
+        </Box>
+      </Drawer>
+      <Drawer anchor="right" open={programDrawerOpen} onClose={closeProgramDrawer}>
+        <Box sx={{ width: { xs: 320, sm: 380 }, p: 2.5 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+            <Typography variant="h6">Manage programs</Typography>
+            <IconButton onClick={closeProgramDrawer} size="small">
+              <Iconify icon="mingcute:close-line" width={18} />
+            </IconButton>
+          </Stack>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            Add, edit, or remove programs. Link courses to a program from this form.
+          </Typography>
+          <TextField
+            fullWidth
+            autoFocus
+            margin="dense"
+            label="Program name"
+            placeholder="e.g. AI Fluency Track"
+            value={programName}
+            onChange={(e) => setProgramName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleCreateProgramFromDrawer();
+              }
+            }}
+          />
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Existing programs
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search programs..."
+            value={programSearch}
+            onChange={(e) => setProgramSearch(e.target.value)}
+            sx={{ mb: 1 }}
+          />
+          <Box
+            sx={{
+              maxHeight: 260,
+              overflowY: 'auto',
+              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+              borderRadius: 1.5,
+              p: 1,
+              bgcolor: 'background.neutral',
+            }}
+          >
+            {programRowsLoading ? (
+              <Typography variant="body2" sx={{ color: 'text.secondary', px: 1, py: 0.5 }}>
+                Loading...
+              </Typography>
+            ) : filteredProgramRows.length === 0 ? (
+              <Typography variant="body2" sx={{ color: 'text.secondary', px: 1, py: 0.5 }}>
+                No programs found
+              </Typography>
+            ) : (
+              <Stack spacing={0.5}>
+                {filteredProgramRows.map((row, idx) => {
+                  const isEditing = editingProgramId === row.id;
+                  return (
+                    <Stack
+                      key={row.id}
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      sx={{
+                        px: 1,
+                        py: 0.75,
+                        borderRadius: 1,
+                        bgcolor: isEditing ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{ minWidth: 28, color: 'text.secondary', fontWeight: 700 }}
+                      >
+                        {idx + 1}.
+                      </Typography>
+                      {isEditing ? (
+                        <TextField
+                          size="small"
+                          fullWidth
+                          value={editingProgramValue}
+                          onChange={(e) => setEditingProgramValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveEditProgram();
+                            }
+                          }}
+                        />
+                      ) : (
+                        <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                          {row.title}
+                        </Typography>
+                      )}
+                      {isEditing ? (
+                        <>
+                          <IconButton size="small" color="primary" onClick={handleSaveEditProgram}>
+                            <Iconify icon="solar:check-circle-bold" width={18} />
+                          </IconButton>
+                          <IconButton size="small" onClick={handleCancelEditProgram}>
+                            <Iconify icon="solar:close-circle-bold" width={18} />
+                          </IconButton>
+                        </>
+                      ) : (
+                        <Stack direction="row" spacing={0.25}>
+                          <IconButton size="small" onClick={() => handleStartEditProgram(row)}>
+                            <Iconify icon="solar:pen-bold" width={17} />
+                          </IconButton>
+                          <IconButton size="small" color="error" onClick={() => handleDeleteProgram(row)}>
+                            <Iconify icon="solar:trash-bin-trash-bold" width={17} />
+                          </IconButton>
+                        </Stack>
+                      )}
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            )}
+          </Box>
+          <Stack direction="row" spacing={1.25} justifyContent="flex-end" sx={{ mt: 2.5 }}>
+            <Button onClick={closeProgramDrawer} disabled={addingProgram}>
+              Cancel
+            </Button>
+            <LoadingButton loading={addingProgram} variant="contained" onClick={handleCreateProgramFromDrawer}>
               Add
             </LoadingButton>
           </Stack>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 
 import Box from '@mui/material/Box';
 import Collapse from '@mui/material/Collapse';
@@ -6,10 +6,12 @@ import Collapse from '@mui/material/Collapse';
 import { usePathname } from 'src/routes/hooks';
 import { isExternalLink, removeLastSlash } from 'src/routes/utils';
 import { useActiveLink } from 'src/routes/hooks/use-active-link';
+import { paths } from 'src/routes/paths';
 
 import { varAlpha } from 'src/theme/styles';
 
 import { NavLi, NavUl } from 'src/components/nav-section';
+import { useAnnouncementUnreadCount } from 'src/hooks/use-announcement-unread-count';
 
 import { NavItem, NavSubItem } from './nav-mobile-item';
 
@@ -44,6 +46,13 @@ export function NavList({ data }) {
   const currentPath = removeLastSlash(pathname);
   const subItems = flattenChildItems(data.children);
   const hasActiveSubItem = subItems.some((item) => isPathActive(currentPath, item.path));
+  const tracksAnnouncements = useMemo(
+    () => subItems.some((item) => item.path === paths.announcements),
+    [subItems]
+  );
+  const { count: announcementUnreadCount } = useAnnouncementUnreadCount({
+    enabled: tracksAnnouncements,
+  });
 
   const active = useActiveLink(data.path, !!data.children || !!data.deepMatch) || hasActiveSubItem;
 
@@ -75,6 +84,7 @@ export function NavList({ data }) {
       active={active}
       hasChild={!!data.children}
       open={data.children && !!openMenu}
+      showDot={tracksAnnouncements && announcementUnreadCount > 0}
       externalLink={isExternalLink(data.path)}
       onClick={handleToggleMenu}
     />
@@ -92,7 +102,9 @@ export function NavList({ data }) {
               ml: 1.75,
               pl: 1.5,
               borderLeft: (theme) =>
-                `2px solid ${varAlpha(theme.vars.palette.primary.mainChannel, 0.2)}`,
+                `2px solid ${varAlpha(theme.vars.palette.secondary.mainChannel, 0.35)}`,
+              bgcolor: (theme) => varAlpha(theme.vars.palette.secondary.mainChannel, 0.06),
+              borderRadius: 1,
             }}
           >
             <NavUl sx={{ gap: 0.25, py: 0.5 }}>
@@ -103,6 +115,7 @@ export function NavList({ data }) {
                     path={item.path}
                     icon={item.icon}
                     iconColor={item.iconColor}
+                    badge={item.path === paths.announcements ? announcementUnreadCount : 0}
                     active={isPathActive(currentPath, item.path)}
                     externalLink={isExternalLink(item.path)}
                   />

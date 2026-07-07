@@ -32,6 +32,7 @@ import { LearningBundlePill, LearningBundleRibbon } from './components/course-bu
 import { MembershipSignupDialog } from './components/membership-signup-dialog';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import { LearningCourseGridCard } from './components/learning-course-grid-card';
+import { LEARNING_ADD_TO_CART_ENABLED } from './learning-feature-flags';
 import {
   clearMembershipEligibilityDraftOnModalClose,
   clearMembershipEligibilitySessionStorage,
@@ -137,6 +138,59 @@ const getCourseProgressStatus = (status, courseProgress) => {
 };
 
 const shouldShowTitleTooltip = (title) => String(title || '').trim().length > 42;
+
+function CourseGroupHeading({ group, paginatingGroupKey, theme }) {
+  const isActive = paginatingGroupKey === group.groupKey;
+  const count = group.pagination?.totalItems || 0;
+  const titleSx = {
+    fontWeight: 800,
+    color: isActive ? 'secondary.main' : 'text.primary',
+    letterSpacing: 0.2,
+    fontSize: { xs: '1.08rem', md: '1.2rem' },
+  };
+  const dividerSx = {
+    height: 2,
+    border: 0,
+    borderRadius: 999,
+    bgcolor: 'transparent',
+    background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
+  };
+
+  return (
+    <>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 1.75, minWidth: 0 }}>
+        <Typography variant="h6" sx={{ ...titleSx, lineHeight: 1.3, wordBreak: 'break-word' }}>
+          {group.level}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            mt: 0.35,
+            color: 'text.secondary',
+            fontWeight: 600,
+            fontSize: '0.78rem',
+          }}
+        >
+          {count} course{count === 1 ? '' : 's'}
+        </Typography>
+        <Divider sx={{ ...dividerSx, mt: 1 }} />
+      </Box>
+
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1.5}
+        sx={{ display: { xs: 'none', sm: 'flex' }, mb: 1.75 }}
+      >
+        <Typography variant="h6" sx={{ ...titleSx, whiteSpace: 'nowrap' }}>
+          {group.level} ({count})
+        </Typography>
+        <Divider sx={{ ...dividerSx, flexGrow: 1 }} />
+      </Stack>
+    </>
+  );
+}
 
 function CourseGroupScrollBox({
   group,
@@ -948,33 +1002,11 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                 {viewMode === 'grid' &&
                   groupedCourses.map((group) => (
                     <Box key={group.groupKey || group.level} sx={{ mb: 3 }}>
-                      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
-                        <Typography
-                          variant="h6"
-                          sx={{
-                            fontWeight: 800,
-                            whiteSpace: 'nowrap',
-                            color:
-                              paginatingGroupKey === group.groupKey
-                                ? 'secondary.main'
-                                : 'text.primary',
-                            letterSpacing: 0.2,
-                            fontSize: { xs: '1.08rem', md: '1.2rem' },
-                          }}
-                        >
-                          {group.level} ({group.pagination?.totalItems || 0})
-                        </Typography>
-                        <Divider
-                          sx={{
-                            flexGrow: 1,
-                            height: 2,
-                            border: 0,
-                            borderRadius: 999,
-                            bgcolor: 'transparent',
-                            background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
-                          }}
-                        />
-                      </Stack>
+                      <CourseGroupHeading
+                        group={group}
+                        paginatingGroupKey={paginatingGroupKey}
+                        theme={theme}
+                      />
                       <CourseGroupScrollBox
                         group={group}
                         paginatingGroupKey={paginatingGroupKey}
@@ -1032,33 +1064,11 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                   <Stack spacing={2} sx={{ mt: 2 }}>
                     {groupedCourses.map((group) => (
                       <Box key={group.groupKey || group.level}>
-                        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.75 }}>
-                          <Typography
-                            variant="h6"
-                            sx={{
-                              fontWeight: 800,
-                              whiteSpace: 'nowrap',
-                              color:
-                                paginatingGroupKey === group.groupKey
-                                  ? 'secondary.main'
-                                  : 'text.primary',
-                              letterSpacing: 0.2,
-                              fontSize: { xs: '1.08rem', md: '1.2rem' },
-                            }}
-                          >
-                            {group.level} ({group.pagination?.totalItems || 0})
-                          </Typography>
-                          <Divider
-                            sx={{
-                              flexGrow: 1,
-                              height: 2,
-                              border: 0,
-                              borderRadius: 999,
-                              bgcolor: 'transparent',
-                              background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
-                            }}
-                          />
-                        </Stack>
+                        <CourseGroupHeading
+                          group={group}
+                          paginatingGroupKey={paginatingGroupKey}
+                          theme={theme}
+                        />
                         <CourseGroupScrollBox
                           group={group}
                           paginatingGroupKey={paginatingGroupKey}
@@ -1366,9 +1376,9 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                           </Stack>
                                         )}
                                       </Stack>
-                                      {(course.freeOrPaid ||
-                                        isEnrolled(course.id) ||
-                                        isInCart(course.id)) && (
+                                      {(isEnrolled(course.id) ||
+                                        (LEARNING_ADD_TO_CART_ENABLED &&
+                                          (course.freeOrPaid || isInCart(course.id)))) && (
                                         <IconButton
                                           size="small"
                                           onClick={(e) => handleAddToCartClick(e, course)}

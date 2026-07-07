@@ -149,6 +149,10 @@ export class CreateCourseDto {
     categoryId?: string;
 
     @IsOptional()
+    @IsUUID('4')
+    programId?: string;
+
+    @IsOptional()
     @Transform(({ value }) => toStringArray(value))
     @IsArray()
     @IsString({ each: true })
@@ -253,6 +257,10 @@ export class UpdateCourseDto {
     @IsOptional()
     @IsUUID('4')
     categoryId?: string;
+
+    @IsOptional()
+    @IsUUID('4')
+    programId?: string;
 
     @IsOptional()
     @Transform(({ value }) => toStringArray(value))

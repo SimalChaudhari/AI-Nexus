@@ -31,6 +31,11 @@ export const learningGuestSignInPresets = {
     title: 'Sign in to view certificates',
     subtitle: 'Earned certificates are tied to your account—sign in to see and download them.',
   },
+  badges: {
+    heroIcon: 'solar:verified-check-bold',
+    title: 'Sign in to view digital badges',
+    subtitle: 'Digital badges are issued when you complete a course—sign in to see yours.',
+  },
 };
 
 /** Guest sign-in prompt for Learning tabs (Progress / Favorites / Certificates). */

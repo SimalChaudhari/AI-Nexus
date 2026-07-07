@@ -54,11 +54,15 @@ const CategoryCreatePage = lazy(() => import('src/pages/dashboard/category/new')
 const CategoryEditPage = lazy(() => import('src/pages/dashboard/category/edit'));
 const CategoryDetailsPage = lazy(() => import('src/pages/dashboard/category/details'));
 
+const ProgramListPage = lazy(() => import('src/pages/dashboard/course/program/list'));
+const ProgramCreatePage = lazy(() => import('src/pages/dashboard/course/program/new'));
+const ProgramEditPage = lazy(() => import('src/pages/dashboard/course/program/edit'));
+const ProgramDetailsPage = lazy(() => import('src/pages/dashboard/course/program/details'));
+
 // Announcement Management (Admin only)
 const AnnouncementListPage = lazy(() => import('src/pages/dashboard/announcement/list'));
 const AnnouncementCreatePage = lazy(() => import('src/pages/dashboard/announcement/new'));
 const AnnouncementEditPage = lazy(() => import('src/pages/dashboard/announcement/edit'));
-const AnnouncementDetailsPage = lazy(() => import('src/pages/dashboard/announcement/details'));
 
 // AI Forum Management (Admin only)
 const AiForumListPage = lazy(() => import('../../pages/dashboard/ai-forum/list'));
@@ -213,7 +217,6 @@ export const adminRoutes = [
           { element: <AnnouncementListPage />, index: true },
           { path: 'list', element: <AnnouncementListPage /> },
           { path: 'new', element: <AnnouncementCreatePage /> },
-          { path: ':id', element: <AnnouncementDetailsPage /> },
           { path: ':id/edit', element: <AnnouncementEditPage /> },
         ],
       },
@@ -243,6 +246,16 @@ export const adminRoutes = [
               { path: 'new', element: <CategoryCreatePage /> },
               { path: ':id', element: <CategoryDetailsPage /> },
               { path: ':id/edit', element: <CategoryEditPage /> },
+            ],
+          },
+          {
+            path: 'program',
+            children: [
+              { element: <ProgramListPage />, index: true },
+              { path: 'list', element: <ProgramListPage /> },
+              { path: 'new', element: <ProgramCreatePage /> },
+              { path: ':id', element: <ProgramDetailsPage /> },
+              { path: ':id/edit', element: <ProgramEditPage /> },
             ],
           },
           { path: ':id', element: <CourseDetailsPage /> },

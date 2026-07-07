@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentController } from './payment.controller';
 import { WooshPayService } from './wooshpay.service';
+import { PaymentEntity } from './payment.entity';
+import { PaymentService } from './payment.service';
+import { PaymentInitService } from './payment-init.service';
 import { PaymentReferenceEntity } from './payment-reference.entity';
 import { PaymentReferenceService } from './payment-reference.service';
 import { PaymentReferenceInitService } from './payment-reference-init.service';
@@ -13,7 +16,7 @@ import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PaymentReferenceEntity]),
+    TypeOrmModule.forFeature([PaymentReferenceEntity, PaymentEntity]),
     UserModule,
     AuthModule,
     CourseModule,
@@ -24,6 +27,13 @@ import { AuthModule } from '../auth/auth.module';
     }),
   ],
   controllers: [PaymentController],
-  providers: [WooshPayService, PaymentReferenceService, PaymentReferenceInitService],
+  providers: [
+    WooshPayService,
+    PaymentService,
+    PaymentInitService,
+    PaymentReferenceService,
+    PaymentReferenceInitService,
+  ],
+  exports: [PaymentService],
 })
 export class PaymentModule {}

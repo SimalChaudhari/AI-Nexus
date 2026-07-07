@@ -29,7 +29,6 @@ export const paths = {
   announcements: '/announcements',
   announcement: {
     root: '/announcements',
-    details: (id) => `/announcements/${id}`,
   },
   aiForum: {
     root: '/ai-forum',
@@ -264,11 +263,17 @@ export const paths = {
       details: (id) => `${ROOTS.ADMIN}/course/category/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/course/category/${id}/edit`,
     },
+    program: {
+      root: `${ROOTS.ADMIN}/course/program`,
+      new: `${ROOTS.ADMIN}/course/program/new`,
+      list: `${ROOTS.ADMIN}/course/program/list`,
+      details: (id) => `${ROOTS.ADMIN}/course/program/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/course/program/${id}/edit`,
+    },
     announcement: {
       root: `${ROOTS.ADMIN}/announcement`,
       new: `${ROOTS.ADMIN}/announcement/new`,
       list: `${ROOTS.ADMIN}/announcement/list`,
-      details: (id) => `${ROOTS.ADMIN}/announcement/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/announcement/${id}/edit`,
     },
     aiForum: {

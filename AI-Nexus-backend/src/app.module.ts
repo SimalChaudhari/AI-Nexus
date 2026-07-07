@@ -4,11 +4,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/users.module';
 import { CategoryModule } from './category/categories.module';
+import { ProgramModule } from './program/programs.module';
 import { CourseModule } from './course/courses.module';
 import { LabelModule } from './label/labels.module';
 import { TagModule } from './tag/tags.module';
 import { WorkflowModule } from './workflow/workflows.module';
 import { AnnouncementModule } from './announcement/announcements.module';
+import { NotificationModule } from './notification/notification.module';
 import { AiForumModule } from './ai-forum/ai-forum.module';
 import { SpeakerModule } from './speaker/speaker.module';
 import { LanguageModule } from './language/language.module';
@@ -99,11 +101,13 @@ const resolveTypeOrmPoolMax = (): number => {
     AuthModule,
     UserModule,
     CategoryModule,
+    ProgramModule,
     CourseModule,
     LabelModule,
     TagModule,
     WorkflowModule,
     AnnouncementModule,
+    NotificationModule,
     AiForumModule,
     SpeakerModule,
     LanguageModule,

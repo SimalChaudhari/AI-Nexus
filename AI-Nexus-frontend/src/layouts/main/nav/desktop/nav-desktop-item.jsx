@@ -7,6 +7,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import { styled } from '@mui/material/styles';
 import ButtonBase from '@mui/material/ButtonBase';
 import CardActionArea from '@mui/material/CardActionArea';
+import Typography from '@mui/material/Typography';
 
 import { RouterLink } from 'src/routes/components';
 import { usePathname } from 'src/routes/hooks';
@@ -23,7 +24,10 @@ import { NARROW_DESKTOP_NAV_QUERY } from './nav-desktop.constants';
 // ----------------------------------------------------------------------
 
 export const NavItem = forwardRef(
-  ({ title, path, open, active, hasChild, externalLink, subItem, ...other }, ref) => {
+  (
+    { title, path, open, active, hasChild, externalLink, subItem, badge = 0, showDot = false, ...other },
+    ref
+  ) => {
     const pathname = usePathname();
     const { offsetTop: headerScrolled } = useScrollOffSetTop();
     const isHomeNarrowSolidHeader = useMediaQuery('(max-width:1080px)');
@@ -37,6 +41,7 @@ export const NavItem = forwardRef(
       isHomeRoute &&
       !headerScrolled &&
       !isHomeNarrowSolidHeader;
+    const badgeCount = Number(badge) > 0 ? Number(badge) : 0;
 
     return (
       <StyledNavItem
@@ -52,7 +57,59 @@ export const NavItem = forwardRef(
         {...navItem.baseProps}
         {...other}
       >
-        {title}
+        <Box
+          component="span"
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: 0,
+            position: 'relative',
+          }}
+        >
+          {title}
+          {showDot ? (
+            <Box
+              component="span"
+              aria-hidden
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                bgcolor: 'success.main',
+                flexShrink: 0,
+                boxShadow: (theme) => `0 0 0 2px ${theme.vars.palette.background.paper}`,
+                animation: 'aiForumPulse 1.6s ease-in-out infinite',
+                '@keyframes aiForumPulse': {
+                  '0%': { transform: 'scale(1)', opacity: 1 },
+                  '50%': { transform: 'scale(1.25)', opacity: 0.75 },
+                  '100%': { transform: 'scale(1)', opacity: 1 },
+                },
+              }}
+            />
+          ) : null}
+          {badgeCount > 0 ? (
+            <Typography
+              component="span"
+              sx={{
+                minWidth: 20,
+                height: 20,
+                px: 0.75,
+                borderRadius: 10,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                typography: 'caption',
+                fontWeight: 700,
+                lineHeight: 1,
+                bgcolor: subItem ? 'common.white' : 'error.main',
+                color: subItem ? 'secondary.main' : 'common.white',
+              }}
+            >
+              {badgeCount > 99 ? '99+' : badgeCount}
+            </Typography>
+          ) : null}
+        </Box>
 
         {hasChild && (
           <Iconify
@@ -69,7 +126,7 @@ export const NavItem = forwardRef(
                 open || active
                   ? isNarrowDesktopNav || lightNav
                     ? 'secondary.light'
-                    : 'primary.main'
+                    : 'secondary.main'
                   : isNarrowDesktopNav
                     ? 'secondary.main'
                     : 'inherit',
@@ -140,14 +197,14 @@ const StyledNavItem = styled(ButtonBase, {
             ? theme.vars.palette.secondary.dark
             : lightNav
               ? theme.vars.palette.secondary.light
-              : theme.vars.palette.primary.main
+              : theme.vars.palette.secondary.main
           : undefined,
       },
       ...(active && {
         color: customerHeader
           ? narrowDesktopNav || lightNav
             ? theme.vars.palette.secondary.dark
-            : theme.vars.palette.primary.main
+            : theme.vars.palette.secondary.main
           : theme.vars.palette.primary.main,
       }),
       ...(open && {
@@ -157,7 +214,7 @@ const StyledNavItem = styled(ButtonBase, {
             ? theme.vars.palette.secondary.light
             : lightNav
               ? theme.vars.palette.secondary.light
-              : theme.vars.palette.primary.main
+              : theme.vars.palette.secondary.main
           : undefined,
       }),
     }),

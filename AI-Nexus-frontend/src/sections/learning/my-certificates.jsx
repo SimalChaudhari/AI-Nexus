@@ -6,9 +6,13 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
-import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Chip from '@mui/material/Chip';
+import Collapse from '@mui/material/Collapse';
+import Button from '@mui/material/Button';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
@@ -25,29 +29,372 @@ import {
 } from 'src/utils/linkedin-share';
 import { courseService } from 'src/services/course.service';
 import { appSettingsService } from 'src/services/app-settings.service';
+import {
+  formatCpeHoursLabel,
+  mapCertificateRows,
+  resolveCertificateBadgeUrl,
+  groupTranscriptByPillar,
+  getCompletedTranscriptModules,
+  getTranscriptModuleKey,
+} from './components/credential-shared';
+import {
+  CREDENTIAL_GRID_PROPS,
+  CREDENTIAL_GRID_SPACING,
+  getCredentialCardSx,
+} from './components/credential-card-shell';
 
 // ----------------------------------------------------------------------
 
-function parseMarketData(marketData) {
-  if (!marketData || typeof marketData !== 'string') return {};
-  try {
-    return JSON.parse(marketData) || {};
-  } catch {
-    return {};
+function TranscriptPillarHeading({ group }) {
+  if (!group) return null;
+
+  if (!group.pillarLabel) {
+    return (
+      <Typography
+        variant="caption"
+        sx={{
+          fontWeight: 800,
+          color: 'primary.main',
+          display: 'block',
+          fontSize: '0.75rem',
+          lineHeight: 1.3,
+          wordBreak: 'break-word',
+        }}
+      >
+        {group.courseTitle || 'Course'}
+      </Typography>
+    );
   }
+
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          fontWeight: 800,
+          color: 'primary.main',
+          display: 'block',
+          fontSize: '0.75rem',
+          lineHeight: 1.3,
+        }}
+      >
+        {group.pillarLabel}
+      </Typography>
+      {group.courseTitle ? (
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            display: 'block',
+            mt: 0.25,
+            fontSize: '0.7rem',
+            lineHeight: 1.35,
+            wordBreak: 'break-word',
+          }}
+        >
+          {group.courseTitle}
+        </Typography>
+      ) : null}
+    </Box>
+  );
 }
 
-function formatCompletedDate(dateStr) {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  return new Intl.DateTimeFormat('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(d);
+function CertificateTranscript({ transcript = [], compact = false }) {
+  const theme = useTheme();
+  const groups = groupTranscriptByPillar(transcript);
+
+  if (!groups.length) {
+    return (
+      <Typography variant="caption" sx={{ color: 'text.secondary', py: 0.5, display: 'block' }}>
+        No completed modules yet.
+      </Typography>
+    );
+  }
+
+  if (compact) {
+    return (
+      <Stack spacing={1.25}>
+        {groups.map((group) => (
+          <Box key={group.key} sx={{ minWidth: 0 }}>
+            <Box sx={{ mb: 0.5 }}>
+              <TranscriptPillarHeading group={group} />
+            </Box>
+            <Stack spacing={0.75}>
+              {group.modules.map((module) => {
+                const completedSections = (module.sections || []).filter((section) => section.isCompleted);
+                return (
+                  <Box
+                    key={getTranscriptModuleKey(module)}
+                    sx={{
+                      px: 1.25,
+                      py: 1,
+                      borderRadius: 1,
+                      bgcolor: alpha(theme.palette.grey[500], 0.06),
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 700, display: 'block', lineHeight: 1.35, fontSize: '0.8125rem' }}
+                    >
+                      {module.moduleTitle || 'Module'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {completedSections.length} lesson{completedSections.length === 1 ? '' : 's'} completed
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Box>
+        ))}
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack spacing={1.25}>
+      {groups.map((group) => (
+        <Box key={group.key} sx={{ minWidth: 0 }}>
+          <Box sx={{ mb: 0.75 }}>
+            <TranscriptPillarHeading group={group} />
+          </Box>
+          <Stack spacing={0.75}>
+            {group.modules.map((module) => {
+              const completedSections = (module.sections || []).filter((section) => section.isCompleted);
+              return (
+                <Accordion
+                  key={getTranscriptModuleKey(module)}
+                  disableGutters
+                  elevation={0}
+                  sx={{
+                    border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
+                    borderRadius: '8px !important',
+                    '&:before': { display: 'none' },
+                    overflow: 'hidden',
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<Iconify icon="eva:arrow-ios-downward-fill" width={16} />}
+                    sx={{ px: 1.25, minHeight: 36, '& .MuiAccordionSummary-content': { my: 0.5 } }}
+                  >
+                    <Stack spacing={0} sx={{ minWidth: 0 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                        {module.moduleTitle || 'Module'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                        {module.completedSections ?? completedSections.length}/
+                        {module.totalSections ?? completedSections.length} lessons
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 1.25, pt: 0, pb: 1 }}>
+                    <Stack spacing={0.35}>
+                      {completedSections.map((section) => (
+                        <Stack
+                          key={section.sectionId || section.sectionTitle}
+                          direction="row"
+                          spacing={0.5}
+                          alignItems="flex-start"
+                        >
+                          <Iconify
+                            icon="solar:check-circle-bold"
+                            width={14}
+                            sx={{ color: 'success.main', mt: 0.1, flexShrink: 0 }}
+                          />
+                          <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.35 }}>
+                            {section.sectionTitle || 'Lesson'}
+                          </Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })}
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+function buildPdfProps(cert, logoSource) {
+  return {
+    courseTitle: cert.courseTitle,
+    learnerName: cert.learnerName,
+    completedAt: cert.completedAt,
+    earnedCpeHours: cert.earnedCpeHours,
+    certificateNo: cert.certificateNo,
+    logoSource,
+    badgeSource: resolveCertificateBadgeUrl(),
+    transcript: cert.transcript,
+  };
+}
+
+function CertificateCard({
+  cert,
+  theme,
+  previewLoading,
+  downloadingId,
+  onShareLinkedIn,
+  onPreview,
+  onDownload,
+}) {
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const moduleCount = getCompletedTranscriptModules(cert.transcript).length;
+  const pillarCount = groupTranscriptByPillar(cert.transcript).length;
+
+  return (
+    <Card sx={getCredentialCardSx(theme)}>
+      <Stack direction="row" spacing={1.25} alignItems="flex-start" sx={{ mb: 1.25 }}>
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: 1.25,
+            bgcolor: alpha(theme.palette.success.main, 0.12),
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Iconify icon="solar:medal-ribbons-star-bold" width={22} sx={{ color: 'success.main' }} />
+        </Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              fontSize: '0.72rem',
+              textTransform: 'uppercase',
+            }}
+          >
+            Certificate
+          </Typography>
+          <Typography
+            variant="subtitle1"
+            sx={{
+              fontWeight: 700,
+              lineHeight: 1.35,
+              fontSize: { xs: '0.95rem', md: '1rem' },
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {cert.courseTitle}
+          </Typography>
+        </Box>
+        <Chip size="small" label="Issued" color="success" variant="soft" sx={{ height: 24, fontSize: '0.75rem' }} />
+      </Stack>
+
+      <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mb: 1.25 }}>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={formatCpeHoursLabel(cert.earnedCpeHours)}
+          sx={{ height: 26, fontSize: '0.75rem', fontWeight: 600 }}
+        />
+      </Stack>
+
+      <Stack spacing={0.5} sx={{ mb: 1.25 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.4, fontSize: '0.8125rem' }}>
+          <Box component="span" sx={{ fontWeight: 600 }}>No:</Box> {cert.certificateNo || '—'}
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.4, fontSize: '0.8125rem' }}>
+          <Box component="span" sx={{ fontWeight: 600 }}>Completed:</Box> {cert.completedAt}
+        </Typography>
+      </Stack>
+
+      {moduleCount > 0 ? (
+        <Box sx={{ mb: 1.25 }}>
+          <Button
+            size="small"
+            color="inherit"
+            onClick={() => setTranscriptOpen((open) => !open)}
+            endIcon={
+              <Iconify
+                icon={transcriptOpen ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'}
+                width={16}
+              />
+            }
+            sx={{
+              px: 0.75,
+              minWidth: 0,
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              color: 'text.secondary',
+              justifyContent: 'flex-start',
+            }}
+          >
+            Transcript ({pillarCount > 1 ? `${pillarCount} pillars, ` : ''}{moduleCount} module
+            {moduleCount === 1 ? '' : 's'})
+          </Button>
+          <Collapse in={transcriptOpen}>
+            <Box sx={{ mt: 0.75, maxHeight: 220, overflowY: 'auto' }}>
+              <CertificateTranscript transcript={cert.transcript} compact />
+            </Box>
+          </Collapse>
+        </Box>
+      ) : null}
+
+      <Divider sx={{ borderColor: alpha(theme.palette.grey[500], 0.16), mb: 1 }} />
+
+      <Stack direction="row" justifyContent="flex-end" spacing={0.75} sx={{ mt: 'auto' }}>
+        <Tooltip title="Share on LinkedIn">
+          <IconButton
+            size="small"
+            color="info"
+            onClick={() => onShareLinkedIn(cert)}
+            sx={{
+              width: 34,
+              height: 34,
+              border: `1px solid ${alpha(theme.palette.info.main, 0.28)}`,
+              bgcolor: alpha(theme.palette.info.main, 0.08),
+            }}
+          >
+            <Iconify icon="mdi:linkedin" width={18} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Preview">
+          <IconButton
+            size="small"
+            color="default"
+            onClick={() => onPreview(cert)}
+            disabled={previewLoading}
+            sx={{
+              width: 34,
+              height: 34,
+              border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
+              bgcolor: alpha(theme.palette.grey[500], 0.06),
+            }}
+          >
+            <Iconify icon="solar:eye-bold" width={18} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Download">
+          <IconButton
+            size="small"
+            color="primary"
+            onClick={() => onDownload(cert)}
+            disabled={downloadingId === cert.id}
+            sx={{
+              width: 34,
+              height: 34,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
+            }}
+          >
+            <Iconify icon="solar:download-bold" width={18} />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    </Card>
+  );
 }
 
 export function MyCertificates() {
@@ -92,9 +439,7 @@ export function MyCertificates() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) {
-      return () => {};
-    }
+    if (authLoading) return () => {};
     if (!authenticated) {
       setCertificateRows([]);
       setLoading(false);
@@ -118,38 +463,12 @@ export function MyCertificates() {
     };
   }, [authenticated, authLoading]);
 
-  const certificates = useMemo(() => {
-    if (!certificateRows?.length) return [];
-    return certificateRows
-      .map((row) => {
-        const market = parseMarketData(row.marketData);
-        const cpeHoursRaw = market.cpeHours ?? market.cpe ?? market.hours;
-        const cpeHours = cpeHoursRaw != null && cpeHoursRaw !== '' ? Number(cpeHoursRaw) : null;
-        return {
-          id: row.id,
-          courseId: row.courseId,
-          courseTitle: row.courseTitle || 'Untitled Course',
-          certificateNo: row.certificateNo || '',
-          learnerName: row.learnerName || 'Learner',
-          completedAt: row.completedAt ? formatCompletedDate(row.completedAt) : '—',
-          cpeHours: cpeHours != null ? cpeHours : '—',
-        };
-      })
-      .filter(Boolean);
-  }, [certificateRows]);
+  const certificates = useMemo(() => mapCertificateRows(certificateRows), [certificateRows]);
 
   const handleDownload = async (cert) => {
     setDownloadingId(cert.id);
     try {
-      const blob = await pdf(
-        <CertificatePdfDocument
-          courseTitle={cert.courseTitle}
-          learnerName={cert.learnerName}
-          completedAt={cert.completedAt}
-          cpeHours={cert.cpeHours}
-          logoSource={logoSource}
-        />
-      ).toBlob();
+      const blob = await pdf(<CertificatePdfDocument {...buildPdfProps(cert, logoSource)} />).toBlob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -166,15 +485,7 @@ export function MyCertificates() {
   const handlePreview = async (cert) => {
     setPreviewLoading(true);
     try {
-      const blob = await pdf(
-        <CertificatePdfDocument
-          courseTitle={cert.courseTitle}
-          learnerName={cert.learnerName}
-          completedAt={cert.completedAt}
-          cpeHours={cert.cpeHours}
-          logoSource={logoSource}
-        />
-      ).toBlob();
+      const blob = await pdf(<CertificatePdfDocument {...buildPdfProps(cert, logoSource)} />).toBlob();
       const url = URL.createObjectURL(blob);
       const previewWindow = window.open(url, '_blank', 'noopener,noreferrer');
       if (!previewWindow) {
@@ -198,14 +509,8 @@ export function MyCertificates() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  if (authLoading || loading) {
-    return <LoadingScreen />;
-  }
-
-  // Guest: same reusable sign-in shell as Progress & Favorites (`learning-guest-sign-in-prompt` presets.certificates).
-  if (!authenticated) {
-    return <LearningGuestSignInPrompt variant="certificates" />;
-  }
+  if (authLoading || loading) return <LoadingScreen />;
+  if (!authenticated) return <LearningGuestSignInPrompt variant="certificates" />;
 
   return (
     <>
@@ -215,220 +520,43 @@ export function MyCertificates() {
           `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`
         }
         title="My Certificates"
-        subtitle="Certificates earned from completed courses"
+        subtitle="Formal certificates with earned CPE hours and learning transcripts"
       />
 
-      <Grid container spacing={{ xs: 2, sm: 2.5, md: 2 }}>
-        {(() => {
-          const minDesktopCards = 4;
-          const placeholdersNeeded = Math.max(0, minDesktopCards - certificates.length);
-          const displayedCertificates = [
-            ...certificates.map((cert) => ({ cert, isPlaceholder: false })),
-            ...Array.from({ length: placeholdersNeeded }, () => ({ cert: null, isPlaceholder: true })),
-          ];
-          return (
-            <>
-              {displayedCertificates.map((item, index) => (
-          <Grid key={item.cert?.id || `placeholder-${index}`} xs={12} sm={6} md={3}>
-            {item.isPlaceholder ? (
-              <Card
-                sx={{
-                  p: { xs: 2, md: 1.75 },
-                  height: '100%',
-                  minHeight: 190,
-                  borderRadius: 2,
-                  border: `1px dashed ${alpha(theme.palette.primary.main, 0.32)}`,
-                  bgcolor: alpha(theme.palette.primary.main, 0.02),
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                  Empty certificate slot
-                </Typography>
-              </Card>
-            ) : (
-            <Card
-              sx={{
-                p: { xs: 2, md: 1.75 },
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                borderRadius: 2,
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
-                bgcolor: 'background.paper',
-                boxShadow: `0 8px 24px ${alpha(theme.palette.grey[500], 0.12)}`,
-                position: 'relative',
-                overflow: 'hidden',
-                transition: 'box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 3,
-                  background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                },
-                '&::after': {
-                  content: '""',
-                  position: 'absolute',
-                  right: -18,
-                  top: -18,
-                  width: 92,
-                  height: 92,
-                  borderRadius: '50%',
-                  background: alpha(theme.palette.primary.main, 0.06),
-                },
-                '& .certificate-watermark': {
-                  position: 'absolute',
-                  left: 10,
-                  bottom: 10,
-                  color: theme.palette.success.main,
-                  pointerEvents: 'none',
-                },
-                '&:hover': {
-                  boxShadow: `0 14px 30px ${alpha(theme.palette.grey[500], 0.2)}`,
-                  transform: 'translateY(-3px)',
-                  borderColor: alpha(theme.palette.primary.main, 0.32),
-                },
-              }}
-            >
-              <Stack direction="row" spacing={1.25} alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1.25 }}>
-                <Box
-                  sx={{
-                    width: { xs: 44, lg: 38 },
-                    height: { xs: 44, lg: 38 },
-                    borderRadius: 1.25,
-                    bgcolor: alpha(theme.palette.success.main, 0.12),
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Iconify icon="solar:medal-ribbons-star-bold" width={24} sx={{ color: 'success.main' }} />
-                </Box>
-                <Box sx={{ minWidth: 0, flex: 1, pr: 1 }}>
-                  <Typography variant="overline" sx={{ color: 'text.secondary', lineHeight: 1.2, fontSize: '0.8rem', fontWeight: 700, letterSpacing: 0.6 }}>
-                    Certificate
-                  </Typography>
-              
-                </Box>
-                <Chip
-                  size="small"
-                  label="Issued"
-                  color="success"
-                  variant="soft"
-                  sx={{ flexShrink: 0 }}
-                />
-              </Stack>
-
-              <Divider sx={{ mb: 1.35, borderColor: alpha(theme.palette.grey[500], 0.18) }} />
-
-              <Stack spacing={0.7} sx={{ mb: 1.4 }}>
-                <Stack direction="row" alignItems="flex-start" spacing={1}>
-                  <Iconify icon="solar:book-bold" width={16} sx={{ color: 'text.secondary', mt: 0.2 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: 'text.secondary',
-                      fontWeight: 400,
-                      fontSize: '0.875rem',
-                      width: '100%',
-                      maxWidth: '100%',
-                      whiteSpace: 'normal',
-                      overflowWrap: 'anywhere',
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    Course: {item.cert.courseTitle || '—'}
-                  </Typography>
-                </Stack>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Iconify icon="solar:clipboard-text-bold" width={16} sx={{ color: 'text.secondary' }} />
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: 'text.secondary',
-                      fontWeight: 600,
-                      fontSize: '0.875rem',
-                      width: '100%',
-                      maxWidth: '100%',
-                      whiteSpace: 'normal',
-                      overflowWrap: 'anywhere',
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    No: {item.cert.certificateNo || '—'}
-                  </Typography>
-                </Stack>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Iconify icon="solar:calendar-bold" width={16} sx={{ color: 'text.secondary' }} />
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 400, fontSize: '0.875rem' }}>
-                    Completed: {item.cert.completedAt}
-                  </Typography>
-                </Stack>
-                {typeof item.cert.cpeHours === 'number' && (
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, pl: 3.25, fontSize: '0.875rem' }}>
-                    {`${item.cert.cpeHours} CPE Hour${item.cert.cpeHours !== 1 ? 's' : ''}`}
-                  </Typography>
-                )}
-              </Stack>
-
-              <Stack direction="row" justifyContent="flex-end" spacing={0.5} sx={{ mt: 'auto', pt: 1 }}>
-                <Tooltip title="Share on LinkedIn">
-                  <IconButton
-                    size="small"
-                    color="info"
-                    onClick={() => handleShareLinkedIn(item.cert)}
-                    sx={{
-                      border: `1px solid ${alpha(theme.palette.info.main, 0.28)}`,
-                      bgcolor: alpha(theme.palette.info.main, 0.08),
-                    }}
-                  >
-                    <Iconify icon="mdi:linkedin" width={18} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Preview">
-                  <IconButton
-                    size="small"
-                    color="default"
-                    onClick={() => handlePreview(item.cert)}
-                    disabled={previewLoading}
-                    sx={{
-                      border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
-                      bgcolor: alpha(theme.palette.grey[500], 0.04),
-                    }}
-                  >
-                    <Iconify icon="solar:eye-bold" width={18} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Download">
-                  <IconButton
-                    size="small"
-                    color="primary"
-                    onClick={() => handleDownload(item.cert)}
-                    disabled={downloadingId === item.cert?.id}
-                    sx={{
-                      border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
-                      bgcolor: alpha(theme.palette.primary.main, 0.08),
-                    }}
-                  >
-                    <Iconify icon="solar:download-bold" width={18} />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-              <Iconify icon="solar:verified-check-bold" width={54} className="certificate-watermark" />
-            </Card>
-            )}
-          </Grid>
-              ))}
-            </>
-          );
-        })()}
-      </Grid>
+      {certificates.length === 0 ? (
+        <Card
+          sx={{
+            p: 4,
+            textAlign: 'center',
+            border: `1px dashed ${theme.palette.divider}`,
+            boxShadow: 'none',
+          }}
+        >
+          <Iconify icon="solar:medal-ribbons-star-bold" width={48} sx={{ color: 'text.disabled', mb: 2 }} />
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            No certificates yet
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+            Complete a course or programme to receive your certificate.
+          </Typography>
+        </Card>
+      ) : (
+        <Grid container spacing={CREDENTIAL_GRID_SPACING}>
+          {certificates.map((cert) => (
+            <Grid key={cert.id} {...CREDENTIAL_GRID_PROPS}>
+              <CertificateCard
+                cert={cert}
+                theme={theme}
+                previewLoading={previewLoading}
+                downloadingId={downloadingId}
+                onShareLinkedIn={handleShareLinkedIn}
+                onPreview={handlePreview}
+                onDownload={handleDownload}
+              />
+            </Grid>
+          ))}
+        </Grid>
+      )}
     </>
   );
 }

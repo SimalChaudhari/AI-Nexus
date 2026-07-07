@@ -6,6 +6,15 @@ import { CourseSectionWatchProgressEntity } from './course-section-watch-progres
 import { CourseModuleSectionEntity } from './course-module-section.entity';
 import { CourseModuleEntity } from './course-module.entity';
 import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-progress.dto';
+import { normalizeVideoUrlForCompare } from './course-video-url.util';
+import {
+  computeCpeHoursFromWatchSeconds,
+  formatSecondsToDisplayTime,
+  parseMarketDataCpeHours,
+  ProgramPillarWatchSummary,
+  resolveCoursePillarIndex,
+  secondsToWatchedHours,
+} from './course-program-cpe-summary.util';
 
 function isSectionProgressFkViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -143,8 +152,13 @@ export class CourseSectionWatchProgressService {
     const fromSection = Math.max(0, Math.floor(Number(resolvedDurationTimeSeconds) || 0));
     const fromObserved = Math.max(0, Math.floor(Number(observedVideoDurationSeconds) || 0));
     const fromStored = Math.max(0, Math.floor(Number(storedVideoDurationSeconds) || 0));
-    // UI/display timeline should be full video length (never watchtime threshold).
-    return Math.max(fromSection, fromObserved, fromStored);
+    const observed = Math.max(fromObserved, fromStored);
+
+    // Admin durationTime can exceed the real Spotlightr runtime — do not deflate progress/completion.
+    if (observed > 0 && fromSection > 0 && observed < fromSection * 0.85) {
+      return observed;
+    }
+    return Math.max(fromSection, observed);
   }
 
   private resolveCompletionRequiredSeconds(
@@ -159,20 +173,25 @@ export class CourseSectionWatchProgressService {
   }
 
   /**
-   * When admin leaves watchtime empty, required equals the stored/catalog duration, but HTML5 / YouTube
-   * often tops out ~1s short (e.g. 0:59 played vs 01:00 in CMS). Allow 1s slack only in that "full video" mode;
-   * explicit admin watch caps stay exact.
+   * Strict completion: unique watched coverage must meet or exceed the required threshold.
    */
-  private watchProgressMeetsCompletionRequirement(
-    watched: number,
-    required: number,
-    adminWatchtimeCapSeconds: number,
-  ): boolean {
+  private watchProgressMeetsCompletionRequirement(watched: number, required: number): boolean {
     if (!(required > 0)) return false;
-    if (watched >= required) return true;
-    if (adminWatchtimeCapSeconds > 0) return false;
-    if (required < 5) return false;
-    return watched >= required - 1;
+    return watched >= required;
+  }
+
+  private async dropStaleProgressIfVideoUrlChanged(
+    row: CourseSectionWatchProgressEntity | undefined,
+    sectionVideoUrl?: string | null,
+  ): Promise<CourseSectionWatchProgressEntity | undefined> {
+    if (!row) return undefined;
+    const currentUrl = normalizeVideoUrlForCompare(sectionVideoUrl);
+    const storedUrl = normalizeVideoUrlForCompare(row.sourceVideoUrl);
+    if (storedUrl && currentUrl && storedUrl !== currentUrl) {
+      await this.sectionProgressRepository.delete({ id: row.id });
+      return undefined;
+    }
+    return row;
   }
 
   private async resolveCourseTiming(
@@ -181,7 +200,7 @@ export class CourseSectionWatchProgressService {
   ): Promise<{ watchtimeSeconds: number; durationTimeSeconds: number }> {
     const section = await this.sectionRepository.findOne({
       where: { id: sectionId },
-      select: ['id', 'moduleId', 'watchtime', 'durationTime'],
+      select: ['id', 'moduleId', 'watchtime', 'durationTime', 'videoUrl'],
     });
     if (!section) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
     const module = await this.moduleRepository.findOne({
@@ -234,7 +253,7 @@ export class CourseSectionWatchProgressService {
     const sections = modules.length
       ? await this.sectionRepository.find({
           where: modules.map((module) => ({ moduleId: module.id })),
-          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime'],
+          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'videoUrl'],
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
@@ -278,7 +297,16 @@ export class CourseSectionWatchProgressService {
     const progressRows = await this.sectionProgressRepository.find({
       where: { userId, courseId, sectionId: In(sectionIds) },
     });
-    const progressBySection = new Map(progressRows.map((r) => [r.sectionId, r]));
+    const sectionVideoUrlById = new Map(sections.map((s) => [s.id, s.videoUrl]));
+    const validProgressRows: CourseSectionWatchProgressEntity[] = [];
+    for (const row of progressRows) {
+      const kept = await this.dropStaleProgressIfVideoUrlChanged(
+        row,
+        sectionVideoUrlById.get(row.sectionId),
+      );
+      if (kept) validProgressRows.push(kept);
+    }
+    const progressBySection = new Map(validProgressRows.map((r) => [r.sectionId, r]));
 
     const resolvedTimingBySection = new Map<string, { watchtimeSeconds: number; durationTimeSeconds: number }>();
     sections.forEach((section) => {
@@ -345,11 +373,7 @@ export class CourseSectionWatchProgressService {
     );
     const isCompleted = Boolean(
       existing?.isCompleted ||
-        this.watchProgressMeetsCompletionRequirement(
-          watchedForDisplay,
-          required,
-          resolvedWatchtimeSeconds,
-        ),
+        this.watchProgressMeetsCompletionRequirement(watchedForDisplay, required),
     );
     const isWatched = isCompleted;
     const computedForResponse =
@@ -457,9 +481,16 @@ export class CourseSectionWatchProgressService {
         watchedCoverageRanges: [],
       };
     }
-    const existing = await this.sectionProgressRepository.findOne({
+    const section = await this.sectionRepository.findOne({
+      where: { id: sectionId },
+      select: ['id', 'videoUrl'],
+    });
+    let existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
+    existing =
+      (await this.dropStaleProgressIfVideoUrlChanged(existing ?? undefined, section?.videoUrl)) ??
+      null;
     const resolvedTiming = await this.resolveCourseTiming(courseId, sectionId);
     const isLocked = await this.resolveSectionLockedState(userId, courseId, sectionId);
     return this.formatSectionProgressResponse(
@@ -483,7 +514,7 @@ export class CourseSectionWatchProgressService {
     }
     const section = await this.sectionRepository.findOne({
       where: { id: sectionId },
-      select: ['id', 'moduleId'],
+      select: ['id', 'moduleId', 'videoUrl'],
     });
     if (!section) {
       return this.getSectionProgress(userId, courseId, sectionId);
@@ -495,9 +526,13 @@ export class CourseSectionWatchProgressService {
     if (!sectionModule || sectionModule.courseId !== courseId) {
       return this.getSectionProgress(userId, courseId, sectionId);
     }
-    const existing = await this.sectionProgressRepository.findOne({
+    let existing = await this.sectionProgressRepository.findOne({
       where: { userId, courseId, sectionId },
     });
+    existing =
+      (await this.dropStaleProgressIfVideoUrlChanged(existing ?? undefined, section.videoUrl)) ??
+      null;
+    const sourceVideoUrl = normalizeVideoUrlForCompare(section.videoUrl) || null;
     const resolvedTiming = await this.resolveCourseTiming(courseId, sectionId);
     const incomingDuration = typeof dto.durationSeconds === 'number' ? dto.durationSeconds : 0;
     const observedDuration = Math.max(
@@ -550,19 +585,25 @@ export class CourseSectionWatchProgressService {
     const reachedRequired = this.watchProgressMeetsCompletionRequirement(
       computed.watched,
       requiredForCompletion,
-      resolvedTiming.watchtimeSeconds,
     );
     const isCompleted = stickyCompleted || explicitCompletion || reachedRequired;
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
-    const finalDuration = Math.max(computed.duration, 0);
     const previousLastPosition = Math.max(0, Number(existing?.lastPositionSeconds || 0));
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
     // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
     const finalLastPosition = Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
-    const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
+    let finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
+    let finalDuration = Math.max(computed.duration, 0);
+    if (isCompleted && finalDuration > 0) {
+      finalWatched = Math.max(finalWatched, finalDuration);
+    }
     const finalRemaining = Math.max(0, finalDuration - finalWatched);
     const finalPercent =
-      finalDuration > 0 ? Number(((finalWatched / finalDuration) * 100).toFixed(2)) : 0;
+      isCompleted && finalDuration > 0
+        ? 100
+        : finalDuration > 0
+          ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
+          : 0;
 
     // Atomic upsert prevents duplicate-key races when multiple progress updates arrive together.
     try {
@@ -585,6 +626,7 @@ export class CourseSectionWatchProgressService {
           remainingSeconds: finalRemaining,
           completionPercent: finalPercent,
           isCompleted,
+          sourceVideoUrl,
           lastAccessedAt: now,
         },
         ['userId', 'courseId', 'sectionId'],
@@ -599,6 +641,159 @@ export class CourseSectionWatchProgressService {
       throw error;
     }
     return this.getSectionProgress(userId, courseId, sectionId);
+  }
+
+  /** Section IDs where at least one learner has isCompleted=true. */
+  async getCompletedSectionIdsForCourse(courseId: string): Promise<string[]> {
+    const rows = await this.sectionProgressRepository.find({
+      where: { courseId, isCompleted: true },
+      select: ['sectionId'],
+    });
+    return [...new Set(rows.map((row) => row.sectionId).filter(Boolean))];
+  }
+
+  async hasAnyLearnerCompletedSection(courseId: string, sectionId: string): Promise<boolean> {
+    const count = await this.sectionProgressRepository.count({
+      where: { courseId, sectionId, isCompleted: true },
+    });
+    return count > 0;
+  }
+
+  /** Sum unique video watch coverage across all programme pillar courses (1–3). */
+  private async sumVideoWatchStatsForCourse(
+    userId: string,
+    courseId: string,
+  ): Promise<{
+    watchedSeconds: number;
+    totalVideoDurationSeconds: number;
+    allVideosCompleted: boolean;
+    totalVideoSections: number;
+    completedVideoSections: number;
+  }> {
+    const { sections } = await this.getModulesAndSections(courseId);
+    const videoSections = sections.filter((section) => Boolean(String(section.videoUrl || '').trim()));
+    if (!videoSections.length) {
+      return {
+        watchedSeconds: 0,
+        totalVideoDurationSeconds: 0,
+        allVideosCompleted: false,
+        totalVideoSections: 0,
+        completedVideoSections: 0,
+      };
+    }
+
+    const progressMap = await this.getAllSectionProgressForCourse(userId, courseId);
+    let watchedSeconds = 0;
+    let totalVideoDurationSeconds = 0;
+    let completedVideoSections = 0;
+
+    for (const section of videoSections) {
+      const progress = progressMap[section.id];
+      const watched = Math.max(0, Number(progress?.watchedSeconds || 0));
+      const duration = Math.max(0, Number(progress?.durationSeconds || 0));
+      watchedSeconds += watched;
+      totalVideoDurationSeconds += duration;
+      if (progress?.isCompleted) {
+        completedVideoSections += 1;
+      }
+    }
+
+    return {
+      watchedSeconds,
+      totalVideoDurationSeconds,
+      allVideosCompleted: completedVideoSections === videoSections.length,
+      totalVideoSections: videoSections.length,
+      completedVideoSections,
+    };
+  }
+
+  async getProgramPillarWatchSummary(
+    userId: string,
+    programId: string,
+  ): Promise<ProgramPillarWatchSummary> {
+    const courses = await this.courseRepository.find({
+      where: { programId, isBundle: false },
+      select: ['id', 'title', 'programPillarIndex', 'level', 'marketData', 'createdAt'],
+      order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
+    });
+
+    const courseByPillar = new Map<number, (typeof courses)[number]>();
+    for (const course of courses) {
+      const pillarIndex = resolveCoursePillarIndex(course);
+      if (!pillarIndex || courseByPillar.has(pillarIndex)) continue;
+      courseByPillar.set(pillarIndex, course);
+    }
+
+    const pillarBreakdown: ProgramPillarWatchSummary['pillarBreakdown'] = [];
+    let totalWatchedSeconds = 0;
+    let totalVideoDurationSeconds = 0;
+    let totalAllocatedCpeHours = 0;
+    let hasAnyAllocatedCpe = false;
+
+    for (const pillarIndex of [1, 2, 3]) {
+      const course = courseByPillar.get(pillarIndex);
+      if (!course) continue;
+
+      const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
+      const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
+      const earnedCpeHours = computeCpeHoursFromWatchSeconds(videoStats.watchedSeconds);
+
+      if (allocatedCpeHours != null) {
+        totalAllocatedCpeHours += allocatedCpeHours;
+        hasAnyAllocatedCpe = true;
+      }
+      totalWatchedSeconds += videoStats.watchedSeconds;
+      totalVideoDurationSeconds += videoStats.totalVideoDurationSeconds;
+
+      pillarBreakdown.push({
+        pillarIndex,
+        courseId: course.id,
+        courseTitle: course.title,
+        watchedSeconds: videoStats.watchedSeconds,
+        watchedHours: secondsToWatchedHours(videoStats.watchedSeconds),
+        watchedTime: formatSecondsToDisplayTime(videoStats.watchedSeconds),
+        totalVideoDurationSeconds: videoStats.totalVideoDurationSeconds,
+        allocatedCpeHours,
+        earnedCpeHours,
+        allVideosCompleted: videoStats.allVideosCompleted,
+      });
+    }
+
+    const totalEarnedCpeHours = computeCpeHoursFromWatchSeconds(totalWatchedSeconds);
+
+    return {
+      pillarBreakdown,
+      totalWatchedSeconds,
+      totalWatchedHours: secondsToWatchedHours(totalWatchedSeconds),
+      totalWatchedTime: formatSecondsToDisplayTime(totalWatchedSeconds),
+      totalAllocatedCpeHours: hasAnyAllocatedCpe ? Math.round(totalAllocatedCpeHours * 100) / 100 : null,
+      totalEarnedCpeHours,
+      totalCpeHours: totalEarnedCpeHours,
+    };
+  }
+
+  async getCourseEarnedCpeHours(
+    userId: string,
+    courseId: string,
+  ): Promise<{
+    earnedCpeHours: number;
+    allocatedCpeHours: number | null;
+    watchedSeconds: number;
+    watchedTime: string;
+  }> {
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'marketData'],
+    });
+    const videoStats = await this.sumVideoWatchStatsForCourse(userId, courseId);
+    const allocatedCpeHours = parseMarketDataCpeHours(course?.marketData);
+    const earnedCpeHours = computeCpeHoursFromWatchSeconds(videoStats.watchedSeconds);
+    return {
+      earnedCpeHours: Math.round(earnedCpeHours * 100) / 100,
+      allocatedCpeHours,
+      watchedSeconds: videoStats.watchedSeconds,
+      watchedTime: formatSecondsToDisplayTime(videoStats.watchedSeconds),
+    };
   }
 }
 

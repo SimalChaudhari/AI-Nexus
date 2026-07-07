@@ -44,6 +44,7 @@ import {
 import { CourseWatchProgressService } from './course-watch-progress.service';
 import { CourseSectionWatchProgressService } from './course-section-watch-progress.service';
 import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-progress.dto';
+import { resolveCoursePillarIndex } from './course-program-cpe-summary.util';
 import { CourseFavoriteService } from './course-favorite.service';
 import { CourseSectionFavoriteService } from './course-section-favorite.service';
 import { CourseEnrollmentService } from './course-enrollment.service';
@@ -637,6 +638,23 @@ export class CourseController {
         });
     }
 
+    @Get(':courseId/content-deletion-guard')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary:
+            'Whether modules, sections, or the course cannot be deleted because certificates were issued',
+    })
+    async getCourseContentDeletionGuard(
+        @Param('courseId') courseId: string,
+        @Res() response: Response,
+    ) {
+        await this.courseService.getById(courseId);
+        const guard = await this.courseCertificateService.getCourseContentDeletionGuard(courseId);
+        return response.status(HttpStatus.OK).json({ data: guard });
+    }
+
     @Get(':courseId/player-context')
     @UseGuards(OptionalJwtAuthGuard)
     @ApiOperation({ summary: 'Get full player context for a course (course, enrollment, modules, section progress)' })
@@ -691,13 +709,32 @@ export class CourseController {
             }),
         );
 
+        let programCpeSummary = null;
+        if (userId && courseRow.programId) {
+            const pillarIndex = resolveCoursePillarIndex(courseRow);
+            if (pillarIndex === 3) {
+                const hasEarnedCredential =
+                    await this.courseCertificateService.hasDisplayableCredentialForLearner(userId, courseId);
+                if (hasEarnedCredential) {
+                    programCpeSummary =
+                        await this.courseSectionWatchProgressService.getProgramPillarWatchSummary(
+                            userId,
+                            courseRow.programId,
+                        );
+                }
+            }
+        }
+
         return response.status(HttpStatus.OK).json({
             data: {
                 course,
                 enrolled,
                 modules: modulesWithSections,
             },
-            meta: unlockInfo,
+            meta: {
+                ...unlockInfo,
+                programCpeSummary,
+            },
         });
     }
 
@@ -1004,11 +1041,14 @@ export class CourseController {
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
-        const data = await this.courseQuestionBankService.getLearnerQuizAssessmentProgress(
-            userId,
-            courseId,
-        );
-        return response.status(HttpStatus.OK).json({ data });
+        const [data, hasEarnedCredential, hasCredentialUnlock] = await Promise.all([
+            this.courseQuestionBankService.getLearnerQuizAssessmentProgress(userId, courseId),
+            this.courseCertificateService.hasDisplayableCredentialForLearner(userId, courseId),
+            this.courseCertificateService.hasCredentialRecordForLearner(userId, courseId),
+        ]);
+        return response.status(HttpStatus.OK).json({
+            data: { ...data, hasEarnedCredential, hasCredentialUnlock },
+        });
     }
 
     @Delete('question-bank/attempts/:attemptId')
@@ -1630,6 +1670,11 @@ export class CourseController {
                     (scope) => scope.quizCount > 0 || scope.assignmentCount > 0,
                 );
                 const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
+                const hasEarnedCredential =
+                    await this.courseCertificateService.hasDisplayableCredentialForLearner(
+                        userId,
+                        courseId,
+                    );
                 let completionPercent =
                     totalSections > 0 ? Math.round(completionSum / totalSections) : 0;
                 const isCompleted =
@@ -1658,6 +1703,10 @@ export class CourseController {
                         id: course.id,
                         title: course.title,
                         image: course.image,
+                        level: course.level || null,
+                        programId: course.programId || null,
+                        programPillarIndex: course.programPillarIndex ?? null,
+                        programTitle: course.program?.title || '',
                         freeOrPaid: course.freeOrPaid,
                         isEnrolled: Boolean(course.isEnrolled),
                         accessViaBundle: Boolean(course.accessViaBundle),
@@ -1668,6 +1717,7 @@ export class CourseController {
                         isCompleted,
                         status,
                         quizAssessmentCompleted: quizAssessmentMet,
+                        hasEarnedCredential,
                         videosCompleted,
                         viewedSectionIds,
                         currentSectionId: currentSectionId ? String(currentSectionId) : null,

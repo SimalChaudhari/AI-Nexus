@@ -21,19 +21,3 @@ export class UpdateAnnouncementDto {
     @IsNotEmpty()
     description?: string;
 }
-
-export class CreateCommentDto {
-    @IsString()
-    @IsNotEmpty()
-    content!: string;
-
-    @IsOptional()
-    @IsString()
-    parentCommentId?: string;
-}
-
-export class UpdateCommentDto {
-    @IsString()
-    @IsNotEmpty()
-    content!: string;
-}

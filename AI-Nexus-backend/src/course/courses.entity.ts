@@ -33,6 +33,14 @@ export class CourseEntity {
     @Column({ type: 'uuid', nullable: true })
     categoryId?: string | null;
 
+    /** Optional program this course belongs to (linked from course form). */
+    @Column({ type: 'uuid', nullable: true })
+    programId?: string | null;
+
+    /** Pillar slot (1–3) within a program, derived from course level when linked. */
+    @Column({ type: 'smallint', nullable: true })
+    programPillarIndex?: number | null;
+
     /** Target learner roles for recommendation matching */
     @Column({ type: 'jsonb', nullable: true })
     roles?: string[];

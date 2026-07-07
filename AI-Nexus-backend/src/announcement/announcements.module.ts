@@ -13,15 +13,23 @@ import { JwtModule } from '@nestjs/jwt';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { LocalStorageModule } from '../service/local-storage.module';
 import { PaginationService } from '../common/pagination/pagination.service';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([AnnouncementEntity, CommentEntity, CommentLikeEntity, PinnedAnnouncementEntity, UserEntity]),
+        TypeOrmModule.forFeature([
+            AnnouncementEntity,
+            CommentEntity,
+            CommentLikeEntity,
+            PinnedAnnouncementEntity,
+            UserEntity,
+        ]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
         LocalStorageModule,
+        NotificationModule,
     ],
     providers: [
         AnnouncementService,

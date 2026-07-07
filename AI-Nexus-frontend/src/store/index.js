@@ -10,6 +10,7 @@ import announcementReducer from './slices/announcementSlice';
 import aiForumReducer from './slices/aiForumSlice';
 import speakerReducer from './slices/speakerSlice';
 import languageReducer from './slices/languageSlice';
+import programReducer from './slices/programSlice';
 
 export const store = configureStore({
   reducer: {
@@ -24,6 +25,7 @@ export const store = configureStore({
     aiForum: aiForumReducer,
     speakers: speakerReducer,
     languages: languageReducer,
+    programs: programReducer,
   },
 });
 

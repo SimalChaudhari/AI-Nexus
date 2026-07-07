@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
+import { getApiErrorMessage } from 'src/utils/api-error-message';
 
 // Async thunks for API calls
 export const fetchCourses = createAsyncThunk('courses/fetchCourses', async (params = {}, { rejectWithValue }) => {
@@ -69,7 +70,7 @@ export const deleteCourse = createAsyncThunk('courses/deleteCourse', async (id, 
     await courseService.deleteCourse(id);
     return id; // Return the ID of the deleted course
   } catch (error) {
-    const errorMessage = error?.message || 'Failed to delete course';
+    const errorMessage = getApiErrorMessage(error) || 'Failed to delete course';
     toast.error(errorMessage);
     return rejectWithValue(errorMessage);
   }

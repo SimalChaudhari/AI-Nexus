@@ -15,14 +15,12 @@ import { Iconify } from 'src/components/iconify';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { usePopover, CustomPopover } from 'src/components/custom-popover';
 
-import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 // ----------------------------------------------------------------------
 
 export function AnnouncementTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
-  const router = useRouter();
   const confirm = useBoolean();
   const popover = usePopover();
 
@@ -37,7 +35,7 @@ export function AnnouncementTableRow({ row, selected, onEditRow, onSelectRow, on
           <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start' }}>
             <Link
               component={RouterLink}
-              href={paths.admin.announcement.details(row.id)}
+              href={paths.admin.announcement.edit(row.id)}
               color="inherit"
               sx={{ cursor: 'pointer' }}
             >
@@ -72,16 +70,6 @@ export function AnnouncementTableRow({ row, selected, onEditRow, onSelectRow, on
         slotProps={{ arrow: { placement: 'right-top' } }}
       >
         <MenuList>
-          <MenuItem
-            onClick={() => {
-              router.push(paths.admin.announcement.details(row.id));
-              popover.onClose();
-            }}
-          >
-            <Iconify icon="solar:eye-bold" />
-            View
-          </MenuItem>
-
           <MenuItem
             onClick={() => {
               onEditRow();

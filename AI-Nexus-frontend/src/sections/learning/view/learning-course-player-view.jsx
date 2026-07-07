@@ -29,6 +29,7 @@ import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-do
 import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
 import { Upload } from 'src/components/upload';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
+import { ProgramCpeSummaryPanel } from 'src/sections/learning/components/program-cpe-summary-panel';
 import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
 import { isSpotlightrUrl, parseSpotlightrUrl, seekSpotlightrPlayer } from 'src/utils/spotlightr';
 import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
@@ -172,6 +173,20 @@ function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration) {
   rangesRef.current = cap != null ? clipCoverageRangesPlayer(merged, cap) : merged;
 }
 
+/**
+ * On video end: seal full timeline [0, duration] so strict server rules pass.
+ * Only call from player "ended" handlers (learner reached the end).
+ */
+function finalizeVideoCoverageOnEnd(rangesRef, durationSeconds) {
+  const dur = Math.max(0, Math.round(Number(durationSeconds) || 0));
+  if (dur <= 0) return;
+  const sealed = mergeCoverageRangesPlayer([
+    ...parseCoverageRangePairs(rangesRef.current),
+    [0, dur],
+  ]);
+  rangesRef.current = clipCoverageRangesPlayer(sealed, dur);
+}
+
 /** iPhone, iPod, and iPad (incl. iPadOS desktop UA). */
 function isAppleMobileDevice() {
   if (typeof navigator === 'undefined') return false;
@@ -243,6 +258,15 @@ function mergeServerProgressIntoMap(prev, data) {
   return next;
 }
 
+function isServerSectionComplete(data) {
+  return Boolean(data?.isCompleted === true || data?.isWatched === true);
+}
+
+function lessonHasVideoContent(lesson) {
+  if (!lesson) return false;
+  return Boolean(String(lesson.videoUrl || '').trim());
+}
+
 function mergeProgressForSidebar(lesson, liveById) {
   const live = liveById?.[lesson.id];
   const sp = lesson.sectionProgress || {};
@@ -292,6 +316,13 @@ function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
     fromPlayback > 0 &&
     catalogDuration > 0 &&
     fromPlayback < catalogDuration &&
+    (catalogDuration - fromPlayback > 120 || fromPlayback < catalogDuration * 0.85)
+  ) {
+    total = Math.max(fromPlayback, coverageEnd);
+  } else if (
+    fromPlayback > 0 &&
+    catalogDuration > 0 &&
+    fromPlayback < catalogDuration &&
     catalogDuration - fromPlayback <= 120 &&
     fromPlayback >= catalogDuration * 0.9
   ) {
@@ -322,9 +353,7 @@ function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById,
   let dur = Math.max(0, Number(payload.durationSeconds || 0));
 
   if (adminDur > 0) {
-    dur = Math.min(dur, adminDur);
-  } else if (watched > 0 && dur > watched + 15) {
-    dur = Math.max(watched, Math.min(dur, watched + 5));
+    dur = Math.max(dur, adminDur);
   }
 
   const merged = mergeProgressForSidebar(lesson, liveById);
@@ -339,29 +368,58 @@ function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById,
   return { ...payload, durationSeconds: Math.round(dur) };
 }
 
-/**
- * Lesson counts as done for sidebar/module % and unlocks when PUT progress shows full watch
- * even if `isWatched`/`isCompleted` flags lag one frame behind `completionPercent` (common after last save).
- */
-function getLessonCourseProgressPercent(lesson, liveById, viewedIds) {
-  if (isLessonDoneForUi(lesson, liveById, viewedIds)) return 100;
-  const merged = mergeProgressForSidebar(lesson, liveById);
-  const pct = Number(merged.completionPercent ?? 0);
-  return Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+/** Client-side lesson % from unique watched coverage (same basis as sidebar). */
+function completionPercentFromCoverage(watchedSeconds, durationSeconds) {
+  const dur = Math.max(0, Number(durationSeconds) || 0);
+  const watched = Math.max(0, Number(watchedSeconds) || 0);
+  if (dur <= 0) return watched > 0 ? 1 : 0;
+  if (watched >= dur - 1) return 100;
+  return Math.min(99, Math.round((100 * watched) / dur));
 }
 
+/**
+ * Lesson % for the top course progress bar.
+ * Uses live coverage / playback (like the sidebar), not only server `completionPercent`
+ * (which otherwise only refreshes after a full page reload).
+ */
+function getLessonCourseProgressPercent(lesson, liveById, viewedIds, playback = null) {
+  if (isLessonDoneForUi(lesson, liveById, viewedIds)) return 100;
+
+  const merged = mergeProgressForSidebar(lesson, liveById);
+  const fromServer = Number(merged.completionPercent ?? 0);
+  const serverPct = Number.isFinite(fromServer) ? Math.max(0, Math.min(100, fromServer)) : 0;
+
+  if (!lesson?.videoUrl) {
+    return serverPct;
+  }
+
+  const { totalSec, coverageSec, doneForUi } = resolveSidebarVideoProgress(
+    lesson,
+    liveById,
+    playback,
+    viewedIds
+  );
+  if (doneForUi) return 100;
+
+  const fromCoverage =
+    totalSec > 0
+      ? Math.min(99, Math.round((100 * coverageSec) / totalSec))
+      : coverageSec > 0
+        ? 1
+        : 0;
+
+  return Math.max(serverPct, fromCoverage);
+}
+
+/** Lesson "done" only when the server has confirmed completion (not client % / coverage heuristics). */
 function isLessonDoneForUi(lesson, liveById, viewedIds) {
   if (!lesson?.id) return false;
-  if (Array.isArray(viewedIds) && viewedIds.includes(lesson.id)) return true;
   const merged = mergeProgressForSidebar(lesson, liveById);
   if (merged.isWatched === true || merged.isCompleted === true) return true;
-  const pct = Number(merged.completionPercent ?? 0);
-  if (Number.isFinite(pct) && pct >= 99) return true;
-  const dur = Math.max(0, Number(merged.durationSeconds || lesson.sectionProgress?.durationSeconds || 0));
-  const watched = Math.max(0, Number(merged.watchedSeconds || lesson.sectionProgress?.watchedSeconds || 0));
-  const required = lessonWatchtimeSeconds(lesson);
-  if (required > 0 && watched >= required - 1) return true;
-  if (dur > 0 && watched >= dur - 1) return true;
+  if (lesson.sectionProgress?.isWatched === true || lesson.sectionProgress?.isCompleted === true) {
+    return true;
+  }
+  if (Array.isArray(viewedIds) && viewedIds.includes(lesson.id)) return true;
   return false;
 }
 
@@ -371,14 +429,6 @@ function isSectionLessonComplete(sectionId, flatLessons, liveById, viewedIds) {
   const lesson = (flatLessons || []).find((l) => l.id === sectionId);
   if (!lesson) return false;
   return isLessonDoneForUi(lesson, liveById, viewedIds);
-}
-
-function lessonWatchtimeSeconds(lesson) {
-  const wtRaw = lesson?.watchtime;
-  if (typeof wtRaw === 'number' && Number.isFinite(wtRaw) && wtRaw > 0) {
-    return Math.floor(wtRaw);
-  }
-  return parseWatchtimeToSeconds(String(wtRaw || '').trim());
 }
 
 /** Known section length from API / admin (used to clip coverage before the player reports duration, e.g. YouTube). */
@@ -527,7 +577,7 @@ function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
 
   const left = doneForUi
     ? totalSec
-    : Math.min(totalSec, liveCurrent != null ? liveCurrent : positionish);
+    : Math.min(totalSec, Math.max(coverageSec, liveCurrent != null ? Math.min(liveCurrent, totalSec) : positionish));
   return `${formatSecondsToClock(left)} / ${formatSecondsToClock(totalSec)} • ${pct}%`;
 }
 
@@ -671,6 +721,33 @@ const MODULE_ASSIGNMENT_PREFIX = '__ma__';
 /** Course-end pseudo ids — Beginner / Advanced: single quiz + assignment after all modules done. */
 const COURSE_END_PRACTICE_ID = '__course_end_quiz__';
 const COURSE_END_ASSIGNMENT_ID = '__course_end_assignment__';
+const PROGRAM_CPE_SUMMARY_ID = '__program_cpe_summary__';
+const PROGRAM_CPE_SECTION_ID = 'section-program-cpe';
+
+function SidebarCompletedChip({ theme }) {
+  return (
+    <Chip
+      size="small"
+      label="Completed"
+      color="success"
+      variant="outlined"
+      icon={<Iconify icon="solar:check-circle-bold" width={14} />}
+      sx={{
+        height: 22,
+        flexShrink: 0,
+        alignSelf: 'center',
+        borderWidth: 1.5,
+        '& .MuiChip-label': {
+          px: 0.5,
+          fontSize: theme.typography.pxToRem(10),
+          fontWeight: 800,
+          letterSpacing: 0.02,
+        },
+        '& .MuiChip-icon': { ml: '6px', color: 'success.main' },
+      }}
+    />
+  );
+}
 
 function getModuleIdFromPracticeLessonId(lessonId) {
   if (!lessonId || typeof lessonId !== 'string' || !lessonId.startsWith(MODULE_PRACTICE_PREFIX)) {
@@ -762,6 +839,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   /** Real section UUIDs from API — reject stale URL/mock ids before progress PUT. */
   const apiSectionIdsRef = useRef([]);
   const lastProgressPayloadRef = useRef({ key: '', at: 0 });
+  const lessonVideoUrlRef = useRef({});
+  /** Sections whose video URL changed — block stale progress flush until user plays again. */
+  const sectionVideoProgressResetRef = useRef(new Set());
   const lastFlushPayloadRef = useRef({ key: '', at: 0 });
   const completedSectionIdsRef = useRef(new Set());
   const autoPlayNextRef = useRef(false);
@@ -861,8 +941,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       const payloadProgress = Math.max(0, Number(cappedPayload.watchedSeconds || 0));
       const fullDuration = Math.max(knownDuration, payloadDuration);
       const progressed = Math.max(knownProgress, payloadProgress);
-      // Stop normal progress calls only after full video duration has been reached.
-      if (fullDuration > 0 && progressed >= fullDuration - 1) {
+      // Stop normal progress calls only after full required duration has been reached.
+      if (fullDuration > 0 && progressed >= fullDuration) {
         return Promise.resolve(null);
       }
     }
@@ -909,42 +989,49 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             videoCoverageRangesRef.current =
               dur > 0 ? clipCoverageRangesPlayer(mergeCoverageRangesPlayer(pairs), dur) : mergeCoverageRangesPlayer(pairs);
           }
+          if (isServerSectionComplete(data)) {
+            appendViewedSectionId(sectionId);
+          }
         }
         return data;
       })
       .catch(() => null);
-  }, []);
+  }, [appendViewedSectionId]);
 
-  const syncProgressOnFullDuration = useCallback((sectionId, lastPosition, durationSeconds) => {
+  const syncProgressOnFullDuration = useCallback((sectionId, lastPosition, durationSeconds, forceEnd = false) => {
     const courseId = courseIdRef.current;
-    if (!courseId || !sectionId || sectionId === FEEDBACK_LESSON_ID) return;
-    if (!isUuid(sectionId)) return;
+    if (!courseId || !sectionId || sectionId === FEEDBACK_LESSON_ID) return Promise.resolve(null);
+    if (!isUuid(sectionId)) return Promise.resolve(null);
     const state = fullDurationSyncRef.current;
     if (state.sectionId !== sectionId) {
       fullDurationSyncRef.current = { sectionId, sent: false };
     }
-    if (fullDurationSyncRef.current.sent) return;
-    const payload = buildVideoCoveragePayloadFromRef(
-      videoCoverageRangesRef,
-      lastPosition,
-      durationSeconds
-    );
+    if (!forceEnd && fullDurationSyncRef.current.sent) return Promise.resolve(null);
+    finalizeVideoCoverageOnEnd(videoCoverageRangesRef, durationSeconds);
+    const durRounded = Math.max(0, Math.round(Number(durationSeconds) || 0));
+    const payload = {
+      ...buildVideoCoveragePayloadFromRef(
+        videoCoverageRangesRef,
+        durRounded > 0 ? durRounded : lastPosition,
+        durationSeconds
+      ),
+      ...(forceEnd ? { markCompleted: true } : {}),
+    };
     fullDurationSyncRef.current.sent = true;
-    sendProgressUpdate(courseId, sectionId, payload, false, true)
+    return sendProgressUpdate(courseId, sectionId, payload, false, true)
       .then((data) => {
-        if (!data || typeof data !== 'object') return;
+        if (!data || typeof data !== 'object') return data;
         setLiveSectionProgressMap((prev) => ({
           ...prev,
           [sectionId]: mergeServerProgressIntoMap(prev[sectionId], data),
         }));
-        if (data.isCompleted === true || data.isWatched === true) {
-          appendViewedSectionId(sectionId);
-        }
+        return data;
       })
       .catch(() => {
         fullDurationSyncRef.current.sent = false;
+        return null;
       });
-  }, [sendProgressUpdate, appendViewedSectionId]);
+  }, [sendProgressUpdate]);
 
   const startAutoNextCountdown = useCallback((nextLessonMeta) => {
     if (!nextLessonMeta?.id) return;
@@ -1052,6 +1139,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         durationSeconds: durRounded,
         watchedSeconds,
         watchedCoverageRanges,
+        completionPercent: completionPercentFromCoverage(watchedSeconds, durRounded),
       };
       updateSectionPlayerSnapshotRef.current(sectionId, payload);
       setLiveSectionProgressMap((prev) => ({
@@ -1084,6 +1172,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           viewedSectionIdsRef.current
         )
       ) {
+        return undefined;
+      }
+      if (sectionVideoProgressResetRef.current.has(sectionId)) {
         return undefined;
       }
 
@@ -1190,6 +1281,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         liveSectionProgressMapRef.current,
         viewedSectionIdsRef.current
       );
+      payload = {
+        ...payload,
+        completionPercent: completionPercentFromCoverage(
+          payload.watchedSeconds,
+          payload.durationSeconds
+        ),
+      };
       if (payload.watchedSeconds <= 0 && payload.lastPositionSeconds <= 0) return;
 
       const flushKey = [
@@ -1256,6 +1354,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     swrOptions
   );
   const { mutate } = useSWRConfig();
+  const programCpeRefreshRef = useRef(null);
 
   const questionBankSwrKey = course?.id ? ['course-question-bank', course.id] : null;
   const { data: questionBankList = [] } = useSWR(
@@ -1312,6 +1411,25 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     () => (quizAssessmentProgress?.scopes || []).find((scope) => !scope?.moduleId) || null,
     [quizAssessmentProgress]
   );
+
+  const hasEarnedCredential = Boolean(quizAssessmentProgress?.hasEarnedCredential);
+  const hasCredentialUnlock = Boolean(
+    quizAssessmentProgress?.hasCredentialUnlock ?? quizAssessmentProgress?.hasEarnedCredential
+  );
+
+  const programCpeSummary = useMemo(() => {
+    if (!hasEarnedCredential || !playerContext?.programCpeSummary) return null;
+    return playerContext.programCpeSummary;
+  }, [hasEarnedCredential, playerContext?.programCpeSummary]);
+
+  useEffect(() => {
+    if (!playerKey || !programCpeSummary) return undefined;
+    clearTimeout(programCpeRefreshRef.current);
+    programCpeRefreshRef.current = setTimeout(() => {
+      mutate(playerKey);
+    }, 2500);
+    return () => clearTimeout(programCpeRefreshRef.current);
+  }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
   const isModuleQuizPerfect = useCallback(
     (moduleId) => {
@@ -1417,6 +1535,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   useEffect(() => {
     setLiveSectionProgressMap({});
     sectionPlayerSnapshotRef.current = {};
+    lessonVideoUrlRef.current = {};
+    sectionVideoProgressResetRef.current = new Set();
   }, [course?.id]);
 
   const apiModules = playerContext?.modules || [];
@@ -1445,6 +1565,81 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [modules]
   );
   flatLessonsRef.current = flatLessons;
+
+  // Admin replaced the video URL or backend cleared progress — drop stale local minutes/resume state.
+  useEffect(() => {
+    if (!Array.isArray(flatLessons) || flatLessons.length === 0) return;
+
+    const clearedIds = [];
+
+    flatLessons.forEach((lesson) => {
+      if (!lesson?.id || !isUuid(lesson.id)) return;
+
+      const nextUrl = String(lesson.videoUrl || '').trim();
+      const prevUrl = lessonVideoUrlRef.current[lesson.id];
+      const urlChanged = prevUrl !== undefined && prevUrl !== nextUrl;
+      lessonVideoUrlRef.current[lesson.id] = nextUrl;
+
+      const sp = lesson.sectionProgress;
+      const hasServerProgress = Boolean(
+        sp?.isWatched === true ||
+          sp?.isCompleted === true ||
+          Number(sp?.watchedSeconds) > 0 ||
+          Number(sp?.lastPositionSeconds) > 0 ||
+          Number(sp?.completionPercent) > 0
+      );
+      const hasLocalProgress = Boolean(
+        sectionPlayerSnapshotRef.current[lesson.id] ||
+          liveSectionProgressMapRef.current[lesson.id] ||
+          viewedSectionIdsRef.current.includes(lesson.id)
+      );
+
+      if (urlChanged || (hasLocalProgress && !hasServerProgress)) {
+        clearedIds.push(lesson.id);
+        delete sectionPlayerSnapshotRef.current[lesson.id];
+        if (urlChanged) {
+          sectionVideoProgressResetRef.current.add(lesson.id);
+        }
+      }
+    });
+
+    if (clearedIds.length === 0) return;
+
+    clearedIds.forEach((id) => {
+      if (activeLessonIdRef.current !== id) return;
+      resumeSeekAppliedRef.current = { sectionId: id, seconds: 0, applied: false };
+      videoCoverageRangesRef.current = [];
+      nativeVideoProgressRef.current.lastTime = 0;
+      nativeVideoProgressRef.current.maxWatchedTimeline = 0;
+      nativeVideoProgressRef.current.markedComplete = false;
+      nativeVideoProgressRef.current.pendingDeltaSeconds = 0;
+      youtubeProgressRef.current.lastTime = 0;
+      youtubeProgressRef.current.maxWatchedTimeline = 0;
+      youtubeProgressRef.current.markedComplete = false;
+      youtubeProgressRef.current.isPlaying = false;
+      youtubeProgressRef.current.pendingDeltaSeconds = 0;
+      spotlightrProgressRef.current.lastTime = 0;
+      spotlightrProgressRef.current.maxWatchedTimeline = 0;
+      spotlightrProgressRef.current.markedComplete = false;
+      spotlightrProgressRef.current.isPlaying = false;
+      spotlightrProgressRef.current.watchedSeconds = 0;
+      spotlightrProgressRef.current.pendingDeltaSeconds = 0;
+    });
+
+    setLiveSectionProgressMap((prev) => {
+      const next = { ...prev };
+      clearedIds.forEach((id) => {
+        delete next[id];
+      });
+      return next;
+    });
+    setViewedSectionIds((prev) => {
+      const next = prev.filter((id) => !clearedIds.includes(id));
+      viewedSectionIdsRef.current = next;
+      return next;
+    });
+  }, [flatLessons]);
+
   const modulesRef = useRef(modules);
   modulesRef.current = modules;
 
@@ -1457,24 +1652,20 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         lessonId === FEEDBACK_LESSON_ID ||
         !isUuid(lessonId)
       ) {
-        return;
+        return Promise.resolve(false);
       }
       const lessonRow = flatLessons.find((l) => l.id === lessonId);
       if (lessonRow && isLessonDoneForUi(lessonRow, liveSectionProgressMap, viewedSectionIds)) {
-        appendViewedSectionId(lessonId);
-        return;
+        return Promise.resolve(true);
       }
 
-      sendProgressUpdate(course.id, lessonId, {
+      return sendProgressUpdate(course.id, lessonId, {
         watchedDeltaSeconds: 1,
         durationSeconds: 1,
         markCompleted: true,
-      });
-
-      appendViewedSectionId(lessonId);
+      }).then((data) => isServerSectionComplete(data));
     },
     [
-      appendViewedSectionId,
       authenticated,
       course?.id,
       flatLessons,
@@ -1495,7 +1686,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   useEffect(() => {
     if (!activeLessonId || activeLessonId === FEEDBACK_LESSON_ID) return undefined;
     if (getModuleIdFromPseudoLessonId(activeLessonId)) return undefined;
-    const hasVideo = flatLessons.some((l) => l.id === activeLessonId && l.videoUrl);
+    const hasVideo = flatLessons.some((l) => l.id === activeLessonId && lessonHasVideoContent(l));
     if (!hasVideo) return undefined;
     const id = window.setInterval(() => {
       setSidebarPlaybackTick((n) => n + 1);
@@ -1781,7 +1972,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (!authenticated || !course?.id || !activeLessonId || !isUUID(activeLessonId))
       return undefined;
     const lesson = modules.flatMap((sec) => sec.lessons || []).find((l) => l.id === activeLessonId);
-    const hasVideo = !!lesson?.videoUrl;
+    const hasVideo = lessonHasVideoContent(lesson);
     const hasImages = Array.isArray(lesson?.images) && lesson.images.length > 0;
     if (hasVideo) return undefined; // progress set when user watches video / video ends
     if (hasImages) return undefined; // progress set when user views all images
@@ -1846,6 +2037,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       return;
     }
 
+    if (sectionIdFromUrl === PROGRAM_CPE_SUMMARY_ID && playerContext?.programCpeSummary) {
+      setExpandedSection(PROGRAM_CPE_SECTION_ID);
+      urlSectionProcessedRef.current = processedKey;
+      return;
+    }
+
     if (
       typeof sectionIdFromUrl === 'string' &&
       sectionIdFromUrl.startsWith(MODULE_PRACTICE_PREFIX)
@@ -1902,15 +2099,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     });
     // Mark as processed even if URL parameter not found or invalid
     urlSectionProcessedRef.current = course.id;
-  }, [modules, course?.id, playerLoading, searchParams, setSearchParams, activeLessonId]);
+  }, [modules, course?.id, playerLoading, searchParams, setSearchParams, activeLessonId, playerContext?.programCpeSummary]);
 
   // Handle default section/lesson selection.
   // If URL section exists, respect it. Otherwise auto-open first available lesson.
   useEffect(() => {
     if (modules.length === 0) return;
     if (activeLessonId === FEEDBACK_LESSON_ID) return;
-    // Don't override when user has opened the Feedback accordion
     if (expandedSection === FEEDBACK_SECTION_ID) return;
+    if (expandedSection === PROGRAM_CPE_SECTION_ID) return;
 
     const sectionIdFromUrl = searchParams.get('section');
     if (!sectionIdFromUrl) {
@@ -1956,6 +2153,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [modules, activeLessonId]);
 
   // Derived once from activeLesson so useEffects can use them (must be before YouTube useEffect)
+  const [spotlightrDirectSrc, setSpotlightrDirectSrc] = useState(null);
+  const [spotlightrPlaybackPreparedAt, setSpotlightrPlaybackPreparedAt] = useState(0);
+
   const sectionVideoUrlForEmbed = activeLesson?.videoUrl?.trim() || null;
   const embedVideoId = sectionVideoUrlForEmbed ? getYouTubeVideoId(sectionVideoUrlForEmbed) : null;
   const spotlightrMeta = useMemo(
@@ -1965,38 +2165,45 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         : null,
     [sectionVideoUrlForEmbed, embedVideoId]
   );
-  const [spotlightrDirectSrc, setSpotlightrDirectSrc] = useState(null);
-  const [spotlightrPlaybackPreparedAt, setSpotlightrPlaybackPreparedAt] = useState(0);
 
-  // Do not block the iframe on Spotlightr API — under load prepare can time out for 8–20s.
-  // Show embed immediately; upgrade to direct MP4 if prepare succeeds later.
+  const activeSpotlightrMeta = useMemo(() => {
+    if (!spotlightrMeta || spotlightrDirectSrc) return null;
+    return spotlightrMeta;
+  }, [spotlightrMeta, spotlightrDirectSrc]);
+
+  // Resolve direct MP4 from backend so we use native <video> instead of Spotlightr HLS iframe (.ts / .m3u8.key).
   useEffect(() => {
     setSpotlightrDirectSrc(null);
+    setSpotlightrPrepareDone(false);
     if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) {
+      setSpotlightrPrepareDone(true);
       return undefined;
     }
     let cancelled = false;
     courseService
       .prepareSpotlightrPlayback(spotlightrMeta.watchUrl)
-      .then((data) => {
+      .then(({ directUrl, settingsUpdated }) => {
         if (cancelled) return;
-        const direct = String(data?.directUrl || '').trim();
+        const direct = String(directUrl || '').trim();
         if (direct) {
           setSpotlightrDirectSrc(direct);
-        } else if (data?.settingsUpdated) {
+        } else if (settingsUpdated) {
           setSpotlightrPlaybackPreparedAt(Date.now());
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSpotlightrPrepareDone(true);
+      });
     return () => {
       cancelled = true;
     };
   }, [spotlightrMeta?.watchUrl, activeLessonId, activeLessonGateBlocked]);
 
   const activeSpotlightrMeta = useMemo(() => {
-    if (!spotlightrMeta || spotlightrDirectSrc) return null;
+    if (!spotlightrMeta || spotlightrDirectSrc || !spotlightrPrepareDone) return null;
     return spotlightrMeta;
-  }, [spotlightrMeta, spotlightrDirectSrc]);
+  }, [spotlightrMeta, spotlightrDirectSrc, spotlightrPrepareDone]);
 
   // Direct MP4 must resume after prepare; iframe hook may have marked resume applied too early.
   useEffect(() => {
@@ -2082,7 +2289,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (!lessonDone && resumeSeconds > prev.seconds) {
       resumeSeekAppliedRef.current.seconds = resumeSeconds;
     }
-  }, [sectionProgressData, activeLessonId]);
+  }, [sectionProgressData, activeLessonId, flatLessons]);
 
   // If section progress arrives after player mounted, seek immediately.
   useEffect(() => {
@@ -2209,21 +2416,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }
       const payload = buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, last, dur);
       sendProgressUpdate(courseId, sectionId, { ...payload, markCompleted: true }).then((data) => {
-        if (data?.isCompleted || data?.isWatched) {
-          nativeVideoProgressRef.current.markedComplete = true;
-          youtubeProgressRef.current.markedComplete = true;
-          spotlightrProgressRef.current.markedComplete = true;
-        }
-        // Client already met watch rules; unlock next lesson even if the API body omits isWatched/isCompleted.
-        if (data && typeof data === 'object') {
-          appendViewedSectionId(sectionId);
-        }
+        if (!isServerSectionComplete(data)) return;
+        nativeVideoProgressRef.current.markedComplete = true;
+        youtubeProgressRef.current.markedComplete = true;
+        spotlightrProgressRef.current.markedComplete = true;
       });
     };
     return () => {
       videoWatchedEnoughRef.current = null;
     };
-  }, [course?.id, activeLessonId, sendProgressUpdate, appendViewedSectionId]);
+  }, [course?.id, activeLessonId, sendProgressUpdate]);
 
   // YouTube: load IFrame API; track progress when watchtime set, or mark complete when video ends (all sections)
   useEffect(() => {
@@ -2364,7 +2566,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       durRounded > 0
                         ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
                         : 0;
-                    if (durRounded > 0 && (cov >= durRounded - 1 || t >= durRounded - 0.5)) {
+                    if (durRounded > 0 && cov >= durRounded) {
                       syncProgressOnFullDuration(activeLessonIdRef.current, t, d);
                     }
                     prog.watchedSeconds = cov;
@@ -2393,6 +2595,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               const prog = youtubeProgressRef.current;
               if (e.data === 1) {
                 prog.isPlaying = true;
+                if (activeLessonIdRef.current) {
+                  sectionVideoProgressResetRef.current.delete(activeLessonIdRef.current);
+                }
                 try {
                   const current = player ? player.getCurrentTime() : 0;
                   prog.lastTime = Math.max(0, Number(current || 0));
@@ -2435,7 +2640,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       durRounded > 0
                         ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
                         : 0;
-                    if (durRounded > 0 && (cov >= durRounded - 1 || current >= durRounded - 0.5)) {
+                    if (durRounded > 0 && cov >= durRounded) {
                       syncProgressOnFullDuration(activeLessonIdRef.current, current, d);
                     }
                     const payload = buildVideoCoveragePayloadFromRef(
@@ -2478,45 +2683,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         Math.round(d || 0)
                       );
                     }
-                    const requiredSec = effectiveRequiredSeconds(watchtimeSeconds, d);
-                    const durRounded = Math.round(Number(d) || 0);
-                    const cov =
-                      durRounded > 0
-                        ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
-                        : 0;
-                    // Always sync once on YT ended so backend gets final state even if coverage math lags.
-                    syncProgressOnFullDuration(activeLessonIdRef.current, t, durationForSync);
-                    // If already marked complete mid-playback, we still must record the lesson locally so the next row unlocks.
-                    if (prog.markedComplete) {
-                      appendViewedSectionId(activeLessonIdRef.current);
-                      return;
-                    }
-                    const shouldComplete = requiredSec > 0 ? cov >= requiredSec - 1 : true;
-                    if (shouldComplete) {
+                    const durRounded = Math.round(Number(durationForSync || d) || 0);
+                    const maybeAutoNextAfterServer = (confirmed) => {
+                      if (!confirmed || !currentId || currentId === FEEDBACK_LESSON_ID) return;
+                      const next = getNextLessonFromModules(modulesRef.current, currentId);
+                      if (next?.id) startAutoNextCountdown(next);
+                    };
+                    syncProgressOnFullDuration(
+                      activeLessonIdRef.current,
+                      durRounded || t,
+                      durationForSync,
+                      true
+                    ).then((data) => {
+                      if (!isServerSectionComplete(data)) return;
                       prog.markedComplete = true;
                       if (intervalId) clearInterval(intervalId);
                       intervalId = null;
-                      if (activeLessonIdRef.current) {
-                        completeSection(activeLessonIdRef.current);
-                      }
-                      console.log('[Video progress] Section marked complete (video ended)', {
-                        currentTime: Math.round(t),
-                        required: requiredSec,
-                        duration: d ? Math.round(d) : null,
-                      });
-                      if (currentId && currentId !== FEEDBACK_LESSON_ID) {
-                        const next = getNextLessonFromModules(modulesRef.current, currentId);
-                        if (next?.id) startAutoNextCountdown(next);
-                      }
-                    } else if (courseIdRef.current && activeLessonIdRef.current) {
-                      const payload = buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, t, d);
-                      sendProgressUpdate(
-                        courseIdRef.current,
-                        activeLessonIdRef.current,
-                        payload
-                      );
-                      prog.pendingDeltaSeconds = 0;
-                    }
+                      maybeAutoNextAfterServer(true);
+                    });
                   } catch {
                     // ignore
                   }
@@ -2606,19 +2790,20 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     updateSectionPlayerSnapshotRef,
     shouldBlockForwardSeekRef,
     sectionPlayerSnapshotRef,
+    sectionVideoProgressResetRef,
     videoWatchedEnoughRef,
     feedbackLessonId: FEEDBACK_LESSON_ID,
     markVideoSeekClampGrace,
     effectiveRequiredSeconds,
     appendCoverageSlicePlayer,
     coverageMeasurePlayer,
+    finalizeVideoCoverageOnEnd,
     syncProgressOnFullDuration,
     buildVideoCoveragePayloadFromRef,
     sendProgressUpdate,
     completeSection,
     getNextLessonFromModules,
     startAutoNextCountdown,
-    appendViewedSectionId,
     computeMaxAllowedTimeline,
     isVideoSeekClampGraceActive,
     lessonFallbackDurationSeconds,
@@ -2662,7 +2847,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       steps.push({ id: COURSE_END_ASSIGNMENT_ID, sectionId: null, videoUrl: null, kind: 'course-end-assignment' });
     }
     return steps;
-  }, [modules, quizCountByModuleId, assignmentCountByModuleId, isCourseEndModel, courseEndQuizCount, courseEndAssignmentCount]);
+  }, [
+    modules,
+    quizCountByModuleId,
+    assignmentCountByModuleId,
+    isCourseEndModel,
+    courseEndQuizCount,
+    courseEndAssignmentCount,
+    courseEndAssignmentAllowed,
+  ]);
 
   const currentIndex = activeLessonIndex;
   const currentStepIndex = useMemo(
@@ -2829,10 +3022,44 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const courseOverviewProgressPercent = useMemo(() => {
     if (totalLessons === 0) return 0;
 
-    const completionSum = flatLessons.reduce(
-      (sum, lesson) => sum + getLessonCourseProgressPercent(lesson, liveSectionProgressMap, viewedSectionIds),
-      0
-    );
+    const activeVideoLesson =
+      activeLessonId &&
+      activeLessonId !== FEEDBACK_LESSON_ID &&
+      !getModuleIdFromPseudoLessonId(activeLessonId)
+        ? flatLessons.find((l) => l.id === activeLessonId && l.videoUrl)
+        : null;
+    const activePlayback = activeVideoLesson
+      ? computeSidebarPlaybackSnapshot(
+          videoRef,
+          youtubePlayerRef,
+          spotlightrPlayerRef,
+          videoCoverageRangesRef,
+          lessonFallbackDurationSeconds(activeVideoLesson, liveSectionProgressMap),
+          spotlightrProgressRef,
+          activeVideoLesson.id,
+          videoCoverageLessonIdRef
+        )
+      : null;
+
+    const completionSum = flatLessons.reduce((sum, lesson) => {
+      let playback = null;
+      if (activeVideoLesson && lesson.id === activeVideoLesson.id) {
+        playback = activePlayback;
+      } else if (lesson.videoUrl) {
+        const snap = sectionPlayerSnapshotRef.current?.[lesson.id];
+        if (snap && (Number(snap.watchedSeconds) > 0 || Number(snap.durationSeconds) > 0)) {
+          playback = {
+            currentSec: Math.max(0, Number(snap.lastPositionSeconds) || 0),
+            durationSec: Math.max(0, Number(snap.durationSeconds) || 0),
+            watchedCoverageSec: Math.max(0, Number(snap.watchedSeconds) || 0),
+          };
+        }
+      }
+      return (
+        sum +
+        getLessonCourseProgressPercent(lesson, liveSectionProgressMap, viewedSectionIds, playback)
+      );
+    }, 0);
 
     let percent = Math.round(completionSum / totalLessons);
     const videosCompleted =
@@ -2851,14 +3078,31 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     }
 
     return Math.max(0, Math.min(100, percent));
-  }, [flatLessons, totalLessons, liveSectionProgressMap, viewedSectionIds, quizAssessmentProgress]);
-  const pendingQuizForFullCompletion =
-    courseOverviewProgressPercent < 100 &&
-    progressPercent >= 100 &&
-    (quizAssessmentProgress?.scopes || []).some(
-      (scope) => Number(scope?.quizCount || 0) > 0 || Number(scope?.assignmentCount || 0) > 0
-    ) &&
-    !quizAssessmentProgress?.quizAssessmentCompleted;
+    // sidebarPlaybackTick: recompute while the active video plays (same tick as sidebar).
+  }, [
+    flatLessons,
+    totalLessons,
+    liveSectionProgressMap,
+    viewedSectionIds,
+    quizAssessmentProgress,
+    activeLessonId,
+    sidebarPlaybackTick,
+  ]);
+  const pendingPracticeHint = useMemo(() => {
+    if (courseOverviewProgressPercent >= 100 || progressPercent < 100) return null;
+    const scopes = quizAssessmentProgress?.scopes || [];
+    if (!scopes.some((scope) => Number(scope?.quizCount || 0) > 0 || Number(scope?.assignmentCount || 0) > 0)) {
+      return null;
+    }
+    if (quizAssessmentProgress?.quizAssessmentCompleted) return null;
+    const needsQuiz = scopes.some((scope) => Number(scope?.quizCount || 0) > 0 && !scope?.quizCompleted);
+    const needsAssignment = scopes.some(
+      (scope) => Number(scope?.assignmentCount || 0) > 0 && !scope?.assignmentCompleted
+    );
+    if (needsQuiz) return 'Lessons complete — finish practice quizzes to reach 100%.';
+    if (needsAssignment) return 'Quiz complete — continue to the assessment to reach 100%.';
+    return 'Lessons complete — finish practice activities to reach 100%.';
+  }, [courseOverviewProgressPercent, progressPercent, quizAssessmentProgress]);
   const currentLessonNumber =
     currentIndex >= 0 && totalLessons > 0 ? Math.min(totalLessons, currentIndex + 1) : 0;
   const moduleProgressById = useMemo(() => {
@@ -2885,8 +3129,42 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     [modules, moduleProgressById]
   );
 
+  const isProgramCourse = Boolean(course?.programId || course?.program?.id);
+
+  const hasPillar2ProgrammeQualifyingModule = useMemo(
+    () =>
+      modules.some((mod) => {
+        const stats = moduleProgressById[mod.id];
+        const lessonsDone = stats && stats.total > 0 && stats.completed >= stats.total;
+        if (!lessonsDone) return false;
+        const quizCount = quizCountByModuleId[mod.id] || 0;
+        const assignmentCount = assignmentCountByModuleId[mod.id] || 0;
+        if (quizCount === 0 || assignmentCount === 0) return false;
+        const scope = quizAssessmentScopeByModuleId[mod.id];
+        return Boolean(scope?.quizCompleted && scope?.assignmentCompleted);
+      }),
+    [
+      modules,
+      moduleProgressById,
+      quizCountByModuleId,
+      assignmentCountByModuleId,
+      quizAssessmentScopeByModuleId,
+    ]
+  );
+
+  const shouldTryIssueCertificate = isProgramCourse
+    ? courseLevel === 'intermediate'
+      ? hasPillar2ProgrammeQualifyingModule
+      : courseLevel === 'beginner'
+        ? allModulesDone && quizAssessmentProgress?.quizAssessmentCompleted
+        : false
+    : allModulesDone && quizAssessmentProgress?.quizAssessmentCompleted;
+
   const courseEndLocked =
-    isCourseEndModel && !allModulesDone && !UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+    isCourseEndModel &&
+    !allModulesDone &&
+    !hasCredentialUnlock &&
+    !UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
 
   useEffect(() => {
     if (!courseEndLocked) return;
@@ -2905,13 +3183,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [courseEndLocked, activeLessonId, flatLessons, setSearchParams]);
 
   const activeModuleAssignmentQuizLocked = Boolean(
-    moduleAssignmentModuleId &&
+    !hasCredentialUnlock &&
+      moduleAssignmentModuleId &&
       (quizCountByModuleId[moduleAssignmentModuleId] || 0) > 0 &&
       !isModuleQuizPerfect(moduleAssignmentModuleId)
   );
 
   const courseEndAssignmentQuizLocked = Boolean(
-    activeLessonId === COURSE_END_ASSIGNMENT_ID &&
+    !hasCredentialUnlock &&
+      activeLessonId === COURSE_END_ASSIGNMENT_ID &&
       courseEndQuizCount > 0 &&
       !isCourseEndQuizPerfect
   );
@@ -2937,20 +3217,28 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   ]);
 
   useEffect(() => {
-    if (!course?.id || !authenticated || !allModulesDone) return;
-    if (!quizAssessmentProgress?.quizAssessmentCompleted) return;
+    if (!course?.id || !authenticated || !shouldTryIssueCertificate) return;
     let active = true;
     courseService
       .issueCourseCertificate(course.id)
       .then((result) => {
         if (!active || !result?.issued) return;
-        toast.success('Congratulations! Your course certificate is ready.');
+        toast.success(
+          isProgramCourse
+            ? 'Congratulations! Your programme certificate is ready.'
+            : 'Congratulations! Your course certificate is ready.'
+        );
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [course?.id, authenticated, allModulesDone, quizAssessmentProgress?.quizAssessmentCompleted]);
+  }, [
+    course?.id,
+    authenticated,
+    isProgramCourse,
+    shouldTryIssueCertificate,
+  ]);
 
   const activeModuleIndex = useMemo(
     () => modules.findIndex((m) => (m.lessons || []).some((l) => l.id === activeLessonId)),
@@ -3046,7 +3334,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const videoPoster = course.image;
   // Only show video when this section has a video URL — do not use course.video/course.image for sections without video
-  const sectionVideoUrl = activeLesson?.videoUrl?.trim() || null;
+  const sectionVideoUrl =
+    sectionVideoUrlForEmbed || activeLesson?.videoUrl?.trim() || null;
   const videoSrc = sectionVideoUrl || null;
   const embedUrl = videoSrc ? getYouTubeEmbedUrl(videoSrc) : null;
   const isSpotlightr = Boolean(spotlightrMeta);
@@ -3058,6 +3347,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     embedUrl ||
     isSpotlightr ||
     spotlightrDirectSrc ||
+    lessonHasVideoContent(activeLesson) ||
     (videoSrc && !embedUrl && !isSpotlightr)
   );
   const hasTextContent = !!(
@@ -3215,14 +3505,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   </Typography>
                 </Box>
               </Stack>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingQuizForFullCompletion ? 0.5 : 1.25, fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingPracticeHint ? 0.5 : 1.25, fontWeight: 500 }}>
                 {currentLessonNumber > 0
                   ? `Current: lesson ${currentLessonNumber} of ${totalLessons}`
                   : `Select a lesson to begin (${totalLessons} total)`}
               </Typography>
-              {pendingQuizForFullCompletion ? (
+              {pendingPracticeHint ? (
                 <Typography variant="caption" sx={{ color: 'warning.dark', display: 'block', mb: 1.25, fontWeight: 600 }}>
-                  Lessons complete — finish practice quizzes to reach 100%.
+                  {pendingPracticeHint}
                 </Typography>
               ) : null}
               <LinearProgress
@@ -3687,14 +3977,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       const modPracticeCount = quizCountByModuleId[section.id] || 0;
                       if (modPracticeCount === 0) return null;
                       const stats = moduleProgressById[section.id];
-                      const moduleDone =
+                      const isQuizCompleted = isModuleQuizPerfect(section.id);
+                      const moduleQuizAccessible =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        hasCredentialUnlock ||
+                        isQuizCompleted ||
                         (stats && stats.total > 0 && stats.completed >= stats.total);
-                      const practiceUnlockedStyle = moduleDone;
+                      const practiceUnlockedStyle = moduleQuizAccessible;
                       return (
                         <Tooltip
                           title={
-                            moduleDone
+                            moduleQuizAccessible
                               ? `Open quiz (${modPracticeCount} question${modPracticeCount !== 1 ? 's' : ''})`
                               : 'Complete every lesson in this module to unlock quiz'
                           }
@@ -3706,7 +3999,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             alignItems="center"
                             justifyContent="flex-start"
                             onClick={() => {
-                              if (!moduleDone) {
+                              if (!moduleQuizAccessible) {
                                 toast.info(
                                   'Complete every lesson in this module to unlock quiz'
                                 );
@@ -3722,16 +4015,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               py: 1.35,
                               px: 1.5,
                               borderRadius: 1.5,
-                              cursor: moduleDone ? 'pointer' : 'not-allowed',
-                              opacity: moduleDone ? 1 : 0.55,
+                              cursor: moduleQuizAccessible ? 'pointer' : 'not-allowed',
+                              opacity: moduleQuizAccessible ? 1 : 0.55,
                               bgcolor:
-                                moduleDone && activeLessonId === modulePracticeRowId
+                                moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                   ? alpha(sidebarAccent, 0.1)
                                   : practiceUnlockedStyle
                                     ? alpha(theme.palette.info.main, 0.06)
                                     : alpha(theme.palette.grey[500], 0.04),
                               border: `1px solid ${
-                                moduleDone && activeLessonId === modulePracticeRowId
+                                moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                   ? alpha(sidebarAccent, 0.4)
                                   : practiceUnlockedStyle
                                     ? alpha(theme.palette.info.main, 0.25)
@@ -3739,13 +4032,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               }`,
                               boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
                               color:
-                                moduleDone && activeLessonId === modulePracticeRowId
+                                moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                   ? 'primary.dark'
                                   : practiceUnlockedStyle
                                     ? 'info.dark'
                                     : 'text.primary',
                               '&:hover': {
-                                bgcolor: moduleDone
+                                bgcolor: moduleQuizAccessible
                                   ? activeLessonId === modulePracticeRowId
                                     ? alpha(sidebarAccent, 0.14)
                                     : alpha(theme.palette.info.main, 0.1)
@@ -3766,7 +4059,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   borderRadius: 1,
                                   overflow: 'hidden',
                                   border: `1px solid ${
-                                    moduleDone && activeLessonId === modulePracticeRowId
+                                    moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                       ? sidebarAccent
                                       : practiceUnlockedStyle
                                         ? alpha(theme.palette.info.main, 0.5)
@@ -3797,13 +4090,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   {modPracticeCount} question{modPracticeCount !== 1 ? 's' : ''}
                                 </Typography>
                               </Stack>
-                              {!moduleDone && (
+                              {isQuizCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                              {!moduleQuizAccessible && !isQuizCompleted ? (
                                 <Iconify
                                   icon="solar:lock-keyhole-bold"
                                   width={14}
                                   sx={{ color: 'text.disabled', flexShrink: 0 }}
                                 />
-                              )}
+                              ) : null}
                             </Stack>
                           </Stack>
                         </Tooltip>
@@ -3816,15 +4110,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (modAssignmentCount === 0) return null;
                       const stats = moduleProgressById[section.id];
                       const modQuizCount = quizCountByModuleId[section.id] || 0;
+                      const isQuizCompleted = isModuleQuizPerfect(section.id);
+                      const isAssignmentCompleted = Boolean(
+                        quizAssessmentScopeByModuleId[section.id]?.assignmentCompleted
+                      );
                       const moduleVideosDone =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        hasCredentialUnlock ||
+                        isQuizCompleted ||
+                        isAssignmentCompleted ||
                         (stats && stats.total > 0 && stats.completed >= stats.total);
                       const moduleQuizPassed =
                         modQuizCount === 0 || isModuleQuizPerfect(section.id);
                       const assessmentUnlocked =
-                        modQuizCount > 0 ? moduleQuizPassed : moduleVideosDone;
+                        hasCredentialUnlock ||
+                        isAssignmentCompleted ||
+                        (modQuizCount > 0 ? moduleQuizPassed || isQuizCompleted : moduleVideosDone);
                       const assignmentTooltip =
-                        modQuizCount > 0 && !moduleQuizPassed
+                        modQuizCount > 0 && !moduleQuizPassed && !isQuizCompleted
                           ? 'Score 100% on the quiz to unlock assessment'
                           : modQuizCount === 0 && !moduleVideosDone
                             ? 'Complete every lesson in this module to unlock assessment'
@@ -3841,7 +4144,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             alignItems="center"
                             justifyContent="flex-start"
                             onClick={() => {
-                              if (modQuizCount > 0 && !moduleQuizPassed) {
+                              if (modQuizCount > 0 && !moduleQuizPassed && !isQuizCompleted) {
                                 toast.info('Score 100% on the quiz before starting the assessment');
                                 return;
                               }
@@ -3936,13 +4239,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   {modAssignmentCount} item{modAssignmentCount !== 1 ? 's' : ''}
                                 </Typography>
                               </Stack>
-                              {!assessmentUnlocked && (
+                              {isAssignmentCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                              {!assessmentUnlocked && !isAssignmentCompleted ? (
                                 <Iconify
                                   icon="solar:lock-keyhole-bold"
                                   width={14}
                                   sx={{ color: 'text.disabled', flexShrink: 0 }}
                                 />
-                              )}
+                              ) : null}
                             </Stack>
                           </Stack>
                         </Tooltip>
@@ -3981,7 +4285,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Typography>
             <Stack spacing={1} sx={{ mt: 1 }}>
               {courseEndQuizCount > 0 && (() => {
-                const unlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const unlocked =
+                  allModulesDone || hasCredentialUnlock || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const isFinalQuizCompleted = isCourseEndQuizPerfect;
                 return (
                   <Tooltip
                     key="course-end-quiz"
@@ -4016,16 +4322,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                           <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>Final Quiz</Typography>
                           <Typography variant="caption" sx={{ color: 'info.dark', fontWeight: 700 }} noWrap>{courseEndQuizCount} question{courseEndQuizCount !== 1 ? 's' : ''}</Typography>
                         </Stack>
-                        {!unlocked && <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} />}
+                        {isFinalQuizCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                        {!unlocked && !isFinalQuizCompleted ? <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} /> : null}
                       </Stack>
                     </Stack>
                   </Tooltip>
                 );
               })()}
               {courseEndAssignmentCount > 0 && (() => {
-                const modulesUnlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const modulesUnlocked =
+                  allModulesDone || hasCredentialUnlock || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
                 const unlocked =
                   courseEndQuizCount > 0 ? isCourseEndQuizPerfect : modulesUnlocked;
+                const isFinalAssignmentCompleted = Boolean(
+                  courseEndQuizAssessmentScope?.assignmentCompleted
+                );
                 const assignmentTooltip =
                   courseEndQuizCount > 0 && !isCourseEndQuizPerfect
                     ? 'Score 100% on the final quiz to unlock the final assessment'
@@ -4073,7 +4384,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                           <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>Final Assessment</Typography>
                           <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 700 }} noWrap>{courseEndAssignmentCount} item{courseEndAssignmentCount !== 1 ? 's' : ''}</Typography>
                         </Stack>
-                        {!unlocked && <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} />}
+                        {isFinalAssignmentCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                        {!unlocked && !isFinalAssignmentCompleted ? <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} /> : null}
                       </Stack>
                     </Stack>
                   </Tooltip>
@@ -4082,8 +4394,99 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Stack>
           </Box>
         )}
+
         </>
       )}
+
+      {programCpeSummary ? (
+        <Accordion
+          expanded={expandedSection === PROGRAM_CPE_SECTION_ID}
+          onChange={() => {
+            const next =
+              expandedSection === PROGRAM_CPE_SECTION_ID ? '' : PROGRAM_CPE_SECTION_ID;
+            setExpandedSection(next);
+            if (next === PROGRAM_CPE_SECTION_ID) {
+              setSearchParams({ section: PROGRAM_CPE_SUMMARY_ID }, { replace: true });
+            }
+          }}
+          disableGutters
+          elevation={0}
+          sx={{
+            mx: { xs: 1.5, sm: 2.5 },
+            mb: 1,
+            mt: 0.5,
+            borderRadius: 2.5,
+            overflow: 'hidden',
+            bgcolor: 'background.paper',
+            border: playerCardBorder,
+            boxShadow: playerElevatedShadow,
+            '&:before': { display: 'none' },
+          }}
+        >
+          <AccordionSummary
+            expandIcon={<Iconify icon="eva:chevron-down-fill" width={20} sx={{ color: 'text.secondary' }} />}
+            sx={{
+              minHeight: 52,
+              px: { xs: 1, sm: 1.25 },
+              borderLeft: `4px solid ${alpha(theme.palette.success.main, 0.9)}`,
+              '& .MuiAccordionSummary-content': { my: 1.25, minWidth: 0, overflow: 'hidden' },
+              '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) },
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: alpha(theme.palette.success.main, 0.12),
+                  color: 'success.dark',
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.25)}`,
+                }}
+              >
+                <Iconify icon="solar:clock-circle-bold" width={20} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, letterSpacing: -0.01 }}>
+                  Programme CPE summary
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                  {Number(programCpeSummary.totalEarnedCpeHours ?? programCpeSummary.totalCpeHours ?? 0)}{' '}
+                  CPE Hour
+                  {Number(programCpeSummary.totalEarnedCpeHours ?? programCpeSummary.totalCpeHours ?? 0) === 1
+                    ? ''
+                    : 's'}{' '}
+                  earned · {programCpeSummary.totalWatchedTime || '0:00'} watched
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails
+            sx={{
+              pt: 0,
+              pb: 2,
+              px: 2,
+              bgcolor: alpha(theme.palette.grey[500], 0.04),
+              borderTop: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+            }}
+          >
+            <Box
+              sx={{
+                bgcolor: 'background.paper',
+                boxShadow: `0 2px 8px ${alpha(theme.palette.common.black, 0.06)}`,
+                p: 2,
+                border: `1px solid ${sidebarMutedBorder}`,
+                borderRadius: 1.5,
+              }}
+            >
+              <ProgramCpeSummaryPanel summary={programCpeSummary} compact />
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+      ) : null}
 
       {/* Feedback — same visual language as modules */}
       <Accordion
@@ -4380,7 +4783,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
   const isCourseEndPracticeView = activeLessonId === COURSE_END_PRACTICE_ID;
   const isCourseEndAssignmentView = activeLessonId === COURSE_END_ASSIGNMENT_ID;
-  const isModulePanelView = isModulePracticePanelView || isModuleAssignmentView || isCourseEndPracticeView || isCourseEndAssignmentView;
+  const isModulePanelView =
+    isModulePracticePanelView ||
+    isModuleAssignmentView ||
+    isCourseEndPracticeView ||
+    isCourseEndAssignmentView;
   const isModulePracticeQuiz = isModulePracticePanelView && practiceQuizOn;
   /** Quiz + assignment fill panel; lessons scroll separately. */
   const isScrollableLessonPanel = !isModulePanelView;
@@ -4593,9 +5000,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   key={COURSE_END_PRACTICE_ID}
                   courseId={course?.id}
                   moduleId={null}
+                  moduleTitle="Final Quiz"
                   questions={courseEndQuizQuestions}
                   fillContainer
                   onAttemptCompleted={() => markLocalQuizCompleted(null)}
+                  onBackToIntro={() => {
+                    setSearchParams({ section: COURSE_END_PRACTICE_ID }, { replace: true });
+                  }}
+                  onContinueToAssessment={
+                    courseEndAssignmentCount > 0
+                      ? () => {
+                          setActiveLessonId(COURSE_END_ASSIGNMENT_ID);
+                          setSearchParams({ section: COURSE_END_ASSIGNMENT_ID }, { replace: true });
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <LearningModulePracticeIntro
@@ -4683,6 +5102,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     onBackToIntro={() => {
                       setSearchParams({ section: activeLessonId }, { replace: true });
                     }}
+                    onContinueToAssessment={
+                      (assignmentCountByModuleId[modulePracticeModuleId] || 0) > 0
+                        ? () => {
+                            const assignmentId = `${MODULE_ASSIGNMENT_PREFIX}${modulePracticeModuleId}`;
+                            setActiveLessonId(assignmentId);
+                            setExpandedSection(modulePracticeModuleId);
+                            setSearchParams({ section: assignmentId }, { replace: true });
+                          }
+                        : undefined
+                    }
                   />
                 ) : modulePracticeQuestions.length > 0 ? (
                   <LearningModulePracticeIntro
@@ -4837,6 +5266,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               onPlay={() => {
                 const v = videoRef.current;
                 if (!v) return;
+                if (activeLessonId) sectionVideoProgressResetRef.current.delete(activeLessonId);
                 const prog = nativeVideoProgressRef.current;
                 prog.isPlaying = true;
                 prog.lastTime = v.currentTime;
@@ -4869,11 +5299,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   const durRounded = Math.round(Number(v.duration) || 0);
                   const cov =
                     durRounded > 0 ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded) : 0;
-                  if (
-                    durRounded > 0 &&
-                    (cov >= durRounded - 1 || v.currentTime >= durRounded - 0.5)
-                  ) {
-                    syncProgressOnFullDuration(activeLessonIdRef.current, v.currentTime, v.duration);
+                  if (durRounded > 0 && cov >= durRounded) {
+                    syncProgressOnFullDuration(activeLessonIdRef.current, v.currentTime, v.duration, true);
                   }
                   const payload = buildVideoCoveragePayloadFromRef(
                     videoCoverageRangesRef,
@@ -4889,9 +5316,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 const v = videoRef.current;
                 if (!v) return;
                 const prog = nativeVideoProgressRef.current;
-                const required = effectiveRequiredSeconds(watchtimeSeconds, v.duration);
                 const t = v.currentTime;
                 const d = v.duration;
+                const currentLesson = flatLessons.find((l) => l.id === activeLessonId);
+                const fallbackDur = currentLesson
+                  ? lessonFallbackDurationSeconds(currentLesson, liveSectionProgressMap)
+                  : 0;
+                const durationForSync = Math.max(Number(d) || 0, Number(fallbackDur) || 0);
                 if (course?.id && activeLessonId) {
                   appendCoverageSlicePlayer(
                     videoCoverageRangesRef,
@@ -4900,35 +5331,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     Math.round(d || 0)
                   );
                 }
-                const durRounded = Math.round(Number(d) || 0);
-                const cov =
-                  durRounded > 0 ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded) : 0;
-                if (durRounded > 0 && (cov >= durRounded - 1 || t >= durRounded - 0.5)) {
-                  syncProgressOnFullDuration(activeLessonIdRef.current, t, d);
-                }
-                // If already marked complete mid-playback, still allow full-duration sync above; then sync local unlock state.
-                if (prog.markedComplete) {
-                  appendViewedSectionId(activeLessonIdRef.current);
-                  return;
-                }
-                const shouldComplete = required > 0 ? cov >= required - 1 : true;
-                if (shouldComplete) {
+                const durRounded = Math.round(Number(durationForSync || d) || 0);
+                const maybeAutoNextAfterServer = (confirmed) => {
+                  if (!confirmed || !nextLesson?.id) return;
+                  startAutoNextCountdown(nextLesson);
+                };
+                syncProgressOnFullDuration(
+                  activeLessonIdRef.current,
+                  durRounded || t,
+                  durationForSync,
+                  true
+                ).then((data) => {
+                  if (!isServerSectionComplete(data)) return;
                   prog.markedComplete = true;
-                  if (activeLessonId) {
-                    completeSection(activeLessonId);
-                  }
-                  console.log('[Video progress] Section marked complete (video ended)', {
-                    currentTime: Math.round(t),
-                    required,
-                  });
-                  if (nextLesson?.id) {
-                    startAutoNextCountdown(nextLesson);
-                  }
-                } else if (course?.id && activeLessonId) {
-                  const payload = buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, t, d);
-                  sendProgressUpdate(course.id, activeLessonId, payload);
-                  prog.pendingDeltaSeconds = 0;
-                }
+                  maybeAutoNextAfterServer(true);
+                });
               }}
               onSeeked={(e) => {
                 const v = e.target;
@@ -4958,11 +5375,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     durRounded > 0
                       ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
                       : 0;
-                  if (
-                    durRounded > 0 &&
-                    (cov >= durRounded - 1 || v.currentTime >= durRounded - 0.5)
-                  ) {
-                    syncProgressOnFullDuration(activeLessonIdRef.current, v.currentTime, v.duration);
+                  if (durRounded > 0 && cov >= durRounded) {
+                    syncProgressOnFullDuration(activeLessonIdRef.current, v.currentTime, v.duration, true);
                   }
                   prog.watchedSeconds = cov;
                   prog.pendingDeltaSeconds = 0;

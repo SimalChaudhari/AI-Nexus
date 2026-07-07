@@ -13,6 +13,7 @@ import { Image } from 'src/components/image';
 import { RouterLink } from 'src/routes/components';
 import { LearningBundleRibbon } from './course-bundle-badge';
 import { getCourseDurationLabel } from 'src/utils/course-duration';
+import { LEARNING_ADD_TO_CART_ENABLED } from '../learning-feature-flags';
 
 const CARD_META_ROW_HEIGHT = 18;
 const CARD_STATUS_ROW_HEIGHT = 30;
@@ -165,7 +166,7 @@ export function LearningCourseGridCard({
   const isPaid = isPaidCourse(course.freeOrPaid);
   const courseAccessLabel = getCourseAccessLabel(course);
   const showAccessLabel = !isEnrolled && !course.isBundle;
-  const showAddToCart = (isPaid || isInCart) && !isEnrolled;
+  const showAddToCart = LEARNING_ADD_TO_CART_ENABLED && (isPaid || isInCart) && !isEnrolled;
   const showProgressSlot = showCourseProgress || showAddToCart;
   const showStatusAccessLabel = showAccessLabel;
   const showAccessInProgressSlot = showStatusAccessLabel && !showProgressSlot && !isEnrolled;

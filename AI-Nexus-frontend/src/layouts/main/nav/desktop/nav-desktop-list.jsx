@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 
 import Box from '@mui/material/Box';
 import Fade from '@mui/material/Fade';
@@ -11,10 +11,12 @@ import ListSubheader from '@mui/material/ListSubheader';
 import { usePathname } from 'src/routes/hooks';
 import { useActiveLink } from 'src/routes/hooks/use-active-link';
 import { isExternalLink, removeLastSlash } from 'src/routes/utils';
+import { paths } from 'src/routes/paths';
 
 import { paper } from 'src/theme/styles';
 
 import { NavLi, NavUl } from 'src/components/nav-section';
+import { useAnnouncementUnreadCount } from 'src/hooks/use-announcement-unread-count';
 
 import { NavItem, NavItemDashboard } from './nav-desktop-item';
 
@@ -51,6 +53,16 @@ function hasActiveInChildren(currentPath, children) {
 export function NavList({ data }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const tracksAnnouncements = useMemo(
+    () =>
+      (data.children || []).some((group) =>
+        (group.items || []).some((item) => item.path === paths.announcements)
+      ),
+    [data.children]
+  );
+  const { count: announcementUnreadCount } = useAnnouncementUnreadCount({
+    enabled: tracksAnnouncements,
+  });
   const SUBMENU_BORDER_OFFSET = 1;
   const CLOSE_DELAY_MS = 140;
 
@@ -187,6 +199,7 @@ export function NavList({ data }) {
       active={active}
       hasChild={!!data.children}
       open={data.children && !!openMenu}
+      showDot={tracksAnnouncements && announcementUnreadCount > 0}
       externalLink={isExternalLink(data.path)}
       // action
       onMouseEnter={handleOpenMenu}
@@ -233,11 +246,8 @@ export function NavList({ data }) {
                   sx={{
                     ...paper({ theme, dropdown: true }),
                     borderRadius: 1,
-                    borderTop: `1px solid ${theme.vars.palette.primary.light}`,
-                    backgroundImage: `linear-gradient(135deg, ${theme.vars.palette.primary.main} 0%, ${theme.vars.palette.secondary.main} 100%)`,
-                    backgroundSize: '100% 100%',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'center',
+                    borderTop: `1px solid ${theme.vars.palette.secondary.light}`,
+                    bgcolor: theme.vars.palette.secondary.main,
                     color: theme.vars.palette.common.white,
                     padding: '8px 0',
                     pt: 0,
@@ -258,6 +268,7 @@ export function NavList({ data }) {
                         key={list.subheader || `submenu-${index}`}
                         subheader={list.subheader}
                         data={list.items}
+                        announcementUnreadCount={announcementUnreadCount}
                       />
                     ))}
                   </NavUl>
@@ -275,7 +286,7 @@ export function NavList({ data }) {
 
 // ----------------------------------------------------------------------
 
-function NavSubList({ data, subheader, sx, ...other }) {
+function NavSubList({ data, subheader, announcementUnreadCount = 0, sx, ...other }) {
   const pathname = usePathname();
   const items = Array.isArray(data) ? data : [];
   const currentPath = removeLastSlash(pathname);
@@ -320,6 +331,7 @@ function NavSubList({ data, subheader, sx, ...other }) {
                 subItem
                 title={item.title}
                 path={item.path}
+                badge={item.path === paths.announcements ? announcementUnreadCount : 0}
                 active={isPathActive(currentPath, item.path)}
               />
             </NavLi>

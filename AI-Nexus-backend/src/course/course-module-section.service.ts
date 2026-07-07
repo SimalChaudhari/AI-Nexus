@@ -8,6 +8,9 @@ import {
 } from './course-module-section.dto';
 import { CourseModuleService } from './course-module.service';
 import { LocalStorageService } from '../service/local-storage.service';
+import { CourseLearnerProgressCleanupService } from './course-learner-progress-cleanup.service';
+import { CourseCertificateService } from './course-certificate.service';
+import { isSectionVideoUrlChanged } from './course-video-url.util';
 
 function normalizeWatchtime(value?: string | null): string | null {
   const text = String(value || '').trim();
@@ -68,7 +71,15 @@ export class CourseModuleSectionService {
     private readonly sectionRepository: Repository<CourseModuleSectionEntity>,
     private readonly moduleService: CourseModuleService,
     private readonly localStorageService: LocalStorageService,
+    private readonly learnerProgressCleanupService: CourseLearnerProgressCleanupService,
+    private readonly certificateService: CourseCertificateService,
   ) {}
+
+  async getById(id: string): Promise<CourseModuleSectionEntity> {
+    const section = await this.sectionRepository.findOne({ where: { id } });
+    if (!section) throw new NotFoundException('Course module section not found');
+    return section;
+  }
 
   private async deleteSectionMediaFiles(section: CourseModuleSectionEntity): Promise<void> {
     if (!section) return;
@@ -152,6 +163,13 @@ export class CourseModuleSectionService {
   ): Promise<CourseModuleSectionEntity> {
     const section = await this.sectionRepository.findOne({ where: { id } });
     if (!section) throw new NotFoundException('Course module section not found');
+    const mod = await this.moduleService.getById(section.moduleId);
+    await this.certificateService.assertSectionVideoSettingsEditAllowed(
+      mod.courseId,
+      section.id,
+      section,
+      dto,
+    );
     const prevVideoUrl = section.videoUrl;
     const prevImages = Array.isArray(section.images) ? [...section.images] : [];
     const prevAttachments = Array.isArray(section.attachments) ? [...section.attachments] : [];
@@ -159,17 +177,28 @@ export class CourseModuleSectionService {
       ? [...section.learningMaterials]
       : [];
 
+    const videoUrlChanged =
+      dto.videoUrl !== undefined && isSectionVideoUrlChanged(prevVideoUrl, dto.videoUrl);
+
     if (dto.title !== undefined) section.title = dto.title;
     if (dto.subtitle !== undefined) section.subtitle = dto.subtitle?.trim() || undefined;
-    if (dto.videoUrl !== undefined) section.videoUrl = dto.videoUrl;
+    if (dto.videoUrl !== undefined) {
+      section.videoUrl = dto.videoUrl;
+    }
     if (dto.description !== undefined) section.description = dto.description;
     if (dto.content !== undefined) section.content = dto.content;
-    // When watchtime is missing, null, or empty string, store null so progress uses video length
-    if (dto.watchtime !== undefined) {
-      section.watchtime = normalizeWatchtime(dto.watchtime);
-    }
-    if (dto.durationTime !== undefined) {
-      section.durationTime = normalizeWatchtime(dto.durationTime);
+    if (videoUrlChanged) {
+      section.watchtime =
+        dto.watchtime !== undefined ? normalizeWatchtime(dto.watchtime) : null;
+      section.durationTime =
+        dto.durationTime !== undefined ? normalizeWatchtime(dto.durationTime) : null;
+    } else {
+      if (dto.watchtime !== undefined) {
+        section.watchtime = normalizeWatchtime(dto.watchtime);
+      }
+      if (dto.durationTime !== undefined) {
+        section.durationTime = normalizeWatchtime(dto.durationTime);
+      }
     }
     if (dto.images !== undefined) section.images = dto.images;
     if (dto.attachments !== undefined) section.attachments = dto.attachments;
@@ -219,12 +248,26 @@ export class CourseModuleSectionService {
       }),
     ]);
 
-    return this.sectionRepository.save(section);
+    const saved = await this.sectionRepository.save(section);
+
+    if (videoUrlChanged) {
+      const mod = await this.moduleService.getById(saved.moduleId);
+      await this.learnerProgressCleanupService.resetAfterSectionVideoUrlChange(
+        mod.courseId,
+        saved.id,
+        saved.moduleId,
+      );
+    }
+
+    return saved;
   }
 
   async delete(id: string): Promise<{ message: string }> {
     const section = await this.sectionRepository.findOne({ where: { id } });
     if (!section) throw new NotFoundException('Course module section not found');
+    const mod = await this.moduleService.getById(section.moduleId);
+    await this.certificateService.assertSectionDeletionAllowed(mod.courseId, section.id);
+    await this.learnerProgressCleanupService.resetSectionLearnerProgress(mod.courseId, section.id);
     await this.deleteSectionMediaFiles(section);
     await this.sectionRepository.remove(section);
     return { message: 'Section deleted successfully' };

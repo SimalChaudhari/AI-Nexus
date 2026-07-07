@@ -5,11 +5,12 @@ import { useSearchParams } from 'react-router-dom';
 import { CONFIG } from 'src/config-global';
 
 import { LearningTopBar, LearningMainSection } from 'src/sections/learning';
+import { LEARNING_ADD_TO_CART_ENABLED } from 'src/sections/learning/learning-feature-flags';
 
 // ----------------------------------------------------------------------
 
 const metadata = { title: `Learning | ${CONFIG.site.name}` };
-const VALID_TABS = new Set(['courses', 'my-courses', 'progress', 'favorites', 'certificates']);
+const VALID_TABS = new Set(['courses', 'progress', 'favorites', 'badges', 'certificates']);
 
 export default function LearningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -36,7 +37,11 @@ export default function LearningPage() {
       <Helmet>
         <title>{metadata.title}</title>
       </Helmet>
-      <LearningTopBar activeTab={activeTab} setActiveTab={setActiveTab} showCart={activeTab === 'courses'} />
+      <LearningTopBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        showCart={LEARNING_ADD_TO_CART_ENABLED && activeTab === 'courses'}
+      />
       <LearningMainSection activeTab={activeTab} setActiveTab={setActiveTab} />
     </>
   );
