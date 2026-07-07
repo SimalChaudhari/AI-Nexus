@@ -2174,11 +2174,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   // Resolve direct MP4 from backend so we use native <video> instead of Spotlightr HLS iframe (.ts / .m3u8.key).
   useEffect(() => {
     setSpotlightrDirectSrc(null);
-    setSpotlightrPrepareDone(false);
-    if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) {
-      setSpotlightrPrepareDone(true);
-      return undefined;
-    }
+    setSpotlightrPlaybackPreparedAt(0);
+
+    if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) return undefined;
+
     let cancelled = false;
     courseService
       .prepareSpotlightrPlayback(spotlightrMeta.watchUrl)
@@ -2191,19 +2190,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           setSpotlightrPlaybackPreparedAt(Date.now());
         }
       })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setSpotlightrPrepareDone(true);
-      });
+      .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
-  }, [spotlightrMeta?.watchUrl, activeLessonId, activeLessonGateBlocked]);
-
-  const activeSpotlightrMeta = useMemo(() => {
-    if (!spotlightrMeta || spotlightrDirectSrc || !spotlightrPrepareDone) return null;
-    return spotlightrMeta;
-  }, [spotlightrMeta, spotlightrDirectSrc, spotlightrPrepareDone]);
+  }, [
+    spotlightrMeta?.watchUrl,
+    spotlightrMeta?.videoId,
+    activeLessonId,
+    activeLessonGateBlocked,
+  ]);
 
   // Direct MP4 must resume after prepare; iframe hook may have marked resume applied too early.
   useEffect(() => {
