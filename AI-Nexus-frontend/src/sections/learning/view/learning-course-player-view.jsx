@@ -29,6 +29,7 @@ import { LessonDocumentViewer } from 'src/sections/learning/components/lesson-do
 import { LessonLearningMaterialsPanel } from 'src/sections/learning/components/lesson-learning-materials-panel';
 import { Upload } from 'src/components/upload';
 import { LessonVideoPlayer } from 'src/sections/learning/components/lesson-video-player';
+import { LessonVideoCoverageStrip } from 'src/sections/learning/components/lesson-video-coverage-strip';
 import { ProgramCpeSummaryPanel } from 'src/sections/learning/components/program-cpe-summary-panel';
 import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
 import { isSpotlightrUrl, parseSpotlightrUrl, seekSpotlightrPlayer } from 'src/utils/spotlightr';
@@ -59,6 +60,7 @@ import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import courseLessonNotesIcon from 'src/assets/course/notes.png';
 import courseLearningMaterialsIcon from 'src/assets/course/material.png';
 import {
+  getLessonMediaFrameSx,
   LESSON_MEDIA_FRAME_HEIGHT,
   playerFluidType,
   playerLessonNotesSx,
@@ -174,17 +176,10 @@ function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration) {
 }
 
 /**
- * On video end: seal full timeline [0, duration] so strict server rules pass.
- * Only call from player "ended" handlers (learner reached the end).
+ * @deprecated Do not seal [0, duration] on end — completion must reflect actual segment coverage only.
  */
-function finalizeVideoCoverageOnEnd(rangesRef, durationSeconds) {
-  const dur = Math.max(0, Math.round(Number(durationSeconds) || 0));
-  if (dur <= 0) return;
-  const sealed = mergeCoverageRangesPlayer([
-    ...parseCoverageRangePairs(rangesRef.current),
-    [0, dur],
-  ]);
-  rangesRef.current = clipCoverageRangesPlayer(sealed, dur);
+function finalizeVideoCoverageOnEnd(_rangesRef, _durationSeconds) {
+  // Intentionally no-op: jumping to the end and watching briefly must not mark the full video watched.
 }
 
 /** iPhone, iPod, and iPad (incl. iPadOS desktop UA). */
@@ -998,7 +993,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       .catch(() => null);
   }, [appendViewedSectionId]);
 
-  const syncProgressOnFullDuration = useCallback((sectionId, lastPosition, durationSeconds, forceEnd = false) => {
+  const syncProgressOnFullDuration = useCallback((sectionId, lastPosition, durationSeconds, forceSync = false) => {
     const courseId = courseIdRef.current;
     if (!courseId || !sectionId || sectionId === FEEDBACK_LESSON_ID) return Promise.resolve(null);
     if (!isUuid(sectionId)) return Promise.resolve(null);
@@ -1006,16 +1001,25 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (state.sectionId !== sectionId) {
       fullDurationSyncRef.current = { sectionId, sent: false };
     }
-    if (!forceEnd && fullDurationSyncRef.current.sent) return Promise.resolve(null);
-    finalizeVideoCoverageOnEnd(videoCoverageRangesRef, durationSeconds);
+    if (!forceSync && fullDurationSyncRef.current.sent) return Promise.resolve(null);
     const durRounded = Math.max(0, Math.round(Number(durationSeconds) || 0));
+    const covered =
+      durRounded > 0
+        ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
+        : coverageMeasurePlayer(videoCoverageRangesRef.current, 0);
+    const lesson = flatLessonsRef.current.find((l) => l.id === sectionId);
+    const required = lesson
+      ? effectiveRequiredSeconds(parseWatchtimeToSeconds(lesson.watchtime || ''), durationSeconds)
+      : durRounded;
+    const meetsRequirement =
+      required > 0 ? covered >= required : durRounded > 0 && covered >= durRounded;
     const payload = {
       ...buildVideoCoveragePayloadFromRef(
         videoCoverageRangesRef,
-        durRounded > 0 ? durRounded : lastPosition,
+        Math.max(0, Math.round(Number(lastPosition) || 0)),
         durationSeconds
       ),
-      ...(forceEnd ? { markCompleted: true } : {}),
+      ...(meetsRequirement ? { markCompleted: true } : {}),
     };
     fullDurationSyncRef.current.sent = true;
     return sendProgressUpdate(courseId, sectionId, payload, false, true)
@@ -1879,10 +1883,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       ranges = parseCoverageRangePairs(sp.watchedCoverageRanges);
     } else if (snap && Array.isArray(snap.watchedCoverageRanges) && snap.watchedCoverageRanges.length > 0) {
       ranges = parseCoverageRangePairs(snap.watchedCoverageRanges);
-    } else if (sp && (sp.watchedSeconds || 0) > 0 && d > 0) {
-      ranges = [[0, Math.min(sp.watchedSeconds, d)]];
-    } else if (snap && (snap.watchedSeconds || 0) > 0 && d > 0) {
-      ranges = [[0, Math.min(snap.watchedSeconds, d)]];
     }
     videoCoverageRangesRef.current =
       d > 0 ? clipCoverageRangesPlayer(mergeCoverageRangesPlayer(ranges), d) : mergeCoverageRangesPlayer(ranges);
@@ -2154,7 +2154,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   // Derived once from activeLesson so useEffects can use them (must be before YouTube useEffect)
   const [spotlightrDirectSrc, setSpotlightrDirectSrc] = useState(null);
-  const [spotlightrPlaybackPreparedAt, setSpotlightrPlaybackPreparedAt] = useState(0);
+  /** idle | pending | ready — iframe mounts only after prepare-playback (avoids Spotlightr remount races). */
+  const [spotlightrPrepareState, setSpotlightrPrepareState] = useState('idle');
 
   const sectionVideoUrlForEmbed = activeLesson?.videoUrl?.trim() || null;
   const embedVideoId = sectionVideoUrlForEmbed ? getYouTubeVideoId(sectionVideoUrlForEmbed) : null;
@@ -2167,30 +2168,35 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
 
   const activeSpotlightrMeta = useMemo(() => {
-    if (!spotlightrMeta || spotlightrDirectSrc) return null;
+    if (!spotlightrMeta || spotlightrDirectSrc || spotlightrPrepareState !== 'ready') return null;
     return spotlightrMeta;
-  }, [spotlightrMeta, spotlightrDirectSrc]);
+  }, [spotlightrMeta, spotlightrDirectSrc, spotlightrPrepareState]);
 
   // Resolve direct MP4 from backend so we use native <video> instead of Spotlightr HLS iframe (.ts / .m3u8.key).
   useEffect(() => {
     setSpotlightrDirectSrc(null);
-    setSpotlightrPlaybackPreparedAt(0);
+    if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) {
+      setSpotlightrPrepareState('idle');
+      return undefined;
+    }
 
-    if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) return undefined;
-
+    setSpotlightrPrepareState('pending');
     let cancelled = false;
     courseService
       .prepareSpotlightrPlayback(spotlightrMeta.watchUrl)
-      .then(({ directUrl, settingsUpdated }) => {
+      .then(({ directUrl }) => {
         if (cancelled) return;
         const direct = String(directUrl || '').trim();
         if (direct) {
           setSpotlightrDirectSrc(direct);
-        } else if (settingsUpdated) {
-          setSpotlightrPlaybackPreparedAt(Date.now());
+          setSpotlightrPrepareState('idle');
+        } else {
+          setSpotlightrPrepareState('ready');
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setSpotlightrPrepareState('ready');
+      });
 
     return () => {
       cancelled = true;
@@ -2769,7 +2775,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   useSpotlightrLessonPlayer({
     spotlightrMeta: activeSpotlightrMeta,
-    spotlightrPlaybackPreparedAt,
     activeLessonId,
     activeLessonGateBlocked,
     watchtimeSeconds,
@@ -2808,6 +2813,42 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     flatLessons,
     liveSectionProgressMap,
   });
+
+  const seekActiveLessonTo = useCallback(
+    (seconds) => {
+      const sec = Math.max(0, Number(seconds) || 0);
+      markVideoSeekClampGrace();
+
+      const v = videoRef.current;
+      if (v && typeof v.currentTime === 'number') {
+        try {
+          v.currentTime = sec;
+          nativeVideoProgressRef.current.lastTime = sec;
+          return;
+        } catch {
+          // try embed players
+        }
+      }
+
+      const yt = youtubePlayerRef.current;
+      if (yt && typeof yt.seekTo === 'function') {
+        try {
+          yt.seekTo(sec, true);
+          youtubeProgressRef.current.lastTime = sec;
+          return;
+        } catch {
+          // try Spotlightr
+        }
+      }
+
+      const sp = spotlightrPlayerRef.current;
+      if (sp) {
+        seekSpotlightrPlayer(sp, sec);
+        spotlightrProgressRef.current.lastTime = sec;
+      }
+    },
+    [markVideoSeekClampGrace]
+  );
 
   const navigationSteps = useMemo(() => {
     const steps = [];
@@ -3413,6 +3454,38 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         videoCoverageLessonIdRef
       )
     : null;
+  const activeLessonVideoDurationSec = activeVideoLessonForSidebar
+    ? Math.max(
+        Number(activeLessonSidebarPlayback?.durationSec || 0),
+        lessonFallbackDurationSeconds(activeVideoLessonForSidebar, liveSectionProgressMap)
+      )
+    : 0;
+  const activeLessonCoverageRanges = (() => {
+    if (!activeVideoLessonForSidebar) return [];
+    const lessonId = activeVideoLessonForSidebar.id;
+    if (videoCoverageLessonIdRef.current === lessonId) {
+      return parseCoverageRangePairs(videoCoverageRangesRef.current);
+    }
+    const live = liveSectionProgressMap[lessonId];
+    const sp = activeVideoLessonForSidebar.sectionProgress;
+    if (Array.isArray(live?.watchedCoverageRanges) && live.watchedCoverageRanges.length > 0) {
+      return parseCoverageRangePairs(live.watchedCoverageRanges);
+    }
+    if (Array.isArray(sp?.watchedCoverageRanges) && sp.watchedCoverageRanges.length > 0) {
+      return parseCoverageRangePairs(sp.watchedCoverageRanges);
+    }
+    return [];
+  })();
+  const activeLessonVideoCurrentSec = activeLessonSidebarPlayback?.currentSec ?? null;
+  const activeLessonVideoRequiredSec = activeVideoLessonForSidebar
+    ? effectiveRequiredSeconds(
+        parseWatchtimeToSeconds(activeVideoLessonForSidebar.watchtime || ''),
+        activeLessonVideoDurationSec
+      )
+    : 0;
+  const activeLessonVideoDone = activeVideoLessonForSidebar
+    ? isLessonDoneForUi(activeVideoLessonForSidebar, liveSectionProgressMap, viewedSectionIds)
+    : false;
 
   const sidebarAccent = theme.palette.primary.main;
   const sidebarMutedBorder = alpha(theme.palette.grey[500], 0.16);
@@ -5174,6 +5247,20 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               </Stack>
             </Box>
           ) : hasVideo ? (
+            spotlightrPrepareState === 'pending' ? (
+              <Box
+                sx={{
+                  ...getLessonMediaFrameSx(theme, LESSON_MEDIA_FRAME_HEIGHT),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: 'common.black',
+                }}
+              >
+                <CircularProgress sx={{ color: 'common.white' }} />
+              </Box>
+            ) : (
+              <>
               <LessonVideoPlayer
               key={`video-${activeLessonId || ''}-${embedUrl || ''}-${spotlightrMeta?.videoId || ''}-${spotlightrDirectSrc || ''}-${videoSrc || ''}`}
               embedUrl={!activeLessonGateBlocked ? embedUrl : null}
@@ -5387,6 +5474,39 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 }
               }}
             />
+            {activeVideoLessonForSidebar && activeLessonVideoDurationSec > 0 ? (
+              <Box
+                sx={{
+                  width: '100%',
+                  maxWidth: {
+                    xs: '100%',
+                    sm: 'min(100%, calc(56vh * 16 / 9))',
+                    md: 'min(100%, calc(60vh * 16 / 9))',
+                    lg: 'min(100%, calc(65vh * 16 / 9))',
+                    xl: 'min(100%, calc(72vh * 16 / 9))',
+                  },
+                  mx: 'auto',
+                  px: { xs: 1.5, sm: 2 },
+                  py: 1.5,
+                  bgcolor: 'background.paper',
+                  border: `1px solid ${alpha(theme.palette.grey[500], 0.2)}`,
+                  borderTop: 'none',
+                  boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, 0.06)}`,
+                }}
+              >
+                <LessonVideoCoverageStrip
+                  durationSeconds={activeLessonVideoDurationSec}
+                  watchedRanges={activeLessonCoverageRanges}
+                  currentTimeSec={activeLessonVideoCurrentSec}
+                  requiredSeconds={activeLessonVideoRequiredSec}
+                  isComplete={activeLessonVideoDone}
+                  onSeekTo={activeLessonGateBlocked ? undefined : seekActiveLessonTo}
+                  disabled={activeLessonGateBlocked}
+                />
+              </Box>
+            ) : null}
+              </>
+            )
           ) : hasImages ? (
             <LessonImageViewer
               images={activeLesson.images}

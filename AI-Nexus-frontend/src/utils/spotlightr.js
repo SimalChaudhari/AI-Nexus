@@ -91,17 +91,6 @@ export function mountSpotlightrEmbed(container, options = {}) {
 
   while (container.firstChild) container.removeChild(container.firstChild);
 
-  if (scriptUrl) {
-    let script = document.querySelector(`script[data-spotlightr="${scriptUrl}"]`);
-    if (!script) {
-      script = document.createElement('script');
-      script.src = scriptUrl;
-      script.async = true;
-      script.dataset.spotlightr = scriptUrl;
-      container.appendChild(script);
-    }
-  }
-
   const iframe = document.createElement('iframe');
   iframe.className = 'video-player-container spotlightr';
   iframe.dataset.playerid = videoId;

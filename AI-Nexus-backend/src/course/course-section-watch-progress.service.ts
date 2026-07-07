@@ -580,13 +580,12 @@ export class CourseSectionWatchProgressService {
 
     const computed = this.buildComputed(lastPos, watchedWithDelta, duration);
     const now = new Date();
-    const explicitCompletion = dto.markCompleted === true;
     const stickyCompleted = Boolean(existing?.isCompleted);
     const reachedRequired = this.watchProgressMeetsCompletionRequirement(
       computed.watched,
       requiredForCompletion,
     );
-    const isCompleted = stickyCompleted || explicitCompletion || reachedRequired;
+    const isCompleted = stickyCompleted || reachedRequired;
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
     const previousLastPosition = Math.max(0, Number(existing?.lastPositionSeconds || 0));
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
