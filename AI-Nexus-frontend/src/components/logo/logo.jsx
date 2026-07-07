@@ -8,6 +8,7 @@ import { usePathname } from 'src/routes/hooks';
 import { appSettingsService } from 'src/services/app-settings.service';
 
 import { logoClasses } from './classes';
+import { DEFAULT_SITE_LOGO } from './default-logo';
 
 // ----------------------------------------------------------------------
 
@@ -51,6 +52,7 @@ export const Logo = forwardRef(
 
       return window.localStorage.getItem('site-logo-url') || '';
     });
+    const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
       let active = true;
@@ -94,6 +96,18 @@ export const Logo = forwardRef(
       };
     }, []);
 
+    useEffect(() => {
+      setLogoError(false);
+    }, [siteLogoUrl]);
+
+    const logoSrc = siteLogoUrl && !logoError ? siteLogoUrl : DEFAULT_SITE_LOGO;
+
+    const handleLogoError = () => {
+      if (siteLogoUrl) {
+        setLogoError(true);
+      }
+    };
+
     /*
      * OR using local (public folder)
      * const logo = ( <Box alt="logo" component="img" src={`${CONFIG.site.basePath}/logo/logo-single.svg`} width={width} height={height} /> );
@@ -102,9 +116,8 @@ export const Logo = forwardRef(
       <Box
         component="img"
         alt="logo"
-        src={
-          siteLogoUrl || '/favicon.png'
-        }
+        src={logoSrc}
+        onError={handleLogoError}
         sx={{
           display: 'block',
           width: '100%',
