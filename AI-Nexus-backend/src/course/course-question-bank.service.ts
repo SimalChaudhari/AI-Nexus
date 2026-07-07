@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import {
   CourseQuestionBankEntity,
   CourseQuestionType,
@@ -552,9 +552,10 @@ export class CourseQuestionBankService {
       },
     });
     if (!attempt) throw new NotFoundException('Attempt not found');
+    // Course-end attempts (moduleId null) score only unlinked questions — matches learner UI.
     const where = attempt.moduleId
       ? { courseId, moduleId: attempt.moduleId }
-      : { courseId };
+      : { courseId, moduleId: IsNull() };
     const bank = await this.repo.find({
       where,
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
