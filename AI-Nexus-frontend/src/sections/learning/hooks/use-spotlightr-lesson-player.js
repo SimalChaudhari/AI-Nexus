@@ -49,7 +49,6 @@ const markResumeHandled = ({
 /** Spotlightr iframe + JS API — mirrors YouTube player progress / seek-lock behavior. */
 export function useSpotlightrLessonPlayer({
   spotlightrMeta,
-  spotlightrPlaybackPreparedAt = 0,
   activeLessonId,
   activeLessonGateBlocked,
   watchtimeSeconds,
@@ -161,7 +160,7 @@ export function useSpotlightrLessonPlayer({
       return undefined;
     }
 
-    const sessionKey = `${activeLessonId}|${spotlightrVideoId}|${spotlightrPlaybackPreparedAt || 0}`;
+    const sessionKey = `${activeLessonId}|${spotlightrVideoId}`;
     const { videoId, scriptUrl } = spotlightrMeta;
     const wrapper = getContainer();
     const hasLiveIframe = Boolean(wrapper?.querySelector('iframe'));
@@ -688,7 +687,6 @@ export function useSpotlightrLessonPlayer({
       mountSpotlightrEmbed(mountWrapper, {
         watchUrl: spotlightrMeta.watchUrl,
         videoId,
-        scriptUrl,
         startSeconds: 0,
         useFallback: false,
         title: 'Course video',
@@ -732,14 +730,15 @@ export function useSpotlightrLessonPlayer({
 
     return () => {
       cancelled = true;
+      playerTeardownRef.current = true;
       resumeViaApiRef.current = null;
       document.removeEventListener('vooPlayerReady', onVooPlayerReady);
       clearPoll();
+      destroyIframe();
     };
   }, [
     spotlightrVideoId,
     spotlightrMeta?.watchUrl,
-    spotlightrPlaybackPreparedAt,
     activeLessonId,
     activeLessonGateBlocked,
     resumeSeekAppliedRef,
