@@ -1413,6 +1413,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
 
   const hasEarnedCredential = Boolean(quizAssessmentProgress?.hasEarnedCredential);
+  const hasCredentialUnlock = Boolean(
+    quizAssessmentProgress?.hasCredentialUnlock ?? quizAssessmentProgress?.hasEarnedCredential
+  );
 
   const programCpeSummary = useMemo(() => {
     if (!hasEarnedCredential || !playerContext?.programCpeSummary) return null;
@@ -3157,7 +3160,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const courseEndLocked =
     isCourseEndModel &&
     !allModulesDone &&
-    !hasEarnedCredential &&
+    !hasCredentialUnlock &&
     !UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
 
   useEffect(() => {
@@ -3177,14 +3180,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [courseEndLocked, activeLessonId, flatLessons, setSearchParams]);
 
   const activeModuleAssignmentQuizLocked = Boolean(
-    !hasEarnedCredential &&
+    !hasCredentialUnlock &&
       moduleAssignmentModuleId &&
       (quizCountByModuleId[moduleAssignmentModuleId] || 0) > 0 &&
       !isModuleQuizPerfect(moduleAssignmentModuleId)
   );
 
   const courseEndAssignmentQuizLocked = Boolean(
-    !hasEarnedCredential &&
+    !hasCredentialUnlock &&
       activeLessonId === COURSE_END_ASSIGNMENT_ID &&
       courseEndQuizCount > 0 &&
       !isCourseEndQuizPerfect
@@ -3971,16 +3974,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       const modPracticeCount = quizCountByModuleId[section.id] || 0;
                       if (modPracticeCount === 0) return null;
                       const stats = moduleProgressById[section.id];
-                      const moduleDone =
-                        UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
-                        hasEarnedCredential ||
-                        (stats && stats.total > 0 && stats.completed >= stats.total);
                       const isQuizCompleted = isModuleQuizPerfect(section.id);
-                      const practiceUnlockedStyle = moduleDone;
+                      const moduleQuizAccessible =
+                        UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        hasCredentialUnlock ||
+                        isQuizCompleted ||
+                        (stats && stats.total > 0 && stats.completed >= stats.total);
+                      const practiceUnlockedStyle = moduleQuizAccessible;
                       return (
                         <Tooltip
                           title={
-                            moduleDone
+                            moduleQuizAccessible
                               ? `Open quiz (${modPracticeCount} question${modPracticeCount !== 1 ? 's' : ''})`
                               : 'Complete every lesson in this module to unlock quiz'
                           }
@@ -3992,7 +3996,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             alignItems="center"
                             justifyContent="flex-start"
                             onClick={() => {
-                              if (!moduleDone) {
+                              if (!moduleQuizAccessible) {
                                 toast.info(
                                   'Complete every lesson in this module to unlock quiz'
                                 );
@@ -4008,16 +4012,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               py: 1.35,
                               px: 1.5,
                               borderRadius: 1.5,
-                              cursor: moduleDone ? 'pointer' : 'not-allowed',
-                              opacity: moduleDone ? 1 : 0.55,
+                              cursor: moduleQuizAccessible ? 'pointer' : 'not-allowed',
+                              opacity: moduleQuizAccessible ? 1 : 0.55,
                               bgcolor:
-                                moduleDone && activeLessonId === modulePracticeRowId
+                                moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                   ? alpha(sidebarAccent, 0.1)
                                   : practiceUnlockedStyle
                                     ? alpha(theme.palette.info.main, 0.06)
                                     : alpha(theme.palette.grey[500], 0.04),
                               border: `1px solid ${
-                                moduleDone && activeLessonId === modulePracticeRowId
+                                moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                   ? alpha(sidebarAccent, 0.4)
                                   : practiceUnlockedStyle
                                     ? alpha(theme.palette.info.main, 0.25)
@@ -4025,13 +4029,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                               }`,
                               boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
                               color:
-                                moduleDone && activeLessonId === modulePracticeRowId
+                                moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                   ? 'primary.dark'
                                   : practiceUnlockedStyle
                                     ? 'info.dark'
                                     : 'text.primary',
                               '&:hover': {
-                                bgcolor: moduleDone
+                                bgcolor: moduleQuizAccessible
                                   ? activeLessonId === modulePracticeRowId
                                     ? alpha(sidebarAccent, 0.14)
                                     : alpha(theme.palette.info.main, 0.1)
@@ -4052,7 +4056,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   borderRadius: 1,
                                   overflow: 'hidden',
                                   border: `1px solid ${
-                                    moduleDone && activeLessonId === modulePracticeRowId
+                                    moduleQuizAccessible && activeLessonId === modulePracticeRowId
                                       ? sidebarAccent
                                       : practiceUnlockedStyle
                                         ? alpha(theme.palette.info.main, 0.5)
@@ -4084,7 +4088,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                 </Typography>
                               </Stack>
                               {isQuizCompleted ? <SidebarCompletedChip theme={theme} /> : null}
-                              {!moduleDone && !isQuizCompleted ? (
+                              {!moduleQuizAccessible && !isQuizCompleted ? (
                                 <Iconify
                                   icon="solar:lock-keyhole-bold"
                                   width={14}
@@ -4103,20 +4107,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (modAssignmentCount === 0) return null;
                       const stats = moduleProgressById[section.id];
                       const modQuizCount = quizCountByModuleId[section.id] || 0;
-                      const moduleVideosDone =
-                        UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
-                        hasEarnedCredential ||
-                        (stats && stats.total > 0 && stats.completed >= stats.total);
-                      const moduleQuizPassed =
-                        modQuizCount === 0 || isModuleQuizPerfect(section.id);
+                      const isQuizCompleted = isModuleQuizPerfect(section.id);
                       const isAssignmentCompleted = Boolean(
                         quizAssessmentScopeByModuleId[section.id]?.assignmentCompleted
                       );
+                      const moduleVideosDone =
+                        UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        hasCredentialUnlock ||
+                        isQuizCompleted ||
+                        isAssignmentCompleted ||
+                        (stats && stats.total > 0 && stats.completed >= stats.total);
+                      const moduleQuizPassed =
+                        modQuizCount === 0 || isModuleQuizPerfect(section.id);
                       const assessmentUnlocked =
-                        hasEarnedCredential ||
-                        (modQuizCount > 0 ? moduleQuizPassed : moduleVideosDone);
+                        hasCredentialUnlock ||
+                        isAssignmentCompleted ||
+                        (modQuizCount > 0 ? moduleQuizPassed || isQuizCompleted : moduleVideosDone);
                       const assignmentTooltip =
-                        modQuizCount > 0 && !moduleQuizPassed
+                        modQuizCount > 0 && !moduleQuizPassed && !isQuizCompleted
                           ? 'Score 100% on the quiz to unlock assessment'
                           : modQuizCount === 0 && !moduleVideosDone
                             ? 'Complete every lesson in this module to unlock assessment'
@@ -4133,7 +4141,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                             alignItems="center"
                             justifyContent="flex-start"
                             onClick={() => {
-                              if (modQuizCount > 0 && !moduleQuizPassed) {
+                              if (modQuizCount > 0 && !moduleQuizPassed && !isQuizCompleted) {
                                 toast.info('Score 100% on the quiz before starting the assessment');
                                 return;
                               }
@@ -4275,7 +4283,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             <Stack spacing={1} sx={{ mt: 1 }}>
               {courseEndQuizCount > 0 && (() => {
                 const unlocked =
-                  allModulesDone || hasEarnedCredential || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                  allModulesDone || hasCredentialUnlock || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
                 const isFinalQuizCompleted = isCourseEndQuizPerfect;
                 return (
                   <Tooltip
@@ -4320,7 +4328,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               })()}
               {courseEndAssignmentCount > 0 && (() => {
                 const modulesUnlocked =
-                  allModulesDone || hasEarnedCredential || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                  allModulesDone || hasCredentialUnlock || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
                 const unlocked =
                   courseEndQuizCount > 0 ? isCourseEndQuizPerfect : modulesUnlocked;
                 const isFinalAssignmentCompleted = Boolean(

@@ -242,6 +242,63 @@ export class CourseQuizAssessmentProgressService {
     return quizOk && assignmentOk;
   }
 
+  /**
+   * True when quiz/assessment that existed on or before certificate issue is still incomplete.
+   * Used to hide wrongly issued badges while grandfathering admin-added content after issue.
+   */
+  async hasIncompleteQuizAssessmentBefore(
+    userId: string,
+    courseId: string,
+    issuedAt: Date,
+  ): Promise<boolean> {
+    const issuedTime = issuedAt instanceof Date ? issuedAt.getTime() : new Date(issuedAt).getTime();
+    if (!Number.isFinite(issuedTime)) return true;
+
+    const questions = await this.questionRepo.find({
+      where: { courseId },
+      select: ['id', 'moduleId', 'questionType', 'createdAt'],
+    });
+    if (!questions.length) return false;
+
+    const progress = await this.getLearnerProgress(userId, courseId);
+
+    for (const scope of progress.scopes) {
+      const scopeQuestions = questions.filter((q) =>
+        scope.moduleId == null ? q.moduleId == null : q.moduleId === scope.moduleId,
+      );
+      const preIssueQuizzes = scopeQuestions.filter(
+        (q) =>
+          q.questionType !== CourseQuestionType.Assignment &&
+          this.isCreatedOnOrBefore(q.createdAt, issuedAt),
+      );
+      const preIssueAssignments = scopeQuestions.filter(
+        (q) =>
+          q.questionType === CourseQuestionType.Assignment &&
+          this.isCreatedOnOrBefore(q.createdAt, issuedAt),
+      );
+
+      if (preIssueQuizzes.length > 0 && !scope.quizCompleted) {
+        return true;
+      }
+      if (preIssueAssignments.length > 0) {
+        const completed = await this.isAssessmentScopeCompleted(
+          userId,
+          courseId,
+          preIssueAssignments.map((q) => q.id),
+        );
+        if (!completed) return true;
+      }
+    }
+    return false;
+  }
+
+  private isCreatedOnOrBefore(createdAt: Date, issuedAt: Date): boolean {
+    const createdTime =
+      createdAt instanceof Date ? createdAt.getTime() : new Date(createdAt).getTime();
+    const issuedTime = issuedAt instanceof Date ? issuedAt.getTime() : new Date(issuedAt).getTime();
+    return Number.isFinite(createdTime) && Number.isFinite(issuedTime) && createdTime <= issuedTime;
+  }
+
   markQuizAttemptCompleted(attempt: CourseQuestionBankAttemptEntity): void {
     const total = Number(attempt.totalQuestions || 0);
     const correct = Number(attempt.correctAnswers || 0);

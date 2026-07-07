@@ -714,7 +714,7 @@ export class CourseController {
             const pillarIndex = resolveCoursePillarIndex(courseRow);
             if (pillarIndex === 3) {
                 const hasEarnedCredential =
-                    await this.courseCertificateService.hasActiveCredentialForLearner(userId, courseId);
+                    await this.courseCertificateService.hasDisplayableCredentialForLearner(userId, courseId);
                 if (hasEarnedCredential) {
                     programCpeSummary =
                         await this.courseSectionWatchProgressService.getProgramPillarWatchSummary(
@@ -1041,11 +1041,14 @@ export class CourseController {
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
-        const [data, hasEarnedCredential] = await Promise.all([
+        const [data, hasEarnedCredential, hasCredentialUnlock] = await Promise.all([
             this.courseQuestionBankService.getLearnerQuizAssessmentProgress(userId, courseId),
-            this.courseCertificateService.hasActiveCredentialForLearner(userId, courseId),
+            this.courseCertificateService.hasDisplayableCredentialForLearner(userId, courseId),
+            this.courseCertificateService.hasCredentialRecordForLearner(userId, courseId),
         ]);
-        return response.status(HttpStatus.OK).json({ data: { ...data, hasEarnedCredential } });
+        return response.status(HttpStatus.OK).json({
+            data: { ...data, hasEarnedCredential, hasCredentialUnlock },
+        });
     }
 
     @Delete('question-bank/attempts/:attemptId')
@@ -1664,7 +1667,7 @@ export class CourseController {
                 );
                 const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
                 const hasEarnedCredential =
-                    await this.courseCertificateService.hasActiveCredentialForLearner(
+                    await this.courseCertificateService.hasDisplayableCredentialForLearner(
                         userId,
                         courseId,
                     );

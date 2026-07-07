@@ -92,10 +92,9 @@ export class CourseCertificateService {
   }
 
   /**
-   * True when the learner already holds an active certificate for this course or its programme.
-   * Used to grandfather badges/credentials when admins add new sections after issuance.
+   * Active certificate row exists (used to grandfather quiz/assessment unlock after admin adds content).
    */
-  async hasActiveCredentialForLearner(userId: string, courseId: string): Promise<boolean> {
+  async hasCredentialRecordForLearner(userId: string, courseId: string): Promise<boolean> {
     const direct = await this.certificateRepository.findOne({
       where: { userId, courseId, status: CourseCertificateStatus.Active },
       select: ['id'],
@@ -113,6 +112,83 @@ export class CourseCertificateService {
       select: ['id'],
     });
     return Boolean(programCert);
+  }
+
+  /** Badge/CPE display — respects completion rules; grandfathers only admin-added content after issue. */
+  async hasDisplayableCredentialForLearner(userId: string, courseId: string): Promise<boolean> {
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'programId'],
+    });
+    if (!course) return false;
+
+    if (course.programId) {
+      const programCert = await this.certificateRepository.findOne({
+        where: { userId, programId: course.programId, status: CourseCertificateStatus.Active },
+        select: ['id', 'courseId', 'programId'],
+      });
+      if (!programCert) return false;
+      return this.shouldDisplayCredentialToLearner(userId, programCert);
+    }
+
+    const direct = await this.certificateRepository.findOne({
+      where: { userId, courseId, status: CourseCertificateStatus.Active },
+      select: ['id', 'courseId', 'programId'],
+    });
+    if (!direct) return false;
+    return this.shouldDisplayCredentialToLearner(userId, direct);
+  }
+
+  /** @deprecated Use hasDisplayableCredentialForLearner or hasCredentialRecordForLearner */
+  async hasActiveCredentialForLearner(userId: string, courseId: string): Promise<boolean> {
+    return this.hasDisplayableCredentialForLearner(userId, courseId);
+  }
+
+  /**
+   * Learner-facing certificate/badge visibility.
+   * Programme: requires full rules OR grandfather when only post-issue content is incomplete.
+   */
+  private async shouldDisplayCredentialToLearner(
+    userId: string,
+    row: Pick<CourseCertificateEntity, 'courseId' | 'programId'>,
+  ): Promise<boolean> {
+    if (row.programId) {
+      if (await this.isProgramCertificateRequirementsMet(userId, row.programId)) {
+        return true;
+      }
+      const cert = await this.certificateRepository.findOne({
+        where: { userId, programId: row.programId, status: CourseCertificateStatus.Active },
+        select: ['id', 'completedAt'],
+      });
+      if (!cert?.completedAt) return false;
+      return this.isGrandfatheredProgrammeCredential(userId, row.programId, cert.completedAt);
+    }
+    return Boolean(
+      await this.certificateRepository.findOne({
+        where: { userId, courseId: row.courseId, status: CourseCertificateStatus.Active },
+        select: ['id'],
+      }),
+    );
+  }
+
+  /** Keep programme badge when admin added content after issue; hide if pre-issue quiz/assessment still owed. */
+  private async isGrandfatheredProgrammeCredential(
+    userId: string,
+    programId: string,
+    issuedAt: Date,
+  ): Promise<boolean> {
+    const pillars = await this.getProgramPillarCourses(programId);
+    const pillarCourses = [pillars.pillar1, pillars.pillar2].filter(Boolean) as CourseEntity[];
+    for (const course of pillarCourses) {
+      const hasPreIssueGap =
+        await this.quizAssessmentProgressService.hasIncompleteQuizAssessmentBefore(
+          userId,
+          course.id,
+          issuedAt,
+        );
+      if (hasPreIssueGap) return false;
+    }
+    return true;
   }
 
   private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
@@ -513,14 +589,21 @@ export class CourseCertificateService {
       order: { completedAt: 'DESC', createdAt: 'DESC' },
     });
 
-    const programIds = [...new Set(rows.map((row) => row.programId).filter(Boolean))] as string[];
+    const visibleRows: CourseCertificateEntity[] = [];
+    for (const row of rows) {
+      if (await this.shouldDisplayCredentialToLearner(userId, row)) {
+        visibleRows.push(row);
+      }
+    }
+
+    const programIds = [...new Set(visibleRows.map((row) => row.programId).filter(Boolean))] as string[];
     const programs = programIds.length
       ? await this.programRepository.find({ where: { id: In(programIds) }, select: ['id', 'title'] })
       : [];
     const programTitleById = new Map(programs.map((program) => [program.id, program.title]));
 
     return Promise.all(
-      rows.map(async (row) => {
+      visibleRows.map(async (row) => {
         const courseTitle = row.programId
           ? programTitleById.get(row.programId) || row.course?.title || 'Programme'
           : row.course?.title || 'Untitled Course';
