@@ -713,10 +713,15 @@ export class CourseController {
         if (userId && courseRow.programId) {
             const pillarIndex = resolveCoursePillarIndex(courseRow);
             if (pillarIndex === 3) {
-                programCpeSummary = await this.courseSectionWatchProgressService.getProgramPillarWatchSummary(
-                    userId,
-                    courseRow.programId,
-                );
+                const hasEarnedCredential =
+                    await this.courseCertificateService.hasActiveCredentialForLearner(userId, courseId);
+                if (hasEarnedCredential) {
+                    programCpeSummary =
+                        await this.courseSectionWatchProgressService.getProgramPillarWatchSummary(
+                            userId,
+                            courseRow.programId,
+                        );
+                }
             }
         }
 
@@ -1036,11 +1041,11 @@ export class CourseController {
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
-        const data = await this.courseQuestionBankService.getLearnerQuizAssessmentProgress(
-            userId,
-            courseId,
-        );
-        return response.status(HttpStatus.OK).json({ data });
+        const [data, hasEarnedCredential] = await Promise.all([
+            this.courseQuestionBankService.getLearnerQuizAssessmentProgress(userId, courseId),
+            this.courseCertificateService.hasActiveCredentialForLearner(userId, courseId),
+        ]);
+        return response.status(HttpStatus.OK).json({ data: { ...data, hasEarnedCredential } });
     }
 
     @Delete('question-bank/attempts/:attemptId')
@@ -1658,6 +1663,11 @@ export class CourseController {
                     (scope) => scope.quizCount > 0 || scope.assignmentCount > 0,
                 );
                 const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
+                const hasEarnedCredential =
+                    await this.courseCertificateService.hasActiveCredentialForLearner(
+                        userId,
+                        courseId,
+                    );
                 let completionPercent =
                     totalSections > 0 ? Math.round(completionSum / totalSections) : 0;
                 const isCompleted =
@@ -1700,6 +1710,7 @@ export class CourseController {
                         isCompleted,
                         status,
                         quizAssessmentCompleted: quizAssessmentMet,
+                        hasEarnedCredential,
                         videosCompleted,
                         viewedSectionIds,
                         currentSectionId: currentSectionId ? String(currentSectionId) : null,

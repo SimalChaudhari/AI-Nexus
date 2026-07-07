@@ -91,6 +91,30 @@ export class CourseCertificateService {
     return `${prefix}${sequence}`;
   }
 
+  /**
+   * True when the learner already holds an active certificate for this course or its programme.
+   * Used to grandfather badges/credentials when admins add new sections after issuance.
+   */
+  async hasActiveCredentialForLearner(userId: string, courseId: string): Promise<boolean> {
+    const direct = await this.certificateRepository.findOne({
+      where: { userId, courseId, status: CourseCertificateStatus.Active },
+      select: ['id'],
+    });
+    if (direct) return true;
+
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'programId'],
+    });
+    if (!course?.programId) return false;
+
+    const programCert = await this.certificateRepository.findOne({
+      where: { userId, programId: course.programId, status: CourseCertificateStatus.Active },
+      select: ['id'],
+    });
+    return Boolean(programCert);
+  }
+
   private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
     await this.courseService.getById(courseId);
 
@@ -102,44 +126,6 @@ export class CourseCertificateService {
     if (!videosCompleted) return false;
 
     return this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(userId, courseId);
-  }
-
-  private async isPillar2QuizAssessmentMetForModule(
-    userId: string,
-    courseId: string,
-    moduleId: string,
-    quizProgress: Awaited<ReturnType<CourseQuizAssessmentProgressService['getLearnerProgress']>>,
-  ): Promise<boolean> {
-    const moduleScope = quizProgress.scopes.find((row) => row.moduleId === moduleId);
-    const courseEndScope = quizProgress.scopes.find((row) => row.moduleId == null);
-
-    const moduleQuiz = Boolean(moduleScope?.quizCount);
-    const moduleAssignment = Boolean(moduleScope?.assignmentCount);
-    const endQuiz = Boolean(courseEndScope?.quizCount);
-    const endAssignment = Boolean(courseEndScope?.assignmentCount);
-
-    const needsQuiz = moduleQuiz || endQuiz;
-    const needsAssignment = moduleAssignment || endAssignment;
-    if (!needsQuiz && !needsAssignment) {
-      return false;
-    }
-
-    const quizOk =
-      !needsQuiz ||
-      (moduleQuiz ? moduleScope?.quizCompleted : courseEndScope?.quizCompleted);
-    const assignmentOk =
-      !needsAssignment ||
-      (moduleAssignment ? moduleScope?.assignmentCompleted : courseEndScope?.assignmentCompleted);
-
-    if (quizOk && assignmentOk) {
-      return true;
-    }
-
-    return this.quizAssessmentProgressService.isModuleQuizAndAssessmentComplete(
-      userId,
-      courseId,
-      moduleId,
-    );
   }
 
   private async isPillar2PartialRequirementsMet(userId: string, courseId: string): Promise<boolean> {
@@ -157,7 +143,6 @@ export class CourseCertificateService {
 
     const sectionProgressMap =
       await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
-    const quizProgress = await this.quizAssessmentProgressService.getLearnerProgress(userId, courseId);
 
     for (const module of modules) {
       const moduleSections = sections.filter((section) => section.moduleId === module.id);
@@ -168,12 +153,12 @@ export class CourseCertificateService {
       );
       if (!allSectionsComplete) continue;
 
-      const moduleQuizAssessmentComplete = await this.isPillar2QuizAssessmentMetForModule(
-        userId,
-        courseId,
-        module.id,
-        quizProgress,
-      );
+      const moduleQuizAssessmentComplete =
+        await this.quizAssessmentProgressService.isPillar2ProgrammeModuleComplete(
+          userId,
+          courseId,
+          module.id,
+        );
       if (moduleQuizAssessmentComplete) {
         return true;
       }
@@ -281,16 +266,6 @@ export class CourseCertificateService {
     return { action: 'issued', certificate: saved };
   }
 
-  private async revokeActiveCertificate(userId: string, courseId: string): Promise<CertificateSyncResult> {
-    const existing = await this.certificateRepository.findOne({ where: { userId, courseId } });
-    if (existing?.status === CourseCertificateStatus.Active) {
-      existing.status = CourseCertificateStatus.Blocked;
-      const saved = await this.certificateRepository.save(existing);
-      return { action: 'revoked', certificate: saved };
-    }
-    return { action: 'unchanged', certificate: existing ?? null };
-  }
-
   private async syncProgramCertificate(userId: string, programId: string): Promise<CertificateSyncResult> {
     const pillars = await this.getProgramPillarCourses(programId);
     if (!pillars.pillar1) {
@@ -313,8 +288,9 @@ export class CourseCertificateService {
       const existing = await this.certificateRepository.findOne({
         where: { userId, courseId: pillar1CourseId },
       });
+      // Keep programme certificates once issued — new sections must not revoke them.
       if (existing?.status === CourseCertificateStatus.Active && existing.programId === programId) {
-        return this.revokeActiveCertificate(userId, pillar1CourseId);
+        return { action: 'already_active', certificate: existing };
       }
       return { action: 'unchanged', certificate: existing ?? null };
     }
@@ -344,10 +320,9 @@ export class CourseCertificateService {
     const fullyComplete = await this.isCourseFullyCompleted(userId, courseId);
 
     if (!fullyComplete) {
+      // Keep certificates once issued — admins may add sections after learners earn a badge.
       if (existing?.status === CourseCertificateStatus.Active) {
-        existing.status = CourseCertificateStatus.Blocked;
-        const saved = await this.certificateRepository.save(existing);
-        return { action: 'revoked' as const, certificate: saved };
+        return { action: 'already_active' as const, certificate: existing };
       }
       return { action: 'unchanged' as const, certificate: existing ?? null };
     }

@@ -196,6 +196,7 @@ export function LearningModulePracticeQuiz({
   moduleTitle,
   questions,
   onBackToIntro,
+  onContinueToAssessment,
   onAttemptCompleted,
   /** When true, fill the course player panel (no viewport calc / double scroll). */
   fillContainer = false,
@@ -512,9 +513,15 @@ export function LearningModulePracticeQuiz({
           <Button variant="outlined" color="inherit" onClick={handleHeaderBack}>
             Retake quiz
           </Button>
-          <Button variant="contained" color="secondary" onClick={onBackToIntro}>
-            Back to start
-          </Button>
+          {correct >= totalQs && typeof onContinueToAssessment === 'function' ? (
+            <Button variant="contained" color="primary" onClick={onContinueToAssessment}>
+              Continue to assessment
+            </Button>
+          ) : (
+            <Button variant="contained" color="secondary" onClick={onBackToIntro}>
+              Back to start
+            </Button>
+          )}
         </Stack>
       </Box>
     );

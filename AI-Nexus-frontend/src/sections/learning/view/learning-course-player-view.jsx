@@ -724,6 +724,31 @@ const COURSE_END_ASSIGNMENT_ID = '__course_end_assignment__';
 const PROGRAM_CPE_SUMMARY_ID = '__program_cpe_summary__';
 const PROGRAM_CPE_SECTION_ID = 'section-program-cpe';
 
+function SidebarCompletedChip({ theme }) {
+  return (
+    <Chip
+      size="small"
+      label="Completed"
+      color="success"
+      variant="outlined"
+      icon={<Iconify icon="solar:check-circle-bold" width={14} />}
+      sx={{
+        height: 22,
+        flexShrink: 0,
+        alignSelf: 'center',
+        borderWidth: 1.5,
+        '& .MuiChip-label': {
+          px: 0.5,
+          fontSize: theme.typography.pxToRem(10),
+          fontWeight: 800,
+          letterSpacing: 0.02,
+        },
+        '& .MuiChip-icon': { ml: '6px', color: 'success.main' },
+      }}
+    />
+  );
+}
+
 function getModuleIdFromPracticeLessonId(lessonId) {
   if (!lessonId || typeof lessonId !== 'string' || !lessonId.startsWith(MODULE_PRACTICE_PREFIX)) {
     return null;
@@ -1329,17 +1354,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     swrOptions
   );
   const { mutate } = useSWRConfig();
-  const programCpeSummary = playerContext?.programCpeSummary ?? null;
   const programCpeRefreshRef = useRef(null);
-
-  useEffect(() => {
-    if (!playerKey || !programCpeSummary) return undefined;
-    clearTimeout(programCpeRefreshRef.current);
-    programCpeRefreshRef.current = setTimeout(() => {
-      mutate(playerKey);
-    }, 2500);
-    return () => clearTimeout(programCpeRefreshRef.current);
-  }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
   const questionBankSwrKey = course?.id ? ['course-question-bank', course.id] : null;
   const { data: questionBankList = [] } = useSWR(
@@ -1396,6 +1411,22 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     () => (quizAssessmentProgress?.scopes || []).find((scope) => !scope?.moduleId) || null,
     [quizAssessmentProgress]
   );
+
+  const hasEarnedCredential = Boolean(quizAssessmentProgress?.hasEarnedCredential);
+
+  const programCpeSummary = useMemo(() => {
+    if (!hasEarnedCredential || !playerContext?.programCpeSummary) return null;
+    return playerContext.programCpeSummary;
+  }, [hasEarnedCredential, playerContext?.programCpeSummary]);
+
+  useEffect(() => {
+    if (!playerKey || !programCpeSummary) return undefined;
+    clearTimeout(programCpeRefreshRef.current);
+    programCpeRefreshRef.current = setTimeout(() => {
+      mutate(playerKey);
+    }, 2500);
+    return () => clearTimeout(programCpeRefreshRef.current);
+  }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
   const isModuleQuizPerfect = useCallback(
     (moduleId) => {
@@ -3051,13 +3082,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     activeLessonId,
     sidebarPlaybackTick,
   ]);
-  const pendingQuizForFullCompletion =
-    courseOverviewProgressPercent < 100 &&
-    progressPercent >= 100 &&
-    (quizAssessmentProgress?.scopes || []).some(
-      (scope) => Number(scope?.quizCount || 0) > 0 || Number(scope?.assignmentCount || 0) > 0
-    ) &&
-    !quizAssessmentProgress?.quizAssessmentCompleted;
+  const pendingPracticeHint = useMemo(() => {
+    if (courseOverviewProgressPercent >= 100 || progressPercent < 100) return null;
+    const scopes = quizAssessmentProgress?.scopes || [];
+    if (!scopes.some((scope) => Number(scope?.quizCount || 0) > 0 || Number(scope?.assignmentCount || 0) > 0)) {
+      return null;
+    }
+    if (quizAssessmentProgress?.quizAssessmentCompleted) return null;
+    const needsQuiz = scopes.some((scope) => Number(scope?.quizCount || 0) > 0 && !scope?.quizCompleted);
+    const needsAssignment = scopes.some(
+      (scope) => Number(scope?.assignmentCount || 0) > 0 && !scope?.assignmentCompleted
+    );
+    if (needsQuiz) return 'Lessons complete — finish practice quizzes to reach 100%.';
+    if (needsAssignment) return 'Quiz complete — continue to the assessment to reach 100%.';
+    return 'Lessons complete — finish practice activities to reach 100%.';
+  }, [courseOverviewProgressPercent, progressPercent, quizAssessmentProgress]);
   const currentLessonNumber =
     currentIndex >= 0 && totalLessons > 0 ? Math.min(totalLessons, currentIndex + 1) : 0;
   const moduleProgressById = useMemo(() => {
@@ -3086,29 +3125,40 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const isProgramCourse = Boolean(course?.programId || course?.program?.id);
 
-  const hasAnyCompletedModule = useMemo(
+  const hasPillar2ProgrammeQualifyingModule = useMemo(
     () =>
       modules.some((mod) => {
         const stats = moduleProgressById[mod.id];
-        return stats && stats.total > 0 && stats.completed >= stats.total;
+        const lessonsDone = stats && stats.total > 0 && stats.completed >= stats.total;
+        if (!lessonsDone) return false;
+        const quizCount = quizCountByModuleId[mod.id] || 0;
+        const assignmentCount = assignmentCountByModuleId[mod.id] || 0;
+        if (quizCount === 0 || assignmentCount === 0) return false;
+        const scope = quizAssessmentScopeByModuleId[mod.id];
+        return Boolean(scope?.quizCompleted && scope?.assignmentCompleted);
       }),
-    [modules, moduleProgressById]
-  );
-
-  const hasAnyQuizAssessmentProgress = useMemo(
-    () =>
-      (quizAssessmentProgress?.scopes || []).some(
-        (scope) => scope?.quizCompleted || scope?.assignmentCompleted
-      ),
-    [quizAssessmentProgress]
+    [
+      modules,
+      moduleProgressById,
+      quizCountByModuleId,
+      assignmentCountByModuleId,
+      quizAssessmentScopeByModuleId,
+    ]
   );
 
   const shouldTryIssueCertificate = isProgramCourse
-    ? hasAnyCompletedModule && hasAnyQuizAssessmentProgress
+    ? courseLevel === 'intermediate'
+      ? hasPillar2ProgrammeQualifyingModule
+      : courseLevel === 'beginner'
+        ? allModulesDone && quizAssessmentProgress?.quizAssessmentCompleted
+        : false
     : allModulesDone && quizAssessmentProgress?.quizAssessmentCompleted;
 
   const courseEndLocked =
-    isCourseEndModel && !allModulesDone && !UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+    isCourseEndModel &&
+    !allModulesDone &&
+    !hasEarnedCredential &&
+    !UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
 
   useEffect(() => {
     if (!courseEndLocked) return;
@@ -3127,13 +3177,15 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [courseEndLocked, activeLessonId, flatLessons, setSearchParams]);
 
   const activeModuleAssignmentQuizLocked = Boolean(
-    moduleAssignmentModuleId &&
+    !hasEarnedCredential &&
+      moduleAssignmentModuleId &&
       (quizCountByModuleId[moduleAssignmentModuleId] || 0) > 0 &&
       !isModuleQuizPerfect(moduleAssignmentModuleId)
   );
 
   const courseEndAssignmentQuizLocked = Boolean(
-    activeLessonId === COURSE_END_ASSIGNMENT_ID &&
+    !hasEarnedCredential &&
+      activeLessonId === COURSE_END_ASSIGNMENT_ID &&
       courseEndQuizCount > 0 &&
       !isCourseEndQuizPerfect
   );
@@ -3447,14 +3499,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   </Typography>
                 </Box>
               </Stack>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingQuizForFullCompletion ? 0.5 : 1.25, fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingPracticeHint ? 0.5 : 1.25, fontWeight: 500 }}>
                 {currentLessonNumber > 0
                   ? `Current: lesson ${currentLessonNumber} of ${totalLessons}`
                   : `Select a lesson to begin (${totalLessons} total)`}
               </Typography>
-              {pendingQuizForFullCompletion ? (
+              {pendingPracticeHint ? (
                 <Typography variant="caption" sx={{ color: 'warning.dark', display: 'block', mb: 1.25, fontWeight: 600 }}>
-                  Lessons complete — finish practice quizzes to reach 100%.
+                  {pendingPracticeHint}
                 </Typography>
               ) : null}
               <LinearProgress
@@ -3921,7 +3973,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       const stats = moduleProgressById[section.id];
                       const moduleDone =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        hasEarnedCredential ||
                         (stats && stats.total > 0 && stats.completed >= stats.total);
+                      const isQuizCompleted = isModuleQuizPerfect(section.id);
                       const practiceUnlockedStyle = moduleDone;
                       return (
                         <Tooltip
@@ -4029,13 +4083,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   {modPracticeCount} question{modPracticeCount !== 1 ? 's' : ''}
                                 </Typography>
                               </Stack>
-                              {!moduleDone && (
+                              {isQuizCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                              {!moduleDone && !isQuizCompleted ? (
                                 <Iconify
                                   icon="solar:lock-keyhole-bold"
                                   width={14}
                                   sx={{ color: 'text.disabled', flexShrink: 0 }}
                                 />
-                              )}
+                              ) : null}
                             </Stack>
                           </Stack>
                         </Tooltip>
@@ -4050,11 +4105,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       const modQuizCount = quizCountByModuleId[section.id] || 0;
                       const moduleVideosDone =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
+                        hasEarnedCredential ||
                         (stats && stats.total > 0 && stats.completed >= stats.total);
                       const moduleQuizPassed =
                         modQuizCount === 0 || isModuleQuizPerfect(section.id);
+                      const isAssignmentCompleted = Boolean(
+                        quizAssessmentScopeByModuleId[section.id]?.assignmentCompleted
+                      );
                       const assessmentUnlocked =
-                        modQuizCount > 0 ? moduleQuizPassed : moduleVideosDone;
+                        hasEarnedCredential ||
+                        (modQuizCount > 0 ? moduleQuizPassed : moduleVideosDone);
                       const assignmentTooltip =
                         modQuizCount > 0 && !moduleQuizPassed
                           ? 'Score 100% on the quiz to unlock assessment'
@@ -4168,13 +4228,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                                   {modAssignmentCount} item{modAssignmentCount !== 1 ? 's' : ''}
                                 </Typography>
                               </Stack>
-                              {!assessmentUnlocked && (
+                              {isAssignmentCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                              {!assessmentUnlocked && !isAssignmentCompleted ? (
                                 <Iconify
                                   icon="solar:lock-keyhole-bold"
                                   width={14}
                                   sx={{ color: 'text.disabled', flexShrink: 0 }}
                                 />
-                              )}
+                              ) : null}
                             </Stack>
                           </Stack>
                         </Tooltip>
@@ -4213,7 +4274,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             </Typography>
             <Stack spacing={1} sx={{ mt: 1 }}>
               {courseEndQuizCount > 0 && (() => {
-                const unlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const unlocked =
+                  allModulesDone || hasEarnedCredential || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const isFinalQuizCompleted = isCourseEndQuizPerfect;
                 return (
                   <Tooltip
                     key="course-end-quiz"
@@ -4248,16 +4311,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                           <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>Final Quiz</Typography>
                           <Typography variant="caption" sx={{ color: 'info.dark', fontWeight: 700 }} noWrap>{courseEndQuizCount} question{courseEndQuizCount !== 1 ? 's' : ''}</Typography>
                         </Stack>
-                        {!unlocked && <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} />}
+                        {isFinalQuizCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                        {!unlocked && !isFinalQuizCompleted ? <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} /> : null}
                       </Stack>
                     </Stack>
                   </Tooltip>
                 );
               })()}
               {courseEndAssignmentCount > 0 && (() => {
-                const modulesUnlocked = allModulesDone || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
+                const modulesUnlocked =
+                  allModulesDone || hasEarnedCredential || UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO;
                 const unlocked =
                   courseEndQuizCount > 0 ? isCourseEndQuizPerfect : modulesUnlocked;
+                const isFinalAssignmentCompleted = Boolean(
+                  courseEndQuizAssessmentScope?.assignmentCompleted
+                );
                 const assignmentTooltip =
                   courseEndQuizCount > 0 && !isCourseEndQuizPerfect
                     ? 'Score 100% on the final quiz to unlock the final assessment'
@@ -4305,7 +4373,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                           <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>Final Assessment</Typography>
                           <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 700 }} noWrap>{courseEndAssignmentCount} item{courseEndAssignmentCount !== 1 ? 's' : ''}</Typography>
                         </Stack>
-                        {!unlocked && <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} />}
+                        {isFinalAssignmentCompleted ? <SidebarCompletedChip theme={theme} /> : null}
+                        {!unlocked && !isFinalAssignmentCompleted ? <Iconify icon="solar:lock-keyhole-bold" width={14} sx={{ color: 'text.disabled', flexShrink: 0 }} /> : null}
                       </Stack>
                     </Stack>
                   </Tooltip>
@@ -4920,9 +4989,21 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   key={COURSE_END_PRACTICE_ID}
                   courseId={course?.id}
                   moduleId={null}
+                  moduleTitle="Final Quiz"
                   questions={courseEndQuizQuestions}
                   fillContainer
                   onAttemptCompleted={() => markLocalQuizCompleted(null)}
+                  onBackToIntro={() => {
+                    setSearchParams({ section: COURSE_END_PRACTICE_ID }, { replace: true });
+                  }}
+                  onContinueToAssessment={
+                    courseEndAssignmentCount > 0
+                      ? () => {
+                          setActiveLessonId(COURSE_END_ASSIGNMENT_ID);
+                          setSearchParams({ section: COURSE_END_ASSIGNMENT_ID }, { replace: true });
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <LearningModulePracticeIntro
@@ -5010,6 +5091,16 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     onBackToIntro={() => {
                       setSearchParams({ section: activeLessonId }, { replace: true });
                     }}
+                    onContinueToAssessment={
+                      (assignmentCountByModuleId[modulePracticeModuleId] || 0) > 0
+                        ? () => {
+                            const assignmentId = `${MODULE_ASSIGNMENT_PREFIX}${modulePracticeModuleId}`;
+                            setActiveLessonId(assignmentId);
+                            setExpandedSection(modulePracticeModuleId);
+                            setSearchParams({ section: assignmentId }, { replace: true });
+                          }
+                        : undefined
+                    }
                   />
                 ) : modulePracticeQuestions.length > 0 ? (
                   <LearningModulePracticeIntro

@@ -214,6 +214,34 @@ export class CourseQuizAssessmentProgressService {
     return quizOk && assignmentOk;
   }
 
+  /**
+   * Pillar 2 programme badge: qualifying module must include quiz and assessment, both passed.
+   * Module-scoped only — course-end quiz/assessment must not satisfy this rule.
+   */
+  async isPillar2ProgrammeModuleComplete(
+    userId: string,
+    courseId: string,
+    moduleId: string,
+  ): Promise<boolean> {
+    const questions = await this.questionRepo.find({
+      where: { courseId, moduleId },
+    });
+    const assignmentIds = questions
+      .filter((q) => q.questionType === CourseQuestionType.Assignment)
+      .map((q) => q.id);
+    const quizCount = questions.length - assignmentIds.length;
+    const hasQuiz = quizCount > 0;
+    const hasAssignment = assignmentIds.length > 0;
+
+    if (!hasQuiz || !hasAssignment) {
+      return false;
+    }
+
+    const quizOk = await this.hasQuizPerfectScore(userId, courseId, moduleId);
+    const assignmentOk = await this.isAssessmentScopeCompleted(userId, courseId, assignmentIds);
+    return quizOk && assignmentOk;
+  }
+
   markQuizAttemptCompleted(attempt: CourseQuestionBankAttemptEntity): void {
     const total = Number(attempt.totalQuestions || 0);
     const correct = Number(attempt.correctAnswers || 0);
