@@ -10,6 +10,7 @@ import { ProgramEntity } from '../program/programs.entity';
 import { CourseModuleEntity } from './course-module.entity';
 import { CourseModuleSectionEntity } from './course-module-section.entity';
 import { resolveProgramPillarIndexFromLevel } from './program-pillar.util';
+import { resolveCoursePillarIndex } from './course-program-cpe-summary.util';
 import {
   isSectionVideoUrlChanged,
   normalizeVideoUrlForCompare,
@@ -37,6 +38,25 @@ const SECTION_VIDEO_COMPLETED_LOCK_MESSAGE =
 const COURSE_HAS_COMPLETED_LESSONS_MESSAGE =
   'Learners have completed lessons in this course. You cannot delete the course until that progress is cleared.';
 
+export type CertificateTranscriptSection = {
+  sectionId: string;
+  sectionTitle: string;
+  isCompleted: boolean;
+  completedAt: string | null;
+};
+
+export type CertificateTranscriptModule = {
+  moduleId: string;
+  moduleTitle: string;
+  courseId: string;
+  courseTitle: string;
+  pillarIndex?: number | null;
+  completedSections: number;
+  totalSections: number;
+  isModuleComplete: boolean;
+  sections: CertificateTranscriptSection[];
+};
+
 @Injectable()
 export class CourseCertificateService {
   constructor(
@@ -57,12 +77,18 @@ export class CourseCertificateService {
     private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
   ) {}
 
-  private buildCertificateNo(courseId: string, userId: string, programId?: string | null): string {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const anchor = programId || courseId;
-    const anchorPart = String(anchor || '').replace(/-/g, '').slice(0, 8).toUpperCase();
-    const userPart = String(userId || '').replace(/-/g, '').slice(0, 8).toUpperCase();
-    return `AINX-${date}-${anchorPart}-${userPart}`;
+  private async buildCertificateNo(completedAt: Date = new Date()): Promise<string> {
+    const safeDate = completedAt instanceof Date && !Number.isNaN(completedAt.getTime())
+      ? completedAt
+      : new Date();
+    const datePart = safeDate.toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `AINX-${datePart}-`;
+    const existingCount = await this.certificateRepository
+      .createQueryBuilder('cert')
+      .where('cert.certificateNo LIKE :prefix', { prefix: `${prefix}%` })
+      .getCount();
+    const sequence = String(existingCount + 1).padStart(5, '0');
+    return `${prefix}${sequence}`;
   }
 
   private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
@@ -218,7 +244,7 @@ export class CourseCertificateService {
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = programId || null;
-      existing.certificateNo = this.buildCertificateNo(courseId, userId, programId);
+      existing.certificateNo = await this.buildCertificateNo(existing.completedAt);
       const saved = await this.certificateRepository.save(existing);
       return { action: 'reissued', certificate: saved };
     }
@@ -236,16 +262,18 @@ export class CourseCertificateService {
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = programId || null;
+      existing.certificateNo = await this.buildCertificateNo(existing.completedAt);
       const saved = await this.certificateRepository.save(existing);
       return { action: 'reissued', certificate: saved };
     }
 
+    const completedAt = new Date();
     const certificate = this.certificateRepository.create({
       userId,
       courseId,
       programId: programId || null,
-      certificateNo: this.buildCertificateNo(courseId, userId, programId),
-      completedAt: new Date(),
+      certificateNo: await this.buildCertificateNo(completedAt),
+      completedAt,
       status: CourseCertificateStatus.Active,
       deletedAt: null,
     });
@@ -329,7 +357,7 @@ export class CourseCertificateService {
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = null;
-      existing.certificateNo = this.buildCertificateNo(courseId, userId);
+      existing.certificateNo = await this.buildCertificateNo(existing.completedAt);
       const saved = await this.certificateRepository.save(existing);
       return { action: 'reissued' as const, certificate: saved };
     }
@@ -343,16 +371,18 @@ export class CourseCertificateService {
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = null;
+      existing.certificateNo = await this.buildCertificateNo(existing.completedAt);
       const saved = await this.certificateRepository.save(existing);
       return { action: 'reissued' as const, certificate: saved };
     }
 
+    const completedAt = new Date();
     const certificate = this.certificateRepository.create({
       userId,
       courseId,
       programId: null,
-      certificateNo: this.buildCertificateNo(courseId, userId),
-      completedAt: new Date(),
+      certificateNo: await this.buildCertificateNo(completedAt),
+      completedAt,
       status: CourseCertificateStatus.Active,
       deletedAt: null,
     });
@@ -406,6 +436,101 @@ export class CourseCertificateService {
     return { issued: false, certificate: null, reason: 'not_completed' as const };
   }
 
+  private async buildCourseTranscript(
+    userId: string,
+    courseId: string,
+    courseTitle = '',
+  ): Promise<CertificateTranscriptModule[]> {
+    const modules = await this.courseModuleRepository.find({
+      where: { courseId },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    if (!modules.length) return [];
+
+    const sections = await this.courseModuleSectionRepository.find({
+      where: { moduleId: In(modules.map((module) => module.id)) },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    const progressMap =
+      await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
+
+    return modules.map((module) => {
+      const moduleSections = sections.filter((section) => section.moduleId === module.id);
+      const sectionRows: CertificateTranscriptSection[] = moduleSections.map((section) => {
+        const progress = progressMap[section.id];
+        return {
+          sectionId: section.id,
+          sectionTitle: section.title || 'Lesson',
+          isCompleted: Boolean(progress?.isCompleted),
+          completedAt: progress?.lastAccessedAt ? new Date(progress.lastAccessedAt).toISOString() : null,
+        };
+      });
+      const completedSections = sectionRows.filter((row) => row.isCompleted).length;
+      return {
+        moduleId: module.id,
+        moduleTitle: module.title || 'Module',
+        courseId,
+        courseTitle,
+        completedSections,
+        totalSections: sectionRows.length,
+        isModuleComplete: sectionRows.length > 0 && completedSections === sectionRows.length,
+        sections: sectionRows,
+      };
+    });
+  }
+
+  private async buildProgrammeTranscript(
+    userId: string,
+    programId: string,
+  ): Promise<CertificateTranscriptModule[]> {
+    const courses = await this.courseRepository.find({
+      where: { programId, isBundle: false },
+      select: ['id', 'title', 'programPillarIndex', 'level'],
+      order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
+    });
+    const courseByPillar = new Map<number, CourseEntity>();
+    for (const course of courses) {
+      const pillarIndex = resolveCoursePillarIndex(course);
+      if (!pillarIndex || courseByPillar.has(pillarIndex)) continue;
+      courseByPillar.set(pillarIndex, course);
+    }
+
+    const transcript: CertificateTranscriptModule[] = [];
+    for (const pillarIndex of [1, 2, 3]) {
+      const course = courseByPillar.get(pillarIndex);
+      if (!course) continue;
+      const courseModules = await this.buildCourseTranscript(userId, course.id, course.title);
+      transcript.push(
+        ...courseModules
+          .filter((module) => module.completedSections > 0)
+          .map((module) => ({
+            ...module,
+            pillarIndex,
+            courseTitle: course.title,
+          })),
+      );
+    }
+    return transcript;
+  }
+
+  private async resolveCertificateCpeHours(
+    userId: string,
+    row: Pick<CourseCertificateEntity, 'courseId' | 'programId'>,
+  ) {
+    if (row.programId) {
+      const summary = await this.courseSectionWatchProgressService.getProgramPillarWatchSummary(
+        userId,
+        row.programId,
+      );
+      return {
+        earnedCpeHours: summary.totalEarnedCpeHours,
+        allocatedCpeHours: summary.totalAllocatedCpeHours,
+        watchedTime: summary.totalWatchedTime,
+      };
+    }
+    return this.courseSectionWatchProgressService.getCourseEarnedCpeHours(userId, row.courseId);
+  }
+
   async getUserCertificates(userId: string) {
     const rows = await this.certificateRepository.find({
       where: { userId, status: CourseCertificateStatus.Active },
@@ -419,20 +544,41 @@ export class CourseCertificateService {
       : [];
     const programTitleById = new Map(programs.map((program) => [program.id, program.title]));
 
-    return rows.map((row) => ({
-      id: row.id,
-      courseId: row.courseId,
-      programId: row.programId || null,
-      certificateNo: row.certificateNo,
-      completedAt: row.completedAt,
-      createdAt: row.createdAt,
-      courseTitle: row.programId
-        ? programTitleById.get(row.programId) || row.course?.title || 'Programme'
-        : row.course?.title || 'Untitled Course',
-      programTitle: row.programId ? programTitleById.get(row.programId) || '' : '',
-      marketData: row.course?.marketData || '',
-      learnerName: `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() || row.user?.username || 'Learner',
-    }));
+    return Promise.all(
+      rows.map(async (row) => {
+        const courseTitle = row.programId
+          ? programTitleById.get(row.programId) || row.course?.title || 'Programme'
+          : row.course?.title || 'Untitled Course';
+        const [cpe, transcript] = await Promise.all([
+          this.resolveCertificateCpeHours(userId, row),
+          row.programId
+            ? this.buildProgrammeTranscript(userId, row.programId)
+            : this.buildCourseTranscript(userId, row.courseId, courseTitle),
+        ]);
+        const completedModules = transcript.filter((module) => module.isModuleComplete);
+
+        return {
+          id: row.id,
+          courseId: row.courseId,
+          programId: row.programId || null,
+          certificateNo: row.certificateNo,
+          completedAt: row.completedAt,
+          createdAt: row.createdAt,
+          courseTitle,
+          programTitle: row.programId ? programTitleById.get(row.programId) || '' : '',
+          marketData: row.course?.marketData || '',
+          learnerName:
+            `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||
+            row.user?.username ||
+            'Learner',
+          earnedCpeHours: cpe.earnedCpeHours,
+          allocatedCpeHours: cpe.allocatedCpeHours,
+          watchedTime: cpe.watchedTime,
+          transcript,
+          completedModules,
+        };
+      }),
+    );
   }
 
   async getAdminCertificates(filters: {

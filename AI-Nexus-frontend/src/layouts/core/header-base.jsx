@@ -25,6 +25,7 @@ import { useScrollOffSetTop } from 'src/hooks/use-scroll-offset-top';
 import { Iconify } from 'src/components/iconify';
 import { useCheckoutContext } from 'src/sections/checkout/context';
 import { toast } from 'src/components/snackbar';
+import { LEARNING_ADD_TO_CART_ENABLED } from 'src/sections/learning/learning-feature-flags';
 
 // ----------------------------------------------------------------------
 
@@ -333,7 +334,7 @@ export function HeaderBase({
                 ? account && <AccountDrawer data-slot="account" data={data?.account} />
                 : signIn && <SignInButton data={data?.account} />)}
 
-            {authenticated && isCustomerFacingRoute && (
+            {LEARNING_ADD_TO_CART_ENABLED && authenticated && isCustomerFacingRoute && (
               <Box
                 component={RouterLink}
                 to={paths.product.checkout}

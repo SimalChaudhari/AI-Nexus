@@ -1,67 +1,78 @@
 import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Unstable_Grid2';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
+import Divider from '@mui/material/Divider';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
-import { Image } from 'src/components/image';
 import { GradientButton } from 'src/components/custom-button';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
 import Pagination, { paginationClasses } from '@mui/material/Pagination';
 import { courseService } from 'src/services/course.service';
-import {
-  buildCourseCompletionLinkedInShareText,
-  buildLinkedInFeedShareUrl,
-} from 'src/utils/linkedin-share';
-import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import { LearningSectionHeader } from './components/learning-section-header';
 import { HOME_SECTION_CARD_SX } from 'src/sections/home/home-section-styles';
+import { formatPillarLabel, resolvePillarIndexFromCourse } from './components/credential-shared';
+import { formatSecondsToClock } from './utils/video-coverage';
 
 // ----------------------------------------------------------------------
 
+const COURSES_PER_PAGE = 8;
+
 const STAT_VALUE_SX = {
   fontWeight: 700,
-  fontSize: { xs: '1rem', md: '1.125rem' },
+  fontSize: { xs: '0.95rem', md: '1.05rem' },
   lineHeight: 1.2,
 };
 
-const COURSES_PER_PAGE = 8;
+const PILLAR_CARD_SX = {
+  borderRadius: 2,
+  bgcolor: 'background.paper',
+  border: (theme) => `1px solid ${theme.palette.divider}`,
+  boxShadow: (theme) =>
+    theme.palette.mode === 'dark'
+      ? theme.customShadows?.card
+      : '0 4px 14px rgba(15, 23, 42, 0.05)',
+  height: '100%',
+};
 
-const DEFAULT_COURSE_IMAGE = getCourseDefaultImage();
+const PILLAR_ACCENT = {
+  1: { color: 'info', icon: 'solar:book-bold' },
+  2: { color: 'warning', icon: 'solar:widget-5-bold' },
+  3: { color: 'error', icon: 'solar:crown-bold' },
+};
 
-/** Sum watchedSeconds from player-context modules (nested sectionProgress). */
-function sumWatchedSecondsFromModules(modulesByCourse) {
+function courseHasVideoLessons(modules = []) {
+  return (modules || []).some((mod) =>
+    (mod.sections || []).some((sec) => Boolean(String(sec?.videoUrl || '').trim()))
+  );
+}
+
+function sumWatchedSecondsFromModules(modules = []) {
   let total = 0;
-  Object.values(modulesByCourse || {}).forEach((modules) => {
-    (modules || []).forEach((mod) => {
-      (mod.sections || []).forEach((sec) => {
-        const sp = sec?.sectionProgress;
-        if (sp && typeof sp.watchedSeconds === 'number' && Number.isFinite(sp.watchedSeconds)) {
-          total += Math.max(0, sp.watchedSeconds);
-        }
-      });
+  (modules || []).forEach((mod) => {
+    (mod.sections || []).forEach((sec) => {
+      if (!String(sec?.videoUrl || '').trim()) return;
+      const sp = sec?.sectionProgress;
+      if (sp && typeof sp.watchedSeconds === 'number' && Number.isFinite(sp.watchedSeconds)) {
+        total += Math.max(0, sp.watchedSeconds);
+      }
     });
   });
   return total;
 }
 
 function formatWatchTime(totalSeconds) {
-  const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
-  if (s === 0) return '0 h';
-  const h = s / 3600;
-  if (h < 1) return `${Math.max(1, Math.round(s / 60))} min`;
-  return `${Math.round(h * 10) / 10} h`;
+  return formatSecondsToClock(totalSeconds);
 }
 
 function formatLastAccessed(dateStr) {
@@ -72,23 +83,302 @@ function formatLastAccessed(dateStr) {
   const minutes = Math.floor(diffMs / 60000);
   const hours = Math.floor(diffMs / 3600000);
   const days = Math.floor(diffMs / 86400000);
-  if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-  if (minutes > 0) return `${minutes} min ago`;
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
   return 'Just now';
 }
 
-export function MyProgress({ onNavigateToCertificates }) {
+function buildPillarProgressEntry(entry) {
+  const c = entry?.course || {};
+  const progress = entry?.progress || null;
+  const modules = Array.isArray(entry?.modules) ? entry.modules : [];
+  const pillarIndex = resolvePillarIndexFromCourse(c);
+  if (!pillarIndex) return null;
+
+  const flatSections = modules.flatMap((m) =>
+    (m.sections || []).map((s) => ({ id: s.id, title: s.title || 'Lesson' }))
+  );
+  const sectionIdSet = new Set(flatSections.map((s) => String(s.id)));
+  const totalLessons = flatSections.length;
+  const viewedIds = Array.isArray(progress?.viewedSectionIds) ? progress.viewedSectionIds : [];
+  const currentId = progress?.currentSectionId;
+  const allViewed = new Set([
+    ...viewedIds.filter((id) => id != null && sectionIdSet.has(String(id))),
+    ...(currentId != null && sectionIdSet.has(String(currentId)) ? [String(currentId)] : []),
+  ]);
+  const viewedCount = allViewed.size;
+  const hasMeaningfulProgress =
+    viewedCount > 0 ||
+    Boolean(progress?.lastAccessedAt) ||
+    modules.some((m) =>
+      (m.sections || []).some((s) => {
+        const sp = s?.sectionProgress;
+        if (!sp || typeof sp !== 'object') return false;
+        const completion = Number(sp.completionPercent ?? sp.currentProgress ?? 0);
+        const watched = Number(sp.watchedSeconds ?? 0);
+        const lastPos = Number(sp.lastPositionSeconds ?? 0);
+        return (
+          sp.isViewed === true ||
+          sp.isWatched === true ||
+          sp.isCompleted === true ||
+          (Number.isFinite(completion) && completion > 0) ||
+          (Number.isFinite(watched) && watched > 0) ||
+          (Number.isFinite(lastPos) && lastPos > 0)
+        );
+      })
+    );
+  if (!hasMeaningfulProgress) return null;
+
+  const progressPercent = Math.max(0, Math.min(100, Number(progress?.completionPercent ?? 0)));
+  const hasVideoLessons = courseHasVideoLessons(modules);
+  const watchedSeconds = hasVideoLessons ? sumWatchedSecondsFromModules(modules) : 0;
+  const currentSectionId = progress?.currentSectionId;
+  const currentIndex = flatSections.findIndex((s) => s.id === currentSectionId);
+  const nextSection =
+    currentIndex >= 0 && currentIndex < flatSections.length - 1 ? flatSections[currentIndex + 1] : null;
+  const firstSection = flatSections[0];
+  let nextLessonLabel = '—';
+  if (nextSection?.title) nextLessonLabel = nextSection.title;
+  else if (firstSection?.title) nextLessonLabel = firstSection.title;
+
+  return {
+    key: String(c.id),
+    courseId: c.id,
+    pillarIndex,
+    pillarLabel: formatPillarLabel(pillarIndex) || `Pillar ${pillarIndex}`,
+    title: c.title || 'Untitled Course',
+    programId: c.programId || null,
+    programTitle: c.programTitle || '',
+    progress: progressPercent,
+    lessons: totalLessons ? `${viewedCount}/${totalLessons}` : '0/0',
+    hasVideoLessons,
+    watchedSeconds,
+    watchTimeLabel: hasVideoLessons ? formatWatchTime(watchedSeconds) : null,
+    lastAccessed: progress?.lastAccessedAt ? formatLastAccessed(progress.lastAccessedAt) : '—',
+    nextLesson: nextLessonLabel,
+  };
+}
+
+function groupCoursesByPillar(courses = []) {
+  const groups = new Map();
+  courses.forEach((item) => {
+    const sectionKey = String(item.pillarIndex);
+    if (!groups.has(sectionKey)) {
+      groups.set(sectionKey, {
+        key: sectionKey,
+        pillarIndex: item.pillarIndex,
+        pillarLabel: item.pillarLabel,
+        courses: [],
+      });
+    }
+    groups.get(sectionKey).courses.push(item);
+  });
+  return [...groups.values()].sort((a, b) => a.pillarIndex - b.pillarIndex);
+}
+
+function StatMiniCard({ icon, iconColor, label, value }) {
+  return (
+    <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 1.5, sm: 1.75 } }}>
+      <Stack spacing={0.75}>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <Iconify icon={icon} width={16} sx={{ color: iconColor }} />
+          <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.3 }}>
+            {label}
+          </Typography>
+        </Stack>
+        <Typography sx={STAT_VALUE_SX}>{value}</Typography>
+      </Stack>
+    </Card>
+  );
+}
+
+function PillarSectionHeading({ group, theme }) {
+  const title = group.pillarLabel;
+  const count = group.courses.length;
+  const titleSx = {
+    fontWeight: 800,
+    color: 'text.primary',
+    letterSpacing: 0.2,
+    fontSize: { xs: '1rem', md: '1.1rem' },
+  };
+  const dividerSx = {
+    height: 2,
+    border: 0,
+    borderRadius: 999,
+    bgcolor: 'transparent',
+    background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(theme.palette.primary.main, 0.18)} 100%)`,
+  };
+
+  return (
+    <>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 1.25, minWidth: 0 }}>
+        <Typography variant="h6" sx={{ ...titleSx, lineHeight: 1.3, wordBreak: 'break-word' }}>
+          {title}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            mt: 0.35,
+            color: 'text.secondary',
+            fontWeight: 600,
+            fontSize: '0.78rem',
+          }}
+        >
+          {count} course{count === 1 ? '' : 's'}
+        </Typography>
+        <Divider sx={{ ...dividerSx, mt: 1 }} />
+      </Box>
+
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1.5}
+        sx={{ display: { xs: 'none', sm: 'flex' }, mb: 1.25 }}
+      >
+        <Typography variant="h6" sx={{ ...titleSx, whiteSpace: 'nowrap' }}>
+          {title} ({count})
+        </Typography>
+        <Divider sx={{ ...dividerSx, flexGrow: 1 }} />
+      </Stack>
+    </>
+  );
+}
+
+function PillarProgressCard({ course, theme }) {
+  const accent = PILLAR_ACCENT[course.pillarIndex] || PILLAR_ACCENT[1];
+
+  return (
+    <Card sx={{ ...PILLAR_CARD_SX, p: { xs: 1.5, sm: 1.75 } }}>
+      <Stack spacing={1.1} sx={{ height: '100%' }}>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 30,
+                height: 30,
+                borderRadius: 1,
+                bgcolor: alpha(theme.palette[accent.color].main, 0.12),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Iconify icon={accent.icon} width={16} sx={{ color: `${accent.color}.main` }} />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Chip
+                size="small"
+                label={course.pillarLabel}
+                color={accent.color}
+                variant="soft"
+                sx={{ height: 22, fontSize: '0.7rem', fontWeight: 700, mb: 0.35 }}
+              />
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 700,
+                  lineHeight: 1.3,
+                  fontSize: '0.84rem',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {course.title}
+              </Typography>
+            </Box>
+          </Stack>
+          <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary', flexShrink: 0 }}>
+            {course.progress}%
+          </Typography>
+        </Stack>
+
+        {course.programTitle ? (
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              display: 'block',
+              fontSize: '0.72rem',
+              lineHeight: 1.3,
+            }}
+          >
+            {course.programTitle}
+          </Typography>
+        ) : null}
+
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(100, course.progress)}
+          sx={{
+            height: 5,
+            borderRadius: 1,
+            bgcolor: alpha(theme.palette.grey[500], 0.14),
+            '& .MuiLinearProgress-bar': {
+              borderRadius: 1,
+              bgcolor: theme.palette[accent.color].main,
+            },
+          }}
+        />
+
+        <Grid container spacing={0.75}>
+          <Grid xs={course.hasVideoLessons ? 6 : 12}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.72rem' }}>
+              Lessons
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.78rem' }}>
+              {course.lessons}
+            </Typography>
+          </Grid>
+          {course.hasVideoLessons ? (
+            <Grid xs={6}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.72rem' }}>
+                Watch time
+              </Typography>
+              <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.78rem' }}>
+                {course.watchTimeLabel}
+              </Typography>
+            </Grid>
+          ) : null}
+          <Grid xs={12}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
+              Last active {course.lastAccessed}
+            </Typography>
+          </Grid>
+        </Grid>
+
+        <Box sx={{ mt: 'auto', pt: 0.25 }}>
+          <GradientButton
+            component={RouterLink}
+            to={paths.learningCourse.learn(course.courseId)}
+            size="small"
+            fullWidth
+            sx={{ minHeight: 34, fontSize: '0.8rem' }}
+          >
+            Continue
+          </GradientButton>
+        </Box>
+      </Stack>
+    </Card>
+  );
+}
+
+export function MyProgress({ onNavigateToCertificates, onNavigateToBadges }) {
   const theme = useTheme();
   const { authenticated } = useAuthContext();
   const [progressRows, setProgressRows] = useState([]);
+  const [certificatesCount, setCertificatesCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [progressTab, setProgressTab] = useState('in-progress');
   const [progressLoading, setProgressLoading] = useState(true);
 
   useEffect(() => {
     if (!authenticated) {
       setProgressRows([]);
+      setCertificatesCount(0);
       setProgressLoading(false);
       return () => {};
     }
@@ -96,9 +386,13 @@ export function MyProgress({ onNavigateToCertificates }) {
     const loadProgress = async () => {
       try {
         setProgressLoading(true);
+        const [rows, certificates] = await Promise.all([
+          courseService.getMyProgressOverview(),
+          courseService.getMyCertificates().catch(() => []),
+        ]);
         if (cancelled) return;
-        const rows = await courseService.getMyProgressOverview();
         setProgressRows(Array.isArray(rows) ? rows : []);
+        setCertificatesCount(Array.isArray(certificates) ? certificates.length : 0);
       } finally {
         if (!cancelled) setProgressLoading(false);
       }
@@ -111,146 +405,76 @@ export function MyProgress({ onNavigateToCertificates }) {
     };
   }, [authenticated]);
 
-  // Use only API courses for progress — no mock list so progress stays dynamic
-  // Only show courses where user has progress (authenticated and progress exists)
-  const myCourses = useMemo(() => {
-    const list = authenticated ? (progressRows || []).filter(Boolean) : [];
-    const visibleCourses = list
-      .map((entry) => {
-        const c = entry?.course || {};
-        const progress = entry?.progress || null;
-        const modules = Array.isArray(entry?.modules) ? entry.modules : [];
-        const flatSections = modules.flatMap((m) => (m.sections || []).map((s) => ({ id: s.id, title: s.title || 'Lesson' })));
-        const sectionIdSet = new Set(flatSections.map((s) => String(s.id)));
-        const totalLessons = flatSections.length;
-        const viewedIds = Array.isArray(progress?.viewedSectionIds) ? progress.viewedSectionIds : [];
-        const currentId = progress?.currentSectionId;
-        // Count completed/watched lessons; optionally include current section so in-progress lessons show partial credit
-        const allViewed = new Set([
-          ...viewedIds.filter((id) => id != null && sectionIdSet.has(String(id))),
-          ...(currentId != null && sectionIdSet.has(String(currentId)) ? [String(currentId)] : []),
-        ]);
-        const viewedCount = allViewed.size;
-        const hasMeaningfulProgress =
-          viewedCount > 0 ||
-          Boolean(progress?.lastAccessedAt) ||
-          modules.some((m) =>
-            (m.sections || []).some((s) => {
-              const sp = s?.sectionProgress;
-              if (!sp || typeof sp !== 'object') return false;
-              const completion = Number(sp.completionPercent ?? sp.currentProgress ?? 0);
-              const watched = Number(sp.watchedSeconds ?? 0);
-              const lastPos = Number(sp.lastPositionSeconds ?? 0);
-              return (
-                sp.isViewed === true ||
-                sp.isWatched === true ||
-                sp.isCompleted === true ||
-                (Number.isFinite(completion) && completion > 0) ||
-                (Number.isFinite(watched) && watched > 0) ||
-                (Number.isFinite(lastPos) && lastPos > 0)
-              );
-            })
+  const courseProgressItems = useMemo(
+    () =>
+      (progressRows || [])
+        .map((entry) => buildPillarProgressEntry(entry))
+        .filter(Boolean)
+        .sort((a, b) => {
+          const programCompare = String(a.programTitle || a.programId || '').localeCompare(
+            String(b.programTitle || b.programId || '')
           );
-        if (!hasMeaningfulProgress) return null;
-        const progressPercent = Math.max(
-          0,
-          Math.min(100, Number(progress?.completionPercent ?? 0)),
-        );
-        const isFullyCompleted =
-          progress?.isCompleted === true || progress?.status === 'completed';
-        const currentSectionId = progress?.currentSectionId;
-        const currentIndex = flatSections.findIndex((s) => s.id === currentSectionId);
-        const nextSection = currentIndex >= 0 && currentIndex < flatSections.length - 1 ? flatSections[currentIndex + 1] : null;
-        const firstSection = flatSections[0];
-        let nextLessonLabel = '—';
-        if (nextSection?.title) nextLessonLabel = nextSection.title;
-        else if (isFullyCompleted) nextLessonLabel = 'Course completed';
-        else if (firstSection?.title) nextLessonLabel = `Start: ${firstSection.title}`;
-
-        return {
-          id: c.id,
-          title: c.title || 'Untitled Course',
-          image: c.image || DEFAULT_COURSE_IMAGE,
-          progress: progressPercent,
-          lessons: totalLessons ? `${viewedCount}/${totalLessons}` : '0/0',
-          timeRemaining: isFullyCompleted ? 'Completed' : '—',
-          lastAccessed: progress?.lastAccessedAt ? formatLastAccessed(progress.lastAccessedAt) : '—',
-          nextLesson: nextLessonLabel,
-        };
-      })
-      .filter(Boolean);
-    return visibleCourses;
-  }, [progressRows, authenticated]);
-
-  const inProgressCourses = useMemo(
-    () => myCourses.filter((c) => c.progress < 100),
-    [myCourses]
+          if (programCompare !== 0) return programCompare;
+          if (a.pillarIndex !== b.pillarIndex) return a.pillarIndex - b.pillarIndex;
+          return String(a.title || '').localeCompare(String(b.title || ''));
+        }),
+    [progressRows]
   );
-  const completedCourses = useMemo(
-    () => myCourses.filter((c) => c.progress === 100),
-    [myCourses]
+
+  const pillarGroups = useMemo(
+    () => groupCoursesByPillar(courseProgressItems),
+    [courseProgressItems]
   );
-  const completedCount = completedCourses.length;
-  const certificatesCount = completedCount > 0 ? completedCount : 0;
-  const activeTabCourses = progressTab === 'completed' ? completedCourses : inProgressCourses;
+
+  const pageCount = Math.max(1, Math.ceil(courseProgressItems.length / COURSES_PER_PAGE));
+
+  const paginatedCourseItems = useMemo(() => {
+    const start = (page - 1) * COURSES_PER_PAGE;
+    return courseProgressItems.slice(start, start + COURSES_PER_PAGE);
+  }, [courseProgressItems, page]);
+
+  const paginatedPillarGroups = useMemo(
+    () => groupCoursesByPillar(paginatedCourseItems),
+    [paginatedCourseItems]
+  );
 
   useEffect(() => {
     setPage(1);
-  }, [progressTab]);
+  }, [courseProgressItems.length]);
 
   useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(activeTabCourses.length / COURSES_PER_PAGE));
-    if (page > maxPage) setPage(1);
-  }, [activeTabCourses.length, page]);
+    if (page > pageCount) setPage(1);
+  }, [page, pageCount]);
 
   const totalWatchSeconds = useMemo(
     () =>
-      sumWatchedSecondsFromModules(
-        Object.fromEntries(
-          (progressRows || []).map((row) => [String(row?.course?.id || ''), Array.isArray(row?.modules) ? row.modules : []])
-        )
-      ),
-    [progressRows]
+      courseProgressItems
+        .filter((item) => item.hasVideoLessons)
+        .reduce((sum, item) => sum + item.watchedSeconds, 0),
+    [courseProgressItems]
+  );
+
+  const hasAnyVideoCourses = useMemo(
+    () => courseProgressItems.some((item) => item.hasVideoLessons),
+    [courseProgressItems]
   );
 
   if (progressLoading && authenticated) {
     return <LoadingScreen />;
   }
 
-  if (authenticated && !progressRows?.length) {
-    return (
-      <>
-        <LearningSectionHeader
-          icon="solar:graph-up-bold"
-          iconGradient="linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)"
-          title="Your Learning Journey"
-          subtitle="Track your courses and learning stats"
-        />
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <Iconify icon="solar:graph-up-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
-          <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
-            No progress yet
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Open a course once and your progress will appear here.
-          </Typography>
-        </Box>
-      </>
-    );
+  if (!authenticated) {
+    return <LearningGuestSignInPrompt variant="progress" />;
   }
 
-  // Empty progress list: guest uses shared sign-in component; signed-in user sees simple empty state.
-  if (!myCourses?.length && !progressLoading) {
-    if (!authenticated) {
-      return <LearningGuestSignInPrompt variant="progress" />;
-    }
+  if (!courseProgressItems.length) {
     return (
       <>
         <LearningSectionHeader
           icon="solar:graph-up-bold"
           iconGradient="linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)"
           title="Your Learning Journey"
-          subtitle="Track your courses and learning stats"
+          subtitle="Track pillar-wise learning progress"
         />
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <Iconify icon="solar:graph-up-bold" width={64} sx={{ color: 'text.disabled', mx: 'auto', mb: 2 }} />
@@ -258,7 +482,7 @@ export function MyProgress({ onNavigateToCertificates }) {
             No progress yet
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-            Free courses and purchased courses appear here after you open them once. Use All Courses to browse, then return to My Progress.
+            Open a pillar course once and your progress report will appear here.
           </Typography>
         </Box>
       </>
@@ -272,284 +496,106 @@ export function MyProgress({ onNavigateToCertificates }) {
         iconGradient="linear-gradient(135deg, #22c55e 0%, #3b82f6 100%)"
         title="Your Learning Journey"
         subtitle={[
-          `${myCourses.length} course${myCourses.length === 1 ? '' : 's'} in progress`,
-          completedCount > 0 ? `${completedCount} completed` : null,
+          `${courseProgressItems.length} course${courseProgressItems.length === 1 ? '' : 's'} across ${pillarGroups.length} pillar${pillarGroups.length === 1 ? '' : 's'}`,
+          hasAnyVideoCourses ? `${formatWatchTime(totalWatchSeconds)} watched` : null,
+          certificatesCount > 0 ? `${certificatesCount} certificate${certificatesCount === 1 ? '' : 's'}` : null,
         ]
           .filter(Boolean)
           .join(' • ')}
       />
 
-      <Grid container spacing={2} sx={{ mb: { xs: 2, md: 3 } }}>
-        <Grid xs={12} sm={4}>
-          <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Iconify icon="solar:clock-circle-bold" width={18} sx={{ color: 'info.main' }} />
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Total watch time
-                </Typography>
-              </Stack>
-              <Typography sx={STAT_VALUE_SX}>{formatWatchTime(totalWatchSeconds)}</Typography>
-            </Stack>
-          </Card>
+      <Grid container spacing={1.25} sx={{ mb: 2 }}>
+        <Grid xs={6} sm={4}>
+          <StatMiniCard
+            icon="solar:book-bold"
+            iconColor="primary.main"
+            label="Courses in progress"
+            value={courseProgressItems.length}
+          />
         </Grid>
-        <Grid xs={12} sm={4}>
-          <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Iconify icon="solar:book-bold" width={18} sx={{ color: 'success.main' }} />
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Courses completed
-                </Typography>
-              </Stack>
-              <Typography sx={STAT_VALUE_SX}>{completedCount}</Typography>
-            </Stack>
-          </Card>
-        </Grid>
-        <Grid xs={12} sm={4}>
-          <Card sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Iconify icon="solar:medal-ribbons-star-bold" width={18} sx={{ color: 'warning.main' }} />
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Certificates earned
-                </Typography>
-              </Stack>
-              <Typography sx={STAT_VALUE_SX}>{certificatesCount}</Typography>
-            </Stack>
-          </Card>
+        {hasAnyVideoCourses ? (
+          <Grid xs={6} sm={4}>
+            <StatMiniCard
+              icon="solar:clock-circle-bold"
+              iconColor="info.main"
+              label="Total watch time"
+              value={formatWatchTime(totalWatchSeconds)}
+            />
+          </Grid>
+        ) : null}
+        <Grid xs={hasAnyVideoCourses ? 12 : 6} sm={4}>
+          <StatMiniCard
+            icon="solar:medal-ribbons-star-bold"
+            iconColor="warning.main"
+            label="Certificates earned"
+            value={certificatesCount}
+          />
         </Grid>
       </Grid>
 
-      <Tabs
-        value={progressTab}
-        onChange={(_, value) => setProgressTab(value)}
-        variant="scrollable"
-        scrollButtons="auto"
-        allowScrollButtonsMobile
-        sx={{
-          mb: 2,
-          minHeight: 40,
-          '& .MuiTab-root': {
-            minHeight: 40,
-            textTransform: 'none',
-            fontWeight: 700,
-            fontSize: { xs: '0.82rem', sm: '0.9rem' },
-            px: { xs: 1.25, sm: 2 },
-          },
-        }}
+      {(certificatesCount > 0 || typeof onNavigateToBadges === 'function') && (
+        <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+          {typeof onNavigateToCertificates === 'function' && certificatesCount > 0 ? (
+            <Button
+              size="small"
+              variant="soft"
+              color="warning"
+              endIcon={<Iconify icon="solar:arrow-right-bold" width={16} />}
+              onClick={onNavigateToCertificates}
+            >
+              View certificates
+            </Button>
+          ) : null}
+          {typeof onNavigateToBadges === 'function' ? (
+            <Button
+              size="small"
+              variant="soft"
+              color="primary"
+              endIcon={<Iconify icon="solar:arrow-right-bold" width={16} />}
+              onClick={onNavigateToBadges}
+            >
+              View digital badges
+            </Button>
+          ) : null}
+        </Stack>
+      )}
+
+      <Typography
+        variant="subtitle2"
+        sx={{ fontWeight: 800, mb: 1.25, fontSize: { xs: '0.9rem', md: '0.95rem' } }}
       >
-        <Tab value="in-progress" label={`In progress (${inProgressCourses.length})`} />
-        <Tab value="completed" label={`Completed (${completedCourses.length})`} />
-      </Tabs>
+        Progress report
+      </Typography>
 
-      <Stack spacing={2}>
-            {(() => {
-              if (!activeTabCourses.length) {
-                return (
-                  <Box sx={{ textAlign: 'center', py: 6 }}>
-                    <Iconify
-                      icon={progressTab === 'completed' ? 'solar:medal-ribbons-star-bold' : 'solar:play-circle-bold'}
-                      width={48}
-                      sx={{ color: 'text.disabled', mx: 'auto', mb: 1.5 }}
-                    />
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
-                      {progressTab === 'completed' ? 'No completed courses yet' : 'No courses in progress'}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      {progressTab === 'completed'
-                        ? 'Finish a course to see it here.'
-                        : 'Continue learning from All Courses or My Courses.'}
-                    </Typography>
-                  </Box>
-                );
-              }
-
-              const pageCount = Math.max(1, Math.ceil(activeTabCourses.length / COURSES_PER_PAGE));
-              const displayedCourses = activeTabCourses.slice(
-                (page - 1) * COURSES_PER_PAGE,
-                page * COURSES_PER_PAGE
-              );
-              return (
-                <>
-                  {displayedCourses.map((course) => (
-              <Card key={course.id} sx={{ ...HOME_SECTION_CARD_SX, p: { xs: 2, sm: 2.5 } }}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={{ xs: 1.5, sm: 2 }}
-                  alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
-                >
-                  <Image
-                    alt={course.title}
-                    src={course.image || DEFAULT_COURSE_IMAGE}
-                    ratio="1/1"
-                    sx={{
-                      width: { xs: '100%', sm: 72 },
-                      height: { xs: 140, sm: 72 },
-                      borderRadius: 1.5,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '0.95rem', md: '1rem' } }}>
-                      {course.title}
-                    </Typography>
-                    <Box sx={{ mb: 1.25 }}>
-                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Progress
-                        </Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                          {course.progress}%
-                        </Typography>
-                      </Stack>
-                      <LinearProgress
-                        variant="determinate"
-                        value={Math.min(100, course.progress)}
-                        sx={{
-                          height: 6,
-                          borderRadius: 1,
-                          bgcolor: alpha(theme.palette.grey[500], 0.16),
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 1,
-                            bgcolor: 'primary.main',
-                          },
-                        }}
-                      />
-                    </Box>
-
-                    <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: 1.5 }}>
-                      <Grid xs={12} sm={6}>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          Lessons: {course.lessons}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          Time remaining: {course.timeRemaining}
-                        </Typography>
-                      </Grid>
-
-                      <Grid xs={12} sm={6}>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          Last accessed: {course.lastAccessed}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          Next: {course.nextLesson}
-                        </Typography>
-                      </Grid>
-                    </Grid>
-
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                      <GradientButton
-                        component={RouterLink}
-                        to={paths.learningCourse.learn(course.id)}
-                        size="small"
-                        sx={{ width: { xs: '100%', sm: 'auto' } }}
-                      >
-                        {course.progress === 100 ? 'Review Course' : 'Continue Learning'}
-                      </GradientButton>
-                      <Button
-                        component={RouterLink}
-                        to={paths.learningCourse.details(course.id)}
-                        variant="text"
-                        size="small"
-                        sx={{
-                          color: 'primary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) },
-                          width: { xs: '100%', sm: 'auto' },
-                        }}
-                      >
-                        View Details
-                      </Button>
-                    </Stack>
-                  </Box>
-                </Stack>
-              </Card>
-                  ))}
-                  {pageCount > 1 && (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                      <Pagination
-                        count={pageCount}
-                        page={page}
-                        onChange={(_, value) => setPage(value)}
-                        color="primary"
-                        shape="rounded"
-                        showFirstButton
-                        showLastButton
-                        sx={{
-                          [`& .${paginationClasses.ul}`]: { justifyContent: 'center' },
-                        }}
-                      />
-                    </Box>
-                  )}
-                </>
-              );
-            })()}
+      <Stack spacing={2.5}>
+        {paginatedPillarGroups.map((group) => (
+          <Box key={group.key}>
+            <PillarSectionHeading group={group} theme={theme} />
+            <Grid container spacing={1.25}>
+              {group.courses.map((course) => (
+                <Grid key={course.key} xs={12} sm={6} md={4}>
+                  <PillarProgressCard course={course} theme={theme} />
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        ))}
       </Stack>
 
-      {/* Earned certificates – completed courses */}
-      {progressTab === 'completed' && completedCourses.length > 0 && (
-        <Box sx={{ mt: { xs: 3, md: 4 } }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 800,
-                fontSize: { xs: '1.08rem', md: '1.2rem' },
-              }}
-            >
-              Earned certificates
-            </Typography>
-            {typeof onNavigateToCertificates === 'function' && (
-              <Button
-                size="small"
-                variant="soft"
-                color="warning"
-                endIcon={<Iconify icon="solar:arrow-right-bold" width={16} />}
-                onClick={onNavigateToCertificates}
-              >
-                View all certificates
-              </Button>
-            )}
-          </Stack>
-          <Stack direction="row" flexWrap="wrap" gap={1.5}>
-            {completedCourses.map((course) => (
-              <Stack key={course.id} direction="row" spacing={0.75} alignItems="center">
-                <Button
-                  component={RouterLink}
-                  to={paths.learningCourse.details(course.id)}
-                  variant="outlined"
-                  size="small"
-                  startIcon={<Iconify icon="solar:medal-ribbons-star-bold" width={16} sx={{ color: 'warning.main' }} />}
-                  sx={{
-                    borderRadius: 2,
-                    borderColor: alpha(theme.palette.warning.main, 0.4),
-                    color: 'warning.darker',
-                    '&:hover': { borderColor: 'warning.main', bgcolor: alpha(theme.palette.warning.main, 0.08) },
-                  }}
-                >
-                  {course.title}
-                </Button>
-                <Button
-                  size="small"
-                  color="info"
-                  variant="soft"
-                  startIcon={<Iconify icon="mdi:linkedin" width={16} />}
-                  onClick={() =>
-                    window.open(
-                      buildLinkedInFeedShareUrl(
-                        buildCourseCompletionLinkedInShareText({ courseTitle: course.title })
-                      ),
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
-                  }
-                  sx={{ borderRadius: 2 }}
-                >
-                  Share
-                </Button>
-              </Stack>
-            ))}
-          </Stack>
+      {pageCount > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+          <Pagination
+            count={pageCount}
+            page={page}
+            onChange={(_, value) => setPage(value)}
+            color="primary"
+            shape="rounded"
+            showFirstButton
+            showLastButton
+            sx={{
+              [`& .${paginationClasses.ul}`]: { justifyContent: 'center' },
+            }}
+          />
         </Box>
       )}
     </>

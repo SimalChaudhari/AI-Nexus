@@ -8,7 +8,7 @@ import { CourseModuleEntity } from './course-module.entity';
 import { UpdateCourseSectionWatchProgressDto } from './course-section-watch-progress.dto';
 import { normalizeVideoUrlForCompare } from './course-video-url.util';
 import {
-  computeEarnedCpeHours,
+  computeCpeHoursFromWatchSeconds,
   formatSecondsToDisplayTime,
   parseMarketDataCpeHours,
   ProgramPillarWatchSummary,
@@ -728,7 +728,6 @@ export class CourseSectionWatchProgressService {
     let totalWatchedSeconds = 0;
     let totalVideoDurationSeconds = 0;
     let totalAllocatedCpeHours = 0;
-    let totalEarnedCpeHours = 0;
     let hasAnyAllocatedCpe = false;
 
     for (const pillarIndex of [1, 2, 3]) {
@@ -737,18 +736,12 @@ export class CourseSectionWatchProgressService {
 
       const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
       const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
-      const earnedCpeHours = computeEarnedCpeHours(
-        videoStats.watchedSeconds,
-        videoStats.totalVideoDurationSeconds,
-        allocatedCpeHours,
-        videoStats.allVideosCompleted,
-      );
+      const earnedCpeHours = computeCpeHoursFromWatchSeconds(videoStats.watchedSeconds);
 
       if (allocatedCpeHours != null) {
         totalAllocatedCpeHours += allocatedCpeHours;
         hasAnyAllocatedCpe = true;
       }
-      totalEarnedCpeHours += earnedCpeHours;
       totalWatchedSeconds += videoStats.watchedSeconds;
       totalVideoDurationSeconds += videoStats.totalVideoDurationSeconds;
 
@@ -766,14 +759,40 @@ export class CourseSectionWatchProgressService {
       });
     }
 
+    const totalEarnedCpeHours = computeCpeHoursFromWatchSeconds(totalWatchedSeconds);
+
     return {
       pillarBreakdown,
       totalWatchedSeconds,
       totalWatchedHours: secondsToWatchedHours(totalWatchedSeconds),
       totalWatchedTime: formatSecondsToDisplayTime(totalWatchedSeconds),
       totalAllocatedCpeHours: hasAnyAllocatedCpe ? Math.round(totalAllocatedCpeHours * 100) / 100 : null,
-      totalEarnedCpeHours: Math.round(totalEarnedCpeHours * 100) / 100,
-      totalCpeHours: Math.round(totalEarnedCpeHours * 100) / 100,
+      totalEarnedCpeHours,
+      totalCpeHours: totalEarnedCpeHours,
+    };
+  }
+
+  async getCourseEarnedCpeHours(
+    userId: string,
+    courseId: string,
+  ): Promise<{
+    earnedCpeHours: number;
+    allocatedCpeHours: number | null;
+    watchedSeconds: number;
+    watchedTime: string;
+  }> {
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'marketData'],
+    });
+    const videoStats = await this.sumVideoWatchStatsForCourse(userId, courseId);
+    const allocatedCpeHours = parseMarketDataCpeHours(course?.marketData);
+    const earnedCpeHours = computeCpeHoursFromWatchSeconds(videoStats.watchedSeconds);
+    return {
+      earnedCpeHours: Math.round(earnedCpeHours * 100) / 100,
+      allocatedCpeHours,
+      watchedSeconds: videoStats.watchedSeconds,
+      watchedTime: formatSecondsToDisplayTime(videoStats.watchedSeconds),
     };
   }
 }

@@ -47,6 +47,25 @@ export class ProgramsInitService implements OnModuleInit {
                 await queryRunner.query(
                     `ALTER TABLE "programs" ALTER COLUMN "pillar3CourseId" DROP NOT NULL`,
                 );
+                // Legacy pillar category columns — optional; courses link via course.programId instead.
+                await queryRunner.query(
+                    `ALTER TABLE "programs" ADD COLUMN IF NOT EXISTS "pillar1CategoryId" uuid`,
+                );
+                await queryRunner.query(
+                    `ALTER TABLE "programs" ADD COLUMN IF NOT EXISTS "pillar2CategoryId" uuid`,
+                );
+                await queryRunner.query(
+                    `ALTER TABLE "programs" ADD COLUMN IF NOT EXISTS "pillar3CategoryId" uuid`,
+                );
+                await queryRunner.query(
+                    `ALTER TABLE "programs" ALTER COLUMN "pillar1CategoryId" DROP NOT NULL`,
+                );
+                await queryRunner.query(
+                    `ALTER TABLE "programs" ALTER COLUMN "pillar2CategoryId" DROP NOT NULL`,
+                );
+                await queryRunner.query(
+                    `ALTER TABLE "programs" ALTER COLUMN "pillar3CategoryId" DROP NOT NULL`,
+                );
             }
 
             await queryRunner.release();

@@ -664,11 +664,19 @@ export const courseService = {
       return rows.map((row) => ({
         id: row?.id || '',
         courseId: row?.courseId || '',
+        programId: row?.programId || null,
         certificateNo: row?.certificateNo || '',
         completedAt: row?.completedAt || null,
         courseTitle: row?.courseTitle || 'Untitled Course',
+        programTitle: row?.programTitle || '',
         marketData: row?.marketData || '',
         learnerName: row?.learnerName || 'Learner',
+        earnedCpeHours: row?.earnedCpeHours != null ? Number(row.earnedCpeHours) : 0,
+        allocatedCpeHours:
+          row?.allocatedCpeHours != null ? Number(row.allocatedCpeHours) : null,
+        watchedTime: row?.watchedTime || '',
+        transcript: Array.isArray(row?.transcript) ? row.transcript : [],
+        completedModules: Array.isArray(row?.completedModules) ? row.completedModules : [],
       }));
     } catch (error) {
       if (error?.response?.status === 401) return [];

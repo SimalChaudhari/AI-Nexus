@@ -56,7 +56,17 @@ export function formatSecondsToDisplayTime(totalSeconds: number): string {
   return `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
-/** CPE credit for a pillar: full allocation when every video lesson is complete, else proportional to unique watch coverage. */
+/** CPE hours from watch time: total learning minutes ÷ 60 (i.e. watched seconds ÷ 3600). */
+export function computeCpeHoursFromWatchSeconds(watchedSeconds: number): number {
+  const seconds = Math.max(0, Math.floor(Number(watchedSeconds) || 0));
+  if (seconds === 0) return 0;
+  return Math.round((seconds / 3600) * 100) / 100;
+}
+
+/**
+ * @deprecated Prefer computeCpeHoursFromWatchSeconds — kept for older proportional callers.
+ * CPE credit for a pillar: full allocation when every video lesson is complete, else proportional to unique watch coverage.
+ */
 export function computeEarnedCpeHours(
   watchedSeconds: number,
   totalVideoDurationSeconds: number,
