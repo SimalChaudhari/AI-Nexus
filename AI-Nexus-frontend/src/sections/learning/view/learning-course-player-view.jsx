@@ -163,19 +163,10 @@ function coverageMeasurePlayer(ranges, maxDuration) {
 }
 
 /**
- * Government / CPE: only earn coverage while the learning tab is focused.
- * Short wall bridge covers play/pause poll jitter — never hours away on another tab.
- */
-const COVERAGE_WALL_BRIDGE_MAX_SEC = 5;
-
-function isLearningTabVisible() {
-  if (typeof document === 'undefined') return true;
-  return document.visibilityState !== 'hidden';
-}
-
-/**
  * Add a forward play segment.
- * Small jumps always OK. Slightly larger jumps only with a short visible-tab wall bridge.
+ * Small jumps are always accepted. Larger jumps are accepted when wall-clock
+ * elapsed explains them (background-tab timer throttle / play-pause race).
+ * True seeks jump faster than real time and are still rejected.
  */
 function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration, atEnd = false, wallElapsedMs = null) {
   const lo = Number(from);
@@ -187,16 +178,14 @@ function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration, atEnd = fal
   if (rawDelta <= 0) return;
 
   const LEGACY_POLL_MAX_SEC = 2.5;
+  const durationCap =
+    Number.isFinite(maxDuration) && maxDuration > 0 ? maxDuration : 7200;
   let maxAcceptSec = LEGACY_POLL_MAX_SEC;
-  if (
-    isLearningTabVisible() &&
-    Number.isFinite(wallElapsedMs) &&
-    wallElapsedMs != null &&
-    wallElapsedMs >= 0
-  ) {
+  if (Number.isFinite(wallElapsedMs) && wallElapsedMs != null && wallElapsedMs >= 0) {
+    // Allow poll jitter (+1.5s) and slight drift while throttled in a background tab.
     maxAcceptSec = Math.min(
-      COVERAGE_WALL_BRIDGE_MAX_SEC,
-      Math.max(LEGACY_POLL_MAX_SEC, wallElapsedMs / 1000 + 0.75)
+      durationCap,
+      Math.max(LEGACY_POLL_MAX_SEC, (wallElapsedMs / 1000) * 1.5 + 1.5)
     );
   }
   if (!atEnd && rawDelta > maxAcceptSec) return;
@@ -213,18 +202,16 @@ function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration, atEnd = fal
   rangesRef.current = cap != null ? clipCoverageRangesPlayer(merged, cap) : merged;
 }
 
-/** Bridge only a few seconds of pause/poll lag on the focused tab. */
+/** Estimated position while playing when poll/API lags (visibility / pause races). */
 function estimatePlayingPosition(prog, fallbackTime = 0, duration = 0) {
   const last = Math.max(0, Number(prog?.lastTime) || 0);
   const fallback = Math.max(0, Number(fallbackTime) || 0);
   let estimated = Math.max(last, fallback);
-  if (
-    isLearningTabVisible() &&
-    Number.isFinite(prog?.lastTickAtMs) &&
-    prog.lastTickAtMs > 0
-  ) {
+  // Use lastTickAtMs even after isPlaying was cleared (pause handlers clear the flag first).
+  if (Number.isFinite(prog?.lastTickAtMs) && prog.lastTickAtMs > 0) {
     const wallSec = Math.max(0, (Date.now() - prog.lastTickAtMs) / 1000);
-    estimated = Math.max(estimated, last + Math.min(COVERAGE_WALL_BRIDGE_MAX_SEC, wallSec));
+    const wallCap = Number.isFinite(duration) && duration > 0 ? duration : 7200;
+    estimated = Math.max(estimated, last + Math.min(wallCap, wallSec));
   }
   const cap = Math.max(0, Number(duration) || 0);
   if (cap > 0) estimated = Math.min(cap, estimated);
@@ -232,12 +219,8 @@ function estimatePlayingPosition(prog, fallbackTime = 0, duration = 0) {
 }
 
 function wallElapsedSinceTick(prog) {
-  if (!isLearningTabVisible()) return null;
   if (!Number.isFinite(prog?.lastTickAtMs) || !(prog.lastTickAtMs > 0)) return null;
-  return Math.min(
-    COVERAGE_WALL_BRIDGE_MAX_SEC * 1000,
-    Math.max(0, Date.now() - prog.lastTickAtMs)
-  );
+  return Math.max(0, Date.now() - prog.lastTickAtMs);
 }
 
 /** Build PUT payload: watchedSeconds always derived from coverage ranges (single source of truth). */
@@ -892,8 +875,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     maxWatchedTimeline: 0,
     isPlaying: false,
     lastTickAtMs: 0,
-    pausedByTabHide: false,
-    resumePlayOnVisible: false,
     markedComplete: false,
   });
   const viewedSectionIdsRef = useRef(viewedSectionIds);
@@ -916,8 +897,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     lastTime: 0,
     isPlaying: false,
     lastTickAtMs: 0,
-    pausedByTabHide: false,
-    resumePlayOnVisible: false,
     markedComplete: false,
   });
   const nativeVideoProgressRef = useRef({
@@ -927,8 +906,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     maxWatchedTimeline: 0,
     isPlaying: false,
     lastTickAtMs: 0,
-    pausedByTabHide: false,
-    resumePlayOnVisible: false,
     markedComplete: false,
   });
   /** Timeline coverage [[start,end],...] — unique seconds watched; repeats don't add length. */
@@ -1311,7 +1288,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         Number(priorLive?.lastPositionSeconds || 0)
       );
 
-      if (nativeProg?.isPlaying && nativeVideo && isLearningTabVisible()) {
+      if (nativeProg?.isPlaying && nativeVideo) {
         const wallMs = wallElapsedSinceTick(nativeProg);
         const currentNative = estimatePlayingPosition(
           nativeProg,
@@ -1330,12 +1307,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         nativeProg.lastTickAtMs = Date.now();
         lastPosition = Math.max(lastPosition, currentNative);
       }
-      if (
-        ytProg?.isPlaying &&
-        isLearningTabVisible() &&
-        ytPlayer &&
-        typeof ytPlayer.getCurrentTime === 'function'
-      ) {
+      if (ytProg?.isPlaying && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
         try {
           const wallMs = wallElapsedSinceTick(ytProg);
           const ytNow = Number(ytPlayer.getCurrentTime() || 0);
@@ -1358,12 +1330,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       if (spotlightrPlayer && spotlightrProg) {
         try {
           const durRoundedForSlice = Math.round(duration || 0);
-          const currentSpotlightr = Math.max(
-            0,
-            Number(spotlightrProg.lastTime || 0),
-            Number(spotlightrPlayer.getCurrentTime?.() || 0)
+          const currentSpotlightr = estimatePlayingPosition(
+            spotlightrProg,
+            Number(spotlightrPlayer.getCurrentTime?.() || spotlightrProg.lastTime || 0),
+            duration
           );
-          if (spotlightrProg.isPlaying && isLearningTabVisible()) {
+          if (spotlightrProg.isPlaying) {
             appendCoverageSlicePlayer(
               coverageRef,
               spotlightrProg.lastTime,
@@ -1375,8 +1347,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
             spotlightrProg.lastTime = currentSpotlightr;
             spotlightrProg.lastTickAtMs = Date.now();
             lastPosition = Math.max(lastPosition, currentSpotlightr);
-          } else {
-            lastPosition = Math.max(lastPosition, Number(spotlightrProg.lastTime || 0));
           }
         } catch {
           // ignore
@@ -1443,61 +1413,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     const handleBeforeUnload = () => flushSectionProgress(true, true);
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        // Pause any playing lesson video so learners cannot earn credit in another tab.
-        const nativeProg = nativeVideoProgressRef.current;
-        const ytProg = youtubeProgressRef.current;
-        const nativeVideo = videoRef.current;
-        if (nativeProg?.isPlaying && nativeVideo && !nativeVideo.paused) {
-          nativeProg.resumePlayOnVisible = true;
-          nativeProg.pausedByTabHide = true;
-          try {
-            nativeVideo.pause();
-          } catch {
-            // ignore
-          }
-        }
-        if (ytProg?.isPlaying) {
-          const ytPlayer = youtubePlayerRef.current;
-          if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
-            ytProg.resumePlayOnVisible = true;
-            ytProg.pausedByTabHide = true;
-            try {
-              ytPlayer.pauseVideo();
-            } catch {
-              // ignore
-            }
-          }
-        }
+        // Seal in-flight coverage; video may keep playing in background (free credit allowed).
         flushSectionProgress(true, true);
       } else if (document.visibilityState === 'visible') {
-        // Resume only if we auto-paused for tab hide — stay at the pause position.
-        const nativeProg = nativeVideoProgressRef.current;
-        const ytProg = youtubeProgressRef.current;
-        if (nativeProg?.resumePlayOnVisible) {
-          nativeProg.resumePlayOnVisible = false;
-          nativeProg.pausedByTabHide = false;
-          const nativeVideo = videoRef.current;
-          if (nativeVideo) {
-            try {
-              const promise = nativeVideo.play();
-              if (promise && typeof promise.then === 'function') promise.catch(() => {});
-            } catch {
-              // browser may block autoplay after long background — user can press play
-            }
-          }
-        }
-        if (ytProg?.resumePlayOnVisible) {
-          ytProg.resumePlayOnVisible = false;
-          ytProg.pausedByTabHide = false;
-          const ytPlayer = youtubePlayerRef.current;
-          if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
-            try {
-              ytPlayer.playVideo();
-            } catch {
-              // ignore
-            }
-          }
-        }
+        // Catch up wall/player clocks after background throttle.
         flushSectionProgress(false, true);
       }
     };
@@ -2647,8 +2566,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       maxWatchedTimeline: preservedMaxTimeline,
       isPlaying: false,
       lastTickAtMs: 0,
-      pausedByTabHide: false,
-      resumePlayOnVisible: false,
       markedComplete: nativeVideoProgressRef.current.markedComplete || false,
     };
     let player = null;
@@ -2731,12 +2648,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   const prog = youtubeProgressRef.current;
                   if (prog.markedComplete) return;
                   const durRounded = Math.round(Number(d) || 0);
-                  if (prog.isPlaying && isLearningTabVisible() && !prog.pausedByTabHide) {
+                  if (prog.isPlaying) {
                     const previousTime = Math.max(0, Number(prog.lastTime || 0));
                     const wallMs = wallElapsedSinceTick(prog);
+                    const durationCap = durRounded > 0 ? durRounded : 7200;
                     const maxAccept =
                       Number.isFinite(wallMs) && wallMs != null
-                        ? Math.min(COVERAGE_WALL_BRIDGE_MAX_SEC, Math.max(2.5, wallMs / 1000 + 0.75))
+                        ? Math.min(durationCap, Math.max(2.5, (wallMs / 1000) * 1.5 + 1.5))
                         : 2.5;
                     if (Math.abs(t - previousTime) <= maxAccept) {
                       prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
@@ -2771,12 +2689,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       );
                       videoWatchedEnoughRef.current?.();
                     }
-                    prog.lastTime = t;
-                    prog.lastTickAtMs = Date.now();
-                  } else {
-                    prog.lastTime = t;
-                    if (!isLearningTabVisible() || prog.pausedByTabHide) prog.lastTickAtMs = 0;
                   }
+                  prog.lastTime = t;
+                  if (prog.isPlaying) prog.lastTickAtMs = Date.now();
                 } catch (e) {
                   // ignore
                 }
@@ -2786,8 +2701,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               const prog = youtubeProgressRef.current;
               if (e.data === 1) {
                 prog.isPlaying = true;
-                prog.pausedByTabHide = false;
-                prog.resumePlayOnVisible = false;
                 prog.lastTickAtMs = Date.now();
                 if (activeLessonIdRef.current) {
                   sectionVideoProgressResetRef.current.delete(activeLessonIdRef.current);
@@ -5532,8 +5445,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 if (activeLessonId) sectionVideoProgressResetRef.current.delete(activeLessonId);
                 const prog = nativeVideoProgressRef.current;
                 prog.isPlaying = true;
-                prog.pausedByTabHide = false;
-                prog.resumePlayOnVisible = false;
                 prog.lastTime = v.currentTime;
                 prog.lastTickAtMs = Date.now();
                 console.log('[Video] Play');
@@ -5630,13 +5541,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 if (prog.markedComplete) return;
                 const durRounded = Math.round(Number(v.duration) || 0);
                 const required = effectiveRequiredSeconds(watchtimeSeconds, v.duration);
-                if (prog.isPlaying && isLearningTabVisible() && !prog.pausedByTabHide) {
+                if (prog.isPlaying) {
                   const previousTime = Math.max(0, Number(prog.lastTime || 0));
                   const wallMs = wallElapsedSinceTick(prog);
+                  const durationCap = durRounded > 0 ? durRounded : 7200;
                   const legacyMax = isAppleMobileDevice() ? 1.5 : 2.5;
                   const maxAccept =
                     Number.isFinite(wallMs) && wallMs != null
-                      ? Math.min(COVERAGE_WALL_BRIDGE_MAX_SEC, Math.max(legacyMax, wallMs / 1000 + 0.75))
+                      ? Math.min(durationCap, Math.max(legacyMax, (wallMs / 1000) * 1.5 + 1.5))
                       : legacyMax;
                   const delta = Math.abs(v.currentTime - previousTime);
                   if (delta <= maxAccept) {
@@ -5667,7 +5579,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   }
                 } else {
                   prog.lastTime = v.currentTime;
-                  if (!isLearningTabVisible() || prog.pausedByTabHide) prog.lastTickAtMs = 0;
                 }
               }}
             />
