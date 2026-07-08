@@ -220,6 +220,9 @@ export function useSpotlightrLessonPlayer({
         duration: Math.max(spotlightrProgressRef.current.duration || 0, adminDurSeed),
         maxWatchedTimeline: maxTimeline,
         isPlaying: false,
+        lastTickAtMs: 0,
+        pausedByTabHide: false,
+        resumePlayOnVisible: false,
         markedComplete: Boolean(sp?.isCompleted || sp?.isWatched),
       };
     }
@@ -308,7 +311,17 @@ export function useSpotlightrLessonPlayer({
     const syncPlayerRef = () => {
       const prog = spotlightrProgressRef.current;
       spotlightrPlayerRef.current = {
-        getCurrentTime: () => Math.max(0, Number(prog.lastTime) || 0),
+        getCurrentTime: () => {
+          const last = Math.max(0, Number(prog.lastTime) || 0);
+          // While playing, advance by wall clock so tab-hide flush does not use a stale poll value.
+          if (prog.isPlaying && Number.isFinite(prog.lastTickAtMs) && prog.lastTickAtMs > 0) {
+            const wallSec = Math.max(0, (Date.now() - prog.lastTickAtMs) / 1000);
+            const estimated = last + wallSec;
+            const dur = resolveDurationSeconds(prog.duration);
+            return dur > 0 ? Math.min(dur, estimated) : estimated;
+          }
+          return last;
+        },
         getDuration: () => resolveDurationSeconds(prog.duration),
       };
     };
@@ -369,7 +382,7 @@ export function useSpotlightrLessonPlayer({
       });
     };
 
-    const saveProgressOnPause = (currentTime, rawDuration) => {
+    const saveProgressOnPause = (currentTime, rawDuration, wallElapsedMs = null) => {
       if (playerTeardownRef.current) return;
       const cid = courseIdRef.current;
       const sid = activeLessonIdRef.current;
@@ -386,8 +399,11 @@ export function useSpotlightrLessonPlayer({
         prog.lastTime,
         current,
         durRounded,
-        cb().isPlaybackAtVideoEnd(current, d)
+        cb().isPlaybackAtVideoEnd(current, d),
+        wallElapsedMs
       );
+      prog.lastTime = current;
+      prog.lastTickAtMs = 0;
       const payload = cb().buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, current, d, {
         ended: cb().isPlaybackAtVideoEnd(current, d),
       });
@@ -400,6 +416,68 @@ export function useSpotlightrLessonPlayer({
       syncPlayerRef();
     };
 
+    const applyPlayingPollTick = (t, previousTime, d, durRounded, requiredSec, releaseLockOnComplete) => {
+      const prog = spotlightrProgressRef.current;
+      const tabVisible =
+        typeof document === 'undefined' || document.visibilityState !== 'hidden';
+
+      // No CPE coverage while the learning tab is away / frozen for tab hide.
+      if (!tabVisible || prog.pausedByTabHide) {
+        prog.lastTime = t;
+        prog.lastTickAtMs = 0;
+        syncPlayerRef();
+        return;
+      }
+
+      const wallMs =
+        Number.isFinite(prog.lastTickAtMs) && prog.lastTickAtMs > 0
+          ? Math.min(5000, Math.max(0, Date.now() - prog.lastTickAtMs))
+          : null;
+      const maxAccept =
+        Number.isFinite(wallMs) && wallMs != null
+          ? Math.min(5, Math.max(2.5, wallMs / 1000 + 0.75))
+          : 2.5;
+
+      if (!prog.isPlaying && t > previousTime + 0.05 && Math.abs(t - previousTime) <= maxAccept) {
+        prog.isPlaying = true;
+      }
+
+      if (prog.isPlaying) {
+        if (Math.abs(t - previousTime) <= maxAccept) {
+          prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
+        }
+        cb().appendCoverageSlicePlayer(
+          videoCoverageRangesRef,
+          previousTime,
+          t,
+          durRounded,
+          cb().isPlaybackAtVideoEnd(t, d),
+          wallMs
+        );
+        const cov =
+          durRounded > 0
+            ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
+            : 0;
+        if (durRounded > 0 && cov >= durRounded) {
+          cb().syncProgressOnFullDuration(activeLessonIdRef.current, t, d, true);
+        }
+        prog.watchedSeconds = cov;
+        prog.pendingDeltaSeconds = 0;
+        if (requiredSec > 0 && cov >= requiredSec) {
+          prog.markedComplete = true;
+          if (releaseLockOnComplete) releaseForwardSeekLock();
+          videoWatchedEnoughRef.current?.();
+        }
+      }
+
+      prog.lastTime = t;
+      if (prog.isPlaying) prog.lastTickAtMs = Date.now();
+      syncPlayerRef();
+      if (prog.isPlaying || t > 0) {
+        persistSectionSnapshot(t, prog.duration);
+      }
+    };
+
     const handlePollTime = (rawTime) => {
       if (rawTime == null) {
         if (durationFetchAttempts < 6 && durationFetchAttempts % 2 === 0) {
@@ -409,93 +487,19 @@ export function useSpotlightrLessonPlayer({
       }
       const t = normalizeSpotlightrTime(rawTime);
       const prog = spotlightrProgressRef.current;
-      const last = Math.max(0, Number(prog.lastTime) || 0);
-
-      if (!shouldBlockForwardSeek()) {
-        const d = resolveDurationSeconds(prog.duration);
-        const requiredSec = cb().effectiveRequiredSeconds(watchtimeSecondsRef.current, d);
-        const durRounded = Math.round(Number(d) || 0);
-        const previousTime = Math.max(0, Number(prog.lastTime || 0));
-
-        if (!prog.isPlaying && t > previousTime + 0.05 && Math.abs(t - previousTime) <= 2.5) {
-          prog.isPlaying = true;
-        }
-
-        if (prog.isPlaying) {
-          if (Math.abs(t - previousTime) <= 2.5) {
-            prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
-          }
-          cb().appendCoverageSlicePlayer(
-            videoCoverageRangesRef,
-            previousTime,
-            t,
-            durRounded,
-            cb().isPlaybackAtVideoEnd(t, d)
-          );
-          const cov =
-            durRounded > 0
-              ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
-              : 0;
-          if (durRounded > 0 && cov >= durRounded) {
-            cb().syncProgressOnFullDuration(activeLessonIdRef.current, t, d, true);
-          }
-          prog.watchedSeconds = cov;
-          prog.pendingDeltaSeconds = 0;
-          if (requiredSec > 0 && cov >= requiredSec) {
-            prog.markedComplete = true;
-            videoWatchedEnoughRef.current?.();
-          }
-        }
-
-        prog.lastTime = t;
-        syncPlayerRef();
-        if (prog.isPlaying || t > 0) {
-          persistSectionSnapshot(t, prog.duration);
-        }
-        return;
-      }
-
-      if (rollbackSpotlightrIfSeekPastAllowed(t)) return;
-
       const d = resolveDurationSeconds(prog.duration);
       const requiredSec = cb().effectiveRequiredSeconds(watchtimeSecondsRef.current, d);
       const durRounded = Math.round(Number(d) || 0);
       const previousTime = Math.max(0, Number(prog.lastTime || 0));
 
-      if (!prog.isPlaying && t > previousTime + 0.05 && Math.abs(t - previousTime) <= 2.5) {
-        prog.isPlaying = true;
+      if (!shouldBlockForwardSeek()) {
+        applyPlayingPollTick(t, previousTime, d, durRounded, requiredSec, false);
+        return;
       }
 
-      if (prog.isPlaying) {
-        if (Math.abs(t - previousTime) <= 2.5) {
-          prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
-        }
-        cb().appendCoverageSlicePlayer(
-          videoCoverageRangesRef,
-          previousTime,
-          t,
-          durRounded,
-          cb().isPlaybackAtVideoEnd(t, d)
-        );
-        const cov =
-          durRounded > 0 ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded) : 0;
-        if (durRounded > 0 && cov >= durRounded) {
-          cb().syncProgressOnFullDuration(activeLessonIdRef.current, t, d, true);
-        }
-        prog.watchedSeconds = cov;
-        prog.pendingDeltaSeconds = 0;
-        if (requiredSec > 0 && cov >= requiredSec) {
-          prog.markedComplete = true;
-          releaseForwardSeekLock();
-          videoWatchedEnoughRef.current?.();
-        }
-      }
+      if (rollbackSpotlightrIfSeekPastAllowed(t)) return;
 
-      prog.lastTime = t;
-      syncPlayerRef();
-      if (prog.isPlaying || t > 0) {
-        persistSectionSnapshot(t, prog.duration);
-      }
+      applyPlayingPollTick(t, previousTime, d, durRounded, requiredSec, true);
     };
 
     const pollCurrentTime = () => {
@@ -510,6 +514,96 @@ export function useSpotlightrLessonPlayer({
         window.matchMedia('(hover: none) and (pointer: coarse)').matches;
       const pollMs = isCoarsePointer ? 100 : 300;
       pollIntervalIdRef.current = setInterval(pollCurrentTime, pollMs);
+    };
+
+    /**
+     * Government / CPE: leaving the learning tab pauses the video at the current second.
+     * Returning resumes from that same pause point (no background credit).
+     */
+    const sealCoverageFromLivePlayer = (reason = 'visibility') => {
+      if (cancelled || playerTeardownRef.current || !apiEnabled) return;
+      const prog = spotlightrProgressRef.current;
+
+      if (reason === 'hidden') {
+        const wasPlaying = Boolean(prog.isPlaying);
+        const pauseAt = Math.max(0, Number(prog.lastTime) || 0);
+        const wallMs =
+          wasPlaying && Number.isFinite(prog.lastTickAtMs) && prog.lastTickAtMs > 0
+            ? Math.min(5000, Math.max(0, Date.now() - prog.lastTickAtMs))
+            : null;
+        const d = resolveDurationSeconds(prog.duration);
+        const durRounded = Math.round(Number(d) || 0);
+
+        if (wasPlaying && wallMs != null && wallMs > 0) {
+          const bridged = Math.min(
+            d > 0 ? d : pauseAt + 5,
+            pauseAt + Math.min(5, wallMs / 1000)
+          );
+          if (bridged > pauseAt + 0.05) {
+            cb().appendCoverageSlicePlayer(
+              videoCoverageRangesRef,
+              pauseAt,
+              bridged,
+              durRounded,
+              false,
+              wallMs
+            );
+            prog.lastTime = bridged;
+          }
+        }
+
+        if (wasPlaying) {
+          prog.resumePlayOnVisible = true;
+          prog.pausedByTabHide = true;
+          // Force iframe pause so video cannot keep running in another tab.
+          callPlayerApi('pause');
+        }
+
+        prog.isPlaying = false;
+        prog.lastTickAtMs = 0;
+        persistSectionSnapshot(prog.lastTime, d);
+        syncPlayerRef();
+        flushSectionProgressRef?.current?.(true, true);
+        return;
+      }
+
+      if (reason === 'visible') {
+        const shouldResume = Boolean(prog.resumePlayOnVisible);
+        const resumeAt = Math.max(0, Number(prog.lastTime) || 0);
+
+        const finishVisible = (liveRaw) => {
+          if (cancelled || playerTeardownRef.current) return;
+          const live = normalizeSpotlightrTime(liveRaw);
+          // Stay on the pause point; if the iframe drifted, seek back.
+          if (shouldResume && resumeAt > 0 && live > 0 && Math.abs(live - resumeAt) > 1.25) {
+            seekSpotlightrPlayer(getApiVideoId(), resumeAt, null, { container: getContainer() });
+            prog.lastTime = resumeAt;
+          } else if (live > 0 && !shouldResume) {
+            prog.lastTime = live;
+          }
+
+          prog.pausedByTabHide = false;
+          prog.resumePlayOnVisible = false;
+          prog.lastTickAtMs = 0;
+          persistSectionSnapshot(prog.lastTime, prog.duration);
+          syncPlayerRef();
+
+          if (shouldResume) {
+            callPlayerApi('play');
+            prog.isPlaying = true;
+            prog.lastTickAtMs = Date.now();
+          }
+          flushSectionProgressRef?.current?.(false, true);
+        };
+
+        readSpotlightrPlayerTime(getApiVideoId(), finishVisible, { container: getContainer() });
+        window.setTimeout(() => {
+          if (cancelled || playerTeardownRef.current) return;
+          if (!shouldResume) return;
+          // Ensure play still fires if the first getTime callback was dropped.
+          if (prog.resumePlayOnVisible) finishVisible(prog.lastTime);
+        }, 350);
+      }
     };
 
     /**
@@ -609,16 +703,61 @@ export function useSpotlightrLessonPlayer({
 
       callPlayerApi('onPlay', null, () => {
         if (activeLessonId) sectionVideoProgressResetRef?.current?.delete(activeLessonId);
-        spotlightrProgressRef.current.isPlaying = true;
+        const prog = spotlightrProgressRef.current;
+        prog.isPlaying = true;
+        prog.pausedByTabHide = false;
+        prog.resumePlayOnVisible = false;
+        prog.lastTickAtMs = Date.now();
         if (!pollIntervalIdRef.current) startProgressPoll();
         refreshDurationFromPlayer();
+        // Sync lastTime from the live player so a play→pause race doesn't invent a gap.
+        readSpotlightrPlayerTime(
+          getApiVideoId(),
+          (raw) => {
+            if (raw == null || !spotlightrProgressRef.current.isPlaying) return;
+            const t = normalizeSpotlightrTime(raw);
+            if (!(t >= 0)) return;
+            spotlightrProgressRef.current.lastTime = t;
+            spotlightrProgressRef.current.lastTickAtMs = Date.now();
+            syncPlayerRef();
+          },
+          { container: getContainer() }
+        );
       });
 
       callPlayerApi('onPause', null, () => {
         const prog = spotlightrProgressRef.current;
+        const wasPlaying = prog.isPlaying;
+        const wallMs =
+          wasPlaying &&
+          !prog.pausedByTabHide &&
+          Number.isFinite(prog.lastTickAtMs) &&
+          prog.lastTickAtMs > 0
+            ? Math.min(5000, Math.max(0, Date.now() - prog.lastTickAtMs))
+            : null;
         prog.isPlaying = false;
-        const current = Math.max(0, Number(prog.lastTime) || 0);
-        saveProgressOnPause(current, prog.duration);
+
+        const finishPause = (rawTime) => {
+          const d = resolveDurationSeconds(prog.duration);
+          const apiTime = normalizeSpotlightrTime(rawTime);
+          let current = Math.max(0, Number(prog.lastTime) || 0);
+          if (apiTime > 0) current = Math.max(current, apiTime);
+          if (wasPlaying && Number.isFinite(wallMs) && wallMs != null && wallMs > 0) {
+            const estimated = Number(prog.lastTime || 0) + Math.min(5, wallMs / 1000);
+            current = Math.max(current, estimated);
+          }
+          if (d > 0) current = Math.min(d, current);
+          saveProgressOnPause(current, d, wallMs);
+        };
+
+        let settled = false;
+        const settleOnce = (raw) => {
+          if (settled) return;
+          settled = true;
+          finishPause(raw);
+        };
+        readSpotlightrPlayerTime(getApiVideoId(), settleOnce, { container: getContainer() });
+        window.setTimeout(() => settleOnce(null), 180);
       });
 
       callPlayerApi('onSeeked', null, (rawTime) => {
@@ -629,7 +768,12 @@ export function useSpotlightrLessonPlayer({
 
       callPlayerApi('onEnded', null, () => {
         const prog = spotlightrProgressRef.current;
+        const wallMs =
+          prog.isPlaying && Number.isFinite(prog.lastTickAtMs) && prog.lastTickAtMs > 0
+            ? Math.max(0, Date.now() - prog.lastTickAtMs)
+            : null;
         prog.isPlaying = false;
+        prog.lastTickAtMs = 0;
 
         const t = Math.max(0, Number(prog.lastTime) || 0);
         const d = resolveDurationSeconds(prog.duration);
@@ -641,14 +785,16 @@ export function useSpotlightrLessonPlayer({
         const durationForSync = d > 0 ? d : Math.max(Number(fallbackDur) || 0, 0);
         const cid = courseIdRef.current;
         const sid = activeLessonIdRef.current;
+        const endAt = d > 0 ? d : t;
 
         if (cid && sid) {
           cb().appendCoverageSlicePlayer(
             videoCoverageRangesRef,
             prog.lastTime,
-            t,
+            endAt,
             Math.round(Number(d) || 0),
-            true
+            true,
+            wallMs
           );
         }
 
@@ -673,6 +819,19 @@ export function useSpotlightrLessonPlayer({
           });
       });
     };
+
+    const handleSpotlightrVisibility = () => {
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState === 'hidden') {
+        sealCoverageFromLivePlayer('hidden');
+      } else if (document.visibilityState === 'visible') {
+        // Resume from the exact pause point after the iframe wakes.
+        window.setTimeout(() => sealCoverageFromLivePlayer('visible'), 50);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleSpotlightrVisibility);
+    window.addEventListener('pageshow', handleSpotlightrVisibility);
 
     const isCoarsePointerDevice = () =>
       typeof window !== 'undefined' &&
@@ -752,6 +911,8 @@ export function useSpotlightrLessonPlayer({
       playerTeardownRef.current = true;
       resumeViaApiRef.current = null;
       document.removeEventListener('vooPlayerReady', onVooPlayerReady);
+      document.removeEventListener('visibilitychange', handleSpotlightrVisibility);
+      window.removeEventListener('pageshow', handleSpotlightrVisibility);
       clearPoll();
       destroyIframe();
     };

@@ -15,6 +15,8 @@ export function parseCoverageRangePairs(raw) {
 
 export function mergeCoverageRanges(ranges) {
   if (!ranges.length) return [];
+  // Close tiny holes from play/pause / poll jitter so watch coverage stays continuous.
+  const GAP_FILL_SEC = 0.75;
   const sorted = ranges
     .map(([a, b]) => [Math.min(a, b), Math.max(a, b)])
     .filter(([s, e]) => e > s && Number.isFinite(s) && Number.isFinite(e))
@@ -22,7 +24,7 @@ export function mergeCoverageRanges(ranges) {
   const out = [];
   for (const [s, e] of sorted) {
     const last = out[out.length - 1];
-    if (!last || s > last[1]) out.push([s, e]);
+    if (!last || s > last[1] + GAP_FILL_SEC) out.push([s, e]);
     else last[1] = Math.max(last[1], e);
   }
   return out;
