@@ -90,6 +90,15 @@ export function coverageMeasureSeconds(ranges, maxDuration) {
   return duration > 0 ? Math.min(duration, measured) : measured;
 }
 
+/** In-progress lessons cap at 99% until server marks complete (matches sidebar). */
+export function coveragePercentDisplay(watchedSec, durationSec, { isComplete = false } = {}) {
+  const duration = Math.max(0, Number(durationSec) || 0);
+  const watched = Math.max(0, Number(watchedSec) || 0);
+  if (isComplete) return 100;
+  if (duration <= 0) return watched > 0 ? 1 : 0;
+  return Math.min(99, Math.round((100 * watched) / duration));
+}
+
 /** Gaps in [0, duration] not covered by watched ranges. */
 export function computeUnwatchedRanges(watchedRanges, durationSec) {
   const duration = Math.max(0, Number(durationSec) || 0);

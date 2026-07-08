@@ -35,6 +35,7 @@ import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotl
 import { isSpotlightrUrl, parseSpotlightrUrl, seekSpotlightrPlayer } from 'src/utils/spotlightr';
 import {
   coverageMeasureSeconds,
+  coveragePercentDisplay,
   isPlaybackAtVideoEnd,
   roundedVideoDurationSeconds,
   sealCoverageRangesToVideoEnd,
@@ -374,9 +375,7 @@ function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById,
 function completionPercentFromCoverage(watchedSeconds, durationSeconds) {
   const dur = Math.max(0, Number(durationSeconds) || 0);
   const watched = Math.max(0, Number(watchedSeconds) || 0);
-  if (dur <= 0) return watched > 0 ? 1 : 0;
-  if (watched >= dur - 1) return 100;
-  return Math.min(99, Math.round((100 * watched) / dur));
+  return coveragePercentDisplay(watched, dur, { isComplete: false });
 }
 
 /**
@@ -405,7 +404,7 @@ function getLessonCourseProgressPercent(lesson, liveById, viewedIds, playback = 
 
   const fromCoverage =
     totalSec > 0
-      ? Math.min(99, Math.round((100 * coverageSec) / totalSec))
+      ? coveragePercentDisplay(coverageSec, totalSec, { isComplete: false })
       : coverageSec > 0
         ? 1
         : 0;
@@ -557,7 +556,7 @@ function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
   if (doneForUi) {
     pct = 100;
   } else if (totalSec > 0) {
-    pct = Math.min(99, Math.round((100 * coverageSec) / totalSec));
+    pct = coveragePercentDisplay(coverageSec, totalSec, { isComplete: false });
   } else {
     const pctRaw = Number(merged.completionPercent ?? 0);
     pct =
@@ -593,7 +592,7 @@ function getLessonVideoSidebarPercent(lesson, liveById, playback, viewedIds) {
 
   if (doneForUi) return 100;
   if (totalSec <= 0) return coverageSec > 0 ? 1 : 0;
-  return Math.min(99, Math.round((100 * coverageSec) / totalSec));
+  return coveragePercentDisplay(coverageSec, totalSec, { isComplete: false });
 }
 
 function getNextLessonFromModules(modules, currentLessonId) {
