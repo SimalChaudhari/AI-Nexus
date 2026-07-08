@@ -41,12 +41,53 @@ export function clipCoverageRanges(ranges, maxDuration) {
   return mergeCoverageRanges(clipped);
 }
 
+/** Whole-second duration used for progress accounting (matches displayed mm:ss). */
+export function roundedVideoDurationSeconds(duration) {
+  return Math.max(0, Math.round(Number(duration) || 0));
+}
+
+/**
+ * True when playback is on the final video second or the player fired `ended`.
+ * Uses integer-second boundaries — no float epsilon (audit-friendly).
+ */
+export function isPlaybackAtVideoEnd(position, duration, { ended = false } = {}) {
+  if (ended) return true;
+  const totalSec = roundedVideoDurationSeconds(duration);
+  if (totalSec <= 0) return false;
+  const positionSec = Math.max(0, Number(position) || 0);
+  return Math.ceil(positionSec) >= totalSec;
+}
+
+/** @deprecated Use isPlaybackAtVideoEnd */
+export function playbackReachedEnd(position, duration, ended = false) {
+  return isPlaybackAtVideoEnd(position, duration, { ended });
+}
+
+/**
+ * Seal the last coverage segment to the rounded video duration.
+ * Only extends when coverage already includes the final second (prevents seek-to-end fraud).
+ */
+export function sealCoverageRangesToVideoEnd(ranges, maxDuration) {
+  const duration = roundedVideoDurationSeconds(maxDuration);
+  if (duration <= 0) return mergeCoverageRanges(ranges);
+  const merged = clipCoverageRanges(ranges, duration);
+  if (!merged.length) return merged;
+  const last = merged[merged.length - 1];
+  if (Math.ceil(last[1]) >= duration - 1) {
+    last[1] = duration;
+  }
+  return merged;
+}
+
+/** Unique seconds covered by merged ranges (single source of truth for watchedSeconds). */
 export function coverageMeasureSeconds(ranges, maxDuration) {
+  const duration = roundedVideoDurationSeconds(maxDuration);
   const merged =
-    maxDuration > 0 ? clipCoverageRanges(ranges, maxDuration) : mergeCoverageRanges(ranges);
+    duration > 0 ? clipCoverageRanges(ranges, duration) : mergeCoverageRanges(ranges);
   let total = 0;
   for (const [s, e] of merged) total += e - s;
-  return Math.floor(Math.max(0, total));
+  const measured = Math.floor(Math.max(0, total));
+  return duration > 0 ? Math.min(duration, measured) : measured;
 }
 
 /** Gaps in [0, duration] not covered by watched ranges. */

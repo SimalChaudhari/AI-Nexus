@@ -13,7 +13,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "seed": "ts-node -r dotenv/config src/database/seed.ts"
+    "seed": "ts-node -r dotenv/config src/database/seed.ts",
+    "users:set-local-password": "ts-node -r dotenv/config scripts/set-local-password.ts"
+ 
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.0.2",

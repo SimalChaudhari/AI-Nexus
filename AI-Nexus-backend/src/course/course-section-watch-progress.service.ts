@@ -94,11 +94,42 @@ function clipCoverageRangesToDuration(ranges: [number, number][], duration: numb
   return mergeCoverageRanges(clipped);
 }
 
+function roundedVideoDurationSeconds(duration: number): number {
+  return Math.max(0, Math.round(Number(duration) || 0));
+}
+
+/** Integer-second rule: final displayed second or player `ended` event. */
+function isPlaybackAtVideoEnd(position: number, duration: number, ended = false): boolean {
+  if (ended) return true;
+  const totalSec = roundedVideoDurationSeconds(duration);
+  if (totalSec <= 0) return false;
+  const positionSec = Math.max(0, Number(position) || 0);
+  return Math.ceil(positionSec) >= totalSec;
+}
+
+/** Seal last segment to rounded duration when coverage already includes the final second. */
+function sealCoverageRangesToVideoEnd(
+  ranges: [number, number][],
+  duration: number,
+): [number, number][] {
+  const dur = roundedVideoDurationSeconds(duration);
+  if (dur <= 0) return mergeCoverageRanges(ranges);
+  const merged = clipCoverageRangesToDuration(ranges, dur);
+  if (!merged.length) return merged;
+  const last = merged[merged.length - 1];
+  if (Math.ceil(last[1]) >= dur - 1) {
+    last[1] = dur;
+  }
+  return merged;
+}
+
 function coverageMeasureSeconds(ranges: [number, number][], duration: number): number {
-  const merged = duration > 0 ? clipCoverageRangesToDuration(ranges, duration) : mergeCoverageRanges(ranges);
+  const dur = roundedVideoDurationSeconds(duration);
+  const merged = dur > 0 ? clipCoverageRangesToDuration(ranges, dur) : mergeCoverageRanges(ranges);
   let total = 0;
   for (const [s, e] of merged) total += e - s;
-  return Math.floor(Math.max(0, total));
+  const measured = Math.floor(Math.max(0, total));
+  return dur > 0 ? Math.min(dur, measured) : measured;
 }
 
 /**
@@ -352,10 +383,14 @@ export class CourseSectionWatchProgressService {
       existing?.videoDurationSeconds ?? 0,
     );
     const required = this.resolveCompletionRequiredSeconds(resolvedWatchtimeSeconds, duration);
-    const storedRanges = clipCoverageRangesToDuration(
+    const storedRangesRaw = clipCoverageRangesToDuration(
       parseCoverageRangePairs(existing?.watchedCoverageRanges),
       duration,
     );
+    const lastPosForRead = existing?.lastPositionSeconds ?? 0;
+    const storedRanges = isPlaybackAtVideoEnd(lastPosForRead, duration)
+      ? sealCoverageRangesToVideoEnd(storedRangesRaw, duration)
+      : storedRangesRaw;
     const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
     const watchedFromCoverage =
       storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
@@ -569,6 +604,9 @@ export class CourseSectionWatchProgressService {
       }
       const incoming = clipCoverageRangesToDuration(parseCoverageRangePairs(dto.watchedCoverageRanges), duration);
       mergedRanges = clipCoverageRangesToDuration(mergeCoverageRanges([...mergedRanges, ...incoming]), duration);
+      if (isPlaybackAtVideoEnd(lastPos, duration)) {
+        mergedRanges = sealCoverageRangesToVideoEnd(mergedRanges, duration);
+      }
       const covered = coverageMeasureSeconds(mergedRanges, duration);
       watchedWithDelta = covered;
       nextCoverageColumn = mergedRanges.length ? mergedRanges : null;

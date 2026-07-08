@@ -33,6 +33,12 @@ import { LessonVideoCoverageStrip } from 'src/sections/learning/components/lesso
 import { ProgramCpeSummaryPanel } from 'src/sections/learning/components/program-cpe-summary-panel';
 import { useSpotlightrLessonPlayer } from 'src/sections/learning/hooks/use-spotlightr-lesson-player';
 import { isSpotlightrUrl, parseSpotlightrUrl, seekSpotlightrPlayer } from 'src/utils/spotlightr';
+import {
+  coverageMeasureSeconds,
+  isPlaybackAtVideoEnd,
+  roundedVideoDurationSeconds,
+  sealCoverageRangesToVideoEnd,
+} from 'src/sections/learning/utils/video-coverage';
 import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
 import { LessonImageViewer } from 'src/sections/learning/components/lesson-image-viewer';
 import { LessonTextViewer } from 'src/sections/learning/components/lesson-text-viewer';
@@ -150,15 +156,11 @@ function clipCoverageRangesPlayer(ranges, maxDuration) {
 }
 
 function coverageMeasurePlayer(ranges, maxDuration) {
-  const merged =
-    maxDuration > 0 ? clipCoverageRangesPlayer(ranges, maxDuration) : mergeCoverageRangesPlayer(ranges);
-  let total = 0;
-  for (const [s, e] of merged) total += e - s;
-  return Math.floor(Math.max(0, total));
+  return coverageMeasureSeconds(ranges, maxDuration);
 }
 
 /** Add a forward play segment; ignore large jumps (seeks). */
-function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration) {
+function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration, atEnd = false) {
   const lo = Number(from);
   const hi = Number(to);
   const rawDelta = Math.abs(hi - lo);
@@ -168,18 +170,39 @@ function appendCoverageSlicePlayer(rangesRef, from, to, maxDuration) {
   const b = Math.max(lo, hi);
   const cap = Number.isFinite(maxDuration) && maxDuration > 0 ? maxDuration : null;
   const start = Math.max(0, a);
-  const end = cap != null ? Math.min(cap, b) : b;
+  let end = cap != null ? Math.min(cap, b) : b;
+  if (cap != null && atEnd) {
+    end = cap;
+  }
   if (end <= start) return;
   const prev = Array.isArray(rangesRef.current) ? rangesRef.current : [];
   const merged = mergeCoverageRangesPlayer([...parseCoverageRangePairs(prev), [start, end]]);
   rangesRef.current = cap != null ? clipCoverageRangesPlayer(merged, cap) : merged;
 }
 
-/**
- * @deprecated Do not seal [0, duration] on end — completion must reflect actual segment coverage only.
- */
-function finalizeVideoCoverageOnEnd(_rangesRef, _durationSeconds) {
-  // Intentionally no-op: jumping to the end and watching briefly must not mark the full video watched.
+/** Build PUT payload: watchedSeconds always derived from coverage ranges (single source of truth). */
+function buildVideoCoveragePayloadFromRef(rangesRef, lastPosition, durationSeconds, { ended = false } = {}) {
+  const dur = roundedVideoDurationSeconds(durationSeconds);
+  let ranges =
+    dur > 0
+      ? clipCoverageRangesPlayer(parseCoverageRangePairs(rangesRef.current), dur)
+      : mergeCoverageRangesPlayer(parseCoverageRangePairs(rangesRef.current));
+  if (dur > 0 && isPlaybackAtVideoEnd(lastPosition, dur, { ended })) {
+    ranges = sealCoverageRangesToVideoEnd(ranges, dur);
+  }
+  rangesRef.current = ranges;
+  const covered = dur > 0 ? coverageMeasureSeconds(ranges, dur) : 0;
+  const serialized = ranges.map(([s, e]) => [
+    Math.round(s * 100) / 100,
+    Math.round(e * 100) / 100,
+  ]);
+  const lastPos = Math.max(0, Math.round(Number(lastPosition) || 0));
+  return {
+    lastPositionSeconds: dur > 0 ? Math.min(dur, lastPos) : lastPos,
+    durationSeconds: dur,
+    watchedSeconds: covered,
+    watchedCoverageRanges: serialized,
+  };
 }
 
 /** iPhone, iPod, and iPad (incl. iPadOS desktop UA). */
@@ -203,22 +226,6 @@ function computeMaxAllowedTimeline(coverageRangesRef, prog, sectionProgress, dur
     Number(sectionProgress?.lastPositionSeconds || 0)
   );
   return maxAllowed;
-}
-
-/** Build PUT payload: watchedSeconds = sum of unique segments only; lastPosition = resume bookmark. */
-function buildVideoCoveragePayloadFromRef(rangesRef, lastPosition, durationSeconds) {
-  const dur = Math.max(0, Math.round(Number(durationSeconds) || 0));
-  const covered = dur > 0 ? coverageMeasurePlayer(rangesRef.current, dur) : 0;
-  const ranges = mergeCoverageRangesPlayer(parseCoverageRangePairs(rangesRef.current)).map(([s, e]) => [
-    Math.round(s * 100) / 100,
-    Math.round(e * 100) / 100,
-  ]);
-  return {
-    lastPositionSeconds: Math.max(0, Math.round(Number(lastPosition) || 0)),
-    durationSeconds: dur,
-    watchedSeconds: covered,
-    watchedCoverageRanges: ranges,
-  };
 }
 
 function mergeServerProgressIntoMap(prev, data) {
@@ -1017,7 +1024,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       ...buildVideoCoveragePayloadFromRef(
         videoCoverageRangesRef,
         Math.max(0, Math.round(Number(lastPosition) || 0)),
-        durationSeconds
+        durationSeconds,
+        { ended: forceSync }
       ),
       ...(meetsRequirement ? { markCompleted: true } : {}),
     };
@@ -2632,25 +2640,23 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   try {
                     const current = player.getCurrentTime();
                     const d = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+                    const durRounded = Math.round(Number(d) || 0);
                     appendCoverageSlicePlayer(
                       videoCoverageRangesRef,
                       prog.lastTime,
                       current,
-                      Math.round(d || 0)
+                      durRounded,
+                      isPlaybackAtVideoEnd(current, d)
                     );
-                    const durRounded = Math.round(Number(d) || 0);
-                    const cov =
-                      durRounded > 0
-                        ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
-                        : 0;
-                    if (durRounded > 0 && cov >= durRounded) {
-                      syncProgressOnFullDuration(activeLessonIdRef.current, current, d);
-                    }
                     const payload = buildVideoCoveragePayloadFromRef(
                       videoCoverageRangesRef,
                       current,
-                      d
+                      d,
+                      { ended: isPlaybackAtVideoEnd(current, d) }
                     );
+                    if (durRounded > 0 && payload.watchedSeconds >= durRounded) {
+                      syncProgressOnFullDuration(activeLessonIdRef.current, current, d);
+                    }
                     sendProgressUpdate(
                       courseIdRef.current,
                       activeLessonIdRef.current,
@@ -2683,7 +2689,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                         videoCoverageRangesRef,
                         prog.lastTime,
                         t,
-                        Math.round(d || 0)
+                        Math.round(d || 0),
+                        true
                       );
                     }
                     const durRounded = Math.round(Number(durationForSync || d) || 0);
@@ -2799,7 +2806,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     effectiveRequiredSeconds,
     appendCoverageSlicePlayer,
     coverageMeasurePlayer,
-    finalizeVideoCoverageOnEnd,
+    isPlaybackAtVideoEnd,
     syncProgressOnFullDuration,
     buildVideoCoveragePayloadFromRef,
     sendProgressUpdate,
@@ -2994,23 +3001,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   };
   // Whether "Next" button should be enabled (respects locking/completion)
   let canGoNextLesson = Boolean(nextLesson);
-  const activeModuleForNav = modules.find((m) => (m.lessons || []).some((l) => l.id === activeLessonId));
-  const activeModuleLessons = activeModuleForNav?.lessons || [];
-  const isOnLastLessonOfActiveModule =
-    Boolean(activeLesson) &&
-    !getModuleIdFromPseudoLessonId(activeLessonId) &&
-    activeModuleLessons.length > 0 &&
-    activeModuleLessons[activeModuleLessons.length - 1]?.id === activeLessonId;
-  if (isOnLastLessonOfActiveModule) {
-    const hasSameModuleFollowUp =
-      nextLesson &&
-      nextLesson.sectionId === activeModuleForNav?.id &&
-      (nextLesson.kind === 'practice' || nextLesson.kind === 'assignment');
-    if (!hasSameModuleFollowUp) {
-      // Cross-module navigation uses the dedicated "Next Module" CTA.
-      canGoNextLesson = false;
-    }
-  }
+  // Bottom "Next" follows navigationSteps (may include practice/assignment before the next module).
+  // "Next Module" remains a shortcut to the next module's first lesson.
   if (nextLesson && flatLessons.length > 0) {
     const nextPseudoModuleId = getModuleIdFromPseudoLessonId(nextLesson.id);
     if (nextPseudoModuleId) {
@@ -5374,23 +5366,23 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   return;
                 }
                 if (v && course?.id && activeLessonId) {
+                  const durRounded = Math.round(Number(v.duration) || 0);
                   appendCoverageSlicePlayer(
                     videoCoverageRangesRef,
                     prog.lastTime,
                     v.currentTime,
-                    Math.round(v.duration || 0)
+                    durRounded,
+                    v.ended || isPlaybackAtVideoEnd(v.currentTime, v.duration)
                   );
-                  const durRounded = Math.round(Number(v.duration) || 0);
-                  const cov =
-                    durRounded > 0 ? coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded) : 0;
-                  if (durRounded > 0 && cov >= durRounded) {
-                    syncProgressOnFullDuration(activeLessonIdRef.current, v.currentTime, v.duration, true);
-                  }
                   const payload = buildVideoCoveragePayloadFromRef(
                     videoCoverageRangesRef,
                     v.currentTime,
-                    v.duration
+                    v.duration,
+                    { ended: v.ended || isPlaybackAtVideoEnd(v.currentTime, v.duration) }
                   );
+                  if (durRounded > 0 && payload.watchedSeconds >= durRounded) {
+                    syncProgressOnFullDuration(activeLessonIdRef.current, v.currentTime, v.duration, true);
+                  }
                   sendProgressUpdate(course.id, activeLessonId, payload);
                   prog.pendingDeltaSeconds = 0;
                 }
@@ -5412,7 +5404,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     videoCoverageRangesRef,
                     prog.lastTime,
                     t,
-                    Math.round(d || 0)
+                    Math.round(d || 0),
+                    true
                   );
                 }
                 const durRounded = Math.round(Number(durationForSync || d) || 0);

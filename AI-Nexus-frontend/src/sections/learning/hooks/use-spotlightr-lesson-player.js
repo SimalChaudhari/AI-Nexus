@@ -73,7 +73,7 @@ export function useSpotlightrLessonPlayer({
   effectiveRequiredSeconds,
   appendCoverageSlicePlayer,
   coverageMeasurePlayer,
-  finalizeVideoCoverageOnEnd,
+  isPlaybackAtVideoEnd,
   syncProgressOnFullDuration,
   buildVideoCoveragePayloadFromRef,
   sendProgressUpdate,
@@ -114,7 +114,7 @@ export function useSpotlightrLessonPlayer({
     effectiveRequiredSeconds,
     appendCoverageSlicePlayer,
     coverageMeasurePlayer,
-    finalizeVideoCoverageOnEnd,
+    isPlaybackAtVideoEnd,
     syncProgressOnFullDuration,
     buildVideoCoveragePayloadFromRef,
     sendProgressUpdate,
@@ -381,13 +381,19 @@ export function useSpotlightrLessonPlayer({
       const current = Math.max(0, Number(currentTime) || 0);
       const durRounded = Math.round(Number(d) || 0);
 
-      cb().appendCoverageSlicePlayer(videoCoverageRangesRef, prog.lastTime, current, durRounded);
-      const cov =
-        durRounded > 0 ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded) : 0;
-      if (durRounded > 0 && cov >= durRounded) {
+      cb().appendCoverageSlicePlayer(
+        videoCoverageRangesRef,
+        prog.lastTime,
+        current,
+        durRounded,
+        cb().isPlaybackAtVideoEnd(current, d)
+      );
+      const payload = cb().buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, current, d, {
+        ended: cb().isPlaybackAtVideoEnd(current, d),
+      });
+      if (durRounded > 0 && payload.watchedSeconds >= durRounded) {
         cb().syncProgressOnFullDuration(sid, current, d, true);
       }
-      const payload = cb().buildVideoCoveragePayloadFromRef(videoCoverageRangesRef, current, d);
       persistSectionSnapshot(current, d);
       cb().sendProgressUpdate(cid, sid, payload);
       prog.pendingDeltaSeconds = 0;
@@ -419,7 +425,13 @@ export function useSpotlightrLessonPlayer({
           if (Math.abs(t - previousTime) <= 2.5) {
             prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
           }
-          cb().appendCoverageSlicePlayer(videoCoverageRangesRef, previousTime, t, durRounded);
+          cb().appendCoverageSlicePlayer(
+            videoCoverageRangesRef,
+            previousTime,
+            t,
+            durRounded,
+            cb().isPlaybackAtVideoEnd(t, d)
+          );
           const cov =
             durRounded > 0
               ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded)
@@ -458,10 +470,16 @@ export function useSpotlightrLessonPlayer({
         if (Math.abs(t - previousTime) <= 2.5) {
           prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
         }
-        cb().appendCoverageSlicePlayer(videoCoverageRangesRef, previousTime, t, durRounded);
+        cb().appendCoverageSlicePlayer(
+          videoCoverageRangesRef,
+          previousTime,
+          t,
+          durRounded,
+          cb().isPlaybackAtVideoEnd(t, d)
+        );
         const cov =
           durRounded > 0 ? cb().coverageMeasurePlayer(videoCoverageRangesRef.current, durRounded) : 0;
-        if (durRounded > 0 && (cov >= durRounded - 1 || t >= durRounded - 0.5)) {
+        if (durRounded > 0 && cov >= durRounded) {
           cb().syncProgressOnFullDuration(activeLessonIdRef.current, t, d, true);
         }
         prog.watchedSeconds = cov;
@@ -629,7 +647,8 @@ export function useSpotlightrLessonPlayer({
             videoCoverageRangesRef,
             prog.lastTime,
             t,
-            Math.round(Number(d) || 0)
+            Math.round(Number(d) || 0),
+            true
           );
         }
 
