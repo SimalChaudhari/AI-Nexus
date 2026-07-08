@@ -139,7 +139,8 @@ function coverageMeasureSeconds(ranges: [number, number][], duration: number): n
  * - Sequential unlock: section N+1 stays locked until section N is completed.
  * - Sticky completion: once isCompleted is true for a section, it never becomes false (re-access always allowed).
  * - Content lock: a section that is already completed is never treated as locked for the learner.
- * - Completion threshold: admin "watch time" (section.watchtime) capped by real video length — full video not required.
+ * - Completion threshold: admin completionPercentage (% of video) when set; else admin watchtime
+ *   capped by real video length — full video not required when either is configured.
  */
 
 @Injectable()
@@ -163,6 +164,13 @@ export class CourseSectionWatchProgressService {
     const mm = Math.floor((safe % 3600) / 60);
     const ss = safe % 60;
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  }
+
+  private normalizeCompletionPercentage(value?: number | string | null): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n) || n < 1 || n > 100) return null;
+    return n;
   }
 
   private buildComputed(lastPositionSeconds: number, watchedSeconds: number, durationSeconds: number) {
@@ -197,9 +205,14 @@ export class CourseSectionWatchProgressService {
   private resolveCompletionRequiredSeconds(
     watchtimeSeconds: number,
     fullVideoDurationSeconds: number,
+    completionPercentage?: number | null,
   ): number {
-    const wt = Math.max(0, Math.floor(Number(watchtimeSeconds) || 0));
     const full = Math.max(0, Math.floor(Number(fullVideoDurationSeconds) || 0));
+    const pct = this.normalizeCompletionPercentage(completionPercentage);
+    if (pct != null && full > 0) {
+      return Math.max(1, Math.ceil((full * pct) / 100));
+    }
+    const wt = Math.max(0, Math.floor(Number(watchtimeSeconds) || 0));
     if (wt > 0 && full > 0) return Math.min(wt, full);
     if (wt > 0) return wt;
     return full;
@@ -230,20 +243,29 @@ export class CourseSectionWatchProgressService {
   private async resolveCourseTiming(
     courseId: string,
     sectionId: string,
-  ): Promise<{ watchtimeSeconds: number; durationTimeSeconds: number }> {
+  ): Promise<{
+    watchtimeSeconds: number;
+    durationTimeSeconds: number;
+    completionPercentage: number | null;
+  }> {
     const section = await this.sectionRepository.findOne({
       where: { id: sectionId },
-      select: ['id', 'moduleId', 'watchtime', 'durationTime', 'videoUrl'],
+      select: ['id', 'moduleId', 'watchtime', 'durationTime', 'completionPercentage', 'videoUrl'],
     });
-    if (!section) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+    if (!section) {
+      return { watchtimeSeconds: 0, durationTimeSeconds: 0, completionPercentage: null };
+    }
     const module = await this.moduleRepository.findOne({
       where: { id: section.moduleId },
       select: ['id', 'courseId'],
     });
-    if (!module || module.courseId !== courseId) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+    if (!module || module.courseId !== courseId) {
+      return { watchtimeSeconds: 0, durationTimeSeconds: 0, completionPercentage: null };
+    }
     return {
       watchtimeSeconds: parseWatchtimeToSeconds(section.watchtime),
       durationTimeSeconds: parseWatchtimeToSeconds(section.durationTime),
+      completionPercentage: this.normalizeCompletionPercentage(section.completionPercentage),
     };
   }
 
@@ -286,7 +308,7 @@ export class CourseSectionWatchProgressService {
     const sections = modules.length
       ? await this.sectionRepository.find({
           where: modules.map((module) => ({ moduleId: module.id })),
-          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'videoUrl'],
+          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'completionPercentage', 'videoUrl'],
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
@@ -341,11 +363,19 @@ export class CourseSectionWatchProgressService {
     }
     const progressBySection = new Map(validProgressRows.map((r) => [r.sectionId, r]));
 
-    const resolvedTimingBySection = new Map<string, { watchtimeSeconds: number; durationTimeSeconds: number }>();
+    const resolvedTimingBySection = new Map<
+      string,
+      {
+        watchtimeSeconds: number;
+        durationTimeSeconds: number;
+        completionPercentage: number | null;
+      }
+    >();
     sections.forEach((section) => {
       resolvedTimingBySection.set(section.id, {
         watchtimeSeconds: parseWatchtimeToSeconds(section.watchtime),
         durationTimeSeconds: parseWatchtimeToSeconds(section.durationTime),
+        completionPercentage: this.normalizeCompletionPercentage(section.completionPercentage),
       });
     });
 
@@ -355,13 +385,15 @@ export class CourseSectionWatchProgressService {
       moduleSections.forEach((section) => {
         // Pillar 1–3: every lesson unlocked from the start.
         const isLocked = false;
+        const timing = resolvedTimingBySection.get(section.id);
         result[section.id] = this.formatSectionProgressResponse(
           courseId,
           section.id,
           progressBySection.get(section.id),
-          resolvedTimingBySection.get(section.id)?.watchtimeSeconds ?? 0,
-          resolvedTimingBySection.get(section.id)?.durationTimeSeconds ?? 0,
+          timing?.watchtimeSeconds ?? 0,
+          timing?.durationTimeSeconds ?? 0,
           isLocked,
+          timing?.completionPercentage ?? null,
         );
       });
     });
@@ -378,13 +410,18 @@ export class CourseSectionWatchProgressService {
     existing: CourseSectionWatchProgressEntity | undefined,
     resolvedWatchtimeSeconds: number,
     resolvedDurationTimeSeconds: number,
+    completionPercentage?: number | null,
   ) {
     const duration = this.resolveDisplayDurationSeconds(
       resolvedDurationTimeSeconds,
       existing?.durationSeconds ?? 0,
       existing?.videoDurationSeconds ?? 0,
     );
-    const required = this.resolveCompletionRequiredSeconds(resolvedWatchtimeSeconds, duration);
+    const required = this.resolveCompletionRequiredSeconds(
+      resolvedWatchtimeSeconds,
+      duration,
+      completionPercentage,
+    );
     const storedRangesRaw = clipCoverageRangesToDuration(
       parseCoverageRangePairs(existing?.watchedCoverageRanges),
       duration,
@@ -413,15 +450,8 @@ export class CourseSectionWatchProgressService {
         this.watchProgressMeetsCompletionRequirement(watchedForDisplay, required),
     );
     const isWatched = isCompleted;
-    const computedForResponse =
-      isCompleted && duration > 0
-        ? {
-            ...computed,
-            watched: duration,
-            remaining: 0,
-            percent: 100,
-          }
-        : computed;
+    // Keep real coverage/percent even after threshold completion so learners can still
+    // fill the remaining watch range up to 100% of the video.
     return {
       duration,
       required,
@@ -429,7 +459,7 @@ export class CourseSectionWatchProgressService {
       legacyWatchedCap,
       watchedFromCoverage,
       watchedForDisplay,
-      computed: computedForResponse,
+      computed,
       isCompleted,
       isWatched,
     };
@@ -442,9 +472,15 @@ export class CourseSectionWatchProgressService {
     resolvedWatchtimeSeconds: number,
     resolvedDurationTimeSeconds: number,
     isLocked: boolean,
+    completionPercentage?: number | null,
   ) {
     const { duration, storedRanges, legacyWatchedCap, computed, isCompleted, isWatched } =
-      this.deriveSectionProgressComputation(existing, resolvedWatchtimeSeconds, resolvedDurationTimeSeconds);
+      this.deriveSectionProgressComputation(
+        existing,
+        resolvedWatchtimeSeconds,
+        resolvedDurationTimeSeconds,
+        completionPercentage,
+      );
 
     const lastPos = computed.lastPosition;
     const watched = computed.watched;
@@ -455,11 +491,6 @@ export class CourseSectionWatchProgressService {
     let watchedCoverageRangesOut: [number, number][] = storedRanges;
     if (storedRanges.length === 0 && legacyWatchedCap > 0 && duration > 0) {
       watchedCoverageRangesOut = [[0, legacyWatchedCap]];
-    } else if (isCompleted && duration > 0) {
-      const covered = coverageMeasureSeconds(watchedCoverageRangesOut, duration);
-      if (covered < duration) {
-        watchedCoverageRangesOut = [[0, duration]];
-      }
     }
 
     // Completed sections stay accessible forever; sequential gate does not re-lock them.
@@ -537,6 +568,7 @@ export class CourseSectionWatchProgressService {
       resolvedTiming.watchtimeSeconds,
       resolvedTiming.durationTimeSeconds,
       isLocked,
+      resolvedTiming.completionPercentage,
     );
   }
 
@@ -585,6 +617,7 @@ export class CourseSectionWatchProgressService {
     const requiredForCompletion = this.resolveCompletionRequiredSeconds(
       resolvedTiming.watchtimeSeconds,
       duration,
+      resolvedTiming.completionPercentage,
     );
     const lastPos = typeof dto.lastPositionSeconds === 'number' ? dto.lastPositionSeconds : existing?.lastPositionSeconds ?? 0;
 
@@ -631,18 +664,14 @@ export class CourseSectionWatchProgressService {
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
     // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
     const finalLastPosition = Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
-    let finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
-    let finalDuration = Math.max(computed.duration, 0);
-    if (isCompleted && finalDuration > 0) {
-      finalWatched = Math.max(finalWatched, finalDuration);
-    }
+    const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
+    const finalDuration = Math.max(computed.duration, 0);
     const finalRemaining = Math.max(0, finalDuration - finalWatched);
+    // Percent follows actual watched coverage — do not jump to 100 just because completion threshold was met.
     const finalPercent =
-      isCompleted && finalDuration > 0
-        ? 100
-        : finalDuration > 0
-          ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
-          : 0;
+      finalDuration > 0
+        ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
+        : 0;
 
     // Atomic upsert prevents duplicate-key races when multiple progress updates arrive together.
     try {

@@ -23,6 +23,10 @@ const transformSection = (s) => ({
   content: s.content || '',
   watchtime: s.watchtime || '',
   durationTime: s.durationTime || '',
+  completionPercentage:
+    s.completionPercentage != null && s.completionPercentage !== ''
+      ? Number(s.completionPercentage)
+      : null,
   images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
   attachments: Array.isArray(s.attachments)
     ? s.attachments.map((url) => resolveAssetUrl(url))
@@ -413,6 +417,7 @@ export const courseService = {
                     content: sec.content,
                     watchtime: sec.watchtime,
                     durationTime: sec.durationTime,
+                    completionPercentage: sec.completionPercentage,
                     images: sec.images,
                     attachments: sec.attachments,
                     learningMaterials:
@@ -863,6 +868,8 @@ export const courseService = {
         content: data.content || undefined,
         watchtime: data.watchtime !== undefined ? data.watchtime : undefined,
         durationTime: data.durationTime !== undefined ? data.durationTime : undefined,
+        completionPercentage:
+          data.completionPercentage !== undefined ? data.completionPercentage : undefined,
         images: Array.isArray(data.images) && data.images.length > 0 ? data.images : undefined,
         attachments:
           Array.isArray(data.attachments) && data.attachments.length > 0
@@ -892,6 +899,8 @@ export const courseService = {
         content: data.content !== undefined ? data.content : undefined,
         watchtime: data.watchtime !== undefined ? data.watchtime : null,
         durationTime: data.durationTime !== undefined ? data.durationTime : null,
+        completionPercentage:
+          data.completionPercentage !== undefined ? data.completionPercentage : null,
         images: data.images !== undefined ? data.images : undefined,
         attachments: data.attachments !== undefined ? data.attachments : undefined,
         learningMaterials:

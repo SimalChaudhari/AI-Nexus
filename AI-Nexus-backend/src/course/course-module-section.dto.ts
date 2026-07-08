@@ -5,7 +5,9 @@ import {
   IsNumber,
   IsArray,
   Min,
+  Max,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -42,6 +44,14 @@ export class CreateCourseModuleSectionDto {
   @IsString()
   @MaxLength(50)
   durationTime?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== '')
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  @Type(() => Number)
+  completionPercentage?: number | null;
 
   @IsOptional()
   @IsArray()
@@ -101,6 +111,14 @@ export class UpdateCourseModuleSectionDto {
   @IsString()
   @MaxLength(50)
   durationTime?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== '')
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  @Type(() => Number)
+  completionPercentage?: number | null;
 
   @IsOptional()
   @IsArray()

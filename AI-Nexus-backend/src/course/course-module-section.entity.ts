@@ -39,6 +39,13 @@ export class CourseModuleSectionEntity {
   @Column({ type: 'varchar', length: 50, nullable: true })
   durationTime?: string | null;
 
+  /**
+   * Admin threshold (1–100). When set, unique watch coverage at or above this % of video duration
+   * marks the lesson completed. Overrides absolute watchtime when present.
+   */
+  @Column({ type: 'int', nullable: true })
+  completionPercentage?: number | null;
+
   @Column({ type: 'jsonb', nullable: true })
   images?: string[];
 

@@ -421,11 +421,17 @@ function completionPercentFromCoverage(watchedSeconds, durationSeconds) {
 }
 
 /**
- * Lesson % for the top course progress bar.
- * Uses live coverage / playback (like the sidebar), not only server `completionPercent`
- * (which otherwise only refreshes after a full page reload).
+ * Lesson contribution to the top "Course progress" bar.
+ *
+ * Steps:
+ * 1. If lesson is completed (admin % / watchtime threshold met) → count as 100% for this lesson.
+ * 2. Else if video lesson → use real watch-coverage % (can grow toward 100% after unlock).
+ * 3. Else (text/images/files not done) → 0 (or any server %).
+ *
+ * Watch-coverage strip / sidebar clock still show real watched time separately.
  */
 function getLessonCourseProgressPercent(lesson, liveById, viewedIds, playback = null) {
+  // Step 1 — completed lesson fully counts toward course progress.
   if (isLessonDoneForUi(lesson, liveById, viewedIds)) return 100;
 
   const merged = mergeProgressForSidebar(lesson, liveById);
@@ -436,13 +442,13 @@ function getLessonCourseProgressPercent(lesson, liveById, viewedIds, playback = 
     return serverPct;
   }
 
-  const { totalSec, coverageSec, doneForUi } = resolveSidebarVideoProgress(
+  // Step 2 — in-progress video: real coverage only.
+  const { totalSec, coverageSec } = resolveSidebarVideoProgress(
     lesson,
     liveById,
     playback,
     viewedIds
   );
-  if (doneForUi) return 100;
 
   const fromCoverage =
     totalSec > 0
@@ -595,16 +601,12 @@ function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
     resolveSidebarVideoProgress(lesson, liveById, playback, viewedIds);
 
   let pct;
-  if (doneForUi) {
-    pct = 100;
-  } else if (totalSec > 0) {
+  if (totalSec > 0) {
+    // Real watch-range % — completion threshold must not force this to 100.
     pct = coveragePercentDisplay(coverageSec, totalSec, { isComplete: false });
   } else {
     const pctRaw = Number(merged.completionPercent ?? 0);
-    pct =
-      doneForUi && Number.isFinite(pctRaw) && pctRaw > 0
-        ? Math.min(100, Math.round(pctRaw))
-        : 0;
+    pct = Number.isFinite(pctRaw) && pctRaw > 0 ? Math.min(100, Math.round(pctRaw)) : 0;
   }
 
   if (totalSec <= 0) {
@@ -618,21 +620,22 @@ function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
     return null;
   }
 
-  const left = doneForUi
-    ? totalSec
-    : Math.min(totalSec, Math.max(coverageSec, liveCurrent != null ? Math.min(liveCurrent, totalSec) : positionish));
-  return `${formatSecondsToClock(left)} / ${formatSecondsToClock(totalSec)} • ${pct}%`;
+  const left = Math.min(
+    totalSec,
+    Math.max(coverageSec, liveCurrent != null ? Math.min(liveCurrent, totalSec) : positionish)
+  );
+  const completedMark = doneForUi ? ' ✓' : '';
+  return `${formatSecondsToClock(left)} / ${formatSecondsToClock(totalSec)} • ${pct}%${completedMark}`;
 }
 
 function getLessonVideoSidebarPercent(lesson, liveById, playback, viewedIds) {
-  const { totalSec, coverageSec, doneForUi } = resolveSidebarVideoProgress(
+  const { totalSec, coverageSec } = resolveSidebarVideoProgress(
     lesson,
     liveById,
     playback,
     viewedIds
   );
 
-  if (doneForUi) return 100;
   if (totalSec <= 0) return coverageSec > 0 ? 1 : 0;
   return coveragePercentDisplay(coverageSec, totalSec, { isComplete: false });
 }
@@ -655,10 +658,14 @@ function getNextModuleWithLessons(modules, fromIndex) {
   return null;
 }
 
-/** Required seconds for progress: no watchtime => video length; watchtime set => min(watchtime, video length) so we never require more than the video. */
-function effectiveRequiredSeconds(watchtimeSec, videoDurationSec) {
+/** Required seconds for progress: completion % of duration when set; else watchtime capped by duration; else full duration. */
+function effectiveRequiredSeconds(watchtimeSec, videoDurationSec, completionPercentage) {
   const duration =
     Number.isFinite(videoDurationSec) && videoDurationSec > 0 ? videoDurationSec : null;
+  const pct = Number(completionPercentage);
+  if (Number.isFinite(pct) && pct >= 1 && pct <= 100 && duration != null) {
+    return Math.max(1, Math.ceil((duration * pct) / 100));
+  }
   if (watchtimeSec != null && watchtimeSec > 0) {
     return duration != null ? Math.min(watchtimeSec, duration) : watchtimeSec;
   }
@@ -681,6 +688,10 @@ const getCourseModulesFromApi = (apiModules) => {
       content: s.content || null,
       watchtime: s.watchtime || null,
       durationTime: s.durationTime || null,
+      completionPercentage:
+        s.completionPercentage != null && s.completionPercentage !== ''
+          ? Number(s.completionPercentage)
+          : null,
       images: Array.isArray(s.images) ? s.images : [],
       attachments: Array.isArray(s.attachments) ? s.attachments : [],
       learningMaterials: Array.isArray(s.learningMaterials) ? s.learningMaterials : [],
@@ -1060,7 +1071,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         : coverageMeasurePlayer(videoCoverageRangesRef.current, 0);
     const lesson = flatLessonsRef.current.find((l) => l.id === sectionId);
     const required = lesson
-      ? effectiveRequiredSeconds(parseWatchtimeToSeconds(lesson.watchtime || ''), durationSeconds)
+      ? effectiveRequiredSeconds(
+          parseWatchtimeToSeconds(lesson.watchtime || ''),
+          durationSeconds,
+          lesson.completionPercentage
+        )
       : durRounded;
     const meetsRequirement =
       required > 0 ? covered >= required : durRounded > 0 && covered >= durRounded;
@@ -2356,6 +2371,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     markVideoSeekClampGrace,
   ]);
   const watchtimeSeconds = activeLesson ? parseWatchtimeToSeconds(activeLesson.watchtime) : null;
+  const completionPercentage = activeLesson?.completionPercentage ?? null;
 
   useEffect(() => {
     if (!activeLessonId) return;
@@ -2644,9 +2660,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   if (!player || !player.getCurrentTime) return;
                   const t = player.getCurrentTime();
                   const d = typeof player.getDuration === 'function' ? player.getDuration() : 0;
-                  const requiredSec = effectiveRequiredSeconds(watchtimeSeconds, d);
+                  const requiredSec = effectiveRequiredSeconds(
+                    watchtimeSeconds,
+                    d,
+                    completionPercentage
+                  );
                   const prog = youtubeProgressRef.current;
-                  if (prog.markedComplete) return;
                   const durRounded = Math.round(Number(d) || 0);
                   if (prog.isPlaying) {
                     const previousTime = Math.max(0, Number(prog.lastTime || 0));
@@ -2659,6 +2678,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     if (Math.abs(t - previousTime) <= maxAccept) {
                       prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, t);
                     }
+                    // Keep appending coverage after completion threshold so watch range can reach 100%.
                     appendCoverageSlicePlayer(
                       videoCoverageRangesRef,
                       previousTime,
@@ -2676,10 +2696,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                     }
                     prog.watchedSeconds = cov;
                     prog.pendingDeltaSeconds = 0;
-                    if (requiredSec > 0 && cov >= requiredSec) {
+                    if (!prog.markedComplete && requiredSec > 0 && cov >= requiredSec) {
                       prog.markedComplete = true;
-                      if (intervalId) clearInterval(intervalId);
-                      intervalId = null;
                       console.log(
                         '[Video progress] Section marked complete (coverage',
                         cov,
@@ -2876,6 +2894,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [
     embedVideoId,
     watchtimeSeconds,
+    completionPercentage,
     activeLessonId,
     activeLessonGateBlocked,
   ]);
@@ -2885,6 +2904,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     activeLessonId,
     activeLessonGateBlocked,
     watchtimeSeconds,
+    completionPercentage,
     sectionProgressData,
     resumeSeekAppliedRef,
     videoCoverageRangesRef,
@@ -3149,6 +3169,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const progressPercent = totalLessons
     ? Math.min(100, Math.round((completedCount / totalLessons) * 100))
     : 0;
+  /**
+   * Course progress bar calculation (step by step):
+   * 1. For each lesson, take getLessonCourseProgressPercent (100 if completed, else real watch %).
+   * 2. Average those lesson percents → base progress.
+   * 3. If every lesson is done but quiz/assessment still pending → cap at 99.
+   * 4. If every lesson is done AND quiz/assessment (if any) met → set to 100.
+   */
   const courseOverviewProgressPercent = useMemo(() => {
     if (totalLessons === 0) return 0;
 
@@ -3171,6 +3198,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         )
       : null;
 
+    // Step 1–2: average each lesson's course-progress contribution.
     const completionSum = flatLessons.reduce((sum, lesson) => {
       let playback = null;
       if (activeVideoLesson && lesson.id === activeVideoLesson.id) {
@@ -3192,6 +3220,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     }, 0);
 
     let percent = Math.round(completionSum / totalLessons);
+
+    // Step 3–4: quiz / assessment gate for final 100%.
     const videosCompleted =
       flatLessons.length > 0 &&
       flatLessons.every((lesson) => isLessonDoneForUi(lesson, liveSectionProgressMap, viewedSectionIds));
@@ -3572,7 +3602,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const activeLessonVideoRequiredSec = activeVideoLessonForSidebar
     ? effectiveRequiredSeconds(
         parseWatchtimeToSeconds(activeVideoLessonForSidebar.watchtime || ''),
-        activeLessonVideoDurationSec
+        activeLessonVideoDurationSec,
+        activeVideoLessonForSidebar.completionPercentage
       )
     : 0;
   const activeLessonVideoDone = activeVideoLessonForSidebar
@@ -5538,9 +5569,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 const v = videoRef.current;
                 if (!v) return;
                 const prog = nativeVideoProgressRef.current;
-                if (prog.markedComplete) return;
                 const durRounded = Math.round(Number(v.duration) || 0);
-                const required = effectiveRequiredSeconds(watchtimeSeconds, v.duration);
+                const required = effectiveRequiredSeconds(
+                  watchtimeSeconds,
+                  v.duration,
+                  completionPercentage
+                );
                 if (prog.isPlaying) {
                   const previousTime = Math.max(0, Number(prog.lastTime || 0));
                   const wallMs = wallElapsedSinceTick(prog);
@@ -5554,6 +5588,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   if (delta <= maxAccept) {
                     prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline ?? 0, v.currentTime);
                   }
+                  // Keep appending coverage after completion threshold so watch range can reach 100%.
                   appendCoverageSlicePlayer(
                     videoCoverageRangesRef,
                     previousTime,
@@ -5573,7 +5608,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   prog.pendingDeltaSeconds = 0;
                   prog.lastTime = v.currentTime;
                   prog.lastTickAtMs = Date.now();
-                  if (required > 0 && cov >= required) {
+                  if (!prog.markedComplete && required > 0 && cov >= required) {
                     prog.markedComplete = true;
                     videoWatchedEnoughRef.current?.();
                   }

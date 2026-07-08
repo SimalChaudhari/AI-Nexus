@@ -173,6 +173,7 @@ type RawCourseSectionPayload = {
     content?: unknown;
     watchtime?: unknown;
     durationTime?: unknown;
+    completionPercentage?: unknown;
     images?: unknown;
     attachments?: unknown;
     learningMaterials?: unknown;
@@ -2209,6 +2210,13 @@ export class CourseController {
                                         typeof sec?.durationTime === 'string'
                                             ? sec.durationTime
                                             : undefined,
+                                    completionPercentage:
+                                        typeof sec?.completionPercentage === 'number'
+                                            ? sec.completionPercentage
+                                            : sec?.completionPercentage != null &&
+                                                sec.completionPercentage !== ''
+                                              ? Number(sec.completionPercentage)
+                                              : undefined,
                                     images: normalizeStringArray(sec?.images),
                                     attachments: normalizeStringArray(sec?.attachments),
                                     learningMaterials: normalizeStringArray(sec?.learningMaterials),

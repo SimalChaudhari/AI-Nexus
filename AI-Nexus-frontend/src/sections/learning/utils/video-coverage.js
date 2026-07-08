@@ -92,13 +92,14 @@ export function coverageMeasureSeconds(ranges, maxDuration) {
   return duration > 0 ? Math.min(duration, measured) : measured;
 }
 
-/** In-progress lessons cap at 99% until server marks complete (matches sidebar). */
+/** Progress % from unique watched coverage. Completion status does not inflate this to 100. */
 export function coveragePercentDisplay(watchedSec, durationSec, { isComplete = false } = {}) {
   const duration = Math.max(0, Number(durationSec) || 0);
   const watched = Math.max(0, Number(watchedSec) || 0);
-  if (isComplete) return 100;
-  if (duration <= 0) return watched > 0 ? 1 : 0;
-  return Math.min(99, Math.round((100 * watched) / duration));
+  if (duration <= 0) return watched > 0 || isComplete ? 1 : 0;
+  const pct = Math.round((100 * Math.min(duration, watched)) / duration);
+  // Show true coverage; only reach 100 when the full video range is actually watched.
+  return Math.max(0, Math.min(100, pct));
 }
 
 /** Gaps in [0, duration] not covered by watched ranges. */

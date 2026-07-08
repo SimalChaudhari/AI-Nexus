@@ -52,6 +52,7 @@ export function useSpotlightrLessonPlayer({
   activeLessonId,
   activeLessonGateBlocked,
   watchtimeSeconds,
+  completionPercentage,
   sectionProgressData,
   resumeSeekAppliedRef,
   videoCoverageRangesRef,
@@ -89,6 +90,7 @@ export function useSpotlightrLessonPlayer({
 }) {
   const sectionProgressLatestRef = useRef(sectionProgressData);
   const watchtimeSecondsRef = useRef(watchtimeSeconds);
+  const completionPercentageRef = useRef(completionPercentage);
   const modulesRef = useRef(modules);
   const flatLessonsRef = useRef(flatLessons);
   const liveSectionProgressMapRef = useRef(liveSectionProgressMap);
@@ -106,6 +108,7 @@ export function useSpotlightrLessonPlayer({
 
   sectionProgressLatestRef.current = sectionProgressData;
   watchtimeSecondsRef.current = watchtimeSeconds;
+  completionPercentageRef.current = completionPercentage;
   modulesRef.current = modules;
   flatLessonsRef.current = flatLessons;
   liveSectionProgressMapRef.current = liveSectionProgressMap;
@@ -476,7 +479,11 @@ export function useSpotlightrLessonPlayer({
       const t = normalizeSpotlightrTime(rawTime);
       const prog = spotlightrProgressRef.current;
       const d = resolveDurationSeconds(prog.duration);
-      const requiredSec = cb().effectiveRequiredSeconds(watchtimeSecondsRef.current, d);
+      const requiredSec = cb().effectiveRequiredSeconds(
+        watchtimeSecondsRef.current,
+        d,
+        completionPercentageRef.current
+      );
       const durRounded = Math.round(Number(d) || 0);
       const previousTime = Math.max(0, Number(prog.lastTime || 0));
 
