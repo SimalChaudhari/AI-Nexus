@@ -125,9 +125,38 @@ function sealCoverageRangesToVideoEnd(
   return merged;
 }
 
+function computeUnwatchedGapSeconds(ranges: [number, number][], duration: number): number {
+  const dur = roundedVideoDurationSeconds(duration);
+  if (dur <= 0) return 0;
+  const watched = clipCoverageRangesToDuration(ranges, dur);
+  if (!watched.length) return dur;
+  let cursor = 0;
+  let gapTotal = 0;
+  for (const [start, end] of watched) {
+    if (start > cursor + 0.25) gapTotal += start - cursor;
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < dur - 0.25) gapTotal += dur - cursor;
+  return gapTotal;
+}
+
+function sealCoverageRangesWhenComplete(
+  ranges: [number, number][],
+  duration: number,
+): [number, number][] {
+  const dur = roundedVideoDurationSeconds(duration);
+  if (dur <= 0) return mergeCoverageRanges(ranges);
+  const clipped = clipCoverageRangesToDuration(ranges, dur);
+  if (computeUnwatchedGapSeconds(clipped, dur) >= 1) return clipped;
+  return [[0, dur]];
+}
+
 function coverageMeasureSeconds(ranges: [number, number][], duration: number): number {
   const dur = roundedVideoDurationSeconds(duration);
   const merged = dur > 0 ? clipCoverageRangesToDuration(ranges, dur) : mergeCoverageRanges(ranges);
+  if (dur > 0 && computeUnwatchedGapSeconds(merged, dur) < 1) {
+    return dur;
+  }
   let total = 0;
   for (const [s, e] of merged) total += e - s;
   const measured = Math.floor(Math.max(0, total));
@@ -646,6 +675,7 @@ export class CourseSectionWatchProgressService {
       if (isPlaybackAtVideoEnd(lastPos, duration)) {
         mergedRanges = sealCoverageRangesToVideoEnd(mergedRanges, duration);
       }
+      mergedRanges = sealCoverageRangesWhenComplete(mergedRanges, duration);
       const covered = coverageMeasureSeconds(mergedRanges, duration);
       watchedWithDelta = covered;
       nextCoverageColumn = mergedRanges.length ? mergedRanges : null;

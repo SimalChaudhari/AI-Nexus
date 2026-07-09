@@ -92,11 +92,36 @@ export function sealCoverageRangesToVideoEnd(ranges, maxDuration) {
   return merged;
 }
 
+/** Total unwatched seconds across all gaps in the timeline. */
+export function totalUnwatchedGapSeconds(watchedRanges, durationSec) {
+  const gaps = computeUnwatchedRanges(watchedRanges, durationSec);
+  return gaps.reduce((sum, [start, end]) => sum + Math.max(0, end - start), 0);
+}
+
+/** True when remaining gaps are under 1 second (poll jitter / float tolerance). */
+export function isTimelineFullyCovered(watchedRanges, durationSec) {
+  const duration = roundedVideoDurationSeconds(durationSec);
+  if (duration <= 0) return false;
+  return totalUnwatchedGapSeconds(watchedRanges, duration) < 1;
+}
+
+/** When the timeline is fully covered, store one clean range so refresh stays at 100%. */
+export function sealCoverageRangesWhenComplete(ranges, durationSec) {
+  const duration = roundedVideoDurationSeconds(durationSec);
+  if (duration <= 0) return mergeCoverageRanges(ranges);
+  const clipped = clipCoverageRanges(ranges, duration);
+  if (!isTimelineFullyCovered(clipped, duration)) return clipped;
+  return [[0, duration]];
+}
+
 /** Unique seconds covered by merged ranges (single source of truth for watchedSeconds). */
 export function coverageMeasureSeconds(ranges, maxDuration) {
   const duration = roundedVideoDurationSeconds(maxDuration);
   const merged =
     duration > 0 ? clipCoverageRanges(ranges, duration) : mergeCoverageRanges(ranges);
+  if (duration > 0 && isTimelineFullyCovered(merged, duration)) {
+    return duration;
+  }
   let total = 0;
   for (const [s, e] of merged) total += e - s;
   const measured = Math.floor(Math.max(0, total));
@@ -108,9 +133,10 @@ export function coveragePercentDisplay(watchedSec, durationSec, { isComplete = f
   const duration = Math.max(0, Number(durationSec) || 0);
   const watched = Math.max(0, Number(watchedSec) || 0);
   if (duration <= 0) return watched > 0 || isComplete ? 1 : 0;
-  const pct = Math.round((100 * Math.min(duration, watched)) / duration);
-  // Show true coverage; only reach 100 when the full video range is actually watched.
-  return Math.max(0, Math.min(100, pct));
+  // Only show 100% when every second is covered — rounding 406/407 must not display as 100%.
+  if (watched >= duration) return 100;
+  const pct = Math.round((100 * watched) / duration);
+  return Math.max(0, Math.min(99, pct));
 }
 
 /** Gaps in [0, duration] not covered by watched ranges. */

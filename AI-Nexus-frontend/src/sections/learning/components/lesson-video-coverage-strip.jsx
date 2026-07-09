@@ -216,7 +216,7 @@ export function LessonVideoCoverageStrip({
         </Stack>
 
         <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'right' }}>
-          {isComplete || unwatched.length === 0 ? (
+          {unwatched.length === 0 ? (
             'All sections watched'
           ) : (
             <>
