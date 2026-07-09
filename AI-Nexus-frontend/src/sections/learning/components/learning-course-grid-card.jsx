@@ -146,6 +146,8 @@ export function LearningCourseGridCard({
   sectionCount = 0,
   showCourseProgress = false,
   courseProgress = 0,
+  progressCompletedUnits = 0,
+  progressTotalUnits = 0,
   progressStatus = { label: 'Not Started', color: 'default' },
   isFavorite = false,
   favoriteLoading = false,
@@ -434,7 +436,9 @@ export function LearningCourseGridCard({
                     variant="caption"
                     sx={{ color: 'primary.main', fontWeight: 700, fontSize: { xs: '0.68rem', sm: '0.75rem' } }}
                   >
-                    {courseProgress}%
+                    {progressTotalUnits > 0
+                      ? `${progressCompletedUnits}/${progressTotalUnits} · ${courseProgress}%`
+                      : `${courseProgress}%`}
                   </Typography>
                 </Stack>
                 <LinearProgress

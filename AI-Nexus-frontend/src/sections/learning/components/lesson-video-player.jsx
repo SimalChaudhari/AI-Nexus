@@ -1,11 +1,26 @@
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 
+import { getYouTubeEmbedIframeSrc } from 'src/utils/youtube';
 import {
   getLessonMediaFrameSx,
   getLessonVideoSurfaceSx,
   LESSON_MEDIA_FRAME_HEIGHT,
 } from 'src/sections/learning/utils/player-responsive-type';
+
+const hiddenPlayerLayerSx = {
+  opacity: 0,
+  visibility: 'hidden',
+  pointerEvents: 'none',
+  zIndex: 0,
+};
+
+const activePlayerLayerSx = {
+  opacity: 1,
+  visibility: 'visible',
+  pointerEvents: 'auto',
+  zIndex: 2,
+};
 
 export function LessonVideoPlayer({
   embedUrl,
@@ -26,14 +41,48 @@ export function LessonVideoPlayer({
   floatingOverlay,
 }) {
   const theme = useTheme();
+  const showYoutube = Boolean(embedUrl);
+  const showSpotlightr = Boolean(spotlightrMeta);
+  const showNative = Boolean(videoSrc && !showYoutube && !showSpotlightr);
+  const youtubeIframeSrc = showYoutube ? getYouTubeEmbedIframeSrc(embedUrl) : null;
 
   return (
     <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
-      {embedUrl ? (
-        <Box ref={youtubeContainerRef} sx={getLessonVideoSurfaceSx()} />
-      ) : spotlightrMeta ? (
-        <Box ref={spotlightrContainerRef} sx={getLessonVideoSurfaceSx()} />
-      ) : videoSrc ? (
+      {/* Both shells stay mounted (opacity/z-index only) so refs + layout survive Spotlightr ↔ YouTube. */}
+      <Box
+        ref={youtubeContainerRef}
+        sx={{
+          ...getLessonVideoSurfaceSx(),
+          ...(showYoutube ? activePlayerLayerSx : hiddenPlayerLayerSx),
+        }}
+      >
+        {youtubeIframeSrc ? (
+          <Box
+            component="iframe"
+            key={youtubeIframeSrc}
+            data-yt-lesson-player="1"
+            title="Course video"
+            src={youtubeIframeSrc}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              border: 0,
+            }}
+          />
+        ) : null}
+      </Box>
+      <Box
+        ref={spotlightrContainerRef}
+        sx={{
+          ...getLessonVideoSurfaceSx(),
+          ...(showSpotlightr ? activePlayerLayerSx : hiddenPlayerLayerSx),
+        }}
+      />
+      {showNative ? (
         <Box
           component="video"
           ref={videoRef}
@@ -51,6 +100,7 @@ export function LessonVideoPlayer({
           onSeeked={onSeeked}
           sx={{
             ...getLessonVideoSurfaceSx(),
+            ...activePlayerLayerSx,
             objectFit: 'contain',
           }}
         >

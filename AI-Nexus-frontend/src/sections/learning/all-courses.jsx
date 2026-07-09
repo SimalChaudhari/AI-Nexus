@@ -132,8 +132,8 @@ const getCourseContentMeta = (course = {}) => {
 };
 
 const getCourseProgressStatus = (status, courseProgress) => {
-  if (status === 'completed') return { label: 'Completed', color: 'success' };
-  if (courseProgress > 0 || status === 'in_progress') return { label: 'In Progress', color: 'warning' };
+  if (status === 'completed' || courseProgress >= 100) return { label: 'Completed', color: 'success' };
+  if (status === 'in_progress' || courseProgress > 0) return { label: 'In Progress', color: 'warning' };
   return { label: 'Not Started', color: 'default' };
 };
 
@@ -662,6 +662,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
           const progress = row?.progress && typeof row.progress === 'object' ? row.progress : {};
           acc[courseId] = {
             completionPercent: Math.max(0, Math.min(100, Number(progress.completionPercent ?? 0))),
+            completedUnits: Number(progress.completedUnits ?? 0),
+            totalUnits: Number(progress.totalUnits ?? 0),
             status: String(progress.status || '').toLowerCase(),
           };
           return acc;
@@ -1024,6 +1026,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                             const courseProgress = Number.isFinite(progressRow.completionPercent)
                               ? progressRow.completionPercent
                               : 0;
+                            const progressCompletedUnits = Number(progressRow.completedUnits || 0);
+                            const progressTotalUnits = Number(progressRow.totalUnits || 0);
                             const showCourseProgress = authenticated && (!course.freeOrPaid || isEnrolled(course.id));
                             const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
                             const courseIsFavorite = favorites.has(course.id) || course.isFavorite;
@@ -1038,6 +1042,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                   sectionCount={sectionCount}
                                   showCourseProgress={showCourseProgress}
                                   courseProgress={courseProgress}
+                                  progressCompletedUnits={progressCompletedUnits}
+                                  progressTotalUnits={progressTotalUnits}
                                   progressStatus={progressStatus}
                                   isFavorite={courseIsFavorite}
                                   favoriteLoading={favoriteLoading.has(course.id)}

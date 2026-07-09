@@ -237,6 +237,10 @@ export class CourseSectionWatchProgressService {
       await this.sectionProgressRepository.delete({ id: row.id });
       return undefined;
     }
+    if (!storedUrl && currentUrl) {
+      row.sourceVideoUrl = normalizeVideoUrlForCompare(sectionVideoUrl) || null;
+      await this.sectionProgressRepository.update({ id: row.id }, { sourceVideoUrl: row.sourceVideoUrl });
+    }
     return row;
   }
 
@@ -662,8 +666,16 @@ export class CourseSectionWatchProgressService {
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
     const previousLastPosition = Math.max(0, Number(existing?.lastPositionSeconds || 0));
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
+    const dtoLastPosition =
+      typeof dto.lastPositionSeconds === 'number'
+        ? Math.max(0, Math.floor(dto.lastPositionSeconds))
+        : null;
     // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
-    const finalLastPosition = Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
+    // After the completion threshold is met, learners may rewind to fill gaps — bookmark the real pause point.
+    const finalLastPosition =
+      dtoLastPosition != null && dtoLastPosition >= 0
+        ? dtoLastPosition
+        : Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
     const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
     const finalDuration = Math.max(computed.duration, 0);
     const finalRemaining = Math.max(0, finalDuration - finalWatched);

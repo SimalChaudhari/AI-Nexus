@@ -30,6 +30,17 @@ export function mergeCoverageRanges(ranges) {
   return out;
 }
 
+/** Union existing + incoming ranges — never shrinks local coverage (out-of-order server race). */
+export function mergeCoverageRangesMonotonic(existing, incoming, maxDuration = 0) {
+  const merged = mergeCoverageRanges([
+    ...parseCoverageRangePairs(existing),
+    ...parseCoverageRangePairs(incoming),
+  ]);
+  const dur = roundedVideoDurationSeconds(maxDuration);
+  if (dur > 0) return clipCoverageRanges(merged, dur);
+  return merged;
+}
+
 export function clipCoverageRanges(ranges, maxDuration) {
   if (!maxDuration || maxDuration <= 0) return mergeCoverageRanges(ranges);
   const clipped = [];
