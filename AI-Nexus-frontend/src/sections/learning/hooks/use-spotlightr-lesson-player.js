@@ -18,7 +18,6 @@ import {
   parseCoverageRangePairs,
   computeUnwatchedRanges,
   clipCoverageRanges,
-  isTimelineFullyCovered,
   preferCatalogDurationWhenPlayerSkewed,
 } from 'src/sections/learning/utils/video-coverage';
 
@@ -279,21 +278,10 @@ export function useSpotlightrLessonPlayer({
     };
 
     const getResumeSeconds = () => {
+      if (isLessonVideoFullyWatched()) return 0;
       const resumeMeta = resumeSeekAppliedRef.current;
       const sp = getSectionProgress();
       const snap = sectionPlayerSnapshotRef?.current?.[activeLessonId] || null;
-      const serverRanges = parseCoverageRangePairs(
-        sp?.watchedCoverageRanges || snap?.watchedCoverageRanges
-      );
-      const rangeEnd = serverRanges.reduce(
-        (max, pair) => Math.max(max, Number(pair?.[1]) || 0),
-        0
-      );
-      if (rangeEnd > 0) {
-        const clipped = clipCoverageRanges(serverRanges, rangeEnd);
-        if (isTimelineFullyCovered(clipped, rangeEnd)) return 0;
-      }
-      if (isLessonVideoFullyWatched()) return 0;
       const d = resolveDurationSeconds(spotlightrProgressRef.current.duration);
       const durRounded = Math.round(Number(d) || 0);
       if (isLessonPlaybackComplete()) {
@@ -733,24 +721,13 @@ export function useSpotlightrLessonPlayer({
 
       const resumeMeta = resumeSeekAppliedRef.current;
       const resumeTarget = getResumeSeconds();
-      if (!resumeOnceRef.current && resumeMeta.sectionId === activeLessonId) {
-        if (resumeTarget <= 2) {
-          if (isLessonVideoFullyWatched() || resumeTarget <= 0.5) {
-            markResumeHandled({
-              resumeOnceRef,
-              resumeMeta,
-              activeLessonId,
-              seconds: 0,
-              spotlightrProgressRef,
-            });
-            window.setTimeout(
-              () => seekSpotlightrPlayer(getApiVideoId(), 0, null, { container: getContainer() }),
-              500
-            );
-          }
-        } else if (!isLessonVideoFullyWatched()) {
-          applyApiResumeOnce(resumeTarget);
-        }
+      if (
+        !resumeOnceRef.current &&
+        !isLessonVideoFullyWatched() &&
+        resumeMeta.sectionId === activeLessonId &&
+        resumeTarget > 2
+      ) {
+        applyApiResumeOnce(resumeTarget);
       }
 
       startProgressPoll();
@@ -1057,19 +1034,6 @@ function getResumeSecondsFromData(
   sectionSnapshot = null
 ) {
   if (sectionProgressData?.isCompleted || sectionProgressData?.isWatched) return 0;
-  const rangePairs = parseCoverageRangePairs(
-    sectionProgressData?.watchedCoverageRanges || sectionSnapshot?.watchedCoverageRanges
-  );
-  const rangeEnd = rangePairs.reduce((max, pair) => Math.max(max, Number(pair?.[1]) || 0), 0);
-  if (rangeEnd > 0) {
-    const clipped = clipCoverageRanges(rangePairs, rangeEnd);
-    if (isTimelineFullyCovered(clipped, rangeEnd)) return 0;
-    const lastPos = Math.max(
-      Number(sectionProgressData?.lastPositionSeconds || 0),
-      Number(sectionSnapshot?.lastPositionSeconds || 0)
-    );
-    if (lastPos >= rangeEnd - 1) return 0;
-  }
   const resumeMeta = resumeSeekAppliedRef.current;
   const serverSeconds = Math.max(0, Number(sectionProgressData?.lastPositionSeconds || 0));
   const snapSeconds = Math.max(0, Number(sectionSnapshot?.lastPositionSeconds || 0));

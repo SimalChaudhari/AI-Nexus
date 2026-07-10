@@ -796,15 +796,6 @@ function shouldResumeVideoFromStart(
       live.watchedCoverageRanges
   );
 
-  // Full coverage through the furthest watched second (admin metadata may exceed real video length).
-  const rangeEnd = maxCoverageEndPlayer(rangePairs);
-  if (rangeEnd > 0) {
-    const clippedToEnd = clipCoverageRangesPlayer(rangePairs, rangeEnd);
-    if (isTimelineFullyCovered(clippedToEnd, rangeEnd)) {
-      return true;
-    }
-  }
-
   const payload = {
     durationSeconds: Math.max(
       Number(sectionProgressData?.durationSeconds || 0),
