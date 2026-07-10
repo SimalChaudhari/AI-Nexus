@@ -3,6 +3,10 @@ import { useTheme } from '@mui/material/styles';
 
 import { getYouTubeEmbedIframeSrc } from 'src/utils/youtube';
 import {
+  preventVideoContextMenu,
+  SECURE_VIDEO_ELEMENT_PROPS,
+} from 'src/utils/secure-video';
+import {
   getLessonMediaFrameSx,
   getLessonVideoSurfaceSx,
   LESSON_MEDIA_FRAME_HEIGHT,
@@ -50,10 +54,15 @@ export function LessonVideoPlayer({
   const nativeKey = remountKey ? `${remountKey}|${videoSrc || ''}` : videoSrc || 'native';
 
   return (
-    <Box sx={getLessonMediaFrameSx(theme, frameHeight)} key={remountKey || undefined}>
+    <Box
+      key={remountKey || undefined}
+      onContextMenu={preventVideoContextMenu}
+      sx={getLessonMediaFrameSx(theme, frameHeight)}
+    >
       {/* Both shells stay mounted (opacity/z-index only) so refs + layout survive Spotlightr ↔ YouTube. */}
       <Box
         ref={youtubeContainerRef}
+        onContextMenu={preventVideoContextMenu}
         sx={{
           ...getLessonVideoSurfaceSx(),
           ...(showYoutube ? activePlayerLayerSx : hiddenPlayerLayerSx),
@@ -81,6 +90,7 @@ export function LessonVideoPlayer({
       <Box
         ref={spotlightrContainerRef}
         key={remountKey ? `spotlightr-${remountKey}` : 'spotlightr'}
+        onContextMenu={preventVideoContextMenu}
         sx={{
           ...getLessonVideoSurfaceSx(),
           ...(showSpotlightr ? activePlayerLayerSx : hiddenPlayerLayerSx),
@@ -93,10 +103,9 @@ export function LessonVideoPlayer({
           ref={videoRef}
           poster={videoPoster || undefined}
           controls
-          controlsList="nodownload"
           playsInline
-          disablePictureInPicture
           preload="metadata"
+          {...SECURE_VIDEO_ELEMENT_PROPS}
           onLoadedMetadata={onLoadedMetadata}
           onPlay={onPlay}
           onPause={onPause}
@@ -107,6 +116,10 @@ export function LessonVideoPlayer({
             ...getLessonVideoSurfaceSx(),
             ...activePlayerLayerSx,
             objectFit: 'contain',
+            // Soften selection / long-press save UX on some browsers
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+            WebkitTouchCallout: 'none',
           }}
         >
           <source src={videoSrc} type="video/mp4" />
