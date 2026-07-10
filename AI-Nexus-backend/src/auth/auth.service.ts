@@ -14,7 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from './../user/users.entity';
 import { UserRole, UserStatus, AuthProvider } from './../user/users.entity';
 import { normalizeEmail, validateEmail } from './../utils/auth.utils';
-import { verifyEmailAddress } from './../utils/email-verification.util';
+import { verifyEmailAddress, validateHrContactEmail, validateStudentSchoolEmail, isAllowedStudentSchoolEmail } from './../utils/email-verification.util';
 import { EmailService } from './../service/email.service';
 import { LocalStorageService } from './../service/local-storage.service';
 import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from '../user/users.dto';
@@ -222,8 +222,10 @@ export class AuthService {
       throw new BadRequestException('Please enter a valid school email address.');
     }
 
-    if (!(schoolEmail.endsWith('.edu') || schoolEmail.endsWith('@yopmail.com'))) {
-      throw new BadRequestException('School email must end with .edu or use @yopmail.com');
+    if (!isAllowedStudentSchoolEmail(schoolEmail)) {
+      throw new BadRequestException(
+        'School email must use a supported academic domain (e.g. .edu) or @isca.org.sg.',
+      );
     }
 
     return { schoolName, graduationDate, schoolEmail };
@@ -261,9 +263,9 @@ export class AuthService {
     if (schoolEmail.endsWith('.edu')) {
       score += 30;
       reasons.push('Email uses an education domain, which improves confidence.');
-    } else if (schoolEmail.endsWith('@yopmail.com')) {
-      score += 12;
-      reasons.push('Yopmail is accepted for testing, but it reduces verification confidence.');
+    } else if (schoolEmail.endsWith('@isca.org.sg') || schoolEmail.includes('.isca.org.sg')) {
+      score += 20;
+      reasons.push('Email uses an ISCA organisation domain.');
     }
 
     const graduationTime = Date.parse(graduationDate);
@@ -285,8 +287,6 @@ export class AuthService {
     if (hasInstitutionKeyword && schoolEmail.endsWith('.edu')) {
       score += 15;
       reasons.push('School name and email domain are consistent with an academic profile.');
-    } else if (schoolEmail.endsWith('@yopmail.com')) {
-      score += 3;
     }
 
     const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
@@ -1807,6 +1807,14 @@ export class AuthService {
     this.cleanupExpiredStudentVerificationSessions();
 
     const { schoolName, graduationDate, schoolEmail } = this.validateStudentVerificationInput(params);
+
+    const schoolEmailVerification = await validateStudentSchoolEmail(schoolEmail);
+    if (!schoolEmailVerification.isValid) {
+      throw new BadRequestException(
+        schoolEmailVerification.reason || 'Please enter a valid school email address.',
+      );
+    }
+
     const verificationToken = crypto.randomBytes(24).toString('hex');
     const pin = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000;
@@ -1911,6 +1919,14 @@ export class AuthService {
     schoolEmail?: string;
   }): Promise<StudentEligibilityAssessment> {
     const validated = this.validateStudentVerificationInput(params);
+
+    const schoolEmailVerification = await validateStudentSchoolEmail(validated.schoolEmail);
+    if (!schoolEmailVerification.isValid) {
+      throw new BadRequestException(
+        schoolEmailVerification.reason || 'Please enter a valid school email address.',
+      );
+    }
+
     const heuristicAssessment = this.getStudentEligibilityHeuristicAssessment(validated);
 
     try {
@@ -2548,6 +2564,27 @@ export class AuthService {
     return String(email || '').trim().toLowerCase();
   }
 
+  private async assertValidHrAuditEmail(hrEmail?: string | null, learnerEmail?: string | null) {
+    const normalizedHrEmail = this.normalizeAuditEmail(hrEmail);
+    if (!normalizedHrEmail) {
+      throw new BadRequestException('Please enter a valid HR email address.');
+    }
+
+    const verification = await validateHrContactEmail(normalizedHrEmail);
+    if (!verification.isValid) {
+      throw new BadRequestException(
+        verification.reason || 'Please enter a valid HR email address.',
+      );
+    }
+
+    const normalizedLearnerEmail = this.normalizeAuditEmail(learnerEmail);
+    if (normalizedLearnerEmail && normalizedHrEmail === normalizedLearnerEmail) {
+      throw new BadRequestException('HR email must be different from your registration email.');
+    }
+
+    return normalizedHrEmail;
+  }
+
   private async resolveUserForFeeWaiverAudit(userId?: string, learnerEmail?: string) {
     const trimmedId = String(userId || '').trim();
     if (trimmedId) {
@@ -2673,18 +2710,13 @@ export class AuthService {
     hrEmail?: string;
   }) {
     const learnerEmail = this.normalizeAuditEmail(params?.learnerEmail);
-    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
     const learnerName = String(params?.learnerName || '').trim() || 'Learner';
 
     if (!learnerEmail) {
       throw new BadRequestException('Learner email is required.');
     }
-    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
-      throw new BadRequestException('Please enter a valid HR email address.');
-    }
-    if (learnerEmail === hrEmail) {
-      throw new BadRequestException('HR email must be different from your registration email.');
-    }
+
+    const hrEmail = await this.assertValidHrAuditEmail(params?.hrEmail, learnerEmail);
 
     const user = await this.resolveUserForFeeWaiverAudit(params?.userId, learnerEmail);
     if (this.normalizeAuditEmail(user.email) !== learnerEmail) {
@@ -2748,15 +2780,9 @@ export class AuthService {
     const requestedBy = params?.requestedBy || 'user';
     const user = await this.resolveUserForFeeWaiverAudit(params?.userId, params?.learnerEmail);
 
-    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
-    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
-      throw new BadRequestException('Please enter a valid HR email address.');
-    }
+    const hrEmail = await this.assertValidHrAuditEmail(params?.hrEmail, user.email);
 
     const learnerEmail = this.normalizeAuditEmail(user.email);
-    if (learnerEmail && hrEmail === learnerEmail) {
-      throw new BadRequestException('HR email must be different from your registration email.');
-    }
 
     const existingAudit =
       user.eligibilitySnapshot?.feeWaiverAudit
@@ -4051,13 +4077,9 @@ export class AuthService {
     learnerName?: string;
     hrEmail?: string;
   }) {
-    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
     const learnerName = String(params?.learnerName || '').trim() || 'Applicant';
     const nricFin = normalizeSingaporeNricFin(params?.nricFin || '');
 
-    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
-      throw new BadRequestException('Please enter a valid HR email address.');
-    }
     if (!nricFin) {
       throw new BadRequestException(
         'Verified NRIC details are required to send employer verification.',
@@ -4070,6 +4092,8 @@ export class AuthService {
         'Could not find the registration record for this applicant. Please complete NRIC verification again.',
       );
     }
+
+    const hrEmail = await this.assertValidHrAuditEmail(params?.hrEmail, user.email);
 
     const existingAudit =
       user.eligibilitySnapshot?.feeWaiverAudit

@@ -392,6 +392,9 @@ export class UserService {
 
     async resendFeeWaiverHrVerification(userId: string, hrEmail: string) {
         await this.getById(userId);
+        if (!String(hrEmail || '').trim()) {
+            throw new BadRequestException('Please enter a valid HR email address.');
+        }
         return this.authService.resendFeeWaiverHrVerificationEmail({
             userId,
             hrEmail,

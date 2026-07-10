@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -14,7 +15,7 @@ import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 import { EntityDetailsLayout } from 'src/components/entity-details-layout';
-import { QuickLinksCommentList } from '../../../../components/comment-section';
+import { QuickLinksCommentList, DetailCommentForm } from '../../../../components/comment-section';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { fDateTime, fDateTimePersonal } from 'src/utils/format-time';
 import { aiForumService, buildAiForumCommentTree } from 'src/services/ai-forum.service';
@@ -45,6 +46,12 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [updatingComment, setUpdatingComment] = useState(null);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [replyingToCommentId, setReplyingToCommentId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [commentEditorKey, setCommentEditorKey] = useState(0);
   const [quickLinksExpanded, setQuickLinksExpanded] = useState(() => new Set());
 
   useEffect(() => {
@@ -151,6 +158,84 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
       toast.error(err?.response?.data?.message || 'Failed to update comment');
     } finally {
       setUpdatingComment(null);
+    }
+  };
+
+  const handleSubmitComment = async () => {
+    if (isEffectivelyEmptyHtml(commentText)) {
+      toast.error('Please enter a comment');
+      return;
+    }
+    if (commentText.length > 50000) {
+      toast.error('Comment is too long');
+      return;
+    }
+    if (!user) {
+      toast.error('Please sign in to comment');
+      return;
+    }
+
+    try {
+      setSubmittingComment(true);
+      const newComment = await aiForumService.addComment(post.id, { content: commentText.trim() });
+      setComments((prev) => {
+        if (prev.some((c) => c.id === newComment.id)) return prev;
+        return [newComment, ...prev];
+      });
+      setCommentText('');
+      setCommentEditorKey((k) => k + 1);
+      toast.success('Comment added successfully');
+      onAiForumPostUpdate?.();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to add comment');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleReplyClick = (comment) => {
+    if (!user) {
+      toast.error('Please sign in to reply');
+      return;
+    }
+    setReplyingToCommentId(comment.id);
+    setReplyText('');
+  };
+
+  const handleCancelReply = () => {
+    setReplyingToCommentId(null);
+    setReplyText('');
+  };
+
+  const handleReplySubmit = async () => {
+    if (!replyingToCommentId || !user) return;
+    if (isEffectivelyEmptyHtml(replyText)) {
+      toast.error('Please enter a reply');
+      return;
+    }
+    if (replyText.length > 50000) {
+      toast.error('Reply is too long');
+      return;
+    }
+
+    try {
+      setSubmittingReply(true);
+      const newReply = await aiForumService.addComment(post.id, {
+        content: replyText.trim(),
+        parentCommentId: replyingToCommentId,
+      });
+      setComments((prev) => {
+        if (prev.some((c) => c.id === newReply.id)) return prev;
+        return [newReply, ...prev];
+      });
+      setReplyingToCommentId(null);
+      setReplyText('');
+      toast.success('Reply posted');
+      onAiForumPostUpdate?.();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to post reply');
+    } finally {
+      setSubmittingReply(false);
     }
   };
 
@@ -295,7 +380,14 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
                 }}
                 user={user}
                 showEditDeleteForAll
-                disableLikeAndReply
+                disableLike
+                onReplyClick={handleReplyClick}
+                replyingToCommentId={replyingToCommentId}
+                replyText={replyText}
+                onReplyTextChange={setReplyText}
+                onCancelReply={handleCancelReply}
+                onSubmitReply={handleReplySubmit}
+                submittingReply={submittingReply}
                 editingCommentId={editingCommentId}
                 editCommentText={editCommentText}
                 onEditCommentTextChange={setEditCommentText}
@@ -309,6 +401,24 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
                 onUploadCommentImage={handleCommentMediaUpload}
               />
             )}
+
+            <Divider sx={{ my: 3 }} />
+
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+              Add a reply
+            </Typography>
+            <DetailCommentForm
+              commentText={commentText}
+              commentEditorKey={commentEditorKey}
+              onChange={setCommentText}
+              onUploadImage={handleCommentMediaUpload}
+              onClear={() => {
+                setCommentText('');
+                setCommentEditorKey((k) => k + 1);
+              }}
+              onSubmit={handleSubmitComment}
+              submitting={submittingComment}
+            />
 
             <ConfirmDialog
               open={Boolean(deleteCommentId)}

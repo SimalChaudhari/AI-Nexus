@@ -6,8 +6,9 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
 
+import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
-import { getPersonalEmailValidationMessage } from 'src/validations/user.validation';
+import { getHrEmailValidationMessage } from 'src/validations/user.validation';
 import { resendFeeWaiverHrVerification } from 'src/auth/context/jwt';
 import { userService } from 'src/services/user.service';
 import { getJobRoleAuditStatus } from './user-fee-waiver-audit-panel';
@@ -43,24 +44,17 @@ export function FeeWaiverHrResendPanel({
   const canShow = useMemo(() => canShowFeeWaiverHrTrigger(user), [user]);
   const statusMeta = useMemo(() => getJobRoleAuditStatus(user), [user]);
 
-  const [hrEmail, setHrEmail] = useState(String(audit?.hrEmail || '').trim());
-  const [feedback, setFeedback] = useState(null);
+  const [hrEmail, setHrEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setHrEmail(String(audit?.hrEmail || '').trim());
-  }, [audit?.hrEmail, user?.id]);
+    setHrEmail('');
+  }, [user?.id]);
 
-  const hrEmailError = useMemo(() => {
-    const value = String(hrEmail || '').trim();
-    if (!value) return 'HR email is required.';
-    const formatError = getPersonalEmailValidationMessage(value);
-    if (formatError) return formatError;
-    if (value.toLowerCase() === String(user?.email || '').trim().toLowerCase()) {
-      return 'HR email must be different from your registration email.';
-    }
-    return '';
-  }, [hrEmail, user?.email]);
+  const hrEmailError = useMemo(
+    () => getHrEmailValidationMessage(hrEmail, { learnerEmail: user?.email }),
+    [hrEmail, user?.email]
+  );
 
   if (!canShow) return null;
 
@@ -69,32 +63,23 @@ export function FeeWaiverHrResendPanel({
   const handleTrigger = async () => {
     const trimmedHrEmail = String(hrEmail || '').trim();
     if (!trimmedHrEmail || hrEmailError) {
-      setFeedback({
-        severity: 'error',
-        message: hrEmailError || 'Please enter a valid HR email address.',
-      });
+      toast.error(hrEmailError || 'Please enter a valid HR email address.');
       return;
     }
 
     try {
       setLoading(true);
-      setFeedback(null);
 
       const result =
         variant === 'admin'
           ? await userService.resendFeeWaiverHrEmail(user.id, trimmedHrEmail)
           : await resendFeeWaiverHrVerification({ hrEmail: trimmedHrEmail });
 
-      setFeedback({
-        severity: 'success',
-        message: result?.message || `HR verification email has been sent to ${trimmedHrEmail}.`,
-      });
+      setHrEmail('');
+      toast.success(result?.message || 'HR verification email sent successfully.');
       onRefresh?.();
     } catch (error) {
-      setFeedback({
-        severity: 'error',
-        message: error?.message || 'Could not send HR verification email.',
-      });
+      toast.error(error?.message || 'Could not send HR verification email.');
     } finally {
       setLoading(false);
     }
@@ -120,16 +105,19 @@ export function FeeWaiverHrResendPanel({
         </Alert>
       ) : null}
 
+      {audit?.hrEmail ? (
+        <Typography variant="caption" color="text.secondary">
+          Last HR email on record: {audit.hrEmail}
+        </Typography>
+      ) : null}
+
       <TextField
         fullWidth
         required
         label="HR email address"
         placeholder="hr@company.com"
         value={hrEmail}
-        onChange={(event) => {
-          setHrEmail(event.target.value);
-          setFeedback(null);
-        }}
+        onChange={(event) => setHrEmail(event.target.value)}
         error={Boolean(String(hrEmail || '').trim()) && Boolean(hrEmailError)}
         helperText={
           hrEmailError && String(hrEmail || '').trim()
@@ -138,8 +126,6 @@ export function FeeWaiverHrResendPanel({
         }
         InputLabelProps={{ shrink: true }}
       />
-
-      {feedback ? <Alert severity={feedback.severity}>{feedback.message}</Alert> : null}
 
       <LoadingButton
         variant="contained"
