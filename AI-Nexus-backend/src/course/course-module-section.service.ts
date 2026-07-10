@@ -11,6 +11,7 @@ import { LocalStorageService } from '../service/local-storage.service';
 import { CourseLearnerProgressCleanupService } from './course-learner-progress-cleanup.service';
 import { CourseCertificateService } from './course-certificate.service';
 import { isSectionVideoUrlChanged } from './course-video-url.util';
+import { reconcileSectionVideoTimingFields } from './course-watchtime.util';
 
 function normalizeCompletionPercentage(value?: number | string | null): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -162,6 +163,9 @@ export class CourseModuleSectionService {
       learningMaterials: normalizeLearningMaterials(dto.learningMaterials),
       sortOrder,
     });
+    const reconciled = reconcileSectionVideoTimingFields(section.watchtime, section.durationTime);
+    section.watchtime = reconciled.watchtime;
+    section.durationTime = reconciled.durationTime;
     return this.sectionRepository.save(section);
   }
 
@@ -221,6 +225,10 @@ export class CourseModuleSectionService {
       section.learningMaterials = normalizeLearningMaterials(dto.learningMaterials);
     }
     if (dto.sortOrder !== undefined) section.sortOrder = dto.sortOrder;
+
+    const reconciled = reconcileSectionVideoTimingFields(section.watchtime, section.durationTime);
+    section.watchtime = reconciled.watchtime;
+    section.durationTime = reconciled.durationTime;
 
     // Clean up media files that are no longer referenced
     const nextImages = Array.isArray(section.images) ? section.images : [];
