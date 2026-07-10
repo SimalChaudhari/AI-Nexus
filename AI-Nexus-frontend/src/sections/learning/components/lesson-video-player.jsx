@@ -3,6 +3,10 @@ import { useTheme } from '@mui/material/styles';
 
 import { getYouTubeEmbedIframeSrc } from 'src/utils/youtube';
 import {
+  preventVideoContextMenu,
+  SECURE_VIDEO_ELEMENT_PROPS,
+} from 'src/utils/secure-video';
+import {
   getLessonMediaFrameSx,
   getLessonVideoSurfaceSx,
   LESSON_MEDIA_FRAME_HEIGHT,
@@ -47,10 +51,14 @@ export function LessonVideoPlayer({
   const youtubeIframeSrc = showYoutube ? getYouTubeEmbedIframeSrc(embedUrl) : null;
 
   return (
-    <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
+    <Box
+      onContextMenu={preventVideoContextMenu}
+      sx={getLessonMediaFrameSx(theme, frameHeight)}
+    >
       {/* Both shells stay mounted (opacity/z-index only) so refs + layout survive Spotlightr ↔ YouTube. */}
       <Box
         ref={youtubeContainerRef}
+        onContextMenu={preventVideoContextMenu}
         sx={{
           ...getLessonVideoSurfaceSx(),
           ...(showYoutube ? activePlayerLayerSx : hiddenPlayerLayerSx),
@@ -77,6 +85,7 @@ export function LessonVideoPlayer({
       </Box>
       <Box
         ref={spotlightrContainerRef}
+        onContextMenu={preventVideoContextMenu}
         sx={{
           ...getLessonVideoSurfaceSx(),
           ...(showSpotlightr ? activePlayerLayerSx : hiddenPlayerLayerSx),
@@ -88,10 +97,9 @@ export function LessonVideoPlayer({
           ref={videoRef}
           poster={videoPoster || undefined}
           controls
-          controlsList="nodownload"
           playsInline
-          disablePictureInPicture
           preload="metadata"
+          {...SECURE_VIDEO_ELEMENT_PROPS}
           onLoadedMetadata={onLoadedMetadata}
           onPlay={onPlay}
           onPause={onPause}
@@ -102,6 +110,10 @@ export function LessonVideoPlayer({
             ...getLessonVideoSurfaceSx(),
             ...activePlayerLayerSx,
             objectFit: 'contain',
+            // Soften selection / long-press save UX on some browsers
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+            WebkitTouchCallout: 'none',
           }}
         >
           <source src={videoSrc} type="video/mp4" />
