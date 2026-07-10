@@ -1,5 +1,4 @@
 import axios from 'src/utils/axios';
-import { ensureFreshAuthSession } from 'src/auth/context/jwt/axios-interceptors';
 
 // ----------------------------------------------------------------------
 // Reliable section progress PUTs: queue failed saves, flush after refresh/online,
@@ -174,7 +173,10 @@ export async function saveSectionProgress(courseId, sectionId, payload = {}) {
  * Tab hide / close / unload path:
  * 1) Queue payload so a remount can recover if keepalive fails
  * 2) Fire keepalive immediately (survives page teardown)
- * 3) Best-effort refresh + axios PUT while the document is still briefly alive
+ * 3) Best-effort axios PUT (interceptor refreshes only if access token is actually expired — 401)
+ *
+ * Do NOT call /auth/refresh proactively here: tab switches would spam refresh even when
+ * the access cookie is still valid.
  */
 export function saveSectionProgressOnUnload(courseId, sectionId, payload = {}) {
   if (!courseId || !isUuid(sectionId)) return;
@@ -183,12 +185,11 @@ export function saveSectionProgressOnUnload(courseId, sectionId, payload = {}) {
 
   void (async () => {
     try {
-      await ensureFreshAuthSession(axios);
       const data = await putSectionProgress(courseId, sectionId, payload);
       clearQueuedSectionProgress(courseId, sectionId);
       return data;
     } catch {
-      // Keepalive + queue remain as fallback.
+      // Keepalive + queue remain as fallback. 401 already went through interceptor refresh once.
       return null;
     }
   })();
