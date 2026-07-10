@@ -77,6 +77,9 @@ function normalizeVideoUrlForCompare(url) {
     .replace(/\/+$/, '');
 }
 
+/** Spotlightr HLS vs stored metadata can differ by a few seconds on long videos. */
+const WATCHTIME_DURATION_TOLERANCE_SECONDS = 5;
+
 /** Existing section had a video and admin is replacing the link, uploading a new file, or removing video. */
 function willResetLearnerProgressOnSectionVideoChange({
   editingSection,
@@ -1002,7 +1005,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
           !sectionVideoUrlChanged &&
           detectedVideoDurationSeconds != null &&
           enteredSeconds != null &&
-          enteredSeconds > detectedVideoDurationSeconds
+          enteredSeconds > detectedVideoDurationSeconds + WATCHTIME_DURATION_TOLERANCE_SECONDS
         ) {
           throw new Error(
             `Watchtime cannot exceed video duration (${formatDurationLabel(detectedVideoDurationSeconds)}).`

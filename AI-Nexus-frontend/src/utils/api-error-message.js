@@ -21,11 +21,11 @@ export function getApiErrorMessage(error) {
   if (error?.response?.status === 413) {
     return 'File is too large. Please upload a smaller file.';
   }
+  if (error instanceof Error && error.message && error.message !== 'Network Error') {
+    return error.message;
+  }
   if (error?.message === 'Network Error' || !error?.response) {
     return 'Network error. Please check your internet connection and ensure the server is running.';
-  }
-  if (error instanceof Error && error.message) {
-    return error.message;
   }
   return 'Something went wrong. Please try again.';
 }
