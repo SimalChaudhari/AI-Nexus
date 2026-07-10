@@ -734,6 +734,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionMediaType('video');
     setCustomWatchtimeEnabled(false);
   };
+
+  const buildSectionLearningMaterialUrls = async () => {
     const existingUrls = sectionLearningMaterials.filter((item) => typeof item === 'string');
     const newFiles = sectionLearningMaterials.filter((item) => item instanceof File);
     if (!newFiles.length) return existingUrls;
