@@ -77,9 +77,6 @@ function normalizeVideoUrlForCompare(url) {
     .replace(/\/+$/, '');
 }
 
-/** Spotlightr HLS vs stored metadata can differ by a few seconds on long videos. */
-const WATCHTIME_DURATION_TOLERANCE_SECONDS = 5;
-
 /** Existing section had a video and admin is replacing the link, uploading a new file, or removing video. */
 function willResetLearnerProgressOnSectionVideoChange({
   editingSection,
@@ -107,6 +104,14 @@ function sectionWatchtimeChanged(editingSection, sectionWatchMinutes, sectionWat
       : '';
   const wt = normalizeWatchtime(combined);
   return String(wt || '').trim() !== String(editingSection.watchtime || '').trim();
+}
+
+function resolveStoredDurationSeconds(section) {
+  if (!section) return null;
+  const fromDuration = watchtimeToSeconds(section.durationTime);
+  if (fromDuration != null && fromDuration > 0) return fromDuration;
+  const fromWatchtime = watchtimeToSeconds(section.watchtime);
+  return fromWatchtime != null && fromWatchtime > 0 ? fromWatchtime : null;
 }
 
 function normalizeWatchtime(value) {
@@ -653,6 +658,9 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionImages([]);
     setSectionVideoFile(null);
     setSectionVideoPreviewUrl('');
+    setDetectedVideoDurationSeconds(null);
+    setDetectingVideoDuration(false);
+    setVideoDurationError('');
     setSectionMediaType('video');
     setCustomWatchtimeEnabled(false);
     setSectionDialogOpen(true);
@@ -693,6 +701,10 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     } else {
       setCustomWatchtimeEnabled(false);
     }
+    const storedDurationSeconds = resolveStoredDurationSeconds(section);
+    setDetectedVideoDurationSeconds(storedDurationSeconds);
+    setVideoDurationError('');
+    setDetectingVideoDuration(Boolean(String(section.videoUrl || '').trim() && storedDurationSeconds == null));
     setSectionDialogOpen(true);
   };
 
@@ -716,11 +728,12 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionFiles([]);
     setSectionVideoFile(null);
     setSectionVideoPreviewUrl('');
+    setDetectedVideoDurationSeconds(null);
+    setDetectingVideoDuration(false);
+    setVideoDurationError('');
     setSectionMediaType('video');
     setCustomWatchtimeEnabled(false);
   };
-
-  const buildSectionLearningMaterialUrls = async () => {
     const existingUrls = sectionLearningMaterials.filter((item) => typeof item === 'string');
     const newFiles = sectionLearningMaterials.filter((item) => item instanceof File);
     if (!newFiles.length) return existingUrls;
@@ -1001,21 +1014,48 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
           throw new Error('Enter valid watchtime in minutes and seconds.');
         }
         const enteredSeconds = wt ? watchtimeToSeconds(wt) : null;
+        const watchtimeChanged = sectionWatchtimeChanged(
+          editingSection,
+          sectionWatchMinutes,
+          sectionWatchSeconds
+        );
+        const durationCapSeconds =
+          detectedVideoDurationSeconds != null
+            ? detectedVideoDurationSeconds
+            : resolveStoredDurationSeconds(editingSection);
         if (
           !sectionVideoUrlChanged &&
-          detectedVideoDurationSeconds != null &&
+          watchtimeChanged &&
+          durationCapSeconds != null &&
           enteredSeconds != null &&
-          enteredSeconds > detectedVideoDurationSeconds + WATCHTIME_DURATION_TOLERANCE_SECONDS
+          enteredSeconds > durationCapSeconds
         ) {
           throw new Error(
-            `Watchtime cannot exceed video duration (${formatDurationLabel(detectedVideoDurationSeconds)}).`
+            `Watchtime cannot exceed video duration (${formatDurationLabel(durationCapSeconds)}).`
           );
         }
-        payload.watchtime = sectionVideoUrlChanged ? null : wt || null;
+        if (
+          !sectionVideoUrlChanged &&
+          !watchtimeChanged &&
+          detectedVideoDurationSeconds != null &&
+          enteredSeconds != null &&
+          enteredSeconds > detectedVideoDurationSeconds
+        ) {
+          // Stored watchtime matched Spotlightr metadata padding; align to playable length.
+          payload.watchtime =
+            normalizeWatchtime(formatDurationLabel(detectedVideoDurationSeconds)) || null;
+        } else {
+          payload.watchtime = sectionVideoUrlChanged ? null : wt || null;
+        }
         let durationTimeValue = null;
         if (detectedVideoDurationSeconds != null) {
           const dn = normalizeWatchtime(formatDurationLabel(detectedVideoDurationSeconds));
           durationTimeValue = dn || null;
+        } else if (resolveStoredDurationSeconds(editingSection) != null) {
+          durationTimeValue =
+            normalizeWatchtime(
+              formatDurationLabel(resolveStoredDurationSeconds(editingSection))
+            ) || null;
         } else if (
           !sectionVideoUrlChanged &&
           editingSection &&
