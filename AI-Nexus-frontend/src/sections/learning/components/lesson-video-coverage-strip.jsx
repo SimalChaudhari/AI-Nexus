@@ -64,10 +64,14 @@ export function LessonVideoCoverageStrip({
     onSeekTo(Math.max(0, Math.min(duration, Number(seconds) || 0)));
   };
 
-  const playheadPct =
+  const playheadSec =
     currentTimeSec != null && Number.isFinite(currentTimeSec)
-      ? Math.min(100, Math.max(0, (100 * currentTimeSec) / duration))
+      ? Math.min(duration, Math.max(0, currentTimeSec))
       : null;
+  const playheadPct =
+    playheadSec != null ? Math.min(100, Math.max(0, (100 * playheadSec) / duration)) : null;
+  // Match player + sidebar: clock = playhead; % stays unique coverage.
+  const clockSec = playheadSec != null ? playheadSec : watchedSec;
 
   return (
     <Box
@@ -85,7 +89,7 @@ export function LessonVideoCoverageStrip({
           Watch coverage
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-          {formatSecondsToClock(watchedSec)} / {formatSecondsToClock(duration)} • {pct}%
+          {formatSecondsToClock(clockSec)} / {formatSecondsToClock(duration)} • {pct}%
         </Typography>
       </Stack>
 
