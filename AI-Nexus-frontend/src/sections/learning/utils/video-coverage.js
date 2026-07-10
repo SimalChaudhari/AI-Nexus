@@ -59,6 +59,25 @@ export function roundedVideoDurationSeconds(duration) {
   return Math.max(0, Math.round(Number(duration) || 0));
 }
 
+/** Spotlightr HLS often reports duration 1–2s longer than admin-detected file length. */
+export const SPOTLIGHTR_PLAYER_CATALOG_SKEW_SEC = 2;
+
+/**
+ * Prefer detected/catalog duration when the player is only slightly inflated.
+ * Keeps sidebar + watch coverage aligned with detected file length (e.g. 1:50:39 vs 1:50:40).
+ */
+export function preferCatalogDurationWhenPlayerSkewed(
+  playerDuration,
+  catalogDuration,
+  skewSec = SPOTLIGHTR_PLAYER_CATALOG_SKEW_SEC
+) {
+  const player = roundedVideoDurationSeconds(playerDuration);
+  const catalog = roundedVideoDurationSeconds(catalogDuration);
+  if (catalog <= 0 || player <= 0) return Math.max(player, catalog);
+  if (player > catalog && player - catalog <= skewSec) return catalog;
+  return Math.max(player, catalog);
+}
+
 /**
  * True when playback is on the final video second or the player fired `ended`.
  * Uses integer-second boundaries — no float epsilon (audit-friendly).

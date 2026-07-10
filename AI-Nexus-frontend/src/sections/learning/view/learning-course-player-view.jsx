@@ -43,6 +43,7 @@ import {
   sealCoverageRangesToVideoEnd,
   sealCoverageRangesWhenComplete,
   isTimelineFullyCovered,
+  preferCatalogDurationWhenPlayerSkewed,
 } from 'src/sections/learning/utils/video-coverage';
 import {
   buildCourseProgressUnits,
@@ -463,9 +464,7 @@ function mergeProgressForSidebar(lesson, liveById) {
 
 /** Sidebar total length — prefer admin duration; reject inflated player duration from lesson-switch bugs. */
 function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
-  const fromStr =
-    parseWatchtimeToSeconds(String(lesson?.durationTime || '').trim()) ??
-    parseWatchtimeToSeconds(String(lesson?.duration || '').trim());
+  const fromStr = lessonDetectedVideoDurationSeconds(lesson);
   const fromSp = Math.max(
     0,
     Number(merged?.durationSeconds || lesson?.sectionProgress?.durationSeconds || 0)
@@ -475,9 +474,10 @@ function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
       ? Math.round(playback.durationSec)
       : 0;
 
-  let total = Math.max(fromSp, fromStr || 0, fromPlayback);
+  let total = Math.max(fromStr || 0, fromSp, fromPlayback);
 
-  const catalogDuration = Math.max(fromStr || 0, fromSp);
+  const catalogDuration = fromStr > 0 ? fromStr : fromSp;
+  const coverageEnd = Math.max(0, Number(merged?.watchedSeconds || 0));
   if (
     fromPlayback > 0 &&
     catalogDuration > 0 &&
@@ -495,7 +495,6 @@ function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
     total = fromPlayback;
   }
 
-  const coverageEnd = Math.max(0, Number(merged?.watchedSeconds || 0));
   const done =
     merged?.isCompleted === true ||
     merged?.isWatched === true ||
@@ -505,6 +504,10 @@ function resolveLessonVideoTotalSeconds(lesson, merged, playback) {
   if (fromStr > 0 && total > fromStr * 1.25) total = fromStr;
   if (done && coverageEnd > 0 && total > coverageEnd + 15) {
     total = Math.max(coverageEnd, fromStr || coverageEnd);
+  }
+  if (catalogDuration > 0) {
+    total = preferCatalogDurationWhenPlayerSkewed(total, catalogDuration);
+    if (fromStr > 0) total = fromStr;
   }
   return total;
 }
@@ -519,7 +522,7 @@ function capProgressDurationForLesson(sectionId, payload, flatLessons, liveById,
   let dur = Math.max(0, Number(payload.durationSeconds || 0));
 
   if (adminDur > 0) {
-    dur = Math.max(dur, adminDur);
+    dur = preferCatalogDurationWhenPlayerSkewed(Math.max(dur, adminDur), adminDur);
   }
 
   const merged = mergeProgressForSidebar(lesson, liveById);
@@ -831,21 +834,23 @@ function shouldResumeVideoFromStart(
   return dur > 0 && lastPos >= dur - 1;
 }
 
-/** Known section length from API / admin (used to clip coverage before the player reports duration, e.g. YouTube). */
+/** Detected video length from file metadata (`durationTime`) — not custom watchtime or player progress. */
+function lessonDetectedVideoDurationSeconds(lesson) {
+  if (!lesson) return 0;
+  const fromDurationTime = parseWatchtimeToSeconds(String(lesson?.durationTime || '').trim());
+  if (fromDurationTime != null && fromDurationTime > 0) return fromDurationTime;
+  const fromDuration = parseWatchtimeToSeconds(String(lesson?.duration || '').trim());
+  if (fromDuration != null && fromDuration > 0) return fromDuration;
+  return 0;
+}
+
+/** Known section length for progress display — detected duration first, then saved player progress. */
 function lessonFallbackDurationSeconds(lesson, liveById) {
   if (!lesson) return 0;
+  const detected = lessonDetectedVideoDurationSeconds(lesson);
+  if (detected > 0) return detected;
   const merged = mergeProgressForSidebar(lesson, liveById);
-  const totalFromSp = Math.max(
-    0,
-    Number(merged.durationSeconds || lesson.sectionProgress?.durationSeconds || 0)
-  );
-  const totalFromStr =
-    parseWatchtimeToSeconds(String(lesson?.durationTime || '').trim()) ??
-    parseWatchtimeToSeconds(String(lesson?.duration || '').trim());
-  if (totalFromSp > 0 || (totalFromStr != null && totalFromStr > 0)) {
-    return Math.max(totalFromSp, totalFromStr || 0);
-  }
-  return 0;
+  return Math.max(0, Number(merged.durationSeconds || lesson.sectionProgress?.durationSeconds || 0));
 }
 
 /**
@@ -907,11 +912,13 @@ function computeSidebarPlaybackSnapshot(
   if (spProg) {
     const ct = Math.max(0, Number(spProg.lastTime) || 0);
     if (ct > 0) currentSec = Math.max(currentSec, ct);
-    const rawDur = Math.max(0, Number(spProg.duration) || 0);
-    if (rawDur > 0) durationSec = Math.max(durationSec, rawDur);
   }
   const fallback = Math.max(0, Math.round(Number(fallbackDurationSec) || 0));
-  const effectiveDuration = Math.max(Math.round(durationSec), fallback);
+  const rawEffective = Math.max(Math.round(durationSec), fallback);
+  const effectiveDuration =
+    fallback > 0
+      ? preferCatalogDurationWhenPlayerSkewed(rawEffective, fallback)
+      : rawEffective;
   const clipForCoverage = effectiveDuration > 0 ? effectiveDuration : 0;
   const watchedCoverageSec =
     clipForCoverage > 0
@@ -4411,10 +4418,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       )
     : null;
   const activeLessonVideoDurationSec = activeVideoLessonForSidebar
-    ? Math.max(
-        Number(activeLessonSidebarPlayback?.durationSec || 0),
-        lessonFallbackDurationSeconds(activeVideoLessonForSidebar, liveSectionProgressMap)
-      )
+    ? (() => {
+        const catalogDur = lessonFallbackDurationSeconds(
+          activeVideoLessonForSidebar,
+          liveSectionProgressMap
+        );
+        if (catalogDur > 0) return catalogDur;
+        return Math.max(0, Number(activeLessonSidebarPlayback?.durationSec || 0));
+      })()
     : 0;
   const activeLessonCoverageRanges = (() => {
     if (!activeVideoLessonForSidebar) return [];

@@ -14,7 +14,13 @@ import {
   spotlightrPlayerIdsMatch,
   waitForSpotlightrPlayer,
 } from 'src/utils/spotlightr';
-import { parseCoverageRangePairs, computeUnwatchedRanges, clipCoverageRanges, isTimelineFullyCovered } from 'src/sections/learning/utils/video-coverage';
+import {
+  parseCoverageRangePairs,
+  computeUnwatchedRanges,
+  clipCoverageRanges,
+  isTimelineFullyCovered,
+  preferCatalogDurationWhenPlayerSkewed,
+} from 'src/sections/learning/utils/video-coverage';
 
 const MIN_TRUSTED_DURATION_SEC = 10;
 /** Spotlightr CMS/MP4 metadata can exceed the HLS stream the player plays by ~1 min. */
@@ -348,7 +354,7 @@ export function useSpotlightrLessonPlayer({
             return trustedPlayer;
           }
         }
-        return Math.max(adminDuration, trustedPlayer);
+        return preferCatalogDurationWhenPlayerSkewed(trustedPlayer, adminDuration);
       }
       if (trustedPlayer > 0) return trustedPlayer;
       if (adminDuration > 0) return adminDuration;
@@ -380,10 +386,12 @@ export function useSpotlightrLessonPlayer({
         const parsed = normalizeSpotlightrTime(duration);
         const lastPos = Math.max(0, Number(spotlightrProgressRef.current.lastTime) || 0);
         if (!isTrustedPlayerDuration(parsed, lastPos)) return;
-        spotlightrProgressRef.current.duration = Math.max(
-          spotlightrProgressRef.current.duration || 0,
-          parsed
-        );
+        const adminDur = getAdminDurationSeconds();
+        const mergedDur = Math.max(spotlightrProgressRef.current.duration || 0, parsed);
+        spotlightrProgressRef.current.duration =
+          adminDur > 0
+            ? preferCatalogDurationWhenPlayerSkewed(mergedDur, adminDur)
+            : mergedDur;
         syncPlayerRef();
       }, { container: getContainer() });
     };
