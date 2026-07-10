@@ -552,7 +552,7 @@ function completionPercentFromCoverage(watchedSeconds, durationSeconds) {
  * 2. Else if video lesson → use real watch-coverage % (can grow toward 100% after unlock).
  * 3. Else (text/images/files not done) → 0 (or any server %).
  *
- * Watch-coverage strip / sidebar clock still show real watched time separately.
+ * Watch-coverage strip still shows unique watched time; sidebar clock shows playback position.
  */
 function getLessonCourseProgressPercent(lesson, liveById, viewedIds, playback = null) {
   // Step 1 — completed lesson fully counts toward course progress.
@@ -887,6 +887,7 @@ function resolveSidebarVideoProgress(lesson, liveById, playback, viewedIds) {
 
 /**
  * Sidebar video row: `MM:SS / MM:SS • N%` (no "Duration" label).
+ * Left clock = current playback / resume position (matches the video player).
  * Progress % = unique watched seconds / full duration (segment coverage, not seek position).
  */
 function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
@@ -913,10 +914,8 @@ function getLessonVideoSidebarCaption(lesson, liveById, playback, viewedIds) {
     return null;
   }
 
-  const left = Math.min(
-    totalSec,
-    Math.max(coverageSec, liveCurrent != null ? Math.min(liveCurrent, totalSec) : positionish)
-  );
+  // Match the player scrubber: show where you are now, not unique coverage length.
+  const left = Math.min(totalSec, Math.max(0, positionish));
   const completedMark = doneForUi ? ' ✓' : '';
   return `${formatSecondsToClock(left)} / ${formatSecondsToClock(totalSec)} • ${pct}%${completedMark}`;
 }
