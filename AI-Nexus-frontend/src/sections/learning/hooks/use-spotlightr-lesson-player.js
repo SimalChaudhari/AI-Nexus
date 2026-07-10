@@ -192,25 +192,27 @@ export function useSpotlightrLessonPlayer({
 
       const sp = sectionProgressLatestRef.current;
       const snap = sectionPlayerSnapshotRef?.current?.[activeLessonId] || null;
+      const live = liveSectionProgressMapRef.current?.[activeLessonId] || null;
+      // ONLY this section's saved bookmark — never inherit previous section's in-memory
+      // lastTime/maxTimeline (same Spotlightr video URL across sections would leak playhead).
       const serverLastPos = Math.max(
         0,
         Number(sp?.lastPositionSeconds || 0),
-        Number(snap?.lastPositionSeconds || 0)
+        Number(snap?.lastPositionSeconds || 0),
+        Number(live?.lastPositionSeconds || 0)
       );
       let snapCovMax = 0;
-      if (snap && Array.isArray(snap.watchedCoverageRanges)) {
-        for (const item of snap.watchedCoverageRanges) {
-          if (!Array.isArray(item) || item.length < 2) continue;
-          const end = Number(item[1]);
-          if (Number.isFinite(end)) snapCovMax = Math.max(snapCovMax, end);
-        }
+      const covSources = [
+        ...(Array.isArray(snap?.watchedCoverageRanges) ? snap.watchedCoverageRanges : []),
+        ...(Array.isArray(live?.watchedCoverageRanges) ? live.watchedCoverageRanges : []),
+        ...(Array.isArray(sp?.watchedCoverageRanges) ? sp.watchedCoverageRanges : []),
+      ];
+      for (const item of covSources) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const end = Number(item[1]);
+        if (Number.isFinite(end)) snapCovMax = Math.max(snapCovMax, end);
       }
-      const maxTimeline = Math.max(
-        nativeVideoProgressRef.current.maxWatchedTimeline || 0,
-        spotlightrProgressRef.current.maxWatchedTimeline || 0,
-        serverLastPos,
-        snapCovMax
-      );
+      const maxTimeline = Math.max(serverLastPos, snapCovMax);
       const adminDurSeed = (() => {
         const lesson = flatLessonsRef.current.find((l) => l.id === activeLessonId);
         if (!lesson) return 0;
@@ -226,15 +228,21 @@ export function useSpotlightrLessonPlayer({
       })();
 
       spotlightrProgressRef.current = {
-        watchedSeconds: spotlightrProgressRef.current.watchedSeconds || 0,
+        watchedSeconds: 0,
         pendingDeltaSeconds: 0,
-        lastTime: Math.max(spotlightrProgressRef.current.lastTime || 0, serverLastPos),
-        duration: Math.max(spotlightrProgressRef.current.duration || 0, adminDurSeed),
+        lastTime: serverLastPos,
+        duration: Math.max(0, adminDurSeed),
         maxWatchedTimeline: maxTimeline,
         isPlaying: false,
         lastTickAtMs: 0,
-        markedComplete: Boolean(sp?.isCompleted || sp?.isWatched),
+        markedComplete: Boolean(sp?.isCompleted || sp?.isWatched || live?.isCompleted || live?.isWatched),
       };
+      // Reset native/youtube in-memory playhead too — shared refs otherwise keep prior section time.
+      nativeVideoProgressRef.current.lastTime = serverLastPos;
+      nativeVideoProgressRef.current.maxWatchedTimeline = maxTimeline;
+      nativeVideoProgressRef.current.isPlaying = false;
+      nativeVideoProgressRef.current.lastTickAtMs = 0;
+      nativeVideoProgressRef.current.pendingDeltaSeconds = 0;
     }
 
     let cancelled = false;
@@ -669,11 +677,26 @@ export function useSpotlightrLessonPlayer({
       const attemptSeek = (tryNum = 0) => {
         if (cancelled || playerTeardownRef.current) return;
         if (tryNum > 12) return;
+        // User scrubbed — stop forcing the old bookmark.
+        if (
+          resumeSeekAppliedRef.current.sectionId === activeLessonId &&
+          resumeSeekAppliedRef.current.applied &&
+          Math.abs(Number(resumeSeekAppliedRef.current.seconds || 0) - target) > 2
+        ) {
+          return;
+        }
 
         readSpotlightrPlayerTime(
           getApiVideoId(),
           (current) => {
             if (cancelled || playerTeardownRef.current) return;
+            if (
+              resumeSeekAppliedRef.current.sectionId === activeLessonId &&
+              resumeSeekAppliedRef.current.applied &&
+              Math.abs(Number(resumeSeekAppliedRef.current.seconds || 0) - target) > 2
+            ) {
+              return;
+            }
             const pos = Math.max(0, Number(current) || 0);
             if (pos >= target - 2) return;
             if (pos > target + 0.5) return;
@@ -684,6 +707,7 @@ export function useSpotlightrLessonPlayer({
             }
 
             seekSpotlightrPlayer(getApiVideoId(), target, null, { container: getContainer() });
+            window.setTimeout(() => attemptSeek(tryNum + 1), 400);
           },
           { container: getContainer() }
         );
@@ -797,9 +821,18 @@ export function useSpotlightrLessonPlayer({
       });
 
       callPlayerApi('onSeeked', null, (rawTime) => {
-        const t = normalizeSpotlightrTime(rawTime);
-        spotlightrProgressRef.current.lastTime = Math.max(0, t);
+        const t = Math.max(0, normalizeSpotlightrTime(rawTime));
+        spotlightrProgressRef.current.lastTime = t;
         syncPlayerRef();
+        // Treat any seek (resume or user scrub) as final — stop resume retries yanking back.
+        if (activeLessonId) {
+          resumeSeekAppliedRef.current = {
+            sectionId: activeLessonId,
+            seconds: Math.round(t),
+            applied: true,
+          };
+          resumeOnceRef.current = true;
+        }
       });
 
       callPlayerApi('onEnded', null, () => {

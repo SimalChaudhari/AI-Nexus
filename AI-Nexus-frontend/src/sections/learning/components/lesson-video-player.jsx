@@ -39,15 +39,18 @@ export function LessonVideoPlayer({
   onTimeUpdate,
   onSeeked,
   floatingOverlay,
+  /** Force remount when the same video URL is reused across different sections. */
+  remountKey = null,
 }) {
   const theme = useTheme();
   const showYoutube = Boolean(embedUrl);
   const showSpotlightr = Boolean(spotlightrMeta);
   const showNative = Boolean(videoSrc && !showYoutube && !showSpotlightr);
   const youtubeIframeSrc = showYoutube ? getYouTubeEmbedIframeSrc(embedUrl) : null;
+  const nativeKey = remountKey ? `${remountKey}|${videoSrc || ''}` : videoSrc || 'native';
 
   return (
-    <Box sx={getLessonMediaFrameSx(theme, frameHeight)}>
+    <Box sx={getLessonMediaFrameSx(theme, frameHeight)} key={remountKey || undefined}>
       {/* Both shells stay mounted (opacity/z-index only) so refs + layout survive Spotlightr ↔ YouTube. */}
       <Box
         ref={youtubeContainerRef}
@@ -59,7 +62,7 @@ export function LessonVideoPlayer({
         {youtubeIframeSrc ? (
           <Box
             component="iframe"
-            key={youtubeIframeSrc}
+            key={`${remountKey || 'yt'}|${youtubeIframeSrc}`}
             data-yt-lesson-player="1"
             title="Course video"
             src={youtubeIframeSrc}
@@ -77,6 +80,7 @@ export function LessonVideoPlayer({
       </Box>
       <Box
         ref={spotlightrContainerRef}
+        key={remountKey ? `spotlightr-${remountKey}` : 'spotlightr'}
         sx={{
           ...getLessonVideoSurfaceSx(),
           ...(showSpotlightr ? activePlayerLayerSx : hiddenPlayerLayerSx),
@@ -85,6 +89,7 @@ export function LessonVideoPlayer({
       {showNative ? (
         <Box
           component="video"
+          key={nativeKey}
           ref={videoRef}
           poster={videoPoster || undefined}
           controls
