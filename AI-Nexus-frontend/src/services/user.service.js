@@ -206,6 +206,22 @@ export const userService = {
     }
   },
 
+  async resendFeeWaiverHrEmail(id, hrEmail) {
+    try {
+      const response = await axios.put(`/users/fee-waiver-resend-hr/${id}`, { hrEmail });
+      return {
+        message: response.data?.message,
+        hrEmail: response.data?.hrEmail,
+      };
+    } catch (error) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Could not send HR verification email.';
+      throw new Error(errorMessage);
+    }
+  },
+
   async deleteUser(id) {
     try {
       const response = await axios.delete(`/users/delete/${id}`);

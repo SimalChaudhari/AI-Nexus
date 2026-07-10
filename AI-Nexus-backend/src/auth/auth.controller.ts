@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { UserDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, LoginDto, ResendVerificationDto } from '../user/users.dto';
 import { Response, Request } from 'express';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -384,6 +385,24 @@ export class AuthController {
       learnerEmail,
       learnerName,
       hrEmail,
+    });
+  }
+
+  @Post('fee-waiver-audit/resend-hr-email')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Send or resend HR verification email for fee-waiver job role audit' })
+  async resendFeeWaiverAuditHrEmail(
+    @Req() request: Request,
+    @Body('userId') userId: string,
+    @Body('learnerEmail') learnerEmail: string,
+    @Body('hrEmail') hrEmail: string,
+  ) {
+    const authUserId = request.user?.id;
+    return this.authService.resendFeeWaiverHrVerificationEmail({
+      userId: authUserId || userId,
+      learnerEmail: authUserId ? undefined : learnerEmail,
+      hrEmail,
+      requestedBy: authUserId ? 'user' : 'system',
     });
   }
 

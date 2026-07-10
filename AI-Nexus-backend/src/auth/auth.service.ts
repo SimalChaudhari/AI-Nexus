@@ -2715,6 +2715,9 @@ export class AuthService {
       hrVerificationToken,
       hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(hrVerificationToken),
       submittedAt: new Date().toISOString(),
+      rejectionReason: null,
+      rejectedAt: null,
+      rejectedBy: null,
     });
     user.feeWaiverJobVerified = false;
     await this.userRepository.save(user);
@@ -2733,6 +2736,92 @@ export class AuthService {
       jobVerified: false,
       message:
         'A verification email has been sent to your HR contact. Please verify your registration email, then sign in to start the programme.',
+    };
+  }
+
+  async resendFeeWaiverHrVerificationEmail(params: {
+    userId?: string;
+    learnerEmail?: string;
+    hrEmail?: string;
+    requestedBy?: 'user' | 'admin' | 'system';
+  }) {
+    const requestedBy = params?.requestedBy || 'user';
+    const user = await this.resolveUserForFeeWaiverAudit(params?.userId, params?.learnerEmail);
+
+    const hrEmail = this.normalizeAuditEmail(params?.hrEmail);
+    if (!hrEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hrEmail)) {
+      throw new BadRequestException('Please enter a valid HR email address.');
+    }
+
+    const learnerEmail = this.normalizeAuditEmail(user.email);
+    if (learnerEmail && hrEmail === learnerEmail) {
+      throw new BadRequestException('HR email must be different from your registration email.');
+    }
+
+    const existingAudit =
+      user.eligibilitySnapshot?.feeWaiverAudit
+      && typeof user.eligibilitySnapshot.feeWaiverAudit === 'object'
+        ? (user.eligibilitySnapshot.feeWaiverAudit as Record<string, unknown>)
+        : null;
+
+    const method = String(existingAudit?.method || '').trim();
+    const status = String(existingAudit?.status || '').trim();
+
+    if (
+      status === 'hr_verified'
+      || status === 'certificate_verified'
+      || status === 'admin_verified'
+      || user.feeWaiverJobVerified === true
+    ) {
+      throw new BadRequestException('Job role verification is already complete.');
+    }
+
+    if (status === 'pending_certificate_review') {
+      throw new BadRequestException(
+        'A certificate is under review. HR email verification cannot be sent until that review is complete.',
+      );
+    }
+
+    const auditMethod = ['hr-email', 'accounting-declaration-hr'].includes(method)
+      ? method
+      : 'hr-email';
+
+    const hrVerificationToken = crypto.randomBytes(32).toString('hex');
+    const learnerName =
+      `${user.firstname || ''} ${user.lastname || ''}`.trim()
+      || String(existingAudit?.learnerEmail || user.email || 'Learner');
+
+    this.mergeFeeWaiverAuditSnapshot(user, {
+      method: auditMethod,
+      hrEmail,
+      learnerEmail: this.normalizeAuditEmail(String(existingAudit?.learnerEmail || '')) || learnerEmail,
+      status: 'pending_hr_verification',
+      auditSubmitted: true,
+      hrVerificationToken,
+      hrVerificationTokenHash: this.hashFeeWaiverHrVerificationToken(hrVerificationToken),
+      resubmittedAt: new Date().toISOString(),
+      resubmittedBy: requestedBy,
+      rejectionReason: null,
+      rejectedAt: null,
+      rejectedBy: null,
+      ...(existingAudit?.submittedAt ? {} : { submittedAt: new Date().toISOString() }),
+    });
+    user.feeWaiverJobVerified = false;
+    await this.userRepository.save(user);
+
+    await this.emailService.sendFeeWaiverHrVerificationEmail({
+      hrEmail,
+      learnerEmail: learnerEmail || hrEmail,
+      learnerName,
+      verificationToken: hrVerificationToken,
+    });
+
+    return {
+      success: true,
+      method: auditMethod,
+      hrEmail,
+      jobVerified: false,
+      message: `HR verification email has been sent to ${hrEmail}.`,
     };
   }
 

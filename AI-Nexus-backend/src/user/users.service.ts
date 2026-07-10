@@ -13,6 +13,7 @@ import {
     PaginationService,
 } from '../common/pagination/pagination.service';
 import { verifyEmailAddress } from '../utils/email-verification.util';
+import { AuthService } from '../auth/auth.service';
 
 function generateTemporaryPassword(length = 14): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
@@ -41,6 +42,7 @@ export class UserService {
         private userRepository: Repository<UserEntity>,
         private readonly emailService: EmailService,
         private readonly paginationService: PaginationService,
+        private readonly authService: AuthService,
     ) { }
 
     private normalizeUsername(username: string): string {
@@ -386,5 +388,14 @@ export class UserService {
             verified: false,
             user: userWithoutPassword,
         };
+    }
+
+    async resendFeeWaiverHrVerification(userId: string, hrEmail: string) {
+        await this.getById(userId);
+        return this.authService.resendFeeWaiverHrVerificationEmail({
+            userId,
+            hrEmail,
+            requestedBy: 'admin',
+        });
     }
 }

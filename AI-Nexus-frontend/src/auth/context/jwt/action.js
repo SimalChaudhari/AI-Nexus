@@ -493,6 +493,22 @@ export const submitFeeWaiverAuditHrEmail = async ({
   }
 };
 
+/** Send or resend HR fee-waiver job role verification email (logged-in user). */
+export const resendFeeWaiverHrVerification = async ({ hrEmail } = {}) => {
+  try {
+    const res = await axios.post('/auth/fee-waiver-audit/resend-hr-email', {
+      hrEmail: hrEmail || undefined,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not send HR verification email.');
+    throw new Error(errorMessage);
+  }
+};
+
 /** **************************************
  * Fee-waiver audit: verify education certificate after free signup
  *************************************** */
