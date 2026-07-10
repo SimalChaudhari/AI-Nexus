@@ -5,6 +5,11 @@ import {
   mapPaginatedResponse,
 } from 'src/utils/pagination-service';
 import { formatCourseDurationLabel } from 'src/utils/course-duration';
+import {
+  flushPendingSectionProgress,
+  saveSectionProgress,
+  saveSectionProgressOnUnload,
+} from 'src/utils/section-progress-save';
 
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -641,12 +646,16 @@ export const courseService = {
   async updateSectionProgress(courseId, sectionId, payload = {}) {
     if (!isUuid(sectionId)) return null;
     try {
-      const response = await axios.put(`/courses/${courseId}/sections/${sectionId}/progress`, payload);
-      return response.data?.data ?? response.data ?? null;
+      return await saveSectionProgress(courseId, sectionId, payload);
     } catch (error) {
       console.error('Error updating section progress:', error);
       throw error;
     }
+  },
+
+  /** Retry any progress PUTs that failed (network / expired session) or were queued on unload. */
+  flushPendingSectionProgress() {
+    return flushPendingSectionProgress();
   },
 
   async prepareSpotlightrPlayback(watchUrl) {
@@ -754,24 +763,10 @@ export const courseService = {
     }
   },
 
-  // Use keepalive request for unload/refresh/logout transitions.
+  // Keepalive + queue + best-effort refresh/PUT for unload/refresh/logout transitions.
   updateSectionProgressOnUnload(courseId, sectionId, payload = {}) {
-    try {
-      if (!isUuid(sectionId)) return;
-      const baseURL = axios?.defaults?.baseURL || '';
-      if (!baseURL || !courseId || !sectionId) return;
-      fetch(`${baseURL}/courses/${courseId}/sections/${sectionId}/progress`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload || {}),
-        keepalive: true,
-      }).catch(() => {});
-    } catch {
-      // ignore keepalive errors
-    }
+    if (!isUuid(sectionId)) return;
+    saveSectionProgressOnUnload(courseId, sectionId, payload);
   },
 
   async getModuleSections(courseId, moduleId) {

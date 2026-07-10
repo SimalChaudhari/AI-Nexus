@@ -29,6 +29,7 @@ export function OverlayCircularProgress({
         bgcolor: (theme) => alpha(theme.palette.background.default, backgroundOpacity),
         borderRadius,
         zIndex,
+        pointerEvents: 'none',
       }}
     >
       <CircularProgress size={size} />
