@@ -49,6 +49,7 @@ import {
   buildCourseProgressUnits,
   summarizeProgressUnits,
   getModuleProgressFromUnits,
+  areModuleLessonsComplete,
 } from 'src/sections/learning/utils/course-progress-units';
 import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
 import { LessonImageViewer } from 'src/sections/learning/components/lesson-image-viewer';
@@ -4123,6 +4124,14 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     return result;
   }, [modules, courseProgressUnits]);
 
+  const moduleLessonsCompleteById = useMemo(() => {
+    const result = {};
+    modules.forEach((module) => {
+      result[module.id] = areModuleLessonsComplete(courseProgressUnits, module.id);
+    });
+    return result;
+  }, [modules, courseProgressUnits]);
+
   const allModulesDone = useMemo(
     () =>
       modules.length > 0 &&
@@ -4138,9 +4147,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const hasPillar2ProgrammeQualifyingModule = useMemo(
     () =>
       modules.some((mod) => {
-        const stats = moduleProgressById[mod.id];
-        const lessonsDone = stats && stats.total > 0 && stats.completed >= stats.total;
-        if (!lessonsDone) return false;
+        if (!moduleLessonsCompleteById[mod.id]) return false;
         const quizCount = quizCountByModuleId[mod.id] || 0;
         const assignmentCount = assignmentCountByModuleId[mod.id] || 0;
         if (quizCount === 0 || assignmentCount === 0) return false;
@@ -4149,7 +4156,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }),
     [
       modules,
-      moduleProgressById,
+      moduleLessonsCompleteById,
       quizCountByModuleId,
       assignmentCountByModuleId,
       quizAssessmentScopeByModuleId,
@@ -5031,13 +5038,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (isCourseEndModel) return null;
                       const modPracticeCount = quizCountByModuleId[section.id] || 0;
                       if (modPracticeCount === 0) return null;
-                      const stats = moduleProgressById[section.id];
                       const isQuizCompleted = isModuleQuizPerfect(section.id);
+                      const moduleLessonsDone = Boolean(moduleLessonsCompleteById[section.id]);
                       const moduleQuizAccessible =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
                         hasCredentialUnlock ||
                         isQuizCompleted ||
-                        (stats && stats.total > 0 && stats.completed >= stats.total);
+                        moduleLessonsDone;
                       const practiceUnlockedStyle = moduleQuizAccessible;
                       return (
                         <Tooltip
@@ -5163,18 +5170,18 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (isCourseEndModel) return null;
                       const modAssignmentCount = assignmentCountByModuleId[section.id] || 0;
                       if (modAssignmentCount === 0) return null;
-                      const stats = moduleProgressById[section.id];
                       const modQuizCount = quizCountByModuleId[section.id] || 0;
                       const isQuizCompleted = isModuleQuizPerfect(section.id);
                       const isAssignmentCompleted = Boolean(
                         quizAssessmentScopeByModuleId[section.id]?.assignmentCompleted
                       );
+                      const moduleLessonsDone = Boolean(moduleLessonsCompleteById[section.id]);
                       const moduleVideosDone =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
                         hasCredentialUnlock ||
                         isQuizCompleted ||
                         isAssignmentCompleted ||
-                        (stats && stats.total > 0 && stats.completed >= stats.total);
+                        moduleLessonsDone;
                       const moduleQuizPassed =
                         modQuizCount === 0 || isModuleQuizPerfect(section.id);
                       const assessmentUnlocked =

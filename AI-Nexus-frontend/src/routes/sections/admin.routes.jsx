@@ -19,7 +19,7 @@ const OverviewAnalyticsPage = lazy(() => import('src/pages/dashboard/analytics')
 const OverviewBankingPage = lazy(() => import('src/pages/dashboard/banking'));
 const OverviewBookingPage = lazy(() => import('src/pages/dashboard/booking'));
 const OverviewFilePage = lazy(() => import('src/pages/dashboard/file'));
-const OverviewCoursePage = lazy(() => import('src/pages/dashboard/course'));
+// OverviewCoursePage demo removed — it used path `course` and conflicted with Course management routes.
 
 // Product
 const ProductDetailsPage = lazy(() => import('src/pages/dashboard/product/details'));
@@ -198,7 +198,8 @@ export const adminRoutes = [
       { path: 'banking', element: <OverviewBankingPage /> },
       { path: 'booking', element: <OverviewBookingPage /> },
       { path: 'file', element: <OverviewFilePage /> },
-      { path: 'course', element: <OverviewCoursePage /> },
+      // NOTE: Do not add a sibling `{ path: 'course', element: ... }` here — it conflicts with
+      // the real Course management routes below (`path: 'course'` + children) and can remount the page.
       {
         path: 'user',
         children: [

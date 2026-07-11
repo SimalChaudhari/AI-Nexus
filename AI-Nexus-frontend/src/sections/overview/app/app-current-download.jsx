@@ -1,30 +1,32 @@
 import Card from '@mui/material/Card';
 import Divider from '@mui/material/Divider';
-import { useTheme } from '@mui/material/styles';
 import CardHeader from '@mui/material/CardHeader';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import { fNumber } from 'src/utils/format-number';
-
 import { Chart, useChart, ChartLegends } from 'src/components/chart';
 
 // ----------------------------------------------------------------------
 
-export function AppCurrentDownload({ title, subheader, chart, ...other }) {
+export function AppCurrentDownload({ title, subheader, chart, sx, ...other }) {
   const theme = useTheme();
 
   const chartColors = chart.colors ?? [
-    theme.palette.primary.lighter,
-    theme.palette.primary.light,
-    theme.palette.primary.dark,
-    theme.palette.primary.darker,
+    theme.palette.success.main,
+    theme.palette.warning.main,
+    theme.palette.error.main,
+    theme.palette.grey[500],
+    theme.palette.info.main,
   ];
 
-  const chartSeries = chart.series.map((item) => item.value);
+  const seriesItems = Array.isArray(chart.series) ? chart.series : [];
+  const chartSeries = seriesItems.map((item) => item.value);
+  const hasData = chartSeries.some((value) => Number(value) > 0);
 
   const chartOptions = useChart({
     chart: { sparkline: { enabled: true } },
     colors: chartColors,
-    labels: chart.series.map((item) => item.label),
+    labels: seriesItems.map((item) => item.label),
     stroke: { width: 0 },
     tooltip: {
       y: {
@@ -35,10 +37,18 @@ export function AppCurrentDownload({ title, subheader, chart, ...other }) {
     plotOptions: {
       pie: {
         donut: {
-          size: '72%',
+          size: '78%',
           labels: {
-            value: { formatter: (value) => fNumber(value) },
+            show: true,
+            value: {
+              formatter: (value) => fNumber(value),
+              fontSize: '18px',
+              fontWeight: 700,
+            },
             total: {
+              show: true,
+              label: 'Orders',
+              fontSize: '13px',
               formatter: (w) => {
                 const sum = w.globals.seriesTotals.reduce((a, b) => a + b, 0);
                 return fNumber(sum);
@@ -52,25 +62,76 @@ export function AppCurrentDownload({ title, subheader, chart, ...other }) {
   });
 
   return (
-    <Card {...other}>
-      <CardHeader title={title} subheader={subheader} />
-
-      <Chart
-        type="donut"
-        series={chartSeries}
-        options={chartOptions}
-        width={{ xs: 240, xl: 260 }}
-        height={{ xs: 240, xl: 260 }}
-        sx={{ my: 6, mx: 'auto' }}
+    <Card
+      sx={[
+        {
+          height: 1,
+          boxShadow: 'none',
+          border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+      {...other}
+    >
+      <CardHeader
+        title={title}
+        subheader={subheader}
+        sx={{
+          '& .MuiCardHeader-title': { typography: 'subtitle1', fontWeight: 700 },
+          '& .MuiCardHeader-subheader': { typography: 'body2', mt: 0.5 },
+        }}
       />
 
-      <Divider sx={{ borderStyle: 'dashed' }} />
+      {hasData ? (
+        <>
+          <Chart
+            type="donut"
+            series={chartSeries}
+            options={chartOptions}
+            width={{ xs: 220, xl: 240 }}
+            height={{ xs: 220, xl: 240 }}
+            sx={{ my: 3, mx: 'auto' }}
+          />
 
-      <ChartLegends
-        labels={chartOptions?.labels}
-        colors={chartOptions?.colors}
-        sx={{ p: 3, justifyContent: 'center' }}
-      />
+          <Divider sx={{ borderStyle: 'dashed' }} />
+
+          <ChartLegends
+            labels={chartOptions?.labels}
+            colors={chartOptions?.colors}
+            sx={{ p: 2.5, justifyContent: 'center' }}
+          />
+        </>
+      ) : (
+        <Chart
+          type="donut"
+          series={[1]}
+          options={{
+            ...chartOptions,
+            labels: ['No orders'],
+            colors: [alpha(theme.palette.grey[500], 0.24)],
+            legend: { show: false },
+            tooltip: { enabled: false },
+            plotOptions: {
+              pie: {
+                donut: {
+                  size: '78%',
+                  labels: {
+                    show: true,
+                    total: {
+                      show: true,
+                      label: 'Orders',
+                      formatter: () => '0',
+                    },
+                  },
+                },
+              },
+            },
+          }}
+          width={{ xs: 220, xl: 240 }}
+          height={{ xs: 220, xl: 240 }}
+          sx={{ my: 6, mx: 'auto' }}
+        />
+      )}
     </Card>
   );
 }

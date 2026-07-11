@@ -26,6 +26,19 @@ export function getModuleProgressFromUnits(units, moduleId) {
   return summarizeProgressUnits(moduleUnits);
 }
 
+/** Lesson/section units only — used to unlock module quiz/assessment (not circular with quiz itself). */
+export function getModuleLessonProgressFromUnits(units, moduleId) {
+  const moduleUnits = (units || []).filter(
+    (u) => u.moduleId === moduleId && u.type === 'section'
+  );
+  return summarizeProgressUnits(moduleUnits);
+}
+
+export function areModuleLessonsComplete(units, moduleId) {
+  const stats = getModuleLessonProgressFromUnits(units, moduleId);
+  return stats.total > 0 && stats.completed >= stats.total;
+}
+
 /**
  * Build all progress units for a course (sections, module quiz/assessment, course-end quiz/assessment).
  */

@@ -53,6 +53,7 @@ export function AuthGuard({ children }) {
       const returnToPath = search ? `${pathname}?${search}` : pathname;
       const href = `${signInPath}?${createQueryString('returnTo', returnToPath)}`;
 
+      setIsChecking(false);
       router.replace(href);
       return;
     }

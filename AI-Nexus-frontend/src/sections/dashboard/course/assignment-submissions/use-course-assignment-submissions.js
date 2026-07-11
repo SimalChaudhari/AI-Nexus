@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
@@ -6,6 +6,13 @@ import { toast } from 'src/components/snackbar';
 import { buildSubmissionModuleSummaries } from './course-assignment-submissions-utils';
 
 // ----------------------------------------------------------------------
+
+const PENDING_POLL_MS = 10_000;
+
+function isPendingEvaluation(row) {
+  const status = String(row?.evaluationStatus || '').toLowerCase();
+  return status === 'pending' || status === 'processing';
+}
 
 export function useCourseAssignmentSubmissions(courseId) {
   const [loading, setLoading] = useState(true);
@@ -19,49 +26,66 @@ export function useCourseAssignmentSubmissions(courseId) {
   const [verifyingId, setVerifyingId] = useState(null);
   const [regradingId, setRegradingId] = useState(null);
 
-  const loadRows = useCallback(async () => {
-    if (!courseId) return;
-    setLoading(true);
-    try {
-      const [mods, data] = await Promise.all([
-        courseService.getCourseModulesWithSections(courseId),
-        courseService.getAssignmentSubmissions(courseId, {
-          userId: filterUserId || undefined,
-        }),
-      ]);
-      const modOpts = (mods || []).map((m) => ({
-        id: m.id,
-        label: m.title || 'Untitled module',
-      }));
-      setModuleChoices(modOpts);
-      setRows(Array.isArray(data) ? data : []);
-    } catch (e) {
-      toast.error(e?.response?.data?.message || e?.message || 'Failed to load assignment submissions');
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [courseId, filterUserId]);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
+  const loadRows = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!courseId) return;
+      if (!silent) setLoading(true);
+      try {
+        const [mods, data] = await Promise.all([
+          courseService.getCourseModulesWithSections(courseId),
+          courseService.getAssignmentSubmissions(courseId, {
+            userId: filterUserId || undefined,
+          }),
+        ]);
+        const modOpts = (mods || []).map((m) => ({
+          id: m.id,
+          label: m.title || 'Untitled module',
+        }));
+        setModuleChoices(modOpts);
+        setRows(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!silent) {
+          toast.error(
+            e?.response?.data?.message || e?.message || 'Failed to load assignment submissions'
+          );
+        }
+        if (!silent) setRows([]);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [courseId, filterUserId]
+  );
 
   useEffect(() => {
-    loadRows();
+    loadRows({ silent: false });
   }, [loadRows]);
 
   useEffect(() => {
     setSelectedModuleId(null);
   }, [courseId]);
 
+  const hasPendingEvaluations = useMemo(
+    () => rows.some((row) => isPendingEvaluation(row)),
+    [rows]
+  );
+
+  // Poll only while AI grading is in progress. Do not depend on `rows` identity or the
+  // interval will reset on every response and feel like continuous API spam.
   useEffect(() => {
-    if (!courseId) return undefined;
-    const hasPending = rows.some(
-      (row) => row.evaluationStatus === 'pending' || row.evaluationStatus === 'processing'
-    );
-    if (!hasPending) return undefined;
+    if (!courseId || !hasPendingEvaluations) return undefined;
+
     const timer = setInterval(() => {
-      loadRows();
-    }, 5000);
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (!rowsRef.current.some((row) => isPendingEvaluation(row))) return;
+      loadRows({ silent: true });
+    }, PENDING_POLL_MS);
+
     return () => clearInterval(timer);
-  }, [courseId, rows, loadRows]);
+  }, [courseId, hasPendingEvaluations, loadRows]);
 
   const moduleSummaries = useMemo(
     () => buildSubmissionModuleSummaries(rows, moduleChoices),
@@ -126,7 +150,7 @@ export function useCourseAssignmentSubmissions(courseId) {
       try {
         await courseService.regradeAssignmentSubmission(courseId, row.id);
         toast.success('AI regrading started');
-        await loadRows();
+        await loadRows({ silent: true });
       } catch (e) {
         toast.error(e?.response?.data?.message || e?.message || 'Regrade failed');
       } finally {

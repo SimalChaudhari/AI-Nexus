@@ -3738,7 +3738,11 @@ export class AuthService {
             .getOne();
 
       if (!user) {
-        throw new NotFoundException('User not found');
+        throw new UnauthorizedException(
+          isEmail
+            ? 'No account found with this email address. Please check and try again.'
+            : 'No account found with this username. Please check and try again.',
+        );
       }
 
       if (!user.password) {
@@ -3780,7 +3784,7 @@ export class AuthService {
       // Verify password
       const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
       if (!isPasswordValid) {
-        throw new UnauthorizedException('Invalid email/username or password');
+        throw new UnauthorizedException('Incorrect password. Please try again.');
       }
 
       // Exclude sensitive fields from the returned user

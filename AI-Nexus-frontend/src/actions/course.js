@@ -8,25 +8,34 @@ export function useGetCourse(courseId) {
 
   useEffect(() => {
     if (!courseId) {
+      setCourse(null);
+      setCourseError(null);
       setCourseLoading(false);
-      return;
+      return undefined;
     }
+
+    let cancelled = false;
 
     const fetchCourse = async () => {
       try {
         setCourseLoading(true);
         setCourseError(null);
         const data = await courseService.getCourseById(courseId);
-        setCourse(data);
+        if (!cancelled) setCourse(data);
       } catch (error) {
-        setCourseError(error?.message || 'Failed to fetch course');
-        setCourse(null);
+        if (!cancelled) {
+          setCourseError(error?.message || 'Failed to fetch course');
+          setCourse(null);
+        }
       } finally {
-        setCourseLoading(false);
+        if (!cancelled) setCourseLoading(false);
       }
     };
 
     fetchCourse();
+    return () => {
+      cancelled = true;
+    };
   }, [courseId]);
 
   return { course, courseLoading, courseError };
