@@ -1021,12 +1021,10 @@ export class CourseQuestionBankService {
     submission.manualFeedback = String(dto.feedback || '').trim() || null;
     submission.manualVerifiedAt = new Date();
     submission.manualVerifiedBy = adminId;
-    if (submission.evaluationStatus === 'pending' || submission.evaluationStatus === 'processing') {
-      submission.evaluationStatus = 'completed';
-    }
+    submission.evaluationStatus = 'completed';
     this.quizAssessmentProgressService.markSubmissionCompleted(submission, dto.passed === true);
     const saved = await this.assignmentSubmissionRepo.save(submission);
-    void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
+    await this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
 
     const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
     const row = rows.find((item) => item.id === saved.id);

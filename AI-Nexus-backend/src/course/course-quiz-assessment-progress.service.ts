@@ -183,9 +183,53 @@ export class CourseQuizAssessmentProgressService {
     };
   }
 
-  async isCourseQuizAssessmentRequirementsMet(userId: string, courseId: string): Promise<boolean> {
+  /**
+   * Match learner progress UI (`buildCourseOverallProgress`):
+   * - Beginner/Advanced: only course-end quiz (+ beginner course-end assessment)
+   * - Intermediate: every module scope, plus course-end assessment when present
+   * Orphan module-scoped questions on beginner must not block certificates when the UI already shows 100%.
+   */
+  async isCourseQuizAssessmentRequirementsMet(
+    userId: string,
+    courseId: string,
+    courseLevel?: string | null,
+  ): Promise<boolean> {
     const progress = await this.getLearnerProgress(userId, courseId);
-    return progress.quizAssessmentCompleted;
+    const level = String(courseLevel || '').trim().toLowerCase();
+    if (!level) {
+      return progress.quizAssessmentCompleted;
+    }
+
+    const isCourseEndModel = level === 'beginner' || level === 'advanced';
+    const courseEndAssignmentAllowed = level === 'beginner' || level === 'intermediate';
+    const endScope = progress.scopes.find((scope) => scope.moduleId == null);
+
+    if (isCourseEndModel) {
+      const quizOk = !endScope || endScope.quizCount === 0 || endScope.quizCompleted;
+      const assignmentOk =
+        !courseEndAssignmentAllowed ||
+        !endScope ||
+        endScope.assignmentCount === 0 ||
+        endScope.assignmentCompleted;
+      return quizOk && assignmentOk;
+    }
+
+    const moduleScopes = progress.scopes.filter((scope) => scope.moduleId);
+    const modulesOk =
+      moduleScopes.length === 0 ||
+      moduleScopes.every((scope) => {
+        const quizOk = scope.quizCount === 0 || scope.quizCompleted;
+        const assignmentOk = scope.assignmentCount === 0 || scope.assignmentCompleted;
+        return quizOk && assignmentOk;
+      });
+    const courseEndAssignmentOk =
+      !courseEndAssignmentAllowed ||
+      !endScope ||
+      endScope.assignmentCount === 0 ||
+      endScope.assignmentCompleted;
+    const courseEndQuizOk =
+      !endScope || endScope.quizCount === 0 || endScope.quizCompleted;
+    return modulesOk && courseEndAssignmentOk && courseEndQuizOk;
   }
 
   /** Pillar 2 programme rule: one module with its quiz + assessment passed (when they exist). */
@@ -216,6 +260,7 @@ export class CourseQuizAssessmentProgressService {
 
   /**
    * Pillar 2 programme badge: qualifying module must include quiz and assessment, both passed.
+   * Uses the same learner-progress scopes as the course player outline (quizCompleted / assignmentCompleted).
    * Module-scoped only — course-end quiz/assessment must not satisfy this rule.
    */
   async isPillar2ProgrammeModuleComplete(
@@ -223,23 +268,12 @@ export class CourseQuizAssessmentProgressService {
     courseId: string,
     moduleId: string,
   ): Promise<boolean> {
-    const questions = await this.questionRepo.find({
-      where: { courseId, moduleId },
-    });
-    const assignmentIds = questions
-      .filter((q) => q.questionType === CourseQuestionType.Assignment)
-      .map((q) => q.id);
-    const quizCount = questions.length - assignmentIds.length;
-    const hasQuiz = quizCount > 0;
-    const hasAssignment = assignmentIds.length > 0;
-
-    if (!hasQuiz || !hasAssignment) {
+    const progress = await this.getLearnerProgress(userId, courseId);
+    const scope = progress.scopes.find((row) => row.moduleId === moduleId);
+    if (!scope || scope.quizCount <= 0 || scope.assignmentCount <= 0) {
       return false;
     }
-
-    const quizOk = await this.hasQuizPerfectScore(userId, courseId, moduleId);
-    const assignmentOk = await this.isAssessmentScopeCompleted(userId, courseId, assignmentIds);
-    return quizOk && assignmentOk;
+    return Boolean(scope.quizCompleted && scope.assignmentCompleted);
   }
 
   /**
@@ -317,8 +351,12 @@ export class CourseQuizAssessmentProgressService {
     if (!userId || !courseId) return;
     try {
       await this.certificateService.syncCertificateWithCourseCompletion(userId, courseId);
-    } catch {
+    } catch (error) {
       // Certificate sync is best-effort after quiz/assessment updates.
+      console.error(
+        `[certificate-sync] failed for user=${userId} course=${courseId}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 }

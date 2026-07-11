@@ -73,12 +73,21 @@ export class CourseCertificateService {
       : new Date();
     const datePart = safeDate.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `AINX-${datePart}-`;
-    const existingCount = await this.certificateRepository
-      .createQueryBuilder('cert')
-      .where('cert.certificateNo LIKE :prefix', { prefix: `${prefix}%` })
-      .getCount();
-    const sequence = String(existingCount + 1).padStart(5, '0');
-    return `${prefix}${sequence}`;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const existingCount = await this.certificateRepository
+        .createQueryBuilder('cert')
+        .where('cert.certificateNo LIKE :prefix', { prefix: `${prefix}%` })
+        .getCount();
+      const sequence = String(existingCount + 1 + attempt).padStart(5, '0');
+      const candidate = `${prefix}${sequence}`;
+      const clash = await this.certificateRepository.findOne({
+        where: { certificateNo: candidate },
+        select: ['id'],
+      });
+      if (!clash) return candidate;
+    }
+    const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `${prefix}${suffix}`;
   }
 
   /**
@@ -182,16 +191,22 @@ export class CourseCertificateService {
   }
 
   private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
-    await this.courseService.getById(courseId);
+    const course = await this.courseService.getById(courseId);
 
     const sectionProgressMap =
       await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
     const rows = Object.values(sectionProgressMap || {});
     const hasSections = rows.length > 0;
-    const videosCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+    const videosCompleted =
+      hasSections &&
+      rows.every((row) => Boolean(row?.isCompleted || row?.isWatched));
     if (!videosCompleted) return false;
 
-    return this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(userId, courseId);
+    return this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(
+      userId,
+      courseId,
+      course?.level,
+    );
   }
 
   private async isPillar2PartialRequirementsMet(userId: string, courseId: string): Promise<boolean> {
@@ -214,9 +229,10 @@ export class CourseCertificateService {
       const moduleSections = sections.filter((section) => section.moduleId === module.id);
       if (!moduleSections.length) continue;
 
-      const allSectionsComplete = moduleSections.every((section) =>
-        Boolean(sectionProgressMap?.[section.id]?.isCompleted),
-      );
+      const allSectionsComplete = moduleSections.every((section) => {
+        const row = sectionProgressMap?.[section.id];
+        return Boolean(row?.isCompleted || row?.isWatched);
+      });
       if (!allSectionsComplete) continue;
 
       const moduleQuizAssessmentComplete =
@@ -328,8 +344,30 @@ export class CourseCertificateService {
       status: CourseCertificateStatus.Active,
       deletedAt: null,
     });
-    const saved = await this.certificateRepository.save(certificate);
-    return { action: 'issued', certificate: saved };
+    try {
+      const saved = await this.certificateRepository.save(certificate);
+      return { action: 'issued', certificate: saved };
+    } catch {
+      // Concurrent backfill (Pillar 1 + Pillar 2) can race on the unique (userId, courseId) row.
+      const raced = await this.certificateRepository.findOne({ where: { userId, courseId } });
+      if (raced?.status === CourseCertificateStatus.Active) {
+        if (programId && raced.programId !== programId) {
+          raced.programId = programId;
+          await this.certificateRepository.save(raced);
+        }
+        return { action: 'already_active', certificate: raced };
+      }
+      if (raced) {
+        raced.status = CourseCertificateStatus.Active;
+        raced.completedAt = new Date();
+        raced.deletedAt = null;
+        raced.programId = programId || null;
+        raced.certificateNo = await this.buildCertificateNo(raced.completedAt);
+        const saved = await this.certificateRepository.save(raced);
+        return { action: 'reissued', certificate: saved };
+      }
+      throw new Error('Failed to issue certificate after concurrent write');
+    }
   }
 
   private async syncProgramCertificate(userId: string, programId: string): Promise<CertificateSyncResult> {
@@ -467,7 +505,8 @@ export class CourseCertificateService {
         await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
       const rows = Object.values(sectionProgressMap || {});
       const hasSections = rows.length > 0;
-      const videosCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+      const videosCompleted =
+        hasSections && rows.every((row) => Boolean(row?.isCompleted || row?.isWatched));
       if (!videosCompleted) {
         return { issued: false, certificate: null, reason: 'not_completed' as const };
       }
