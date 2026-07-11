@@ -4019,11 +4019,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     setSearchParams({ section: firstLesson.id }, { replace: true });
   };
 
-  const totalLessons = useMemo(
-    () => modules.reduce((acc, m) => acc + (m.lessons?.length || 0), 0),
-    [modules]
-  );
-
   const courseProgressUnits = useMemo(() => {
     const activeVideoLesson =
       activeLessonId &&
@@ -4114,8 +4109,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const pendingPracticeHint = null;
 
-  const currentLessonNumber =
-    currentIndex >= 0 && totalLessons > 0 ? Math.min(totalLessons, currentIndex + 1) : 0;
   const moduleProgressById = useMemo(() => {
     const result = {};
     modules.forEach((module) => {
@@ -4554,9 +4547,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 </Box>
               </Stack>
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingPracticeHint ? 0.5 : 1.25, fontWeight: 500 }}>
-                {currentLessonNumber > 0
-                  ? `Current: lesson ${currentLessonNumber} of ${totalLessons}`
-                  : `Select a lesson to begin (${progressTotalUnits} items total)`}
+                {progressCompletedCount > 0 || currentStepIndex >= 0
+                  ? `Current: item ${Math.max(1, currentStepIndex + 1)} of ${progressTotalUnits}`
+                  : `Select an item to begin (${progressTotalUnits} total · sessions, quiz & assessment)`}
               </Typography>
               {pendingPracticeHint ? (
                 <Typography variant="caption" sx={{ color: 'warning.dark', display: 'block', mb: 1.25, fontWeight: 600 }}>
