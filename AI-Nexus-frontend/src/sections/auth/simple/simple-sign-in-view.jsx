@@ -414,8 +414,9 @@ export function SimpleSignInView() {
         size="large"
         variant="outlined"
         color="inherit"
-        component={RouterLink}
-        href={paths.corporate.overview}
+        // component={RouterLink}
+        // href={paths.corporate.overview}
+        disabled
         startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
         sx={{ height: 44, fontWeight: 700 }}
       >
