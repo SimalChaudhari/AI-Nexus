@@ -21,6 +21,7 @@ import { PaymentModule } from './payment/payment.module';
 import { OrderModule } from './order/order.module';
 import { CartModule } from './cart/cart.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { CorporateModule } from './corporate/corporate.module';
 import { AppSettingsModule } from './app-settings/app-settings.module';
 import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
@@ -116,6 +117,7 @@ const resolveTypeOrmPoolMax = (): number => {
     OrderModule,
     CartModule,
     DashboardModule,
+    CorporateModule,
     AppSettingsModule,
     PromptCatalogModule,
     ChatbotModule,

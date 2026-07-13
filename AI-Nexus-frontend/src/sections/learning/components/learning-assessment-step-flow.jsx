@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -6,8 +6,6 @@ import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Collapse from '@mui/material/Collapse';
-import TextField from '@mui/material/TextField';
-import Divider from '@mui/material/Divider';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
@@ -24,14 +22,10 @@ import { ConfirmDialog } from 'src/components/custom-dialog';
 import { toast } from 'src/components/snackbar';
 import { courseService } from 'src/services/course.service';
 import { resolveAssetUrl } from 'src/utils/asset-url';
-import { CourseAssignmentVerificationLogDialog } from 'src/sections/dashboard/course/assignment-submissions/course-assignment-verification-log-dialog';
 import {
-  canShowVerificationLog,
   getSubmissionEvaluationDisplay,
   getSubmissionFileList,
-  getStructuredQuestionResults,
   isSubmissionDraft,
-  isSubmissionPassedLocked,
   mapSubmissionFromApi,
 } from 'src/sections/dashboard/course/assignment-submissions/course-assignment-submissions-utils';
 import { LEARNER_SUBMISSION_ACCEPT } from 'src/sections/dashboard/course/question-bank/course-question-bank-utils';
@@ -254,51 +248,8 @@ export function GuidelinesStepCard({
   );
 }
 
-function StructuredQuestionResults({ submission }) {
-  const results = getStructuredQuestionResults(submission);
-  if (!results.length) return null;
-
-  return (
-    <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-      <Divider sx={{ my: 0.25 }} />
-      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-        Per-question results
-      </Typography>
-      {results.map((row) => (
-        <Box
-          key={row.questionId || row.questionNumber}
-          sx={{
-            p: 0.75,
-            borderRadius: 1,
-            border: (theme) => `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Typography variant="caption" sx={{ fontWeight: 700 }}>
-              {row.label || `Q${row.questionNumber}`}
-            </Typography>
-            <Chip
-              size="small"
-              variant="soft"
-              color={row.score >= row.maxScore * 0.7 ? 'success' : row.score > 0 ? 'warning' : 'error'}
-              label={`${row.score}/${row.maxScore}`}
-              sx={{ height: 20 }}
-            />
-          </Stack>
-          {row.feedback ? (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35, lineHeight: 1.4 }}>
-              {row.feedback}
-            </Typography>
-          ) : null}
-        </Box>
-      ))}
-    </Stack>
-  );
-}
-
-function PassedCongratulationsCard({ submission, onViewLog }) {
+function PassedCongratulationsCard({ submission }) {
   const theme = useTheme();
-  const score = submission?.aiScore;
   const submittedAt = formatDateTime(submission?.submittedAt || submission?.uploadedAt);
 
   return (
@@ -330,53 +281,62 @@ function PassedCongratulationsCard({ submission, onViewLog }) {
 
         <Stack direction="row" spacing={0.75} flexWrap="wrap" justifyContent="center" useFlexGap>
           <Chip size="small" color="success" variant="soft" label="Passed" sx={{ fontWeight: 700 }} />
-          {score != null ? (
-            <Chip size="small" variant="soft" label={`Score ${score}%`} sx={{ fontWeight: 700 }} />
-          ) : null}
           {submittedAt ? (
             <Chip size="small" variant="outlined" label={submittedAt} />
           ) : null}
         </Stack>
-
-        {submission?.aiFeedback ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', width: 1, textAlign: 'left', lineHeight: 1.45 }}
-          >
-            {submission.aiFeedback}
-          </Typography>
-        ) : null}
-
-        <Box sx={{ width: 1, textAlign: 'left' }}>
-          <StructuredQuestionResults submission={submission} />
-        </Box>
-
-        {canShowVerificationLog(submission) ? (
-          <Button
-            size="small"
-            variant="outlined"
-            color="success"
-            startIcon={<Iconify icon="solar:document-text-bold" width={16} />}
-            onClick={onViewLog}
-          >
-            View AI verification log
-          </Button>
-        ) : null}
       </Stack>
     </StepCard>
   );
+}
+
+function isAwaitingManualGrading(submission) {
+  if (!submission || isSubmissionDraft(submission)) return false;
+  return submission.manualPassed == null;
 }
 
 function ResultStatus({ submission }) {
   const theme = useTheme();
   if (!submission || isSubmissionDraft(submission)) return null;
 
-  const evaluation = getSubmissionEvaluationDisplay(submission);
-  const isProcessing =
-    submission.evaluationStatus === 'pending' || submission.evaluationStatus === 'processing';
-  const weaknesses = Array.isArray(submission.weaknesses) ? submission.weaknesses : [];
   const submittedAt = formatDateTime(submission.submittedAt || submission.uploadedAt);
+
+  // Hide AI pass/fail UI until admin manually grades.
+  if (isAwaitingManualGrading(submission)) {
+    return (
+      <Box
+        sx={{
+          mt: 1,
+          py: 1,
+          px: 1.25,
+          borderRadius: 1,
+          bgcolor: alpha(theme.palette.info.main, 0.06),
+          borderLeft: `2px solid ${alpha(theme.palette.info.main, 0.6)}`,
+        }}
+      >
+        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: 'info.main' }} />
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'info.main' }}>
+            Submitted
+          </Typography>
+          {submittedAt ? (
+            <Typography variant="caption" color="text.secondary">
+              {submittedAt}
+            </Typography>
+          ) : null}
+        </Stack>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ display: 'block', mt: 0.75, lineHeight: 1.5 }}
+        >
+          Your assessment has been submitted successfully and is awaiting manual grading.
+        </Typography>
+      </Box>
+    );
+  }
+
+  const evaluation = getSubmissionEvaluationDisplay(submission);
 
   const statusColor =
     evaluation.color === 'success'
@@ -401,11 +361,7 @@ function ResultStatus({ submission }) {
       }}
     >
       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-        {isProcessing ? (
-          <CircularProgress size={14} sx={{ color: statusColor }} />
-        ) : (
-          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: statusColor }} />
-        )}
+        <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: statusColor }} />
         <Typography variant="caption" sx={{ fontWeight: 700, color: statusColor }}>
           {evaluation.label}
         </Typography>
@@ -414,28 +370,17 @@ function ResultStatus({ submission }) {
             {submittedAt}
           </Typography>
         ) : null}
-        {submission.aiScore != null ? (
-          <Chip size="small" variant="soft" label={`${submission.aiScore}%`} sx={{ height: 20 }} />
-        ) : null}
       </Stack>
-      {submission.aiFeedback ? (
+      {submission.manualFeedback ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.4 }}>
-          {submission.aiFeedback}
+          {submission.manualFeedback}
         </Typography>
       ) : null}
-      {weaknesses.length ? (
-        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
-          {weaknesses.map((item) => (
-            <Chip key={item} size="small" color="warning" variant="soft" label={item} sx={{ height: 22 }} />
-          ))}
-        </Stack>
-      ) : null}
-      <StructuredQuestionResults submission={submission} />
     </Box>
   );
 }
 
-function useAssignmentUpload(courseId, assignment, submission, typedAnswers, onUploaded, onDeleted) {
+function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDeleted) {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -448,7 +393,7 @@ function useAssignmentUpload(courseId, assignment, submission, typedAnswers, onU
   const uploadFiles = async (fileList) => {
     const files = Array.from(fileList || []).filter(Boolean);
     if (!files.length || !courseId || !assignment?.id) return;
-    if (isSubmissionPassedLocked(submission)) {
+    if (submission?.manualPassed === true) {
       toast.error('Assessment already passed.');
       return;
     }
@@ -466,16 +411,15 @@ function useAssignmentUpload(courseId, assignment, submission, typedAnswers, onU
   const handleSubmit = async () => {
     if (!courseId || !assignment?.id) return;
     const hasFiles = submission && getSubmissionFileList(submission).length > 0;
-    const hasTyped = Array.isArray(typedAnswers) && typedAnswers.some((value) => String(value || '').trim());
-    if (!hasFiles && !hasTyped) {
-      toast.error('Upload a file or type your answers first.');
+    if (!hasFiles) {
+      toast.error('Upload a file first.');
       return;
     }
-    if (isSubmissionPassedLocked(submission)) return;
+    if (submission?.manualPassed === true) return;
     setSubmitting(true);
     try {
       const row = await courseService.submitAssignmentSubmission(courseId, assignment.id, {
-        typedAnswers: typedAnswers || [],
+        typedAnswers: [],
       });
       onUploaded?.(assignment.id, mapSubmissionFromApi(row));
     } catch (e) {
@@ -529,14 +473,9 @@ export function LearningAssessmentStepFlow({
   singleItem,
 }) {
   const theme = useTheme();
-  const [logOpen, setLogOpen] = useState(false);
   const [guideChecked, setGuideChecked] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
-  const [outline, setOutline] = useState({ ready: false, questions: [] });
-  const [outlineLoading, setOutlineLoading] = useState(false);
-  const [typedAnswers, setTypedAnswers] = useState([]);
   const [guidelinesAcknowledged, setGuidelinesAcknowledged] = useState(false);
-  const passedToastShownRef = useRef(false);
 
   useEffect(() => {
     if (!assignment?.id || typeof window === 'undefined') return;
@@ -549,7 +488,6 @@ export function LearningAssessmentStepFlow({
     courseId,
     assignment,
     submission,
-    typedAnswers,
     onUploaded,
     onDeleted
   );
@@ -567,11 +505,15 @@ export function LearningAssessmentStepFlow({
   );
   const files = getSubmissionFileList(submission);
   const busy = upload.uploading || upload.deleting || upload.submitting;
-  const isLocked = isSubmissionPassedLocked(submission);
+  const isLocked = submission?.manualPassed === true;
   const isDraft = isSubmissionDraft(submission);
-  const hasTypedInput = typedAnswers.some((value) => String(value || '').trim());
-  const canSubmit = isDraft && (files.length > 0 || hasTypedInput) && !busy;
-  const evaluation = submission ? getSubmissionEvaluationDisplay(submission) : null;
+  const awaitingManual = isAwaitingManualGrading(submission);
+  const canSubmit = isDraft && files.length > 0 && !busy;
+  const evaluation = submission
+    ? awaitingManual
+      ? { label: 'Awaiting grading', color: 'info' }
+      : getSubmissionEvaluationDisplay(submission)
+    : null;
   const isOpen = Boolean(expanded);
   const hasGuide = guideFiles.length > 0;
   const steps = getStepConfig(hasGuide);
@@ -584,50 +526,16 @@ export function LearningAssessmentStepFlow({
 
   useEffect(() => {
     if (isLocked) return;
-    if (submission?.evaluationStatus === 'pending' || submission?.evaluationStatus === 'processing') {
+    if (
+      submission?.evaluationStatus === 'pending' ||
+      submission?.evaluationStatus === 'processing' ||
+      submission?.evaluationStatus === 'completed' ||
+      submission?.evaluationStatus === 'manual_required' ||
+      (submission && !isSubmissionDraft(submission) && submission.manualPassed == null)
+    ) {
       setActiveStep(steps.submit);
     }
-  }, [submission?.evaluationStatus, steps.submit, isLocked]);
-
-  useEffect(() => {
-    if (!isLocked) {
-      passedToastShownRef.current = false;
-      return;
-    }
-    if (!passedToastShownRef.current && expanded) {
-      passedToastShownRef.current = true;
-      toast.success('Congratulations! You passed this assessment.');
-    }
-  }, [isLocked, expanded]);
-
-  useEffect(() => {
-    if (!courseId || !assignment?.id || activeStep !== steps.submit || isLocked) return undefined;
-    let active = true;
-    setOutlineLoading(true);
-    courseService
-      .getAssessmentOutline(courseId, assignment.id)
-      .then((data) => {
-        if (!active) return;
-        const questions = Array.isArray(data?.questions) ? data.questions : [];
-        setOutline({ ready: Boolean(data?.ready), questions });
-        setTypedAnswers((prev) => {
-          if (prev.length === questions.length) return prev;
-          const saved = Array.isArray(submission?.aiRawResult?.typedAnswers)
-            ? submission.aiRawResult.typedAnswers
-            : [];
-          return questions.map((_, i) => saved[i] || '');
-        });
-      })
-      .catch(() => {
-        if (active) setOutline({ ready: false, questions: [] });
-      })
-      .finally(() => {
-        if (active) setOutlineLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [courseId, assignment?.id, activeStep, steps.submit, isLocked, submission?.aiRawResult?.typedAnswers]);
+  }, [submission?.evaluationStatus, submission?.manualPassed, submission, steps.submit, isLocked]);
 
   const handleGuideContinue = useCallback(() => {
     if (!guidelinesAcknowledged && !guideChecked) {
@@ -705,7 +613,7 @@ export function LearningAssessmentStepFlow({
         <Collapse in={isOpen}>
           <Box sx={{ px: { xs: 1.5, md: 2 }, pb: 1.5, pt: singleItem ? 0.75 : 0 }}>
             {isLocked ? (
-              <PassedCongratulationsCard submission={submission} onViewLog={() => setLogOpen(true)} />
+              <PassedCongratulationsCard submission={submission} />
             ) : (
               <>
             <Stepper
@@ -822,59 +730,7 @@ export function LearningAssessmentStepFlow({
                 <Stack spacing={1}>
                   {!isLocked ? upload.fileInput : null}
 
-                  {outline.ready && outline.questions.length > 0 ? (
-                    <Stack spacing={1}>
-                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>
-                        Type your answers below, upload a file, or both.
-                      </Typography>
-                      {outline.questions.map((question, qIndex) => (
-                        <Box key={question.id || question.questionNumber}>
-                          <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.35 }}>
-                            {question.label || `Q${question.questionNumber}`}
-                            {question.maxScore != null ? ` (${question.maxScore} marks)` : ''}
-                          </Typography>
-                          {question.promptText ? (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ display: 'block', mb: 0.5, lineHeight: 1.4 }}
-                            >
-                              {question.promptText.length > 180
-                                ? `${question.promptText.slice(0, 180)}…`
-                                : question.promptText}
-                            </Typography>
-                          ) : null}
-                          <TextField
-                            fullWidth
-                            multiline
-                            minRows={2}
-                            size="small"
-                            disabled={busy || isLocked}
-                            placeholder={`Answer for ${question.label || `Q${question.questionNumber}`}`}
-                            value={typedAnswers[qIndex] || ''}
-                            onChange={(event) => {
-                              const next = [...typedAnswers];
-                              next[qIndex] = event.target.value;
-                              setTypedAnswers(next);
-                            }}
-                          />
-                        </Box>
-                      ))}
-                    </Stack>
-                  ) : outlineLoading ? (
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <CircularProgress size={16} />
-                      <Typography variant="caption" color="text.secondary">
-                        Loading questions…
-                      </Typography>
-                    </Stack>
-                  ) : (
-                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>
-                      Upload your completed assessment file, or wait for the admin to publish structured questions.
-                    </Typography>
-                  )}
-
-                  {!isLocked ? (
+                  {!isLocked && files.length === 0 ? (
                     <Upload
                       multiple
                       value={[]}
@@ -911,17 +767,6 @@ export function LearningAssessmentStepFlow({
                         Back
                       </Button>
                     ) : null}
-                    {!isLocked ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        disabled={busy}
-                        onClick={upload.openPicker}
-                        startIcon={upload.uploading ? <CircularProgress size={14} /> : <Iconify icon="solar:upload-bold" width={16} />}
-                      >
-                        {files.length ? 'Add files' : 'Upload'}
-                      </Button>
-                    ) : null}
                     {canSubmit ? (
                       <Button
                         size="small"
@@ -939,7 +784,7 @@ export function LearningAssessmentStepFlow({
                         Submit
                       </Button>
                     ) : null}
-                    {submission && !isLocked ? (
+                    {submission && !isLocked && files.length > 0 ? (
                       <Tooltip title="Clear">
                         <IconButton size="small" disabled={busy} onClick={() => upload.setDeleteOpen(true)} color="error">
                           <Iconify icon="solar:trash-bin-trash-bold" width={18} />
@@ -949,18 +794,6 @@ export function LearningAssessmentStepFlow({
                   </StepActionRow>
 
                   {submission ? <ResultStatus submission={submission} /> : null}
-
-                  {submission && canShowVerificationLog(submission) ? (
-                    <Button
-                      size="small"
-                      variant="text"
-                      sx={{ alignSelf: 'flex-start', px: 0.5 }}
-                      startIcon={<Iconify icon="solar:document-text-bold" width={16} />}
-                      onClick={() => setLogOpen(true)}
-                    >
-                      View AI verification log
-                    </Button>
-                  ) : null}
                 </Stack>
               </StepCard>
             </Collapse>
@@ -969,8 +802,6 @@ export function LearningAssessmentStepFlow({
           </Box>
         </Collapse>
       </Box>
-
-      <CourseAssignmentVerificationLogDialog open={logOpen} submission={submission} onClose={() => setLogOpen(false)} />
 
       <ConfirmDialog
         open={upload.deleteOpen}

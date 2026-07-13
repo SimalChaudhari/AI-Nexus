@@ -11,7 +11,7 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
-import InputAdornment from '@mui/material/InputAdornment';  
+import InputAdornment from '@mui/material/InputAdornment';
 import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
@@ -31,7 +31,17 @@ import {
   MembershipSignupDialog,
   MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
 } from 'src/sections/learning/components/membership-signup-dialog';
-import { continueMembershipSignupDialog, navigateToPaidMembershipSignup, RESUME_MEMBERSHIP_SIGNUP_QUERY, shouldOpenResumedMembershipSignupModal, stripResumeMembershipSignupFromPath, clearMembershipEligibilityDraftOnModalClose, ensureNoYesYesFlowAfterEservicesFailure, isStudentAcademicFeeWaiverResumeFlow, readResumedMembershipEligibilityFlow } from 'src/utils/membership-eligibility-sso';
+import {
+  continueMembershipSignupDialog,
+  navigateToPaidMembershipSignup,
+  RESUME_MEMBERSHIP_SIGNUP_QUERY,
+  shouldOpenResumedMembershipSignupModal,
+  stripResumeMembershipSignupFromPath,
+  clearMembershipEligibilityDraftOnModalClose,
+  ensureNoYesYesFlowAfterEservicesFailure,
+  isStudentAcademicFeeWaiverResumeFlow,
+  readResumedMembershipEligibilityFlow,
+} from 'src/utils/membership-eligibility-sso';
 
 // ----------------------------------------------------------------------
 
@@ -78,8 +88,8 @@ export function SimpleSignInView() {
   useEffect(() => {
     if (authenticated) {
       if (
-        searchParams.get('membershipNotEligible') === '1'
-        || searchParams.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1'
+        searchParams.get('membershipNotEligible') === '1' ||
+        searchParams.get(RESUME_MEMBERSHIP_SIGNUP_QUERY) === '1'
       ) {
         clearMembershipEligibilityDraftOnModalClose();
         const nextPath = stripResumeMembershipSignupFromPath(
@@ -94,8 +104,8 @@ export function SimpleSignInView() {
     if (searchParams.get('membershipNotEligible') === '1') {
       const resumed = readResumedMembershipEligibilityFlow();
       if (
-        !resumed?.flow?.showCitizenshipRecordGap
-        && !isStudentAcademicFeeWaiverResumeFlow(resumed?.flow, resumed?.parsed?.membershipOutcome)
+        !resumed?.flow?.showCitizenshipRecordGap &&
+        !isStudentAcademicFeeWaiverResumeFlow(resumed?.flow, resumed?.parsed?.membershipOutcome)
       ) {
         ensureNoYesYesFlowAfterEservicesFailure();
       }
@@ -144,28 +154,28 @@ export function SimpleSignInView() {
       setSuccessMsg('');
       setShowResendOption(false);
       clearErrors(['identifier', 'password']);
-      // Check if identifier is email or username
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.identifier);
       const { user } = await signInWithPassword({
         [isEmail ? 'email' : 'username']: data.identifier,
-        password: data.password
+        password: data.password,
       });
       await checkUserSession?.();
 
-      // Redirect: use returnTo for non-admin if present, else role-based default
-      const returnTo = searchParams.get('returnTo');
+      const redirectTo = searchParams.get('returnTo');
       const userRole = (user?.role || 'user').toLowerCase();
       if (userRole === 'admin') {
         router.push(`${paths.admin.root}/dashboard`);
-      } else if (returnTo) {
-        router.replace(returnTo);
+      } else if (redirectTo) {
+        router.replace(redirectTo);
       } else {
         router.push('/home');
       }
     } catch (error) {
       const errorMessage =
         (error instanceof Error ? error.message : null) ||
-        (error?.response?.data?.message && typeof error.response.data.message === 'string' ? error.response.data.message : null) ||
+        (error?.response?.data?.message && typeof error.response.data.message === 'string'
+          ? error.response.data.message
+          : null) ||
         'Login failed. Please check your credentials.';
       setErrorMsg(errorMessage);
 
@@ -176,7 +186,6 @@ export function SimpleSignInView() {
         setError('password', { type: 'server', message: errorMessage });
       }
 
-      // Check if error is about unverified account
       if (msg.includes('not verified') || msg.includes('verify your account')) {
         setShowResendOption(true);
         const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.identifier);
@@ -201,7 +210,8 @@ export function SimpleSignInView() {
       setSuccessMsg(result.message || 'Verification email has been sent. Please check your inbox.');
       setShowResendOption(false);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to resend verification email.';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to resend verification email.';
       setErrorMsg(errorMessage);
     } finally {
       setIsResending(false);
@@ -237,6 +247,23 @@ export function SimpleSignInView() {
     </Stack>
   );
 
+  const landingButtonSx = {
+    minHeight: 48,
+    height: { xs: 'auto', sm: 48 },
+    py: { xs: 1.25, sm: 0 },
+    px: { xs: 1.5, sm: 2.5 },
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  };
+
+  const landingButtonLabelSx = {
+    flex: 1,
+    minWidth: 0,
+    whiteSpace: { xs: 'normal', sm: 'nowrap' },
+    lineHeight: { xs: 1.35, sm: 1.5 },
+    textAlign: 'left',
+  };
+
   const renderLandingButtons = (
     <Stack spacing={1.5}>
       <Button
@@ -246,10 +273,18 @@ export function SimpleSignInView() {
         color="primary"
         component={RouterLink}
         href={paths.auth.oauth.start}
-        startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
-        sx={{ height: 48, fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
+        sx={{
+          ...landingButtonSx,
+          fontWeight: 700,
+          fontSize: { xs: '0.8125rem', sm: '0.875rem', md: '0.9375rem' },
+        }}
       >
-        Login with ISCA account
+        <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0, mr: 1.25 }}>
+          <Iconify icon="solar:login-3-bold-duotone" width={18} />
+        </Box>
+        <Box component="span" sx={landingButtonLabelSx}>
+          Log in via my ISCA account
+        </Box>
       </Button>
 
       <Divider sx={{ borderStyle: 'dashed' }} />
@@ -259,11 +294,19 @@ export function SimpleSignInView() {
         size="large"
         variant="outlined"
         color="inherit"
-        startIcon={<Iconify icon="solar:user-plus-bold-duotone" width={18} />}
         onClick={() => setSignupModalOpen(true)}
-        sx={{ height: 48, fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
+        sx={{
+          ...landingButtonSx,
+          fontWeight: 600,
+          fontSize: { xs: '0.8125rem', sm: '0.8125rem', md: '0.875rem' },
+        }}
       >
-        Sign up for an ISCA account
+        <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0, mr: 1.25 }}>
+          <Iconify icon="solar:user-plus-bold-duotone" width={18} />
+        </Box>
+        <Box component="span" sx={landingButtonLabelSx}>
+          Non-ISCA members, register an account
+        </Box>
       </Button>
 
       <Button
@@ -271,11 +314,19 @@ export function SimpleSignInView() {
         size="large"
         variant="outlined"
         color="inherit"
-        startIcon={<Iconify icon="solar:buildings-2-bold-duotone" width={18} />}
         onClick={() => setShowCorporateForm(true)}
-        sx={{ height: 48, fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.9375rem' }, px: { xs: 1.5, sm: 2 } }}
+        sx={{
+          ...landingButtonSx,
+          fontWeight: 600,
+          fontSize: { xs: '0.8125rem', sm: '0.875rem', md: '0.9375rem' },
+        }}
       >
-        Login as a corporate account
+        <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0, mr: 1.25 }}>
+          <Iconify icon="solar:buildings-2-bold-duotone" width={18} />
+        </Box>
+        <Box component="span" sx={landingButtonLabelSx}>
+          Login as a corporate account
+        </Box>
       </Button>
     </Stack>
   );
@@ -357,6 +408,19 @@ export function SimpleSignInView() {
       >
         Sign in
       </LoadingButton>
+
+      <Button
+        fullWidth
+        size="large"
+        variant="outlined"
+        color="inherit"
+        component={RouterLink}
+        href={paths.corporate.overview}
+        startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
+        sx={{ height: 44, fontWeight: 700 }}
+      >
+        Login with SSO
+      </Button>
     </Stack>
   );
 
@@ -400,7 +464,6 @@ export function SimpleSignInView() {
                 </Link>
               </Stack>
             )}
-           
           </Stack>
         </Alert>
       )}
@@ -444,4 +507,3 @@ export function SimpleSignInView() {
     </>
   );
 }
-

@@ -691,12 +691,20 @@ export const courseService = {
         watchedTime: row?.watchedTime || '',
         transcript: Array.isArray(row?.transcript) ? row.transcript : [],
         completedModules: Array.isArray(row?.completedModules) ? row.completedModules : [],
+        pdfUrl: row?.pdfUrl || null,
       }));
     } catch (error) {
       if (error?.response?.status === 401) return [];
       console.error('Error fetching certificates:', error);
       throw error;
     }
+  },
+
+  async downloadCertificatePdf(certificateId) {
+    const response = await axios.get(`/courses/certificates/${certificateId}/pdf`, {
+      responseType: 'blob',
+    });
+    return response.data;
   },
 
   async issueCourseCertificate(courseId) {

@@ -8,6 +8,7 @@ import { authDemoRoutes } from './auth-demo';
 import { dashboardRoutes } from './dashboard';
 import { adminRoutes } from './admin.routes';
 import { userRoutes } from './user.routes';
+import { corporateRoutes } from './corporate.routes';
 import { mainRoutes } from './main';
 
 // import { componentsRoutes } from './components';
@@ -40,6 +41,9 @@ export function Router() {
 
     // User Routes
     ...userRoutes,
+
+    // Corporate HR Portal (auth/SSO to be wired later)
+    ...corporateRoutes,
 
     // Dashboard (Legacy - can be removed if not needed)
     ...dashboardRoutes,

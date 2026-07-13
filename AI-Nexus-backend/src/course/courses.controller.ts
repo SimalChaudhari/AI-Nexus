@@ -1455,6 +1455,28 @@ export class CourseController {
         return response.status(HttpStatus.OK).json({ data: certificates });
     }
 
+    @Get('certificates/:certificateId/pdf')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Download official server-generated certificate PDF' })
+    async downloadMyCertificatePdf(
+        @Param('certificateId') certificateId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const { filename, buffer } = await this.courseCertificateService.getCertificatePdfForUser(
+            userId,
+            certificateId,
+        );
+        response.setHeader('Content-Type', 'application/pdf');
+        response.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        return response.status(HttpStatus.OK).send(buffer);
+    }
+
     @Post(':courseId/certificates/issue')
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
