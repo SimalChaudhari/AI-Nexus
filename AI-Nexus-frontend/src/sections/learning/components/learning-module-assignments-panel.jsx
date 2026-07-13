@@ -9,7 +9,6 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { courseService } from 'src/services/course.service';
-import { resolveAssetUrl } from 'src/utils/asset-url';
 import {
   isSubmissionDraft,
   isSubmissionPassedLocked,
@@ -227,29 +226,21 @@ export function LearningModuleAssignmentsPanel({
         </Box>
 
         <Box>
-          {items.map((assignment, index) => {
-            const assignmentGuideUrl = assignment.guideFileUrl || assignment.referenceFileUrl;
-            const assignmentHasGuide = Boolean(assignmentGuideUrl);
-            const assignmentGuideName =
-              assignment.guideFileName || assignment.referenceFileName || 'Guideline';
-
-            return (
+          {items.map((assignment, index) => (
             <LearningAssessmentStepFlow
               key={assignment.id}
               index={index}
               courseId={courseId}
               assignment={assignment}
               submission={assignment.mySubmission}
-              guideFileUrl={assignmentHasGuide ? resolveAssetUrl(assignmentGuideUrl) : null}
-              guideFileName={assignmentGuideName}
+              guideFiles={assignment.guideFiles}
               singleItem={singleItem}
               expanded={expandedId === assignment.id}
               onToggle={() => handleToggle(assignment.id)}
               onUploaded={handleUploaded}
               onDeleted={handleDeleted}
             />
-            );
-          })}
+          ))}
         </Box>
       </Box>
 

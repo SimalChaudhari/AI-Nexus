@@ -69,7 +69,9 @@ export function buildCourseOverallProgress(input: {
 }): CourseOverallProgressSummary {
   const level = String(input.courseLevel || CourseLevel.Beginner).toLowerCase();
   const isCourseEndModel = level === 'beginner' || level === 'advanced';
-  const courseEndAssignmentAllowed = level === 'beginner' || level === 'intermediate';
+  // Include advanced (Pillar 3) so unlinked course-level assessments count in progress
+  const courseEndAssignmentAllowed =
+    level === 'beginner' || level === 'intermediate' || level === 'advanced';
 
   const scopeMap = scopeByModuleId(input.quizAssessmentScopes);
   const endScope = courseEndScope(input.quizAssessmentScopes);

@@ -2,11 +2,24 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 
+import { resolveAssetUrl } from 'src/utils/asset-url';
+
 import { fileThumbnailClasses } from './classes';
 import { fileData, fileThumb, fileFormat } from './utils';
 import { RemoveButton, DownloadButton } from './action-buttons';
 
 // ----------------------------------------------------------------------
+
+function getThumbnailPreviewUrl(file) {
+  if (!file) return null;
+  if (typeof file === 'string') return resolveAssetUrl(file);
+  if (file instanceof Blob) return URL.createObjectURL(file);
+  if (typeof file === 'object') {
+    const url = file.preview || file.url || file.fileUrl;
+    if (url) return resolveAssetUrl(String(url));
+  }
+  return null;
+}
 
 export function FileThumbnail({
   sx,
@@ -18,11 +31,11 @@ export function FileThumbnail({
   onDownload,
   ...other
 }) {
-  const previewUrl = typeof file === 'string' ? file : URL.createObjectURL(file);
+  const previewUrl = getThumbnailPreviewUrl(file) || '';
 
   const { name, path } = fileData(file);
 
-  const format = fileFormat(path || previewUrl);
+  const format = fileFormat(path || name || previewUrl);
 
   const renderImg = (
     <Box

@@ -21,7 +21,7 @@ import {
     FileTypeValidator,
     ForbiddenException,
 } from '@nestjs/common';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response, Request } from 'express';
 import { UserRole } from '../user/users.entity';
@@ -72,6 +72,10 @@ import { CourseCertificateService } from './course-certificate.service';
 import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 import { buildCourseOverallProgress } from './course-overall-progress.util';
 import { AppSettingsService } from '../app-settings/app-settings.service';
+import {
+    ASSESSMENT_ADMIN_FILE_EXT,
+    LEARNER_SUBMISSION_FILE_EXT,
+} from './course-assignment-file.types';
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
     speakerIds: unknown,
@@ -134,10 +138,35 @@ const learnerSubmissionFileFilter = (
     cb: (error: Error | null, accept: boolean) => void,
 ) => {
     const name = String(file.originalname || '').toLowerCase();
-    const allowedExt = /\.(png|jpe?g|pdf|doc|docx|xlsx|xlsm|pptx|txt)$/i.test(name);
-    const isZip = /\.(zip|rar)$/i.test(name) || /zip|rar/i.test(file.mimetype);
-    cb(null, Boolean(allowedExt && !isZip));
+    cb(null, LEARNER_SUBMISSION_FILE_EXT.test(name));
 };
+
+type AssessmentAdminUploadBody = {
+    replace?: boolean | string;
+    keepFiles?: string | unknown[];
+};
+
+const parseAssessmentAdminUploadOptions = (body: AssessmentAdminUploadBody) => {
+    let keepFiles: unknown = body?.keepFiles;
+    if (typeof keepFiles === 'string') {
+        try {
+            keepFiles = JSON.parse(keepFiles);
+        } catch {
+            keepFiles = [];
+        }
+    }
+    return {
+        replace:
+            body?.replace === undefined
+                ? true
+                : body.replace === true || body.replace === 'true' || body.replace === '1',
+        keepFiles,
+    };
+};
+
+const flattenAssessmentAdminUploads = (
+    uploaded?: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+): Express.Multer.File[] => [...(uploaded?.files || []), ...(uploaded?.file || [])];
 
 const saveAssignmentUploadFile = (
     localStorageService: LocalStorageService,
@@ -786,16 +815,17 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload assessment guide file (legacy endpoint)' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssignmentReferenceFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Req() request: Request,
         @Res() response: Response,
     ) {
@@ -803,16 +833,18 @@ export class CourseController {
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
 
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'guide',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
 
         return response.status(HttpStatus.OK).json({
@@ -820,6 +852,7 @@ export class CourseController {
             data: {
                 guideFileUrl: row.guideFileUrl,
                 guideFileName: row.guideFileName,
+                guideFiles: row.guideFiles,
             },
         });
     }
@@ -831,33 +864,37 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload assessment question file' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx|zip)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssessmentQuestionFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Res() response: Response,
     ) {
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'question',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
         return response.status(HttpStatus.OK).json({
             message: 'Question file uploaded',
             data: {
                 questionFileUrl: row.questionFileUrl,
                 questionFileName: row.questionFileName,
+                questionFiles: row.questionFiles,
             },
         });
     }
@@ -869,33 +906,37 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload official answer sheet for assessment grading' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx|zip)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssessmentAnswerSheetFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Res() response: Response,
     ) {
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'answerSheet',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
         return response.status(HttpStatus.OK).json({
             message: 'Answer sheet uploaded',
             data: {
                 answerSheetFileUrl: row.answerSheetFileUrl,
                 answerSheetFileName: row.answerSheetFileName,
+                answerSheetFiles: row.answerSheetFiles,
             },
         });
     }
@@ -907,33 +948,37 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload optional assessment guide for learners' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssessmentGuideFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Res() response: Response,
     ) {
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'guide',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
         return response.status(HttpStatus.OK).json({
             message: 'Guide file uploaded',
             data: {
                 guideFileUrl: row.guideFileUrl,
                 guideFileName: row.guideFileName,
+                guideFiles: row.guideFiles,
             },
         });
     }

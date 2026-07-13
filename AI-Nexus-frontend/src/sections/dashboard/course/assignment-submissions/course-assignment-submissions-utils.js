@@ -122,7 +122,12 @@ export function mapSubmissionFromApi(row) {
     manualVerifiedAt: row.manualVerifiedAt ?? null,
     passed: row.passed ?? null,
     passedSource: row.passedSource ?? null,
-    verificationLog: Array.isArray(row.verificationLog) ? row.verificationLog : [],
+    verificationLog:
+      Array.isArray(row.verificationLog) && row.verificationLog.length
+        ? row.verificationLog
+        : Array.isArray(row.aiRawResult?.verificationLog)
+          ? row.aiRawResult.verificationLog
+          : [],
     attemptCount: Math.max(1, Number(row.attemptCount) || 1),
     attemptHistory: Array.isArray(row.attemptHistory) ? row.attemptHistory : [],
   };
@@ -206,9 +211,19 @@ export function canShowVerificationLog(submission) {
 }
 
 export function getVerificationLogEntries(submission) {
-  if (Array.isArray(submission?.verificationLog) && submission.verificationLog.length) {
-    return submission.verificationLog;
+  const fromApi = Array.isArray(submission?.verificationLog) ? submission.verificationLog : [];
+  const fromRaw = Array.isArray(submission?.aiRawResult?.verificationLog)
+    ? submission.aiRawResult.verificationLog
+    : [];
+  const source = fromApi.length ? fromApi : fromRaw;
+  if (source.length) {
+    return source.map((entry) => ({
+      step: entry.step || 'Step',
+      status: entry.status || 'info',
+      detail: entry.detail || '',
+    }));
   }
+
   const structured = getStructuredQuestionResults(submission);
   if (structured.length) {
     return structured.map((row) => ({
@@ -217,7 +232,24 @@ export function getVerificationLogEntries(submission) {
       detail: `${row.score}/${row.maxScore}${row.feedback ? ` — ${row.feedback}` : ''}`,
     }));
   }
+
   const entries = [];
+  const issueMessage =
+    submission?.aiFeedback ||
+    submission?.manualFeedback ||
+    getSubmissionEvaluationDisplay(submission)?.detail ||
+    '';
+
+  if (submission?.evaluationStatus === 'manual_required' || submission?.passed === false) {
+    entries.push({
+      step: 'Issue',
+      status: 'fail',
+      detail:
+        issueMessage ||
+        'AI could not complete verification. An admin will review this submission.',
+    });
+  }
+
   if (submission?.aiScore != null) {
     entries.push({
       step: 'AI score',
@@ -225,14 +257,14 @@ export function getVerificationLogEntries(submission) {
       detail: `${submission.aiScore}%`,
     });
   }
-  if (submission?.passed != null) {
+  if (submission?.passed != null && submission?.evaluationStatus !== 'manual_required') {
     entries.push({
       step: 'Result',
       status: submission.passed ? 'pass' : 'fail',
       detail: submission.passed ? 'Passed' : 'Failed',
     });
   }
-  if (submission?.aiFeedback) {
+  if (submission?.aiFeedback && submission?.evaluationStatus !== 'manual_required') {
     entries.push({
       step: 'AI feedback',
       status: submission.passed ? 'pass' : submission.passed === false ? 'fail' : 'info',

@@ -2086,7 +2086,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const courseLevel = String(playerContext?.course?.level || course?.level || '').toLowerCase();
   const isCourseEndModel = courseLevel === 'beginner' || courseLevel === 'advanced';
-  const courseEndAssignmentAllowed = courseLevel === 'beginner' || courseLevel === 'intermediate';
+  // Course-level (unlinked) assessments: beginner + intermediate + advanced (Pillar 3)
+  const courseEndAssignmentAllowed =
+    courseLevel === 'beginner' ||
+    courseLevel === 'intermediate' ||
+    courseLevel === 'advanced';
 
   const courseEndQuizCount = useMemo(
     () =>

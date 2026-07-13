@@ -53,6 +53,11 @@ export function CourseAssignmentVerificationLogDialog({ open, submission, onClos
   const evaluation = getSubmissionEvaluationDisplay(submission);
   const attemptRows = getSubmissionAttemptDisplayRows(submission);
   const showAttemptHistory = attemptRows.length > 1;
+  const issueEntries = entries.filter((entry) => entry.status === 'fail' || entry.step === 'Issue');
+  const issueSummary =
+    issueEntries[0]?.detail ||
+    (submission?.evaluationStatus === 'manual_required' ? evaluation.detail : '') ||
+    '';
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -78,6 +83,29 @@ export function CourseAssignmentVerificationLogDialog({ open, submission, onClos
               </Typography>
             ) : null}
           </Stack>
+
+          {issueSummary ? (
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 1,
+                border: (theme) => `1px solid ${alpha(theme.palette.error.main, 0.28)}`,
+                bgcolor: (theme) => alpha(theme.palette.error.main, 0.08),
+              }}
+            >
+              <Stack direction="row" spacing={1} alignItems="flex-start">
+                <Iconify icon="solar:danger-triangle-bold" width={18} sx={{ color: 'error.main', mt: 0.15 }} />
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'error.main' }}>
+                    Issue
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {issueSummary}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          ) : null}
 
           {showAttemptHistory ? (
             <Stack spacing={1}>

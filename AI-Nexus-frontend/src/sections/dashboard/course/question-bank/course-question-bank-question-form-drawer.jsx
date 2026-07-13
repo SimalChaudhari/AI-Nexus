@@ -262,15 +262,21 @@ export function CourseQuestionBankQuestionFormDrawer({
                     Assessment question file
                   </Typography>
                   <Upload
-                    value={questionMaterials[0] ?? null}
+                    multiple
+                    value={questionMaterials}
                     showViewButton
                     accept={ASSESSMENT_QUESTION_ACCEPT}
                     maxSize={52428800}
                     onDrop={(acceptedFiles) => {
-                      if (acceptedFiles?.length) onQuestionMaterialsChange([acceptedFiles[0]]);
+                      if (acceptedFiles?.length) {
+                        onQuestionMaterialsChange([...questionMaterials, ...acceptedFiles]);
+                      }
                     }}
-                    onDelete={() => onQuestionMaterialsChange([])}
-                    helperText="PDF, Word, or ZIP — learners download this to complete the assessment"
+                    onRemove={(file) =>
+                      onQuestionMaterialsChange(questionMaterials.filter((item) => item !== file))
+                    }
+                    onRemoveAll={() => onQuestionMaterialsChange([])}
+                    helperText="Images, PDF, Word, Excel, or ZIP — learners download these to complete the assessment"
                   />
                 </Box>
                 <Box>
@@ -278,15 +284,23 @@ export function CourseQuestionBankQuestionFormDrawer({
                     Official answer sheet
                   </Typography>
                   <Upload
-                    value={answerSheetMaterials[0] ?? null}
+                    multiple
+                    value={answerSheetMaterials}
                     showViewButton
                     accept={ASSESSMENT_ANSWER_SHEET_ACCEPT}
                     maxSize={52428800}
                     onDrop={(acceptedFiles) => {
-                      if (acceptedFiles?.length) onAnswerSheetMaterialsChange([acceptedFiles[0]]);
+                      if (acceptedFiles?.length) {
+                        onAnswerSheetMaterialsChange([...answerSheetMaterials, ...acceptedFiles]);
+                      }
                     }}
-                    onDelete={() => onAnswerSheetMaterialsChange([])}
-                    helperText="PDF, Word, or ZIP — used by AI to grade submissions (not shown to learners)"
+                    onRemove={(file) =>
+                      onAnswerSheetMaterialsChange(
+                        answerSheetMaterials.filter((item) => item !== file)
+                      )
+                    }
+                    onRemoveAll={() => onAnswerSheetMaterialsChange([])}
+                    helperText="Images, PDF, Word, Excel, or ZIP — used by AI to grade submissions (not shown to learners)"
                   />
                 </Box>
                 <Box>
@@ -294,21 +308,28 @@ export function CourseQuestionBankQuestionFormDrawer({
                     Assessment guide (optional)
                   </Typography>
                   <Upload
-                    value={guideMaterials[0] ?? null}
+                    multiple
+                    value={guideMaterials}
                     showViewButton
                     accept={ASSESSMENT_GUIDE_ACCEPT}
                     maxSize={52428800}
                     onDrop={(acceptedFiles) => {
                       if (acceptedFiles?.length) {
-                        onGuideMaterialsChange([acceptedFiles[0]]);
-                        onReferenceMaterialsChange([acceptedFiles[0]]);
+                        const next = [...guideMaterials, ...acceptedFiles];
+                        onGuideMaterialsChange(next);
+                        onReferenceMaterialsChange(next);
                       }
                     }}
-                    onDelete={() => {
+                    onRemove={(file) => {
+                      const next = guideMaterials.filter((item) => item !== file);
+                      onGuideMaterialsChange(next);
+                      onReferenceMaterialsChange(next);
+                    }}
+                    onRemoveAll={() => {
                       onGuideMaterialsChange([]);
                       onReferenceMaterialsChange([]);
                     }}
-                    helperText="PDF or Word — optional; learners skip the guidelines step if not uploaded"
+                    helperText="Images, PDF, Word, Excel, or ZIP — optional; learners skip the guidelines step if none are uploaded"
                   />
                 </Box>
               </>

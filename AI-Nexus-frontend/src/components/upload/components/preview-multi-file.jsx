@@ -3,7 +3,6 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import ListItemText from '@mui/material/ListItemText';
 
-import { fData } from 'src/utils/format-number';
 import { resolveAssetUrl } from 'src/utils/asset-url';
 
 import { varAlpha } from 'src/theme/styles';
@@ -12,6 +11,25 @@ import { Iconify } from '../../iconify';
 import { fileData, FileThumbnail } from '../../file-thumbnail';
 
 // ----------------------------------------------------------------------
+
+function getMultiFilePreviewUrl(file) {
+  if (!file) return null;
+  if (typeof file === 'string') return resolveAssetUrl(file);
+  if (file instanceof Blob) return URL.createObjectURL(file);
+  if (typeof file === 'object') {
+    const url = file.preview || file.url || file.fileUrl;
+    if (url) return resolveAssetUrl(String(url));
+  }
+  return null;
+}
+
+function getMultiFileKey(file, index) {
+  if (typeof file === 'string') return `${file}-${index}`;
+  if (file instanceof Blob) {
+    return `${file.name || 'blob'}-${file.size}-${file.lastModified || index}`;
+  }
+  return `${file?.fileUrl || file?.url || file?.name || 'file'}-${index}`;
+}
 
 export function MultiFilePreview({
   sx,
@@ -64,14 +82,14 @@ export function MultiFilePreview({
     >
       {renderFirstNode}
 
-      {files.map((file) => {
-        const { name, size } = fileData(file);
-        const viewUrl =
-          typeof file === 'string' ? resolveAssetUrl(file) : URL.createObjectURL(file);
+      {files.map((file, index) => {
+        const { name } = fileData(file);
+        const viewUrl = getMultiFilePreviewUrl(file);
+        const itemKey = getMultiFileKey(file, index);
 
         if (thumbnail) {
           return (
-            <Box component="li" key={name} sx={{ display: 'inline-flex' }}>
+            <Box component="li" key={itemKey} sx={{ display: 'inline-flex' }}>
               <FileThumbnail
                 tooltip
                 imageView
@@ -93,7 +111,7 @@ export function MultiFilePreview({
         return (
           <Box
             component="li"
-            key={name}
+            key={itemKey}
             sx={{
               py: 1,
               pr: 1,
@@ -109,13 +127,12 @@ export function MultiFilePreview({
             <FileThumbnail file={file} {...slotProps?.thumbnail} />
 
             <ListItemText
-              primary={name}
-              // Hide size text for cleaner display; size is not critical here.
+              primary={name || 'File'}
               secondary=""
               secondaryTypographyProps={{ component: 'span', typography: 'caption' }}
             />
 
-            {showViewButton && (
+            {showViewButton && viewUrl ? (
               <Button
                 size="small"
                 variant="outlined"
@@ -125,7 +142,7 @@ export function MultiFilePreview({
               >
                 View
               </Button>
-            )}
+            ) : null}
 
             {onRemove && (
               <IconButton size="small" onClick={() => onRemove(file)}>

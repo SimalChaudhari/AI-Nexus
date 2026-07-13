@@ -5,11 +5,32 @@ import { Repository } from 'typeorm';
 
 import { LocalStorageService } from '../../service/local-storage.service';
 import { CourseQuestionBankEntity } from '../../course/course-question-bank.entity';
+import {
+  getAssessmentAnswerSheetFiles,
+  getAssessmentGuideFiles,
+  getAssessmentQuestionFiles,
+} from '../../course/course-assignment-file.types';
 import { getAssignmentPassScoreThreshold } from '../../course/course-assignment-submission-evaluation.types';
 import { AssessmentBlueprintEntity } from '../entities/assessment-blueprint.entity';
 import { AssessmentQuestionEntity } from '../entities/assessment-question.entity';
 import { DocumentTextExtractionService } from './document-text-extraction.service';
+import type { ExtractedDocument } from './document-text-extraction.service';
 import { GuidelineRulesService, QuestionSplitterService } from './guideline-and-splitter.service';
+
+function mergeExtractedDocs(
+  docs: Array<ExtractedDocument | null | undefined>,
+): ExtractedDocument | null {
+  const readable = docs.filter((d): d is ExtractedDocument => Boolean(d?.couldRead));
+  if (!readable.length) {
+    return docs.find(Boolean) || null;
+  }
+  return {
+    fileName: readable.map((d) => d.fileName).join(', '),
+    mimeType: readable[0].mimeType,
+    text: readable.map((d) => `--- ${d.fileName} ---\n${d.text}`).join('\n\n'),
+    couldRead: true,
+  };
+}
 
 @Injectable()
 export class BlueprintIngestionService {
@@ -45,9 +66,10 @@ export class BlueprintIngestionService {
     const bank = await this.questionBankRepo.findOne({ where: { id: questionBankId } });
     if (!bank || bank.questionType !== 'assignment') return null;
 
-    const questionFileUrl = bank.questionFileUrl;
-    const answerSheetUrl = bank.answerSheetFileUrl || bank.referenceFileUrl;
-    if (!questionFileUrl || !answerSheetUrl) {
+    const questionFiles = getAssessmentQuestionFiles(bank);
+    const answerSheetFiles = getAssessmentAnswerSheetFiles(bank);
+    const guideFiles = getAssessmentGuideFiles(bank);
+    if (!questionFiles.length || !answerSheetFiles.length) {
       await this.markFailed(questionBankId, bank.courseId, 'Assessment and answer key are required');
       return null;
     }
@@ -73,11 +95,15 @@ export class BlueprintIngestionService {
     await this.blueprintRepo.save(blueprint);
 
     try {
-      const [questionDoc, answerDoc, guideDoc] = await Promise.all([
-        this.readDocument(questionFileUrl),
-        this.readDocument(answerSheetUrl),
-        bank.guideFileUrl ? this.readDocument(bank.guideFileUrl) : Promise.resolve(null),
+      const [questionDocs, answerDocs, guideDocs] = await Promise.all([
+        Promise.all(questionFiles.map((f) => this.readDocument(f.fileUrl))),
+        Promise.all(answerSheetFiles.map((f) => this.readDocument(f.fileUrl))),
+        Promise.all(guideFiles.map((f) => this.readDocument(f.fileUrl))),
       ]);
+
+      const questionDoc = mergeExtractedDocs(questionDocs);
+      const answerDoc = mergeExtractedDocs(answerDocs);
+      const guideDoc = mergeExtractedDocs(guideDocs);
 
       if (!questionDoc?.couldRead || !answerDoc?.couldRead) {
         throw new Error('Could not extract text from assessment or answer key');
@@ -164,10 +190,13 @@ export class BlueprintIngestionService {
   }
 
   private buildSourceHash(bank: CourseQuestionBankEntity): string {
+    const questionFiles = getAssessmentQuestionFiles(bank);
+    const answerSheetFiles = getAssessmentAnswerSheetFiles(bank);
+    const guideFiles = getAssessmentGuideFiles(bank);
     const payload = [
-      bank.questionFileUrl,
-      bank.answerSheetFileUrl || bank.referenceFileUrl,
-      bank.guideFileUrl,
+      ...questionFiles.map((f) => f.fileUrl),
+      ...answerSheetFiles.map((f) => f.fileUrl),
+      ...guideFiles.map((f) => f.fileUrl),
       bank.updatedAt?.toISOString?.() || '',
     ].join('|');
     return createHash('sha256').update(payload).digest('hex').slice(0, 32);

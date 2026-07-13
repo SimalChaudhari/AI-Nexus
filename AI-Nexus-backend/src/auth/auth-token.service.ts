@@ -34,7 +34,7 @@ export class AuthTokenService {
   ) {}
 
   private get accessExpires(): string {
-    return process.env.JWT_ACCESS_EXPIRES?.trim() || '15m';
+    return process.env.JWT_ACCESS_EXPIRES?.trim() || '15d';
   }
 
   private get refreshExpiresMs(): number {

@@ -5,11 +5,15 @@ export type AssignmentSubmissionFileRecord = {
   mimeType?: string | null;
 };
 
-export const ASSESSMENT_QUESTION_FILE_EXT = /\.(pdf|doc|docx|zip)$/i;
-export const ASSESSMENT_ANSWER_SHEET_FILE_EXT = /\.(pdf|doc|docx|zip)$/i;
-export const ASSESSMENT_GUIDE_FILE_EXT = /\.(pdf|doc|docx)$/i;
+export type AssessmentAdminFileRecord = AssignmentSubmissionFileRecord;
+
+export const ASSESSMENT_ADMIN_FILE_EXT =
+  /\.(png|jpe?g|pdf|doc|docx|xls|xlsx|xlsm|zip)$/i;
+export const ASSESSMENT_QUESTION_FILE_EXT = ASSESSMENT_ADMIN_FILE_EXT;
+export const ASSESSMENT_ANSWER_SHEET_FILE_EXT = ASSESSMENT_ADMIN_FILE_EXT;
+export const ASSESSMENT_GUIDE_FILE_EXT = ASSESSMENT_ADMIN_FILE_EXT;
 export const LEARNER_SUBMISSION_FILE_EXT =
-  /\.(png|jpe?g|pdf|doc|docx|xlsx|xlsm|pptx|txt)$/i;
+  /\.(png|jpe?g|pdf|doc|docx|xlsx|xlsm|pptx|txt|zip)$/i;
 
 export function isLearnerZipFile(fileName: string, mimeType?: string): boolean {
   const name = String(fileName || '').toLowerCase();
@@ -56,4 +60,85 @@ export function normalizeSubmissionFiles(
     });
   }
   return out;
+}
+
+type AssessmentAdminFileEntity = {
+  questionFiles?: AssessmentAdminFileRecord[] | null;
+  questionFileUrl?: string | null;
+  questionFileName?: string | null;
+  answerSheetFiles?: AssessmentAdminFileRecord[] | null;
+  answerSheetFileUrl?: string | null;
+  answerSheetFileName?: string | null;
+  guideFiles?: AssessmentAdminFileRecord[] | null;
+  guideFileUrl?: string | null;
+  guideFileName?: string | null;
+  referenceFileUrl?: string | null;
+  referenceFileName?: string | null;
+};
+
+function getAssessmentAdminFiles(
+  files: unknown,
+  fileUrl?: string | null,
+  fileName?: string | null,
+): AssessmentAdminFileRecord[] {
+  const normalized = normalizeSubmissionFiles(files);
+  if (normalized.length) return normalized;
+  const url = String(fileUrl || '').trim();
+  if (!url) return [];
+  return [{
+    fileUrl: url,
+    originalFileName: String(fileName || 'file').trim() || 'file',
+  }];
+}
+
+export function getAssessmentQuestionFiles(
+  assessment: AssessmentAdminFileEntity,
+): AssessmentAdminFileRecord[] {
+  return getAssessmentAdminFiles(
+    assessment.questionFiles,
+    assessment.questionFileUrl,
+    assessment.questionFileName,
+  );
+}
+
+export function getAssessmentAnswerSheetFiles(
+  assessment: AssessmentAdminFileEntity,
+): AssessmentAdminFileRecord[] {
+  return getAssessmentAdminFiles(
+    assessment.answerSheetFiles,
+    assessment.answerSheetFileUrl,
+    assessment.answerSheetFileName,
+  );
+}
+
+export function getAssessmentGuideFiles(
+  assessment: AssessmentAdminFileEntity,
+): AssessmentAdminFileRecord[] {
+  return getAssessmentAdminFiles(
+    assessment.guideFiles,
+    assessment.guideFileUrl || assessment.referenceFileUrl,
+    assessment.guideFileName || assessment.referenceFileName,
+  );
+}
+
+export function syncLegacyAssessmentFileFields(
+  assessment: AssessmentAdminFileEntity,
+): void {
+  assessment.questionFiles = normalizeSubmissionFiles(assessment.questionFiles);
+  assessment.answerSheetFiles = normalizeSubmissionFiles(assessment.answerSheetFiles);
+  assessment.guideFiles = normalizeSubmissionFiles(assessment.guideFiles);
+
+  const question = assessment.questionFiles[0];
+  assessment.questionFileUrl = question?.fileUrl ?? null;
+  assessment.questionFileName = question?.originalFileName ?? null;
+
+  const answerSheet = assessment.answerSheetFiles[0];
+  assessment.answerSheetFileUrl = answerSheet?.fileUrl ?? null;
+  assessment.answerSheetFileName = answerSheet?.originalFileName ?? null;
+
+  const guide = assessment.guideFiles[0];
+  assessment.guideFileUrl = guide?.fileUrl ?? null;
+  assessment.guideFileName = guide?.originalFileName ?? null;
+  assessment.referenceFileUrl = guide?.fileUrl ?? null;
+  assessment.referenceFileName = guide?.originalFileName ?? null;
 }

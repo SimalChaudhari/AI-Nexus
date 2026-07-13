@@ -64,6 +64,21 @@ export function guideAckStorageKey(courseId, assignmentId) {
   return `learning-assessment-guide-ack:${courseId}:${assignmentId}`;
 }
 
+function normalizeAssessmentResources(files, legacyUrl, legacyName, fallbackName) {
+  const records = Array.isArray(files) && files.length
+    ? files
+    : legacyUrl
+      ? [{ fileUrl: legacyUrl, originalFileName: legacyName || fallbackName }]
+      : [];
+  return records
+    .filter((file) => file?.fileUrl)
+    .map((file) => ({
+      ...file,
+      href: resolveAssetUrl(file.fileUrl),
+      name: file.originalFileName || fallbackName,
+    }));
+}
+
 function StepCard({ children, accentColor }) {
   const theme = useTheme();
   const color = accentColor || theme.palette.primary.main;
@@ -180,8 +195,7 @@ function StepActionRow({ children }) {
 }
 
 export function GuidelinesStepCard({
-  guideFileUrl,
-  guideFileName,
+  guideFiles,
   checked,
   onCheckedChange,
   onContinue,
@@ -194,14 +208,17 @@ export function GuidelinesStepCard({
       <Stack spacing={1}>
         <StepInlineRow
           leading={
-            guideFileUrl ? (
-              <ResourceDownloadLink
-                href={guideFileUrl}
-                label="Guideline"
-                icon="solar:download-bold"
-                color="warning"
-                fileName={guideFileName}
-              />
+            guideFiles?.length ? (
+              guideFiles.map((file, index) => (
+                <ResourceDownloadLink
+                  key={`${file.fileUrl}-${index}`}
+                  href={file.href}
+                  label={file.name}
+                  icon="solar:download-bold"
+                  color="warning"
+                  fileName={file.name}
+                />
+              ))
             ) : (
               <Typography variant="caption" color="text.secondary">
                 No guideline file
@@ -488,7 +505,7 @@ function useAssignmentUpload(courseId, assignment, submission, typedAnswers, onU
       type="file"
       hidden
       multiple
-      accept=".png,.jpg,.jpeg,.pdf,.doc,.docx,.xlsx,.xlsm,.pptx,.txt"
+      accept=".png,.jpg,.jpeg,.pdf,.doc,.docx,.xlsx,.xlsm,.pptx,.txt,.zip"
       onChange={async (event) => {
         await uploadFiles(event.target.files);
         event.target.value = '';
@@ -506,8 +523,7 @@ export function LearningAssessmentStepFlow({
   submission,
   onUploaded,
   onDeleted,
-  guideFileUrl,
-  guideFileName,
+  guideFiles: guideFileRecords,
   expanded,
   onToggle,
   singleItem,
@@ -537,7 +553,18 @@ export function LearningAssessmentStepFlow({
     onUploaded,
     onDeleted
   );
-  const questionFileUrl = assignment.questionFileUrl ? resolveAssetUrl(assignment.questionFileUrl) : null;
+  const questionFiles = normalizeAssessmentResources(
+    assignment.questionFiles,
+    assignment.questionFileUrl,
+    assignment.questionFileName,
+    'Assessment file'
+  );
+  const guideFiles = normalizeAssessmentResources(
+    guideFileRecords || assignment.guideFiles,
+    assignment.guideFileUrl || assignment.referenceFileUrl,
+    assignment.guideFileName || assignment.referenceFileName,
+    'Guideline'
+  );
   const files = getSubmissionFileList(submission);
   const busy = upload.uploading || upload.deleting || upload.submitting;
   const isLocked = isSubmissionPassedLocked(submission);
@@ -546,7 +573,7 @@ export function LearningAssessmentStepFlow({
   const canSubmit = isDraft && (files.length > 0 || hasTypedInput) && !busy;
   const evaluation = submission ? getSubmissionEvaluationDisplay(submission) : null;
   const isOpen = Boolean(expanded);
-  const hasGuide = Boolean(guideFileUrl);
+  const hasGuide = guideFiles.length > 0;
   const steps = getStepConfig(hasGuide);
 
   useEffect(() => {
@@ -728,8 +755,7 @@ export function LearningAssessmentStepFlow({
             {hasGuide ? (
               <Collapse in={activeStep === steps.guidelines}>
                 <GuidelinesStepCard
-                  guideFileUrl={guideFileUrl}
-                  guideFileName={guideFileName}
+                  guideFiles={guideFiles}
                   checked={guideChecked}
                   onCheckedChange={setGuideChecked}
                   onContinue={handleGuideContinue}
@@ -743,14 +769,17 @@ export function LearningAssessmentStepFlow({
                 <Stack spacing={1}>
                   <StepInlineRow
                     leading={
-                      questionFileUrl ? (
-                        <ResourceDownloadLink
-                          href={questionFileUrl}
-                          label="Assessment"
-                          icon="solar:document-text-bold"
-                          color="info"
-                          fileName={assignment.questionFileName}
-                        />
+                      questionFiles.length ? (
+                        questionFiles.map((file, fileIndex) => (
+                          <ResourceDownloadLink
+                            key={`${file.fileUrl}-${fileIndex}`}
+                            href={file.href}
+                            label={file.name}
+                            icon="solar:document-text-bold"
+                            color="info"
+                            fileName={file.name}
+                          />
+                        ))
                       ) : (
                         <Typography variant="caption" color="error.main">
                           No file
@@ -772,7 +801,7 @@ export function LearningAssessmentStepFlow({
                         <Button
                           size="small"
                           variant="contained"
-                          disabled={!questionFileUrl}
+                          disabled={!questionFiles.length}
                           onClick={() => setActiveStep(steps.submit)}
                           endIcon={<Iconify icon="solar:arrow-right-bold" width={16} />}
                         >
@@ -845,7 +874,7 @@ export function LearningAssessmentStepFlow({
                     </Typography>
                   )}
 
-                  {!isLocked && !files.length ? (
+                  {!isLocked ? (
                     <Upload
                       multiple
                       value={[]}

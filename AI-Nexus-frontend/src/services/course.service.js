@@ -1258,10 +1258,14 @@ export const courseService = {
     }
   },
 
-  async uploadAssignmentReferenceFile(courseId, questionId, file) {
+  async uploadAssignmentReferenceFile(courseId, questionId, files, options = {}) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      (Array.isArray(files) ? files : [files]).filter(Boolean).forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('replace', String(options.replace ?? true));
+      formData.append('keepFiles', JSON.stringify(options.keepFiles || []));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/guide/upload`,
         formData,
@@ -1274,10 +1278,14 @@ export const courseService = {
     }
   },
 
-  async uploadAssessmentQuestionFile(courseId, questionId, file) {
+  async uploadAssessmentQuestionFile(courseId, questionId, files, options = {}) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      (Array.isArray(files) ? files : [files]).filter(Boolean).forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('replace', String(options.replace ?? true));
+      formData.append('keepFiles', JSON.stringify(options.keepFiles || []));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/question/upload`,
         formData,
@@ -1290,10 +1298,14 @@ export const courseService = {
     }
   },
 
-  async uploadAssessmentAnswerSheetFile(courseId, questionId, file) {
+  async uploadAssessmentAnswerSheetFile(courseId, questionId, files, options = {}) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      (Array.isArray(files) ? files : [files]).filter(Boolean).forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('replace', String(options.replace ?? true));
+      formData.append('keepFiles', JSON.stringify(options.keepFiles || []));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/answer-sheet/upload`,
         formData,
@@ -1306,7 +1318,7 @@ export const courseService = {
     }
   },
 
-  async uploadAssessmentGuideFile(courseId, questionId, file) {
-    return this.uploadAssignmentReferenceFile(courseId, questionId, file);
+  async uploadAssessmentGuideFile(courseId, questionId, files, options = {}) {
+    return this.uploadAssignmentReferenceFile(courseId, questionId, files, options);
   },
 };

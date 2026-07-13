@@ -16,7 +16,8 @@ import {
   resolvePassFromScore,
   resolveSubmissionPassed,
 } from './course-assignment-submission-evaluation.types';
-import { getSubmissionFilesFromEntity } from './course-assignment-file.types';
+import { getAssessmentAnswerSheetFiles, getAssessmentQuestionFiles, getSubmissionFilesFromEntity } from './course-assignment-file.types';
+import { isZipBuffer, listReadableZipEntries } from './zip-entry.util';
 import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 
 type PreparedFileContent = {
@@ -26,6 +27,32 @@ type PreparedFileContent = {
   imageDataUrl?: string;
   couldRead: boolean;
 };
+
+function mergePreparedFiles(
+  files: PreparedFileContent[],
+  fallbackLabel: string,
+): PreparedFileContent | null {
+  if (!files.length) return null;
+  const readable = files.filter((f) => f.couldRead);
+  if (!readable.length) {
+    return {
+      label: fallbackLabel,
+      fileName: files.map((f) => f.fileName).join(', '),
+      couldRead: false,
+    };
+  }
+  const text = readable
+    .filter((f) => f.text)
+    .map((f) => `--- ${f.fileName} ---\n${f.text}`)
+    .join('\n\n');
+  return {
+    label: fallbackLabel,
+    fileName: readable.map((f) => f.fileName).join(', '),
+    text: text || undefined,
+    imageDataUrl: readable.find((f) => f.imageDataUrl)?.imageDataUrl,
+    couldRead: true,
+  };
+}
 
 @Injectable()
 export class CourseAssignmentGradingService {
@@ -76,6 +103,18 @@ export class CourseAssignmentGradingService {
         return this.saveManualRequired(
           submission,
           'AI grading is not configured. An admin will review your submission manually.',
+          undefined,
+          {
+            verificationLog: [
+              {
+                step: 'Issue',
+                status: 'fail',
+                detail:
+                  'AI grading is not configured on the server. An admin will review your submission manually.',
+              },
+            ],
+            couldVerify: false,
+          },
         );
       }
 
@@ -83,39 +122,71 @@ export class CourseAssignmentGradingService {
         return this.saveManualRequired(
           submission,
           'No submission files found. An admin will review manually.',
+          undefined,
+          {
+            verificationLog: [
+              {
+                step: 'Issue',
+                status: 'fail',
+                detail: 'No submission files were found for this assessment attempt.',
+              },
+            ],
+            couldVerify: false,
+          },
         );
       }
 
-      const answerSheetUrl =
-        question.answerSheetFileUrl || question.referenceFileUrl || null;
-      const answerSheetName =
-        question.answerSheetFileName || question.referenceFileName || null;
-
-      const questionFile = question.questionFileUrl
-        ? await this.localStorageService.readFileByUrl(question.questionFileUrl)
+      const answerSheetRecords = getAssessmentAnswerSheetFiles(question);
+      const questionRecords = getAssessmentQuestionFiles(question);
+      const answerSheetName = answerSheetRecords.length
+        ? answerSheetRecords.map((f) => f.originalFileName).join(', ')
         : null;
 
-      const answerSheetFile = answerSheetUrl
-        ? await this.localStorageService.readFileByUrl(answerSheetUrl)
-        : null;
+      const questionPreparedList: PreparedFileContent[] = [];
+      for (const record of questionRecords) {
+        const stored = await this.localStorageService.readFileByUrl(record.fileUrl);
+        if (!stored) {
+          questionPreparedList.push({
+            label: 'Assessment question',
+            fileName: record.originalFileName,
+            couldRead: false,
+          });
+          continue;
+        }
+        const prepared = await this.prepareFileContents(
+          stored.buffer,
+          stored.mimeType,
+          stored.fileName || record.originalFileName,
+          `Assessment question: ${record.originalFileName}`,
+        );
+        questionPreparedList.push(...prepared);
+      }
 
-      const questionPrepared = questionFile
-        ? await this.prepareFileContent(
-            questionFile.buffer,
-            questionFile.mimeType,
-            questionFile.fileName,
-            'Assessment question',
-          )
-        : null;
+      const answerSheetPreparedList: PreparedFileContent[] = [];
+      for (const record of answerSheetRecords) {
+        const stored = await this.localStorageService.readFileByUrl(record.fileUrl);
+        if (!stored) {
+          answerSheetPreparedList.push({
+            label: 'Official answer sheet',
+            fileName: record.originalFileName,
+            couldRead: false,
+          });
+          continue;
+        }
+        const prepared = await this.prepareFileContents(
+          stored.buffer,
+          stored.mimeType,
+          stored.fileName || record.originalFileName,
+          `Official answer sheet: ${record.originalFileName}`,
+        );
+        answerSheetPreparedList.push(...prepared);
+      }
 
-      const answerSheetPrepared = answerSheetFile
-        ? await this.prepareFileContent(
-            answerSheetFile.buffer,
-            answerSheetFile.mimeType,
-            answerSheetFile.fileName,
-            'Official answer sheet',
-          )
-        : null;
+      const questionPrepared = mergePreparedFiles(questionPreparedList, 'Assessment question');
+      const answerSheetPrepared = mergePreparedFiles(
+        answerSheetPreparedList,
+        'Official answer sheet',
+      );
 
       const learnerPrepared: PreparedFileContent[] = [];
       for (const file of learnerFiles) {
@@ -128,30 +199,64 @@ export class CourseAssignmentGradingService {
           });
           continue;
         }
-        learnerPrepared.push(
-          await this.prepareFileContent(
-            stored.buffer,
-            stored.mimeType,
-            stored.fileName || file.originalFileName,
-            `Learner file: ${file.originalFileName}`,
-          ),
+        const prepared = await this.prepareFileContents(
+          stored.buffer,
+          stored.mimeType,
+          stored.fileName || file.originalFileName,
+          `Learner file: ${file.originalFileName}`,
         );
+        learnerPrepared.push(...prepared);
       }
 
       const readableLearner = learnerPrepared.filter((f) => f.couldRead);
       if (!readableLearner.length) {
+        const issueLog: AssignmentVerificationLogEntry[] = [
+          {
+            step: 'Learner files',
+            status: 'fail',
+            detail:
+              learnerPrepared.length > 0
+                ? `Could not read: ${learnerPrepared.map((f) => f.fileName).join(', ')}. Supported: images, PDF, Word, Excel, ZIP (with readable files inside).`
+                : 'No readable learner files were found.',
+          },
+          {
+            step: 'Issue',
+            status: 'fail',
+            detail:
+              'AI could not read the uploaded file formats. Please upload images, PDF, Word, Excel, or a ZIP containing those files.',
+          },
+        ];
         return this.saveManualRequired(
           submission,
           'AI could not read the uploaded file formats. An admin will review manually.',
+          undefined,
+          { verificationLog: issueLog, couldVerify: false },
         );
       }
 
       if (!answerSheetPrepared?.couldRead) {
+        const detail = answerSheetRecords.length
+          ? `Could not read official answer sheet (${answerSheetName || 'file'}).`
+          : 'No official answer sheet is configured for this assessment.';
+        const issueLog: AssignmentVerificationLogEntry[] = [
+          {
+            step: 'Official answer sheet',
+            status: 'fail',
+            detail,
+          },
+          {
+            step: 'Issue',
+            status: 'fail',
+            detail: `${detail} An admin will review manually.`,
+          },
+        ];
         return this.saveManualRequired(
           submission,
-          answerSheetUrl
+          answerSheetRecords.length
             ? 'The official answer sheet could not be read. An admin will review manually.'
             : 'No official answer sheet is configured for this assessment. An admin will review manually.',
+          undefined,
+          { verificationLog: issueLog, couldVerify: false },
         );
       }
 
@@ -161,6 +266,10 @@ export class CourseAssignmentGradingService {
         questionPrepared,
         answerSheetPrepared,
         learnerPrepared,
+        {
+          questionImages: questionPreparedList.filter((f) => f.imageDataUrl),
+          answerSheetImages: answerSheetPreparedList.filter((f) => f.imageDataUrl),
+        },
       );
 
       const aiRawResult = this.buildStoredAiRawResult(result, {
@@ -190,21 +299,20 @@ export class CourseAssignmentGradingService {
       submission.aiEvaluatedAt = new Date();
       return this.finalizeSubmissionSave(submission);
     } catch (error) {
-      submission.evaluationStatus = 'manual_required';
-      submission.aiPassed = null;
-      submission.aiScore = null;
-      submission.aiFeedback =
+      const feedback =
         error instanceof Error
           ? `Automatic grading failed: ${error.message}. An admin will review manually.`
           : 'Automatic grading failed. An admin will review manually.';
-      submission.aiEvaluatedAt = new Date();
-      submission.isCompleted = false;
-      const saved = await this.submissionRepo.save(submission);
-      void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(
-        saved.userId,
-        saved.courseId,
-      );
-      return saved;
+      return this.saveManualRequired(submission, feedback, undefined, {
+        verificationLog: [
+          {
+            step: 'Issue',
+            status: 'fail',
+            detail: feedback,
+          },
+        ],
+        couldVerify: false,
+      });
     }
   }
 
@@ -227,11 +335,37 @@ export class CourseAssignmentGradingService {
     result?: AssignmentAiGradingResult,
     aiRawResult?: Record<string, unknown> | null,
   ) {
+    const existingLog = Array.isArray(aiRawResult?.verificationLog)
+      ? (aiRawResult!.verificationLog as AssignmentVerificationLogEntry[])
+      : [];
+    const hasIssueStep = existingLog.some(
+      (entry) =>
+        String(entry?.step || '')
+          .toLowerCase()
+          .includes('issue') ||
+        String(entry?.status || '') === 'fail',
+    );
+    const verificationLog = hasIssueStep
+      ? existingLog
+      : [
+          ...existingLog,
+          {
+            step: 'Issue',
+            status: 'fail' as const,
+            detail: feedback,
+          },
+        ];
+
     submission.evaluationStatus = 'manual_required';
     submission.aiScore = result?.score ?? null;
     submission.aiPassed = null;
     submission.aiFeedback = feedback;
-    submission.aiRawResult = aiRawResult ?? result?.raw ?? null;
+    submission.aiRawResult = {
+      ...(aiRawResult || result?.raw || {}),
+      verificationLog,
+      couldVerify: false,
+      gradedAt: new Date().toISOString(),
+    };
     submission.aiEvaluatedAt = new Date();
     submission.isCompleted = false;
     const saved = await this.submissionRepo.save(submission);
@@ -324,15 +458,15 @@ export class CourseAssignmentGradingService {
           ? file.imageDataUrl
             ? `Image read (${file.fileName})`
             : `Text extracted from ${file.fileName}`
-          : `Could not read ${file.fileName}`,
+          : `Could not read ${file.fileName}. Use image, PDF, Word, Excel, or ZIP with those files inside.`,
       });
     });
 
     if (!result.couldVerify) {
       logs.push({
-        step: 'AI verification',
+        step: 'Issue',
         status: 'fail',
-        detail: result.feedback || 'AI could not verify this submission',
+        detail: result.feedback || 'AI could not verify this submission. An admin will review manually.',
       });
       return logs;
     }
@@ -392,6 +526,10 @@ export class CourseAssignmentGradingService {
     questionPrepared: PreparedFileContent | null,
     answerSheetPrepared: PreparedFileContent,
     learnerPrepared: PreparedFileContent[],
+    extraImages?: {
+      questionImages?: PreparedFileContent[];
+      answerSheetImages?: PreparedFileContent[];
+    },
   ): Promise<AssignmentAiGradingResult> {
     const systemPrompt = `You grade course assessment submissions.
 DO NOT solve the assessment question yourself.
@@ -457,12 +595,28 @@ Rules:
         image_url: { url: questionPrepared.imageDataUrl },
       });
     }
+    (extraImages?.questionImages || [])
+      .filter((f) => f.imageDataUrl && f.imageDataUrl !== questionPrepared?.imageDataUrl)
+      .forEach((f) => {
+        userParts.push({
+          type: 'image_url',
+          image_url: { url: f.imageDataUrl! },
+        });
+      });
     if (answerSheetPrepared.imageDataUrl) {
       userParts.push({
         type: 'image_url',
         image_url: { url: answerSheetPrepared.imageDataUrl },
       });
     }
+    (extraImages?.answerSheetImages || [])
+      .filter((f) => f.imageDataUrl && f.imageDataUrl !== answerSheetPrepared.imageDataUrl)
+      .forEach((f) => {
+        userParts.push({
+          type: 'image_url',
+          image_url: { url: f.imageDataUrl! },
+        });
+      });
     learnerPrepared
       .filter((f) => f.imageDataUrl)
       .forEach((f) => {
@@ -543,6 +697,50 @@ Rules:
     }
   }
 
+  /** Expand ZIP archives into multiple readable parts; otherwise return a single prepared file. */
+  private async prepareFileContents(
+    buffer: Buffer,
+    mimeType: string,
+    fileName: string,
+    label: string,
+  ): Promise<PreparedFileContent[]> {
+    if (isZipBuffer(fileName, mimeType)) {
+      try {
+        const entries = listReadableZipEntries(buffer);
+        if (!entries.length) {
+          return [
+            {
+              label,
+              fileName,
+              text: '',
+              couldRead: false,
+            },
+          ];
+        }
+        const prepared: PreparedFileContent[] = [];
+        for (const entry of entries) {
+          prepared.push(
+            await this.prepareFileContent(
+              entry.buffer,
+              entry.mimeType,
+              `${fileName}/${entry.fileName}`,
+              `${label} > ${entry.fileName}`,
+            ),
+          );
+        }
+        return prepared;
+      } catch (error) {
+        this.logger.warn(
+          `ZIP extraction failed for ${fileName}: ${
+            error instanceof Error ? error.message : error
+          }`,
+        );
+        return [{ label, fileName, text: '', couldRead: false }];
+      }
+    }
+    return [await this.prepareFileContent(buffer, mimeType, fileName, label)];
+  }
+
   private async prepareFileContent(
     buffer: Buffer,
     mimeType: string,
@@ -550,6 +748,11 @@ Rules:
     label: string,
   ): Promise<PreparedFileContent> {
     const ext = this.getExtension(fileName, mimeType);
+
+    if (isZipBuffer(fileName, mimeType) || ext === '.zip') {
+      // Nested ZIP handling is done in prepareFileContents only.
+      return { label, fileName, text: '', couldRead: false };
+    }
 
     if (this.isImageMime(mimeType, ext)) {
       return {
@@ -585,7 +788,13 @@ Rules:
       return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
     }
 
-    if (ext === '.xlsx' || ext === '.xlsm' || mimeType.includes('spreadsheetml')) {
+    if (
+      ext === '.xlsx' ||
+      ext === '.xlsm' ||
+      ext === '.xls' ||
+      mimeType.includes('spreadsheetml') ||
+      mimeType.includes('ms-excel')
+    ) {
       const text = await this.extractXlsxText(buffer);
       return { label, fileName, text: this.truncateText(text), couldRead: text.length > 0 };
     }
@@ -611,7 +820,9 @@ Rules:
     if (mimeType.includes('presentationml')) return '.pptx';
     if (mimeType.includes('powerpoint')) return '.ppt';
     if (mimeType.includes('spreadsheetml')) return '.xlsx';
+    if (mimeType.includes('ms-excel')) return '.xls';
     if (mimeType === 'text/plain') return '.txt';
+    if (/zip/i.test(mimeType)) return '.zip';
     return '';
   }
 

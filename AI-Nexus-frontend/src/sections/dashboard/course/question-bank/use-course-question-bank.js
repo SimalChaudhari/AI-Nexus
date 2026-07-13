@@ -17,6 +17,42 @@ import {
 
 // ----------------------------------------------------------------------
 
+function storedAssessmentMaterials(files, legacyUrl, legacyName, fallbackName) {
+  const records = Array.isArray(files) && files.length
+    ? files
+    : legacyUrl
+      ? [{ fileUrl: legacyUrl, originalFileName: legacyName || fallbackName }]
+      : [];
+  return records
+    .filter((file) => file?.fileUrl)
+    .map((file) => ({
+      ...file,
+      fileUrl: file.fileUrl,
+      url: resolveAssetUrl(file.fileUrl),
+      name: file.originalFileName || fallbackName,
+    }));
+}
+
+export function splitMaterialsForUpload(materials) {
+  const newFiles = (materials || []).filter((item) => item instanceof File);
+  const keepFiles = (materials || [])
+    .filter((item) => !(item instanceof File))
+    .map((item) => {
+      if (typeof item === 'string') {
+        return { fileUrl: item, originalFileName: item.split('/').pop() || 'file' };
+      }
+      const fileUrl = item?.fileUrl || item?.url;
+      if (!fileUrl) return null;
+      return {
+        fileUrl,
+        originalFileName: item.originalFileName || item.name || 'file',
+        mimeType: item.mimeType || null,
+      };
+    })
+    .filter(Boolean);
+  return { newFiles, keepFiles };
+}
+
 export function useCourseQuestionBank(courseId) {
   const [searchParams, setSearchParams] = useSearchParams();
   const prevCourseIdRef = useRef(courseId);
@@ -119,7 +155,7 @@ export function useCourseQuestionBank(courseId) {
   }, [courseId, setSearchParams]);
 
   useEffect(() => {
-    if (!dialogOpen || formType !== 'assignment') return;
+    if (!dialogOpen || formType !== 'assignment') return undefined;
     let active = true;
     setUsersLoading(true);
     userService
@@ -237,29 +273,29 @@ export function useCourseQuestionBank(courseId) {
           row.passingPercentage != null ? Number(row.passingPercentage) : 70
         );
         setQuestionMaterials(
-          row.questionFileUrl
-            ? [
-                {
-                  url: resolveAssetUrl(row.questionFileUrl),
-                  name: row.questionFileName || 'Question file',
-                },
-              ]
-            : []
+          storedAssessmentMaterials(
+            row.questionFiles,
+            row.questionFileUrl,
+            row.questionFileName,
+            'Question file'
+          )
         );
         setAnswerSheetMaterials(
-          row.answerSheetFileUrl
-            ? [
-                {
-                  url: resolveAssetUrl(row.answerSheetFileUrl),
-                  name: row.answerSheetFileName || 'Answer sheet',
-                },
-              ]
-            : []
+          storedAssessmentMaterials(
+            row.answerSheetFiles,
+            row.answerSheetFileUrl,
+            row.answerSheetFileName,
+            'Answer sheet'
+          )
         );
-        const guideUrl = row.guideFileUrl || row.referenceFileUrl;
-        const guideName = row.guideFileName || row.referenceFileName || 'Guide';
-        setGuideMaterials(guideUrl ? [{ url: resolveAssetUrl(guideUrl), name: guideName }] : []);
-        setReferenceMaterials(guideUrl ? [{ url: resolveAssetUrl(guideUrl), name: guideName }] : []);
+        const storedGuides = storedAssessmentMaterials(
+          row.guideFiles,
+          row.guideFileUrl || row.referenceFileUrl,
+          row.guideFileName || row.referenceFileName,
+          'Guide'
+        );
+        setGuideMaterials(storedGuides);
+        setReferenceMaterials(storedGuides);
       } else {
         setFormShortCorrect(row.correctAnswer || '');
       }
@@ -337,52 +373,27 @@ export function useCourseQuestionBank(courseId) {
   ]);
 
   const uploadAssessmentFiles = useCallback(async (questionId) => {
-    const newQuestionFile = questionMaterials.find((item) => item instanceof File);
-    const newAnswerSheetFile = answerSheetMaterials.find((item) => item instanceof File);
-    const newGuideFile = guideMaterials.find((item) => item instanceof File);
+    const question = splitMaterialsForUpload(questionMaterials);
+    const answerSheet = splitMaterialsForUpload(answerSheetMaterials);
+    const guide = splitMaterialsForUpload(guideMaterials);
 
-    const hasExistingQuestion = questionMaterials.some(
-      (item) => typeof item === 'string' || (item && typeof item === 'object' && item.url)
+    await courseService.uploadAssessmentQuestionFile(courseId, questionId, question.newFiles, {
+      replace: true,
+      keepFiles: question.keepFiles,
+    });
+    await courseService.uploadAssessmentAnswerSheetFile(
+      courseId,
+      questionId,
+      answerSheet.newFiles,
+      { replace: true, keepFiles: answerSheet.keepFiles }
     );
-    const hasExistingAnswerSheet = answerSheetMaterials.some(
-      (item) => typeof item === 'string' || (item && typeof item === 'object' && item.url)
-    );
-    const hasExistingGuide = guideMaterials.some(
-      (item) => typeof item === 'string' || (item && typeof item === 'object' && item.url)
-    );
-
-    if (newQuestionFile) {
-      await courseService.uploadAssessmentQuestionFile(courseId, questionId, newQuestionFile);
-    } else if (!hasExistingQuestion && editing?.questionFileUrl) {
-      await courseService.updateCourseQuestion(questionId, {
-        questionFileUrl: null,
-        questionFileName: null,
-      });
-    }
-
-    if (newAnswerSheetFile) {
-      await courseService.uploadAssessmentAnswerSheetFile(courseId, questionId, newAnswerSheetFile);
-    } else if (!hasExistingAnswerSheet && editing?.answerSheetFileUrl) {
-      await courseService.updateCourseQuestion(questionId, {
-        answerSheetFileUrl: null,
-        answerSheetFileName: null,
-      });
-    }
-
-    if (newGuideFile) {
-      await courseService.uploadAssessmentGuideFile(courseId, questionId, newGuideFile);
-    } else if (!hasExistingGuide && (editing?.guideFileUrl || editing?.referenceFileUrl)) {
-      await courseService.updateCourseQuestion(questionId, {
-        guideFileUrl: null,
-        guideFileName: null,
-        referenceFileUrl: null,
-        referenceFileName: null,
-      });
-    }
+    await courseService.uploadAssessmentGuideFile(courseId, questionId, guide.newFiles, {
+      replace: true,
+      keepFiles: guide.keepFiles,
+    });
   }, [
     answerSheetMaterials,
     courseId,
-    editing,
     guideMaterials,
     questionMaterials,
   ]);
@@ -402,9 +413,8 @@ export function useCourseQuestionBank(courseId) {
             typeof item === 'string' ||
             (item && typeof item === 'object' && item.url)
         );
-      const hasQuestion = hasStoredFile(questionMaterials) || Boolean(editing?.questionFileUrl);
-      const hasAnswerSheet =
-        hasStoredFile(answerSheetMaterials) || Boolean(editing?.answerSheetFileUrl);
+      const hasQuestion = hasStoredFile(questionMaterials);
+      const hasAnswerSheet = hasStoredFile(answerSheetMaterials);
       if (!hasQuestion) {
         toast.error('Upload an assessment question file');
         return;

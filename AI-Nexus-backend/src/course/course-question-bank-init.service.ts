@@ -30,6 +30,16 @@ export class CourseQuestionBankInitService implements OnModuleInit {
             "referenceFileUrl" text,
             "referenceFileName" text,
             "assignedUserIds" jsonb,
+            "questionFileUrl" text,
+            "questionFileName" text,
+            "questionFiles" jsonb,
+            "answerSheetFileUrl" text,
+            "answerSheetFileName" text,
+            "answerSheetFiles" jsonb,
+            "guideFileUrl" text,
+            "guideFileName" text,
+            "guideFiles" jsonb,
+            "passingPercentage" integer,
             "sortOrder" int NOT NULL DEFAULT 0,
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -103,10 +113,13 @@ export class CourseQuestionBankInitService implements OnModuleInit {
         const assessmentColumns: Array<[string, string]> = [
           ['questionFileUrl', 'text'],
           ['questionFileName', 'text'],
+          ['questionFiles', 'jsonb'],
           ['answerSheetFileUrl', 'text'],
           ['answerSheetFileName', 'text'],
+          ['answerSheetFiles', 'jsonb'],
           ['guideFileUrl', 'text'],
           ['guideFileName', 'text'],
+          ['guideFiles', 'jsonb'],
           ['passingPercentage', 'integer'],
         ];
         for (const [column, definition] of assessmentColumns) {
@@ -118,6 +131,37 @@ export class CourseQuestionBankInitService implements OnModuleInit {
             if (e instanceof Error && !e.message?.includes('already exists')) throw e;
           }
         }
+        await queryRunner.query(`
+          UPDATE "course_question_bank"
+          SET "questionFiles" = jsonb_build_array(jsonb_build_object(
+            'fileUrl', "questionFileUrl",
+            'originalFileName', COALESCE(NULLIF("questionFileName", ''), 'Question file')
+          ))
+          WHERE "questionFileUrl" IS NOT NULL
+            AND ("questionFiles" IS NULL OR jsonb_array_length("questionFiles") = 0)
+        `);
+        await queryRunner.query(`
+          UPDATE "course_question_bank"
+          SET "answerSheetFiles" = jsonb_build_array(jsonb_build_object(
+            'fileUrl', "answerSheetFileUrl",
+            'originalFileName', COALESCE(NULLIF("answerSheetFileName", ''), 'Answer sheet')
+          ))
+          WHERE "answerSheetFileUrl" IS NOT NULL
+            AND ("answerSheetFiles" IS NULL OR jsonb_array_length("answerSheetFiles") = 0)
+        `);
+        await queryRunner.query(`
+          UPDATE "course_question_bank"
+          SET "guideFiles" = jsonb_build_array(jsonb_build_object(
+            'fileUrl', COALESCE("guideFileUrl", "referenceFileUrl"),
+            'originalFileName', COALESCE(
+              NULLIF("guideFileName", ''),
+              NULLIF("referenceFileName", ''),
+              'Guide'
+            )
+          ))
+          WHERE COALESCE("guideFileUrl", "referenceFileUrl") IS NOT NULL
+            AND ("guideFiles" IS NULL OR jsonb_array_length("guideFiles") = 0)
+        `);
       }
 
       await queryRunner.release();
