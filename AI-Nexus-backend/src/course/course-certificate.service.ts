@@ -637,9 +637,25 @@ export class CourseCertificateService {
         earnedCpeHours: summary.totalEarnedCpeHours,
         allocatedCpeHours: summary.totalAllocatedCpeHours,
         watchedTime: summary.totalWatchedTime,
+        pillarCpeHours: [1, 2, 3].map((pillarIndex) => {
+          const pillar = summary.pillarBreakdown.find((item) => item.pillarIndex === pillarIndex);
+          return {
+            pillarIndex,
+            earnedCpeHours: pillar?.earnedCpeHours ?? 0,
+          };
+        }),
       };
     }
-    return this.courseSectionWatchProgressService.getCourseEarnedCpeHours(userId, row.courseId);
+    const courseCpe = await this.courseSectionWatchProgressService.getCourseEarnedCpeHours(
+      userId,
+      row.courseId,
+    );
+    return {
+      ...courseCpe,
+      pillarCpeHours: [
+        { pillarIndex: 1, earnedCpeHours: courseCpe.earnedCpeHours ?? 0 },
+      ],
+    };
   }
 
   async getUserCertificates(userId: string) {
@@ -740,6 +756,7 @@ export class CourseCertificateService {
         completedAt: row.completedAt,
         earnedCpeHours: cpe.earnedCpeHours,
         allocatedCpeHours: cpe.allocatedCpeHours,
+        pillarCpeHours: cpe.pillarCpeHours,
         logoUrl: publicSettings?.logoUrl || null,
         transcript,
         issuerName: 'AI Nexus Learning Platform',

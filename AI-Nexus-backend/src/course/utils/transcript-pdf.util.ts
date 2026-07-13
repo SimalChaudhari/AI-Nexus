@@ -21,14 +21,14 @@ function drawTranscriptHeader(doc: PDFKit.PDFDocument): number {
   const top = margin;
   const markPath = resolveCertificateMarkPath();
 
-  const logoHeight = 48;
+  const logoHeight = 34;
   const logoWidth = Math.round(logoHeight * 2.9);
   let cursorX = margin;
 
   if (markPath) {
     try {
       doc.image(markPath, cursorX, top, { fit: [logoWidth, logoHeight] });
-      cursorX += logoWidth + 8;
+      cursorX += logoWidth + 6;
     } catch {
       // continue with text-only org name
     }
@@ -37,13 +37,13 @@ function drawTranscriptHeader(doc: PDFKit.PDFDocument): number {
   // Left: stacked org name — bold, dark blue, left-aligned (exact sample lines)
   fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
   const leftLines = ['INSTITUTE OF', 'SINGAPORE', 'CHARTERED', 'ACCOUNTANTS'];
-  let orgY = top + 2;
+  let orgY = top + 1;
   leftLines.forEach((line) => {
     doc
-      .fontSize(9)
+      .fontSize(7.5)
       .fillColor(HEADER_BLUE)
       .text(line, cursorX, orgY, { lineBreak: false });
-    orgY += 11;
+    orgY += 9;
   });
 
   // Right block: text left-aligned, but block itself flush to page end
@@ -56,10 +56,10 @@ function drawTranscriptHeader(doc: PDFKit.PDFDocument): number {
   ];
 
   fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-  doc.fontSize(9);
+  doc.fontSize(7.5);
   let rightWidth = Math.max(...titleLines.map((line) => doc.widthOfString(line)));
   fontOrFallback(doc, 'CertSans', 'Helvetica');
-  doc.fontSize(9);
+  doc.fontSize(7.5);
   rightWidth = Math.max(rightWidth, ...addressLines.map((line) => doc.widthOfString(line)));
   rightWidth = Math.ceil(rightWidth) + 2;
   const rightX = pageWidth - margin - rightWidth;
@@ -67,9 +67,9 @@ function drawTranscriptHeader(doc: PDFKit.PDFDocument): number {
   fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
   titleLines.forEach((line, i) => {
     doc
-      .fontSize(9)
+      .fontSize(7.5)
       .fillColor(HEADER_BLUE)
-      .text(line, rightX, top + i * 12, {
+      .text(line, rightX, top + i * 10, {
         width: rightWidth,
         align: 'left',
         lineBreak: false,
@@ -77,20 +77,20 @@ function drawTranscriptHeader(doc: PDFKit.PDFDocument): number {
   });
 
   fontOrFallback(doc, 'CertSans', 'Helvetica');
-  let addrY = top + 28;
+  let addrY = top + 22;
   addressLines.forEach((line) => {
     doc
-      .fontSize(9)
+      .fontSize(7.5)
       .fillColor(HEADER_BLUE)
       .text(line, rightX, addrY, {
         width: rightWidth,
         align: 'left',
         lineBreak: false,
       });
-    addrY += 12;
+    addrY += 10;
   });
 
-  return Math.max(orgY, addrY) + 36;
+  return Math.max(orgY, addrY) + 28;
 }
 
 function drawTableHeaders(
@@ -187,16 +187,32 @@ export function drawTranscriptPage(
       }
 
       if (row.isCourseHeader) {
-        y += 6;
+        y += 8;
         fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
         doc
           .fontSize(10)
           .fillColor(HEADER_BLUE)
           .text(row.title, cols.colModule, y, {
-            width: contentWidth,
+            width: cols.moduleWidth,
             lineBreak: false,
           });
-        y += 18;
+        if (row.completedAt) {
+          doc
+            .fontSize(10)
+            .fillColor(HEADER_BLUE)
+            .text(row.completedAt, cols.colDate, y, {
+              width: cols.dateWidth,
+              lineBreak: false,
+            });
+        }
+        y += 14;
+        doc
+          .moveTo(cols.margin, y)
+          .lineTo(cols.pageWidth - cols.margin, y)
+          .strokeColor(HEADER_BLUE)
+          .lineWidth(0.9)
+          .stroke();
+        y += 10;
         fontOrFallback(doc, 'CertSans', 'Helvetica');
         doc.fontSize(10).fillColor('#000000');
         return;

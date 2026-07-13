@@ -20,6 +20,11 @@ export type CertificatePdfTranscriptModule = {
   sections?: CertificatePdfTranscriptSection[];
 };
 
+export type CertificatePdfPillarCpe = {
+  pillarIndex: number;
+  earnedCpeHours: number;
+};
+
 export type BuildCertificatePdfInput = {
   certificateNo: string;
   learnerName: string;
@@ -27,6 +32,8 @@ export type BuildCertificatePdfInput = {
   completedAt: Date | string;
   earnedCpeHours?: number | null;
   allocatedCpeHours?: number | null;
+  /** Programme pillar CPE breakdown (Pillar 1 / 2 / 3). */
+  pillarCpeHours?: CertificatePdfPillarCpe[];
   logoUrl?: string | null;
   transcript?: CertificatePdfTranscriptModule[];
   issuerName?: string;
@@ -77,14 +84,26 @@ export function formatCompletedDate(value: Date | string | null | undefined): st
   });
 }
 
+/** Date + time for transcript completion columns (e.g. 13 Jul 2026, 3:42 PM). */
+export function formatCompletedDateTime(value: Date | string | null | undefined): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const day = formatCompletedDate(date);
+  const time = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return day ? `${day}, ${time}` : '';
+}
+
 export function formatCpeNumber(hours?: number | null): string {
+  if (hours == null || hours === undefined) return '—';
   const value = Number(hours);
-  if (!Number.isFinite(value) || value <= 0) return '—';
-  const rounded = Math.round(value * 100) / 100;
-  const text = Number.isInteger(rounded)
-    ? String(rounded)
-    : rounded.toFixed(2).replace(/\.?0+$/, '');
-  return `${text} h`;
+  if (!Number.isFinite(value) || value < 0) return '—';
+  // Half-hour steps display as 0.0 / 0.5 / 1.0 / 1.5 …
+  return `${value.toFixed(1)} h`;
 }
 
 export function resolveFontPath(fileName: string): string | null {
@@ -150,6 +169,70 @@ export function flattenTranscriptModules(
     (module) => module?.isModuleComplete || (module?.completedSections || 0) > 0,
   );
 
+  type ModuleRow = {
+    title: string;
+    courseTitle: string;
+    pillarIndex: number | null;
+    completedAt: string;
+    cpeHours: string;
+    completedAtMs: number | null;
+  };
+
+  type Group = {
+    key: string;
+    headerTitle: string;
+    courseTitle: string;
+    pillarIndex: number | null;
+    modules: ModuleRow[];
+  };
+
+  const groups: Group[] = [];
+  const groupByKey = new Map<string, Group>();
+
+  modules.forEach((module) => {
+    const courseTitle = String(module.courseTitle || '').trim();
+    const pillarIndex =
+      module.pillarIndex != null && Number(module.pillarIndex) > 0
+        ? Number(module.pillarIndex)
+        : null;
+    const key = pillarIndex
+      ? `pillar-${pillarIndex}`
+      : `course-${courseTitle || 'default'}`;
+
+    if (!groupByKey.has(key)) {
+      const headerTitle = pillarIndex
+        ? `Pillar ${pillarIndex}${courseTitle ? ` — ${courseTitle}` : ''}`
+        : courseTitle || 'Course';
+      const group: Group = {
+        key,
+        headerTitle,
+        courseTitle,
+        pillarIndex,
+        modules: [],
+      };
+      groupByKey.set(key, group);
+      groups.push(group);
+    }
+
+    const sectionDates = (module.sections || [])
+      .filter((section) => section.isCompleted && section.completedAt)
+      .map((section) => new Date(String(section.completedAt)).getTime())
+      .filter((value) => Number.isFinite(value));
+    const latestMs =
+      sectionDates.length > 0 ? Math.max(...sectionDates) : null;
+
+    groupByKey.get(key)!.modules.push({
+      title: module.moduleTitle || 'Module',
+      courseTitle,
+      pillarIndex,
+      completedAt: formatCompletedDateTime(
+        latestMs != null ? new Date(latestMs) : null,
+      ),
+      completedAtMs: latestMs,
+      cpeHours: formatCpeNumber(module.cpeHours),
+    });
+  });
+
   const rows: Array<{
     title: string;
     courseTitle: string;
@@ -159,46 +242,34 @@ export function flattenTranscriptModules(
     isCourseHeader?: boolean;
   }> = [];
 
-  let lastGroupKey = '';
+  groups.forEach((group) => {
+    const courseDateMs = group.modules
+      .map((row) => row.completedAtMs)
+      .filter((value): value is number => value != null && Number.isFinite(value));
+    const courseCompletedAt =
+      courseDateMs.length > 0
+        ? formatCompletedDateTime(new Date(Math.max(...courseDateMs)))
+        : '';
 
-  modules.forEach((module) => {
-    const courseTitle = String(module.courseTitle || '').trim();
-    const pillarIndex =
-      module.pillarIndex != null && Number(module.pillarIndex) > 0
-        ? Number(module.pillarIndex)
-        : null;
-    const groupKey = pillarIndex
-      ? `pillar-${pillarIndex}`
-      : `course-${courseTitle || 'default'}`;
-
-    if (groupKey !== lastGroupKey && (courseTitle || pillarIndex)) {
-      const headerTitle = pillarIndex
-        ? `Pillar ${pillarIndex}${courseTitle ? ` — ${courseTitle}` : ''}`
-        : courseTitle;
+    if (group.courseTitle || group.pillarIndex) {
       rows.push({
-        title: headerTitle,
-        courseTitle,
-        pillarIndex,
-        completedAt: '',
+        title: group.headerTitle,
+        courseTitle: group.courseTitle,
+        pillarIndex: group.pillarIndex,
+        completedAt: courseCompletedAt,
         cpeHours: '',
         isCourseHeader: true,
       });
-      lastGroupKey = groupKey;
     }
 
-    const sectionDates = (module.sections || [])
-      .filter((section) => section.isCompleted && section.completedAt)
-      .map((section) => new Date(String(section.completedAt)).getTime())
-      .filter((value) => Number.isFinite(value));
-    const latest =
-      sectionDates.length > 0 ? new Date(Math.max(...sectionDates)) : null;
-
-    rows.push({
-      title: module.moduleTitle || 'Module',
-      courseTitle,
-      pillarIndex,
-      completedAt: formatCompletedDate(latest),
-      cpeHours: formatCpeNumber(module.cpeHours),
+    group.modules.forEach((row) => {
+      rows.push({
+        title: row.title,
+        courseTitle: row.courseTitle,
+        pillarIndex: row.pillarIndex,
+        completedAt: row.completedAt,
+        cpeHours: row.cpeHours,
+      });
     });
   });
 

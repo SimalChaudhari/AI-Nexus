@@ -7498,7 +7498,7 @@ export function MembershipSignupDialog({
                 <>
                 <Typography variant="body2" color="text.secondary">
                   {isQuestionnaireSgPrPath(flowState)
-                    ? 'Please upload NRIC front and back screenshots, or digital NRIC full details, then run verification.'
+                    ? 'Your NRIC is requested solely to verify your eligibility for the course fee waiver available to Singapore Citizens and Permanent Residents. The information will only be used for this verification purpose.'
                     : 'Please upload NRIC images (front and back), then run AI verification.'}
                 </Typography>
                 <Stack spacing={1}>
