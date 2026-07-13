@@ -5,12 +5,19 @@ import { UserEntity } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
 import { OrderEntity } from '../order/order.entity';
 import { ReviewEntity } from '../review/review.entity';
+import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 import { DashboardService } from './dashboard.service';
 import { DashboardController } from './dashboard.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity, CourseEntity, OrderEntity, ReviewEntity]),
+    TypeOrmModule.forFeature([
+      UserEntity,
+      CourseEntity,
+      OrderEntity,
+      ReviewEntity,
+      CourseEnrollmentEntity,
+    ]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {},

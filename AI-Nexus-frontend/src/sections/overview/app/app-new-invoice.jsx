@@ -73,15 +73,26 @@ function RowItem({ row }) {
 
       <TableCell>{fCurrency(row.price)}</TableCell>
 
-      <TableCell>
-        {row.date ? new Date(row.date).toLocaleDateString() : '—'}
-      </TableCell>
+                      <TableCell>
+                        {row.date ? new Date(row.date).toLocaleDateString() : '—'}
+                      </TableCell>
 
-      <TableCell>
-        <Label variant="soft" color="success">
-          {row.status}
-        </Label>
-      </TableCell>
+                      <TableCell>
+                        <Label
+                          variant="soft"
+                          color={
+                            String(row.status).toLowerCase() === 'completed'
+                              ? 'success'
+                              : String(row.status).toLowerCase() === 'pending'
+                                ? 'warning'
+                                : String(row.status).toLowerCase() === 'failed'
+                                  ? 'error'
+                                  : 'default'
+                          }
+                        >
+                          {row.status}
+                        </Label>
+                      </TableCell>
     </TableRow>
   );
 }

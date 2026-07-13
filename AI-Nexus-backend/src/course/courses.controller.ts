@@ -1435,13 +1435,21 @@ export class CourseController {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
         // Backfill certificates for already-completed courses in case a prior progress update missed auto-issue.
+        // Isolate failures so one course/program race cannot wipe the whole Digital Badge page.
         const enrolledSet = await this.courseEnrollmentService.getEffectiveEnrolledCourseIdSet(userId);
         const touchedCourseIds = await this.courseSectionWatchProgressService.getUserTouchedCourseIds(userId);
         const candidateCourseIds = [...new Set([...enrolledSet, ...touchedCourseIds])];
         await Promise.all(
-            candidateCourseIds.map((courseId) =>
-                this.courseCertificateService.issueIfCourseCompleted(userId, courseId),
-            ),
+            candidateCourseIds.map(async (courseId) => {
+                try {
+                    await this.courseCertificateService.issueIfCourseCompleted(userId, courseId);
+                } catch (error) {
+                    console.error(
+                        `[certificates/my] backfill failed for user=${userId} course=${courseId}:`,
+                        error instanceof Error ? error.message : error,
+                    );
+                }
+            }),
         );
         const certificates = await this.courseCertificateService.getUserCertificates(userId);
         return response.status(HttpStatus.OK).json({ data: certificates });

@@ -64,6 +64,8 @@ export function SimpleSignInView() {
   const {
     handleSubmit,
     setValue,
+    setError,
+    clearErrors,
     formState: { isSubmitting },
   } = methods;
 
@@ -141,6 +143,7 @@ export function SimpleSignInView() {
       setErrorMsg('');
       setSuccessMsg('');
       setShowResendOption(false);
+      clearErrors(['identifier', 'password']);
       // Check if identifier is email or username
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.identifier);
       const { user } = await signInWithPassword({
@@ -166,9 +169,15 @@ export function SimpleSignInView() {
         'Login failed. Please check your credentials.';
       setErrorMsg(errorMessage);
 
-      // Check if error is about unverified account
       const msg = String(errorMessage || '').toLowerCase();
-      if (msg.includes('not verified') || msg.includes('verify')) {
+      if (msg.includes('no account found')) {
+        setError('identifier', { type: 'server', message: errorMessage });
+      } else if (msg.includes('incorrect password')) {
+        setError('password', { type: 'server', message: errorMessage });
+      }
+
+      // Check if error is about unverified account
+      if (msg.includes('not verified') || msg.includes('verify your account')) {
         setShowResendOption(true);
         const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.identifier);
         if (isEmail) {

@@ -1,6 +1,6 @@
 /**
  * Equal-weight course progress: each section + quiz + assessment counts as one unit.
- * Example: 3 sections + quiz + assessment = 5 units → each worth 20% when complete.
+ * Display percent = completed units / total units (e.g. 9/13 → 69%).
  */
 
 export function summarizeProgressUnits(units) {
@@ -9,12 +9,10 @@ export function summarizeProgressUnits(units) {
     return { percent: 0, completed: 0, total: 0, isComplete: false };
   }
   const completed = units.filter((u) => u.isDone).length;
-  const percentSum = units.reduce(
-    (sum, u) => sum + Math.max(0, Math.min(100, Number(u.percent) || 0)),
-    0
-  );
+  // Percent must match completed/total (e.g. 9/13 → 69%), not an average of
+  // in-progress watch % which looked inconsistent next to the item count.
   return {
-    percent: Math.round(percentSum / total),
+    percent: Math.round((completed / total) * 100),
     completed,
     total,
     isComplete: completed === total,
@@ -24,6 +22,19 @@ export function summarizeProgressUnits(units) {
 export function getModuleProgressFromUnits(units, moduleId) {
   const moduleUnits = (units || []).filter((u) => u.moduleId === moduleId);
   return summarizeProgressUnits(moduleUnits);
+}
+
+/** Lesson/section units only — used to unlock module quiz/assessment (not circular with quiz itself). */
+export function getModuleLessonProgressFromUnits(units, moduleId) {
+  const moduleUnits = (units || []).filter(
+    (u) => u.moduleId === moduleId && u.type === 'section'
+  );
+  return summarizeProgressUnits(moduleUnits);
+}
+
+export function areModuleLessonsComplete(units, moduleId) {
+  const stats = getModuleLessonProgressFromUnits(units, moduleId);
+  return stats.total > 0 && stats.completed >= stats.total;
 }
 
 /**

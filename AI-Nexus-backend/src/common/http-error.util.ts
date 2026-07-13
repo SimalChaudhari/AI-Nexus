@@ -153,10 +153,19 @@ export function normalizeHttpExceptionBody(
   }
 
   if (status === HttpStatus.UNAUTHORIZED) {
+    const trimmed = message.trim();
+    const isGeneric =
+      !trimmed ||
+      /^unauthorized$/i.test(trimmed) ||
+      /^unauthorized exception$/i.test(trimmed);
     return {
       statusCode: status,
       error: 'Unauthorized',
-      message: 'Your session has expired. Please sign in again.',
+      // Keep specific auth messages (login, SSO, banned, etc.). Only use the
+      // session-expired copy when the exception had no useful message.
+      message: isGeneric
+        ? 'Your session has expired. Please sign in again.'
+        : trimmed,
       code: 'UNAUTHORIZED',
       path,
       timestamp,

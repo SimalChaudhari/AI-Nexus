@@ -29,6 +29,14 @@ async function refreshAuthSession(axiosInstance) {
   return refreshPromise;
 }
 
+/**
+ * Proactively refresh the access-token cookie (single-flight).
+ * Used before unload/keepalive progress saves so cookies are less likely to be expired.
+ */
+export function ensureFreshAuthSession(axiosInstance) {
+  return refreshAuthSession(axiosInstance);
+}
+
 function shouldTrackApiLoading(config, method) {
   const isMutation = method !== 'get';
   return (isMutation || config?.trackApiLoading === true) && config?.skipApiLoading !== true;

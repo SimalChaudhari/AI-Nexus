@@ -19,12 +19,9 @@ export function summarizeProgressUnits(units: ProgressUnit[]): CourseOverallProg
     return { completionPercent: 0, completedUnits: 0, totalUnits: 0, isCompleted: false };
   }
   const completedUnits = units.filter((u) => u.isDone).length;
-  const percentSum = units.reduce(
-    (sum, u) => sum + Math.max(0, Math.min(100, Math.floor(Number(u.percent) || 0))),
-    0,
-  );
+  // Match the item counter (e.g. 9/13 → 69%). Do not average partial watch %.
   return {
-    completionPercent: Math.round(percentSum / totalUnits),
+    completionPercent: Math.round((completedUnits / totalUnits) * 100),
     completedUnits,
     totalUnits,
     isCompleted: completedUnits === totalUnits,

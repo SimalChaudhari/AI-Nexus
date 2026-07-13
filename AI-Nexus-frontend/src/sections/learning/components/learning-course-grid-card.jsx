@@ -13,6 +13,7 @@ import { Image } from 'src/components/image';
 import { RouterLink } from 'src/routes/components';
 import { LearningBundleRibbon } from './course-bundle-badge';
 import { getCourseDurationLabel } from 'src/utils/course-duration';
+import { ENV_DEFAULT_COURSE_IMAGE } from 'src/utils/course-default-image';
 import { LEARNING_ADD_TO_CART_ENABLED } from '../learning-feature-flags';
 
 const CARD_META_ROW_HEIGHT = 18;
@@ -213,23 +214,13 @@ export function LearningCourseGridCard({
           transition: 'box-shadow 0.28s ease, transform 0.28s ease, border-color 0.28s ease',
           ...(showFavorite
             ? {
-                animation: 'learningCourseCardBorderPulse 3s ease-in-out infinite',
-                '@keyframes learningCourseCardBorderPulse': {
-                  '0%, 100%': {
-                    borderColor: alpha(theme.palette.primary.main, 0.22),
-                    boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}`,
-                  },
-                  '50%': {
-                    borderColor: alpha(theme.palette.primary.main, 0.48),
-                    boxShadow: `0 0 16px -3px ${alpha(theme.palette.primary.main, 0.22)}`,
-                  },
-                },
+                borderColor: alpha(theme.palette.primary.main, 0.35),
+                boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.08)}`,
               }
             : {}),
           '@media (hover: hover)': {
             '&:hover': {
               zIndex: 1,
-              animation: 'none',
               transform: 'translateY(-4px)',
               borderColor: theme.palette.primary.main,
               boxShadow: `0 10px 28px -8px ${alpha(theme.palette.primary.main, 0.34)}`,
@@ -256,7 +247,12 @@ export function LearningCourseGridCard({
             ratio={CARD_IMAGE_RATIO}
             sx={{ width: '100%', display: 'block' }}
             onError={(e) => {
-              e.target.src = defaultCourseImage;
+              const img = e?.currentTarget || e?.target;
+              if (!img) return;
+              const fallback = defaultCourseImage || ENV_DEFAULT_COURSE_IMAGE;
+              const current = String(img.currentSrc || img.src || '');
+              if (!fallback || current.endsWith(fallback) || current === fallback) return;
+              img.src = fallback;
             }}
           />
           {course.isBundle ? <LearningBundleRibbon count={bundleCount} /> : null}

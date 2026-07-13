@@ -49,6 +49,7 @@ import {
   buildCourseProgressUnits,
   summarizeProgressUnits,
   getModuleProgressFromUnits,
+  areModuleLessonsComplete,
 } from 'src/sections/learning/utils/course-progress-units';
 import { getYouTubeEmbedUrl, getYouTubeVideoId, isYouTubeUrl } from 'src/utils/youtube';
 import { LessonImageViewer } from 'src/sections/learning/components/lesson-image-viewer';
@@ -1116,8 +1117,13 @@ function getModuleIdFromPseudoLessonId(lessonId) {
 }
 const swrOptions = {
   revalidateIfStale: true,
-  revalidateOnFocus: true,
+  // Avoid refetch storms while watching (focus/tab switches) — those 401 windows wipe UI progress.
+  revalidateOnFocus: false,
   revalidateOnReconnect: true,
+  keepPreviousData: true,
+  shouldRetryOnError: true,
+  errorRetryCount: 3,
+  errorRetryInterval: 1500,
 };
 
 const AUTO_NEXT_SECONDS = 5;
@@ -1357,7 +1363,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         }
         return data;
       })
-      .catch(() => null);
+      .catch(() => {
+        // Failed PUT is queued in section-progress-save for retry after refresh/online.
+        return null;
+      });
   }, [appendViewedSectionId]);
 
   const syncProgressOnFullDuration = useCallback((sectionId, lastPosition, durationSeconds, forceSync = false) => {
@@ -1936,6 +1945,18 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         // Seal in-flight coverage; video may keep playing in background (free credit allowed).
         flushSectionProgress(true, true);
       } else if (document.visibilityState === 'visible') {
+        // Retry any progress that failed while the tab was hidden / token was refreshing.
+        void courseService.flushPendingSectionProgress().then((rows) => {
+          if (!Array.isArray(rows) || rows.length === 0) return;
+          setLiveSectionProgressMap((prev) => {
+            const next = { ...prev };
+            rows.forEach(({ sectionId, data }) => {
+              if (!sectionId || !data) return;
+              next[sectionId] = mergeServerProgressIntoMap(next[sectionId], data);
+            });
+            return next;
+          });
+        });
         const sectionId = activeLessonIdRef.current;
         if (sectionId && isUuid(sectionId)) {
           captureActiveLessonProgressRef.current?.();
@@ -2046,11 +2067,18 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [hasEarnedCredential, playerContext?.programCpeSummary]);
 
   useEffect(() => {
+    // Only refresh CPE summary after a section is marked complete — not on every progress tick.
+    // Mutating player-context while watching caused 401 storms when the access token expired.
     if (!playerKey || !programCpeSummary) return undefined;
+    const completedIds = Object.entries(liveSectionProgressMap || {})
+      .filter(([, row]) => row?.isCompleted === true || row?.isWatched === true)
+      .map(([id]) => id);
+    if (completedIds.length === 0) return undefined;
+
     clearTimeout(programCpeRefreshRef.current);
     programCpeRefreshRef.current = setTimeout(() => {
       mutate(playerKey);
-    }, 2500);
+    }, 4000);
     return () => clearTimeout(programCpeRefreshRef.current);
   }, [liveSectionProgressMap, mutate, playerKey, programCpeSummary]);
 
@@ -2167,12 +2195,24 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   }, [course?.id]);
 
   const apiModules = playerContext?.modules || [];
+  const lastGoodModulesRef = useRef([]);
 
   const modules = useMemo(() => {
     const fromApi = getCourseModulesFromApi(apiModules);
-    if (fromApi && fromApi.length > 0) return fromApi;
+    if (fromApi && fromApi.length > 0) {
+      lastGoodModulesRef.current = fromApi;
+      return fromApi;
+    }
+    // Keep last good modules during auth refresh / SWR gaps so progress does not flash to 0%.
+    if (lastGoodModulesRef.current.length > 0) {
+      return lastGoodModulesRef.current;
+    }
     return getFallbackModules(playerContext?.course || course);
   }, [apiModules, playerContext?.course, course]);
+
+  useEffect(() => {
+    lastGoodModulesRef.current = [];
+  }, [course?.id]);
 
   const modulePracticeModuleMeta = useMemo(() => {
     if (!modulePracticeModuleId) return null;
@@ -2193,7 +2233,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   );
   flatLessonsRef.current = flatLessons;
 
-  // Admin replaced the video URL or backend cleared progress — drop stale local minutes/resume state.
+  // Admin replaced the video URL — drop stale local minutes/resume for that section only.
+  // Do NOT clear when server progress is briefly missing (401 → token refresh → retry). That
+  // used to zero the sidebar/coverage until player-context came back.
   useEffect(() => {
     if (!Array.isArray(flatLessons) || flatLessons.length === 0) return;
 
@@ -2207,27 +2249,11 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       const urlChanged = prevUrl !== undefined && prevUrl !== nextUrl;
       lessonVideoUrlRef.current[lesson.id] = nextUrl;
 
-      const sp = lesson.sectionProgress;
-      const hasServerProgress = Boolean(
-        sp?.isWatched === true ||
-          sp?.isCompleted === true ||
-          Number(sp?.watchedSeconds) > 0 ||
-          Number(sp?.lastPositionSeconds) > 0 ||
-          Number(sp?.completionPercent) > 0
-      );
-      const hasLocalProgress = Boolean(
-        sectionPlayerSnapshotRef.current[lesson.id] ||
-          liveSectionProgressMapRef.current[lesson.id] ||
-          viewedSectionIdsRef.current.includes(lesson.id)
-      );
+      if (!urlChanged) return;
 
-      if (urlChanged || (hasLocalProgress && !hasServerProgress)) {
-        clearedIds.push(lesson.id);
-        delete sectionPlayerSnapshotRef.current[lesson.id];
-        if (urlChanged) {
-          sectionVideoProgressResetRef.current.add(lesson.id);
-        }
-      }
+      clearedIds.push(lesson.id);
+      delete sectionPlayerSnapshotRef.current[lesson.id];
+      sectionVideoProgressResetRef.current.add(lesson.id);
     });
 
     if (clearedIds.length === 0) return;
@@ -2324,8 +2350,37 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     return () => window.clearInterval(id);
   }, [activeLessonId, flatLessons]);
 
-  // Progress is saved on pause, lesson switch, and tab close — not on a playing timer.
-  // (A 30s autosave caused frequent PUT /progress calls while the video was still playing.)
+  // Heartbeat: persist coverage every ~50s while playing so a crash/long session
+  // does not lose the last stretch. Pause / switch / unload still save immediately.
+  // Failed PUTs are queued and retried after token refresh or when the tab is online again.
+  const PROGRESS_HEARTBEAT_MS = 50_000;
+
+  useEffect(() => {
+    void courseService.flushPendingSectionProgress().then((rows) => {
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      setLiveSectionProgressMap((prev) => {
+        const next = { ...prev };
+        rows.forEach(({ sectionId, data }) => {
+          if (!sectionId || !data) return;
+          next[sectionId] = mergeServerProgressIntoMap(next[sectionId], data);
+        });
+        return next;
+      });
+    });
+  }, [course?.id]);
+
+  useEffect(() => {
+    if (!authenticated || !course?.id) return undefined;
+    const id = window.setInterval(() => {
+      const playing =
+        nativeVideoProgressRef.current.isPlaying ||
+        youtubeProgressRef.current.isPlaying ||
+        spotlightrProgressRef.current.isPlaying;
+      if (!playing) return;
+      flushSectionProgressRef.current?.(false, false);
+    }, PROGRESS_HEARTBEAT_MS);
+    return () => window.clearInterval(id);
+  }, [authenticated, course?.id]);
 
   /** Real section UUIDs from API only — used once to hydrate completed lessons (no N calls for mock/fallback content). */
   const apiSectionIdsForProgress = useMemo(() => {
@@ -3968,11 +4023,6 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     setSearchParams({ section: firstLesson.id }, { replace: true });
   };
 
-  const totalLessons = useMemo(
-    () => modules.reduce((acc, m) => acc + (m.lessons?.length || 0), 0),
-    [modules]
-  );
-
   const courseProgressUnits = useMemo(() => {
     const activeVideoLesson =
       activeLessonId &&
@@ -4063,12 +4113,18 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   const pendingPracticeHint = null;
 
-  const currentLessonNumber =
-    currentIndex >= 0 && totalLessons > 0 ? Math.min(totalLessons, currentIndex + 1) : 0;
   const moduleProgressById = useMemo(() => {
     const result = {};
     modules.forEach((module) => {
       result[module.id] = getModuleProgressFromUnits(courseProgressUnits, module.id);
+    });
+    return result;
+  }, [modules, courseProgressUnits]);
+
+  const moduleLessonsCompleteById = useMemo(() => {
+    const result = {};
+    modules.forEach((module) => {
+      result[module.id] = areModuleLessonsComplete(courseProgressUnits, module.id);
     });
     return result;
   }, [modules, courseProgressUnits]);
@@ -4088,9 +4144,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   const hasPillar2ProgrammeQualifyingModule = useMemo(
     () =>
       modules.some((mod) => {
-        const stats = moduleProgressById[mod.id];
-        const lessonsDone = stats && stats.total > 0 && stats.completed >= stats.total;
-        if (!lessonsDone) return false;
+        if (!moduleLessonsCompleteById[mod.id]) return false;
         const quizCount = quizCountByModuleId[mod.id] || 0;
         const assignmentCount = assignmentCountByModuleId[mod.id] || 0;
         if (quizCount === 0 || assignmentCount === 0) return false;
@@ -4099,7 +4153,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       }),
     [
       modules,
-      moduleProgressById,
+      moduleLessonsCompleteById,
       quizCountByModuleId,
       assignmentCountByModuleId,
       quizAssessmentScopeByModuleId,
@@ -4497,9 +4551,9 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 </Box>
               </Stack>
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: pendingPracticeHint ? 0.5 : 1.25, fontWeight: 500 }}>
-                {currentLessonNumber > 0
-                  ? `Current: lesson ${currentLessonNumber} of ${totalLessons}`
-                  : `Select a lesson to begin (${progressTotalUnits} items total)`}
+                {progressCompletedCount > 0 || currentStepIndex >= 0
+                  ? `Current: item ${Math.max(1, currentStepIndex + 1)} of ${progressTotalUnits}`
+                  : `Select an item to begin (${progressTotalUnits} total · sessions, quiz & assessment)`}
               </Typography>
               {pendingPracticeHint ? (
                 <Typography variant="caption" sx={{ color: 'warning.dark', display: 'block', mb: 1.25, fontWeight: 600 }}>
@@ -4981,13 +5035,13 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (isCourseEndModel) return null;
                       const modPracticeCount = quizCountByModuleId[section.id] || 0;
                       if (modPracticeCount === 0) return null;
-                      const stats = moduleProgressById[section.id];
                       const isQuizCompleted = isModuleQuizPerfect(section.id);
+                      const moduleLessonsDone = Boolean(moduleLessonsCompleteById[section.id]);
                       const moduleQuizAccessible =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
                         hasCredentialUnlock ||
                         isQuizCompleted ||
-                        (stats && stats.total > 0 && stats.completed >= stats.total);
+                        moduleLessonsDone;
                       const practiceUnlockedStyle = moduleQuizAccessible;
                       return (
                         <Tooltip
@@ -5113,18 +5167,18 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                       if (isCourseEndModel) return null;
                       const modAssignmentCount = assignmentCountByModuleId[section.id] || 0;
                       if (modAssignmentCount === 0) return null;
-                      const stats = moduleProgressById[section.id];
                       const modQuizCount = quizCountByModuleId[section.id] || 0;
                       const isQuizCompleted = isModuleQuizPerfect(section.id);
                       const isAssignmentCompleted = Boolean(
                         quizAssessmentScopeByModuleId[section.id]?.assignmentCompleted
                       );
+                      const moduleLessonsDone = Boolean(moduleLessonsCompleteById[section.id]);
                       const moduleVideosDone =
                         UNLOCK_QUIZ_ASSESSMENT_WITHOUT_VIDEO ||
                         hasCredentialUnlock ||
                         isQuizCompleted ||
                         isAssignmentCompleted ||
-                        (stats && stats.total > 0 && stats.completed >= stats.total);
+                        moduleLessonsDone;
                       const moduleQuizPassed =
                         modQuizCount === 0 || isModuleQuizPerfect(section.id);
                       const assessmentUnlocked =
