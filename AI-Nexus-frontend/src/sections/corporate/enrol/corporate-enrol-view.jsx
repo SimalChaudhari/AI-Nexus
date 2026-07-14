@@ -7,7 +7,6 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Typography from '@mui/material/Typography';
 
 import { CORP } from '../corporate-theme';
-import { useCorporateOverview } from '../use-corporate-data';
 import { CorpBtn, CorpCard, CorpPageHeader } from '../corporate-ui';
 
 // ----------------------------------------------------------------------
@@ -43,14 +42,13 @@ function FieldLabel({ label, children, wide }) {
 // ----------------------------------------------------------------------
 
 export function CorporateEnrolView() {
-  const { data } = useCorporateOverview();
-  const companyCode = data?.companyCode || '—';
-
   return (
     <Box>
       <CorpPageHeader
-        title="Enrol Staff"
-        subtitle={`Enrol learners individually or in bulk. Company code: ${companyCode}`}
+        eyebrow="Staff Enrolment"
+        title="Enrol learners individually or in bulk"
+        subtitle="Staff may self-register using the corporate reference ID. HR admins may also enrol staff through this portal by entering the required learner details."
+        titleSx={{ fontSize: { xs: 24, md: 32 } }}
       />
 
       <Box
@@ -187,17 +185,33 @@ export function CorporateEnrolView() {
             <Typography sx={{ mb: 1, color: CORP.ink, fontWeight: 700 }}>
               Before uploading a bulk enrolment file, please ensure that:
             </Typography>
-            <Box component="ul" sx={{ pl: 2.5, lineHeight: 1.8, m: 0 }}>
-              <li>The file includes only Singaporean/Permanent Resident learners and ISCA Members.</li>
-              <li>
+            <Box
+              component="ul"
+              sx={{
+                pl: 2.75,
+                m: 0,
+                lineHeight: 1.8,
+                listStyleType: 'disc',
+                listStylePosition: 'outside',
+                '& li': {
+                  display: 'list-item',
+                  pl: 0.5,
+                  mb: 0.5,
+                },
+              }}
+            >
+              <Box component="li">
+                The file includes only Singaporean/Permanent Resident learners and ISCA Members.
+              </Box>
+              <Box component="li">
                 For Singaporean/Permanent Resident learners, provide the NRIC number and select either
                 Pink NRIC or Blue NRIC.
-              </li>
-              <li>For ISCA Members, provide the valid ISCA membership number.</li>
-              <li>
+              </Box>
+              <Box component="li">For ISCA Members, provide the valid ISCA membership number.</Box>
+              <Box component="li">
                 Do not include foreigners who are not ISCA members in the bulk upload. Please email
                 ISCA separately for a quotation and enrolment arrangement.
-              </li>
+              </Box>
             </Box>
           </Box>
 

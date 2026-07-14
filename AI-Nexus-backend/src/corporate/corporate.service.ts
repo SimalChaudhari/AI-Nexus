@@ -224,23 +224,44 @@ export class CorporateService {
     return result;
   }
 
-  async getCertificates(companyCodeRaw?: string) {
-    const companyCode = await this.resolveCompanyCode(companyCodeRaw);
+  async getCertificates(params: {
+    companyCode?: string;
+    page?: number;
+    limit?: number;
+    availableOnly?: boolean;
+  }) {
+    const companyCode = await this.resolveCompanyCode(params.companyCode);
     const learners = await this.buildLearners(companyCode);
+    let rows = learners.map((l) => ({
+      userId: l.userId,
+      name: l.name,
+      email: l.email,
+      status: l.status,
+      certificateAvailable: l.cert,
+      certificateId: l.certificateId,
+      certificateNo: l.certificateNo,
+      pending: l.pending,
+      nextAction: l.cert ? 'No pending item' : l.pending,
+    }));
+
+    const availableTotal = rows.filter((r) => r.certificateAvailable && r.certificateId).length;
+    if (params.availableOnly) {
+      rows = rows.filter((r) => r.certificateAvailable && r.certificateId);
+    }
+
+    const page = Number(params.page) > 0 ? Number(params.page) : 1;
+    const limit = Number(params.limit) > 0 ? Math.min(Number(params.limit), 100) : 5;
+    const totalItems = rows.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit) || 1);
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    const data = rows.slice(start, start + limit);
 
     return {
       companyCode,
-      data: learners.map((l) => ({
-        userId: l.userId,
-        name: l.name,
-        email: l.email,
-        status: l.status,
-        certificateAvailable: l.cert,
-        certificateId: l.certificateId,
-        certificateNo: l.certificateNo,
-        pending: l.pending,
-        nextAction: l.cert ? 'No pending item' : l.pending,
-      })),
+      data,
+      availableTotal,
+      pagination: { page: safePage, limit, totalItems, totalPages },
     };
   }
 

@@ -83,11 +83,21 @@ export async function exportCorporateLearnersCsv({ companyCode, q, status } = {}
   }
 }
 
-export async function getCorporateCertificates(companyCode) {
+export async function getCorporateCertificates({
+  companyCode,
+  page,
+  limit,
+  availableOnly,
+} = {}) {
   const response = await axios.get('/corporate/certificates', {
-    params: companyCode ? { companyCode } : undefined,
+    params: {
+      ...(companyCode ? { companyCode } : {}),
+      ...(page ? { page } : {}),
+      ...(limit != null ? { limit } : {}),
+      ...(availableOnly ? { availableOnly: true } : {}),
+    },
   });
-  return response.data?.data ?? response.data;
+  return response.data;
 }
 
 export async function downloadCorporateCertificatePdf(certificateId, companyCode) {

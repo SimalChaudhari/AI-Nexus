@@ -1,4 +1,5 @@
 ﻿import { useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
@@ -6,7 +7,11 @@ import Typography from '@mui/material/Typography';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
-import { downloadCorporateCertificateFile } from 'src/services/corporate.service';
+import {
+  downloadCorporateCertificateFile,
+  getCorporateCertificates,
+} from 'src/services/corporate.service';
+import { useAuthContext } from 'src/auth/hooks';
 
 import { CORP } from '../corporate-theme';
 import { useCorporateCertificates, useCorporateLearners } from '../use-corporate-data';
@@ -22,8 +27,28 @@ import {
 
 // ----------------------------------------------------------------------
 
+const PAGE_SIZE = 5;
+
+function readParam(params, key, fallback = '') {
+  return String(params.get(key) || fallback);
+}
+
 export function CorporateReportsView() {
-  const { data: certificates, loading: certLoading, error: certError } = useCorporateCertificates();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuthContext();
+  const isCorporate = String(user?.role || '').toLowerCase() === 'corporate';
+
+  const page = Math.max(1, Number(readParam(searchParams, 'page', '1')) || 1);
+
+  const {
+    data: certificates,
+    pagination,
+    availableTotal,
+    loading: certLoading,
+    error: certError,
+    companyCode,
+  } = useCorporateCertificates({ page, limit: PAGE_SIZE });
+
   const { data: learners, loading: learnersLoading, error: learnersError } = useCorporateLearners({
     limit: 100,
     page: 1,
@@ -34,12 +59,37 @@ export function CorporateReportsView() {
   const loading = certLoading || learnersLoading;
   const error = certError || learnersError;
 
+  const updateParams = useCallback(
+    (patch) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          Object.entries(patch).forEach(([key, value]) => {
+            if (value == null || value === '') next.delete(key);
+            else next.set(key, String(value));
+          });
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const handleDownloadAll = useCallback(async () => {
-    const available = certificates.filter((c) => c.certificateAvailable && c.certificateId);
-    if (!available.length || bulkDownloading) return;
+    if (!availableTotal || bulkDownloading) return;
     setDownloadError('');
     setBulkDownloading(true);
     try {
+      const result = await getCorporateCertificates({
+        companyCode: isCorporate ? undefined : companyCode || undefined,
+        page: 1,
+        limit: Math.min(Math.max(availableTotal, 1), 100),
+        availableOnly: true,
+      });
+      const available = Array.isArray(result?.data) ? result.data : [];
+      if (!available.length) return;
+
       for (const row of available) {
         const safeName = String(row?.name || 'learner').replace(/[^a-z0-9]+/gi, '-');
         // eslint-disable-next-line no-await-in-loop
@@ -53,7 +103,7 @@ export function CorporateReportsView() {
     } finally {
       setBulkDownloading(false);
     }
-  }, [certificates, bulkDownloading]);
+  }, [availableTotal, bulkDownloading, companyCode, isCorporate]);
 
   const exportProgressCsv = () => {
     const fmt = (n) => {
@@ -102,13 +152,21 @@ export function CorporateReportsView() {
 
   if (loading && !certificates.length && !learners.length) return <LoadingScreen />;
 
-  const availableCerts = certificates.filter((c) => c.certificateAvailable && c.certificateId);
+  const totalItems = Number(pagination?.totalItems) || 0;
+  const totalPages = Number(pagination?.totalPages) || 1;
+  const currentPage = Number(pagination?.page) || page;
+  const from = totalItems === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const to = Math.min(currentPage * PAGE_SIZE, totalItems);
+  const pageLabel =
+    totalItems === 0 ? 'No learners' : `Showing ${from}–${to} of ${totalItems} learners`;
 
   return (
     <Box>
       <CorpPageHeader
-        title="Reports & Certificates"
-        subtitle="Download CSV reports, certificates, and send reminders."
+        eyebrow="Reports & Certificates"
+        title="Download evidence and act on gaps"
+        subtitle="Give HR users a clear area for CSV exports, certificate downloads, reminders and completion evidence."
+        titleSx={{ fontSize: { xs: 24, md: 32 } }}
       />
 
       {error ? (
@@ -152,13 +210,13 @@ export function CorporateReportsView() {
           <CorpBtn
             variant="ghost"
             fullWidth
-            disabled={!availableCerts.length || bulkDownloading}
+            disabled={!availableTotal || bulkDownloading}
             onClick={handleDownloadAll}
           >
             {bulkDownloading
               ? 'Downloading...'
-              : availableCerts.length
-                ? `Download available certificates (${availableCerts.length})`
+              : availableTotal
+                ? `Download available certificates (${availableTotal})`
                 : 'No certificates available yet'}
           </CorpBtn>
         </CorpCard>
@@ -218,6 +276,38 @@ export function CorporateReportsView() {
                 ))
               )}
             </tbody>
+          </Box>
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 1.5,
+            mt: 2,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Typography sx={{ color: CORP.muted, fontSize: 13 }}>{pageLabel}</Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <CorpBtn
+              variant="ghost"
+              disabled={currentPage <= 1 || certLoading}
+              onClick={() => updateParams({ page: currentPage - 1 })}
+            >
+              Previous
+            </CorpBtn>
+            <Typography sx={{ color: CORP.ink, fontSize: 13, fontWeight: 700, px: 1 }}>
+              Page {currentPage} / {totalPages}
+            </Typography>
+            <CorpBtn
+              variant="ghost"
+              disabled={currentPage >= totalPages || certLoading}
+              onClick={() => updateParams({ page: currentPage + 1 })}
+            >
+              Next
+            </CorpBtn>
           </Box>
         </Box>
       </CorpCard>

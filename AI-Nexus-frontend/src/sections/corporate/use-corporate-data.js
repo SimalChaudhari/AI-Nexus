@@ -113,11 +113,18 @@ export function useCorporateLearners({
   };
 }
 
-export function useCorporateCertificates() {
+export function useCorporateCertificates({ page = 1, limit = 5 } = {}) {
   const companyCode = useCorporateCompanyCode();
   const { user } = useAuthContext();
   const isCorporate = String(user?.role || '').toLowerCase() === 'corporate';
   const [data, setData] = useState([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit,
+    totalItems: 0,
+    totalPages: 1,
+  });
+  const [availableTotal, setAvailableTotal] = useState(0);
   const [resolvedCompanyCode, setResolvedCompanyCode] = useState(companyCode);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -126,20 +133,41 @@ export function useCorporateCertificates() {
     setLoading(true);
     setError('');
     try {
-      const result = await getCorporateCertificates(isCorporate ? undefined : companyCode || undefined);
+      const result = await getCorporateCertificates({
+        companyCode: isCorporate ? undefined : companyCode || undefined,
+        page,
+        limit,
+      });
       setData(Array.isArray(result?.data) ? result.data : []);
+      setPagination({
+        page: Number(result?.pagination?.page) || page,
+        limit: Number(result?.pagination?.limit) || limit,
+        totalItems: Number(result?.pagination?.totalItems) || 0,
+        totalPages: Number(result?.pagination?.totalPages) || 1,
+      });
+      setAvailableTotal(Number(result?.availableTotal) || 0);
       setResolvedCompanyCode(result?.companyCode || companyCode);
     } catch (err) {
       setData([]);
+      setPagination({ page: 1, limit, totalItems: 0, totalPages: 1 });
+      setAvailableTotal(0);
       setError(err?.message || 'Failed to load certificates');
     } finally {
       setLoading(false);
     }
-  }, [companyCode, isCorporate]);
+  }, [companyCode, isCorporate, page, limit]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  return { data, loading, error, reload: load, companyCode: resolvedCompanyCode };
+  return {
+    data,
+    pagination,
+    availableTotal,
+    loading,
+    error,
+    reload: load,
+    companyCode: resolvedCompanyCode,
+  };
 }

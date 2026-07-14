@@ -93,9 +93,22 @@ export class CorporateController {
   @Roles(UserRole.Corporate, UserRole.Admin)
   @ApiOperation({ summary: 'Corporate certificate readiness' })
   @ApiQuery({ name: 'companyCode', required: false })
-  async getCertificates(@Req() req: AuthedRequest, @Query('companyCode') companyCode?: string) {
-    const data = await this.corporateService.getCertificates(this.resolveCompanyCode(req, companyCode));
-    return { data };
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'availableOnly', required: false })
+  async getCertificates(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('availableOnly') availableOnly?: string,
+  ) {
+    return this.corporateService.getCertificates({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      availableOnly: availableOnly === 'true' || availableOnly === '1',
+    });
   }
 
   @Get('certificates/:certificateId/pdf')
