@@ -1,13 +1,18 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
+import Drawer from '@mui/material/Drawer';
+import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+
+import { Iconify } from 'src/components/iconify';
 
 import { paths } from 'src/routes/paths';
 import { usePathname } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { CORP } from 'src/sections/corporate/corporate-theme';
+import { CorpAdminChip } from 'src/sections/corporate/corporate-ui';
 import { useCorporateOverview } from 'src/sections/corporate/use-corporate-data';
 
 // ----------------------------------------------------------------------
@@ -19,12 +24,12 @@ const NAV_ITEMS = [
   { title: 'Reports & Certificates', path: paths.corporate.reports, icon: '⇩' },
 ];
 
+const SIDEBAR_WIDTH = 285;
+
 // ----------------------------------------------------------------------
 
-function CorporateSidebar() {
+function CorporateSidebarContent({ companyCode, onNavigate }) {
   const pathname = usePathname();
-  const { data } = useCorporateOverview();
-  const companyCode = data?.companyCode || '—';
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -40,18 +45,15 @@ function CorporateSidebar() {
 
   return (
     <Box
-      component="aside"
       sx={{
-        background: 'linear-gradient(180deg,#061833,#08234d 70%,#0a346a)',
-        color: 'white',
-        p: '28px 22px',
-        position: { xs: 'relative', md: 'sticky' },
-        top: 0,
-        height: { xs: 'auto', md: '100vh' },
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        p: { xs: '20px 16px', md: '28px 22px' },
         overflowY: 'auto',
       }}
     >
-      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 3.75 }}>
+      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: { xs: 2.5, md: 3.75 } }}>
         <Box
           sx={{
             width: 46,
@@ -63,11 +65,12 @@ function CorporateSidebar() {
             fontWeight: 900,
             boxShadow: '0 12px 30px rgba(22,184,255,.32)',
             fontSize: 14,
+            flexShrink: 0,
           }}
         >
           AI
         </Box>
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>AI Nexus</Typography>
           <Typography sx={{ display: 'block', color: '#aec8ec', fontSize: 12, mt: 0.5 }}>
             Corporate Portal
@@ -84,7 +87,7 @@ function CorporateSidebar() {
           fontWeight: 800,
           mx: 1.5,
           mb: 1.25,
-          mt: 3,
+          mt: { xs: 1, md: 3 },
         }}
       >
         Workspace
@@ -100,6 +103,7 @@ function CorporateSidebar() {
             key={item.path}
             component={RouterLink}
             href={item.path}
+            onClick={() => onNavigate?.()}
             sx={{
               display: 'flex',
               alignItems: 'center',
@@ -123,6 +127,7 @@ function CorporateSidebar() {
                 display: 'grid',
                 placeItems: 'center',
                 fontSize: 14,
+                flexShrink: 0,
               }}
             >
               {item.icon}
@@ -134,7 +139,8 @@ function CorporateSidebar() {
 
       <Box
         sx={{
-          mt: 3.5,
+          mt: 'auto',
+          pt: 3.5,
           border: '1px solid rgba(255,255,255,.16)',
           borderRadius: '22px',
           background: 'linear-gradient(135deg,rgba(22,184,255,.18),rgba(43,214,163,.14))',
@@ -149,19 +155,31 @@ function CorporateSidebar() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            gap: 1,
             bgcolor: '#fff',
             color: CORP.navy,
             borderRadius: '14px',
             p: '11px 12px',
+            minWidth: 0,
           }}
         >
-          <Typography component="strong" sx={{ fontWeight: 800, fontSize: 14 }}>
+          <Typography
+            component="strong"
+            sx={{
+              fontWeight: 800,
+              fontSize: 14,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
             {companyCode}
           </Typography>
           <Typography
             component="span"
             onClick={handleCopy}
-            sx={{ color: CORP.blue, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+            sx={{ color: CORP.blue, fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
           >
             {copied ? 'Copied' : 'Copy'}
           </Typography>
@@ -174,20 +192,114 @@ function CorporateSidebar() {
 // ----------------------------------------------------------------------
 
 export function CorporateLayout({ children }) {
+  const pathname = usePathname();
+  const { data } = useCorporateOverview();
+  const companyCode = data?.companyCode || '—';
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const sidebarSx = {
+    background: 'linear-gradient(180deg,#061833,#08234d 70%,#0a346a)',
+    color: 'white',
+  };
+
   return (
     <Box
       sx={{
         display: 'grid',
-        gridTemplateColumns: { xs: '1fr', md: '285px minmax(0,1fr)' },
+        gridTemplateColumns: { xs: '1fr', md: `${SIDEBAR_WIDTH}px minmax(0,1fr)` },
         minHeight: '100vh',
         color: CORP.ink,
         background: `radial-gradient(circle at top left, rgba(22,184,255,.16), transparent 30%), ${CORP.bg}`,
         fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      <CorporateSidebar />
-      <Box component="main" sx={{ p: { xs: 2, md: '30px' }, minWidth: 0 }}>
-        {children}
+      {/* Desktop sidebar */}
+      <Box
+        component="aside"
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          overflow: 'hidden',
+          ...sidebarSx,
+        }}
+      >
+        <CorporateSidebarContent companyCode={companyCode} />
+      </Box>
+
+      {/* Mobile drawer */}
+      <Drawer
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        variant="temporary"
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          '& .MuiDrawer-paper': {
+            width: Math.min(SIDEBAR_WIDTH, 320),
+            boxSizing: 'border-box',
+            ...sidebarSx,
+          },
+        }}
+      >
+        <CorporateSidebarContent
+          companyCode={companyCode}
+          onNavigate={() => setMobileOpen(false)}
+        />
+      </Drawer>
+
+      <Box
+        component="main"
+        sx={{
+          minWidth: 0,
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Mobile top bar */}
+        <Box
+          sx={{
+            display: { xs: 'flex', md: 'none' },
+            alignItems: 'center',
+            gap: 1,
+            px: 1.25,
+            py: 1,
+            borderBottom: `1px solid ${CORP.line}`,
+            bgcolor: 'rgba(255,255,255,.92)',
+            backdropFilter: 'blur(8px)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            minWidth: 0,
+          }}
+        >
+          <IconButton
+            aria-label="Open menu"
+            onClick={() => setMobileOpen(true)}
+            sx={{ color: CORP.navy, flexShrink: 0 }}
+          >
+            <Iconify icon="mingcute:menu-line" width={22} />
+          </IconButton>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography sx={{ fontWeight: 800, fontSize: 15, color: CORP.navy, lineHeight: 1.2 }}>
+              AI Nexus
+            </Typography>
+            <Typography sx={{ fontSize: 11, color: CORP.muted }}>Corporate Portal</Typography>
+          </Box>
+          <Box sx={{ flexShrink: 0 }}>
+            <CorpAdminChip compact />
+          </Box>
+        </Box>
+
+        <Box sx={{ p: { xs: 1.75, sm: 2.25, md: '30px' }, minWidth: 0, flex: 1 }}>
+          {children}
+        </Box>
       </Box>
     </Box>
   );

@@ -96,6 +96,15 @@ export class AuthTokenService {
       return { accessToken, refreshToken: null };
     }
 
+    // Record platform login time (skip deferred/membership-only tokens).
+    if (user?.id) {
+      try {
+        await this.userRepository.update({ id: user.id }, { lastLoginAt: new Date() });
+      } catch (err) {
+        console.error('[Auth] Failed to update lastLoginAt (non-fatal):', err);
+      }
+    }
+
     const refreshToken = await this.createRefreshToken(user.id, options?.req);
     if (res) {
       setAuthCookies(res, accessToken, refreshToken);

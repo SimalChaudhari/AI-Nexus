@@ -1,9 +1,17 @@
-import { useRef } from 'react';
+import { useRef, useState, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
+import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
+import Popper from '@mui/material/Popper';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 
+import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
+
+import { useAuthContext } from 'src/auth/hooks';
+import { signOut } from 'src/auth/context/jwt';
 import { downloadCorporateCertificateFile } from 'src/services/corporate.service';
 
 import { CORP, STATUS_PILL_SX, statusTone } from './corporate-theme';
@@ -16,9 +24,10 @@ export function CorpCard({ children, sx, ...other }) {
       sx={{
         bgcolor: CORP.card,
         border: `1px solid ${CORP.line}`,
-        borderRadius: CORP.radius,
-        p: '22px',
+        borderRadius: { xs: '18px', md: CORP.radius },
+        p: { xs: '16px', sm: '20px', md: '22px' },
         boxShadow: CORP.shadow,
+        minWidth: 0,
         ...sx,
       }}
       {...other}
@@ -107,46 +116,202 @@ export function CorpProgressBar({ pillar, textType = 'short' }) {
   );
 }
 
-export function CorpAdminChip() {
+export function CorpAdminChip({ compact = false }) {
+  const router = useRouter();
+  const { user, checkUserSession } = useAuthContext();
+  
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const closeTimerRef = useRef(null);
+
+  const displayName =
+    [user?.firstname, user?.lastname].filter(Boolean).join(' ').trim() ||
+    user?.displayName ||
+    user?.username ||
+    'HR Admin';
+  const email = String(user?.email || '').trim() || 'Corporate account';
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const openMenu = (el) => {
+    clearCloseTimer();
+    setAnchorEl(el);
+  };
+
+  const scheduleClose = () => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => setAnchorEl(null), 180);
+  };
+
+  const handleLogout = useCallback(async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await signOut();
+      await checkUserSession?.();
+      router.replace(
+        `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.corporate.overview)}`
+      );
+    } catch (err) {
+      console.error('Corporate logout failed:', err);
+      setLoggingOut(false);
+    }
+  }, [checkUserSession, loggingOut, router]);
+
+  const open = Boolean(anchorEl);
+
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1.25,
-        bgcolor: '#fff',
-        border: `1px solid ${CORP.line}`,
-        borderRadius: 999,
-        px: '13px',
-        py: '9px',
-        boxShadow: CORP.shadow,
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <>
       <Box
+        onMouseEnter={(e) => openMenu(e.currentTarget)}
+        onMouseLeave={scheduleClose}
+        onClick={(e) => {
+          if (open) {
+            setAnchorEl(null);
+            return;
+          }
+          openMenu(e.currentTarget);
+        }}
         sx={{
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          background: `linear-gradient(135deg, ${CORP.blue}, ${CORP.cyan})`,
-          display: 'grid',
-          placeItems: 'center',
-          color: 'white',
-          fontWeight: 900,
-          fontSize: 13,
+          display: 'flex',
+          alignItems: 'center',
+          gap: compact ? 0 : 1.25,
+          bgcolor: compact ? 'transparent' : '#fff',
+          border: compact ? 'none' : `1px solid ${CORP.line}`,
+          borderRadius: 999,
+          px: compact ? 0 : { xs: '10px', sm: '13px' },
+          py: compact ? 0 : '9px',
+          boxShadow: compact ? 'none' : CORP.shadow,
+          whiteSpace: 'nowrap',
+          cursor: 'pointer',
+          maxWidth: '100%',
+          minWidth: 0,
+          width: 'auto',
+          alignSelf: { xs: 'stretch', md: 'flex-start' },
         }}
       >
-        HR
+        <Box
+          sx={{
+            width: compact ? 36 : 36,
+            height: compact ? 36 : 36,
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${CORP.blue}, ${CORP.cyan})`,
+            display: 'grid',
+            placeItems: 'center',
+            color: 'white',
+            fontWeight: 900,
+            fontSize: compact ? 12 : 13,
+            flexShrink: 0,
+            boxShadow: compact ? CORP.shadow : 'none',
+          }}
+        >
+          {String(user?.role || '').toLowerCase() === 'corporate' ? 'HR' : 'User'}
+        </Box>
+        {!compact ? (
+          <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+            <Typography
+              sx={{
+                fontWeight: 700,
+                fontSize: { xs: 13, sm: 14 },
+                color: CORP.ink,
+                lineHeight: 1.2,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+              noWrap
+            >
+              {displayName}
+            </Typography>
+            <Typography
+              variant="caption"
+              title={email}
+              sx={{
+                display: 'block',
+                color: 'text.secondary',
+                mt: 0.15,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontSize: 12,
+              }}
+            >
+              {email}
+            </Typography>
+          </Box>
+        ) : null}
       </Box>
-      <Box>
-        <Typography sx={{ fontWeight: 700, fontSize: 14, color: CORP.ink, lineHeight: 1.2 }}>
-          HR Admin
-        </Typography>
-        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.25 }}>
-          Corporate account
-        </Typography>
-      </Box>
-    </Box>
+
+      <Popper
+        open={open}
+        anchorEl={anchorEl}
+        placement="bottom-end"
+        modifiers={[
+          { name: 'offset', options: { offset: [0, 8] } },
+          { name: 'preventOverflow', options: { padding: 12 } },
+        ]}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip, maxWidth: 'calc(100vw - 24px)' }}
+      >
+        <Paper
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+          elevation={0}
+          sx={{
+            minWidth: 260,
+            maxWidth: 340,
+            p: 1.75,
+            borderRadius: '16px',
+            border: `1px solid ${CORP.line}`,
+            boxShadow: CORP.shadow,
+            bgcolor: '#fff',
+          }}
+        >
+          <Typography sx={{ fontWeight: 800, fontSize: 14, color: CORP.navy, lineHeight: 1.3 }} noWrap>
+            {displayName}
+          </Typography>
+          <Typography
+            variant="body2"
+            title={email}
+            sx={{
+              color: 'text.secondary',
+              mt: 0.35,
+              mb: 1.5,
+              fontSize: 13,
+              lineHeight: 1.4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {email}
+          </Typography>
+          <Button
+            fullWidth
+            size="small"
+            variant="outlined"
+            color="inherit"
+            disabled={loggingOut}
+            onClick={handleLogout}
+            startIcon={
+              loggingOut ? <CircularProgress size={14} color="inherit" /> : null
+            }
+            sx={{
+              borderRadius: '12px',
+              fontWeight: 700,
+              borderColor: CORP.line,
+              color: CORP.blue,
+              '&:hover': { borderColor: CORP.blue, bgcolor: '#eef5ff' },
+            }}
+          >
+            {loggingOut ? 'Signing out…' : 'Sign out'}
+          </Button>
+        </Paper>
+      </Popper>
+    </>
   );
 }
 
@@ -156,13 +321,15 @@ export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
       sx={{
         display: 'flex',
         justifyContent: 'space-between',
-        gap: 2.75,
+        gap: { xs: 1.5, md: 2.75 },
         alignItems: 'flex-start',
-        mb: 3,
-        flexDirection: { xs: 'column', md: 'row' },
+        mb: { xs: 2, md: 3 },
+        flexDirection: { xs: 'column', sm: 'row' },
+        width: '100%',
+        minWidth: 0,
       }}
     >
-      <Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
         {eyebrow ? (
           <Typography
             sx={{
@@ -170,7 +337,7 @@ export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               fontWeight: 900,
-              fontSize: 12,
+              fontSize: { xs: 11, md: 12 },
             }}
           >
             {eyebrow}
@@ -179,24 +346,35 @@ export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
         <Typography
           component="h1"
           sx={{
-            fontSize: { xs: 30, md: 46 },
+            fontSize: { xs: 22, sm: 26, md: 46 },
             letterSpacing: '-0.05em',
             color: CORP.navy,
             my: 1,
             fontWeight: 800,
-            lineHeight: 1.1,
+            lineHeight: 1.15,
+            wordBreak: 'break-word',
             ...titleSx,
           }}
         >
           {title}
         </Typography>
         {subtitle ? (
-          <Typography sx={{ color: CORP.muted, lineHeight: 1.55, m: 0, maxWidth: 880 }}>
+          <Typography
+            sx={{
+              color: CORP.muted,
+              lineHeight: 1.55,
+              m: 0,
+              maxWidth: 880,
+              fontSize: { xs: 13, md: 14 },
+            }}
+          >
             {subtitle}
           </Typography>
         ) : null}
       </Box>
-      <CorpAdminChip />
+      <Box sx={{ display: { xs: 'none', md: 'block' }, flexShrink: 0 }}>
+        <CorpAdminChip />
+      </Box>
     </Box>
   );
 }
@@ -339,13 +517,13 @@ export function corpTableSx(minWidth = 760) {
   return {
     width: '100%',
     borderCollapse: 'collapse',
-    minWidth,
+    minWidth: { xs: Math.min(minWidth, 640), sm: minWidth },
     '& td': {
-      p: '15px 12px',
+      p: { xs: '12px 10px', md: '15px 12px' },
       borderBottom: `1px solid ${CORP.line}`,
       verticalAlign: 'top',
       color: CORP.ink,
-      fontSize: 14,
+      fontSize: { xs: 13, md: 14 },
     },
     '& tr:last-child td': { borderBottom: 0 },
     '& small': {

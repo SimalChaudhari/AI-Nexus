@@ -108,6 +108,8 @@ export function CorporateProgressView() {
       '& fieldset': { borderColor: CORP.line },
     },
     minWidth: { xs: '100%', sm: 220 },
+    flex: { xs: '1 1 100%', sm: '1 1 220px' },
+    maxWidth: { xs: '100%', md: 320 },
   };
 
   const exportCsv = useCallback(async () => {
@@ -163,9 +165,10 @@ export function CorporateProgressView() {
             display: 'flex',
             justifyContent: 'space-between',
             gap: 1.5,
-            alignItems: 'center',
+            alignItems: { xs: 'stretch', sm: 'center' },
             mb: 1.75,
             flexWrap: 'wrap',
+            flexDirection: { xs: 'column', sm: 'row' },
           }}
         >
           <TextField
@@ -205,7 +208,13 @@ export function CorporateProgressView() {
               </MenuItem>
             ))}
           </TextField>
-          <CorpBtn variant="blue" onClick={exportCsv} disabled={exporting}>
+          <CorpBtn
+            variant="blue"
+            onClick={exportCsv}
+            disabled={exporting}
+            fullWidth
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
+          >
             {exporting ? 'Exporting...' : 'Export CSV'}
           </CorpBtn>
         </Box>
@@ -239,6 +248,8 @@ export function CorporateProgressView() {
                         {s.email}
                         <br />
                         {s.department} - {s.role}
+                        <br />
+                        Last login: {s.lastLogin || s.lastActive || 'Never'}
                       </small>
                     </td>
                     <td>
@@ -261,7 +272,6 @@ export function CorporateProgressView() {
                     </td>
                     <td>
                       <CorpPill status={s.status} />
-                      <small>Last active: {s.lastActive}</small>
                     </td>
                     <td>
                       <Box sx={{ maxWidth: 300, lineHeight: 1.45 }}>{s.pending}</Box>

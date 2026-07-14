@@ -246,6 +246,21 @@ export function SimpleSignInView() {
       <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
         Access your dashboard, courses, and AI tools securely.
       </Typography>
+
+      {showCorporateForm ? (
+        <Button
+          fullWidth
+          size="large"
+          variant="outlined"
+          color="primary"
+          component={RouterLink}
+          href={paths.auth.simple.corporateSignUp}
+          startIcon={<Iconify icon="solar:buildings-2-bold-duotone" width={18} />}
+          sx={{ mt: 1.5, fontWeight: 700, maxWidth: 420 }}
+        >
+          Corporate HR Account
+        </Button>
+      ) : null}
     </Stack>
   );
 
@@ -411,20 +426,21 @@ export function SimpleSignInView() {
         Sign in
       </LoadingButton>
 
-      <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
+      {/* <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
         Demo: corporate.hr@ainexus.demo / Corporate@123
-      </Typography>
+      </Typography> */}
 
       <Button
         fullWidth
         size="large"
         variant="outlined"
         color="inherit"
-        disabled
+        component={RouterLink}
+        href={`${paths.auth.oauth.start}?returnTo=${encodeURIComponent(paths.corporate.overview)}`}
         startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
         sx={{ height: 44, fontWeight: 700 }}
       >
-        Login with SSO
+        Sign in with SSO
       </Button>
     </Stack>
   );

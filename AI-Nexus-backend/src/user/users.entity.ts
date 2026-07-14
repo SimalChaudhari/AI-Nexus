@@ -181,6 +181,10 @@ export class UserEntity {
     @Column({ type: 'boolean', nullable: true })
     feeWaiverJobVerified!: boolean | null;
 
+    /** Last successful platform login (password or SSO session issue). Not token refresh. */
+    @Column({ nullable: true, type: 'timestamp' })
+    lastLoginAt!: Date | null;
+
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;
 

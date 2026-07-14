@@ -47,6 +47,8 @@ export type CorporateLearnerRow = {
   status: CorporateLearnerStatus;
   lastActive: string;
   lastActiveAt: string | null;
+  lastLogin: string;
+  lastLoginAt: string | null;
   cert: boolean;
   certificateId: string | null;
   certificateNo: string | null;
@@ -74,28 +76,12 @@ export class CorporateService {
     private readonly courseCertificateService: CourseCertificateService,
   ) {}
 
-  /** Public for now — later restrict to Corporate role. */
+  /** Prefer explicit code / env; never guess another company's UEN from the DB. */
   async resolveCompanyCode(requested?: string | null): Promise<string> {
     const trimmed = String(requested || '').trim();
     if (trimmed) return trimmed;
 
-    const envDefault = String(process.env.CORPORATE_PUBLIC_COMPANY_CODE || '').trim();
-    if (envDefault) return envDefault;
-
-    const row = await this.userRepository
-      .createQueryBuilder('u')
-      .select('u.companyCode', 'companyCode')
-      .addSelect('COUNT(*)', 'cnt')
-      .where('u.companyCode IS NOT NULL')
-      .andWhere("TRIM(u.companyCode) <> ''")
-      .andWhere('u.role = :role', { role: UserRole.User })
-      .andWhere('u.isDraft = false')
-      .groupBy('u.companyCode')
-      .orderBy('cnt', 'DESC')
-      .limit(1)
-      .getRawOne<{ companyCode: string }>();
-
-    return String(row?.companyCode || '').trim();
+    return String(process.env.CORPORATE_PUBLIC_COMPANY_CODE || '').trim();
   }
 
   async getOverview(companyCodeRaw?: string) {
@@ -117,7 +103,7 @@ export class CorporateService {
         completionRate,
       },
       actions: this.buildActions(learners),
-      learnersPreview: learners.slice(0, 8),
+      learnersPreview: learners.slice(0, 5),
     };
   }
 
@@ -393,6 +379,7 @@ export class CorporateService {
     }
 
     const hasCert = Boolean(cert);
+    // At Risk follows course activity (section lastAccessedAt) — same signal shown in Last login column.
     const inactiveDays = lastActiveAt
       ? Math.floor((Date.now() - lastActiveAt.getTime()) / (1000 * 60 * 60 * 24))
       : null;
@@ -403,6 +390,7 @@ export class CorporateService {
     else if (isInactive) status = 'At Risk';
 
     const pending = this.buildPendingMessage({ hasCert, p1, p2, isInactive });
+    const lastActiveLabel = this.formatLastActive(lastActiveAt);
 
     return {
       userId: user.id,
@@ -413,8 +401,11 @@ export class CorporateService {
       eligibility: this.formatEligibility(user),
       profession: user.financeRole ? 'Yes' : '—',
       status,
-      lastActive: this.formatLastActive(lastActiveAt),
+      lastActive: lastActiveLabel,
       lastActiveAt: lastActiveAt ? lastActiveAt.toISOString() : null,
+      // HR "Last login" column shows course last-active (same as previous status subtitle).
+      lastLogin: lastActiveLabel,
+      lastLoginAt: lastActiveAt ? lastActiveAt.toISOString() : null,
       cert: hasCert,
       certificateId: cert?.id || null,
       certificateNo: cert?.certificateNo || null,

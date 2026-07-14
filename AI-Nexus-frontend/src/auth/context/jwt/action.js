@@ -806,6 +806,39 @@ export const setSalesforceNexusPassword = async (payload) => {
 };
 
 /** **************************************
+ * Corporate HR: create / check Salesforce corporate account before SSO
+ *************************************** */
+export const createCorporateSalesforceAccount = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/create-corporate-account', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to create corporate Salesforce account.');
+    throw new Error(errorMessage);
+  }
+};
+
+export const checkCorporateSalesforceAccount = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/check-corporate-account', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to check corporate Salesforce account.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * Save student/membership record to DB after Salesforce setup
  *************************************** */
 export const saveSalesforceMembershipRecord = async (payload) => {

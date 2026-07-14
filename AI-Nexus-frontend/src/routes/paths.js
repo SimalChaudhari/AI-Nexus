@@ -244,7 +244,7 @@ export const paths = {
     /** Learning persona & preferences (same editor as onboarding, dismissible) */
     persona: '/profile/persona',
   },
-  // CORPORATE HR PORTAL (SSO login to be wired later)
+  // CORPORATE HR PORTAL (Salesforce corporate register → SSO)
   corporate: {
     root: ROOTS.CORPORATE,
     overview: `${ROOTS.CORPORATE}/overview`,

@@ -39,28 +39,14 @@ export class CorporateDemoSeedService implements OnModuleInit {
     }
   }
 
-  private async resolveDemoCompanyCode(): Promise<string> {
+  private resolveDemoCompanyCode(): string {
     const fromEnv = String(process.env.CORPORATE_DEMO_COMPANY_CODE || '').trim();
-    if (fromEnv) return fromEnv;
-
-    const row = await this.userRepository.query(`
-      SELECT "companyCode", COUNT(*)::int AS cnt
-      FROM users
-      WHERE "companyCode" IS NOT NULL
-        AND TRIM("companyCode") <> ''
-        AND LOWER(TRIM("companyCode")) <> 'demo-corp'
-        AND COALESCE("isDraft", false) = false
-      GROUP BY "companyCode"
-      ORDER BY cnt DESC
-      LIMIT 1
-    `);
-
-    const code = String(row?.[0]?.companyCode || '').trim();
-    return code || 'DEMO-CORP';
+    // Always use a dedicated demo code — never copy a live signup UEN from the DB.
+    return fromEnv || 'DEMO-CORP';
   }
 
   private async ensureDemoCorporateAccount() {
-    const companyCode = await this.resolveDemoCompanyCode();
+    const companyCode = this.resolveDemoCompanyCode();
     const passwordHash = await bcrypt.hash(CORPORATE_DEMO_PASSWORD, 10);
 
     let user = await this.userRepository.findOne({
@@ -106,7 +92,8 @@ export class CorporateDemoSeedService implements OnModuleInit {
       user.status = UserStatus.Active;
       changed = true;
     }
-    if (!user.companyCode || !String(user.companyCode).trim() || user.companyCode === 'DEMO-CORP') {
+    // Always keep demo HR on the dedicated company code (do not inherit old UENs).
+    if (String(user.companyCode || '').trim() !== companyCode) {
       user.companyCode = companyCode;
       changed = true;
     }

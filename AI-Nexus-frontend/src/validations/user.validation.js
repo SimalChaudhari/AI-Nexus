@@ -262,11 +262,58 @@ export function buildFreeIndividualSignUpSchema() {
   }).superRefine(refineFreeIndividualSignupProfile);
 }
 
-export const CorporateSignUpSchema = AuthSignUpSchema.extend({
-  companyCode: zod
+export const CorporateSignUpSchema = zod.object({
+  // Account (company)
+  companyName: zod
     .string()
-    .min(1, { message: 'Organization name is required!' })
-    .max(64, { message: 'Organization name must be less than 64 characters!' }),
+    .min(1, { message: 'Company name is required!' })
+    .max(200, { message: 'Company name is too long!' }),
+  uenNumber: zod
+    .string()
+    .min(1, { message: 'UEN number is required!' })
+    .max(64, { message: 'UEN number is too long!' }),
+  organisationType: zod.string().min(1, { message: 'Organisation type is required!' }),
+  businessCountry: zod.string().min(1, { message: 'Business country is required!' }),
+  businessCity: zod.string().min(1, { message: 'Business city is required!' }),
+  businessState: zod.string().optional(),
+  businessPostalCode: zod.string().optional(),
+  businessStreetName: zod.string().optional(),
+  businessUnitNumber: zod.string().optional(),
+  businessBuildingName: zod.string().optional(),
+  isSme: zod.boolean().optional(),
+  isPaidCorporate: zod.boolean().optional(),
+  isProvidesProfessionalServices: zod.boolean().optional(),
+  // Contact (HR)
+  firstName: zod
+    .string()
+    .min(1, { message: 'First name is required!' })
+    .max(80, { message: 'First name is too long!' }),
+  lastName: zod
+    .string()
+    .min(1, { message: 'Last name is required!' })
+    .max(80, { message: 'Last name is too long!' }),
+  email: emailSchema,
+  mobilePhone: zod.string().optional(),
+  phone: zod.string().optional(),
+  designation: zod.string().optional(),
+  website: zod.string().optional(),
+  // ISCA / newsletter preferences (Salesforce contact)
+  iscaConferencesEvents: zod.boolean().optional(),
+  practitionersBulletin: zod.boolean().optional(),
+  iscaAccountifyBulletin: zod.boolean().optional(),
+  financialForensicFocus: zod.boolean().optional(),
+  businessFinanceBulletin: zod.boolean().optional(),
+  monthlyCALab: zod.boolean().optional(),
+  specialISCAOfferings: zod.boolean().optional(),
+  participateInResearch: zod.boolean().optional(),
+  boardflixBulletin: zod.boolean().optional(),
+  monthlyISCharteredAccountantJournal: zod.boolean().optional(),
+  scaqNewsletterUpdates: zod.boolean().optional(),
+  studentMemberNewsletterUpdates: zod.boolean().optional(),
+  theISCABuzzCorporateMembersNewsletter: zod.boolean().optional(),
+  password: zod
+    .string()
+    .min(8, { message: 'Password must be at least 8 characters!' }),
 });
 
 /**
