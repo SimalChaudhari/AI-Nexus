@@ -796,7 +796,31 @@ export class CourseCertificateService {
       throw new NotFoundException('Certificate not available');
     }
 
-    // Always regenerate from current official template (certificate + transcript pages).
+    return this.getCertificatePdfBuffer(certificateId);
+  }
+
+  /** PDF by certificate id (caller must enforce authz, e.g. corporate company scope). */
+  async getCertificatePdfBuffer(
+    certificateId: string,
+  ): Promise<{ filename: string; buffer: Buffer }> {
+    const existing = await this.certificateRepository.findOne({
+      where: { id: certificateId, status: CourseCertificateStatus.Active },
+    });
+    if (!existing) {
+      throw new NotFoundException('Certificate not found');
+    }
+
+    // Prefer already-stored PDF — regenerating on every HR download freezes the UI.
+    if (existing.pdfUrl) {
+      const stored = await this.localStorageService.readFileByUrl(existing.pdfUrl);
+      if (stored?.buffer?.length) {
+        return {
+          filename: stored.fileName || `Certificate-${existing.certificateNo}.pdf`,
+          buffer: stored.buffer,
+        };
+      }
+    }
+
     const saved = await this.ensureCertificatePdfStored(certificateId);
     const stored = await this.localStorageService.readFileByUrl(saved.pdfUrl);
     if (!stored?.buffer?.length) {

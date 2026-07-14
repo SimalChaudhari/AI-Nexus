@@ -1,17 +1,26 @@
-import { useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
+import IconButton from '@mui/material/IconButton';
+import Typography from '@mui/material/Typography';
+import InputAdornment from '@mui/material/InputAdornment';
 
+import { Iconify } from 'src/components/iconify';
 import { LoadingScreen } from 'src/components/loading-screen';
+
+import { exportCorporateLearnersCsv } from 'src/services/corporate.service';
+import { useAuthContext } from 'src/auth/hooks';
 
 import { CORP } from '../corporate-theme';
 import { useCorporateLearners } from '../use-corporate-data';
 import {
   CorpBtn,
   CorpCard,
+  CorpCertificateDownloadBtn,
   CorpPageHeader,
   CorpPill,
   CorpProgressBar,
@@ -22,24 +31,75 @@ import {
 
 // ----------------------------------------------------------------------
 
-export function CorporateProgressView() {
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('All statuses');
-  const { data: allRows, loading, error } = useCorporateLearners();
+const PAGE_SIZE = 5;
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return allRows.filter((s) => {
-      const matchesStatus = status === 'All statuses' || s.status === status;
-      const matchesSearch =
-        !q ||
-        s.name?.toLowerCase().includes(q) ||
-        s.email?.toLowerCase().includes(q) ||
-        s.role?.toLowerCase().includes(q) ||
-        s.department?.toLowerCase().includes(q);
-      return matchesStatus && matchesSearch;
-    });
-  }, [allRows, search, status]);
+function readParam(params, key, fallback = '') {
+  return String(params.get(key) || fallback);
+}
+
+export function CorporateProgressView() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuthContext();
+  const isCorporate = String(user?.role || '').toLowerCase() === 'corporate';
+
+  const page = Math.max(1, Number(readParam(searchParams, 'page', '1')) || 1);
+  const status = readParam(searchParams, 'status', 'All statuses') || 'All statuses';
+  const qParam = readParam(searchParams, 'q', '');
+
+  const [searchInput, setSearchInput] = useState(qParam);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+
+  useEffect(() => {
+    setSearchInput(qParam);
+  }, [qParam]);
+
+  // Debounce search → URL param (backend `q`)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextQ = searchInput.trim();
+      const currentQ = qParam.trim();
+      if (nextQ === currentQ) return;
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (nextQ) next.set('q', nextQ);
+          else next.delete('q');
+          next.set('page', '1');
+          return next;
+        },
+        { replace: true },
+      );
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, qParam, setSearchParams]);
+
+  const { data: rows, pagination, loading, error, companyCode } = useCorporateLearners({
+    q: qParam,
+    status,
+    page,
+    limit: PAGE_SIZE,
+  });
+
+  const updateParams = useCallback(
+    (patch) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          Object.entries(patch).forEach(([key, value]) => {
+            if (value == null || value === '' || (key === 'status' && value === 'All statuses')) {
+              next.delete(key);
+            } else {
+              next.set(key, String(value));
+            }
+          });
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const fieldSx = {
     '& .MuiOutlinedInput-root': {
@@ -50,61 +110,50 @@ export function CorporateProgressView() {
     minWidth: { xs: '100%', sm: 220 },
   };
 
-  const exportCsv = useMemo(
-    () => () => {
-      const header = [
-        'Name',
-        'Email',
-        'Role',
-        'Eligibility',
-        'Status',
-        'P1 hours',
-        'P2 hours',
-        'P3 hours',
-        'Certificate',
-        'Pending',
-      ];
-      const lines = rows.map((s) =>
-        [
-          s.name,
-          s.email,
-          s.role,
-          s.eligibility,
-          s.status,
-          `${s.p1?.c ?? 0}/${s.p1?.t ?? 0}`,
-          `${s.p2?.c ?? 0}/${s.p2?.t ?? 0}`,
-          `${s.p3?.c ?? 0}/${s.p3?.t ?? 0}`,
-          s.cert ? 'Yes' : 'No',
-          s.pending,
-        ]
-          .map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`)
-          .join(','),
-      );
-      const blob = new Blob([[header.join(','), ...lines].join('\n')], {
-        type: 'text/csv;charset=utf-8;',
+  const exportCsv = useCallback(async () => {
+    setExportError('');
+    setExporting(true);
+    try {
+      await exportCorporateLearnersCsv({
+        companyCode: isCorporate ? undefined : companyCode || undefined,
+        q: qParam || undefined,
+        status: status !== 'All statuses' ? status : undefined,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'corporate-learner-progress.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    },
-    [rows],
-  );
+    } catch (err) {
+      console.error('CSV export failed:', err);
+      setExportError(err?.message || 'CSV export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  }, [companyCode, isCorporate, qParam, status]);
 
-  if (loading && !allRows.length) return <LoadingScreen />;
+  const pageLabel = useMemo(() => {
+    const total = pagination.totalItems || 0;
+    if (!total) return '0 learners';
+    const start = (pagination.page - 1) * pagination.limit + 1;
+    const end = Math.min(pagination.page * pagination.limit, total);
+    return `${start}–${end} of ${total}`;
+  }, [pagination]);
+
+  if (loading && !rows.length) return <LoadingScreen />;
 
   return (
     <Box>
       <CorpPageHeader
-        title="Learner Progress"
-        subtitle="Track completion by staff and by pillar."
+        eyebrow="Learner Progress"
+        title="Track completion rate by staff and by pillar"
+        subtitle="Each learner row shows exact hours completed, assessment status and the pending item required to meet AI Fluency completion criteria."
+        titleSx={{ fontSize: { xs: 24, md: 32 } }}
       />
 
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      ) : null}
+      {exportError ? (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {exportError}
         </Alert>
       ) : null}
 
@@ -121,16 +170,33 @@ export function CorporateProgressView() {
         >
           <TextField
             size="small"
-            placeholder="Search learner, department or email"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search learner, department"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             sx={fieldSx}
+            InputProps={{
+              endAdornment: searchInput ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    aria-label="Clear search"
+                    onClick={() => {
+                      setSearchInput('');
+                      updateParams({ q: '', page: 1 });
+                    }}
+                    edge="end"
+                  >
+                    <Iconify icon="mingcute:close-line" width={18} sx={{ color: CORP.muted }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
           />
           <TextField
             select
             size="small"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => updateParams({ status: e.target.value, page: 1 })}
             sx={fieldSx}
           >
             {['All statuses', 'Completed', 'In Progress', 'At Risk'].map((opt) => (
@@ -139,8 +205,8 @@ export function CorporateProgressView() {
               </MenuItem>
             ))}
           </TextField>
-          <CorpBtn variant="blue" onClick={exportCsv}>
-            Export CSV
+          <CorpBtn variant="blue" onClick={exportCsv} disabled={exporting}>
+            {exporting ? 'Exporting...' : 'Export CSV'}
           </CorpBtn>
         </Box>
 
@@ -162,7 +228,7 @@ export function CorporateProgressView() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9}>No learners found.</td>
+                  <td colSpan={9}>{loading ? 'Loading...' : 'No learners found.'}</td>
                 </tr>
               ) : (
                 rows.map((s) => (
@@ -172,7 +238,7 @@ export function CorporateProgressView() {
                       <small>
                         {s.email}
                         <br />
-                        {s.department} · {s.role}
+                        {s.department} - {s.role}
                       </small>
                     </td>
                     <td>
@@ -182,7 +248,7 @@ export function CorporateProgressView() {
                     <td>
                       <CorpProgressBar pillar={s.p1} textType="long" />
                       <small>
-                        Quiz: {s.p1?.q ? 'Passed' : 'Pending'} · Assessment:{' '}
+                        Quiz: {s.p1?.q ? 'Passed' : 'Pending'} - Assessment:{' '}
                         {s.p1?.a ? 'Passed' : 'Pending'}
                       </small>
                     </td>
@@ -205,22 +271,49 @@ export function CorporateProgressView() {
                       <CorpTextBtn>View</CorpTextBtn>
                     </td>
                     <td>
-                      {s.cert ? (
-                        <>
-                          <CorpTextBtn>Download Certificate</CorpTextBtn>
-                          <small>Available for this learner</small>
-                        </>
-                      ) : (
-                        <>
-                          <CorpTextBtn disabled>Certificate not available yet</CorpTextBtn>
-                          <small>{s.pending}</small>
-                        </>
-                      )}
+                      <CorpCertificateDownloadBtn
+                        available={Boolean(s.cert)}
+                        certificateId={s.certificateId}
+                        learnerName={s.name}
+                        unavailableNote={s.pending}
+                      />
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
+          </Box>
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 1.5,
+            mt: 2,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Typography sx={{ color: CORP.muted, fontSize: 13 }}>{pageLabel}</Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <CorpBtn
+              variant="ghost"
+              disabled={pagination.page <= 1 || loading}
+              onClick={() => updateParams({ page: pagination.page - 1 })}
+            >
+              Previous
+            </CorpBtn>
+            <Typography sx={{ color: CORP.ink, fontSize: 13, fontWeight: 700, px: 1 }}>
+              Page {pagination.page} / {pagination.totalPages}
+            </Typography>
+            <CorpBtn
+              variant="ghost"
+              disabled={pagination.page >= pagination.totalPages || loading}
+              onClick={() => updateParams({ page: pagination.page + 1 })}
+            >
+              Next
+            </CorpBtn>
           </Box>
         </Box>
       </CorpCard>

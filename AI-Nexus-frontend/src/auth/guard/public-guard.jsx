@@ -29,6 +29,10 @@ export function PublicGuard({ children }) {
       router.replace(paths.dashboard.root);
       return;
     }
+    if (authenticated && String(user?.role || '').toLowerCase() === 'corporate') {
+      router.replace(paths.corporate.overview);
+      return;
+    }
 
     publicGuardReady = true;
     setReady(true);

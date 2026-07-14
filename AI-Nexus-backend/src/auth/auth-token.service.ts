@@ -21,6 +21,7 @@ export type AuthTokenUserPayload = {
   username?: string | null;
   firstname?: string | null;
   lastname?: string | null;
+  companyCode?: string | null;
 };
 
 @Injectable()
@@ -49,6 +50,7 @@ export class AuthTokenService {
       username: user.username,
       firstname: user.firstname,
       lastname: user.lastname,
+      companyCode: (user as AuthTokenUserPayload).companyCode ?? (user as UserEntity).companyCode ?? null,
       type: 'access',
     };
   }

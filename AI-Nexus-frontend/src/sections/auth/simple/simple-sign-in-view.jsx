@@ -165,6 +165,8 @@ export function SimpleSignInView() {
       const userRole = (user?.role || 'user').toLowerCase();
       if (userRole === 'admin') {
         router.push(`${paths.admin.root}/dashboard`);
+      } else if (userRole === 'corporate') {
+        router.push(paths.corporate.overview);
       } else if (redirectTo) {
         router.replace(redirectTo);
       } else {
@@ -409,13 +411,15 @@ export function SimpleSignInView() {
         Sign in
       </LoadingButton>
 
+      <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
+        Demo: corporate.hr@ainexus.demo / Corporate@123
+      </Typography>
+
       <Button
         fullWidth
         size="large"
         variant="outlined"
         color="inherit"
-        // component={RouterLink}
-        // href={paths.corporate.overview}
         disabled
         startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
         sx={{ height: 44, fontWeight: 700 }}

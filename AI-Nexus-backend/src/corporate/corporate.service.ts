@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
 
@@ -12,7 +12,11 @@ import {
 import { CourseSectionWatchProgressEntity } from '../course/course-section-watch-progress.entity';
 import { CourseSectionWatchProgressService } from '../course/course-section-watch-progress.service';
 import { CourseQuizAssessmentProgressService } from '../course/course-quiz-assessment-progress.service';
-import { resolveCoursePillarIndex } from '../course/course-program-cpe-summary.util';
+import { CourseCertificateService } from '../course/course-certificate.service';
+import {
+  computeCpeHoursFromWatchSeconds,
+  resolveCoursePillarIndex,
+} from '../course/course-program-cpe-summary.util';
 
 // ----------------------------------------------------------------------
 
@@ -21,8 +25,12 @@ const AT_RISK_INACTIVE_DAYS = 7;
 export type CorporateLearnerStatus = 'Completed' | 'In Progress' | 'At Risk';
 
 export type CorporatePillarProgress = {
+  /** Earned CPE hours (0.5h floor rule — same as player/certificates). */
   c: number;
+  /** Total pillar CPE hours from module duration (same 0.5h floor rule). */
   t: number;
+  /** Actual watch hours (wall-clock). */
+  w?: number;
   q?: boolean;
   a?: boolean;
   e?: boolean;
@@ -40,6 +48,7 @@ export type CorporateLearnerRow = {
   lastActive: string;
   lastActiveAt: string | null;
   cert: boolean;
+  certificateId: string | null;
   certificateNo: string | null;
   pending: string;
   p1: CorporatePillarProgress;
@@ -62,6 +71,7 @@ export class CorporateService {
     private readonly sectionWatchRepository: Repository<CourseSectionWatchProgressEntity>,
     private readonly courseSectionWatchProgressService: CourseSectionWatchProgressService,
     private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
+    private readonly courseCertificateService: CourseCertificateService,
   ) {}
 
   /** Public for now — later restrict to Corporate role. */
@@ -119,11 +129,87 @@ export class CorporateService {
     limit?: number;
   }) {
     const companyCode = await this.resolveCompanyCode(params.companyCode);
-    let learners = await this.buildLearners(companyCode);
+    const learners = this.filterLearners(await this.buildLearners(companyCode), params);
 
+    const page = Number(params.page) > 0 ? Number(params.page) : 1;
+    const limit = Number(params.limit) > 0 ? Math.min(Number(params.limit), 100) : 5;
+    const totalItems = learners.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit) || 1);
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    const data = learners.slice(start, start + limit);
+
+    return {
+      companyCode,
+      data,
+      pagination: { page: safePage, limit, totalItems, totalPages },
+    };
+  }
+
+  async exportLearnersCsv(params: {
+    companyCode?: string;
+    q?: string;
+    status?: string;
+  }): Promise<{ filename: string; csv: string }> {
+    const companyCode = await this.resolveCompanyCode(params.companyCode);
+    const learners = this.filterLearners(await this.buildLearners(companyCode), params);
+
+    const formatPillarHours = (pillar?: CorporatePillarProgress) => {
+      const earned = Number(pillar?.c) || 0;
+      const total = Number(pillar?.t) || 0;
+      const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
+      return `${fmt(earned)}hr / ${fmt(total)}hr`;
+    };
+
+    const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = [
+      'Name',
+      'Email',
+      'Role',
+      'Eligibility',
+      'Status',
+      'Pillar 1 Foundations',
+      'Pillar 2 Specialisation',
+      'Pillar 3 Leadership',
+      'Certificate',
+      'Certificate No',
+      'Pending item',
+      'Last Active',
+    ];
+
+    const lines = learners.map((s) =>
+      [
+        s.name,
+        s.email,
+        s.role,
+        s.eligibility,
+        s.status,
+        formatPillarHours(s.p1),
+        formatPillarHours(s.p2),
+        formatPillarHours(s.p3),
+        s.cert ? 'Yes' : 'No',
+        s.certificateNo || '',
+        s.pending,
+        s.lastActive,
+      ]
+        .map(escape)
+        .join(','),
+    );
+
+    const csv = `\uFEFF${[header.join(','), ...lines].join('\n')}`;
+    const code = companyCode || 'corporate';
+    const filename = `corporate-learner-progress-${code.replace(/[^a-z0-9_-]+/gi, '-')}.csv`;
+    return { filename, csv };
+  }
+
+  private filterLearners(
+    learners: CorporateLearnerRow[],
+    params: { q?: string; status?: string },
+  ): CorporateLearnerRow[] {
+    let result = learners;
     const q = String(params.q || '').trim().toLowerCase();
     if (q) {
-      learners = learners.filter(
+      result = result.filter(
         (l) =>
           l.name.toLowerCase().includes(q) ||
           l.email.toLowerCase().includes(q) ||
@@ -131,24 +217,11 @@ export class CorporateService {
           l.department.toLowerCase().includes(q),
       );
     }
-
     const statusFilter = String(params.status || '').trim();
     if (statusFilter && statusFilter !== 'All statuses') {
-      learners = learners.filter((l) => l.status === statusFilter);
+      result = result.filter((l) => l.status === statusFilter);
     }
-
-    const page = Number(params.page) > 0 ? Number(params.page) : 1;
-    const limit = Number(params.limit) > 0 ? Math.min(Number(params.limit), 100) : 50;
-    const totalItems = learners.length;
-    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
-    const start = (page - 1) * limit;
-    const data = learners.slice(start, start + limit);
-
-    return {
-      companyCode,
-      data,
-      pagination: { page, limit, totalItems, totalPages },
-    };
+    return result;
   }
 
   async getCertificates(companyCodeRaw?: string) {
@@ -163,11 +236,42 @@ export class CorporateService {
         email: l.email,
         status: l.status,
         certificateAvailable: l.cert,
+        certificateId: l.certificateId,
         certificateNo: l.certificateNo,
         pending: l.pending,
         nextAction: l.cert ? 'No pending item' : l.pending,
       })),
     };
+  }
+
+  async downloadCertificatePdf(companyCodeRaw: string | undefined, certificateId: string) {
+    const companyCode = await this.resolveCompanyCode(companyCodeRaw);
+    if (!companyCode) {
+      throw new ForbiddenException('Company code required');
+    }
+    const id = String(certificateId || '').trim();
+    if (!id) {
+      throw new NotFoundException('Certificate not found');
+    }
+
+    const cert = await this.certificateRepository.findOne({
+      where: { id, status: CourseCertificateStatus.Active },
+      select: ['id', 'userId', 'certificateNo', 'status'],
+    });
+    if (!cert) {
+      throw new NotFoundException('Certificate not found');
+    }
+
+    const learner = await this.userRepository.findOne({
+      where: { id: cert.userId, role: UserRole.User, isDraft: false },
+      select: ['id', 'companyCode'],
+    });
+    const learnerCode = String(learner?.companyCode || '').trim().toLowerCase();
+    if (!learner || learnerCode !== companyCode.toLowerCase()) {
+      throw new ForbiddenException('Certificate is outside your company scope');
+    }
+
+    return this.courseCertificateService.getCertificatePdfBuffer(cert.id);
   }
 
   // ----------------------------------------------------------------------
@@ -224,7 +328,7 @@ export class CorporateService {
     cert: CourseCertificateEntity | undefined,
     lastActiveAt: Date | null,
   ): Promise<CorporateLearnerRow> {
-    const emptyPillar = (): CorporatePillarProgress => ({ c: 0, t: 0, q: false, a: false, e: false });
+    const emptyPillar = (): CorporatePillarProgress => ({ c: 0, t: 0, w: 0, q: false, a: false, e: false });
     let p1 = emptyPillar();
     let p2 = emptyPillar();
     let p3 = emptyPillar();
@@ -235,11 +339,17 @@ export class CorporateService {
         programId,
       );
       for (const pillar of summary.pillarBreakdown || []) {
-        const allocated = Number(pillar.allocatedCpeHours ?? 0);
+        // Both sides use CPE 0.5h floor on seconds (same as player/certificates):
+        // c = earned from watch, t = total from all module durations.
+        // w = raw wall-clock watch hours (exports / debugging).
+        const durationSeconds = Number(pillar.totalVideoDurationSeconds ?? 0);
+        const earned = Number(pillar.earnedCpeHours ?? 0);
         const watched = Number(pillar.watchedHours ?? 0);
+        const totalCpe = computeCpeHoursFromWatchSeconds(durationSeconds);
         const progress: CorporatePillarProgress = {
-          c: Math.round(watched * 100) / 100,
-          t: Math.round((allocated || watched || 0) * 100) / 100,
+          c: Math.round(earned * 100) / 100,
+          t: Math.round(totalCpe * 100) / 100,
+          w: Math.round(watched * 100) / 100,
           q: false,
           a: false,
           e: false,
@@ -257,7 +367,7 @@ export class CorporateService {
 
         if (pillar.pillarIndex === 1) p1 = progress;
         if (pillar.pillarIndex === 2) p2 = progress;
-        if (pillar.pillarIndex === 3) p3 = { c: progress.c, t: progress.t };
+        if (pillar.pillarIndex === 3) p3 = { c: progress.c, t: progress.t, w: progress.w };
       }
     }
 
@@ -285,6 +395,7 @@ export class CorporateService {
       lastActive: this.formatLastActive(lastActiveAt),
       lastActiveAt: lastActiveAt ? lastActiveAt.toISOString() : null,
       cert: hasCert,
+      certificateId: cert?.id || null,
       certificateNo: cert?.certificateNo || null,
       pending,
       p1,
@@ -388,16 +499,19 @@ export class CorporateService {
   private buildActions(learners: CorporateLearnerRow[]): string[] {
     const inactive = learners.filter((l) => l.status === 'At Risk').length;
     const certs = learners.filter((l) => l.cert).length;
-    const inProgress = learners.filter((l) => l.status === 'In Progress').length;
-    const actions: string[] = [];
-    if (certs > 0) actions.push(`${certs} certificate${certs === 1 ? '' : 's'} available for download`);
-    if (inactive > 0) {
-      actions.push(`${inactive} learner${inactive === 1 ? ' has' : 's have'} been inactive for more than ${AT_RISK_INACTIVE_DAYS} days`);
-    }
-    if (inProgress > 0) {
-      actions.push(`${inProgress} learner${inProgress === 1 ? ' is' : 's are'} currently in progress`);
-    }
-    if (!actions.length) actions.push('No pending admin actions right now');
-    return actions;
+    const p1QuizDone = learners.filter((l) => Boolean(l.p1?.q)).length;
+    const foreign = learners.filter((l) => {
+      const e = String(l.eligibility || '').toLowerCase();
+      return e.includes('foreign') || e === 'foreigner';
+    }).length;
+
+    return [
+      `${p1QuizDone} learner${p1QuizDone === 1 ? '' : 's'} completed a Pillar 1 quiz`,
+      `${certs} certificate${certs === 1 ? '' : 's'} became available for download`,
+      foreign > 0
+        ? `${foreign} foreign non-member learner${foreign === 1 ? '' : 's'} pending review`
+        : 'No foreign non-member quotation request pending',
+      `${inactive} learner${inactive === 1 ? ' has' : 's have'} been inactive for more than ${AT_RISK_INACTIVE_DAYS} days`,
+    ];
   }
 }

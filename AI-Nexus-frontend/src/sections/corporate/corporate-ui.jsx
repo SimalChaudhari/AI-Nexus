@@ -1,6 +1,10 @@
+import { useRef } from 'react';
+
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+
+import { downloadCorporateCertificateFile } from 'src/services/corporate.service';
 
 import { CORP, STATUS_PILL_SX, statusTone } from './corporate-theme';
 
@@ -49,10 +53,23 @@ export function CorpPill({ status, children, sx }) {
 
 export function CorpProgressBar({ pillar, textType = 'short' }) {
   const total = Number(pillar?.t) || 0;
-  const completed = Number(pillar?.c) || 0;
-  const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-  const text =
-    textType === 'long' ? `${completed}h out of ${total}h` : `${completed}h / ${total}h`;
+  // CPE earned: floor watch time to nearest 0.5h (same rule as player/certificates).
+  const earnedCpe = Number(pillar?.c) || 0;
+  const watchedHours = Number(pillar?.w) || 0;
+  const watchedMinutes = Math.max(0, Math.round(watchedHours * 60));
+  const pct =
+    total > 0
+      ? Math.min(100, Math.round((earnedCpe / total) * 100))
+      : earnedCpe > 0
+        ? 100
+        : 0;
+
+  const formatH = (n) => {
+    const v = Number(n) || 0;
+    return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+  };
+
+  const text = `${formatH(earnedCpe)}hr / ${formatH(total)}hr`;
 
   return (
     <Box>
@@ -78,6 +95,14 @@ export function CorpProgressBar({ pillar, textType = 'short' }) {
       <Typography component="small" sx={{ display: 'block', color: CORP.muted, fontSize: 12, mt: 0.5 }}>
         {text}
       </Typography>
+      {earnedCpe <= 0 && watchedMinutes > 0 ? (
+        <Box
+          component="span"
+          sx={{ display: 'block', color: CORP.muted, fontSize: 11, mt: 0.25, lineHeight: 1.3 }}
+        >
+          {watchedMinutes} min watched
+        </Box>
+      ) : null}
     </Box>
   );
 }
@@ -125,29 +150,48 @@ export function CorpAdminChip() {
   );
 }
 
-export function CorpPageHeader({ eyebrow, title, subtitle }) {
+export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
   return (
     <Box
       sx={{
         display: 'flex',
         justifyContent: 'space-between',
-        gap: 2,
-        alignItems: { xs: 'flex-start', md: 'center' },
+        gap: 2.75,
+        alignItems: 'flex-start',
         mb: 3,
         flexDirection: { xs: 'column', md: 'row' },
       }}
     >
       <Box>
         {eyebrow ? (
-          <Typography variant="overline" sx={{ color: 'text.secondary' }}>
+          <Typography
+            sx={{
+              color: CORP.blue,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              fontWeight: 900,
+              fontSize: 12,
+            }}
+          >
             {eyebrow}
           </Typography>
         ) : null}
-        <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: -0.4 }}>
+        <Typography
+          component="h1"
+          sx={{
+            fontSize: { xs: 30, md: 46 },
+            letterSpacing: '-0.05em',
+            color: CORP.navy,
+            my: 1,
+            fontWeight: 800,
+            lineHeight: 1.1,
+            ...titleSx,
+          }}
+        >
           {title}
         </Typography>
         {subtitle ? (
-          <Typography variant="body2" sx={{ mt: 0.75, color: 'text.secondary', maxWidth: 720 }}>
+          <Typography sx={{ color: CORP.muted, lineHeight: 1.55, m: 0, maxWidth: 880 }}>
             {subtitle}
           </Typography>
         ) : null}
@@ -202,11 +246,12 @@ export function CorpTextBtn({ disabled, children, sx, ...other }) {
         border: 0,
         background: 'transparent',
         color: disabled ? CORP.muted : CORP.blue,
-        fontWeight: 900,
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+        fontWeight: 800,
         p: '4px 0',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.65 : 1,
-        font: 'inherit',
         textAlign: 'left',
         ...sx,
       }}
@@ -214,6 +259,53 @@ export function CorpTextBtn({ disabled, children, sx, ...other }) {
     >
       {children}
     </Box>
+  );
+}
+
+/** Same UI as mock; download runs without React re-renders (no table shake). */
+export function CorpCertificateDownloadBtn({
+  certificateId,
+  learnerName,
+  availableNote = 'Available for this learner',
+  unavailableNote,
+  available = true,
+}) {
+  const busyRef = useRef(false);
+
+  const handleClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!certificateId || busyRef.current) return;
+
+    busyRef.current = true;
+    const safeName = String(learnerName || 'learner').replace(/[^a-z0-9]+/gi, '-');
+
+    // Fire-and-forget: no setState → parent table stays mounted/stable.
+    void downloadCorporateCertificateFile(certificateId, {
+      fileName: `Certificate-${safeName}.pdf`,
+    })
+      .catch((err) => {
+        console.error('Certificate download failed:', err);
+      })
+      .finally(() => {
+        busyRef.current = false;
+      });
+  };
+
+  if (!available || !certificateId) {
+    return (
+      <>
+        <CorpTextBtn disabled>Certificate not available yet</CorpTextBtn>
+        {unavailableNote ? <small>{unavailableNote}</small> : null}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <CorpTextBtn onClick={handleClick}>Download Certificate</CorpTextBtn>
+      <small>{availableNote}</small>
+    </>
   );
 }
 
@@ -226,11 +318,11 @@ export function CorpTableHead({ columns }) {
           textAlign: 'left',
           fontSize: 12,
           textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+          letterSpacing: '0.06em',
           color: CORP.muted,
           p: '12px',
           borderBottom: `1px solid ${CORP.line}`,
-          fontWeight: 800,
+          fontWeight: 600,
         },
       }}
     >

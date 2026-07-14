@@ -3,6 +3,8 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 export enum UserRole {
     Admin = 'Admin',
     User = 'User',
+    /** HR / company portal account (password now; SSO later). */
+    Corporate = 'Corporate',
 }
 
 export enum UserStatus {

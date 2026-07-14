@@ -57,8 +57,10 @@ export function CorporateOverviewView() {
   return (
     <Box>
       <CorpPageHeader
-        title="Dashboard"
-        subtitle="Enrol learners, track completion by pillar, and download reports."
+        eyebrow="Corporate HR Dashboard"
+        title="Manage AI Fluency progress with confidence"
+        subtitle="Enrol learners, track completion by pillar, and download reports from one place."
+        titleSx={{ fontSize: { xs: 24, md: 32 } }}
       />
 
       {error ? (
@@ -96,14 +98,21 @@ export function CorporateOverviewView() {
           '& > *': { position: 'relative', zIndex: 1 },
         }}
       >
-        <Box>
-          <Typography variant="h5" sx={{ color: 'white', fontWeight: 700, mb: 1 }}>
-            Completion rule
+        <Box sx={{ maxWidth: 720 }}>
+          <Typography
+            sx={{
+              color: 'white',
+              fontSize: { xs: 20, md: 24 },
+              fontWeight: 800,
+              mb: 1.25,
+              letterSpacing: '-0.025em',
+            }}
+          >
+            Completion rule built into the dashboard
           </Typography>
-          <Typography variant="body2" sx={{ color: '#d7e8ff', lineHeight: 1.55, m: 0, maxWidth: 760 }}>
-            Learners complete the programme when they finish all Pillar 1 modules, pass the required
-            quizzes and assessment, and complete any one eligible Pillar 2 specialisation with its
-            quiz and assessment.
+          <Typography sx={{ color: '#d7e8ff', lineHeight: 1.55, m: 0 }}>
+            Finish all Pillar 1 modules (9.5 hours), pass the quizzes and assessment, then complete
+            one eligible Pillar 2 specialisation with its quiz and assessment.
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.75 }}>
             <CorpPill status="Completed">Pillar 1 required</CorpPill>
@@ -111,7 +120,7 @@ export function CorporateOverviewView() {
             <CorpPill>Quizzes + assessments</CorpPill>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', flexShrink: 0 }}>
           <CorpBtn variant="primary" component={RouterLink} href={paths.corporate.enrol}>
             Enrol staff
           </CorpBtn>
@@ -222,11 +231,16 @@ export function CorporateOverviewView() {
         </CorpCard>
 
         <CorpCard>
-          <Typography sx={{ color: CORP.navy, fontWeight: 700, fontSize: 18, mb: 1.25 }}>
+          <Typography sx={{ color: CORP.navy, fontWeight: 800, fontSize: 18, mb: 1.25 }}>
             Admin action centre
           </Typography>
           <Box sx={{ display: 'grid', gap: 1.5, my: 2 }}>
-            {actions.map((text, index) => (
+            {(actions.length
+              ? actions
+              : [
+                  'No pending admin actions right now',
+                ]
+            ).map((text, index) => (
               <Box
                 key={`${index}-${text}`}
                 sx={{
@@ -255,7 +269,9 @@ export function CorporateOverviewView() {
                 >
                   {index + 1}
                 </Box>
-                <Typography sx={{ m: '2px 0 0', lineHeight: 1.4, fontSize: 14 }}>{text}</Typography>
+                <Typography sx={{ m: '2px 0 0', lineHeight: 1.4, fontSize: 14, color: CORP.ink }}>
+                  {text}
+                </Typography>
               </Box>
             ))}
           </Box>

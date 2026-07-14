@@ -782,10 +782,21 @@ export class CourseSectionWatchProgressService {
   }> {
     const { sections } = await this.getModulesAndSections(courseId);
     const videoSections = sections.filter((section) => Boolean(String(section.videoUrl || '').trim()));
+
+    // Total hours = sum of every section duration in the course (modules), same as course catalog.
+    // e.g. 5 modules × 1h each → 5h total.
+    let totalVideoDurationSeconds = 0;
+    for (const section of sections) {
+      const fromAdmin = parseWatchtimeToSeconds(section.durationTime);
+      const sectionDuration =
+        fromAdmin > 0 ? fromAdmin : parseWatchtimeToSeconds(section.watchtime);
+      if (sectionDuration > 0) totalVideoDurationSeconds += sectionDuration;
+    }
+
     if (!videoSections.length) {
       return {
         watchedSeconds: 0,
-        totalVideoDurationSeconds: 0,
+        totalVideoDurationSeconds,
         allVideosCompleted: false,
         totalVideoSections: 0,
         completedVideoSections: 0,
@@ -794,18 +805,21 @@ export class CourseSectionWatchProgressService {
 
     const progressMap = await this.getAllSectionProgressForCourse(userId, courseId);
     let watchedSeconds = 0;
-    let totalVideoDurationSeconds = 0;
     let completedVideoSections = 0;
+    let progressDurationFallback = 0;
 
     for (const section of videoSections) {
       const progress = progressMap[section.id];
       const watched = Math.max(0, Number(progress?.watchedSeconds || 0));
-      const duration = Math.max(0, Number(progress?.durationSeconds || 0));
       watchedSeconds += watched;
-      totalVideoDurationSeconds += duration;
       if (progress?.isCompleted) {
         completedVideoSections += 1;
       }
+      progressDurationFallback += Math.max(0, Number(progress?.durationSeconds || 0));
+    }
+
+    if (totalVideoDurationSeconds <= 0 && progressDurationFallback > 0) {
+      totalVideoDurationSeconds = progressDurationFallback;
     }
 
     return {
@@ -827,11 +841,13 @@ export class CourseSectionWatchProgressService {
       order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
     });
 
-    const courseByPillar = new Map<number, (typeof courses)[number]>();
+    const coursesByPillar = new Map<number, (typeof courses)[number][]>();
     for (const course of courses) {
       const pillarIndex = resolveCoursePillarIndex(course);
-      if (!pillarIndex || courseByPillar.has(pillarIndex)) continue;
-      courseByPillar.set(pillarIndex, course);
+      if (!pillarIndex) continue;
+      const list = coursesByPillar.get(pillarIndex) || [];
+      list.push(course);
+      coursesByPillar.set(pillarIndex, list);
     }
 
     const pillarBreakdown: ProgramPillarWatchSummary['pillarBreakdown'] = [];
@@ -841,31 +857,54 @@ export class CourseSectionWatchProgressService {
     let hasAnyAllocatedCpe = false;
 
     for (const pillarIndex of [1, 2, 3]) {
-      const course = courseByPillar.get(pillarIndex);
-      if (!course) continue;
+      const pillarCourses = coursesByPillar.get(pillarIndex) || [];
+      if (!pillarCourses.length) continue;
 
-      const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
-      const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
-      const earnedCpeHours = computeCpeHoursFromWatchSeconds(videoStats.watchedSeconds);
+      let watchedSeconds = 0;
+      let videoDurationSeconds = 0;
+      let allocatedCpeHoursSum = 0;
+      let hasAllocated = false;
+      let allVideosCompleted = true;
+      let hasAnyVideoSection = false;
+      const primaryCourse = pillarCourses[0];
 
-      if (allocatedCpeHours != null) {
-        totalAllocatedCpeHours += allocatedCpeHours;
+      for (const course of pillarCourses) {
+        const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
+        watchedSeconds += videoStats.watchedSeconds;
+        videoDurationSeconds += videoStats.totalVideoDurationSeconds;
+        if (videoStats.totalVideoSections > 0) {
+          hasAnyVideoSection = true;
+          if (!videoStats.allVideosCompleted) allVideosCompleted = false;
+        }
+        const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
+        if (allocatedCpeHours != null) {
+          allocatedCpeHoursSum += allocatedCpeHours;
+          hasAllocated = true;
+        }
+      }
+
+      if (!hasAnyVideoSection) allVideosCompleted = false;
+
+      const earnedCpeHours = computeCpeHoursFromWatchSeconds(watchedSeconds);
+
+      if (hasAllocated) {
+        totalAllocatedCpeHours += allocatedCpeHoursSum;
         hasAnyAllocatedCpe = true;
       }
-      totalWatchedSeconds += videoStats.watchedSeconds;
-      totalVideoDurationSeconds += videoStats.totalVideoDurationSeconds;
+      totalWatchedSeconds += watchedSeconds;
+      totalVideoDurationSeconds += videoDurationSeconds;
 
       pillarBreakdown.push({
         pillarIndex,
-        courseId: course.id,
-        courseTitle: course.title,
-        watchedSeconds: videoStats.watchedSeconds,
-        watchedHours: secondsToWatchedHours(videoStats.watchedSeconds),
-        watchedTime: formatSecondsToDisplayTime(videoStats.watchedSeconds),
-        totalVideoDurationSeconds: videoStats.totalVideoDurationSeconds,
-        allocatedCpeHours,
+        courseId: primaryCourse.id,
+        courseTitle: primaryCourse.title,
+        watchedSeconds,
+        watchedHours: secondsToWatchedHours(watchedSeconds),
+        watchedTime: formatSecondsToDisplayTime(watchedSeconds),
+        totalVideoDurationSeconds: videoDurationSeconds,
+        allocatedCpeHours: hasAllocated ? Math.round(allocatedCpeHoursSum * 100) / 100 : null,
         earnedCpeHours,
-        allVideosCompleted: videoStats.allVideosCompleted,
+        allVideosCompleted,
       });
     }
 

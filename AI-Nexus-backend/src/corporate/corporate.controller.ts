@@ -1,33 +1,79 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Request, Response } from 'express';
 
+import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
+import { SessionGuard } from '../jwt/session.guard';
+import { RolesGuard } from '../jwt/roles.guard';
+import { Roles } from '../jwt/roles.decorator';
+import { UserRole } from '../user/users.entity';
 import { CorporateService } from './corporate.service';
 
+type AuthedRequest = Request & {
+  user?: { id?: string; role?: string; companyCode?: string | null };
+};
+
 /**
- * Corporate HR portal APIs.
- * Public for now (no login/SSO yet). Later: guard + Corporate role only.
+ * Corporate HR portal APIs — Corporate / Admin only.
+ * Password login for now; SSO later.
  */
 @ApiTags('Corporate')
+@ApiBearerAuth('bearer')
 @Controller('corporate')
+@UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
 export class CorporateController {
   constructor(private readonly corporateService: CorporateService) {}
 
+  private resolveCompanyCode(req: AuthedRequest, queryCode?: string): string | undefined {
+    const role = String(req.user?.role || '');
+    if (role === UserRole.Corporate) {
+      return String(req.user?.companyCode || '').trim() || undefined;
+    }
+    return queryCode;
+  }
+
   @Get('overview')
-  @ApiOperation({ summary: 'Corporate dashboard overview (public for now)' })
-  @ApiQuery({ name: 'companyCode', required: false })
-  async getOverview(@Query('companyCode') companyCode?: string) {
-    const data = await this.corporateService.getOverview(companyCode);
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Corporate dashboard overview' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  async getOverview(@Req() req: AuthedRequest, @Query('companyCode') companyCode?: string) {
+    const data = await this.corporateService.getOverview(this.resolveCompanyCode(req, companyCode));
     return { data };
   }
 
+  @Get('learners/export')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Export corporate learner progress CSV (filtered)' })
+  @ApiQuery({ name: 'companyCode', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  async exportLearnersCsv(
+    @Req() req: AuthedRequest,
+    @Res() res: Response,
+    @Query('companyCode') companyCode?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+  ) {
+    const { filename, csv } = await this.corporateService.exportLearnersCsv({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      q,
+      status,
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(csv);
+  }
+
   @Get('learners')
-  @ApiOperation({ summary: 'Corporate learner progress list (public for now)' })
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Corporate learner progress list' })
   @ApiQuery({ name: 'companyCode', required: false })
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   async getLearners(
+    @Req() req: AuthedRequest,
     @Query('companyCode') companyCode?: string,
     @Query('q') q?: string,
     @Query('status') status?: string,
@@ -35,7 +81,7 @@ export class CorporateController {
     @Query('limit') limit?: string,
   ) {
     return this.corporateService.getLearners({
-      companyCode,
+      companyCode: this.resolveCompanyCode(req, companyCode),
       q,
       status,
       page: page ? Number(page) : undefined,
@@ -44,10 +90,30 @@ export class CorporateController {
   }
 
   @Get('certificates')
-  @ApiOperation({ summary: 'Corporate certificate readiness (public for now)' })
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Corporate certificate readiness' })
   @ApiQuery({ name: 'companyCode', required: false })
-  async getCertificates(@Query('companyCode') companyCode?: string) {
-    const data = await this.corporateService.getCertificates(companyCode);
+  async getCertificates(@Req() req: AuthedRequest, @Query('companyCode') companyCode?: string) {
+    const data = await this.corporateService.getCertificates(this.resolveCompanyCode(req, companyCode));
     return { data };
+  }
+
+  @Get('certificates/:certificateId/pdf')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Download learner certificate PDF (company scoped)' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  async downloadCertificatePdf(
+    @Req() req: AuthedRequest,
+    @Res() res: Response,
+    @Param('certificateId') certificateId: string,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    const { filename, buffer } = await this.corporateService.downloadCertificatePdf(
+      this.resolveCompanyCode(req, companyCode),
+      certificateId,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(buffer);
   }
 }
