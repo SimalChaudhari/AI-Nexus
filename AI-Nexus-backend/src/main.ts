@@ -123,7 +123,7 @@ async function bootstrap() {
       .map((origin) => origin.trim())
       .filter(Boolean);
     const fallbackOrigin = process.env.FRONTEND_URL?.trim();
-    const prodDefaultOrigin = nodeEnv === 'production' ? 'https://ainexus.isca.org.sg' : '';
+    const prodDefaultOrigin = nodeEnv === 'production' ? 'https://ainexusuat.isca.org.sg' : '';
     const baseAllowedOrigins = configuredOrigins.length
       ? configuredOrigins
       : [fallbackOrigin || prodDefaultOrigin].filter(Boolean);
