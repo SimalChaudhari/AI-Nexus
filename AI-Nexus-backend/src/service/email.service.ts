@@ -19,8 +19,7 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
-          this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
-
+         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
         const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
@@ -312,9 +311,11 @@ export class EmailService {
         const subject = 'Reminder: Complete AI fluency program';
         const toEmail = String(params.toEmail || '').trim();
 
+        const ctaLabel = 'Continue the course';
         const bodyHtml = buildCorporateNudgeBodyHtml({
             progressLabel,
             courseUrl,
+            ctaLabel,
         });
 
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
@@ -336,7 +337,7 @@ export class EmailService {
                 '',
                 `Just a quick reminder to complete AI fluency program. ${buildCorporateNudgeProgressSentence(progressLabel, false)}`,
                 'Please set aside some time to finish the remaining modules and any required assessment. You can continue the course here:',
-                courseUrl,
+                `${ctaLabel}: ${courseUrl}`,
                 '',
                 'By completing the course, you will be eligible for the lucky draw, earn applicable CPE hours, and develop the knowledge required for your current and future responsibilities.',
                 '',

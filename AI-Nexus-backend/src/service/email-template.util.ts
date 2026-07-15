@@ -24,14 +24,27 @@ export const escapeHtml = (value: string): string =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 
-const buildEmailCtaButton = (label: string, url: string): string => {
+const buildEmailCtaButton = (
+    label: string,
+    url: string,
+    align: 'center' | 'left' = 'center',
+): string => {
     const safeLabel = escapeHtml(label);
     const safeUrl = escapeHtml(url);
+    const cellAlign = align === 'left' ? 'left' : 'center';
+    const margin = align === 'left' ? '8px 0 16px' : '26px auto 10px';
+    // Full-width wrapper keeps next paragraphs below the button (align=left alone can float content beside it).
     return `
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="border-collapse:collapse; margin:26px auto 10px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin:${margin};">
                                 <tr>
-                                    <td align="center" bgcolor="${BRAND_PRIMARY}" style="border-radius:10px; background:${BRAND_GRADIENT}; background-color:${BRAND_PRIMARY};">
-                                        <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:12px 26px; color:#ffffff; text-decoration:none; font-size:14px; line-height:1.4; font-weight:700; letter-spacing:0.02em;">${safeLabel}</a>
+                                    <td align="${cellAlign}" style="padding:0;">
+                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                                            <tr>
+                                                <td align="center" bgcolor="${BRAND_PRIMARY}" style="border-radius:10px; background:${BRAND_GRADIENT}; background-color:${BRAND_PRIMARY}; white-space:nowrap;">
+                                                    <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:12px 26px; color:#ffffff; text-decoration:none; font-size:14px; line-height:1.4; font-weight:700; letter-spacing:0.02em; white-space:nowrap;">${safeLabel}</a>
+                                                </td>
+                                            </tr>
+                                        </table>
                                     </td>
                                 </tr>
                             </table>`;
@@ -234,14 +247,16 @@ export const buildCorporateNudgeProgressSentence = (
 export const buildCorporateNudgeBodyHtml = (params: {
     progressLabel: string;
     courseUrl: string;
+    ctaLabel?: string;
 }): string => {
     const progressSentence = buildCorporateNudgeProgressSentence(params.progressLabel, true);
-    const courseUrl = escapeHtml(String(params.courseUrl || '').trim());
+    const courseUrl = String(params.courseUrl || '').trim();
     const supportEmail = escapeHtml(SUPPORT_EMAIL);
+    const ctaLabel = String(params.ctaLabel || 'Continue the course').trim() || 'Continue the course';
 
-    const courseLinkHtml = courseUrl
-        ? `<a href="${courseUrl}" target="_blank" rel="noopener noreferrer" style="color:${BRAND_SECONDARY}; text-decoration:underline; font-weight:700; word-break:break-all;"><strong style="font-weight:700;">${courseUrl}</strong></a>`
-        : '<strong style="font-weight:700;">your learning dashboard</strong>';
+    const courseCtaHtml = courseUrl
+        ? buildEmailCtaButton(ctaLabel, courseUrl, 'left')
+        : '';
 
     return `
                             <p style="margin:0 0 14px; color:#334155; font-size:15px; line-height:1.65;">
@@ -250,9 +265,7 @@ export const buildCorporateNudgeBodyHtml = (params: {
                             <p style="margin:0 0 8px; color:#334155; font-size:15px; line-height:1.65;">
                                 Please set aside some time to finish the remaining modules and any required assessment. You can continue the course here:
                             </p>
-                            <p style="margin:0 0 16px; color:#334155; font-size:15px; line-height:1.65;">
-                                ${courseLinkHtml}
-                            </p>
+                            ${courseCtaHtml}
                             <p style="margin:0 0 16px; color:#334155; font-size:15px; line-height:1.65;">
                                 By completing the course, you will be eligible for the lucky draw, earn applicable CPE hours, and develop the knowledge required for your current and future responsibilities.
                             </p>
