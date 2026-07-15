@@ -16,6 +16,8 @@ import { CorporateController } from './corporate.controller';
 import { CorporateDemoSeedService } from './corporate-demo-seed.service';
 import { CorporateLearnerNudgeEntity } from './corporate-learner-nudge.entity';
 import { CorporateLearnerNudgeInitService } from './corporate-learner-nudge-init.service';
+import { CorporateNudgeCampaignEntity } from './corporate-nudge-campaign.entity';
+import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { CorporateLearnerNudgeInitService } from './corporate-learner-nudge-init
       CourseModuleEntity,
       CourseModuleSectionEntity,
       CorporateLearnerNudgeEntity,
+      CorporateNudgeCampaignEntity,
+      CorporateNudgeEmailLogEntity,
     ]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,

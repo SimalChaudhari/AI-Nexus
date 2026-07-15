@@ -86,7 +86,9 @@ export const buildInlineBrandEmailHtml = ({
     const ctaBlock = ctaLabel && ctaUrl ? buildEmailCtaButton(ctaLabel, ctaUrl) : '';
     const noteBlock = buildEmailNoteBox(note);
 
-    const greetingWeight = greetingBold ? 700 : 400;
+    const greetingNameHtml = greetingBold
+        ? `<strong style="font-weight:700;">${safeGreetingName}</strong>`
+        : safeGreetingName;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -108,7 +110,7 @@ export const buildInlineBrandEmailHtml = ({
                     </tr>
                     <tr>
                         <td style="padding:28px 26px 22px; background-color:#ffffff;">
-                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:${greetingWeight};">${safeGreetingPrefix} ${safeGreetingName},</p>
+                            <p style="margin:0 0 10px; color:${BRAND_SECONDARY}; font-size:16px; line-height:1.5; font-weight:400;">${safeGreetingPrefix} ${greetingNameHtml},</p>
                             ${introBlock}
                             ${bodyHtml}
                             ${ctaBlock}
@@ -182,34 +184,85 @@ export const buildCredentialsBodyHtml = (username: string, plainPassword: string
                             </table>`;
 };
 
-/** Placeholder corporate nudge body — replace copy later without changing send flow. */
+const SUPPORT_EMAIL = 'hello@ainexus.isca.org.sg';
+
+/** Build the second sentence of the corporate nudge intro (HTML or plain text). */
+export const buildCorporateNudgeProgressSentence = (
+    progressLabelRaw: string,
+    asHtml: boolean,
+): string => {
+    const raw = String(progressLabelRaw || '').trim() || 'in progress';
+    const lackOutstanding = /lack the/i.test(raw);
+    const milestone = /milestone achieved/i.test(raw);
+    const zeroPercent = /^0%\s*complete/i.test(raw);
+    const moduleMatch = raw.match(/on Module\s+(.+)$/i);
+    const moduleTitle = moduleMatch ? String(moduleMatch[1] || '').trim() : '';
+
+    if (lackOutstanding) {
+        const sentence =
+            raw.charAt(0).toUpperCase() + raw.slice(1).replace(/\.*\s*$/, '');
+        return asHtml
+            ? `<strong style="font-weight:700;">${escapeHtml(sentence)}</strong>, so you’re almost there.`
+            : `${sentence}, so you’re almost there.`;
+    }
+
+    if (milestone) {
+        return asHtml
+            ? `You’ve achieved a <strong style="font-weight:700;">Pillar 2 specialisation milestone</strong>, so you’re almost there.`
+            : `You’ve achieved a Pillar 2 specialisation milestone, so you’re almost there.`;
+    }
+
+    // 0% — do not say "almost there"
+    if (zeroPercent || /^in progress$/i.test(raw)) {
+        if (moduleTitle) {
+            const safeModule = escapeHtml(moduleTitle);
+            return asHtml
+                ? `You haven’t started yet — begin with <strong style="font-weight:700;">Module ${safeModule}</strong> when you’re ready.`
+                : `You haven’t started yet — begin with Module ${moduleTitle} when you’re ready.`;
+        }
+        return asHtml
+            ? `You haven’t started yet — take the first step when you’re ready.`
+            : `You haven’t started yet — take the first step when you’re ready.`;
+    }
+
+    return asHtml
+        ? `You’re currently <strong style="font-weight:700;">${escapeHtml(raw)}</strong>, so you’re almost there.`
+        : `You’re currently ${raw}, so you’re almost there.`;
+};
+
+/** Corporate learner nudge — continue AI fluency programme. */
 export const buildCorporateNudgeBodyHtml = (params: {
-    companyLabel?: string;
-    pendingMessage?: string;
+    progressLabel: string;
+    courseUrl: string;
 }): string => {
-    const company = escapeHtml(String(params.companyLabel || '').trim());
-    const pending = escapeHtml(String(params.pendingMessage || '').trim());
-    const companyLine = company
-        ? `<p style="margin:0 0 12px; color:#0f172a; font-size:14px; line-height:1.55;">From: <strong>${company}</strong></p>`
-        : '';
-    const pendingLine = pending
-        ? `<p style="margin:0; color:#334155; font-size:14px; line-height:1.55;"><strong>Suggested focus:</strong> ${pending}</p>`
-        : `<p style="margin:0; color:#334155; font-size:14px; line-height:1.55;">Please continue your Pillar modules, quizzes and assessments so you stay on track for programme completion.</p>`;
+    const progressSentence = buildCorporateNudgeProgressSentence(params.progressLabel, true);
+    const courseUrl = escapeHtml(String(params.courseUrl || '').trim());
+    const supportEmail = escapeHtml(SUPPORT_EMAIL);
+
+    const courseLinkHtml = courseUrl
+        ? `<a href="${courseUrl}" target="_blank" rel="noopener noreferrer" style="color:${BRAND_SECONDARY}; text-decoration:underline; font-weight:700; word-break:break-all;"><strong style="font-weight:700;">${courseUrl}</strong></a>`
+        : '<strong style="font-weight:700;">your learning dashboard</strong>';
 
     return `
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
-                                <tr>
-                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                                        Learning reminder
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:14px;">
-                                        ${companyLine}
-                                        ${pendingLine}
-                                    </td>
-                                </tr>
-                            </table>`;
+                            <p style="margin:0 0 14px; color:#334155; font-size:15px; line-height:1.65;">
+                                Just a quick reminder to complete <strong style="font-weight:700;">AI fluency program</strong>. ${progressSentence}
+                            </p>
+                            <p style="margin:0 0 8px; color:#334155; font-size:15px; line-height:1.65;">
+                                Please set aside some time to finish the remaining modules and any required assessment. You can continue the course here:
+                            </p>
+                            <p style="margin:0 0 16px; color:#334155; font-size:15px; line-height:1.65;">
+                                ${courseLinkHtml}
+                            </p>
+                            <p style="margin:0 0 16px; color:#334155; font-size:15px; line-height:1.65;">
+                                By completing the course, you will be eligible for the lucky draw, earn applicable CPE hours, and develop the knowledge required for your current and future responsibilities.
+                            </p>
+                            <p style="margin:0 0 16px; color:#334155; font-size:15px; line-height:1.65;">
+                                Having trouble accessing the course or need assistance? Please contact <a href="mailto:${supportEmail}" style="color:${BRAND_SECONDARY}; text-decoration:underline; font-weight:700;"><strong style="font-weight:700;">${supportEmail}</strong></a>
+                            </p>
+                            <p style="margin:0; color:#0f172a; font-size:15px; line-height:1.65;">
+                                Thank you,<br />
+                                AINEXUS
+                            </p>`;
 };
 
 export const buildForumReplyBodyHtml = (postTitle: string, replierName: string, replyPreview: string): string => {

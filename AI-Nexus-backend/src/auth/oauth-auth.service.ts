@@ -1592,10 +1592,16 @@ export class OAuthAuthService {
   ): info is Record<string, unknown> {
     if (!info || typeof info !== 'object') return false;
     if (info.success === false || info.success === 'false') return false;
+    const companyCode = String(info.companyCode || '').trim();
     const accountId = String(info.accountId || '').trim();
     const contactId = String(info.contactId || '').trim();
     const uenNumber = String(info.uenNumber || '').trim();
-    return Boolean(accountId || contactId || uenNumber);
+    return Boolean(companyCode || accountId || contactId || uenNumber);
+  }
+
+  /** user.companyCode comes only from Salesforce companyCode (not UEN / accountId). */
+  resolveCorporateCompanyCode(info: Record<string, unknown>): string {
+    return String(info.companyCode || '').trim();
   }
 
   /**
@@ -3185,11 +3191,12 @@ export class OAuthAuthService {
     // Corporate HR portal: detect via userinfoforcorporate and assign Corporate role.
     const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
     if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
-      const uen = String(corporateInfo.uenNumber || '').trim();
+      const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
       const accountId = String(corporateInfo.accountId || '').trim();
       const contactEmail = normalizeEmail(String(corporateInfo.contactEmail || ''));
       user.role = UserRole.Corporate;
-      if (uen) user.companyCode = uen;
+      // Link learners / corporate dashboard only via Salesforce companyCode.
+      if (companyCode) user.companyCode = companyCode;
       if (accountId) user.salesforceAccountId = accountId;
       if (contactEmail && !user.salesforceUsername) user.salesforceUsername = contactEmail;
       user.salesforceUserInfoRaw = {
@@ -3200,8 +3207,8 @@ export class OAuthAuthService {
       };
       user.salesforceSyncedAt = new Date();
       console.log('[SSO Login] Corporate Salesforce user detected — role set to Corporate:', {
-        uen,
-        accountId,
+        companyCode: companyCode || null,
+        accountId: accountId || null,
         contactEmail: contactEmail || null,
       });
     } else if (user.role === UserRole.Corporate) {

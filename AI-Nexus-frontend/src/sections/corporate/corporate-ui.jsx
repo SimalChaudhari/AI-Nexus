@@ -435,15 +435,31 @@ export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
 
 export function CorpBtn({ variant = 'blue', fullWidth, children, sx, ...other }) {
   const variants = {
-    blue: { bgcolor: CORP.blue, color: '#fff', '&:hover': { bgcolor: '#0a4fd6' } },
-    primary: { bgcolor: '#fff', color: CORP.navy, '&:hover': { bgcolor: '#f5f8fc' } },
+    blue: {
+      bgcolor: CORP.blue,
+      color: '#fff',
+      '&:hover': { bgcolor: '#0a4fd6' },
+      '&.Mui-disabled': { bgcolor: CORP.blue, color: '#fff', opacity: 0.55 },
+    },
+    primary: {
+      bgcolor: '#fff',
+      color: CORP.navy,
+      '&:hover': { bgcolor: '#f5f8fc' },
+      '&.Mui-disabled': { bgcolor: '#fff', color: CORP.navy, opacity: 0.55 },
+    },
     secondary: {
       bgcolor: 'rgba(255,255,255,.13)',
       color: '#fff',
       border: '1px solid rgba(255,255,255,.24)',
       '&:hover': { bgcolor: 'rgba(255,255,255,.2)' },
+      '&.Mui-disabled': { color: '#fff', opacity: 0.55 },
     },
-    ghost: { bgcolor: '#eef5ff', color: CORP.blue, '&:hover': { bgcolor: '#e0edff' } },
+    ghost: {
+      bgcolor: '#eef5ff',
+      color: CORP.blue,
+      '&:hover': { bgcolor: '#e0edff' },
+      '&.Mui-disabled': { bgcolor: '#eef5ff', color: CORP.blue, opacity: 0.55 },
+    },
   };
 
   return (

@@ -98,7 +98,93 @@ export class CorporateController {
     @Param('userId') userId: string,
     @Query('companyCode') companyCode?: string,
   ) {
-    return this.corporateService.nudgeLearner(userId, this.resolveCompanyCode(req, companyCode));
+    return this.corporateService.nudgeLearner(
+      userId,
+      this.resolveCompanyCode(req, companyCode),
+      req.user?.id,
+    );
+  }
+
+  @Get('nudge-campaigns/preview')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Preview incomplete learners who would receive a nudge campaign email',
+  })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  async previewNudgeCampaign(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    return this.corporateService.previewNudgeCampaign(this.resolveCompanyCode(req, companyCode));
+  }
+
+  @Post('nudge-campaigns')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary:
+      'Send the same nudge template to all learners who have not completed the course (logged for audit)',
+  })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  async createNudgeCampaign(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    return this.corporateService.createNudgeCampaign(
+      this.resolveCompanyCode(req, companyCode),
+      req.user?.id,
+    );
+  }
+
+  @Get('nudge-campaigns')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'List nudge campaigns for this company' })
+  @ApiQuery({ name: 'companyCode', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async listNudgeCampaigns(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.corporateService.listNudgeCampaigns({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  @Get('nudge-email-logs')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Audit log of every nudge email sent (proof of delivery attempts)',
+  })
+  @ApiQuery({ name: 'companyCode', required: false })
+  @ApiQuery({ name: 'campaignId', required: false })
+  @ApiQuery({ name: 'q', required: false, description: 'Search name, email, subject, progress' })
+  @ApiQuery({ name: 'status', required: false, description: 'sent | failed | skipped' })
+  @ApiQuery({ name: 'source', required: false, description: 'single | campaign' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async listNudgeEmailLogs(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+    @Query('campaignId') campaignId?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.corporateService.listNudgeEmailLogs({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      campaignId,
+      q,
+      status,
+      source,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   @Get('learners/:userId')

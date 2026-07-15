@@ -252,6 +252,7 @@ export const paths = {
     learner: (userId) => `${ROOTS.CORPORATE}/progress/${userId}`,
     enrol: `${ROOTS.CORPORATE}/enrol`,
     reports: `${ROOTS.CORPORATE}/reports`,
+    nudgeTrack: `${ROOTS.CORPORATE}/nudge-track`,
   },
   // ADMIN
   admin: {

@@ -101,6 +101,54 @@ export async function nudgeCorporateLearner(userId, companyCode) {
   return response.data;
 }
 
+export async function previewCorporateNudgeCampaign(companyCode) {
+  const response = await axios.get('/corporate/nudge-campaigns/preview', {
+    params: companyCode ? { companyCode } : undefined,
+  });
+  return response.data?.data ?? response.data;
+}
+
+export async function createCorporateNudgeCampaign(companyCode) {
+  const response = await axios.post('/corporate/nudge-campaigns', null, {
+    params: companyCode ? { companyCode } : undefined,
+  });
+  return response.data;
+}
+
+export async function getCorporateNudgeCampaigns({ companyCode, page, limit } = {}) {
+  const response = await axios.get('/corporate/nudge-campaigns', {
+    params: {
+      ...(companyCode ? { companyCode } : {}),
+      ...(page ? { page } : {}),
+      ...(limit != null ? { limit } : {}),
+    },
+  });
+  return response.data;
+}
+
+export async function getCorporateNudgeEmailLogs({
+  companyCode,
+  campaignId,
+  q,
+  status,
+  source,
+  page,
+  limit,
+} = {}) {
+  const response = await axios.get('/corporate/nudge-email-logs', {
+    params: {
+      ...(companyCode ? { companyCode } : {}),
+      ...(campaignId ? { campaignId } : {}),
+      ...(q ? { q } : {}),
+      ...(status && status !== 'all' ? { status } : {}),
+      ...(source && source !== 'all' ? { source } : {}),
+      ...(page ? { page } : {}),
+      ...(limit != null ? { limit } : {}),
+    },
+  });
+  return response.data;
+}
+
 export async function getCorporateCertificates({
   companyCode,
   page,
