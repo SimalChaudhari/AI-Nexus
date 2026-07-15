@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import {
   CourseQuestionBankEntity,
   CourseQuestionType,
@@ -39,10 +39,15 @@ import {
   type AssignmentVerificationLogEntry,
 } from './course-assignment-submission-evaluation.types';
 import {
+  AssessmentAdminFileRecord,
   AssignmentSubmissionFileRecord,
+  getAssessmentAnswerSheetFiles,
+  getAssessmentGuideFiles,
+  getAssessmentQuestionFiles,
   getSubmissionFilesFromEntity,
-  isLearnerZipFile,
+  normalizeSubmissionFiles,
   summarizeSubmissionFiles,
+  syncLegacyAssessmentFileFields,
 } from './course-assignment-file.types';
 
 function normalizeTrueFalse(value: string): 'true' | 'false' {
@@ -219,10 +224,10 @@ export class CourseQuestionBankService {
       assignedUserIds: _u,
       ...rest
     } = row;
-    if (!rest.guideFileUrl && rest.referenceFileUrl) {
-      rest.guideFileUrl = rest.referenceFileUrl;
-      rest.guideFileName = rest.referenceFileName ?? null;
-    }
+    rest.questionFiles = getAssessmentQuestionFiles(rest);
+    rest.answerSheetFiles = getAssessmentAnswerSheetFiles(rest);
+    rest.guideFiles = getAssessmentGuideFiles(rest);
+    syncLegacyAssessmentFileFields(rest);
     return rest;
   }
 
@@ -245,6 +250,7 @@ export class CourseQuestionBankService {
       aiPassed: evaluation.aiPassed,
       aiFeedback: evaluation.aiFeedback,
       aiRawResult: evaluation.aiRawResult,
+      verificationLog: extractVerificationLog(sub.aiRawResult),
       aiEvaluatedAt: evaluation.aiEvaluatedAt,
       manualPassed: evaluation.manualPassed,
       manualFeedback: evaluation.manualFeedback,
@@ -264,6 +270,14 @@ export class CourseQuestionBankService {
       where: { courseId },
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
+    rows
+      .filter((row) => row.questionType === CourseQuestionType.Assignment)
+      .forEach((row) => {
+        row.questionFiles = getAssessmentQuestionFiles(row);
+        row.answerSheetFiles = getAssessmentAnswerSheetFiles(row);
+        row.guideFiles = getAssessmentGuideFiles(row);
+        syncLegacyAssessmentFileFields(row);
+      });
     let visibleRows = rows;
     if (!includeAnswers && userId) {
       visibleRows = rows.filter((r) => this.isAssignmentVisibleToUser(r, userId));
@@ -295,6 +309,7 @@ export class CourseQuestionBankService {
       if (!includeAnswers && r.questionType === CourseQuestionType.Assignment) {
         delete (publicRow as Record<string, unknown>).answerSheetFileUrl;
         delete (publicRow as Record<string, unknown>).answerSheetFileName;
+        delete (publicRow as Record<string, unknown>).answerSheetFiles;
       }
       if (r.questionType === CourseQuestionType.Assignment) {
         const sub = submissionByQuestionId.get(r.id);
@@ -353,10 +368,31 @@ export class CourseQuestionBankService {
       referenceFileName: questionType === CourseQuestionType.Assignment ? dto.referenceFileName ?? null : null,
       questionFileUrl: questionType === CourseQuestionType.Assignment ? dto.questionFileUrl ?? null : null,
       questionFileName: questionType === CourseQuestionType.Assignment ? dto.questionFileName ?? null : null,
+      questionFiles:
+        questionType === CourseQuestionType.Assignment && dto.questionFileUrl
+          ? [{
+              fileUrl: dto.questionFileUrl,
+              originalFileName: dto.questionFileName || 'Question file',
+            }]
+          : [],
       answerSheetFileUrl: questionType === CourseQuestionType.Assignment ? dto.answerSheetFileUrl ?? null : null,
       answerSheetFileName: questionType === CourseQuestionType.Assignment ? dto.answerSheetFileName ?? null : null,
+      answerSheetFiles:
+        questionType === CourseQuestionType.Assignment && dto.answerSheetFileUrl
+          ? [{
+              fileUrl: dto.answerSheetFileUrl,
+              originalFileName: dto.answerSheetFileName || 'Answer sheet',
+            }]
+          : [],
       guideFileUrl: questionType === CourseQuestionType.Assignment ? dto.guideFileUrl ?? null : null,
       guideFileName: questionType === CourseQuestionType.Assignment ? dto.guideFileName ?? null : null,
+      guideFiles:
+        questionType === CourseQuestionType.Assignment && (dto.guideFileUrl || dto.referenceFileUrl)
+          ? [{
+              fileUrl: dto.guideFileUrl || dto.referenceFileUrl!,
+              originalFileName: dto.guideFileName || dto.referenceFileName || 'Guide',
+            }]
+          : [],
       passingPercentage: questionType === CourseQuestionType.Assignment ? dto.passingPercentage ?? null : null,
       sortOrder,
     });
@@ -414,11 +450,57 @@ export class CourseQuestionBankService {
     if (dto.explanation !== undefined) row.explanation = dto.explanation ?? null;
     if (dto.referenceFileUrl !== undefined) row.referenceFileUrl = dto.referenceFileUrl ?? null;
     if (dto.referenceFileName !== undefined) row.referenceFileName = dto.referenceFileName ?? null;
-    if (dto.questionFileUrl !== undefined) row.questionFileUrl = dto.questionFileUrl ?? null;
+    if (dto.referenceFileUrl !== undefined && dto.guideFileUrl === undefined) {
+      if (dto.referenceFileUrl === null) {
+        row.guideFiles = [];
+        row.guideFileUrl = null;
+        row.guideFileName = null;
+      } else {
+        row.guideFiles = [{
+          fileUrl: dto.referenceFileUrl,
+          originalFileName: dto.referenceFileName || row.referenceFileName || 'Guide',
+        }];
+        row.guideFileUrl = dto.referenceFileUrl;
+        row.guideFileName = dto.referenceFileName || row.referenceFileName || 'Guide';
+      }
+    }
+    if (dto.questionFileUrl !== undefined) {
+      row.questionFileUrl = dto.questionFileUrl ?? null;
+      if (dto.questionFileUrl === null) {
+        row.questionFiles = [];
+      } else {
+        row.questionFiles = [{
+          fileUrl: dto.questionFileUrl,
+          originalFileName: dto.questionFileName || row.questionFileName || 'Question file',
+        }];
+      }
+    }
     if (dto.questionFileName !== undefined) row.questionFileName = dto.questionFileName ?? null;
-    if (dto.answerSheetFileUrl !== undefined) row.answerSheetFileUrl = dto.answerSheetFileUrl ?? null;
+    if (dto.answerSheetFileUrl !== undefined) {
+      row.answerSheetFileUrl = dto.answerSheetFileUrl ?? null;
+      if (dto.answerSheetFileUrl === null) {
+        row.answerSheetFiles = [];
+      } else {
+        row.answerSheetFiles = [{
+          fileUrl: dto.answerSheetFileUrl,
+          originalFileName: dto.answerSheetFileName || row.answerSheetFileName || 'Answer sheet',
+        }];
+      }
+    }
     if (dto.answerSheetFileName !== undefined) row.answerSheetFileName = dto.answerSheetFileName ?? null;
-    if (dto.guideFileUrl !== undefined) row.guideFileUrl = dto.guideFileUrl ?? null;
+    if (dto.guideFileUrl !== undefined) {
+      row.guideFileUrl = dto.guideFileUrl ?? null;
+      if (dto.guideFileUrl === null) {
+        row.guideFiles = [];
+        row.referenceFileUrl = null;
+        row.referenceFileName = null;
+      } else {
+        row.guideFiles = [{
+          fileUrl: dto.guideFileUrl,
+          originalFileName: dto.guideFileName || row.guideFileName || 'Guide',
+        }];
+      }
+    }
     if (dto.guideFileName !== undefined) row.guideFileName = dto.guideFileName ?? null;
     if (dto.passingPercentage !== undefined) row.passingPercentage = dto.passingPercentage ?? null;
     if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
@@ -552,9 +634,10 @@ export class CourseQuestionBankService {
       },
     });
     if (!attempt) throw new NotFoundException('Attempt not found');
+    // Course-end attempts (moduleId null) score only unlinked questions — matches learner UI.
     const where = attempt.moduleId
       ? { courseId, moduleId: attempt.moduleId }
-      : { courseId };
+      : { courseId, moduleId: IsNull() };
     const bank = await this.repo.find({
       where,
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
@@ -734,12 +817,16 @@ export class CourseQuestionBankService {
     };
   }
 
-  async uploadAssessmentAdminFile(
+  async uploadAssessmentAdminFiles(
     courseId: string,
     questionId: string,
-    file: Express.Multer.File,
+    files: Express.Multer.File[],
     field: 'question' | 'answerSheet' | 'guide',
     saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
+    options: {
+      replace?: boolean;
+      keepFiles?: unknown;
+    } = {},
   ): Promise<CourseQuestionBankEntity> {
     await this.courseService.getById(courseId);
     const question = await this.repo.findOne({ where: { id: questionId, courseId } });
@@ -747,24 +834,75 @@ export class CourseQuestionBankService {
     if (question.questionType !== CourseQuestionType.Assignment) {
       throw new BadRequestException('This question is not an assessment');
     }
-    if (!file) throw new BadRequestException('File is required');
-
-    const fileUrl = await saveFile(file, 'course-assignment-references');
-    const originalFileName = String(file.originalname || 'file').trim();
-
-    if (field === 'question') {
-      question.questionFileUrl = fileUrl;
-      question.questionFileName = originalFileName;
-    } else if (field === 'answerSheet') {
-      question.answerSheetFileUrl = fileUrl;
-      question.answerSheetFileName = originalFileName;
-    } else {
-      question.guideFileUrl = fileUrl;
-      question.guideFileName = originalFileName;
+    if (!files?.length && !options.replace) {
+      throw new BadRequestException('At least one file is required');
     }
+
+    question.questionFiles = getAssessmentQuestionFiles(question);
+    question.answerSheetFiles = getAssessmentAnswerSheetFiles(question);
+    question.guideFiles = getAssessmentGuideFiles(question);
+
+    const existingFiles =
+      field === 'question'
+        ? getAssessmentQuestionFiles(question)
+        : field === 'answerSheet'
+          ? getAssessmentAnswerSheetFiles(question)
+          : getAssessmentGuideFiles(question);
+
+    const keepRecords = normalizeSubmissionFiles(options.keepFiles);
+    const keepUrls = new Set([
+      ...keepRecords.map((file) => file.fileUrl),
+      ...(Array.isArray(options.keepFiles)
+        ? options.keepFiles
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : []),
+    ]);
+    const retainedFiles = options.replace === false
+      ? existingFiles
+      : existingFiles.filter((file) => keepUrls.has(file.fileUrl));
+
+    const uploadedFiles: AssessmentAdminFileRecord[] = [];
+    for (const file of files || []) {
+      const fileUrl = await saveFile(file, 'course-assignment-references');
+      uploadedFiles.push({
+        fileUrl,
+        originalFileName: String(file.originalname || 'file').trim(),
+        mimeType: file.mimetype || null,
+      });
+    }
+
+    const mergedFiles = [...retainedFiles, ...uploadedFiles].filter(
+      (file, index, all) =>
+        all.findIndex((candidate) => candidate.fileUrl === file.fileUrl) === index,
+    );
+    if (field === 'question') question.questionFiles = mergedFiles;
+    else if (field === 'answerSheet') question.answerSheetFiles = mergedFiles;
+    else question.guideFiles = mergedFiles;
+
+    syncLegacyAssessmentFileFields(question);
     const saved = await this.repo.save(question);
     this.assignmentGradingService.queueBlueprintIngestion(saved.id, true);
     return saved;
+  }
+
+  /** @deprecated Use uploadAssessmentAdminFiles. */
+  async uploadAssessmentAdminFile(
+    courseId: string,
+    questionId: string,
+    file: Express.Multer.File,
+    field: 'question' | 'answerSheet' | 'guide',
+    saveFile: (file: Express.Multer.File, folder: string) => Promise<string>,
+  ): Promise<CourseQuestionBankEntity> {
+    return this.uploadAssessmentAdminFiles(
+      courseId,
+      questionId,
+      [file],
+      field,
+      saveFile,
+      { replace: true },
+    );
   }
 
   private async assertAssignmentAccess(
@@ -819,11 +957,6 @@ export class CourseQuestionBankService {
     const savedFiles: AssignmentSubmissionFileRecord[] = [];
     for (const file of files) {
       const originalFileName = String(file.originalname || 'submission').trim();
-      if (isLearnerZipFile(originalFileName, file.mimetype)) {
-        throw new BadRequestException(
-          'ZIP files are not allowed. Upload individual files (PDF, images, Excel, etc.).',
-        );
-      }
       const fileUrl = await saveFile(file, 'course-assignment-submissions');
       savedFiles.push({
         fileUrl,
@@ -1020,12 +1153,10 @@ export class CourseQuestionBankService {
     submission.manualFeedback = String(dto.feedback || '').trim() || null;
     submission.manualVerifiedAt = new Date();
     submission.manualVerifiedBy = adminId;
-    if (submission.evaluationStatus === 'pending' || submission.evaluationStatus === 'processing') {
-      submission.evaluationStatus = 'completed';
-    }
+    submission.evaluationStatus = 'completed';
     this.quizAssessmentProgressService.markSubmissionCompleted(submission, dto.passed === true);
     const saved = await this.assignmentSubmissionRepo.save(submission);
-    void this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
+    await this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
 
     const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
     const row = rows.find((item) => item.id === saved.id);

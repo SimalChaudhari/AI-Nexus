@@ -1,5 +1,6 @@
 // src/auth/oauth-auth.dto.ts
-import { IsString, IsOptional, IsEmail, IsNotEmpty, IsNumber, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsNotEmpty, IsNumber, IsBoolean, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class OAuthExchangeDto {
   @IsString()
@@ -114,4 +115,161 @@ export class UpdateSalesforceNexusUserDto {
   @IsString()
   @IsNotEmpty()
   idType!: string;
+}
+
+/** Corporate HR register — Salesforce account block */
+export class CreateCorporateSalesforceAccountDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  uenNumber!: string;
+
+  @IsString()
+  @IsOptional()
+  businessCountry?: string;
+
+  @IsString()
+  @IsOptional()
+  businessPostalCode?: string;
+
+  @IsString()
+  @IsOptional()
+  businessUnitNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  businessBuildingName?: string;
+
+  @IsString()
+  @IsOptional()
+  businessStreetName?: string;
+
+  @IsString()
+  @IsOptional()
+  businessCity?: string;
+
+  @IsString()
+  @IsOptional()
+  businessState?: string;
+
+  @IsString()
+  @IsOptional()
+  organisationType?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isPaidCorporate?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isSme?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isProvidesProfessionalServices?: boolean;
+}
+
+/** Corporate HR register — Salesforce contact block */
+export class CreateCorporateSalesforceContactDto {
+  @IsString()
+  @IsNotEmpty()
+  lastName!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  firstName!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsOptional()
+  mobilePhone?: string;
+
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @IsString()
+  @IsOptional()
+  designation?: string;
+
+  @IsString()
+  @IsOptional()
+  website?: string;
+
+  @IsString()
+  @IsOptional()
+  iscaConferencesEvents?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  practitionersBulletin?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  iscaAccountifyBulletin?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  financialForensicFocus?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  businessFinanceBulletin?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  monthlyCALab?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  specialISCAOfferings?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  participateInResearch?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  boardflixBulletin?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  monthlyISCharteredAccountantJournal?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  scaqNewsletterUpdates?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  studentMemberNewsletterUpdates?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  theISCABuzzCorporateMembersNewsletter?: boolean;
+}
+
+export class CreateCorporateSalesforceAccountAndContactDto {
+  @ValidateNested()
+  @Type(() => CreateCorporateSalesforceAccountDto)
+  account!: CreateCorporateSalesforceAccountDto;
+
+  @ValidateNested()
+  @Type(() => CreateCorporateSalesforceContactDto)
+  contact!: CreateCorporateSalesforceContactDto;
+}
+
+export class CheckCorporateSalesforceAccountDto {
+  @IsString()
+  @IsOptional()
+  uenNumber?: string;
+
+  @IsEmail()
+  @IsOptional()
+  email?: string;
 }

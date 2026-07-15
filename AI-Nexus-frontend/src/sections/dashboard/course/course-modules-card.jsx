@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
@@ -104,6 +104,14 @@ function sectionWatchtimeChanged(editingSection, sectionWatchMinutes, sectionWat
       : '';
   const wt = normalizeWatchtime(combined);
   return String(wt || '').trim() !== String(editingSection.watchtime || '').trim();
+}
+
+function resolveStoredDurationSeconds(section) {
+  if (!section) return null;
+  const fromDuration = watchtimeToSeconds(section.durationTime);
+  if (fromDuration != null && fromDuration > 0) return fromDuration;
+  const fromWatchtime = watchtimeToSeconds(section.watchtime);
+  return fromWatchtime != null && fromWatchtime > 0 ? fromWatchtime : null;
 }
 
 function normalizeWatchtime(value) {
@@ -438,6 +446,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
   const [detectingVideoDuration, setDetectingVideoDuration] = useState(false);
   const [videoDurationError, setVideoDurationError] = useState('');
   const [customWatchtimeEnabled, setCustomWatchtimeEnabled] = useState(false);
+  const [sectionCompletionPercentage, setSectionCompletionPercentage] = useState('');
 
   const [expandedModuleId, setExpandedModuleId] = useState(null);
 
@@ -450,7 +459,6 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
   const [videoResetConfirmOpen, setVideoResetConfirmOpen] = useState(false);
   const skipVideoResetConfirmRef = useRef(false);
   const originalSectionVideoUrlRef = useRef('');
-  const [contentDeletionGuard, setContentDeletionGuard] = useState(null);
 
   const fetchModules = useCallback(async () => {
     if (!courseId) return;
@@ -465,54 +473,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     }
   }, [courseId]);
 
-  const fetchContentDeletionGuard = useCallback(async () => {
-    if (!courseId) {
-      setContentDeletionGuard(null);
-      return;
-    }
-    try {
-      const guard = await courseService.getCourseContentDeletionGuard(courseId);
-      setContentDeletionGuard(guard);
-    } catch {
-      setContentDeletionGuard(null);
-    }
-  }, [courseId]);
-
-  const contentDeletionLocked = Boolean(contentDeletionGuard?.locked);
-  const completedSectionIds = Array.isArray(contentDeletionGuard?.completedSectionIds)
-    ? contentDeletionGuard.completedSectionIds
-    : [];
-  const completedSectionIdSet = useMemo(() => new Set(completedSectionIds), [completedSectionIds]);
-
-  const isSectionVideoLocked = useCallback(
-    (sectionId) => contentDeletionLocked || completedSectionIdSet.has(sectionId),
-    [contentDeletionLocked, completedSectionIdSet]
-  );
-
-  const isModuleDeleteLocked = useCallback(
-    (mod) =>
-      contentDeletionLocked ||
-      (mod?.sections || []).some((section) => completedSectionIdSet.has(section.id)),
-    [contentDeletionLocked, completedSectionIdSet]
-  );
-
-  const sectionVideoCompletedMessage =
-    'Learners have already completed this lesson video. You cannot delete it or change its video URL and watchtime.';
-
-  const contentDeletionLockMessage =
-    contentDeletionGuard?.reason ||
-    'Modules, sections, video URLs, and custom watchtime cannot be changed because learners have been issued certificates for this course or programme.';
-
-  const videoSettingsLocked =
-    Boolean(
-      editingSection &&
-        normalizeVideoUrlForCompare(editingSection.videoUrl || originalSectionVideoUrlRef.current)
-    ) &&
-    (contentDeletionLocked || completedSectionIdSet.has(editingSection?.id));
-
-  const videoSettingsLockMessage = contentDeletionLocked
-    ? contentDeletionLockMessage
-    : sectionVideoCompletedMessage;
+  // Admin can always edit/delete video settings; backend guards are also disabled.
+  const videoSettingsLocked = false;
 
   useEffect(() => {
     if (!courseId) {
@@ -520,8 +482,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
       return;
     }
     fetchModules();
-    fetchContentDeletionGuard();
-  }, [courseId, fetchModules, fetchContentDeletionGuard]);
+  }, [courseId, fetchModules]);
 
   useEffect(() => {
     if (!(sectionVideoFile instanceof File)) {
@@ -691,11 +652,15 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionVideoUrl('');
     setSectionWatchMinutes('');
     setSectionWatchSeconds('');
+    setSectionCompletionPercentage('');
     setSectionDescription('');
     setSectionContent('');
     setSectionImages([]);
     setSectionVideoFile(null);
     setSectionVideoPreviewUrl('');
+    setDetectedVideoDurationSeconds(null);
+    setDetectingVideoDuration(false);
+    setVideoDurationError('');
     setSectionMediaType('video');
     setCustomWatchtimeEnabled(false);
     setSectionDialogOpen(true);
@@ -714,6 +679,11 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     const watchParts = parseWatchtimeParts(section.watchtime || '');
     setSectionWatchMinutes(watchParts.minutes);
     setSectionWatchSeconds(watchParts.seconds);
+    setSectionCompletionPercentage(
+      section.completionPercentage != null && section.completionPercentage !== ''
+        ? String(section.completionPercentage)
+        : ''
+    );
     setSectionDescription(section.description || '');
     setSectionContent(section.content || '');
     setSectionImages(Array.isArray(section.images) ? [...section.images] : []);
@@ -731,6 +701,10 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     } else {
       setCustomWatchtimeEnabled(false);
     }
+    const storedDurationSeconds = resolveStoredDurationSeconds(section);
+    setDetectedVideoDurationSeconds(storedDurationSeconds);
+    setVideoDurationError('');
+    setDetectingVideoDuration(Boolean(String(section.videoUrl || '').trim() && storedDurationSeconds == null));
     setSectionDialogOpen(true);
   };
 
@@ -747,12 +721,16 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
     setSectionVideoUrl('');
     setSectionWatchMinutes('');
     setSectionWatchSeconds('');
+    setSectionCompletionPercentage('');
     setSectionDescription('');
     setSectionContent('');
     setSectionImages([]);
     setSectionFiles([]);
     setSectionVideoFile(null);
     setSectionVideoPreviewUrl('');
+    setDetectedVideoDurationSeconds(null);
+    setDetectingVideoDuration(false);
+    setVideoDurationError('');
     setSectionMediaType('video');
     setCustomWatchtimeEnabled(false);
   };
@@ -812,12 +790,6 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
   };
 
   const handleDeleteModule = (mod) => {
-    if (isModuleDeleteLocked(mod)) {
-      toast.error(
-        contentDeletionLocked ? contentDeletionLockMessage : sectionVideoCompletedMessage
-      );
-      return;
-    }
     setDeleteTarget({ type: 'module', item: mod });
     setDeleteConfirmOpen(true);
   };
@@ -847,12 +819,6 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
   };
 
   const handleDeleteSection = (section) => {
-    if (isSectionVideoLocked(section.id)) {
-      toast.error(
-        contentDeletionLocked ? contentDeletionLockMessage : sectionVideoCompletedMessage
-      );
-      return;
-    }
     setDeleteTarget({ type: 'section', item: section });
     setDeleteConfirmOpen(true);
   };
@@ -929,7 +895,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
 
     if (videoSettingsLocked) {
       if (sectionMediaType !== 'video') {
-        toast.error(videoSettingsLockMessage);
+        toast.error('Video settings are locked for this section.');
         return;
       }
       if (
@@ -942,11 +908,11 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
           isPendingMode,
         })
       ) {
-        toast.error(videoSettingsLockMessage);
+        toast.error('Video settings are locked for this section.');
         return;
       }
       if (sectionWatchtimeChanged(editingSection, sectionWatchMinutes, sectionWatchSeconds)) {
-        toast.error(videoSettingsLockMessage);
+        toast.error('Video settings are locked for this section.');
         return;
       }
     }
@@ -1050,21 +1016,48 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
           throw new Error('Enter valid watchtime in minutes and seconds.');
         }
         const enteredSeconds = wt ? watchtimeToSeconds(wt) : null;
+        const watchtimeChanged = sectionWatchtimeChanged(
+          editingSection,
+          sectionWatchMinutes,
+          sectionWatchSeconds
+        );
+        const durationCapSeconds =
+          detectedVideoDurationSeconds != null
+            ? detectedVideoDurationSeconds
+            : resolveStoredDurationSeconds(editingSection);
         if (
           !sectionVideoUrlChanged &&
+          watchtimeChanged &&
+          durationCapSeconds != null &&
+          enteredSeconds != null &&
+          enteredSeconds > durationCapSeconds
+        ) {
+          throw new Error(
+            `Watchtime cannot exceed video duration (${formatDurationLabel(durationCapSeconds)}).`
+          );
+        }
+        if (
+          !sectionVideoUrlChanged &&
+          !watchtimeChanged &&
           detectedVideoDurationSeconds != null &&
           enteredSeconds != null &&
           enteredSeconds > detectedVideoDurationSeconds
         ) {
-          throw new Error(
-            `Watchtime cannot exceed video duration (${formatDurationLabel(detectedVideoDurationSeconds)}).`
-          );
+          // Stored watchtime matched Spotlightr metadata padding; align to playable length.
+          payload.watchtime =
+            normalizeWatchtime(formatDurationLabel(detectedVideoDurationSeconds)) || null;
+        } else {
+          payload.watchtime = sectionVideoUrlChanged ? null : wt || null;
         }
-        payload.watchtime = sectionVideoUrlChanged ? null : wt || null;
         let durationTimeValue = null;
         if (detectedVideoDurationSeconds != null) {
           const dn = normalizeWatchtime(formatDurationLabel(detectedVideoDurationSeconds));
           durationTimeValue = dn || null;
+        } else if (resolveStoredDurationSeconds(editingSection) != null) {
+          durationTimeValue =
+            normalizeWatchtime(
+              formatDurationLabel(resolveStoredDurationSeconds(editingSection))
+            ) || null;
         } else if (
           !sectionVideoUrlChanged &&
           editingSection &&
@@ -1075,6 +1068,18 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
           durationTimeValue = editingSection.durationTime;
         }
         payload.durationTime = durationTimeValue;
+        const pctRaw = String(sectionCompletionPercentage || '').trim();
+        if (sectionVideoUrlChanged) {
+          payload.completionPercentage = null;
+        } else if (!pctRaw) {
+          payload.completionPercentage = null;
+        } else {
+          const pct = Number(pctRaw);
+          if (!Number.isFinite(pct) || pct < 1 || pct > 100) {
+            throw new Error('Completion percentage must be between 1 and 100.');
+          }
+          payload.completionPercentage = Math.round(pct);
+        }
       }
       if (
         sectionMediaType === 'content' &&
@@ -1086,6 +1091,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
         delete payload.videoUrl;
         delete payload.watchtime;
         delete payload.durationTime;
+        delete payload.completionPercentage;
         delete payload.content;
         delete payload.images;
         delete payload.attachments;
@@ -1223,29 +1229,6 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
         <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
           Add modules (e.g. Introduction, Detecting Financial Deception). Under each module you can add multiple sections (e.g. Occupational Fraud, Preventing Fraud). They appear in the learning player sidebar.
         </Typography>
-        {contentDeletionLocked || completedSectionIds.length > 0 ? (
-          <Box
-            sx={{
-              mb: 2,
-              p: 1.5,
-              borderRadius: 1.5,
-              bgcolor: 'warning.lighter',
-              border: (theme) => `1px solid ${theme.palette.warning.light}`,
-            }}
-          >
-            <Typography variant="body2" sx={{ color: 'warning.darker' }}>
-              {contentDeletionLocked
-                ? contentDeletionLockMessage
-                : 'Some lesson videos have been completed by learners. Those sections cannot be deleted or have their video URL / watchtime changed.'}
-              {contentDeletionGuard?.activeCertificateCount
-                ? ` (${contentDeletionGuard.activeCertificateCount} active certificate${contentDeletionGuard.activeCertificateCount === 1 ? '' : 's'})`
-                : ''}
-              {!contentDeletionLocked && completedSectionIds.length > 0
-                ? ` (${completedSectionIds.length} completed lesson${completedSectionIds.length === 1 ? '' : 's'})`
-                : ''}
-            </Typography>
-          </Box>
-        ) : null}
         {!hasCourse ? (
           <Box
             sx={{
@@ -1297,22 +1280,13 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                         <IconButton size="small" onClick={() => openEditModule(mod)} aria-label="Edit module" sx={{ bgcolor: 'background.paper' }}>
                           <Iconify icon="eva:edit-2-fill" width={18} />
                         </IconButton>
-                        <Tooltip
-                          title={
-                            isModuleDeleteLocked(mod)
-                              ? contentDeletionLocked
-                                ? contentDeletionLockMessage
-                                : sectionVideoCompletedMessage
-                              : 'Delete module'
-                          }
-                        >
+                        <Tooltip title="Delete module">
                           <span>
                             <IconButton
                               size="small"
                               onClick={() => handleDeleteModule(mod)}
                               color="error"
                               aria-label="Delete module"
-                              disabled={isModuleDeleteLocked(mod)}
                               sx={{ bgcolor: 'background.paper' }}
                             >
                               <Iconify icon="eva:trash-2-outline" width={18} />
@@ -1370,15 +1344,7 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEditSection(mod, sec); }} aria-label="Edit section" sx={{ bgcolor: 'background.paper' }}>
                                   <Iconify icon="eva:edit-2-fill" width={16} />
                                 </IconButton>
-                                <Tooltip
-                                  title={
-                                    isSectionVideoLocked(sec.id)
-                                      ? contentDeletionLocked
-                                        ? contentDeletionLockMessage
-                                        : sectionVideoCompletedMessage
-                                      : 'Delete section'
-                                  }
-                                >
+                                <Tooltip title="Delete section">
                                   <span>
                                     <IconButton
                                       size="small"
@@ -1388,7 +1354,6 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                                       }}
                                       color="error"
                                       aria-label="Delete section"
-                                      disabled={isSectionVideoLocked(sec.id)}
                                       sx={{ bgcolor: 'background.paper' }}
                                     >
                                       <Iconify icon="eva:trash-2-outline" width={16} />
@@ -1462,6 +1427,8 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                                     ? [
                                         'Video section',
                                         sec.durationTime && `duration ${sec.durationTime}`,
+                                        sec.completionPercentage != null &&
+                                          `${sec.completionPercentage}% complete`,
                                       ]
                                         .filter(Boolean)
                                         .join(' ')
@@ -1671,11 +1638,6 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
             </Box>
             {sectionMediaType === 'video' && (
               <>
-                {videoSettingsLocked ? (
-                  <Typography variant="body2" sx={{ color: 'warning.main', mb: 1.5 }}>
-                    {videoSettingsLockMessage}
-                  </Typography>
-                ) : null}
                 {editingSection && (sectionVideoPreviewUrl || sectionVideoUrl.trim()) && !videoSettingsLocked && (
                   <Stack direction="row" justifyContent="flex-end">
                     <Button
@@ -1923,6 +1885,42 @@ export function CourseModulesCard({ courseId, pendingModules = [], onPendingModu
                       Saved video duration: {editingSection.durationTime}
                     </Typography>
                   )}
+                </Box>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 1,
+                    border: (theme) => `1px solid ${theme.palette.divider}`,
+                    bgcolor: 'background.neutral',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Completion percentage
+                  </Typography>
+                  <TextField
+                    label="Percent"
+                    value={sectionCompletionPercentage}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/\D/g, '').slice(0, 3);
+                      if (next === '' || Number(next) <= 100) {
+                        setSectionCompletionPercentage(next);
+                      }
+                    }}
+                    placeholder="e.g. 80"
+                    inputProps={{ inputMode: 'numeric', min: 1, max: 100 }}
+                    disabled={videoSettingsLocked}
+                    sx={{ maxWidth: 160 }}
+                    InputProps={{
+                      endAdornment: (
+                        <Typography variant="body2" sx={{ color: 'text.secondary', ml: 0.5 }}>
+                          %
+                        </Typography>
+                      ),
+                    }}
+                  />
+                  <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary' }}>
+                    When set (1–100), the lesson is marked completed once the learner watches this percentage of the video. This overrides custom watchtime.
+                  </Typography>
                 </Box>
               </>
             )}

@@ -589,6 +589,50 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.setNexusPasswordPath}`;
   }
 
+  /** Corporate account + contact creation (HR corporate register). */
+  private get createCorporateAccountPath(): string {
+    const p =
+      process.env.OAUTH_CORPORATE_ACCOUNT_CREATE_PATH
+      || '/services/apexrest/corporate-membership/v1/corporateaccandconcreation';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get createCorporateAccountUrl(): string {
+    const fullUrl = process.env.OAUTH_CORPORATE_ACCOUNT_CREATE_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.createCorporateAccountPath}`;
+    return `${this.integrationApiBaseUrl}${this.createCorporateAccountPath}`;
+  }
+
+  private get checkCorporateAccountPath(): string {
+    const p =
+      process.env.OAUTH_CORPORATE_ACCOUNT_CHECK_PATH
+      || '/services/apexrest/corporate-membership/v1/corporateaccandconcheck';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get checkCorporateAccountUrl(): string {
+    const fullUrl = process.env.OAUTH_CORPORATE_ACCOUNT_CHECK_URL?.trim();
+    if (fullUrl) return fullUrl;
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.checkCorporateAccountPath}`;
+    return `${this.integrationApiBaseUrl}${this.checkCorporateAccountPath}`;
+  }
+
+  private get corporateUserInfoPath(): string {
+    const p =
+      process.env.OAUTH_CORPORATE_USERINFO_PATH
+      || '/services/apexrest/corporate-membership/v1/userinfoforcorporate';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get corporateUserInfoUrl(): string {
+    const fullUrl = process.env.OAUTH_CORPORATE_USERINFO_URL?.trim();
+    if (fullUrl) return fullUrl;
+    return `${this.baseUrl}${this.corporateUserInfoPath}`;
+  }
+
   private resolveApplicationApiUrl(route: OAuthApplicationApiRouteKey): string {
     return buildOAuthApplicationApiUrl(route, {
       siteBaseUrl: process.env.OAUTH_INSTANCE_URL?.trim(),
@@ -1340,6 +1384,218 @@ export class OAuthAuthService {
     }
 
     throw lastError ?? new BadRequestException('Failed to set Salesforce password.');
+  }
+
+  private isSalesforceApiErrorPayload(resData: Record<string, unknown> | null | undefined): {
+    isError: boolean;
+    errorMsg: string;
+  } {
+    if (!resData || typeof resData !== 'object') return { isError: false, errorMsg: '' };
+    if ('isError' in resData && (resData.isError === true || resData.isError === 'true')) {
+      return { isError: true, errorMsg: String(resData.Message || resData.message || '') };
+    }
+    if ('success' in resData && (resData.success === false || resData.success === 'false')) {
+      return { isError: true, errorMsg: String(resData.message || resData.Message || '') };
+    }
+    return { isError: false, errorMsg: '' };
+  }
+
+  /** Create Corporate Account + Contact via Apex corporateaccandconcreation. */
+  async createCorporateSalesforceAccountAndContact(payload: {
+    account: Record<string, unknown>;
+    contact: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
+    const accountName = String(payload?.account?.name || '').trim();
+    const uenNumber = String(payload?.account?.uenNumber || '').trim();
+    const email = normalizeEmail(String(payload?.contact?.email || ''));
+    const firstName = String(payload?.contact?.firstName || '').trim();
+    const lastName = String(payload?.contact?.lastName || '').trim();
+
+    if (!accountName) throw new BadRequestException('Company name is required.');
+    if (!uenNumber) throw new BadRequestException('UEN number is required.');
+    if (!email) throw new BadRequestException('A valid contact email is required.');
+    if (!firstName || !lastName) throw new BadRequestException('Contact first and last name are required.');
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.createCorporateAccountUrl;
+    const body = {
+      account: {
+        name: accountName,
+        uenNumber,
+        businessCountry: String(payload.account.businessCountry || 'Singapore').trim(),
+        businessPostalCode: String(payload.account.businessPostalCode || '').trim(),
+        businessUnitNumber: String(payload.account.businessUnitNumber || '').trim(),
+        businessBuildingName: String(payload.account.businessBuildingName || '').trim(),
+        businessStreetName: String(payload.account.businessStreetName || '').trim(),
+        businessCity: String(payload.account.businessCity || 'Singapore').trim(),
+        businessState: String(payload.account.businessState || 'SG').trim(),
+        organisationType: String(payload.account.organisationType || 'Private Limited').trim(),
+        isPaidCorporate: Boolean(payload.account.isPaidCorporate),
+        isSme: payload.account.isSme !== false,
+        isProvidesProfessionalServices: Boolean(payload.account.isProvidesProfessionalServices),
+      },
+      contact: {
+        lastName,
+        firstName,
+        email,
+        mobilePhone: String(payload.contact.mobilePhone || '').trim(),
+        phone: String(payload.contact.phone || '').trim(),
+        designation: String(payload.contact.designation || '').trim(),
+        website: String(payload.contact.website || '').trim(),
+        iscaConferencesEvents: String(payload.contact.iscaConferencesEvents || 'Yes').trim(),
+        practitionersBulletin: Boolean(payload.contact.practitionersBulletin),
+        iscaAccountifyBulletin: Boolean(payload.contact.iscaAccountifyBulletin),
+        financialForensicFocus: Boolean(payload.contact.financialForensicFocus),
+        businessFinanceBulletin: Boolean(payload.contact.businessFinanceBulletin),
+        monthlyCALab: Boolean(payload.contact.monthlyCALab),
+        specialISCAOfferings: Boolean(payload.contact.specialISCAOfferings),
+        participateInResearch: Boolean(payload.contact.participateInResearch),
+        boardflixBulletin: Boolean(payload.contact.boardflixBulletin),
+        monthlyISCharteredAccountantJournal: Boolean(
+          payload.contact.monthlyISCharteredAccountantJournal,
+        ),
+        scaqNewsletterUpdates: Boolean(payload.contact.scaqNewsletterUpdates),
+        studentMemberNewsletterUpdates: Boolean(payload.contact.studentMemberNewsletterUpdates),
+        theISCABuzzCorporateMembersNewsletter:
+          payload.contact.theISCABuzzCorporateMembersNewsletter !== false,
+      },
+    };
+
+    console.log('[Salesforce] Creating corporate account+contact via Apex REST:', {
+      url,
+      uenNumber: body.account.uenNumber,
+      email: body.contact.email,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 45000,
+      });
+      const resData = (res.data || {}) as Record<string, unknown>;
+      const { isError, errorMsg } = this.isSalesforceApiErrorPayload(resData);
+      if (isError) {
+        throw new BadRequestException(errorMsg || 'Failed to create corporate Salesforce account.');
+      }
+      return resData;
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) throw err;
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] corporateaccandconcreation failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const desc = this.extractSalesforceErrorDescription(err.response?.data, err.message);
+        throw new BadRequestException(desc || 'Failed to create corporate Salesforce account.');
+      }
+      throw err;
+    }
+  }
+
+  /** Check whether Corporate Account / Contact already exist. */
+  async checkCorporateSalesforceAccount(payload: {
+    uenNumber?: string;
+    email?: string;
+  }): Promise<Record<string, unknown>> {
+    const uenNumber = String(payload?.uenNumber || '').trim();
+    const email = normalizeEmail(String(payload?.email || ''));
+    if (!uenNumber && !email) {
+      throw new BadRequestException('UEN number or contact email is required for the corporate check.');
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.checkCorporateAccountUrl;
+    const body: Record<string, unknown> = {
+      ...(uenNumber ? { uenNumber, account: { uenNumber } } : {}),
+      ...(email ? { email, contact: { email } } : {}),
+    };
+
+    console.log('[Salesforce] Checking corporate account+contact via Apex REST:', {
+      url,
+      uenNumber: uenNumber || null,
+      email: email || null,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      const resData = (res.data || {}) as Record<string, unknown>;
+      const { isError, errorMsg } = this.isSalesforceApiErrorPayload(resData);
+      if (isError) {
+        throw new BadRequestException(errorMsg || 'Failed to check corporate Salesforce account.');
+      }
+      return resData;
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) throw err;
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] corporateaccandconcheck failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const desc = this.extractSalesforceErrorDescription(err.response?.data, err.message);
+        throw new BadRequestException(desc || 'Failed to check corporate Salesforce account.');
+      }
+      throw err;
+    }
+  }
+
+  /** GET corporate user info using the end-user SSO Bearer token. */
+  async fetchSalesforceCorporateUserInfo(
+    accessToken: string,
+  ): Promise<Record<string, unknown> | null> {
+    const url = this.corporateUserInfoUrl;
+    if (!url || !accessToken) {
+      console.warn('[SSO Login] Skipping corporate user info fetch — missing URL or access token.');
+      return null;
+    }
+    try {
+      console.log('[SSO Login] Fetching Salesforce corporate user info from', url);
+      const res = await axios.get<Record<string, unknown>>(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+      console.log('[SSO Login] Corporate user info response status:', res.status);
+      console.log('[SSO Login] Corporate user info payload:', res.data);
+      return res.data || null;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[SSO Login] Corporate user info fetch failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+          url,
+        });
+      } else {
+        console.error('[SSO Login] Corporate user info fetch failed (unknown error):', err);
+      }
+      return null;
+    }
+  }
+
+  isCorporateSalesforceUserInfo(
+    info: Record<string, unknown> | null | undefined,
+  ): info is Record<string, unknown> {
+    if (!info || typeof info !== 'object') return false;
+    if (info.success === false || info.success === 'false') return false;
+    const accountId = String(info.accountId || '').trim();
+    const contactId = String(info.contactId || '').trim();
+    const uenNumber = String(info.uenNumber || '').trim();
+    return Boolean(accountId || contactId || uenNumber);
   }
 
   /**
@@ -2473,7 +2729,7 @@ export class OAuthAuthService {
   }
 
   async resolveOAuthPlatformSessionDeferral(
-    user: Pick<UserEntity, 'isSCAQCandidate' | 'salesforceAccountType'>,
+    user: Pick<UserEntity, 'isSCAQCandidate' | 'salesforceAccountType' | 'role'>,
     idpAccessToken: string,
     deferredAuthFromState: boolean,
   ): Promise<{
@@ -2481,6 +2737,17 @@ export class OAuthAuthService {
     needsPaidSignup: boolean;
     citizenshipGap: boolean;
   }> {
+    if (user.role === UserRole.Corporate) {
+      console.log('[SSO Login] Corporate role — granting direct platform login, skipping deferral.');
+      return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
+    }
+
+    const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+    if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
+      console.log('[SSO Login] Corporate userinfo found — granting direct platform login.');
+      return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
+    }
+
     const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
 
     if (nexusInfo?.Is_paid === true) {
@@ -2913,6 +3180,32 @@ export class OAuthAuthService {
       });
     } else {
       console.warn('[SSO Login] No Salesforce nexus user info available — SCAQ/Associate flags NOT updated.');
+    }
+
+    // Corporate HR portal: detect via userinfoforcorporate and assign Corporate role.
+    const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+    if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
+      const uen = String(corporateInfo.uenNumber || '').trim();
+      const accountId = String(corporateInfo.accountId || '').trim();
+      const contactEmail = normalizeEmail(String(corporateInfo.contactEmail || ''));
+      user.role = UserRole.Corporate;
+      if (uen) user.companyCode = uen;
+      if (accountId) user.salesforceAccountId = accountId;
+      if (contactEmail && !user.salesforceUsername) user.salesforceUsername = contactEmail;
+      user.salesforceUserInfoRaw = {
+        ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+          ? user.salesforceUserInfoRaw
+          : {}),
+        corporate: corporateInfo,
+      };
+      user.salesforceSyncedAt = new Date();
+      console.log('[SSO Login] Corporate Salesforce user detected — role set to Corporate:', {
+        uen,
+        accountId,
+        contactEmail: contactEmail || null,
+      });
+    } else if (user.role === UserRole.Corporate) {
+      console.log('[SSO Login] Preserving existing Corporate role (corporate userinfo unavailable).');
     }
 
     const payload = { id: user.id, email: user.email, role: user.role, type: 'access' };

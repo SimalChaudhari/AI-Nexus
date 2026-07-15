@@ -51,8 +51,12 @@ export function QuickLinksCommentList({
   deletingComment,
   /** When true, show edit/delete on every comment (e.g. admin view) */
   showEditDeleteForAll = false,
-  /** When true, like and reply are disabled (e.g. admin panel - admin cannot like or reply) */
+  /** When true, like and reply are disabled (legacy shorthand for both disableLike and disableReply) */
   disableLikeAndReply = false,
+  /** When true, like action is hidden (reply may still be enabled) */
+  disableLike = disableLikeAndReply,
+  /** When true, reply action is hidden */
+  disableReply = disableLikeAndReply,
   /** When true, reply/edit use the TipTap editor (AI forum); comment bodies render as HTML */
   richText = false,
   /** When set (e.g. AI forum), enables image upload in reply/edit composers */
@@ -74,10 +78,97 @@ export function QuickLinksCommentList({
     const isReplying = replyingToCommentId === comment.id;
     const isEditing = editingCommentId === comment.id;
     const authorName = getCommentAuthorName ? getCommentAuthorName(comment) : comment.user?.username || 'Anonymous';
-    const showActions = user && !disableLikeAndReply;
+    const showLike = user && !disableLike;
+    const showReply = user && !disableReply;
 
-    const likeReplyBar = disableLikeAndReply ? (
-      (comment.likeCount ?? 0) > 0 ? (
+    const likeReplyBar =
+      showLike || showReply ? (
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={{ xs: 0.5, sm: 1 }}
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ mt: 1.25, gap: { xs: 0.5, sm: 1 } }}
+        >
+          {showLike ? (
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={0.25}
+              sx={{ cursor: 'pointer', minHeight: 32 }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleLike?.(comment.id);
+              }}
+            >
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleLike?.(comment.id);
+                }}
+                disabled={likingCommentId === comment.id}
+                sx={{
+                  color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
+                  p: { xs: 0.5, sm: 1 },
+                }}
+              >
+                {likingCommentId === comment.id ? (
+                  <CircularProgress size={16} />
+                ) : (
+                  <Iconify
+                    icon={comment.likedByCurrentUser ? 'solar:like-bold' : 'solar:like-outline'}
+                    width={18}
+                  />
+                )}
+              </IconButton>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
+                  fontWeight: comment.likedByCurrentUser ? 600 : 400,
+                }}
+              >
+                {comment.likeCount ?? 0}
+              </Typography>
+            </Stack>
+          ) : (comment.likeCount ?? 0) > 0 ? (
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ opacity: 0.85 }}>
+              <Iconify
+                icon="solar:like-outline"
+                width={16}
+                sx={{ color: 'text.secondary', display: { xs: 'none', sm: 'block' } }}
+              />
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                {comment.likeCount}
+              </Typography>
+            </Stack>
+          ) : null}
+          {showReply ? (
+            <Button
+              size="small"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onReplyClick?.(comment);
+              }}
+              sx={{
+                minWidth: 'auto',
+                px: { xs: 1, sm: 1.5 },
+                py: 0.5,
+                color: 'text.secondary',
+                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+                '& .MuiButton-startIcon': { display: { xs: 'none', sm: 'inline-flex' } },
+              }}
+            >
+              Reply
+            </Button>
+          ) : null}
+        </Stack>
+      ) : (comment.likeCount ?? 0) > 0 ? (
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1, opacity: 0.85 }}>
           <Iconify
             icon="solar:like-outline"
@@ -88,90 +179,7 @@ export function QuickLinksCommentList({
             {comment.likeCount}
           </Typography>
         </Stack>
-      ) : null
-    ) : showActions ? (
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={{ xs: 0.5, sm: 1 }}
-        flexWrap="wrap"
-        useFlexGap
-        sx={{ mt: 1.25, gap: { xs: 0.5, sm: 1 } }}
-      >
-        <Stack
-          direction="row"
-          alignItems="center"
-          spacing={0.25}
-          sx={{ cursor: 'pointer', minHeight: 32 }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onToggleLike?.(comment.id);
-          }}
-        >
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleLike?.(comment.id);
-            }}
-            disabled={likingCommentId === comment.id}
-            sx={{
-              color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
-              p: { xs: 0.5, sm: 1 },
-            }}
-          >
-            {likingCommentId === comment.id ? (
-              <CircularProgress size={16} />
-            ) : (
-              <Iconify
-                icon={comment.likedByCurrentUser ? 'solar:like-bold' : 'solar:like-outline'}
-                width={18}
-              />
-            )}
-          </IconButton>
-          <Typography
-            variant="caption"
-            sx={{
-              color: comment.likedByCurrentUser ? 'primary.main' : 'text.secondary',
-              fontWeight: comment.likedByCurrentUser ? 600 : 400,
-            }}
-          >
-            {comment.likeCount ?? 0}
-          </Typography>
-        </Stack>
-        <Button
-          size="small"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onReplyClick?.(comment);
-          }}
-          sx={{
-            minWidth: 'auto',
-            px: { xs: 1, sm: 1.5 },
-            py: 0.5,
-            color: 'text.secondary',
-            fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-            '& .MuiButton-startIcon': { display: { xs: 'none', sm: 'inline-flex' } },
-          }}
-        >
-          Reply
-        </Button>
-      </Stack>
-    ) : (comment.likeCount ?? 0) > 0 ? (
-      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1 }}>
-        <Iconify
-          icon="solar:like-outline"
-          width={16}
-          sx={{ color: 'text.secondary', display: { xs: 'none', sm: 'block' } }}
-        />
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {comment.likeCount}
-        </Typography>
-      </Stack>
-    ) : null;
+      ) : null;
 
     const showOwnerActions = canEditDelete(comment);
 
@@ -323,7 +331,7 @@ export function QuickLinksCommentList({
             </Box>
           </Stack>
 
-          {isReplying && !disableLikeAndReply && (
+          {isReplying && !disableReply && (
             <Box sx={commentComposerFullWidthWrapSx}>
               {richText ? (
                 <CommentRichTextComposer

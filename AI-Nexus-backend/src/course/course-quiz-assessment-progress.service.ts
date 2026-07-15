@@ -1,6 +1,6 @@
 import { BadRequestException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, In, Repository } from 'typeorm';
 
 import {
   CourseQuestionBankEntity,
@@ -183,9 +183,177 @@ export class CourseQuizAssessmentProgressService {
     };
   }
 
-  async isCourseQuizAssessmentRequirementsMet(userId: string, courseId: string): Promise<boolean> {
+  /**
+   * Batch quiz/assessment progress for many learners × courses.
+   * Key format: `${userId}:${courseId}`
+   */
+  async getLearnerProgressBatch(
+    userIds: string[],
+    courseIds: string[],
+  ): Promise<Map<string, LearnerQuizAssessmentProgress>> {
+    const result = new Map<string, LearnerQuizAssessmentProgress>();
+    const empty = (): LearnerQuizAssessmentProgress => ({
+      scopes: [],
+      allQuizzesCompleted: true,
+      allAssignmentsCompleted: true,
+      quizAssessmentCompleted: true,
+    });
+
+    if (!userIds.length || !courseIds.length) return result;
+
+    const uniqueCourseIds = [...new Set(courseIds.filter(Boolean))];
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+    if (!uniqueCourseIds.length || !uniqueUserIds.length) return result;
+
+    const questions = await this.questionRepo.find({
+      where: { courseId: In(uniqueCourseIds) },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    const questionsByCourse = new Map<string, CourseQuestionBankEntity[]>();
+    for (const q of questions) {
+      const list = questionsByCourse.get(q.courseId) || [];
+      list.push(q);
+      questionsByCourse.set(q.courseId, list);
+    }
+
+    const attempts = await this.attemptRepo.find({
+      where: {
+        userId: In(uniqueUserIds),
+        courseId: In(uniqueCourseIds),
+        status: CourseQuestionAttemptStatus.Completed,
+      },
+      order: { completedAt: 'DESC', createdAt: 'DESC' },
+    });
+    const attemptsByUserCourseModule = new Map<string, CourseQuestionBankAttemptEntity[]>();
+    for (const attempt of attempts) {
+      const moduleKey = attempt.moduleId ?? '__course_end__';
+      const key = `${attempt.userId}:${attempt.courseId}:${moduleKey}`;
+      const list = attemptsByUserCourseModule.get(key) || [];
+      list.push(attempt);
+      attemptsByUserCourseModule.set(key, list);
+    }
+
+    const allAssignmentIds = questions
+      .filter((q) => q.questionType === CourseQuestionType.Assignment)
+      .map((q) => q.id);
+    const submissions =
+      allAssignmentIds.length > 0
+        ? await this.submissionRepo
+            .createQueryBuilder('s')
+            .where('s.userId IN (:...userIds)', { userIds: uniqueUserIds })
+            .andWhere('s.questionId IN (:...questionIds)', { questionIds: allAssignmentIds })
+            .getMany()
+        : [];
+    const submissionByUserQuestion = new Map<string, CourseQuestionAssignmentSubmissionEntity>();
+    for (const submission of submissions) {
+      submissionByUserQuestion.set(`${submission.userId}:${submission.questionId}`, submission);
+    }
+
+    for (const userId of uniqueUserIds) {
+      for (const courseId of uniqueCourseIds) {
+        const courseQuestions = questionsByCourse.get(courseId) || [];
+        const grouped = this.groupQuestionsByScope(courseQuestions);
+        const scopes: QuizAssessmentScopeProgress[] = [];
+
+        for (const group of grouped) {
+          const moduleKey = group.moduleId ?? '__course_end__';
+          const attemptKey = `${userId}:${courseId}:${moduleKey}`;
+          const scopeAttempts = attemptsByUserCourseModule.get(attemptKey) || [];
+          const quizCompleted =
+            group.quizIds.length === 0 ||
+            scopeAttempts.some(
+              (attempt) => attempt.isCompleted === true || this.isPerfectQuizAttempt(attempt),
+            );
+
+          const assignmentCompleted =
+            group.assignmentIds.length === 0 ||
+            group.assignmentIds.every((questionId) =>
+              this.isPassedSubmission(submissionByUserQuestion.get(`${userId}:${questionId}`)),
+            );
+
+          scopes.push({
+            moduleId: group.moduleId,
+            quizCount: group.quizIds.length,
+            quizCompleted,
+            assignmentCount: group.assignmentIds.length,
+            assignmentCompleted,
+          });
+        }
+
+        const quizScopes = scopes.filter((s) => s.quizCount > 0);
+        const assignmentScopes = scopes.filter((s) => s.assignmentCount > 0);
+        const allQuizzesCompleted =
+          quizScopes.length === 0 || quizScopes.every((s) => s.quizCompleted);
+        const allAssignmentsCompleted =
+          assignmentScopes.length === 0 || assignmentScopes.every((s) => s.assignmentCompleted);
+
+        result.set(`${userId}:${courseId}`, {
+          scopes,
+          allQuizzesCompleted,
+          allAssignmentsCompleted,
+          quizAssessmentCompleted: allQuizzesCompleted && allAssignmentsCompleted,
+        });
+      }
+    }
+
+    // Ensure callers always find a key
+    for (const userId of uniqueUserIds) {
+      for (const courseId of uniqueCourseIds) {
+        const key = `${userId}:${courseId}`;
+        if (!result.has(key)) result.set(key, empty());
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Match learner progress UI (`buildCourseOverallProgress`):
+   * - Beginner/Advanced: only course-end quiz (+ beginner course-end assessment)
+   * - Intermediate: every module scope, plus course-end assessment when present
+   * Orphan module-scoped questions on beginner must not block certificates when the UI already shows 100%.
+   */
+  async isCourseQuizAssessmentRequirementsMet(
+    userId: string,
+    courseId: string,
+    courseLevel?: string | null,
+  ): Promise<boolean> {
     const progress = await this.getLearnerProgress(userId, courseId);
-    return progress.quizAssessmentCompleted;
+    const level = String(courseLevel || '').trim().toLowerCase();
+    if (!level) {
+      return progress.quizAssessmentCompleted;
+    }
+
+    const isCourseEndModel = level === 'beginner' || level === 'advanced';
+    const courseEndAssignmentAllowed = level === 'beginner' || level === 'intermediate';
+    const endScope = progress.scopes.find((scope) => scope.moduleId == null);
+
+    if (isCourseEndModel) {
+      const quizOk = !endScope || endScope.quizCount === 0 || endScope.quizCompleted;
+      const assignmentOk =
+        !courseEndAssignmentAllowed ||
+        !endScope ||
+        endScope.assignmentCount === 0 ||
+        endScope.assignmentCompleted;
+      return quizOk && assignmentOk;
+    }
+
+    const moduleScopes = progress.scopes.filter((scope) => scope.moduleId);
+    const modulesOk =
+      moduleScopes.length === 0 ||
+      moduleScopes.every((scope) => {
+        const quizOk = scope.quizCount === 0 || scope.quizCompleted;
+        const assignmentOk = scope.assignmentCount === 0 || scope.assignmentCompleted;
+        return quizOk && assignmentOk;
+      });
+    const courseEndAssignmentOk =
+      !courseEndAssignmentAllowed ||
+      !endScope ||
+      endScope.assignmentCount === 0 ||
+      endScope.assignmentCompleted;
+    const courseEndQuizOk =
+      !endScope || endScope.quizCount === 0 || endScope.quizCompleted;
+    return modulesOk && courseEndAssignmentOk && courseEndQuizOk;
   }
 
   /** Pillar 2 programme rule: one module with its quiz + assessment passed (when they exist). */
@@ -216,6 +384,7 @@ export class CourseQuizAssessmentProgressService {
 
   /**
    * Pillar 2 programme badge: qualifying module must include quiz and assessment, both passed.
+   * Uses the same learner-progress scopes as the course player outline (quizCompleted / assignmentCompleted).
    * Module-scoped only — course-end quiz/assessment must not satisfy this rule.
    */
   async isPillar2ProgrammeModuleComplete(
@@ -223,23 +392,12 @@ export class CourseQuizAssessmentProgressService {
     courseId: string,
     moduleId: string,
   ): Promise<boolean> {
-    const questions = await this.questionRepo.find({
-      where: { courseId, moduleId },
-    });
-    const assignmentIds = questions
-      .filter((q) => q.questionType === CourseQuestionType.Assignment)
-      .map((q) => q.id);
-    const quizCount = questions.length - assignmentIds.length;
-    const hasQuiz = quizCount > 0;
-    const hasAssignment = assignmentIds.length > 0;
-
-    if (!hasQuiz || !hasAssignment) {
+    const progress = await this.getLearnerProgress(userId, courseId);
+    const scope = progress.scopes.find((row) => row.moduleId === moduleId);
+    if (!scope || scope.quizCount <= 0 || scope.assignmentCount <= 0) {
       return false;
     }
-
-    const quizOk = await this.hasQuizPerfectScore(userId, courseId, moduleId);
-    const assignmentOk = await this.isAssessmentScopeCompleted(userId, courseId, assignmentIds);
-    return quizOk && assignmentOk;
+    return Boolean(scope.quizCompleted && scope.assignmentCompleted);
   }
 
   /**
@@ -317,8 +475,12 @@ export class CourseQuizAssessmentProgressService {
     if (!userId || !courseId) return;
     try {
       await this.certificateService.syncCertificateWithCourseCompletion(userId, courseId);
-    } catch {
+    } catch (error) {
       // Certificate sync is best-effort after quiz/assessment updates.
+      console.error(
+        `[certificate-sync] failed for user=${userId} course=${courseId}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 }

@@ -91,6 +91,43 @@ const DEFAULT_PAGINATION = {
   hasPreviousPage: false,
 };
 
+/**
+ * Module cache survives React Strict Mode remounts (dev-only) and PublicGuard
+ * child remounts so /learning does not flash LoadingScreen and refetch from scratch.
+ */
+const learningCoursesCache = {
+  signature: '',
+  groupedResult: [],
+  courses: [],
+  pagination: DEFAULT_PAGINATION,
+  favoriteIds: [],
+};
+
+function buildLearningCoursesSignature({ enrolledOnly, authenticated, debouncedSearchQuery }) {
+  return `${enrolledOnly ? 'my-courses' : 'all'}|${authenticated ? 'auth' : 'guest'}|${debouncedSearchQuery || ''}`;
+}
+
+function readLearningCoursesCache(signature) {
+  if (!signature || learningCoursesCache.signature !== signature) return null;
+  if (!Array.isArray(learningCoursesCache.courses) || learningCoursesCache.courses.length === 0) {
+    return null;
+  }
+  return {
+    groupedResult: learningCoursesCache.groupedResult,
+    courses: learningCoursesCache.courses,
+    pagination: learningCoursesCache.pagination || DEFAULT_PAGINATION,
+    favorites: new Set(learningCoursesCache.favoriteIds || []),
+  };
+}
+
+function writeLearningCoursesCache(signature, payload) {
+  learningCoursesCache.signature = signature;
+  learningCoursesCache.groupedResult = payload.groupedResult || [];
+  learningCoursesCache.courses = payload.courses || [];
+  learningCoursesCache.pagination = payload.pagination || DEFAULT_PAGINATION;
+  learningCoursesCache.favoriteIds = [...(payload.favorites || [])];
+}
+
 const transformCourse = (course, defaultCourseImage) => ({
   id: course.id,
   title: course.title || 'Untitled Course',
@@ -132,8 +169,8 @@ const getCourseContentMeta = (course = {}) => {
 };
 
 const getCourseProgressStatus = (status, courseProgress) => {
-  if (status === 'completed') return { label: 'Completed', color: 'success' };
-  if (courseProgress > 0 || status === 'in_progress') return { label: 'In Progress', color: 'warning' };
+  if (status === 'completed' || courseProgress >= 100) return { label: 'Completed', color: 'success' };
+  if (status === 'in_progress' || courseProgress > 0) return { label: 'In Progress', color: 'warning' };
   return { label: 'Not Started', color: 'default' };
 };
 
@@ -197,11 +234,13 @@ function CourseGroupScrollBox({
   onLoadMore,
   paginatingGroupKey,
   renderPage,
+  initialLoading = false,
 }) {
   const theme = useTheme();
   const scrollRef = useRef(null);
   const firstPageRef = useRef(null);
   const loadLockRef = useRef(false);
+  const lastLoadItemsLengthRef = useRef(0);
   const [snapPageHeight, setSnapPageHeight] = useState(null);
   const items = group.items || [];
   const pages = useMemo(() => chunkGroupItems(items), [items]);
@@ -236,39 +275,73 @@ function CourseGroupScrollBox({
     return () => observer.disconnect();
   }, [hasPagination, measurePageHeight, pages.length, items.length]);
 
-  const tryLoadMore = useCallback(() => {
-    if (loadLockRef.current || isGroupLoading || !needsMoreData) return;
+  const tryLoadMore = useCallback(
+    (options = {}) => {
+      const { fromWheel = false } = options;
+      if (loadLockRef.current || isGroupLoading || initialLoading || !needsMoreData) return;
 
-    const el = scrollRef.current;
-    if (!el) return;
+      const el = scrollRef.current;
+      if (!el) return;
 
-    const pageHeight = snapPageHeight || el.clientHeight;
-    if (pageHeight <= 0) return;
+      const pageHeight = snapPageHeight || el.clientHeight;
+      if (pageHeight <= 0) return;
 
-    const currentPage = Math.round(el.scrollTop / pageHeight);
-    const onLastPage = currentPage >= pages.length - 1;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      const canScroll = el.scrollHeight > el.clientHeight + 8;
 
-    if (onLastPage && nearBottom) {
+      // Scroll-driven loads need real overflow. Wheel on the first page may load more
+      // before a second snap page exists (content fits the viewport exactly).
+      if (!fromWheel && !canScroll) return;
+
+      if (fromWheel) {
+        if (!(pages.length <= 1 && needsMoreData)) return;
+      } else {
+        const currentPage = Math.round(el.scrollTop / pageHeight);
+        const onLastPage = currentPage >= pages.length - 1;
+        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        if (!(onLastPage && nearBottom)) return;
+      }
+
       loadLockRef.current = true;
+      lastLoadItemsLengthRef.current = items.length;
       onLoadMore();
-    }
-  }, [isGroupLoading, needsMoreData, onLoadMore, pages.length, snapPageHeight]);
+    },
+    [
+      initialLoading,
+      isGroupLoading,
+      items.length,
+      needsMoreData,
+      onLoadMore,
+      pages.length,
+      snapPageHeight,
+    ]
+  );
 
   useEffect(() => {
-    loadLockRef.current = false;
+    // Unlock only after items grew, or when idle again after a failed/empty page.
+    if (isGroupLoading) return;
+    if (items.length > lastLoadItemsLengthRef.current) {
+      loadLockRef.current = false;
+      lastLoadItemsLengthRef.current = items.length;
+      return;
+    }
+    // Empty append / no growth — release lock after a beat so a real user scroll can retry,
+    // but do not auto-fire another load from layout thrash.
+    const timer = window.setTimeout(() => {
+      loadLockRef.current = false;
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [items.length, isGroupLoading]);
 
   useEffect(() => {
-    if (!hasPagination || !snapPageHeight) return undefined;
+    if (!hasPagination || !snapPageHeight || initialLoading) return undefined;
 
     const el = scrollRef.current;
     if (!el) return undefined;
 
     const onScroll = () => tryLoadMore();
     const onWheel = (event) => {
-      if (event.deltaY > 0 && pages.length <= 1 && needsMoreData) {
-        tryLoadMore();
+      if (event.deltaY > 0) {
+        tryLoadMore({ fromWheel: true });
       }
     };
 
@@ -278,7 +351,7 @@ function CourseGroupScrollBox({
       el.removeEventListener('scroll', onScroll);
       el.removeEventListener('wheel', onWheel);
     };
-  }, [hasPagination, needsMoreData, pages.length, snapPageHeight, tryLoadMore]);
+  }, [hasPagination, initialLoading, snapPageHeight, tryLoadMore]);
 
   if (!hasPagination) {
     return (
@@ -318,13 +391,14 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
   // const isDesktop = useMediaQuery(theme.breakpoints.up('md')); // filters UI disabled
   const navigate = useNavigate();
   const location = useLocation();
-  const { authenticated } = useAuthContext();
+  const { authenticated, loading: authLoading } = useAuthContext();
   const checkout = useCheckoutContext();
   const latestRequestRef = useRef(0);
   const querySignatureRef = useRef('');
   // const desktopFilterPanelRef = useRef(null); // filters UI disabled
   const groupPagesRef = useRef({ recommended: 1 });
   const skipNextFullFetchRef = useRef(false);
+  const hasLoadedCoursesRef = useRef(false);
 
   const isInCart = (id) => checkout.items.some((item) => item.id === id);
   const addCourseToCart = (course) => {
@@ -353,16 +427,50 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
   const courseFilter = null;
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [courses, setCourses] = useState([]);
   const [defaultCourseImage, setDefaultCourseImage] = useState(() => {
     if (typeof window === 'undefined') return ENV_DEFAULT_COURSE_IMAGE;
     return getCourseDefaultImage();
   });
-  const [groupedResult, setGroupedResult] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  const [courses, setCourses] = useState(() => {
+    const cached = readLearningCoursesCache(
+      buildLearningCoursesSignature({ enrolledOnly, authenticated, debouncedSearchQuery: '' })
+    );
+    return cached?.courses || [];
+  });
+  const [groupedResult, setGroupedResult] = useState(() => {
+    const cached = readLearningCoursesCache(
+      buildLearningCoursesSignature({ enrolledOnly, authenticated, debouncedSearchQuery: '' })
+    );
+    return cached?.groupedResult || [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const signature = buildLearningCoursesSignature({
+      enrolledOnly,
+      authenticated,
+      debouncedSearchQuery: '',
+    });
+    const cached = readLearningCoursesCache(signature);
+    if (cached) {
+      hasLoadedCoursesRef.current = true;
+      querySignatureRef.current = signature;
+      return false;
+    }
+    return true;
+  });
   const [paginatingGroupKey, setPaginatingGroupKey] = useState(null);
-  const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
-  const [favorites, setFavorites] = useState(new Set());
+  const [pagination, setPagination] = useState(() => {
+    const cached = readLearningCoursesCache(
+      buildLearningCoursesSignature({ enrolledOnly, authenticated, debouncedSearchQuery: '' })
+    );
+    return cached?.pagination || DEFAULT_PAGINATION;
+  });
+  const [favorites, setFavorites] = useState(() => {
+    const cached = readLearningCoursesCache(
+      buildLearningCoursesSignature({ enrolledOnly, authenticated, debouncedSearchQuery: '' })
+    );
+    return cached?.favorites || new Set();
+  });
   const [favoriteLoading, setFavoriteLoading] = useState(new Set());
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
   const [courseProgressById, setCourseProgressById] = useState({});
@@ -438,7 +546,9 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
       const { onlyGroupKey, pagesOverride, append = false } = options;
       const nextRequestId = latestRequestRef.current + 1;
       latestRequestRef.current = nextRequestId;
-      if (!onlyGroupKey) {
+      // Full-page spinner only on the first load. Refetches (auth settle / soft refresh)
+      // keep existing cards visible — local grouped/list can take 10s+ and felt "continuous".
+      if (!onlyGroupKey && !hasLoadedCoursesRef.current) {
         setLoading(true);
       }
       if (onlyGroupKey) {
@@ -483,6 +593,11 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
         }
 
         if (onlyGroupKey) {
+          let mergedGroups = null;
+          let nextCourses = [];
+          let nextPagination = DEFAULT_PAGINATION;
+          let nextFavorites = new Set();
+
           setGroupedResult((prev) => {
             const incomingGroup = groupedResponse.find(
               (group) => resolveGroupKey(group) === onlyGroupKey
@@ -512,29 +627,46 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
             const others = merged.filter((group) => resolveGroupKey(group) !== 'recommended');
             merged = [...recommended, ...others];
 
-            const nextCourses = merged.flatMap((group) => group.items || []);
+            nextCourses = merged.flatMap((group) => group.items || []);
             const totalItems = merged.reduce(
               (sum, group) => sum + (group.pagination?.totalItems || 0),
               0
             );
-            setCourses(nextCourses);
-            setPagination({
+            nextPagination = {
               page: 1,
               limit: ROWS_PER_PAGE,
               totalItems,
               totalPages: 1,
               hasNextPage: false,
               hasPreviousPage: false,
-            });
-            setFavorites(
-              new Set(
-                nextCourses
-                  .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
-                  .map((course) => course.id)
-              )
+            };
+            nextFavorites = new Set(
+              nextCourses
+                .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
+                .map((course) => course.id)
             );
+            mergedGroups = merged;
             return merged;
           });
+
+          if (mergedGroups) {
+            setCourses(nextCourses);
+            setPagination(nextPagination);
+            setFavorites(nextFavorites);
+            writeLearningCoursesCache(
+              buildLearningCoursesSignature({
+                enrolledOnly,
+                authenticated,
+                debouncedSearchQuery,
+              }),
+              {
+                groupedResult: mergedGroups,
+                courses: nextCourses,
+                pagination: nextPagination,
+                favorites: nextFavorites,
+              }
+            );
+          }
         } else {
           setGroupedResult(groupedResponse);
           const dynamicPages = groupedResponse.reduce((acc, group) => {
@@ -556,15 +688,27 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
             hasNextPage: false,
             hasPreviousPage: false,
           };
+          const nextFavorites = new Set(
+            nextCourses
+              .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
+              .map((course) => course.id)
+          );
 
           setCourses(nextCourses);
           setPagination(nextPagination);
-          setFavorites(
-            new Set(
-              nextCourses
-                .filter((course) => course.isFavorite === true || course.isFavorite === 'true')
-                .map((course) => course.id)
-            )
+          setFavorites(nextFavorites);
+          writeLearningCoursesCache(
+            buildLearningCoursesSignature({
+              enrolledOnly,
+              authenticated,
+              debouncedSearchQuery,
+            }),
+            {
+              groupedResult: groupedResponse,
+              courses: nextCourses,
+              pagination: nextPagination,
+              favorites: nextFavorites,
+            }
           );
         }
       } catch (error) {
@@ -577,9 +721,11 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
         }
       } finally {
         if (nextRequestId === latestRequestRef.current) {
-          if (!onlyGroupKey) {
-            setLoading(false);
-          }
+          hasLoadedCoursesRef.current = true;
+          // Always clear full-page loading when the latest request finishes.
+          // A pagination request can supersede the initial fetch; without this,
+          // loading stays true forever and the courses spinner never stops.
+          setLoading(false);
           setPaginatingGroupKey(null);
         }
       }
@@ -589,7 +735,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
 
   const handleGroupLoadMore = useCallback(
     (groupKey) => {
-      if (paginatingGroupKey) return;
+      if (loading || paginatingGroupKey) return;
 
       const group = groupedResult.find((item) => resolveGroupKey(item) === groupKey);
       const loadedCount = group?.items?.length || 0;
@@ -607,7 +753,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
       setGroupPages(nextPages);
       fetchCoursesPage({ onlyGroupKey: groupKey, pagesOverride: nextPages, append: true });
     },
-    [fetchCoursesPage, groupPages, groupedResult, paginatingGroupKey, resolveGroupKey]
+    [fetchCoursesPage, groupPages, groupedResult, loading, paginatingGroupKey, resolveGroupKey]
   );
 
   useEffect(() => {
@@ -622,6 +768,10 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
   }, [searchQuery]);
 
   useEffect(() => {
+    // Wait until auth finishes bootstrapping. Otherwise we fetch as guest, then
+    // immediately refetch as auth — two slow local API calls back-to-back.
+    if (authLoading) return;
+
     if (!authenticated) {
       setFavorites(new Set());
     }
@@ -642,7 +792,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
     }
 
     fetchCoursesPage();
-  }, [authenticated, debouncedSearchQuery, enrolledOnly, fetchCoursesPage, refreshSignal]);
+  }, [authLoading, authenticated, debouncedSearchQuery, enrolledOnly, fetchCoursesPage, refreshSignal]);
 
   useEffect(() => {
     let active = true;
@@ -662,6 +812,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
           const progress = row?.progress && typeof row.progress === 'object' ? row.progress : {};
           acc[courseId] = {
             completionPercent: Math.max(0, Math.min(100, Number(progress.completionPercent ?? 0))),
+            completedUnits: Number(progress.completedUnits ?? 0),
+            totalUnits: Number(progress.totalUnits ?? 0),
             status: String(progress.status || '').toLowerCase(),
           };
           return acc;
@@ -835,11 +987,11 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
     }
   };
 
-  if (enrolledOnly && !authenticated) {
+  if (enrolledOnly && !authenticated && !authLoading) {
     return <LearningGuestSignInPrompt variant="myCourses" />;
   }
 
-  if (loading && courses.length === 0) {
+  if ((authLoading || loading) && courses.length === 0) {
     return <LoadingScreen />;
   }
 
@@ -1010,6 +1162,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                       <CourseGroupScrollBox
                         group={group}
                         paginatingGroupKey={paginatingGroupKey}
+                        initialLoading={loading}
                         onLoadMore={() => handleGroupLoadMore(group.groupKey)}
                         renderPage={(pageItems) => (
                         <Grid
@@ -1024,6 +1177,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                             const courseProgress = Number.isFinite(progressRow.completionPercent)
                               ? progressRow.completionPercent
                               : 0;
+                            const progressCompletedUnits = Number(progressRow.completedUnits || 0);
+                            const progressTotalUnits = Number(progressRow.totalUnits || 0);
                             const showCourseProgress = authenticated && (!course.freeOrPaid || isEnrolled(course.id));
                             const progressStatus = getCourseProgressStatus(progressRow.status, courseProgress);
                             const courseIsFavorite = favorites.has(course.id) || course.isFavorite;
@@ -1038,6 +1193,8 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                   sectionCount={sectionCount}
                                   showCourseProgress={showCourseProgress}
                                   courseProgress={courseProgress}
+                                  progressCompletedUnits={progressCompletedUnits}
+                                  progressTotalUnits={progressTotalUnits}
                                   progressStatus={progressStatus}
                                   isFavorite={courseIsFavorite}
                                   favoriteLoading={favoriteLoading.has(course.id)}
@@ -1072,6 +1229,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                         <CourseGroupScrollBox
                           group={group}
                           paginatingGroupKey={paginatingGroupKey}
+                          initialLoading={loading}
                           onLoadMore={() => handleGroupLoadMore(group.groupKey)}
                           renderPage={(pageItems) => (
                           <Stack spacing={2}>
@@ -1120,7 +1278,12 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                                         objectFit: 'cover',
                                       }}
                                       onError={(e) => {
-                                        e.target.src = defaultCourseImage;
+                                        const img = e?.currentTarget || e?.target;
+                                        if (!img) return;
+                                        const fallback = defaultCourseImage || ENV_DEFAULT_COURSE_IMAGE;
+                                        const current = String(img.currentSrc || img.src || '');
+                                        if (!fallback || current.endsWith(fallback) || current === fallback) return;
+                                        img.src = fallback;
                                       }}
                                     />
                                     {course.isBundle && (
@@ -1463,7 +1626,7 @@ export function AllCourses({ refreshSignal = 0, enrolledOnly = false }) {
                   </Stack>
                 )}
               </>
-              {loading && !paginatingGroupKey && <CoursesLoaderOverlay top size={34} zIndex={3} />}
+              {/* Initial load uses LoadingScreen above; avoid a second overlay on soft refetches. */}
             </Box>
           )}
         </Grid>

@@ -50,13 +50,17 @@ export function GuestGuard({ children }) {
         return;
       }
 
-      // Only for user role: navigate back to the previous route (e.g. checkout) after login
-      if (userRole !== 'admin' && returnTo) {
+      // Only for learner role: navigate back to the previous route (e.g. checkout) after login
+      if (userRole !== 'admin' && userRole !== 'corporate' && returnTo) {
         router.replace(returnTo);
         return;
       }
       if (userRole === 'admin') {
         router.replace(`${paths.admin.root}/dashboard`);
+        return;
+      }
+      if (userRole === 'corporate') {
+        router.replace(paths.corporate.overview);
         return;
       }
       router.replace('/home');

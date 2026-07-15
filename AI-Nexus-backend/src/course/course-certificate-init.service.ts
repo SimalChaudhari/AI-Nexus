@@ -52,6 +52,10 @@ export class CourseCertificateInitService implements OnModuleInit {
         ALTER TABLE "course_certificates"
         ADD COLUMN IF NOT EXISTS "programId" uuid NULL
       `);
+      await queryRunner.query(`
+        ALTER TABLE "course_certificates"
+        ADD COLUMN IF NOT EXISTS "pdfUrl" character varying(500) NULL
+      `);
 
       await queryRunner.release();
     } catch (error) {

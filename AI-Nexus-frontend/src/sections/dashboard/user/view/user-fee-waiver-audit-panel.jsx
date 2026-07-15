@@ -15,6 +15,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Iconify } from 'src/components/iconify';
 import { resolveAssetUrl } from 'src/utils/asset-url';
 import { userService } from 'src/services/user.service';
+import { FeeWaiverHrResendPanel } from './fee-waiver-hr-resend-panel';
 
 // ----------------------------------------------------------------------
 
@@ -196,6 +197,8 @@ export function UserFeeWaiverAuditPanel({ user, onRefresh }) {
             {audit.rejectionReason}
           </Alert>
         ) : null}
+
+        <FeeWaiverHrResendPanel user={user} variant="admin" onRefresh={onRefresh} compact />
 
         {(certificateUrl || nricFrontUrl || nricBackUrl || audit?.fileName) ? (
           <>

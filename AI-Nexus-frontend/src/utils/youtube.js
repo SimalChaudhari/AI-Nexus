@@ -64,6 +64,21 @@ export function getYouTubeEmbedUrl(url) {
   return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : null;
 }
 
+/** Iframe src with enablejsapi for YT.Player attach (iframe visible before API binds). */
+export function getYouTubeEmbedIframeSrc(url) {
+  const videoId = getYouTubeVideoId(url);
+  if (!videoId) return null;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const params = new URLSearchParams({
+    enablejsapi: '1',
+    rel: '0',
+    playsinline: '1',
+    modestbranding: '1',
+  });
+  if (origin) params.set('origin', origin);
+  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+}
+
 /** @param {string} url */
 export function isYouTubeUrl(url) {
   return Boolean(getYouTubeVideoId(url));

@@ -672,7 +672,14 @@ export default function OAuthCallbackPage() {
       const errorParam = searchParams.get('error');
 
       if (errorParam || success === 'false') {
-        setError(searchParams.get('error') || 'SSO sign-in failed. Please try again.');
+        const rawError = String(searchParams.get('error') || errorParam || '').trim();
+        const lower = rawError.toLowerCase();
+        let friendly = rawError || 'SSO sign-in failed. Please try again.';
+        if (lower.includes('oauth_app_access_denied') || lower.includes('not admin approved')) {
+          friendly =
+            'Salesforce denied access to this app (OAUTH_APP_ACCESS_DENIED). Your user is not approved for the AI-Nexus Connected App. Ask a Salesforce admin to allow your profile/permission set on the Connected App, then try Sign in with SSO again.';
+        }
+        setError(friendly);
         setLoading(false);
         return;
       }
@@ -1033,6 +1040,8 @@ export default function OAuthCallbackPage() {
 
         if (userRole === 'admin') {
           router.replace(`${paths.admin.root}/dashboard`);
+        } else if (userRole === 'corporate') {
+          router.replace(nextPath && String(nextPath).startsWith('/corporate') ? nextPath : paths.corporate.overview);
         } else if (nextPath) {
           router.replace(nextPath);
         } else {

@@ -55,6 +55,7 @@ export function mapCertificateRows(rows) {
     watchedTime: row.watchedTime || '',
     transcript: Array.isArray(row.transcript) ? row.transcript : [],
     completedModules: Array.isArray(row.completedModules) ? row.completedModules : [],
+    pdfUrl: row.pdfUrl || null,
   }));
 }
 

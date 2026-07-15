@@ -5,6 +5,11 @@ import {
   mapPaginatedResponse,
 } from 'src/utils/pagination-service';
 import { formatCourseDurationLabel } from 'src/utils/course-duration';
+import {
+  flushPendingSectionProgress,
+  saveSectionProgress,
+  saveSectionProgressOnUnload,
+} from 'src/utils/section-progress-save';
 
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -23,6 +28,10 @@ const transformSection = (s) => ({
   content: s.content || '',
   watchtime: s.watchtime || '',
   durationTime: s.durationTime || '',
+  completionPercentage:
+    s.completionPercentage != null && s.completionPercentage !== ''
+      ? Number(s.completionPercentage)
+      : null,
   images: Array.isArray(s.images) ? s.images.map((url) => resolveAssetUrl(url)) : [],
   attachments: Array.isArray(s.attachments)
     ? s.attachments.map((url) => resolveAssetUrl(url))
@@ -413,6 +422,7 @@ export const courseService = {
                     content: sec.content,
                     watchtime: sec.watchtime,
                     durationTime: sec.durationTime,
+                    completionPercentage: sec.completionPercentage,
                     images: sec.images,
                     attachments: sec.attachments,
                     learningMaterials:
@@ -636,12 +646,16 @@ export const courseService = {
   async updateSectionProgress(courseId, sectionId, payload = {}) {
     if (!isUuid(sectionId)) return null;
     try {
-      const response = await axios.put(`/courses/${courseId}/sections/${sectionId}/progress`, payload);
-      return response.data?.data ?? response.data ?? null;
+      return await saveSectionProgress(courseId, sectionId, payload);
     } catch (error) {
       console.error('Error updating section progress:', error);
       throw error;
     }
+  },
+
+  /** Retry any progress PUTs that failed (network / expired session) or were queued on unload. */
+  flushPendingSectionProgress() {
+    return flushPendingSectionProgress();
   },
 
   async prepareSpotlightrPlayback(watchUrl) {
@@ -677,12 +691,20 @@ export const courseService = {
         watchedTime: row?.watchedTime || '',
         transcript: Array.isArray(row?.transcript) ? row.transcript : [],
         completedModules: Array.isArray(row?.completedModules) ? row.completedModules : [],
+        pdfUrl: row?.pdfUrl || null,
       }));
     } catch (error) {
       if (error?.response?.status === 401) return [];
       console.error('Error fetching certificates:', error);
       throw error;
     }
+  },
+
+  async downloadCertificatePdf(certificateId) {
+    const response = await axios.get(`/courses/certificates/${certificateId}/pdf`, {
+      responseType: 'blob',
+    });
+    return response.data;
   },
 
   async issueCourseCertificate(courseId) {
@@ -749,24 +771,10 @@ export const courseService = {
     }
   },
 
-  // Use keepalive request for unload/refresh/logout transitions.
+  // Keepalive + queue + best-effort refresh/PUT for unload/refresh/logout transitions.
   updateSectionProgressOnUnload(courseId, sectionId, payload = {}) {
-    try {
-      if (!isUuid(sectionId)) return;
-      const baseURL = axios?.defaults?.baseURL || '';
-      if (!baseURL || !courseId || !sectionId) return;
-      fetch(`${baseURL}/courses/${courseId}/sections/${sectionId}/progress`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload || {}),
-        keepalive: true,
-      }).catch(() => {});
-    } catch {
-      // ignore keepalive errors
-    }
+    if (!isUuid(sectionId)) return;
+    saveSectionProgressOnUnload(courseId, sectionId, payload);
   },
 
   async getModuleSections(courseId, moduleId) {
@@ -863,6 +871,8 @@ export const courseService = {
         content: data.content || undefined,
         watchtime: data.watchtime !== undefined ? data.watchtime : undefined,
         durationTime: data.durationTime !== undefined ? data.durationTime : undefined,
+        completionPercentage:
+          data.completionPercentage !== undefined ? data.completionPercentage : undefined,
         images: Array.isArray(data.images) && data.images.length > 0 ? data.images : undefined,
         attachments:
           Array.isArray(data.attachments) && data.attachments.length > 0
@@ -892,6 +902,8 @@ export const courseService = {
         content: data.content !== undefined ? data.content : undefined,
         watchtime: data.watchtime !== undefined ? data.watchtime : null,
         durationTime: data.durationTime !== undefined ? data.durationTime : null,
+        completionPercentage:
+          data.completionPercentage !== undefined ? data.completionPercentage : null,
         images: data.images !== undefined ? data.images : undefined,
         attachments: data.attachments !== undefined ? data.attachments : undefined,
         learningMaterials:
@@ -1249,10 +1261,14 @@ export const courseService = {
     }
   },
 
-  async uploadAssignmentReferenceFile(courseId, questionId, file) {
+  async uploadAssignmentReferenceFile(courseId, questionId, files, options = {}) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      (Array.isArray(files) ? files : [files]).filter(Boolean).forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('replace', String(options.replace ?? true));
+      formData.append('keepFiles', JSON.stringify(options.keepFiles || []));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/guide/upload`,
         formData,
@@ -1265,10 +1281,14 @@ export const courseService = {
     }
   },
 
-  async uploadAssessmentQuestionFile(courseId, questionId, file) {
+  async uploadAssessmentQuestionFile(courseId, questionId, files, options = {}) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      (Array.isArray(files) ? files : [files]).filter(Boolean).forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('replace', String(options.replace ?? true));
+      formData.append('keepFiles', JSON.stringify(options.keepFiles || []));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/question/upload`,
         formData,
@@ -1281,10 +1301,14 @@ export const courseService = {
     }
   },
 
-  async uploadAssessmentAnswerSheetFile(courseId, questionId, file) {
+  async uploadAssessmentAnswerSheetFile(courseId, questionId, files, options = {}) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      (Array.isArray(files) ? files : [files]).filter(Boolean).forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('replace', String(options.replace ?? true));
+      formData.append('keepFiles', JSON.stringify(options.keepFiles || []));
       const response = await axios.post(
         `/courses/${courseId}/question-bank/${questionId}/assignment/answer-sheet/upload`,
         formData,
@@ -1297,7 +1321,7 @@ export const courseService = {
     }
   },
 
-  async uploadAssessmentGuideFile(courseId, questionId, file) {
-    return this.uploadAssignmentReferenceFile(courseId, questionId, file);
+  async uploadAssessmentGuideFile(courseId, questionId, files, options = {}) {
+    return this.uploadAssignmentReferenceFile(courseId, questionId, files, options);
   },
 };

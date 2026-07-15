@@ -5,12 +5,93 @@ const SPOTLIGHTR_CREATE_VIDEO_URL = 'https://api.spotlightr.com/api/createVideo'
 const SPOTLIGHTR_LIST_VIDEOS_URL = 'https://api.spotlightr.com/api/videos';
 const SPOTLIGHTR_UPDATE_SETTINGS_URL = 'https://api.spotlightr.com/video/updateSettings';
 
+const parsePositiveNumber = (value: string | undefined, fallback: number): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+/** Cache Spotlightr API responses so concurrent learners do not stampede api.spotlightr.com. */
+const VIDEO_RECORD_TTL_MS = parsePositiveNumber(process.env.SPOTLIGHTR_CACHE_TTL_MS, 60 * 60 * 1000);
+const PLAYBACK_CACHE_TTL_MS = parsePositiveNumber(
+    process.env.SPOTLIGHTR_PLAYBACK_CACHE_TTL_MS,
+    6 * 60 * 60 * 1000,
+);
+const API_TIMEOUT_MS = parsePositiveNumber(process.env.SPOTLIGHTR_API_TIMEOUT_MS, 8_000);
+const CIRCUIT_FAILURE_THRESHOLD = parsePositiveNumber(process.env.SPOTLIGHTR_CIRCUIT_FAILURES, 3);
+const CIRCUIT_OPEN_MS = parsePositiveNumber(process.env.SPOTLIGHTR_CIRCUIT_OPEN_MS, 5 * 60 * 1000);
+
+type CacheEntry<T> = { value: T; expiresAt: number };
+
 @Injectable()
 export class SpotlightrService {
     private readonly logger = new Logger(SpotlightrService.name);
+    private readonly videoRecordCache = new Map<string, CacheEntry<Record<string, unknown> | null>>();
+    private readonly playbackCache = new Map<
+        string,
+        CacheEntry<{ directUrl: string | null; settingsUpdated: boolean }>
+    >();
+    private readonly settingsApplied = new Set<string>();
+    private readonly inflightLookups = new Map<string, Promise<Record<string, unknown> | null>>();
+    private readonly inflightPlayback = new Map<
+        string,
+        Promise<{ directUrl: string | null; settingsUpdated: boolean }>
+    >();
+    private consecutiveApiFailures = 0;
+    private circuitOpenUntil = 0;
+    private circuitOpenLoggedAt = 0;
 
     isConfigured(): boolean {
         return Boolean(String(process.env.SPOTLIGHTR_API_KEY || '').trim());
+    }
+
+    /** When false, skip management API (settings/lookup). Embed watch URLs still play in the browser. */
+    isPreparePlaybackEnabled(): boolean {
+        const raw = String(process.env.SPOTLIGHTR_PREPARE_PLAYBACK_ENABLED ?? 'true')
+            .trim()
+            .toLowerCase();
+        return !['0', 'false', 'no', 'off'].includes(raw);
+    }
+
+    /** Spotlightr management API is down / rate-limited — do not call it. */
+    isApiCircuitOpen(): boolean {
+        return Date.now() < this.circuitOpenUntil;
+    }
+
+    private noteApiSuccess(): void {
+        this.consecutiveApiFailures = 0;
+        this.circuitOpenUntil = 0;
+    }
+
+    private noteApiFailure(context: string): void {
+        this.consecutiveApiFailures += 1;
+        if (this.consecutiveApiFailures < CIRCUIT_FAILURE_THRESHOLD) return;
+
+        const wasOpen = this.isApiCircuitOpen();
+        this.circuitOpenUntil = Date.now() + CIRCUIT_OPEN_MS;
+        const now = Date.now();
+        // Log at most once per open window to avoid flooding Nest logs.
+        if (!wasOpen || now - this.circuitOpenLoggedAt > CIRCUIT_OPEN_MS) {
+            this.circuitOpenLoggedAt = now;
+            this.logger.warn(
+                `Spotlightr management API circuit OPEN for ${Math.round(CIRCUIT_OPEN_MS / 1000)}s ` +
+                    `(after ${this.consecutiveApiFailures} failures; last: ${context}). ` +
+                    `Learners still use embed watch URLs; prepare-playback is skipped until Spotlightr recovers.`,
+            );
+        }
+    }
+
+    private getCached<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
+        const entry = map.get(key);
+        if (!entry) return undefined;
+        if (entry.expiresAt <= Date.now()) {
+            map.delete(key);
+            return undefined;
+        }
+        return entry.value;
+    }
+
+    private setCached<T>(map: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number): void {
+        map.set(key, { value, expiresAt: Date.now() + ttlMs });
     }
 
     async uploadVideo(file: Express.Multer.File, name?: string): Promise<string> {
@@ -65,17 +146,60 @@ export class SpotlightrService {
     /**
      * Enable free timeline seeking for a Spotlightr watch URL and return a direct MP4 when available.
      * Direct MP4 bypasses the Spotlightr iframe player (and theme forward-seek lock) entirely.
+     * Cached + single-flight so many concurrent learners share one Spotlightr API call per video.
      */
     async preparePlaybackForWatchUrl(watchUrl: string): Promise<{
         directUrl: string | null;
         settingsUpdated: boolean;
     }> {
-        const settingsUpdated = await this.allowForwardSeekingForWatchUrl(watchUrl);
-        const videoId = this.extractWatchUrlVideoId(watchUrl);
-        if (!videoId) {
-            return { directUrl: null, settingsUpdated };
+        const empty = { directUrl: null as string | null, settingsUpdated: false };
+        if (!this.isPreparePlaybackEnabled()) {
+            return empty;
         }
-        const directUrl = await this.resolveVideoFileUrl(videoId);
+
+        const videoId = this.extractWatchUrlVideoId(watchUrl);
+        const cacheKey = videoId || String(watchUrl || '').trim();
+        if (!cacheKey) {
+            return empty;
+        }
+
+        const cached = this.getCached(this.playbackCache, cacheKey);
+        if (cached) return cached;
+
+        // Spotlightr dashboard/API is down — skip calls so Nest logs and worker threads stay healthy.
+        if (this.isApiCircuitOpen()) {
+            return empty;
+        }
+
+        const inflight = this.inflightPlayback.get(cacheKey);
+        if (inflight) return inflight;
+
+        const promise = this.preparePlaybackUncached(watchUrl, videoId)
+            .then((result) => {
+                // Successful lookups stay warm; failures expire quickly so Spotlightr recovery is picked up.
+                const ttl =
+                    result.directUrl || result.settingsUpdated
+                        ? PLAYBACK_CACHE_TTL_MS
+                        : Math.min(PLAYBACK_CACHE_TTL_MS, 60_000);
+                this.setCached(this.playbackCache, cacheKey, result, ttl);
+                return result;
+            })
+            .finally(() => {
+                this.inflightPlayback.delete(cacheKey);
+            });
+
+        this.inflightPlayback.set(cacheKey, promise);
+        return promise;
+    }
+
+    private async preparePlaybackUncached(
+        watchUrl: string,
+        videoId: string | null,
+    ): Promise<{ directUrl: string | null; settingsUpdated: boolean }> {
+        // Settings only need to be applied once per video; do not block playback on Spotlightr.
+        const settingsPromise = this.allowForwardSeekingForWatchUrl(watchUrl);
+        const directUrl = videoId ? await this.resolveVideoFileUrl(videoId) : null;
+        const settingsUpdated = await settingsPromise;
         return { directUrl, settingsUpdated };
     }
 
@@ -83,12 +207,25 @@ export class SpotlightrService {
     async allowForwardSeekingForWatchUrl(watchUrl: string): Promise<boolean> {
         const videoId = this.extractWatchUrlVideoId(watchUrl);
         if (!videoId) return false;
-        return this.updateVideoPlayerSettings(videoId, {
+
+        const candidates = this.buildVideoIdCandidates(videoId);
+        const numericId = candidates.find((candidate) => /^\d+$/.test(candidate));
+        if (numericId && this.settingsApplied.has(numericId)) {
+            return true;
+        }
+
+        if (this.isApiCircuitOpen()) return false;
+
+        const updated = await this.updateVideoPlayerSettings(videoId, {
             disable_forward_seek: false,
             disableForwardSeek: false,
             forward_seek_disabled: false,
             forwardSeekDisabled: false,
         });
+        if (updated && numericId) {
+            this.settingsApplied.add(numericId);
+        }
+        return updated;
     }
 
     private extractWatchUrlVideoId(watchUrl: string): string | null {
@@ -102,7 +239,7 @@ export class SpotlightrService {
         settings: Record<string, unknown>,
     ): Promise<boolean> {
         const vooKey = String(process.env.SPOTLIGHTR_API_KEY || '').trim();
-        if (!vooKey) return false;
+        if (!vooKey || this.isApiCircuitOpen()) return false;
 
         const candidates = this.buildVideoIdCandidates(videoId);
         const numericId = candidates.find((candidate) => /^\d+$/.test(candidate));
@@ -119,9 +256,11 @@ export class SpotlightrService {
                     id: Number(numericId),
                     settings,
                 },
-                { timeout: 20000 },
+                { timeout: API_TIMEOUT_MS },
             );
             this.logger.log(`Spotlightr player settings updated for video id=${numericId}`);
+            this.settingsApplied.add(numericId);
+            this.noteApiSuccess();
             return true;
         } catch (error) {
             const message = axios.isAxiosError(error)
@@ -129,7 +268,10 @@ export class SpotlightrService {
                 : error instanceof Error
                   ? error.message
                   : 'Spotlightr settings update failed';
-            this.logger.warn(`Spotlightr settings update failed for id=${numericId}: ${message}`);
+            this.noteApiFailure(`settings id=${numericId}: ${message}`);
+            if (!this.isApiCircuitOpen()) {
+                this.logger.warn(`Spotlightr settings update failed for id=${numericId}: ${message}`);
+            }
             return false;
         }
     }
@@ -186,13 +328,41 @@ export class SpotlightrService {
         vooKey: string,
         videoId: string,
     ): Promise<Record<string, unknown> | null> {
-        if (!/^\d+$/.test(String(videoId || '').trim())) return null;
+        const id = String(videoId || '').trim();
+        if (!/^\d+$/.test(id)) return null;
+
+        const cached = this.getCached(this.videoRecordCache, id);
+        if (cached !== undefined) return cached;
+
+        const inflight = this.inflightLookups.get(id);
+        if (inflight) return inflight;
+
+        const promise = this.fetchVideoRecordUncached(vooKey, id)
+            .then((record) => {
+                // Cache misses briefly so a Spotlightr outage does not retry on every request.
+                const ttl = record ? VIDEO_RECORD_TTL_MS : Math.min(VIDEO_RECORD_TTL_MS, 60_000);
+                this.setCached(this.videoRecordCache, id, record, ttl);
+                return record;
+            })
+            .finally(() => {
+                this.inflightLookups.delete(id);
+            });
+
+        this.inflightLookups.set(id, promise);
+        return promise;
+    }
+
+    private async fetchVideoRecordUncached(
+        vooKey: string,
+        videoId: string,
+    ): Promise<Record<string, unknown> | null> {
+        if (this.isApiCircuitOpen()) return null;
 
         try {
             const response = await axios.get(SPOTLIGHTR_LIST_VIDEOS_URL, {
                 // Spotlightr expects `videoID` (not `id`) to return a single video.
                 params: { vooKey, videoID: videoId },
-                timeout: 20000,
+                timeout: API_TIMEOUT_MS,
             });
             const rows = this.extractVideoRows(response.data);
             const match = rows.find((row) => {
@@ -200,14 +370,19 @@ export class SpotlightrService {
                 const altId = String(row?.altID ?? '');
                 return rowId === videoId || altId === videoId;
             });
-            return match || rows[0] || null;
+            const record = match || rows[0] || null;
+            if (record) this.noteApiSuccess();
+            return record;
         } catch (error) {
             const message = axios.isAxiosError(error)
                 ? String(error.response?.data || error.message)
                 : error instanceof Error
                   ? error.message
                   : 'Spotlightr video lookup failed';
-            this.logger.error(`Spotlightr video lookup failed for id=${videoId}: ${message}`);
+            this.noteApiFailure(`lookup id=${videoId}: ${message}`);
+            if (!this.isApiCircuitOpen()) {
+                this.logger.error(`Spotlightr video lookup failed for id=${videoId}: ${message}`);
+            }
             return null;
         }
     }
@@ -339,7 +514,7 @@ export class SpotlightrService {
 
     private async fetchTextResource(url: string): Promise<string> {
         const response = await axios.get(url, {
-            timeout: 20000,
+            timeout: API_TIMEOUT_MS,
             responseType: 'text',
             transformResponse: [(data) => data],
             headers: {
@@ -446,8 +621,3 @@ export class SpotlightrService {
         return null;
     }
 }
-
-const parsePositiveNumber = (value: string | undefined, fallback: number): number => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};

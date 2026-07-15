@@ -11,6 +11,14 @@ import { LocalStorageService } from '../service/local-storage.service';
 import { CourseLearnerProgressCleanupService } from './course-learner-progress-cleanup.service';
 import { CourseCertificateService } from './course-certificate.service';
 import { isSectionVideoUrlChanged } from './course-video-url.util';
+import { reconcileSectionVideoTimingFields } from './course-watchtime.util';
+
+function normalizeCompletionPercentage(value?: number | string | null): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n < 1 || n > 100) return null;
+  return n;
+}
 
 function normalizeWatchtime(value?: string | null): string | null {
   const text = String(value || '').trim();
@@ -149,11 +157,15 @@ export class CourseModuleSectionService {
       content: dto.content,
       watchtime: normalizeWatchtime(dto.watchtime),
       durationTime: normalizeWatchtime(dto.durationTime),
+      completionPercentage: normalizeCompletionPercentage(dto.completionPercentage),
       images: dto.images,
       attachments: dto.attachments,
       learningMaterials: normalizeLearningMaterials(dto.learningMaterials),
       sortOrder,
     });
+    const reconciled = reconcileSectionVideoTimingFields(section.watchtime, section.durationTime);
+    section.watchtime = reconciled.watchtime;
+    section.durationTime = reconciled.durationTime;
     return this.sectionRepository.save(section);
   }
 
@@ -192,12 +204,19 @@ export class CourseModuleSectionService {
         dto.watchtime !== undefined ? normalizeWatchtime(dto.watchtime) : null;
       section.durationTime =
         dto.durationTime !== undefined ? normalizeWatchtime(dto.durationTime) : null;
+      section.completionPercentage =
+        dto.completionPercentage !== undefined
+          ? normalizeCompletionPercentage(dto.completionPercentage)
+          : null;
     } else {
       if (dto.watchtime !== undefined) {
         section.watchtime = normalizeWatchtime(dto.watchtime);
       }
       if (dto.durationTime !== undefined) {
         section.durationTime = normalizeWatchtime(dto.durationTime);
+      }
+      if (dto.completionPercentage !== undefined) {
+        section.completionPercentage = normalizeCompletionPercentage(dto.completionPercentage);
       }
     }
     if (dto.images !== undefined) section.images = dto.images;
@@ -206,6 +225,10 @@ export class CourseModuleSectionService {
       section.learningMaterials = normalizeLearningMaterials(dto.learningMaterials);
     }
     if (dto.sortOrder !== undefined) section.sortOrder = dto.sortOrder;
+
+    const reconciled = reconcileSectionVideoTimingFields(section.watchtime, section.durationTime);
+    section.watchtime = reconciled.watchtime;
+    section.durationTime = reconciled.durationTime;
 
     // Clean up media files that are no longer referenced
     const nextImages = Array.isArray(section.images) ? section.images : [];

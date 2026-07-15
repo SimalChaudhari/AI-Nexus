@@ -4,10 +4,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 
 import Link from '@mui/material/Link';
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
+import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import LoadingButton from '@mui/lab/LoadingButton';
@@ -15,7 +16,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { alpha } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
-import { useRouter, useSearchParams } from 'src/routes/hooks';
+import { useSearchParams } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { useBoolean } from 'src/hooks/use-boolean';
@@ -25,109 +26,191 @@ import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
 import { CorporateSignUpSchema } from 'src/validations/user.validation';
 
-import { signUp } from 'src/auth/context/jwt';
+import {
+  checkCorporateSalesforceAccount,
+  createCorporateSalesforceAccount,
+  setSalesforceNexusPassword,
+} from 'src/auth/context/jwt';
+import { POST_OAUTH_RETURN_TO_KEY } from 'src/utils/membership-eligibility-sso';
 
-const CORPORATE_SIGNUP_ELIGIBILITY = {
-  eligibilityType: 'corporate-isca-partner',
-  snapshot: {
-    signupType: 'corporate-isca-partner',
-    freeSignup: true,
-    partner: 'ISCA',
-  },
-};
+// ----------------------------------------------------------------------
+
+const ORG_TYPE_OPTIONS = [
+  'Private Limited',
+  'Public Limited',
+  'Partnership',
+  'Sole Proprietorship',
+  'Limited Liability Partnership',
+  'Other',
+];
+
+const COMMUNICATION_PREFERENCE_FIELDS = [
+  { name: 'iscaConferencesEvents', label: 'ISCA conferences & events' },
+  { name: 'practitionersBulletin', label: 'Practitioners Bulletin' },
+  { name: 'iscaAccountifyBulletin', label: 'ISCA Accountify Bulletin' },
+  { name: 'financialForensicFocus', label: 'Financial Forensic Focus' },
+  { name: 'businessFinanceBulletin', label: 'Business Finance Bulletin' },
+  { name: 'monthlyCALab', label: 'Monthly CA Lab' },
+  { name: 'specialISCAOfferings', label: 'Special ISCA offerings' },
+  { name: 'participateInResearch', label: 'Participate in research' },
+  { name: 'boardflixBulletin', label: 'Boardflix Bulletin' },
+  { name: 'monthlyISCharteredAccountantJournal', label: 'IS Chartered Accountant Journal' },
+  { name: 'scaqNewsletterUpdates', label: 'SCAQ newsletter updates' },
+  { name: 'studentMemberNewsletterUpdates', label: 'Student member newsletter' },
+  { name: 'theISCABuzzCorporateMembersNewsletter', label: 'ISCA Buzz (Corporate)' },
+];
+
+function SectionTitle({ children }) {
+  return (
+    <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 700, pt: 0.5 }}>
+      {children}
+    </Typography>
+  );
+}
 
 export function CorporateSignUpView() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const password = useBoolean();
-  const returnTo = searchParams.get('returnTo') || '';
+  const returnTo = searchParams.get('returnTo') || paths.corporate.overview;
   const [errorMsg, setErrorMsg] = useState('');
-  const [usernameSuggestions, setUsernameSuggestions] = useState([]);
-  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
-  const [appliedSuggestion, setAppliedSuggestion] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
 
-  const signInHref = returnTo
-    ? `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(returnTo)}`
-    : paths.auth.simple.signIn;
+  const signInHref = `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.corporate.overview)}`;
 
   const methods = useForm({
     resolver: zodResolver(CorporateSignUpSchema),
     defaultValues: {
-      username: '',
+      companyName: '',
+      uenNumber: '',
+      organisationType: 'Private Limited',
+      businessCountry: 'Singapore',
+      businessCity: 'Singapore',
+      businessState: 'SG',
+      businessPostalCode: '',
+      businessStreetName: '',
+      businessUnitNumber: '',
+      businessBuildingName: '',
+      isSme: true,
+      isPaidCorporate: false,
+      isProvidesProfessionalServices: false,
       firstName: '',
       lastName: '',
       email: '',
-      companyCode: '',
-      contactNumber: '',
+      mobilePhone: '',
+      phone: '',
+      designation: '',
+      website: '',
+      iscaConferencesEvents: true,
+      practitionersBulletin: true,
+      iscaAccountifyBulletin: false,
+      financialForensicFocus: false,
+      businessFinanceBulletin: true,
+      monthlyCALab: true,
+      specialISCAOfferings: false,
+      participateInResearch: true,
+      boardflixBulletin: false,
+      monthlyISCharteredAccountantJournal: true,
+      scaqNewsletterUpdates: false,
+      studentMemberNewsletterUpdates: false,
+      theISCABuzzCorporateMembersNewsletter: true,
       password: '',
     },
   });
 
   const {
     handleSubmit,
-    setValue,
-    watch,
     formState: { isSubmitting },
   } = methods;
 
-  const usernameValue = watch('username');
-
-  const buildUsernameSuggestions = (username, count = 10) => {
-    const base = String(username || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '')
-      .slice(0, 14);
-
-    if (!base) return [];
-
-    const randomTwoDigits = () => Math.floor(Math.random() * 90 + 10).toString();
-    const candidates = new Set();
-
-    while (candidates.size < count) {
-      candidates.add(`${base}${randomTwoDigits()}`);
+  const startCorporateSso = (email) => {
+    try {
+      sessionStorage.setItem(POST_OAUTH_RETURN_TO_KEY, returnTo || paths.corporate.overview);
+    } catch {
+      // ignore
     }
-
-    return [...candidates]
-      .filter((name) => /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(name))
-      .slice(0, count);
-  };
-
-  const applyUsernameSuggestion = (suggestion) => {
-    setValue('username', suggestion, { shouldDirty: true, shouldValidate: true });
-    setErrorMsg('');
-    setAppliedSuggestion(suggestion);
-    setUsernameSuggestions([]);
-    setShowAllSuggestions(false);
+    const params = new URLSearchParams({
+      returnTo: returnTo || paths.corporate.overview,
+      ...(email ? { login_hint: email } : {}),
+    });
+    window.location.href = `${paths.auth.oauth.start}?${params.toString()}`;
   };
 
   const onSubmit = handleSubmit(async (data) => {
     try {
       setErrorMsg('');
-      setUsernameSuggestions([]);
-      setShowAllSuggestions(false);
-      setAppliedSuggestion('');
+      setInfoMsg('');
 
-      await signUp({
-        username: data.username,
-        email: data.email,
-        password: data.password,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        companyCode: data.companyCode,
-        contactNumber: data.contactNumber,
-        eligibilityData: CORPORATE_SIGNUP_ELIGIBILITY,
+      const email = String(data.email || '').trim().toLowerCase();
+      const uenNumber = String(data.uenNumber || '').trim();
+
+      let alreadyExists = false;
+      try {
+        const check = await checkCorporateSalesforceAccount({ email, uenNumber });
+        const nested = check?.data || check;
+        alreadyExists = Boolean(
+          nested?.corporateAccountExists && nested?.contactExists
+        );
+      } catch {
+        // Check is best-effort; continue to create when the check fails.
+      }
+
+      if (alreadyExists) {
+        setInfoMsg('Corporate account already found. Continue with Salesforce sign-in…');
+        startCorporateSso(email);
+        return;
+      }
+
+      await createCorporateSalesforceAccount({
+        account: {
+          name: data.companyName.trim(),
+          uenNumber,
+          businessCountry: data.businessCountry.trim(),
+          businessPostalCode: String(data.businessPostalCode || '').trim(),
+          businessUnitNumber: String(data.businessUnitNumber || '').trim(),
+          businessBuildingName: String(data.businessBuildingName || '').trim(),
+          businessStreetName: String(data.businessStreetName || '').trim(),
+          businessCity: data.businessCity.trim(),
+          businessState: String(data.businessState || 'SG').trim(),
+          organisationType: data.organisationType,
+          isPaidCorporate: Boolean(data.isPaidCorporate),
+          isSme: data.isSme !== false,
+          isProvidesProfessionalServices: Boolean(data.isProvidesProfessionalServices),
+        },
+        contact: {
+          firstName: data.firstName.trim(),
+          lastName: data.lastName.trim(),
+          email,
+          mobilePhone: String(data.mobilePhone || '').trim(),
+          phone: String(data.phone || '').trim(),
+          designation: String(data.designation || '').trim(),
+          website: String(data.website || '').trim(),
+          iscaConferencesEvents: data.iscaConferencesEvents ? 'Yes' : 'No',
+          practitionersBulletin: Boolean(data.practitionersBulletin),
+          iscaAccountifyBulletin: Boolean(data.iscaAccountifyBulletin),
+          financialForensicFocus: Boolean(data.financialForensicFocus),
+          businessFinanceBulletin: Boolean(data.businessFinanceBulletin),
+          monthlyCALab: Boolean(data.monthlyCALab),
+          specialISCAOfferings: Boolean(data.specialISCAOfferings),
+          participateInResearch: Boolean(data.participateInResearch),
+          boardflixBulletin: Boolean(data.boardflixBulletin),
+          monthlyISCharteredAccountantJournal: Boolean(data.monthlyISCharteredAccountantJournal),
+          scaqNewsletterUpdates: Boolean(data.scaqNewsletterUpdates),
+          studentMemberNewsletterUpdates: Boolean(data.studentMemberNewsletterUpdates),
+          theISCABuzzCorporateMembersNewsletter: Boolean(
+            data.theISCABuzzCorporateMembersNewsletter
+          ),
+        },
       });
 
-      const verifySearch = new URLSearchParams({ email: data.email }).toString();
-      router.push(`${paths.auth.simple.verify}?${verifySearch}`);
+      await setSalesforceNexusPassword({
+        username: email,
+        password: data.password,
+      });
+
+      setInfoMsg('Account created. Redirecting to Salesforce sign-in…');
+      startCorporateSso(email);
     } catch (error) {
-      const message = error?.message || 'Sign up failed.';
-      setErrorMsg(message);
-      if (String(message).toLowerCase().includes('username already exists')) {
-        setUsernameSuggestions(buildUsernameSuggestions(data.username, 10));
-        setShowAllSuggestions(false);
-        setAppliedSuggestion('');
-      }
+      setErrorMsg(error?.message || 'Corporate registration failed.');
     }
   });
 
@@ -147,20 +230,21 @@ export function CorporateSignUpView() {
           bgcolor: alpha(theme.palette.primary.main, 0.1),
         })}
       >
-        CREATE ACCOUNT
+        CORPORATE HR ACCOUNT
       </Box>
 
       <Typography variant="h5" sx={{ textAlign: 'center' }}>
-        Get started absolutely free
+        Register your company for the HR portal
       </Typography>
 
       <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
-        Build your profile and start learning in minutes.
+        Create your Salesforce corporate account, set a password, then sign in with SSO to access the
+        Corporate HR dashboard.
       </Typography>
 
-      <Stack direction="row" spacing={0.5}>
+      <Stack direction="row" spacing={0.5} alignItems="center">
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          Already have an account?
+          Already registered?
         </Typography>
 
         <Link component={RouterLink} href={signInHref} variant="subtitle2">
@@ -170,128 +254,156 @@ export function CorporateSignUpView() {
     </Stack>
   );
 
-  const renderAccountFields = (
+  const renderForm = (
     <Stack spacing={2} sx={{ '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
-      <Field.Text
-        name="username"
-        label="Username"
-        required
-        placeholder="Choose a username"
-        InputLabelProps={{ shrink: true }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Iconify icon="solar:user-circle-bold-duotone" width={18} />
-            </InputAdornment>
-          ),
-          endAdornment:
-            appliedSuggestion && usernameValue === appliedSuggestion ? (
-              <InputAdornment position="end">
-                <Iconify icon="solar:verified-check-bold" width={18} sx={{ color: 'success.main' }} />
-              </InputAdornment>
-            ) : null,
-        }}
-      />
-      {usernameSuggestions.length > 0 && (
-        <Stack spacing={1} sx={{ mt: -1 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Username is taken. Try one of these:
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
-            {(showAllSuggestions ? usernameSuggestions : usernameSuggestions.slice(0, 4)).map((suggestion) => (
-              <Chip
-                key={suggestion}
-                label={suggestion}
-                size="small"
-                clickable
-                color="default"
-                variant="outlined"
-                onClick={() => applyUsernameSuggestion(suggestion)}
-              />
-            ))}
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Stack spacing={1.5}>
+            <SectionTitle>Company details</SectionTitle>
+
+            <Field.Text
+              name="companyName"
+              label="Company name"
+              required
+              placeholder="e.g. Tech Innovations Pte Ltd"
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <Grid container spacing={1.5}>
+              <Grid item xs={12} sm={6}>
+                <Field.Text
+                  name="uenNumber"
+                  label="UEN number"
+                  required
+                  placeholder="e.g. 202312345A"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Select name="organisationType" label="Organisation type" required>
+                  {ORG_TYPE_OPTIONS.map((opt) => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Field.Select>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Text
+                  name="businessCountry"
+                  label="Country"
+                  required
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Text
+                  name="businessCity"
+                  label="City"
+                  required
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Text name="businessState" label="State" InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Text
+                  name="businessPostalCode"
+                  label="Postal code"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Field.Text
+                  name="businessStreetName"
+                  label="Street name"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Text
+                  name="businessUnitNumber"
+                  label="Unit number"
+                  placeholder="#12-01"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Field.Text
+                  name="businessBuildingName"
+                  label="Building name"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+            </Grid>
+
+            <Field.Switch name="isSme" label="Company is an SME" />
+            <Field.Switch
+              name="isProvidesProfessionalServices"
+              label="Provides professional services"
+            />
           </Stack>
-          {!showAllSuggestions && usernameSuggestions.length > 4 && (
-            <Stack direction="row" justifyContent="flex-end">
-              <Button
-                size="small"
-                variant="contained"
-                color="inherit"
-                onClick={() => setShowAllSuggestions(true)}
-                sx={{ minWidth: 'auto' }}
-              >
-                Show more
-              </Button>
-            </Stack>
-          )}
-        </Stack>
-      )}
+        </Grid>
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-        <Field.Text
-          name="firstName"
-          label="First name"
-          required
-          InputLabelProps={{ shrink: true }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Iconify icon="solar:user-id-bold-duotone" width={18} />
-              </InputAdornment>
-            ),
-          }}
-        />
-        <Field.Text
-          name="lastName"
-          label="Last name"
-          required
-          InputLabelProps={{ shrink: true }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Iconify icon="solar:user-id-bold-duotone" width={18} />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Stack>
+        <Grid item xs={12} md={6}>
+          <Stack spacing={1.5}>
+            <SectionTitle>HR contact</SectionTitle>
 
-      <Field.Text
-        name="email"
-        label="Email address"
-        required
-        InputLabelProps={{ shrink: true }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Iconify icon="solar:letter-bold-duotone" width={18} />
-            </InputAdornment>
-          ),
-        }}
-      />
+            <Field.Text
+              name="firstName"
+              label="First name"
+              required
+              InputLabelProps={{ shrink: true }}
+            />
+            <Field.Text
+              name="lastName"
+              label="Last name"
+              required
+              InputLabelProps={{ shrink: true }}
+            />
+            <Field.Text
+              name="email"
+              label="Work email"
+              required
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Iconify icon="solar:letter-bold-duotone" width={18} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Field.Text name="mobilePhone" label="Mobile phone" InputLabelProps={{ shrink: true }} />
+            <Field.Text name="phone" label="Office phone" InputLabelProps={{ shrink: true }} />
+            <Field.Text name="designation" label="Designation" InputLabelProps={{ shrink: true }} />
+            <Field.Text name="website" label="Website" InputLabelProps={{ shrink: true }} />
+          </Stack>
+        </Grid>
+      </Grid>
 
-      <Field.Text
-        name="companyCode"
-        label="Organization / company name"
-        required
-        placeholder="e.g. Acme Pte Ltd"
-        InputLabelProps={{ shrink: true }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Iconify icon="solar:buildings-2-bold-duotone" width={18} />
-            </InputAdornment>
-          ),
-        }}
-      />
+      <SectionTitle>Communication preferences</SectionTitle>
+      <Typography variant="caption" sx={{ color: 'text.secondary', mt: -1 }}>
+        Choose which ISCA updates this corporate contact should receive.
+      </Typography>
+      <Grid container spacing={0.5}>
+        {COMMUNICATION_PREFERENCE_FIELDS.map((field) => (
+          <Grid item xs={12} sm={6} key={field.name}>
+            <Field.Switch name={field.name} label={field.label} />
+          </Grid>
+        ))}
+      </Grid>
 
-      <Field.Phone name="contactNumber" label="Contact number (optional)" country="SG" />
+      <SectionTitle>Salesforce password</SectionTitle>
 
       <Field.Text
         name="password"
         label="Password"
         required
-        placeholder="6+ characters"
+        placeholder="8+ characters"
         type={password.value ? 'text' : 'password'}
+        helperText="Used for Salesforce / eServices sign-in after account creation."
         InputLabelProps={{ shrink: true }}
         InputProps={{
           startAdornment: (
@@ -309,42 +421,29 @@ export function CorporateSignUpView() {
         }}
       />
 
-      <LoadingButton
-        fullWidth
-        color="inherit"
-        size="large"
-        type="submit"
-        variant="contained"
-        loading={isSubmitting}
-        loadingIndicator="Create account..."
-        sx={{ height: 44, fontWeight: 700 }}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 2,
+          width: '100%',
+        }}
       >
-        Create account
-      </LoadingButton>
+        <Box sx={{ display: { xs: 'none', md: 'block' } }} />
+        <LoadingButton
+          fullWidth
+          color="inherit"
+          size="large"
+          type="submit"
+          variant="contained"
+          loading={isSubmitting}
+          loadingIndicator="Creating account..."
+          sx={{ height: 44, fontWeight: 700 }}
+        >
+          Create account
+        </LoadingButton>
+      </Box>
     </Stack>
-  );
-
-  const renderTerms = (
-    <Typography
-      component="div"
-      sx={{
-        mt: 3,
-        mb: 0.5,
-        textAlign: 'center',
-        typography: 'caption',
-        color: 'text.secondary',
-      }}
-    >
-      {'By signing up, I agree to '}
-      <Link underline="always" color="text.primary">
-        Terms of service
-      </Link>
-      {' and '}
-      <Link underline="always" color="text.primary">
-        Privacy policy
-      </Link>
-      .
-    </Typography>
   );
 
   return (
@@ -355,6 +454,11 @@ export function CorporateSignUpView() {
       {!!errorMsg && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {errorMsg}
+        </Alert>
+      )}
+      {!!infoMsg && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {infoMsg}
         </Alert>
       )}
 
@@ -368,11 +472,9 @@ export function CorporateSignUpView() {
         })}
       >
         <Form methods={methods} onSubmit={onSubmit}>
-          {renderAccountFields}
+          {renderForm}
         </Form>
       </Box>
-
-      {renderTerms}
     </>
   );
 }

@@ -48,7 +48,9 @@ import {
 import { CONFIG } from 'src/config-global';
 import { paths } from 'src/routes/paths';
 import {
+  getHrEmailValidationMessage,
   getPersonalEmailValidationMessage,
+  getStudentSchoolEmailValidationMessage,
   isValidPersonalEmail,
 } from 'src/validations/user.validation';
 import {
@@ -3919,7 +3921,13 @@ export function MembershipSignupDialog({
   const accountingVerifHrEmailError = (() => {
     const value = String(accountingVerifHrEmail || '').trim();
     if (!value) return '';
-    return getPersonalEmailValidationMessage(value) || '';
+    return getHrEmailValidationMessage(value) || '';
+  })();
+
+  const studentSchoolEmailError = (() => {
+    const value = String(flowState.studentSchoolEmail || '').trim();
+    if (!value) return '';
+    return getStudentSchoolEmailValidationMessage(value) || '';
   })();
 
   const handleAccountingVerifSubmitCertificate = async () => {
@@ -4928,6 +4936,12 @@ export function MembershipSignupDialog({
   };
 
   const sendStudentVerificationPin = async () => {
+    const schoolEmailValidationError = getStudentSchoolEmailValidationMessage(flowState.studentSchoolEmail);
+    if (schoolEmailValidationError) {
+      setStudentPinError(schoolEmailValidationError);
+      return;
+    }
+
     try {
       setStudentPinSending(true);
       setStudentPinError('');
@@ -5375,7 +5389,7 @@ export function MembershipSignupDialog({
   };
 
   const ELIGIBILITY_REQUIREMENTS = {
-    student: ['School name', 'Graduation date', 'School email ending with .edu or @yopmail.com (verification PIN required)'],
+    student: ['School name', 'Graduation date', 'School email ending with .edu or @isca.org.sg (verification PIN required)'],
     recognition: ['Passport/ID copy', 'Professional full transcript', 'Signed character references form (2 referees)', 'Letter of good standing (within 3 months)'],
     enhanced: ['Passport/ID copy', 'ACCA certificate', 'ACCA transcript', 'Letter of good standing', 'Signed character references form', 'Resume/CV'],
     cima: ['Passport/ID copy', 'Professional qualification certificate and transcript', 'Letter of good standing (within 3 months)'],
@@ -7484,7 +7498,7 @@ export function MembershipSignupDialog({
                 <>
                 <Typography variant="body2" color="text.secondary">
                   {isQuestionnaireSgPrPath(flowState)
-                    ? 'Please upload NRIC front and back screenshots, or digital NRIC full details, then run verification.'
+                    ? 'Your NRIC is requested solely to verify your eligibility for the course fee waiver available to Singapore Citizens and Permanent Residents. The information will only be used for this verification purpose.'
                     : 'Please upload NRIC images (front and back), then run AI verification.'}
                 </Typography>
                 <Stack spacing={1}>
@@ -9027,7 +9041,7 @@ export function MembershipSignupDialog({
                 </Stack>
                 <Stack spacing={0.75}>
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                    School email address (.edu or @yopmail.com)
+                    School email address (.edu or @isca.org.sg)
                   </Typography>
                   <TextField
                     size="small"
@@ -9035,6 +9049,11 @@ export function MembershipSignupDialog({
                     placeholder="Enter school email"
                     value={flowState.studentSchoolEmail}
                     onChange={(event) => updateStudentVerificationField('studentSchoolEmail', event.target.value)}
+                    error={Boolean(studentSchoolEmailError)}
+                    helperText={
+                      studentSchoolEmailError
+                      || 'Use your school .edu email or an @isca.org.sg address.'
+                    }
                   />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>

@@ -1,0 +1,1 @@
+export { CorporateLayout } from './layout';

@@ -122,6 +122,18 @@ export class UserController {
         return response.status(HttpStatus.OK).json(result);
     }
 
+    @Put('fee-waiver-resend-hr/:id')
+    @Roles(UserRole.Admin)
+    @ApiOperation({ summary: 'Send or resend HR verification email for a learner (admin)' })
+    async resendFeeWaiverHrVerification(
+        @Param('id') id: string,
+        @Body('hrEmail') hrEmail: string,
+        @Res() response: Response,
+    ) {
+        const result = await this.userService.resendFeeWaiverHrVerification(id, hrEmail);
+        return response.status(HttpStatus.OK).json(result);
+    }
+
     @Get(':id')
     @Roles(UserRole.Admin)
     @ApiOperation({ summary: 'Get user details by id' })

@@ -14,17 +14,19 @@ import { varBounce, MotionContainer } from 'src/components/animate';
 
 export function RoleBasedGuard({ sx, children, hasContent, currentRole, acceptRoles, redirectTo }) {
   const router = useRouter();
+  const normalizedRole = String(currentRole || '').toLowerCase();
+  const allowedRoles = Array.isArray(acceptRoles)
+    ? acceptRoles.map((role) => String(role || '').toLowerCase())
+    : undefined;
+  const isAllowed = typeof allowedRoles === 'undefined' || allowedRoles.includes(normalizedRole);
 
   useEffect(() => {
-    if (typeof acceptRoles !== 'undefined' && !acceptRoles.includes(currentRole)) {
-      // If redirectTo is provided, redirect instead of showing permission denied
-      if (redirectTo) {
-        router.replace(redirectTo);
-      }
+    if (!isAllowed && redirectTo) {
+      router.replace(redirectTo);
     }
-  }, [acceptRoles, currentRole, redirectTo, router]);
+  }, [isAllowed, redirectTo, router]);
 
-  if (typeof acceptRoles !== 'undefined' && !acceptRoles.includes(currentRole)) {
+  if (!isAllowed) {
     // If redirectTo is provided, don't show content (redirect will happen)
     if (redirectTo) {
       return null;

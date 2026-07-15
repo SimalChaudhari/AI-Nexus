@@ -3,6 +3,8 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 export enum UserRole {
     Admin = 'Admin',
     User = 'User',
+    /** HR / company portal account (password now; SSO later). */
+    Corporate = 'Corporate',
 }
 
 export enum UserStatus {
@@ -178,6 +180,10 @@ export class UserEntity {
     /** True when fee-waiver job role audit (HR or certificate) is verified */
     @Column({ type: 'boolean', nullable: true })
     feeWaiverJobVerified!: boolean | null;
+
+    /** Last successful platform login (password or SSO session issue). Not token refresh. */
+    @Column({ nullable: true, type: 'timestamp' })
+    lastLoginAt!: Date | null;
 
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;

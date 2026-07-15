@@ -28,6 +28,7 @@ export class CourseModuleSectionInitService implements OnModuleInit {
             "content" text,
             "watchtime" varchar(50),
             "durationTime" varchar(50),
+            "completionPercentage" int,
             "images" jsonb,
             "attachments" jsonb,
             "learningMaterials" jsonb,
@@ -71,6 +72,15 @@ export class CourseModuleSectionInitService implements OnModuleInit {
         } catch (durErr) {
           if (durErr instanceof Error && !durErr.message?.includes('already exists')) {
             throw durErr;
+          }
+        }
+        try {
+          await queryRunner.query(
+            `ALTER TABLE "course_module_sections" ADD COLUMN "completionPercentage" int`,
+          );
+        } catch (pctErr) {
+          if (pctErr instanceof Error && !pctErr.message?.includes('already exists')) {
+            throw pctErr;
           }
         }
         const sectionColumnAdds = [

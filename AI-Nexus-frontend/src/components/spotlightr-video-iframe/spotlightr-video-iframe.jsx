@@ -24,6 +24,9 @@ export function SpotlightrVideoIframe({
       name="videoPlayer"
       allow="autoplay; fullscreen; encrypted-media"
       allowFullScreen
+      onContextMenu={(event) => {
+        event.preventDefault();
+      }}
       sx={{
         border: 0,
         width: '100%',
@@ -33,10 +36,17 @@ export function SpotlightrVideoIframe({
     />
   );
 
-  if (!framed) return iframe;
+  if (!framed) {
+    return (
+      <Box onContextMenu={(event) => event.preventDefault()} sx={{ width: '100%', height: '100%' }}>
+        {iframe}
+      </Box>
+    );
+  }
 
   return (
     <Box
+      onContextMenu={(event) => event.preventDefault()}
       sx={{
         position: 'relative',
         width: '100%',

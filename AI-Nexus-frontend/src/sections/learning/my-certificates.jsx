@@ -20,19 +20,14 @@ import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import { LearningSectionHeader } from './components/learning-section-header';
-import { pdf } from '@react-pdf/renderer';
-import { CertificatePdfDocument } from './certificate-pdf-document';
-import { svgToPngDataUrl } from 'src/utils/svg-to-png';
 import {
   buildCertificateLinkedInShareText,
   buildLinkedInFeedShareUrl,
 } from 'src/utils/linkedin-share';
 import { courseService } from 'src/services/course.service';
-import { appSettingsService } from 'src/services/app-settings.service';
 import {
   formatCpeHoursLabel,
   mapCertificateRows,
-  resolveCertificateBadgeUrl,
   groupTranscriptByPillar,
   getCompletedTranscriptModules,
   getTranscriptModuleKey,
@@ -218,19 +213,6 @@ function CertificateTranscript({ transcript = [], compact = false }) {
   );
 }
 
-function buildPdfProps(cert, logoSource) {
-  return {
-    courseTitle: cert.courseTitle,
-    learnerName: cert.learnerName,
-    completedAt: cert.completedAt,
-    earnedCpeHours: cert.earnedCpeHours,
-    certificateNo: cert.certificateNo,
-    logoSource,
-    badgeSource: resolveCertificateBadgeUrl(),
-    transcript: cert.transcript,
-  };
-}
-
 function CertificateCard({
   cert,
   theme,
@@ -404,39 +386,6 @@ export function MyCertificates() {
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [logoSource, setLogoSource] = useState('/logo/logo-full.svg');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolveDynamicLogo = async () => {
-      const fallbackLogo =
-        (typeof window !== 'undefined' && window.localStorage.getItem('site-logo-url')) ||
-        '/logo/logo-full.svg';
-
-      let candidate = fallbackLogo;
-      try {
-        const settings = await appSettingsService.getPublic();
-        if (settings?.logoUrl) candidate = settings.logoUrl;
-      } catch {
-        // Keep fallback logo when settings API is unavailable.
-      }
-
-      const isSvg = /\.svg(\?.*)?$/i.test(String(candidate || ''));
-      if (isSvg) {
-        const dataUrl = await svgToPngDataUrl(candidate, 96, 96);
-        if (!cancelled) setLogoSource(dataUrl || '/logo/logo-full.svg');
-      } else if (!cancelled) {
-        setLogoSource(candidate || '/logo/logo-full.svg');
-      }
-    };
-
-    resolveDynamicLogo();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (authLoading) return () => {};
@@ -465,16 +414,28 @@ export function MyCertificates() {
 
   const certificates = useMemo(() => mapCertificateRows(certificateRows), [certificateRows]);
 
-  const handleDownload = async (cert) => {
-    setDownloadingId(cert.id);
-    try {
-      const blob = await pdf(<CertificatePdfDocument {...buildPdfProps(cert, logoSource)} />).toBlob();
-      const url = URL.createObjectURL(blob);
+  const openCertificatePdf = async (cert, { download = false } = {}) => {
+    const blob = await courseService.downloadCertificatePdf(cert.id);
+    const url = URL.createObjectURL(blob);
+    if (download) {
       const link = document.createElement('a');
       link.href = url;
       link.download = `Certificate-${(cert.courseTitle || 'Course').replace(/[^a-z0-9]/gi, '-')}.pdf`;
       link.click();
       URL.revokeObjectURL(url);
+      return;
+    }
+    const previewWindow = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!previewWindow) {
+      console.error('Certificate preview blocked by browser popup settings.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  const handleDownload = async (cert) => {
+    setDownloadingId(cert.id);
+    try {
+      await openCertificatePdf(cert, { download: true });
     } catch (err) {
       console.error('Certificate PDF download failed:', err);
     } finally {
@@ -485,13 +446,7 @@ export function MyCertificates() {
   const handlePreview = async (cert) => {
     setPreviewLoading(true);
     try {
-      const blob = await pdf(<CertificatePdfDocument {...buildPdfProps(cert, logoSource)} />).toBlob();
-      const url = URL.createObjectURL(blob);
-      const previewWindow = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!previewWindow) {
-        console.error('Certificate preview blocked by browser popup settings.');
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      await openCertificatePdf(cert, { download: false });
     } catch (err) {
       console.error('Certificate PDF preview failed:', err);
     } finally {

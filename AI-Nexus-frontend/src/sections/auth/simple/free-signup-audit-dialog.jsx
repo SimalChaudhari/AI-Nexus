@@ -17,7 +17,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
 
 import { Iconify } from 'src/components/iconify';
-import { getPersonalEmailValidationMessage } from 'src/validations/user.validation';
+import { getHrEmailValidationMessage } from 'src/validations/user.validation';
 import {
   submitFeeWaiverAuditCertificate,
   submitFeeWaiverAuditHrEmail,
@@ -37,16 +37,10 @@ export function FreeSignupAuditDialog({
   const [successMsg, setSuccessMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const hrEmailError = useMemo(() => {
-    const value = String(hrEmail || '').trim();
-    if (!value) return '';
-    const formatError = getPersonalEmailValidationMessage(value);
-    if (formatError) return formatError;
-    if (value.toLowerCase() === String(learnerEmail || '').trim().toLowerCase()) {
-      return 'HR email must be different from your registration email.';
-    }
-    return '';
-  }, [hrEmail, learnerEmail]);
+  const hrEmailError = useMemo(
+    () => getHrEmailValidationMessage(hrEmail, { learnerEmail }),
+    [hrEmail, learnerEmail]
+  );
 
   const canSubmit =
     auditMethod === 'hr-email'

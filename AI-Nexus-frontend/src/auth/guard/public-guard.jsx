@@ -9,6 +9,7 @@ import { useAuthContext } from '../hooks';
 
 // ----------------------------------------------------------------------
 
+/** Survives Strict Mode remounts so we never swap SplashScreen ↔ children again. */
 let publicGuardReady = false;
 
 export function PublicGuard({ children }) {
@@ -16,9 +17,9 @@ export function PublicGuard({ children }) {
 
   const { loading, authenticated, user } = useAuthContext();
 
-  const [isChecking, setIsChecking] = useState(() => !publicGuardReady);
+  const [ready, setReady] = useState(() => publicGuardReady);
 
-  const checkPermissions = async () => {
+  useEffect(() => {
     if (loading) {
       return;
     }
@@ -28,20 +29,20 @@ export function PublicGuard({ children }) {
       router.replace(paths.dashboard.root);
       return;
     }
+    if (authenticated && String(user?.role || '').toLowerCase() === 'corporate') {
+      router.replace(paths.corporate.overview);
+      return;
+    }
 
     publicGuardReady = true;
-    setIsChecking(false);
-  };
+    setReady(true);
+  }, [authenticated, loading, user?.role, router]);
 
-  useEffect(() => {
-    checkPermissions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, loading, user?.role]);
-
-  if (isChecking) {
+  // First bootstrap only. After ready, always keep children mounted — swapping to
+  // SplashScreen unmounts /learning (AllCourses), which restarts loading locally.
+  if (!ready) {
     return <SplashScreen />;
   }
 
   return <>{children}</>;
 }
-

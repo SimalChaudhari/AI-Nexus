@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -31,7 +30,6 @@ import { fDate } from 'src/utils/format-time';
 import { htmlToPlainText } from 'src/utils/html-plain-text';
 import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { RichTextContent } from 'src/components/html-content';
-import { fetchSpeakers } from 'src/store/slices/speakerSlice';
 import { courseService } from 'src/services/course.service';
 import { CourseQuestionBankPanel } from '../course-question-bank-panel';
 import { CourseAssignmentSubmissionsPanel } from '../course-assignment-submissions-panel';
@@ -52,8 +50,6 @@ const REVIEWS_PER_PAGE = 8;
 
 export function CourseDetailsView({ course, loading, error }) {
   const theme = useTheme();
-  const dispatch = useDispatch();
-  const { speakers } = useSelector((state) => state.speakers);
   const [courseModules, setCourseModules] = useState([]);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -85,10 +81,6 @@ export function CourseDetailsView({ course, loading, error }) {
     () => ratingDistribution.reduce((acc, r) => acc + r.reviewCount, 0),
     [ratingDistribution]
   );
-
-  useEffect(() => {
-    dispatch(fetchSpeakers());
-  }, [dispatch]);
 
   // Fetch course modules and sections for curriculum
   useEffect(() => {
@@ -313,7 +305,7 @@ export function CourseDetailsView({ course, loading, error }) {
     return <RichTextContent html={previewSection.content || '<p>—</p>'} />;
   };
 
-  if (loading) {
+  if (loading && !course) {
     return <LoadingScreen />;
   }
 

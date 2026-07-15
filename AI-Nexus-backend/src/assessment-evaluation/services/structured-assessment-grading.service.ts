@@ -282,11 +282,35 @@ export class StructuredAssessmentGradingService {
     feedback: string,
     extra?: Record<string, unknown>,
   ) {
+    const existingLog = Array.isArray(extra?.verificationLog)
+      ? (extra!.verificationLog as Array<{ step?: string; status?: string; detail?: string }>)
+      : [];
+    const hasIssue = existingLog.some(
+      (entry) =>
+        String(entry?.step || '').toLowerCase().includes('issue') ||
+        String(entry?.status || '') === 'fail',
+    );
+    const verificationLog = hasIssue
+      ? existingLog
+      : [
+          ...existingLog,
+          {
+            step: 'Issue',
+            status: 'fail',
+            detail: feedback,
+          },
+        ];
+
     submission.evaluationStatus = 'manual_required';
     submission.aiPassed = null;
     submission.aiScore = null;
     submission.aiFeedback = feedback;
-    submission.aiRawResult = { mode: 'structured_per_question', ...extra };
+    submission.aiRawResult = {
+      mode: 'structured_per_question',
+      ...(extra || {}),
+      verificationLog,
+      couldVerify: false,
+    };
     submission.aiEvaluatedAt = new Date();
     submission.isCompleted = false;
     return this.submissionRepo.save(submission);

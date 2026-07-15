@@ -54,7 +54,12 @@ export default function Page() {
         <title>{metadata.title}</title>
       </Helmet>
 
-      <AiForumDetailsView post={post} loading={loading} error={error} />
+      <AiForumDetailsView
+        post={post}
+        loading={loading}
+        error={error}
+        onAiForumPostUpdate={fetchAiForumPost}
+      />
     </>
   );
 }

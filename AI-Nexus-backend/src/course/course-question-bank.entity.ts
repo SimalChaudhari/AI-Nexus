@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { AssessmentAdminFileRecord } from './course-assignment-file.types';
 
 export enum CourseQuestionType {
   Mcq = 'mcq',
@@ -57,6 +58,9 @@ export class CourseQuestionBankEntity {
   @Column({ type: 'text', nullable: true })
   questionFileName?: string | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  questionFiles?: AssessmentAdminFileRecord[] | null;
+
   /** assignment: official answer sheet used by AI grading */
   @Column({ type: 'text', nullable: true })
   answerSheetFileUrl?: string | null;
@@ -64,12 +68,18 @@ export class CourseQuestionBankEntity {
   @Column({ type: 'text', nullable: true })
   answerSheetFileName?: string | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  answerSheetFiles?: AssessmentAdminFileRecord[] | null;
+
   /** assignment: optional learner guide (PDF/DOC/DOCX) */
   @Column({ type: 'text', nullable: true })
   guideFileUrl?: string | null;
 
   @Column({ type: 'text', nullable: true })
   guideFileName?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  guideFiles?: AssessmentAdminFileRecord[] | null;
 
   /** assignment: minimum score to pass (0–100). Falls back to env default when null. */
   @Column({ type: 'int', nullable: true })

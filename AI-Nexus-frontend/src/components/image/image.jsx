@@ -53,6 +53,7 @@ export const Image = forwardRef(
       visibleByDefault,
       wrapperClassName,
       useIntersectionObserver,
+      onError,
       //
       slotProps,
       sx,
@@ -60,6 +61,15 @@ export const Image = forwardRef(
     },
     ref
   ) => {
+    const handleError = (event) => {
+      const img = event?.currentTarget || event?.target;
+      if (!img || img.dataset?.imgErrorHandled === '1') return;
+      img.dataset.imgErrorHandled = '1';
+      if (typeof onError === 'function') {
+        onError(event);
+      }
+    };
+
     const content = (
       <Box
         component={LazyLoadImage}
@@ -81,6 +91,7 @@ export const Image = forwardRef(
             ? `${CONFIG.site.basePath}/assets/transparent.png`
             : `${CONFIG.site.basePath}/assets/placeholder.svg`
         }
+        onError={handleError}
         sx={{
           width: 1,
           height: 1,

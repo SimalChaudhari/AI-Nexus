@@ -37,6 +37,21 @@ export class LocalStorageService {
     return Promise.all(uploads);
   }
 
+  async saveBuffer(
+    buffer: Buffer,
+    folder: string,
+    fileName: string,
+    extension = '.pdf',
+  ): Promise<string> {
+    const normalizedFolder = this.normalizeFolder(folder);
+    const targetDir = join(this.uploadRootDir, normalizedFolder);
+    await mkdir(targetDir, { recursive: true });
+
+    const safeName = `${this.sanitizeFileName(fileName)}${extension.startsWith('.') ? extension : `.${extension}`}`;
+    await writeFile(join(targetDir, safeName), buffer);
+    return `/uploads/${normalizedFolder}/${safeName}`;
+  }
+
   async deleteFileByUrl(fileUrl?: string | null): Promise<void> {
     if (!fileUrl || !fileUrl.startsWith('/uploads/')) {
       return;

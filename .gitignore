@@ -4,6 +4,7 @@ node_modules
 # SSL certificates (local/dev — do not commit private keys)
 AI-Nexus-frontend/ssl/
 SSL/
+backup
 
 # Local backup copies (not part of the app — use AI-Nexus-backend / AI-Nexus-frontend)
 /backend/

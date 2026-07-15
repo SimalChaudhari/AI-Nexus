@@ -1,5 +1,5 @@
 //courses.dto.ts
-import { IsOptional, IsNotEmpty, IsString, IsEnum, IsBoolean, IsNumber, Min, IsArray, IsUUID, ValidateNested, MaxLength } from 'class-validator';
+import { IsOptional, IsNotEmpty, IsString, IsEnum, IsBoolean, IsNumber, Min, Max, IsArray, IsUUID, ValidateNested, MaxLength } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { CourseLevel } from './courses.entity';
 
@@ -32,6 +32,13 @@ export class CreateCourseSectionItemDto {
   @IsString()
   @MaxLength(50)
   durationTime?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  @Type(() => Number)
+  completionPercentage?: number | null;
 
   @IsOptional()
   @IsArray()

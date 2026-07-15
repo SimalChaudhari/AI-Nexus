@@ -56,11 +56,12 @@ export function formatSecondsToDisplayTime(totalSeconds: number): string {
   return `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
-/** CPE hours from watch time: total learning minutes ÷ 60 (i.e. watched seconds ÷ 3600). */
+/** CPE hours from watch time: round down to nearest 0.5 hour (30 minutes). */
 export function computeCpeHoursFromWatchSeconds(watchedSeconds: number): number {
   const seconds = Math.max(0, Math.floor(Number(watchedSeconds) || 0));
   if (seconds === 0) return 0;
-  return Math.round((seconds / 3600) * 100) / 100;
+  // 1800 seconds = 0.5 hour; floor to whole half-hour units
+  return Math.floor(seconds / 1800) * 0.5;
 }
 
 /**

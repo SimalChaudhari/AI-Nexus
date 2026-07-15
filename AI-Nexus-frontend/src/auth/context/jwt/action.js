@@ -493,6 +493,22 @@ export const submitFeeWaiverAuditHrEmail = async ({
   }
 };
 
+/** Send or resend HR fee-waiver job role verification email (logged-in user). */
+export const resendFeeWaiverHrVerification = async ({ hrEmail } = {}) => {
+  try {
+    const res = await axios.post('/auth/fee-waiver-audit/resend-hr-email', {
+      hrEmail: hrEmail || undefined,
+    });
+    return res.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Could not send HR verification email.');
+    throw new Error(errorMessage);
+  }
+};
+
 /** **************************************
  * Fee-waiver audit: verify education certificate after free signup
  *************************************** */
@@ -785,6 +801,39 @@ export const setSalesforceNexusPassword = async (payload) => {
       normalizedMessage ||
       error?.message ||
       (typeof error === 'string' ? error : 'Failed to set Salesforce password.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Corporate HR: create / check Salesforce corporate account before SSO
+ *************************************** */
+export const createCorporateSalesforceAccount = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/create-corporate-account', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to create corporate Salesforce account.');
+    throw new Error(errorMessage);
+  }
+};
+
+export const checkCorporateSalesforceAccount = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/check-corporate-account', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Failed to check corporate Salesforce account.');
     throw new Error(errorMessage);
   }
 };

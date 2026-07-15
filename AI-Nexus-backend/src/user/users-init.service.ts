@@ -278,6 +278,11 @@ export class UsersInitService implements OnModuleInit {
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "feeWaiverJobVerified" boolean
       `);
+
+      await this.dataSource.query(`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP
+      `);
     } catch (error) {
       console.error(
         '❌ Error ensuring users profile columns:',

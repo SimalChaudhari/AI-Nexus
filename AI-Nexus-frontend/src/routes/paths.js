@@ -14,6 +14,7 @@ const ROOTS = {
   DASHBOARD: '/dashboard',
   ADMIN: '/admin',
   USER: '/user',
+  CORPORATE: '/corporate',
 };
 
 // ----------------------------------------------------------------------
@@ -242,6 +243,15 @@ export const paths = {
     root: '/profile',
     /** Learning persona & preferences (same editor as onboarding, dismissible) */
     persona: '/profile/persona',
+  },
+  // CORPORATE HR PORTAL (Salesforce corporate register → SSO)
+  corporate: {
+    root: ROOTS.CORPORATE,
+    overview: `${ROOTS.CORPORATE}/overview`,
+    progress: `${ROOTS.CORPORATE}/progress`,
+    learner: (userId) => `${ROOTS.CORPORATE}/progress/${userId}`,
+    enrol: `${ROOTS.CORPORATE}/enrol`,
+    reports: `${ROOTS.CORPORATE}/reports`,
   },
   // ADMIN
   admin: {

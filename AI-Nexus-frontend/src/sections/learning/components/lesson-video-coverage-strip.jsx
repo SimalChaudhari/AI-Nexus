@@ -8,6 +8,7 @@ import {
   clipCoverageRanges,
   computeUnwatchedRanges,
   coverageMeasureSeconds,
+  coveragePercentDisplay,
   formatRangeLabel,
   formatSecondsToClock,
   parseCoverageRangePairs,
@@ -44,7 +45,7 @@ export function LessonVideoCoverageStrip({
   const watched = clipCoverageRanges(parseCoverageRangePairs(watchedRanges), duration);
   const unwatched = computeUnwatchedRanges(watched, duration);
   const watchedSec = coverageMeasureSeconds(watched, duration);
-  const pct = Math.min(100, Math.round((100 * watchedSec) / duration));
+  const pct = coveragePercentDisplay(watchedSec, duration, { isComplete });
   const required = Math.max(0, Number(requiredSeconds) || 0);
   const requiredPct =
     required > 0 && required < duration ? Math.min(100, Math.round((100 * required) / duration)) : null;
@@ -63,10 +64,14 @@ export function LessonVideoCoverageStrip({
     onSeekTo(Math.max(0, Math.min(duration, Number(seconds) || 0)));
   };
 
-  const playheadPct =
+  const playheadSec =
     currentTimeSec != null && Number.isFinite(currentTimeSec)
-      ? Math.min(100, Math.max(0, (100 * currentTimeSec) / duration))
+      ? Math.min(duration, Math.max(0, currentTimeSec))
       : null;
+  const playheadPct =
+    playheadSec != null ? Math.min(100, Math.max(0, (100 * playheadSec) / duration)) : null;
+  // Match player + sidebar: clock = playhead; % stays unique coverage.
+  const clockSec = playheadSec != null ? playheadSec : watchedSec;
 
   return (
     <Box
@@ -84,7 +89,7 @@ export function LessonVideoCoverageStrip({
           Watch coverage
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-          {formatSecondsToClock(watchedSec)} / {formatSecondsToClock(duration)} • {isComplete ? 100 : pct}%
+          {formatSecondsToClock(clockSec)} / {formatSecondsToClock(duration)} • {pct}%
         </Typography>
       </Stack>
 
@@ -215,7 +220,7 @@ export function LessonVideoCoverageStrip({
         </Stack>
 
         <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'right' }}>
-          {isComplete || unwatched.length === 0 ? (
+          {unwatched.length === 0 ? (
             'All sections watched'
           ) : (
             <>

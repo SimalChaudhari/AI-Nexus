@@ -28,6 +28,10 @@ import { UserSalesforceProfileCard } from 'src/components/user-salesforce-profil
 import { syncApiUserToSession } from 'src/auth/utils/normalize-user-session';
 import { useGetUserProfile, useGetAdminProfile } from 'src/actions/user';
 import { UserNewEditForm } from '../user/user-new-edit-form';
+import {
+  FeeWaiverHrResendPanel,
+  canShowFeeWaiverHrTrigger,
+} from '../user/view/fee-waiver-hr-resend-panel';
 
 // ----------------------------------------------------------------------
 
@@ -144,6 +148,7 @@ export function CommonProfileView() {
   const hasContactNumber = Boolean(String(user.contactNumber || user.phoneNumber || '').trim());
   const showEmailVerified = Boolean(user.isVerified);
   const showContactVerified = Boolean(user.isVerified) && hasContactNumber;
+  const showFeeWaiverHrTrigger = !isAdmin && canShowFeeWaiverHrTrigger(user);
 
   if (isEditMode) {
     return (
@@ -498,6 +503,21 @@ export function CommonProfileView() {
               <Grid xs={12}>
                 <UserSalesforceProfileCard user={user} layout="wide" />
               </Grid>
+
+              {showFeeWaiverHrTrigger ? (
+                <Grid xs={12}>
+                  <ProfileSectionCard
+                    title="Job role verification"
+                    subtitle="Send HR email verification for fee waiver"
+                  >
+                    <FeeWaiverHrResendPanel
+                      user={user}
+                      variant="user"
+                      onRefresh={refreshUser}
+                    />
+                  </ProfileSectionCard>
+                </Grid>
+              ) : null}
             </Grid>
           </Box>
         </Card>

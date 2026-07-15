@@ -1263,7 +1263,21 @@ export function LearningCourseDetailsView({ course, loading, error }) {
                                       src={section.videoUrl}
                                       muted
                                       preload="metadata"
-                                      sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                      controlsList="nodownload"
+                                      disablePictureInPicture
+                                      onContextMenu={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                      }}
+                                      onDragStart={(event) => event.preventDefault()}
+                                      sx={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        WebkitUserSelect: 'none',
+                                        userSelect: 'none',
+                                        WebkitTouchCallout: 'none',
+                                      }}
                                     />
                                   ) : hasVideo && isEmbeddedVideo ? (
                                     <Stack direction="row" alignItems="center" spacing={0.5}>

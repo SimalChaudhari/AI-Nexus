@@ -37,29 +37,23 @@ export const QUIZ_QUESTION_TYPES = QUESTION_TYPES.filter((t) => t.value !== 'ass
 
 export const ASSESSMENT_QUESTION_TYPES = QUESTION_TYPES.filter((t) => t.value === 'assignment');
 
-export const ASSIGNMENT_REFERENCE_ACCEPT = {
+export const ASSESSMENT_ADMIN_ACCEPT = {
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg'],
   'application/pdf': ['.pdf'],
   'application/msword': ['.doc'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/vnd.ms-excel': ['.xls'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'application/vnd.ms-excel.sheet.macroEnabled.12': ['.xlsm'],
   'application/zip': ['.zip'],
   'application/x-zip-compressed': ['.zip'],
 };
 
-export const ASSESSMENT_QUESTION_ACCEPT = {
-  'application/pdf': ['.pdf'],
-  'application/msword': ['.doc'],
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-  'application/zip': ['.zip'],
-  'application/x-zip-compressed': ['.zip'],
-};
-
-export const ASSESSMENT_ANSWER_SHEET_ACCEPT = ASSESSMENT_QUESTION_ACCEPT;
-
-export const ASSESSMENT_GUIDE_ACCEPT = {
-  'application/pdf': ['.pdf'],
-  'application/msword': ['.doc'],
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-};
+export const ASSIGNMENT_REFERENCE_ACCEPT = ASSESSMENT_ADMIN_ACCEPT;
+export const ASSESSMENT_QUESTION_ACCEPT = ASSESSMENT_ADMIN_ACCEPT;
+export const ASSESSMENT_ANSWER_SHEET_ACCEPT = ASSESSMENT_ADMIN_ACCEPT;
+export const ASSESSMENT_GUIDE_ACCEPT = ASSESSMENT_ADMIN_ACCEPT;
 
 export const LEARNER_SUBMISSION_ACCEPT = {
   'image/png': ['.png'],
@@ -71,6 +65,8 @@ export const LEARNER_SUBMISSION_ACCEPT = {
   'application/vnd.ms-excel.sheet.macroEnabled.12': ['.xlsm'],
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
   'text/plain': ['.txt'],
+  'application/zip': ['.zip'],
+  'application/x-zip-compressed': ['.zip'],
 };
 
 export function questionTypeChipLabel(type) {

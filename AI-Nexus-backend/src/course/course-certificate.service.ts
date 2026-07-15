@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, BadRequestException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CourseCertificateEntity, CourseCertificateStatus } from './course-certificate.entity';
@@ -10,12 +10,14 @@ import { ProgramEntity } from '../program/programs.entity';
 import { CourseModuleEntity } from './course-module.entity';
 import { CourseModuleSectionEntity } from './course-module-section.entity';
 import { resolveProgramPillarIndexFromLevel } from './program-pillar.util';
-import { resolveCoursePillarIndex } from './course-program-cpe-summary.util';
 import {
-  isSectionVideoUrlChanged,
-  normalizeVideoUrlForCompare,
-} from './course-video-url.util';
+  computeCpeHoursFromWatchSeconds,
+  resolveCoursePillarIndex,
+} from './course-program-cpe-summary.util';
 import { UpdateCourseModuleSectionDto } from './course-module-section.dto';
+import { LocalStorageService } from '../service/local-storage.service';
+import { AppSettingsService } from '../app-settings/app-settings.service';
+import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
 
 type CertificateSyncResult = {
   action: 'issued' | 'reissued' | 'revoked' | 'unchanged' | 'already_active' | 'admin_deleted';
@@ -31,12 +33,6 @@ export type CourseContentDeletionGuard = {
 
 const COURSE_CONTENT_DELETION_BLOCKED_MESSAGE =
   'Learners have been issued certificates for this course or programme. You cannot delete modules/sections, change video URLs, or change custom watchtime. Revoke or remove certificates first.';
-
-const SECTION_VIDEO_COMPLETED_LOCK_MESSAGE =
-  'Learners have already completed this lesson video. You cannot delete it or change its video URL and watchtime.';
-
-const COURSE_HAS_COMPLETED_LESSONS_MESSAGE =
-  'Learners have completed lessons in this course. You cannot delete the course until that progress is cleared.';
 
 export type CertificateTranscriptSection = {
   sectionId: string;
@@ -54,6 +50,8 @@ export type CertificateTranscriptModule = {
   completedSections: number;
   totalSections: number;
   isModuleComplete: boolean;
+  /** Earned CPE for this module (from verified watch time). */
+  cpeHours: number;
   sections: CertificateTranscriptSection[];
 };
 
@@ -75,6 +73,8 @@ export class CourseCertificateService {
     private readonly courseService: CourseService,
     @Inject(forwardRef(() => CourseQuizAssessmentProgressService))
     private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
+    private readonly localStorageService: LocalStorageService,
+    private readonly appSettingsService: AppSettingsService,
   ) {}
 
   private async buildCertificateNo(completedAt: Date = new Date()): Promise<string> {
@@ -83,12 +83,21 @@ export class CourseCertificateService {
       : new Date();
     const datePart = safeDate.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `AINX-${datePart}-`;
-    const existingCount = await this.certificateRepository
-      .createQueryBuilder('cert')
-      .where('cert.certificateNo LIKE :prefix', { prefix: `${prefix}%` })
-      .getCount();
-    const sequence = String(existingCount + 1).padStart(5, '0');
-    return `${prefix}${sequence}`;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const existingCount = await this.certificateRepository
+        .createQueryBuilder('cert')
+        .where('cert.certificateNo LIKE :prefix', { prefix: `${prefix}%` })
+        .getCount();
+      const sequence = String(existingCount + 1 + attempt).padStart(5, '0');
+      const candidate = `${prefix}${sequence}`;
+      const clash = await this.certificateRepository.findOne({
+        where: { certificateNo: candidate },
+        select: ['id'],
+      });
+      if (!clash) return candidate;
+    }
+    const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `${prefix}${suffix}`;
   }
 
   /**
@@ -192,16 +201,22 @@ export class CourseCertificateService {
   }
 
   private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
-    await this.courseService.getById(courseId);
+    const course = await this.courseService.getById(courseId);
 
     const sectionProgressMap =
       await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
     const rows = Object.values(sectionProgressMap || {});
     const hasSections = rows.length > 0;
-    const videosCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+    const videosCompleted =
+      hasSections &&
+      rows.every((row) => Boolean(row?.isCompleted || row?.isWatched));
     if (!videosCompleted) return false;
 
-    return this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(userId, courseId);
+    return this.quizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(
+      userId,
+      courseId,
+      course?.level,
+    );
   }
 
   private async isPillar2PartialRequirementsMet(userId: string, courseId: string): Promise<boolean> {
@@ -224,9 +239,10 @@ export class CourseCertificateService {
       const moduleSections = sections.filter((section) => section.moduleId === module.id);
       if (!moduleSections.length) continue;
 
-      const allSectionsComplete = moduleSections.every((section) =>
-        Boolean(sectionProgressMap?.[section.id]?.isCompleted),
-      );
+      const allSectionsComplete = moduleSections.every((section) => {
+        const row = sectionProgressMap?.[section.id];
+        return Boolean(row?.isCompleted || row?.isWatched);
+      });
       if (!allSectionsComplete) continue;
 
       const moduleQuizAssessmentComplete =
@@ -338,8 +354,30 @@ export class CourseCertificateService {
       status: CourseCertificateStatus.Active,
       deletedAt: null,
     });
-    const saved = await this.certificateRepository.save(certificate);
-    return { action: 'issued', certificate: saved };
+    try {
+      const saved = await this.certificateRepository.save(certificate);
+      return { action: 'issued', certificate: saved };
+    } catch {
+      // Concurrent backfill (Pillar 1 + Pillar 2) can race on the unique (userId, courseId) row.
+      const raced = await this.certificateRepository.findOne({ where: { userId, courseId } });
+      if (raced?.status === CourseCertificateStatus.Active) {
+        if (programId && raced.programId !== programId) {
+          raced.programId = programId;
+          await this.certificateRepository.save(raced);
+        }
+        return { action: 'already_active', certificate: raced };
+      }
+      if (raced) {
+        raced.status = CourseCertificateStatus.Active;
+        raced.completedAt = new Date();
+        raced.deletedAt = null;
+        raced.programId = programId || null;
+        raced.certificateNo = await this.buildCertificateNo(raced.completedAt);
+        const saved = await this.certificateRepository.save(raced);
+        return { action: 'reissued', certificate: saved };
+      }
+      throw new Error('Failed to issue certificate after concurrent write');
+    }
   }
 
   private async syncProgramCertificate(userId: string, programId: string): Promise<CertificateSyncResult> {
@@ -443,6 +481,22 @@ export class CourseCertificateService {
 
   async issueIfCourseCompleted(userId: string, courseId: string) {
     const result = await this.syncCertificateWithCourseCompletion(userId, courseId);
+    if (
+      result.certificate &&
+      (result.action === 'issued' ||
+        result.action === 'reissued' ||
+        (result.action === 'already_active' && !result.certificate.pdfUrl))
+    ) {
+      try {
+        const withPdf = await this.ensureCertificatePdfStored(result.certificate.id);
+        result.certificate = withPdf;
+      } catch (error) {
+        console.error(
+          `[certificate-pdf] failed for cert=${result.certificate.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
     if (result.action === 'issued' || result.action === 'reissued') {
       return { issued: true, certificate: result.certificate, reason: result.action };
     }
@@ -477,7 +531,8 @@ export class CourseCertificateService {
         await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(userId, courseId);
       const rows = Object.values(sectionProgressMap || {});
       const hasSections = rows.length > 0;
-      const videosCompleted = hasSections && rows.every((row) => Boolean(row?.isCompleted));
+      const videosCompleted =
+        hasSections && rows.every((row) => Boolean(row?.isCompleted || row?.isWatched));
       if (!videosCompleted) {
         return { issued: false, certificate: null, reason: 'not_completed' as const };
       }
@@ -517,6 +572,10 @@ export class CourseCertificateService {
         };
       });
       const completedSections = sectionRows.filter((row) => row.isCompleted).length;
+      const watchedSeconds = moduleSections.reduce((sum, section) => {
+        const progress = progressMap[section.id];
+        return sum + Math.max(0, Number(progress?.watchedSeconds || 0));
+      }, 0);
       return {
         moduleId: module.id,
         moduleTitle: module.title || 'Module',
@@ -525,6 +584,7 @@ export class CourseCertificateService {
         completedSections,
         totalSections: sectionRows.length,
         isModuleComplete: sectionRows.length > 0 && completedSections === sectionRows.length,
+        cpeHours: computeCpeHoursFromWatchSeconds(watchedSeconds),
         sections: sectionRows,
       };
     });
@@ -577,9 +637,25 @@ export class CourseCertificateService {
         earnedCpeHours: summary.totalEarnedCpeHours,
         allocatedCpeHours: summary.totalAllocatedCpeHours,
         watchedTime: summary.totalWatchedTime,
+        pillarCpeHours: [1, 2, 3].map((pillarIndex) => {
+          const pillar = summary.pillarBreakdown.find((item) => item.pillarIndex === pillarIndex);
+          return {
+            pillarIndex,
+            earnedCpeHours: pillar?.earnedCpeHours ?? 0,
+          };
+        }),
       };
     }
-    return this.courseSectionWatchProgressService.getCourseEarnedCpeHours(userId, row.courseId);
+    const courseCpe = await this.courseSectionWatchProgressService.getCourseEarnedCpeHours(
+      userId,
+      row.courseId,
+    );
+    return {
+      ...courseCpe,
+      pillarCpeHours: [
+        { pillarIndex: 1, earnedCpeHours: courseCpe.earnedCpeHours ?? 0 },
+      ],
+    };
   }
 
   async getUserCertificates(userId: string) {
@@ -634,9 +710,127 @@ export class CourseCertificateService {
           watchedTime: cpe.watchedTime,
           transcript,
           completedModules,
+          pdfUrl: row.pdfUrl || null,
         };
       }),
     );
+  }
+
+  private async buildCertificatePdfPayload(certificateId: string) {
+    const row = await this.certificateRepository.findOne({
+      where: { id: certificateId },
+      relations: ['course', 'user'],
+    });
+    if (!row) {
+      throw new NotFoundException('Certificate not found');
+    }
+
+    let courseTitle = row.course?.title || 'Untitled Course';
+    if (row.programId) {
+      const program = await this.programRepository.findOne({
+        where: { id: row.programId },
+        select: ['id', 'title'],
+      });
+      courseTitle = program?.title || courseTitle || 'Programme';
+    }
+
+    const [cpe, transcript, publicSettings] = await Promise.all([
+      this.resolveCertificateCpeHours(row.userId, row),
+      row.programId
+        ? this.buildProgrammeTranscript(row.userId, row.programId)
+        : this.buildCourseTranscript(row.userId, row.courseId, courseTitle),
+      this.appSettingsService.getPublicSettings(),
+    ]);
+
+    const learnerName =
+      `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||
+      row.user?.username ||
+      'Learner';
+
+    return {
+      row,
+      payload: {
+        certificateNo: row.certificateNo,
+        learnerName,
+        courseTitle,
+        completedAt: row.completedAt,
+        earnedCpeHours: cpe.earnedCpeHours,
+        allocatedCpeHours: cpe.allocatedCpeHours,
+        pillarCpeHours: cpe.pillarCpeHours,
+        logoUrl: publicSettings?.logoUrl || null,
+        transcript,
+        issuerName: 'AI Nexus Learning Platform',
+      },
+    };
+  }
+
+  async ensureCertificatePdfStored(certificateId: string): Promise<CourseCertificateEntity> {
+    const { row, payload } = await this.buildCertificatePdfPayload(certificateId);
+    const { filename, buffer } = await buildCourseCertificatePdf(payload);
+
+    if (row.pdfUrl) {
+      await this.localStorageService.deleteFileByUrl(row.pdfUrl);
+    }
+
+    const pdfUrl = await this.localStorageService.saveBuffer(
+      buffer,
+      'course-certificates',
+      `${row.certificateNo}-${row.id.slice(0, 8)}`,
+      '.pdf',
+    );
+    row.pdfUrl = pdfUrl;
+    return this.certificateRepository.save(row);
+  }
+
+  async getCertificatePdfForUser(
+    userId: string,
+    certificateId: string,
+  ): Promise<{ filename: string; buffer: Buffer }> {
+    const existing = await this.certificateRepository.findOne({
+      where: { id: certificateId, userId, status: CourseCertificateStatus.Active },
+    });
+    if (!existing) {
+      throw new NotFoundException('Certificate not found');
+    }
+    if (!(await this.shouldDisplayCredentialToLearner(userId, existing))) {
+      throw new NotFoundException('Certificate not available');
+    }
+
+    return this.getCertificatePdfBuffer(certificateId);
+  }
+
+  /** PDF by certificate id (caller must enforce authz, e.g. corporate company scope). */
+  async getCertificatePdfBuffer(
+    certificateId: string,
+  ): Promise<{ filename: string; buffer: Buffer }> {
+    const existing = await this.certificateRepository.findOne({
+      where: { id: certificateId, status: CourseCertificateStatus.Active },
+    });
+    if (!existing) {
+      throw new NotFoundException('Certificate not found');
+    }
+
+    // Prefer already-stored PDF — regenerating on every HR download freezes the UI.
+    if (existing.pdfUrl) {
+      const stored = await this.localStorageService.readFileByUrl(existing.pdfUrl);
+      if (stored?.buffer?.length) {
+        return {
+          filename: stored.fileName || `Certificate-${existing.certificateNo}.pdf`,
+          buffer: stored.buffer,
+        };
+      }
+    }
+
+    const saved = await this.ensureCertificatePdfStored(certificateId);
+    const stored = await this.localStorageService.readFileByUrl(saved.pdfUrl);
+    if (!stored?.buffer?.length) {
+      const { payload } = await this.buildCertificatePdfPayload(certificateId);
+      return buildCourseCertificatePdf(payload);
+    }
+    return {
+      filename: stored.fileName || `Certificate-${saved.certificateNo}.pdf`,
+      buffer: stored.buffer,
+    };
   }
 
   async getAdminCertificates(filters: {
@@ -732,87 +926,28 @@ export class CourseCertificateService {
     };
   }
 
-  async assertCourseContentDeletionAllowed(courseId: string): Promise<void> {
-    const guard = await this.getCourseContentDeletionGuard(courseId);
-    if (guard.locked) {
-      throw new BadRequestException(guard.reason || COURSE_CONTENT_DELETION_BLOCKED_MESSAGE);
-    }
-    if (guard.completedSectionIds.length > 0) {
-      throw new BadRequestException(COURSE_HAS_COMPLETED_LESSONS_MESSAGE);
-    }
+  async assertCourseContentDeletionAllowed(_courseId: string): Promise<void> {
+    // Admin course content edits (delete modules/sections, video URL, watchtime) stay enabled.
   }
 
-  async assertSectionDeletionAllowed(courseId: string, sectionId: string): Promise<void> {
-    const guard = await this.getCourseContentDeletionGuard(courseId);
-    if (guard.locked) {
-      throw new BadRequestException(guard.reason || COURSE_CONTENT_DELETION_BLOCKED_MESSAGE);
-    }
-    if (guard.completedSectionIds.includes(sectionId)) {
-      throw new BadRequestException(SECTION_VIDEO_COMPLETED_LOCK_MESSAGE);
-    }
+  async assertSectionDeletionAllowed(_courseId: string, _sectionId: string): Promise<void> {
+    // Admin section delete stays enabled even when learners have completed the lesson.
   }
 
-  async assertModuleDeletionAllowed(courseId: string, moduleId: string): Promise<void> {
-    const guard = await this.getCourseContentDeletionGuard(courseId);
-    if (guard.locked) {
-      throw new BadRequestException(guard.reason || COURSE_CONTENT_DELETION_BLOCKED_MESSAGE);
-    }
-    const sections = await this.courseModuleSectionRepository.find({
-      where: { moduleId },
-      select: ['id'],
-    });
-    const sectionIds = new Set(sections.map((section) => section.id));
-    const hasCompletedLesson = guard.completedSectionIds.some((id) => sectionIds.has(id));
-    if (hasCompletedLesson) {
-      throw new BadRequestException(SECTION_VIDEO_COMPLETED_LOCK_MESSAGE);
-    }
+  async assertModuleDeletionAllowed(_courseId: string, _moduleId: string): Promise<void> {
+    // Admin module delete stays enabled even when learners have completed lessons.
   }
 
   async assertSectionVideoSettingsEditAllowed(
-    courseId: string,
-    sectionId: string,
-    section: Pick<CourseModuleSectionEntity, 'videoUrl' | 'watchtime' | 'durationTime'>,
-    dto: UpdateCourseModuleSectionDto,
+    _courseId: string,
+    _sectionId: string,
+    _section: Pick<
+      CourseModuleSectionEntity,
+      'videoUrl' | 'watchtime' | 'durationTime' | 'completionPercentage'
+    >,
+    _dto: UpdateCourseModuleSectionDto,
   ): Promise<void> {
-    const guard = await this.getCourseContentDeletionGuard(courseId);
-    const hadVideo = Boolean(normalizeVideoUrlForCompare(section.videoUrl));
-    if (!hadVideo) return;
-
-    const sectionCompleted = guard.completedSectionIds.includes(sectionId);
-    const certificateLocked = guard.locked;
-    if (!certificateLocked && !sectionCompleted) return;
-
-    const message = certificateLocked
-      ? guard.reason || COURSE_CONTENT_DELETION_BLOCKED_MESSAGE
-      : SECTION_VIDEO_COMPLETED_LOCK_MESSAGE;
-
-    if (dto.videoUrl !== undefined && isSectionVideoUrlChanged(section.videoUrl, dto.videoUrl)) {
-      throw new BadRequestException(message);
-    }
-
-    if (dto.watchtime !== undefined) {
-      const prev = String(section.watchtime || '').trim();
-      const next = String(dto.watchtime || '').trim();
-      if (prev !== next) {
-        throw new BadRequestException(message);
-      }
-    }
-
-    if (dto.durationTime !== undefined) {
-      const prev = String(section.durationTime || '').trim();
-      const next = String(dto.durationTime || '').trim();
-      if (prev !== next) {
-        throw new BadRequestException(message);
-      }
-    }
-
-    if (dto.images !== undefined || dto.attachments !== undefined) {
-      throw new BadRequestException(message);
-    }
-
-    if (dto.content !== undefined && String(dto.content || '').trim()) {
-      throw new BadRequestException(message);
-    }
+    // Admin video URL / watchtime / completion percentage edits stay enabled.
   }
 
   private async countActiveCertificatesBlockingCourseDeletion(courseId: string): Promise<number> {
@@ -842,6 +977,10 @@ export class CourseCertificateService {
     const existing = await this.certificateRepository.findOne({ where: { id } });
     if (!existing) {
       return { deleted: false };
+    }
+    if (existing.pdfUrl) {
+      await this.localStorageService.deleteFileByUrl(existing.pdfUrl);
+      existing.pdfUrl = null;
     }
     existing.status = CourseCertificateStatus.Deleted;
     existing.deletedAt = new Date();

@@ -46,6 +46,10 @@ export class CourseCertificateEntity {
   @Column({ type: 'varchar', length: 80 })
   certificateNo!: string;
 
+  /** Stored official PDF path under /uploads/... (server-generated). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  pdfUrl?: string | null;
+
   @Column({ type: 'timestamp' })
   completedAt!: Date;
 

@@ -15,6 +15,8 @@ import { Response, Request } from 'express';
 import { OAuthAuthService } from './oauth-auth.service';
 import {
   CreateSalesforceNexusUserDto,
+  CreateCorporateSalesforceAccountAndContactDto,
+  CheckCorporateSalesforceAccountDto,
   EndEservicesSessionDto,
   OAuthExchangeDto,
   SalesforceUserCheckEmailDto,
@@ -336,6 +338,39 @@ export class OAuthAuthController {
       success: true,
       message: 'Salesforce password set successfully. You can now sign in.',
       salesforce,
+    };
+  }
+
+  @Post('create-corporate-account')
+  @ApiOperation({
+    summary: 'Create Salesforce corporate account + contact (corporateaccandconcreation)',
+  })
+  @ApiBody({ type: CreateCorporateSalesforceAccountAndContactDto })
+  async createCorporateAccount(@Body() dto: CreateCorporateSalesforceAccountAndContactDto) {
+    const salesforce = await this.oauthAuthService.createCorporateSalesforceAccountAndContact({
+      account: dto.account as unknown as Record<string, unknown>,
+      contact: dto.contact as unknown as Record<string, unknown>,
+    });
+    return {
+      success: true,
+      message: 'Corporate Salesforce account created successfully.',
+      salesforce,
+    };
+  }
+
+  @Post('check-corporate-account')
+  @ApiOperation({
+    summary: 'Check Salesforce corporate account + contact (corporateaccandconcheck)',
+  })
+  @ApiBody({ type: CheckCorporateSalesforceAccountDto })
+  async checkCorporateAccount(@Body() dto: CheckCorporateSalesforceAccountDto) {
+    const result = await this.oauthAuthService.checkCorporateSalesforceAccount({
+      uenNumber: dto.uenNumber,
+      email: dto.email,
+    });
+    return {
+      success: true,
+      ...result,
     };
   }
 

@@ -141,14 +141,30 @@ export function fileData(file) {
     };
   }
 
-  // From file
+  // Stored upload metadata (existing server files)
+  if (file && typeof file === 'object' && !(file instanceof Blob)) {
+    const preview = file.preview || file.url || file.fileUrl || '';
+    const name = file.name || file.originalFileName || (preview ? fileNameByUrl(String(preview)) : 'File');
+    const path = file.path || preview || name;
+    return {
+      preview,
+      name,
+      type: file.type || file.mimeType || (path ? fileTypeByUrl(String(path)) : undefined),
+      size: file.size,
+      path,
+      lastModified: file.lastModified,
+      lastModifiedDate: file.lastModifiedDate,
+    };
+  }
+
+  // From File/Blob
   return {
-    name: file.name,
-    size: file.size,
-    path: file.path,
-    type: file.type,
-    preview: file.preview,
-    lastModified: file.lastModified,
-    lastModifiedDate: file.lastModifiedDate,
+    name: file?.name,
+    size: file?.size,
+    path: file?.path || file?.name,
+    type: file?.type,
+    preview: file?.preview,
+    lastModified: file?.lastModified,
+    lastModifiedDate: file?.lastModifiedDate,
   };
 }

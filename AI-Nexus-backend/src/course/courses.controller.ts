@@ -21,7 +21,7 @@ import {
     FileTypeValidator,
     ForbiddenException,
 } from '@nestjs/common';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response, Request } from 'express';
 import { UserRole } from '../user/users.entity';
@@ -70,7 +70,12 @@ import { LanguageService } from '../language/language.service';
 import { ReviewService } from '../review/review.service';
 import { CourseCertificateService } from './course-certificate.service';
 import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
+import { buildCourseOverallProgress } from './course-overall-progress.util';
 import { AppSettingsService } from '../app-settings/app-settings.service';
+import {
+    ASSESSMENT_ADMIN_FILE_EXT,
+    LEARNER_SUBMISSION_FILE_EXT,
+} from './course-assignment-file.types';
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
     speakerIds: unknown,
@@ -133,10 +138,35 @@ const learnerSubmissionFileFilter = (
     cb: (error: Error | null, accept: boolean) => void,
 ) => {
     const name = String(file.originalname || '').toLowerCase();
-    const allowedExt = /\.(png|jpe?g|pdf|doc|docx|xlsx|xlsm|pptx|txt)$/i.test(name);
-    const isZip = /\.(zip|rar)$/i.test(name) || /zip|rar/i.test(file.mimetype);
-    cb(null, Boolean(allowedExt && !isZip));
+    cb(null, LEARNER_SUBMISSION_FILE_EXT.test(name));
 };
+
+type AssessmentAdminUploadBody = {
+    replace?: boolean | string;
+    keepFiles?: string | unknown[];
+};
+
+const parseAssessmentAdminUploadOptions = (body: AssessmentAdminUploadBody) => {
+    let keepFiles: unknown = body?.keepFiles;
+    if (typeof keepFiles === 'string') {
+        try {
+            keepFiles = JSON.parse(keepFiles);
+        } catch {
+            keepFiles = [];
+        }
+    }
+    return {
+        replace:
+            body?.replace === undefined
+                ? true
+                : body.replace === true || body.replace === 'true' || body.replace === '1',
+        keepFiles,
+    };
+};
+
+const flattenAssessmentAdminUploads = (
+    uploaded?: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+): Express.Multer.File[] => [...(uploaded?.files || []), ...(uploaded?.file || [])];
 
 const saveAssignmentUploadFile = (
     localStorageService: LocalStorageService,
@@ -173,6 +203,7 @@ type RawCourseSectionPayload = {
     content?: unknown;
     watchtime?: unknown;
     durationTime?: unknown;
+    completionPercentage?: unknown;
     images?: unknown;
     attachments?: unknown;
     learningMaterials?: unknown;
@@ -784,16 +815,17 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload assessment guide file (legacy endpoint)' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssignmentReferenceFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Req() request: Request,
         @Res() response: Response,
     ) {
@@ -801,16 +833,18 @@ export class CourseController {
         if (!userId) {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
 
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'guide',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
 
         return response.status(HttpStatus.OK).json({
@@ -818,6 +852,7 @@ export class CourseController {
             data: {
                 guideFileUrl: row.guideFileUrl,
                 guideFileName: row.guideFileName,
+                guideFiles: row.guideFiles,
             },
         });
     }
@@ -829,33 +864,37 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload assessment question file' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx|zip)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssessmentQuestionFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Res() response: Response,
     ) {
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'question',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
         return response.status(HttpStatus.OK).json({
             message: 'Question file uploaded',
             data: {
                 questionFileUrl: row.questionFileUrl,
                 questionFileName: row.questionFileName,
+                questionFiles: row.questionFiles,
             },
         });
     }
@@ -867,33 +906,37 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload official answer sheet for assessment grading' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx|zip)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssessmentAnswerSheetFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Res() response: Response,
     ) {
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'answerSheet',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
         return response.status(HttpStatus.OK).json({
             message: 'Answer sheet uploaded',
             data: {
                 answerSheetFileUrl: row.answerSheetFileUrl,
                 answerSheetFileName: row.answerSheetFileName,
+                answerSheetFiles: row.answerSheetFiles,
             },
         });
     }
@@ -905,33 +948,37 @@ export class CourseController {
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Upload optional assessment guide for learners' })
     @UseInterceptors(
-        FileInterceptor('file', {
+        FileFieldsInterceptor([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }], {
             storage: memoryStorage(),
             limits: { fileSize: IMAGE_LIMIT_BYTES },
-            fileFilter: assessmentAdminFileFilter(/\.(pdf|doc|docx)$/i),
+            fileFilter: assessmentAdminFileFilter(ASSESSMENT_ADMIN_FILE_EXT),
         }),
     )
     async uploadAssessmentGuideFile(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() uploaded: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+        @Body() body: AssessmentAdminUploadBody,
         @Res() response: Response,
     ) {
-        if (!file) {
+        const files = flattenAssessmentAdminUploads(uploaded);
+        if (!files.length && body?.replace === undefined) {
             return response.status(HttpStatus.BAD_REQUEST).json({ message: 'No file uploaded' });
         }
-        const row = await this.courseQuestionBankService.uploadAssessmentAdminFile(
+        const row = await this.courseQuestionBankService.uploadAssessmentAdminFiles(
             courseId,
             questionId,
-            file,
+            files,
             'guide',
             (uploadFile, folder) => saveAssignmentUploadFile(this.localStorageService, uploadFile, folder),
+            parseAssessmentAdminUploadOptions(body),
         );
         return response.status(HttpStatus.OK).json({
             message: 'Guide file uploaded',
             data: {
                 guideFileUrl: row.guideFileUrl,
                 guideFileName: row.guideFileName,
+                guideFiles: row.guideFiles,
             },
         });
     }
@@ -1388,16 +1435,46 @@ export class CourseController {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
         // Backfill certificates for already-completed courses in case a prior progress update missed auto-issue.
+        // Isolate failures so one course/program race cannot wipe the whole Digital Badge page.
         const enrolledSet = await this.courseEnrollmentService.getEffectiveEnrolledCourseIdSet(userId);
         const touchedCourseIds = await this.courseSectionWatchProgressService.getUserTouchedCourseIds(userId);
         const candidateCourseIds = [...new Set([...enrolledSet, ...touchedCourseIds])];
         await Promise.all(
-            candidateCourseIds.map((courseId) =>
-                this.courseCertificateService.issueIfCourseCompleted(userId, courseId),
-            ),
+            candidateCourseIds.map(async (courseId) => {
+                try {
+                    await this.courseCertificateService.issueIfCourseCompleted(userId, courseId);
+                } catch (error) {
+                    console.error(
+                        `[certificates/my] backfill failed for user=${userId} course=${courseId}:`,
+                        error instanceof Error ? error.message : error,
+                    );
+                }
+            }),
         );
         const certificates = await this.courseCertificateService.getUserCertificates(userId);
         return response.status(HttpStatus.OK).json({ data: certificates });
+    }
+
+    @Get('certificates/:certificateId/pdf')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Download official server-generated certificate PDF' })
+    async downloadMyCertificatePdf(
+        @Param('certificateId') certificateId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const { filename, buffer } = await this.courseCertificateService.getCertificatePdfForUser(
+            userId,
+            certificateId,
+        );
+        response.setHeader('Content-Type', 'application/pdf');
+        response.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        return response.status(HttpStatus.OK).send(buffer);
     }
 
     @Post(':courseId/certificates/issue')
@@ -1500,7 +1577,11 @@ export class CourseController {
                 message: 'Valid Spotlightr watch URL is required',
             });
         }
-        if (!this.spotlightrService.isConfigured()) {
+        if (
+            !this.spotlightrService.isConfigured() ||
+            !this.spotlightrService.isPreparePlaybackEnabled() ||
+            this.spotlightrService.isApiCircuitOpen()
+        ) {
             return response.status(HttpStatus.OK).json({
                 data: { directUrl: null, settingsUpdated: false },
             });
@@ -1637,50 +1718,6 @@ export class CourseController {
                     )[0];
                 const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
                 const lastAccessedAt = latestByTime?.lastAccessedAt || null;
-                const totalSections = progressRows.length;
-                const completionSum = progressRows.reduce((sum, row) => {
-                    const isDone =
-                        row?.isCompleted === true ||
-                        row?.isWatched === true ||
-                        Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99;
-                    if (isDone) return sum + 100;
-                    return (
-                        sum +
-                        Math.max(0, Math.min(100, Number(row?.completionPercent ?? row?.currentProgress ?? 0)))
-                    );
-                }, 0);
-                const completedSectionsCount = progressRows.filter(
-                    (row) =>
-                        row?.isCompleted === true ||
-                        row?.isWatched === true ||
-                        Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99,
-                ).length;
-                const videosCompleted =
-                    totalSections > 0 && completedSectionsCount >= totalSections;
-                const quizAssessmentProgress =
-                    await this.courseQuizAssessmentProgressService.getLearnerProgress(
-                        userId,
-                        courseId,
-                    );
-                const needsQuizAssessment = quizAssessmentProgress.scopes.some(
-                    (scope) => scope.quizCount > 0 || scope.assignmentCount > 0,
-                );
-                const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
-                const hasEarnedCredential =
-                    await this.courseCertificateService.hasDisplayableCredentialForLearner(
-                        userId,
-                        courseId,
-                    );
-                let completionPercent =
-                    totalSections > 0 ? Math.round(completionSum / totalSections) : 0;
-                const isCompleted =
-                    videosCompleted && (!needsQuizAssessment || quizAssessmentMet);
-                if (isCompleted) {
-                    completionPercent = 100;
-                } else if (needsQuizAssessment && videosCompleted && !quizAssessmentMet) {
-                    completionPercent = Math.min(99, completionPercent);
-                }
-                const status = isCompleted ? 'completed' : 'in_progress';
 
                 const modules = await this.courseModuleService.findByCourseId(courseId);
                 const modulesWithSections = await Promise.all(
@@ -1693,6 +1730,59 @@ export class CourseController {
                         return { ...mod, sections: sectionsWithProgress };
                     }),
                 );
+
+                const quizAssessmentProgress =
+                    await this.courseQuizAssessmentProgressService.getLearnerProgress(
+                        userId,
+                        courseId,
+                    );
+                const quizCountByModuleId: Record<string, number> = {};
+                const assignmentCountByModuleId: Record<string, number> = {};
+                let courseEndQuizCount = 0;
+                let courseEndAssignmentCount = 0;
+                quizAssessmentProgress.scopes.forEach((scope) => {
+                    if (scope.moduleId) {
+                        if (scope.quizCount > 0) {
+                            quizCountByModuleId[scope.moduleId] = scope.quizCount;
+                        }
+                        if (scope.assignmentCount > 0) {
+                            assignmentCountByModuleId[scope.moduleId] = scope.assignmentCount;
+                        }
+                    } else {
+                        courseEndQuizCount = scope.quizCount;
+                        courseEndAssignmentCount = scope.assignmentCount;
+                    }
+                });
+
+                const overallProgress = buildCourseOverallProgress({
+                    courseLevel: course.level || null,
+                    modules: modulesWithSections.map((mod) => ({
+                        id: mod.id,
+                        sections: (mod.sections || []).map((section) => ({ id: section.id })),
+                    })),
+                    sectionProgressBySectionId,
+                    quizAssessmentScopes: quizAssessmentProgress.scopes,
+                    quizCountByModuleId,
+                    assignmentCountByModuleId,
+                    courseEndQuizCount,
+                    courseEndAssignmentCount,
+                });
+
+                const completionPercent = overallProgress.completionPercent;
+                const isCompleted = overallProgress.isCompleted;
+                const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
+                const videosCompleted = modulesWithSections.every((mod) =>
+                    (mod.sections || []).every((section) => {
+                        const row = sectionProgressBySectionId[section.id];
+                        return row?.isCompleted === true || row?.isWatched === true;
+                    }),
+                );
+                const hasEarnedCredential =
+                    await this.courseCertificateService.hasDisplayableCredentialForLearner(
+                        userId,
+                        courseId,
+                    );
+                const status = isCompleted ? 'completed' : 'in_progress';
 
                 return {
                     course: {
@@ -1712,6 +1802,8 @@ export class CourseController {
                         completionPercent,
                         isCompleted,
                         status,
+                        completedUnits: overallProgress.completedUnits,
+                        totalUnits: overallProgress.totalUnits,
                         quizAssessmentCompleted: quizAssessmentMet,
                         hasEarnedCredential,
                         videosCompleted,
@@ -2205,6 +2297,13 @@ export class CourseController {
                                         typeof sec?.durationTime === 'string'
                                             ? sec.durationTime
                                             : undefined,
+                                    completionPercentage:
+                                        typeof sec?.completionPercentage === 'number'
+                                            ? sec.completionPercentage
+                                            : sec?.completionPercentage != null &&
+                                                sec.completionPercentage !== ''
+                                              ? Number(sec.completionPercentage)
+                                              : undefined,
                                     images: normalizeStringArray(sec?.images),
                                     attachments: normalizeStringArray(sec?.attachments),
                                     learningMaterials: normalizeStringArray(sec?.learningMaterials),

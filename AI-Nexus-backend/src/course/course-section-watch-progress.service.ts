@@ -68,6 +68,8 @@ function parseCoverageRangePairs(raw: unknown): [number, number][] {
 
 function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
   if (!ranges.length) return [];
+  // Close tiny holes from client play/pause / poll jitter.
+  const GAP_FILL_SEC = 0.75;
   const sorted = ranges
     .map(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number])
     .filter(([s, e]) => e > s && Number.isFinite(s) && Number.isFinite(e))
@@ -75,7 +77,7 @@ function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
   const out: [number, number][] = [];
   for (const [s, e] of sorted) {
     const last = out[out.length - 1];
-    if (!last || s > last[1]) out.push([s, e]);
+    if (!last || s > last[1] + GAP_FILL_SEC) out.push([s, e]);
     else last[1] = Math.max(last[1], e);
   }
   return out;
@@ -94,11 +96,71 @@ function clipCoverageRangesToDuration(ranges: [number, number][], duration: numb
   return mergeCoverageRanges(clipped);
 }
 
+function roundedVideoDurationSeconds(duration: number): number {
+  return Math.max(0, Math.round(Number(duration) || 0));
+}
+
+/** Integer-second rule: final displayed second or player `ended` event. */
+function isPlaybackAtVideoEnd(position: number, duration: number, ended = false): boolean {
+  if (ended) return true;
+  const totalSec = roundedVideoDurationSeconds(duration);
+  if (totalSec <= 0) return false;
+  const positionSec = Math.max(0, Number(position) || 0);
+  return Math.ceil(positionSec) >= totalSec;
+}
+
+/** Seal last segment to rounded duration when coverage already includes the final second. */
+function sealCoverageRangesToVideoEnd(
+  ranges: [number, number][],
+  duration: number,
+): [number, number][] {
+  const dur = roundedVideoDurationSeconds(duration);
+  if (dur <= 0) return mergeCoverageRanges(ranges);
+  const merged = clipCoverageRangesToDuration(ranges, dur);
+  if (!merged.length) return merged;
+  const last = merged[merged.length - 1];
+  if (Math.ceil(last[1]) >= dur - 1) {
+    last[1] = dur;
+  }
+  return merged;
+}
+
+function computeUnwatchedGapSeconds(ranges: [number, number][], duration: number): number {
+  const dur = roundedVideoDurationSeconds(duration);
+  if (dur <= 0) return 0;
+  const watched = clipCoverageRangesToDuration(ranges, dur);
+  if (!watched.length) return dur;
+  let cursor = 0;
+  let gapTotal = 0;
+  for (const [start, end] of watched) {
+    if (start > cursor + 0.25) gapTotal += start - cursor;
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < dur - 0.25) gapTotal += dur - cursor;
+  return gapTotal;
+}
+
+function sealCoverageRangesWhenComplete(
+  ranges: [number, number][],
+  duration: number,
+): [number, number][] {
+  const dur = roundedVideoDurationSeconds(duration);
+  if (dur <= 0) return mergeCoverageRanges(ranges);
+  const clipped = clipCoverageRangesToDuration(ranges, dur);
+  if (computeUnwatchedGapSeconds(clipped, dur) >= 1) return clipped;
+  return [[0, dur]];
+}
+
 function coverageMeasureSeconds(ranges: [number, number][], duration: number): number {
-  const merged = duration > 0 ? clipCoverageRangesToDuration(ranges, duration) : mergeCoverageRanges(ranges);
+  const dur = roundedVideoDurationSeconds(duration);
+  const merged = dur > 0 ? clipCoverageRangesToDuration(ranges, dur) : mergeCoverageRanges(ranges);
+  if (dur > 0 && computeUnwatchedGapSeconds(merged, dur) < 1) {
+    return dur;
+  }
   let total = 0;
   for (const [s, e] of merged) total += e - s;
-  return Math.floor(Math.max(0, total));
+  const measured = Math.floor(Math.max(0, total));
+  return dur > 0 ? Math.min(dur, measured) : measured;
 }
 
 /**
@@ -106,7 +168,8 @@ function coverageMeasureSeconds(ranges: [number, number][], duration: number): n
  * - Sequential unlock: section N+1 stays locked until section N is completed.
  * - Sticky completion: once isCompleted is true for a section, it never becomes false (re-access always allowed).
  * - Content lock: a section that is already completed is never treated as locked for the learner.
- * - Completion threshold: admin "watch time" (section.watchtime) capped by real video length — full video not required.
+ * - Completion threshold: admin completionPercentage (% of video) when set; else admin watchtime
+ *   capped by real video length — full video not required when either is configured.
  */
 
 @Injectable()
@@ -130,6 +193,13 @@ export class CourseSectionWatchProgressService {
     const mm = Math.floor((safe % 3600) / 60);
     const ss = safe % 60;
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  }
+
+  private normalizeCompletionPercentage(value?: number | string | null): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n) || n < 1 || n > 100) return null;
+    return n;
   }
 
   private buildComputed(lastPositionSeconds: number, watchedSeconds: number, durationSeconds: number) {
@@ -164,9 +234,14 @@ export class CourseSectionWatchProgressService {
   private resolveCompletionRequiredSeconds(
     watchtimeSeconds: number,
     fullVideoDurationSeconds: number,
+    completionPercentage?: number | null,
   ): number {
-    const wt = Math.max(0, Math.floor(Number(watchtimeSeconds) || 0));
     const full = Math.max(0, Math.floor(Number(fullVideoDurationSeconds) || 0));
+    const pct = this.normalizeCompletionPercentage(completionPercentage);
+    if (pct != null && full > 0) {
+      return Math.max(1, Math.ceil((full * pct) / 100));
+    }
+    const wt = Math.max(0, Math.floor(Number(watchtimeSeconds) || 0));
     if (wt > 0 && full > 0) return Math.min(wt, full);
     if (wt > 0) return wt;
     return full;
@@ -191,26 +266,39 @@ export class CourseSectionWatchProgressService {
       await this.sectionProgressRepository.delete({ id: row.id });
       return undefined;
     }
+    if (!storedUrl && currentUrl) {
+      row.sourceVideoUrl = normalizeVideoUrlForCompare(sectionVideoUrl) || null;
+      await this.sectionProgressRepository.update({ id: row.id }, { sourceVideoUrl: row.sourceVideoUrl });
+    }
     return row;
   }
 
   private async resolveCourseTiming(
     courseId: string,
     sectionId: string,
-  ): Promise<{ watchtimeSeconds: number; durationTimeSeconds: number }> {
+  ): Promise<{
+    watchtimeSeconds: number;
+    durationTimeSeconds: number;
+    completionPercentage: number | null;
+  }> {
     const section = await this.sectionRepository.findOne({
       where: { id: sectionId },
-      select: ['id', 'moduleId', 'watchtime', 'durationTime', 'videoUrl'],
+      select: ['id', 'moduleId', 'watchtime', 'durationTime', 'completionPercentage', 'videoUrl'],
     });
-    if (!section) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+    if (!section) {
+      return { watchtimeSeconds: 0, durationTimeSeconds: 0, completionPercentage: null };
+    }
     const module = await this.moduleRepository.findOne({
       where: { id: section.moduleId },
       select: ['id', 'courseId'],
     });
-    if (!module || module.courseId !== courseId) return { watchtimeSeconds: 0, durationTimeSeconds: 0 };
+    if (!module || module.courseId !== courseId) {
+      return { watchtimeSeconds: 0, durationTimeSeconds: 0, completionPercentage: null };
+    }
     return {
       watchtimeSeconds: parseWatchtimeToSeconds(section.watchtime),
       durationTimeSeconds: parseWatchtimeToSeconds(section.durationTime),
+      completionPercentage: this.normalizeCompletionPercentage(section.completionPercentage),
     };
   }
 
@@ -253,7 +341,7 @@ export class CourseSectionWatchProgressService {
     const sections = modules.length
       ? await this.sectionRepository.find({
           where: modules.map((module) => ({ moduleId: module.id })),
-          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'videoUrl'],
+          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'completionPercentage', 'videoUrl'],
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
@@ -308,11 +396,19 @@ export class CourseSectionWatchProgressService {
     }
     const progressBySection = new Map(validProgressRows.map((r) => [r.sectionId, r]));
 
-    const resolvedTimingBySection = new Map<string, { watchtimeSeconds: number; durationTimeSeconds: number }>();
+    const resolvedTimingBySection = new Map<
+      string,
+      {
+        watchtimeSeconds: number;
+        durationTimeSeconds: number;
+        completionPercentage: number | null;
+      }
+    >();
     sections.forEach((section) => {
       resolvedTimingBySection.set(section.id, {
         watchtimeSeconds: parseWatchtimeToSeconds(section.watchtime),
         durationTimeSeconds: parseWatchtimeToSeconds(section.durationTime),
+        completionPercentage: this.normalizeCompletionPercentage(section.completionPercentage),
       });
     });
 
@@ -322,13 +418,15 @@ export class CourseSectionWatchProgressService {
       moduleSections.forEach((section) => {
         // Pillar 1–3: every lesson unlocked from the start.
         const isLocked = false;
+        const timing = resolvedTimingBySection.get(section.id);
         result[section.id] = this.formatSectionProgressResponse(
           courseId,
           section.id,
           progressBySection.get(section.id),
-          resolvedTimingBySection.get(section.id)?.watchtimeSeconds ?? 0,
-          resolvedTimingBySection.get(section.id)?.durationTimeSeconds ?? 0,
+          timing?.watchtimeSeconds ?? 0,
+          timing?.durationTimeSeconds ?? 0,
           isLocked,
+          timing?.completionPercentage ?? null,
         );
       });
     });
@@ -345,17 +443,26 @@ export class CourseSectionWatchProgressService {
     existing: CourseSectionWatchProgressEntity | undefined,
     resolvedWatchtimeSeconds: number,
     resolvedDurationTimeSeconds: number,
+    completionPercentage?: number | null,
   ) {
     const duration = this.resolveDisplayDurationSeconds(
       resolvedDurationTimeSeconds,
       existing?.durationSeconds ?? 0,
       existing?.videoDurationSeconds ?? 0,
     );
-    const required = this.resolveCompletionRequiredSeconds(resolvedWatchtimeSeconds, duration);
-    const storedRanges = clipCoverageRangesToDuration(
+    const required = this.resolveCompletionRequiredSeconds(
+      resolvedWatchtimeSeconds,
+      duration,
+      completionPercentage,
+    );
+    const storedRangesRaw = clipCoverageRangesToDuration(
       parseCoverageRangePairs(existing?.watchedCoverageRanges),
       duration,
     );
+    const lastPosForRead = existing?.lastPositionSeconds ?? 0;
+    const storedRanges = isPlaybackAtVideoEnd(lastPosForRead, duration)
+      ? sealCoverageRangesToVideoEnd(storedRangesRaw, duration)
+      : storedRangesRaw;
     const legacyWatchedCap = duration > 0 ? Math.min(duration, existing?.watchedSeconds ?? 0) : (existing?.watchedSeconds ?? 0);
     const watchedFromCoverage =
       storedRanges.length > 0 ? coverageMeasureSeconds(storedRanges, duration) : legacyWatchedCap;
@@ -376,15 +483,8 @@ export class CourseSectionWatchProgressService {
         this.watchProgressMeetsCompletionRequirement(watchedForDisplay, required),
     );
     const isWatched = isCompleted;
-    const computedForResponse =
-      isCompleted && duration > 0
-        ? {
-            ...computed,
-            watched: duration,
-            remaining: 0,
-            percent: 100,
-          }
-        : computed;
+    // Keep real coverage/percent even after threshold completion so learners can still
+    // fill the remaining watch range up to 100% of the video.
     return {
       duration,
       required,
@@ -392,7 +492,7 @@ export class CourseSectionWatchProgressService {
       legacyWatchedCap,
       watchedFromCoverage,
       watchedForDisplay,
-      computed: computedForResponse,
+      computed,
       isCompleted,
       isWatched,
     };
@@ -405,9 +505,15 @@ export class CourseSectionWatchProgressService {
     resolvedWatchtimeSeconds: number,
     resolvedDurationTimeSeconds: number,
     isLocked: boolean,
+    completionPercentage?: number | null,
   ) {
     const { duration, storedRanges, legacyWatchedCap, computed, isCompleted, isWatched } =
-      this.deriveSectionProgressComputation(existing, resolvedWatchtimeSeconds, resolvedDurationTimeSeconds);
+      this.deriveSectionProgressComputation(
+        existing,
+        resolvedWatchtimeSeconds,
+        resolvedDurationTimeSeconds,
+        completionPercentage,
+      );
 
     const lastPos = computed.lastPosition;
     const watched = computed.watched;
@@ -418,11 +524,6 @@ export class CourseSectionWatchProgressService {
     let watchedCoverageRangesOut: [number, number][] = storedRanges;
     if (storedRanges.length === 0 && legacyWatchedCap > 0 && duration > 0) {
       watchedCoverageRangesOut = [[0, legacyWatchedCap]];
-    } else if (isCompleted && duration > 0) {
-      const covered = coverageMeasureSeconds(watchedCoverageRangesOut, duration);
-      if (covered < duration) {
-        watchedCoverageRangesOut = [[0, duration]];
-      }
     }
 
     // Completed sections stay accessible forever; sequential gate does not re-lock them.
@@ -500,6 +601,7 @@ export class CourseSectionWatchProgressService {
       resolvedTiming.watchtimeSeconds,
       resolvedTiming.durationTimeSeconds,
       isLocked,
+      resolvedTiming.completionPercentage,
     );
   }
 
@@ -548,6 +650,7 @@ export class CourseSectionWatchProgressService {
     const requiredForCompletion = this.resolveCompletionRequiredSeconds(
       resolvedTiming.watchtimeSeconds,
       duration,
+      resolvedTiming.completionPercentage,
     );
     const lastPos = typeof dto.lastPositionSeconds === 'number' ? dto.lastPositionSeconds : existing?.lastPositionSeconds ?? 0;
 
@@ -569,6 +672,10 @@ export class CourseSectionWatchProgressService {
       }
       const incoming = clipCoverageRangesToDuration(parseCoverageRangePairs(dto.watchedCoverageRanges), duration);
       mergedRanges = clipCoverageRangesToDuration(mergeCoverageRanges([...mergedRanges, ...incoming]), duration);
+      if (isPlaybackAtVideoEnd(lastPos, duration)) {
+        mergedRanges = sealCoverageRangesToVideoEnd(mergedRanges, duration);
+      }
+      mergedRanges = sealCoverageRangesWhenComplete(mergedRanges, duration);
       const covered = coverageMeasureSeconds(mergedRanges, duration);
       watchedWithDelta = covered;
       nextCoverageColumn = mergedRanges.length ? mergedRanges : null;
@@ -589,20 +696,24 @@ export class CourseSectionWatchProgressService {
     const isWatched = Boolean(existing?.isCompleted || isCompleted);
     const previousLastPosition = Math.max(0, Number(existing?.lastPositionSeconds || 0));
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
+    const dtoLastPosition =
+      typeof dto.lastPositionSeconds === 'number'
+        ? Math.max(0, Math.floor(dto.lastPositionSeconds))
+        : null;
     // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
-    const finalLastPosition = Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
-    let finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
-    let finalDuration = Math.max(computed.duration, 0);
-    if (isCompleted && finalDuration > 0) {
-      finalWatched = Math.max(finalWatched, finalDuration);
-    }
+    // After the completion threshold is met, learners may rewind to fill gaps — bookmark the real pause point.
+    const finalLastPosition =
+      dtoLastPosition != null && dtoLastPosition >= 0
+        ? dtoLastPosition
+        : Math.max(previousLastPosition, Math.max(0, computed.lastPosition));
+    const finalWatched = Math.max(previousWatched, Math.max(0, computed.watched));
+    const finalDuration = Math.max(computed.duration, 0);
     const finalRemaining = Math.max(0, finalDuration - finalWatched);
+    // Percent follows actual watched coverage — do not jump to 100 just because completion threshold was met.
     const finalPercent =
-      isCompleted && finalDuration > 0
-        ? 100
-        : finalDuration > 0
-          ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
-          : 0;
+      finalDuration > 0
+        ? Number(((finalWatched / finalDuration) * 100).toFixed(2))
+        : 0;
 
     // Atomic upsert prevents duplicate-key races when multiple progress updates arrive together.
     try {
@@ -671,10 +782,21 @@ export class CourseSectionWatchProgressService {
   }> {
     const { sections } = await this.getModulesAndSections(courseId);
     const videoSections = sections.filter((section) => Boolean(String(section.videoUrl || '').trim()));
+
+    // Total hours = sum of every section duration in the course (modules), same as course catalog.
+    // e.g. 5 modules × 1h each → 5h total.
+    let totalVideoDurationSeconds = 0;
+    for (const section of sections) {
+      const fromAdmin = parseWatchtimeToSeconds(section.durationTime);
+      const sectionDuration =
+        fromAdmin > 0 ? fromAdmin : parseWatchtimeToSeconds(section.watchtime);
+      if (sectionDuration > 0) totalVideoDurationSeconds += sectionDuration;
+    }
+
     if (!videoSections.length) {
       return {
         watchedSeconds: 0,
-        totalVideoDurationSeconds: 0,
+        totalVideoDurationSeconds,
         allVideosCompleted: false,
         totalVideoSections: 0,
         completedVideoSections: 0,
@@ -683,18 +805,21 @@ export class CourseSectionWatchProgressService {
 
     const progressMap = await this.getAllSectionProgressForCourse(userId, courseId);
     let watchedSeconds = 0;
-    let totalVideoDurationSeconds = 0;
     let completedVideoSections = 0;
+    let progressDurationFallback = 0;
 
     for (const section of videoSections) {
       const progress = progressMap[section.id];
       const watched = Math.max(0, Number(progress?.watchedSeconds || 0));
-      const duration = Math.max(0, Number(progress?.durationSeconds || 0));
       watchedSeconds += watched;
-      totalVideoDurationSeconds += duration;
       if (progress?.isCompleted) {
         completedVideoSections += 1;
       }
+      progressDurationFallback += Math.max(0, Number(progress?.durationSeconds || 0));
+    }
+
+    if (totalVideoDurationSeconds <= 0 && progressDurationFallback > 0) {
+      totalVideoDurationSeconds = progressDurationFallback;
     }
 
     return {
@@ -716,11 +841,13 @@ export class CourseSectionWatchProgressService {
       order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
     });
 
-    const courseByPillar = new Map<number, (typeof courses)[number]>();
+    const coursesByPillar = new Map<number, (typeof courses)[number][]>();
     for (const course of courses) {
       const pillarIndex = resolveCoursePillarIndex(course);
-      if (!pillarIndex || courseByPillar.has(pillarIndex)) continue;
-      courseByPillar.set(pillarIndex, course);
+      if (!pillarIndex) continue;
+      const list = coursesByPillar.get(pillarIndex) || [];
+      list.push(course);
+      coursesByPillar.set(pillarIndex, list);
     }
 
     const pillarBreakdown: ProgramPillarWatchSummary['pillarBreakdown'] = [];
@@ -730,31 +857,54 @@ export class CourseSectionWatchProgressService {
     let hasAnyAllocatedCpe = false;
 
     for (const pillarIndex of [1, 2, 3]) {
-      const course = courseByPillar.get(pillarIndex);
-      if (!course) continue;
+      const pillarCourses = coursesByPillar.get(pillarIndex) || [];
+      if (!pillarCourses.length) continue;
 
-      const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
-      const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
-      const earnedCpeHours = computeCpeHoursFromWatchSeconds(videoStats.watchedSeconds);
+      let watchedSeconds = 0;
+      let videoDurationSeconds = 0;
+      let allocatedCpeHoursSum = 0;
+      let hasAllocated = false;
+      let allVideosCompleted = true;
+      let hasAnyVideoSection = false;
+      const primaryCourse = pillarCourses[0];
 
-      if (allocatedCpeHours != null) {
-        totalAllocatedCpeHours += allocatedCpeHours;
+      for (const course of pillarCourses) {
+        const videoStats = await this.sumVideoWatchStatsForCourse(userId, course.id);
+        watchedSeconds += videoStats.watchedSeconds;
+        videoDurationSeconds += videoStats.totalVideoDurationSeconds;
+        if (videoStats.totalVideoSections > 0) {
+          hasAnyVideoSection = true;
+          if (!videoStats.allVideosCompleted) allVideosCompleted = false;
+        }
+        const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
+        if (allocatedCpeHours != null) {
+          allocatedCpeHoursSum += allocatedCpeHours;
+          hasAllocated = true;
+        }
+      }
+
+      if (!hasAnyVideoSection) allVideosCompleted = false;
+
+      const earnedCpeHours = computeCpeHoursFromWatchSeconds(watchedSeconds);
+
+      if (hasAllocated) {
+        totalAllocatedCpeHours += allocatedCpeHoursSum;
         hasAnyAllocatedCpe = true;
       }
-      totalWatchedSeconds += videoStats.watchedSeconds;
-      totalVideoDurationSeconds += videoStats.totalVideoDurationSeconds;
+      totalWatchedSeconds += watchedSeconds;
+      totalVideoDurationSeconds += videoDurationSeconds;
 
       pillarBreakdown.push({
         pillarIndex,
-        courseId: course.id,
-        courseTitle: course.title,
-        watchedSeconds: videoStats.watchedSeconds,
-        watchedHours: secondsToWatchedHours(videoStats.watchedSeconds),
-        watchedTime: formatSecondsToDisplayTime(videoStats.watchedSeconds),
-        totalVideoDurationSeconds: videoStats.totalVideoDurationSeconds,
-        allocatedCpeHours,
+        courseId: primaryCourse.id,
+        courseTitle: primaryCourse.title,
+        watchedSeconds,
+        watchedHours: secondsToWatchedHours(watchedSeconds),
+        watchedTime: formatSecondsToDisplayTime(watchedSeconds),
+        totalVideoDurationSeconds: videoDurationSeconds,
+        allocatedCpeHours: hasAllocated ? Math.round(allocatedCpeHoursSum * 100) / 100 : null,
         earnedCpeHours,
-        allVideosCompleted: videoStats.allVideosCompleted,
+        allVideosCompleted,
       });
     }
 
@@ -769,6 +919,218 @@ export class CourseSectionWatchProgressService {
       totalEarnedCpeHours,
       totalCpeHours: totalEarnedCpeHours,
     };
+  }
+
+  /**
+   * Batch pillar watch summaries for many learners in a program.
+   * Loads courses/sections once and progress rows once — avoids N+1 per user.
+   */
+  async getProgramPillarWatchSummariesForUsers(
+    userIds: string[],
+    programId: string,
+  ): Promise<Map<string, ProgramPillarWatchSummary>> {
+    const result = new Map<string, ProgramPillarWatchSummary>();
+    const emptySummary = (): ProgramPillarWatchSummary => ({
+      pillarBreakdown: [],
+      totalWatchedSeconds: 0,
+      totalWatchedHours: 0,
+      totalWatchedTime: '0:00:00',
+      totalAllocatedCpeHours: null,
+      totalEarnedCpeHours: 0,
+      totalCpeHours: 0,
+    });
+
+    for (const userId of userIds) {
+      result.set(userId, emptySummary());
+    }
+    if (!userIds.length || !programId) return result;
+
+    const courses = await this.courseRepository.find({
+      where: { programId, isBundle: false },
+      select: ['id', 'title', 'programPillarIndex', 'level', 'marketData', 'createdAt'],
+      order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
+    });
+    if (!courses.length) return result;
+
+    const coursesByPillar = new Map<number, typeof courses>();
+    for (const course of courses) {
+      const pillarIndex = resolveCoursePillarIndex(course);
+      if (!pillarIndex) continue;
+      const list = coursesByPillar.get(pillarIndex) || [];
+      list.push(course);
+      coursesByPillar.set(pillarIndex, list);
+    }
+
+    const courseIds = courses.map((c) => c.id);
+    const modules = await this.moduleRepository.find({
+      where: { courseId: In(courseIds) },
+      select: ['id', 'courseId', 'sortOrder'],
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    const moduleIds = modules.map((m) => m.id);
+    const sections = moduleIds.length
+      ? await this.sectionRepository.find({
+          where: { moduleId: In(moduleIds) },
+          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'videoUrl'],
+          order: { sortOrder: 'ASC', createdAt: 'ASC' },
+        })
+      : [];
+
+    const modulesByCourse = new Map<string, typeof modules>();
+    for (const mod of modules) {
+      const list = modulesByCourse.get(mod.courseId) || [];
+      list.push(mod);
+      modulesByCourse.set(mod.courseId, list);
+    }
+    const sectionsByModule = new Map<string, typeof sections>();
+    for (const section of sections) {
+      const list = sectionsByModule.get(section.moduleId) || [];
+      list.push(section);
+      sectionsByModule.set(section.moduleId, list);
+    }
+
+    type CourseSectionMeta = {
+      sections: CourseModuleSectionEntity[];
+      videoSections: CourseModuleSectionEntity[];
+      totalVideoDurationSeconds: number;
+    };
+    const courseMeta = new Map<string, CourseSectionMeta>();
+    for (const course of courses) {
+      const courseModules = modulesByCourse.get(course.id) || [];
+      const courseSections = courseModules.flatMap((m) => sectionsByModule.get(m.id) || []);
+      let totalVideoDurationSeconds = 0;
+      for (const section of courseSections) {
+        const fromAdmin = parseWatchtimeToSeconds(section.durationTime);
+        const sectionDuration =
+          fromAdmin > 0 ? fromAdmin : parseWatchtimeToSeconds(section.watchtime);
+        if (sectionDuration > 0) totalVideoDurationSeconds += sectionDuration;
+      }
+      const videoSections = courseSections.filter((s) => Boolean(String(s.videoUrl || '').trim()));
+      courseMeta.set(course.id, { sections: courseSections, videoSections, totalVideoDurationSeconds });
+    }
+
+    const sectionIds = sections.map((s) => s.id);
+    const progressRows =
+      sectionIds.length > 0
+        ? await this.sectionProgressRepository.find({
+            where: {
+              userId: In(userIds),
+              courseId: In(courseIds),
+              sectionId: In(sectionIds),
+            },
+            select: [
+              'userId',
+              'courseId',
+              'sectionId',
+              'watchedSeconds',
+              'durationSeconds',
+              'isCompleted',
+            ],
+          })
+        : [];
+
+    const progressByUserCourseSection = new Map<
+      string,
+      { watchedSeconds: number; durationSeconds: number; isCompleted: boolean }
+    >();
+    for (const row of progressRows) {
+      progressByUserCourseSection.set(`${row.userId}:${row.courseId}:${row.sectionId}`, {
+        watchedSeconds: Math.max(0, Number(row.watchedSeconds || 0)),
+        durationSeconds: Math.max(0, Number(row.durationSeconds || 0)),
+        isCompleted: Boolean(row.isCompleted),
+      });
+    }
+
+    for (const userId of userIds) {
+      const pillarBreakdown: ProgramPillarWatchSummary['pillarBreakdown'] = [];
+      let totalWatchedSeconds = 0;
+      let totalVideoDurationSeconds = 0;
+      let totalAllocatedCpeHours = 0;
+      let hasAnyAllocatedCpe = false;
+
+      for (const pillarIndex of [1, 2, 3]) {
+        const pillarCourses = coursesByPillar.get(pillarIndex) || [];
+        if (!pillarCourses.length) continue;
+
+        let watchedSeconds = 0;
+        let videoDurationSeconds = 0;
+        let allocatedCpeHoursSum = 0;
+        let hasAllocated = false;
+        let allVideosCompleted = true;
+        let hasAnyVideoSection = false;
+        const primaryCourse = pillarCourses[0];
+
+        for (const course of pillarCourses) {
+          const meta = courseMeta.get(course.id);
+          if (!meta) continue;
+
+          let courseDuration = meta.totalVideoDurationSeconds;
+          let completedVideoSections = 0;
+          let progressDurationFallback = 0;
+          for (const section of meta.videoSections) {
+            const progress = progressByUserCourseSection.get(
+              `${userId}:${course.id}:${section.id}`,
+            );
+            watchedSeconds += Math.max(0, Number(progress?.watchedSeconds || 0));
+            progressDurationFallback += Math.max(0, Number(progress?.durationSeconds || 0));
+            if (progress?.isCompleted) completedVideoSections += 1;
+          }
+          if (courseDuration <= 0 && progressDurationFallback > 0) {
+            courseDuration = progressDurationFallback;
+          }
+          videoDurationSeconds += courseDuration;
+          if (meta.videoSections.length > 0) {
+            hasAnyVideoSection = true;
+            if (completedVideoSections < meta.videoSections.length) {
+              allVideosCompleted = false;
+            }
+          }
+
+          const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
+          if (allocatedCpeHours != null) {
+            allocatedCpeHoursSum += allocatedCpeHours;
+            hasAllocated = true;
+          }
+        }
+
+        if (!hasAnyVideoSection) allVideosCompleted = false;
+        const earnedCpeHours = computeCpeHoursFromWatchSeconds(watchedSeconds);
+        if (hasAllocated) {
+          totalAllocatedCpeHours += allocatedCpeHoursSum;
+          hasAnyAllocatedCpe = true;
+        }
+        totalWatchedSeconds += watchedSeconds;
+        totalVideoDurationSeconds += videoDurationSeconds;
+
+        pillarBreakdown.push({
+          pillarIndex,
+          courseId: primaryCourse.id,
+          courseTitle: primaryCourse.title,
+          watchedSeconds,
+          watchedHours: secondsToWatchedHours(watchedSeconds),
+          watchedTime: formatSecondsToDisplayTime(watchedSeconds),
+          totalVideoDurationSeconds: videoDurationSeconds,
+          allocatedCpeHours: hasAllocated ? Math.round(allocatedCpeHoursSum * 100) / 100 : null,
+          earnedCpeHours,
+          allVideosCompleted,
+        });
+      }
+
+      const totalEarned = computeCpeHoursFromWatchSeconds(totalWatchedSeconds);
+      result.set(userId, {
+        pillarBreakdown,
+        totalWatchedSeconds,
+        totalWatchedHours: secondsToWatchedHours(totalWatchedSeconds),
+        totalWatchedTime: formatSecondsToDisplayTime(totalWatchedSeconds),
+        totalAllocatedCpeHours: hasAnyAllocatedCpe
+          ? Math.round(totalAllocatedCpeHours * 100) / 100
+          : null,
+        totalEarnedCpeHours: totalEarned,
+        totalCpeHours: totalEarned,
+      });
+    }
+
+    return result;
   }
 
   async getCourseEarnedCpeHours(

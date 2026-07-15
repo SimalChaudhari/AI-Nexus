@@ -21,6 +21,7 @@ export type AuthTokenUserPayload = {
   username?: string | null;
   firstname?: string | null;
   lastname?: string | null;
+  companyCode?: string | null;
 };
 
 @Injectable()
@@ -34,7 +35,7 @@ export class AuthTokenService {
   ) {}
 
   private get accessExpires(): string {
-    return process.env.JWT_ACCESS_EXPIRES?.trim() || '15m';
+    return process.env.JWT_ACCESS_EXPIRES?.trim() || '15d';
   }
 
   private get refreshExpiresMs(): number {
@@ -49,6 +50,7 @@ export class AuthTokenService {
       username: user.username,
       firstname: user.firstname,
       lastname: user.lastname,
+      companyCode: (user as AuthTokenUserPayload).companyCode ?? (user as UserEntity).companyCode ?? null,
       type: 'access',
     };
   }
@@ -92,6 +94,15 @@ export class AuthTokenService {
     const accessToken = this.signAccessToken(user);
     if (options?.deferredAuth) {
       return { accessToken, refreshToken: null };
+    }
+
+    // Record platform login time (skip deferred/membership-only tokens).
+    if (user?.id) {
+      try {
+        await this.userRepository.update({ id: user.id }, { lastLoginAt: new Date() });
+      } catch (err) {
+        console.error('[Auth] Failed to update lastLoginAt (non-fatal):', err);
+      }
     }
 
     const refreshToken = await this.createRefreshToken(user.id, options?.req);
