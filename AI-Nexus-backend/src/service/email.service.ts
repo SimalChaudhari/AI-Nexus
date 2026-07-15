@@ -3,6 +3,7 @@ import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { Injectable } from '@nestjs/common';
 import {
     buildBrandTemplate,
+    buildCorporateNudgeBodyHtml,
     buildCredentialsBodyHtml,
     buildFeeWaiverHrVerificationBodyHtml,
     buildForumReplyBodyHtml,
@@ -17,7 +18,19 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
+        const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
+
+        if (isDevelopment) {
+            this.transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS,
+                },
+            });
+            return;
+        }
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
         const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
@@ -286,6 +299,53 @@ export class EmailService {
         } catch (error) {
             console.error('Error sending forum reply notification email:', error);
             throw new Error('Failed to send forum reply notification email');
+        }
+    }
+
+    /**
+     * Simple corporate HR nudge email — template can be refined later.
+     */
+    async sendCorporateLearnerNudgeEmail(params: {
+        toEmail: string;
+        learnerName: string;
+        companyLabel?: string;
+        pendingMessage?: string;
+    }): Promise<void> {
+        const { toEmail, learnerName, companyLabel, pendingMessage } = params;
+        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
+        const normalizedPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
+        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedPath}`;
+        const bodyHtml = buildCorporateNudgeBodyHtml({
+            companyLabel: companyLabel || '',
+            pendingMessage: pendingMessage || '',
+        });
+
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'Complete Your Learning Progress',
+            greetingName: learnerName,
+            intro:
+                'Your organisation has sent a friendly reminder to continue your AI Nexus programme and complete your current pillar learning goals.',
+            bodyHtml,
+            ctaLabel: 'Continue Learning',
+            ctaUrl: loginUrl,
+            note: 'If you have already completed the pending items, you can ignore this reminder.',
+            footer: 'AI Nexus corporate learning reminder',
+        });
+
+        const mailOptions = {
+            from: this.fromEmail,
+            to: toEmail,
+            subject: 'Reminder: Continue your AI Nexus learning progress',
+            text: `Hello ${learnerName},\n\nYour organisation has asked you to continue your AI Nexus learning and complete your current pillar progress.\n${pendingMessage ? `\nPending item: ${pendingMessage}\n` : ''}\nSign in: ${loginUrl}\n`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Corporate nudge email sent to ${toEmail}`);
+        } catch (error) {
+            console.error('Error sending corporate nudge email:', error);
+            throw new Error('Failed to send nudge email');
         }
     }
 

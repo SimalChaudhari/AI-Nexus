@@ -9,6 +9,8 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import InputAdornment from '@mui/material/InputAdornment';
 
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
 import { Iconify } from 'src/components/iconify';
 import { LoadingScreen } from 'src/components/loading-screen';
 
@@ -21,8 +23,10 @@ import {
   CorpBtn,
   CorpCard,
   CorpCertificateDownloadBtn,
+  CorpNudgeBtn,
   CorpPageHeader,
   CorpPill,
+  CorpPillarLessonMeta,
   CorpProgressBar,
   CorpTableHead,
   CorpTextBtn,
@@ -74,7 +78,7 @@ export function CorporateProgressView() {
     return () => window.clearTimeout(timer);
   }, [searchInput, qParam, setSearchParams]);
 
-  const { data: rows, pagination, loading, error, companyCode } = useCorporateLearners({
+  const { data: rows, pagination, loading, error, companyCode, reload } = useCorporateLearners({
     q: qParam,
     status,
     page,
@@ -220,7 +224,7 @@ export function CorporateProgressView() {
         </Box>
 
         <Box sx={{ overflow: 'auto' }}>
-          <Box component="table" sx={corpTableSx(1320)}>
+          <Box component="table" sx={corpTableSx(1480)}>
             <CorpTableHead
               columns={[
                 'Learner',
@@ -258,17 +262,15 @@ export function CorporateProgressView() {
                     </td>
                     <td>
                       <CorpProgressBar pillar={s.p1} textType="long" />
-                      <small>
-                        Quiz: {s.p1?.q ? 'Passed' : 'Pending'} - Assessment:{' '}
-                        {s.p1?.a ? 'Passed' : 'Pending'}
-                      </small>
+                      <CorpPillarLessonMeta pillar={s.p1} />
                     </td>
                     <td>
                       <CorpProgressBar pillar={s.p2} textType="long" />
-                      <small>Eligible specialisation: {s.p2?.e ? 'Completed' : 'Pending'}</small>
+                      <CorpPillarLessonMeta pillar={s.p2} />
                     </td>
                     <td>
                       <CorpProgressBar pillar={s.p3} textType="long" />
+                      <CorpPillarLessonMeta pillar={s.p3} />
                     </td>
                     <td>
                       <CorpPill status={s.status} />
@@ -277,15 +279,60 @@ export function CorporateProgressView() {
                       <Box sx={{ maxWidth: 300, lineHeight: 1.45 }}>{s.pending}</Box>
                     </td>
                     <td>
-                      <CorpTextBtn>Nudge</CorpTextBtn>
-                      <CorpTextBtn>View</CorpTextBtn>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, minWidth: 88 }}>
+                        <CorpNudgeBtn
+                          userId={s.userId}
+                          learnerName={s.name}
+                          companyCode={isCorporate ? undefined : companyCode}
+                          canNudge={s.canNudge !== false}
+                          lastNudgedAt={s.lastNudgedAt}
+                          onSent={() => reload()}
+                        />
+                        {s.userId ? (
+                          <CorpBtn
+                            variant="ghost"
+                            component={RouterLink}
+                            href={paths.corporate.learner(s.userId)}
+                            sx={{
+                              px: '12px',
+                              py: '6px',
+                              fontSize: 12,
+                              fontWeight: 800,
+                              borderRadius: '10px',
+                              minHeight: 32,
+                              width: '100%',
+                              bgcolor: '#fff',
+                              border: `1px solid ${CORP.line}`,
+                              color: CORP.navy,
+                              '&:hover': { bgcolor: '#f5f8fc', borderColor: CORP.blue },
+                            }}
+                          >
+                            View
+                          </CorpBtn>
+                        ) : (
+                          <CorpBtn
+                            variant="ghost"
+                            disabled
+                            sx={{
+                              px: '12px',
+                              py: '6px',
+                              fontSize: 12,
+                              fontWeight: 800,
+                              borderRadius: '10px',
+                              minHeight: 32,
+                              width: '100%',
+                            }}
+                          >
+                            View
+                          </CorpBtn>
+                        )}
+                      </Box>
                     </td>
                     <td>
                       <CorpCertificateDownloadBtn
                         available={Boolean(s.cert)}
                         certificateId={s.certificateId}
                         learnerName={s.name}
-                        unavailableNote={s.pending}
                       />
                     </td>
                   </tr>

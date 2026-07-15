@@ -182,6 +182,36 @@ export const buildCredentialsBodyHtml = (username: string, plainPassword: string
                             </table>`;
 };
 
+/** Placeholder corporate nudge body — replace copy later without changing send flow. */
+export const buildCorporateNudgeBodyHtml = (params: {
+    companyLabel?: string;
+    pendingMessage?: string;
+}): string => {
+    const company = escapeHtml(String(params.companyLabel || '').trim());
+    const pending = escapeHtml(String(params.pendingMessage || '').trim());
+    const companyLine = company
+        ? `<p style="margin:0 0 12px; color:#0f172a; font-size:14px; line-height:1.55;">From: <strong>${company}</strong></p>`
+        : '';
+    const pendingLine = pending
+        ? `<p style="margin:0; color:#334155; font-size:14px; line-height:1.55;"><strong>Suggested focus:</strong> ${pending}</p>`
+        : `<p style="margin:0; color:#334155; font-size:14px; line-height:1.55;">Please continue your Pillar modules, quizzes and assessments so you stay on track for programme completion.</p>`;
+
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Learning reminder
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:14px;">
+                                        ${companyLine}
+                                        ${pendingLine}
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
 export const buildForumReplyBodyHtml = (postTitle: string, replierName: string, replyPreview: string): string => {
     const safePostTitle = escapeHtml(postTitle);
     const safeReplier = escapeHtml(replierName || 'A user');

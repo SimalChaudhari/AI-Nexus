@@ -9,6 +9,13 @@ export async function getCorporateOverview(companyCode) {
   return response.data?.data ?? response.data;
 }
 
+export async function getCorporateLearner(userId, companyCode) {
+  const response = await axios.get(`/corporate/learners/${encodeURIComponent(userId)}`, {
+    params: companyCode ? { companyCode } : undefined,
+  });
+  return response.data?.data ?? response.data;
+}
+
 export async function getCorporateLearners({ companyCode, q, status, page, limit } = {}) {
   const response = await axios.get('/corporate/learners', {
     params: {
@@ -81,6 +88,17 @@ export async function exportCorporateLearnersCsv({ companyCode, q, status } = {}
     }
     throw err instanceof Error ? err : new Error(err?.message || 'CSV export failed');
   }
+}
+
+export async function nudgeCorporateLearner(userId, companyCode) {
+  const response = await axios.post(
+    `/corporate/learners/${encodeURIComponent(userId)}/nudge`,
+    null,
+    {
+      params: companyCode ? { companyCode } : undefined,
+    },
+  );
+  return response.data;
 }
 
 export async function getCorporateCertificates({

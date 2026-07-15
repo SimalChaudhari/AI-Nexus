@@ -249,6 +249,7 @@ export const paths = {
     root: ROOTS.CORPORATE,
     overview: `${ROOTS.CORPORATE}/overview`,
     progress: `${ROOTS.CORPORATE}/progress`,
+    learner: (userId) => `${ROOTS.CORPORATE}/progress/${userId}`,
     enrol: `${ROOTS.CORPORATE}/enrol`,
     reports: `${ROOTS.CORPORATE}/reports`,
   },

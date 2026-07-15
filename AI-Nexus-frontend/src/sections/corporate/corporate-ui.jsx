@@ -3,8 +3,13 @@ import { useRef, useState, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import Divider from '@mui/material/Divider';
 import Popper from '@mui/material/Popper';
 import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
@@ -12,7 +17,11 @@ import { useRouter } from 'src/routes/hooks';
 
 import { useAuthContext } from 'src/auth/hooks';
 import { signOut } from 'src/auth/context/jwt';
-import { downloadCorporateCertificateFile } from 'src/services/corporate.service';
+import {
+  downloadCorporateCertificateFile,
+  nudgeCorporateLearner,
+} from 'src/services/corporate.service';
+import { toast } from 'src/components/snackbar';
 
 import { CORP, STATUS_PILL_SX, statusTone } from './corporate-theme';
 
@@ -89,7 +98,7 @@ export function CorpProgressBar({ pillar, textType = 'short' }) {
           borderRadius: 999,
           overflow: 'hidden',
           mb: '6px',
-          minWidth: 110,
+          minWidth: 100,
         }}
       >
         <Box
@@ -112,6 +121,51 @@ export function CorpProgressBar({ pillar, textType = 'short' }) {
           {watchedMinutes} min watched
         </Box>
       ) : null}
+    </Box>
+  );
+}
+
+/** Module / Section / Quiz / Assessment under each pillar — one line each. */
+export function CorpPillarLessonMeta({ pillar, compact = false, fullText = false }) {
+  const moduleTitle = String(pillar?.moduleTitle || '').trim() || '—';
+  const sectionTitle = String(pillar?.lessonTitle || '').trim() || '—';
+  const quiz = pillar?.q ? 'Passed' : 'Pending';
+  const assessment = pillar?.a ? 'Passed' : 'Pending';
+
+  const lineSx = fullText
+    ? {
+        display: 'block',
+        color: CORP.muted,
+        fontSize: compact ? 12 : 13,
+        lineHeight: 1.5,
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+      }
+    : {
+        display: 'block',
+        color: CORP.muted,
+        fontSize: compact ? 11 : 12,
+        lineHeight: 1.45,
+        maxWidth: compact ? 180 : 220,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      };
+
+  return (
+    <Box sx={{ mt: 0.65 }}>
+      <Typography component="small" title={`Module: ${moduleTitle}`} sx={lineSx}>
+        Module: {moduleTitle}
+      </Typography>
+      <Typography component="small" title={`Section: ${sectionTitle}`} sx={lineSx}>
+        Section: {sectionTitle}
+      </Typography>
+      <Typography component="small" sx={lineSx}>
+        Quiz: {quiz}
+      </Typography>
+      <Typography component="small" sx={lineSx}>
+        Assessment: {assessment}
+      </Typography>
     </Box>
   );
 }
@@ -413,12 +467,139 @@ export function CorpBtn({ variant = 'blue', fullWidth, children, sx, ...other })
   );
 }
 
-export function CorpTextBtn({ disabled, children, sx, ...other }) {
+const nudgeBtnSx = {
+  px: '12px',
+  py: '6px',
+  fontSize: 12,
+  fontWeight: 800,
+  borderRadius: '10px',
+  minHeight: 32,
+};
+
+/** Send corporate learning nudge email with confirm + 1-day resend cooldown. */
+export function CorpNudgeBtn({
+  userId,
+  learnerName,
+  companyCode,
+  canNudge = true,
+  lastNudgedAt = null,
+  onSent,
+  sx,
+  ...other
+}) {
+  const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const isResend = Boolean(lastNudgedAt);
+  const label = !canNudge ? 'Nudged' : isResend ? 'Resend' : 'Nudge';
+  const displayName = String(learnerName || '').trim() || 'this learner';
+
+  const handleConfirm = async () => {
+    if (!userId || sending) return;
+    setSending(true);
+    try {
+      const result = await nudgeCorporateLearner(userId, companyCode || undefined);
+      toast.success(
+        result?.message ||
+          (isResend
+            ? `Reminder resent to ${displayName}`
+            : `Reminder sent to ${displayName}`),
+      );
+      setOpen(false);
+      onSent?.(result?.data || result);
+    } catch (err) {
+      const message =
+        err?.response?.data?.message || err?.message || 'Failed to send nudge email';
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <CorpBtn
+        variant="ghost"
+        disabled={!userId || !canNudge || sending}
+        onClick={() => setOpen(true)}
+        sx={{ ...nudgeBtnSx, width: '100%', ...sx }}
+        {...other}
+      >
+        {sending ? 'Sending…' : label}
+      </CorpBtn>
+
+      <Dialog
+        fullWidth
+        maxWidth="xs"
+        open={open}
+        onClose={() => {
+          if (!sending) setOpen(false);
+        }}
+        disableScrollLock
+      >
+        <DialogTitle
+          sx={{
+            pb: 1.5,
+            color: CORP.navy,
+            fontWeight: 800,
+            bgcolor: '#eef5ff',
+          }}
+        >
+          {isResend ? 'Confirm resend' : 'Confirm learning reminder'}
+        </DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 2, typography: 'body2' }}>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            {isResend
+              ? 'You are about to resend a learning progress reminder to:'
+              : 'You are about to send a learning progress reminder to:'}
+          </Typography>
+
+          <Box
+            sx={{
+              px: 1.5,
+              py: 1.25,
+              mb: 1.5,
+              borderRadius: 1,
+              bgcolor: 'grey.100',
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Typography variant="subtitle2">{displayName}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+              Email will include a short prompt to continue their current pillar learning.
+            </Typography>
+          </Box>
+
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            After sending, another reminder for this learner can be sent again after 24 hours.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" disabled={sending} onClick={handleConfirm}>
+            {sending ? 'Sending…' : isResend ? 'Resend reminder' : 'Send reminder'}
+          </Button>
+          <Button
+            variant="outlined"
+            color="inherit"
+            disabled={sending}
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
+export function CorpTextBtn({ disabled, children, sx, component = 'button', ...other }) {
   return (
     <Box
-      component="button"
-      type="button"
-      disabled={disabled}
+      component={component}
+      type={component === 'button' ? 'button' : undefined}
+      disabled={component === 'button' ? disabled : undefined}
+      aria-disabled={disabled || undefined}
       sx={{
         display: 'block',
         border: 0,
@@ -431,6 +612,7 @@ export function CorpTextBtn({ disabled, children, sx, ...other }) {
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.65 : 1,
         textAlign: 'left',
+        textDecoration: 'none',
         ...sx,
       }}
       {...other}
@@ -444,9 +626,10 @@ export function CorpTextBtn({ disabled, children, sx, ...other }) {
 export function CorpCertificateDownloadBtn({
   certificateId,
   learnerName,
-  availableNote = 'Available for this learner',
+  availableNote,
   unavailableNote,
   available = true,
+  showNote = true,
 }) {
   const busyRef = useRef(false);
 
@@ -474,7 +657,7 @@ export function CorpCertificateDownloadBtn({
     return (
       <>
         <CorpTextBtn disabled>Certificate not available yet</CorpTextBtn>
-        {unavailableNote ? <small>{unavailableNote}</small> : null}
+        {showNote && unavailableNote ? <small>{unavailableNote}</small> : null}
       </>
     );
   }
@@ -482,7 +665,7 @@ export function CorpCertificateDownloadBtn({
   return (
     <>
       <CorpTextBtn onClick={handleClick}>Download Certificate</CorpTextBtn>
-      <small>{availableNote}</small>
+      {showNote && availableNote ? <small>{availableNote}</small> : null}
     </>
   );
 }
@@ -500,14 +683,22 @@ export function CorpTableHead({ columns }) {
           color: CORP.muted,
           p: '12px',
           borderBottom: `1px solid ${CORP.line}`,
-          fontWeight: 600,
+          fontWeight: 800,
+          whiteSpace: 'nowrap',
         },
       }}
     >
       <tr>
-        {columns.map((col) => (
-          <th key={col}>{col}</th>
-        ))}
+        {columns.map((col) => {
+          const label = typeof col === 'string' ? col : col.label;
+          const key = typeof col === 'string' ? col : col.key || col.label;
+          const sx = typeof col === 'string' ? undefined : col.sx;
+          return (
+            <Box component="th" key={String(key)} sx={sx}>
+              {label}
+            </Box>
+          );
+        })}
       </tr>
     </Box>
   );

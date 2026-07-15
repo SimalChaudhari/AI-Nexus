@@ -13,6 +13,7 @@ import { paths } from '../paths';
 
 const OverviewPage = lazy(() => import('src/pages/corporate/overview'));
 const ProgressPage = lazy(() => import('src/pages/corporate/progress'));
+const LearnerDetailPage = lazy(() => import('src/pages/corporate/learner-detail'));
 const EnrolPage = lazy(() => import('src/pages/corporate/enrol'));
 const ReportsPage = lazy(() => import('src/pages/corporate/reports'));
 
@@ -56,6 +57,7 @@ export const corporateRoutes = [
       { element: <Navigate to={paths.corporate.overview} replace />, index: true },
       { path: 'overview', element: <OverviewPage /> },
       { path: 'progress', element: <ProgressPage /> },
+      { path: 'progress/:userId', element: <LearnerDetailPage /> },
       { path: 'enrol', element: <EnrolPage /> },
       { path: 'reports', element: <ReportsPage /> },
     ],

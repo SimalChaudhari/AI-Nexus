@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 
@@ -87,6 +87,30 @@ export class CorporateController {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  @Post('learners/:userId/nudge')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Send learning nudge email to a corporate learner (1-day cooldown)' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  async nudgeLearner(
+    @Req() req: AuthedRequest,
+    @Param('userId') userId: string,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    return this.corporateService.nudgeLearner(userId, this.resolveCompanyCode(req, companyCode));
+  }
+
+  @Get('learners/:userId')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Corporate learner progress detail' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  async getLearner(
+    @Req() req: AuthedRequest,
+    @Param('userId') userId: string,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    return this.corporateService.getLearner(userId, this.resolveCompanyCode(req, companyCode));
   }
 
   @Get('certificates')

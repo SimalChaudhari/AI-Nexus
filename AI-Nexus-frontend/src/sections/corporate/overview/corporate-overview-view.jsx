@@ -14,6 +14,7 @@ import {
   CorpCard,
   CorpPageHeader,
   CorpPill,
+  CorpPillarLessonMeta,
   CorpProgressBar,
   CorpTableHead,
   corpTableSx,
@@ -208,16 +209,23 @@ export function CorporateOverviewView() {
                     <tr key={s.userId || s.email}>
                       <td>
                         <b>{s.name}</b>
-                        <small>{s.role}</small>
+                        <small>
+                          {s.email}
+                          <br />
+                          {s.role}
+                        </small>
                       </td>
                       <td>
                         <CorpProgressBar pillar={s.p1} />
+                        <CorpPillarLessonMeta pillar={s.p1} compact />
                       </td>
                       <td>
                         <CorpProgressBar pillar={s.p2} />
+                        <CorpPillarLessonMeta pillar={s.p2} compact />
                       </td>
                       <td>
                         <CorpProgressBar pillar={s.p3} />
+                        <CorpPillarLessonMeta pillar={s.p3} compact />
                       </td>
                       <td>
                         <CorpPill status={s.status} />

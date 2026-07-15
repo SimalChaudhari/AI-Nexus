@@ -921,6 +921,218 @@ export class CourseSectionWatchProgressService {
     };
   }
 
+  /**
+   * Batch pillar watch summaries for many learners in a program.
+   * Loads courses/sections once and progress rows once — avoids N+1 per user.
+   */
+  async getProgramPillarWatchSummariesForUsers(
+    userIds: string[],
+    programId: string,
+  ): Promise<Map<string, ProgramPillarWatchSummary>> {
+    const result = new Map<string, ProgramPillarWatchSummary>();
+    const emptySummary = (): ProgramPillarWatchSummary => ({
+      pillarBreakdown: [],
+      totalWatchedSeconds: 0,
+      totalWatchedHours: 0,
+      totalWatchedTime: '0:00:00',
+      totalAllocatedCpeHours: null,
+      totalEarnedCpeHours: 0,
+      totalCpeHours: 0,
+    });
+
+    for (const userId of userIds) {
+      result.set(userId, emptySummary());
+    }
+    if (!userIds.length || !programId) return result;
+
+    const courses = await this.courseRepository.find({
+      where: { programId, isBundle: false },
+      select: ['id', 'title', 'programPillarIndex', 'level', 'marketData', 'createdAt'],
+      order: { programPillarIndex: 'ASC', createdAt: 'ASC' },
+    });
+    if (!courses.length) return result;
+
+    const coursesByPillar = new Map<number, typeof courses>();
+    for (const course of courses) {
+      const pillarIndex = resolveCoursePillarIndex(course);
+      if (!pillarIndex) continue;
+      const list = coursesByPillar.get(pillarIndex) || [];
+      list.push(course);
+      coursesByPillar.set(pillarIndex, list);
+    }
+
+    const courseIds = courses.map((c) => c.id);
+    const modules = await this.moduleRepository.find({
+      where: { courseId: In(courseIds) },
+      select: ['id', 'courseId', 'sortOrder'],
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    const moduleIds = modules.map((m) => m.id);
+    const sections = moduleIds.length
+      ? await this.sectionRepository.find({
+          where: { moduleId: In(moduleIds) },
+          select: ['id', 'moduleId', 'sortOrder', 'watchtime', 'durationTime', 'videoUrl'],
+          order: { sortOrder: 'ASC', createdAt: 'ASC' },
+        })
+      : [];
+
+    const modulesByCourse = new Map<string, typeof modules>();
+    for (const mod of modules) {
+      const list = modulesByCourse.get(mod.courseId) || [];
+      list.push(mod);
+      modulesByCourse.set(mod.courseId, list);
+    }
+    const sectionsByModule = new Map<string, typeof sections>();
+    for (const section of sections) {
+      const list = sectionsByModule.get(section.moduleId) || [];
+      list.push(section);
+      sectionsByModule.set(section.moduleId, list);
+    }
+
+    type CourseSectionMeta = {
+      sections: CourseModuleSectionEntity[];
+      videoSections: CourseModuleSectionEntity[];
+      totalVideoDurationSeconds: number;
+    };
+    const courseMeta = new Map<string, CourseSectionMeta>();
+    for (const course of courses) {
+      const courseModules = modulesByCourse.get(course.id) || [];
+      const courseSections = courseModules.flatMap((m) => sectionsByModule.get(m.id) || []);
+      let totalVideoDurationSeconds = 0;
+      for (const section of courseSections) {
+        const fromAdmin = parseWatchtimeToSeconds(section.durationTime);
+        const sectionDuration =
+          fromAdmin > 0 ? fromAdmin : parseWatchtimeToSeconds(section.watchtime);
+        if (sectionDuration > 0) totalVideoDurationSeconds += sectionDuration;
+      }
+      const videoSections = courseSections.filter((s) => Boolean(String(s.videoUrl || '').trim()));
+      courseMeta.set(course.id, { sections: courseSections, videoSections, totalVideoDurationSeconds });
+    }
+
+    const sectionIds = sections.map((s) => s.id);
+    const progressRows =
+      sectionIds.length > 0
+        ? await this.sectionProgressRepository.find({
+            where: {
+              userId: In(userIds),
+              courseId: In(courseIds),
+              sectionId: In(sectionIds),
+            },
+            select: [
+              'userId',
+              'courseId',
+              'sectionId',
+              'watchedSeconds',
+              'durationSeconds',
+              'isCompleted',
+            ],
+          })
+        : [];
+
+    const progressByUserCourseSection = new Map<
+      string,
+      { watchedSeconds: number; durationSeconds: number; isCompleted: boolean }
+    >();
+    for (const row of progressRows) {
+      progressByUserCourseSection.set(`${row.userId}:${row.courseId}:${row.sectionId}`, {
+        watchedSeconds: Math.max(0, Number(row.watchedSeconds || 0)),
+        durationSeconds: Math.max(0, Number(row.durationSeconds || 0)),
+        isCompleted: Boolean(row.isCompleted),
+      });
+    }
+
+    for (const userId of userIds) {
+      const pillarBreakdown: ProgramPillarWatchSummary['pillarBreakdown'] = [];
+      let totalWatchedSeconds = 0;
+      let totalVideoDurationSeconds = 0;
+      let totalAllocatedCpeHours = 0;
+      let hasAnyAllocatedCpe = false;
+
+      for (const pillarIndex of [1, 2, 3]) {
+        const pillarCourses = coursesByPillar.get(pillarIndex) || [];
+        if (!pillarCourses.length) continue;
+
+        let watchedSeconds = 0;
+        let videoDurationSeconds = 0;
+        let allocatedCpeHoursSum = 0;
+        let hasAllocated = false;
+        let allVideosCompleted = true;
+        let hasAnyVideoSection = false;
+        const primaryCourse = pillarCourses[0];
+
+        for (const course of pillarCourses) {
+          const meta = courseMeta.get(course.id);
+          if (!meta) continue;
+
+          let courseDuration = meta.totalVideoDurationSeconds;
+          let completedVideoSections = 0;
+          let progressDurationFallback = 0;
+          for (const section of meta.videoSections) {
+            const progress = progressByUserCourseSection.get(
+              `${userId}:${course.id}:${section.id}`,
+            );
+            watchedSeconds += Math.max(0, Number(progress?.watchedSeconds || 0));
+            progressDurationFallback += Math.max(0, Number(progress?.durationSeconds || 0));
+            if (progress?.isCompleted) completedVideoSections += 1;
+          }
+          if (courseDuration <= 0 && progressDurationFallback > 0) {
+            courseDuration = progressDurationFallback;
+          }
+          videoDurationSeconds += courseDuration;
+          if (meta.videoSections.length > 0) {
+            hasAnyVideoSection = true;
+            if (completedVideoSections < meta.videoSections.length) {
+              allVideosCompleted = false;
+            }
+          }
+
+          const allocatedCpeHours = parseMarketDataCpeHours(course.marketData);
+          if (allocatedCpeHours != null) {
+            allocatedCpeHoursSum += allocatedCpeHours;
+            hasAllocated = true;
+          }
+        }
+
+        if (!hasAnyVideoSection) allVideosCompleted = false;
+        const earnedCpeHours = computeCpeHoursFromWatchSeconds(watchedSeconds);
+        if (hasAllocated) {
+          totalAllocatedCpeHours += allocatedCpeHoursSum;
+          hasAnyAllocatedCpe = true;
+        }
+        totalWatchedSeconds += watchedSeconds;
+        totalVideoDurationSeconds += videoDurationSeconds;
+
+        pillarBreakdown.push({
+          pillarIndex,
+          courseId: primaryCourse.id,
+          courseTitle: primaryCourse.title,
+          watchedSeconds,
+          watchedHours: secondsToWatchedHours(watchedSeconds),
+          watchedTime: formatSecondsToDisplayTime(watchedSeconds),
+          totalVideoDurationSeconds: videoDurationSeconds,
+          allocatedCpeHours: hasAllocated ? Math.round(allocatedCpeHoursSum * 100) / 100 : null,
+          earnedCpeHours,
+          allVideosCompleted,
+        });
+      }
+
+      const totalEarned = computeCpeHoursFromWatchSeconds(totalWatchedSeconds);
+      result.set(userId, {
+        pillarBreakdown,
+        totalWatchedSeconds,
+        totalWatchedHours: secondsToWatchedHours(totalWatchedSeconds),
+        totalWatchedTime: formatSecondsToDisplayTime(totalWatchedSeconds),
+        totalAllocatedCpeHours: hasAnyAllocatedCpe
+          ? Math.round(totalAllocatedCpeHours * 100) / 100
+          : null,
+        totalEarnedCpeHours: totalEarned,
+        totalCpeHours: totalEarned,
+      });
+    }
+
+    return result;
+  }
+
   async getCourseEarnedCpeHours(
     userId: string,
     courseId: string,
