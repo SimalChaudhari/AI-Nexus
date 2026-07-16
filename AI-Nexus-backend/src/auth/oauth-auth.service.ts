@@ -314,6 +314,165 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.aiNexusUserAccountUpdatePath}`;
   }
 
+  /** PUT nexus-payment/update — mark paid membership payment on Salesforce account. */
+  private get nexusPaymentUpdatePath(): string {
+    const p =
+      process.env.OAUTH_NEXUS_PAYMENT_UPDATE_PATH
+      || '/services/apexrest/v1/nexus-payment/update';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get nexusPaymentUpdateUrl(): string {
+    const fullUrl = process.env.OAUTH_NEXUS_PAYMENT_UPDATE_URL?.trim();
+    if (fullUrl) return fullUrl.split('?')[0].replace(/\/$/, '');
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.nexusPaymentUpdatePath}`;
+    return `${this.integrationApiBaseUrl}${this.nexusPaymentUpdatePath}`;
+  }
+
+  private extractSalesforceAccountId(data: Record<string, unknown> | null | undefined): string {
+    if (!data || typeof data !== 'object') return '';
+    const candidates = [
+      data.accountId,
+      data.accountID,
+      data.AccountId,
+      data.AccountID,
+      data.Id,
+      data.id,
+    ];
+    for (const candidate of candidates) {
+      const value = String(candidate || '').trim();
+      if (value) return value;
+    }
+    return '';
+  }
+
+  /** Normalize to YYYY-MM-DD for Salesforce Paid_Date. */
+  private normalizeSalesforcePaidDate(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return raw;
+    }
+
+    // en-GB / common UI: DD/MM/YYYY or DD-MM-YYYY
+    const dmy = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (dmy) {
+      const day = dmy[1].padStart(2, '0');
+      const month = dmy[2].padStart(2, '0');
+      const year = dmy[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  /**
+   * PUT payment status to Salesforce after paid membership checkout.
+   * When required=true (paid signup), failure blocks local finalize.
+   */
+  async updateSalesforceNexusPayment(payload: {
+    accountId?: string | null;
+    Is_Paid?: boolean;
+    Paid_Amount?: number | string;
+    Paid_Date?: string | null;
+    required?: boolean;
+  }): Promise<Record<string, unknown> | null> {
+    const required = payload.required === true;
+    const accountId = String(payload.accountId || '').trim();
+    if (!accountId) {
+      const message = 'Salesforce accountId is required to update payment.';
+      console.warn('[Salesforce] Skipping nexus-payment/update — missing accountId');
+      if (required) throw new BadRequestException(message);
+      return null;
+    }
+
+    const paidAmountRaw = payload.Paid_Amount;
+    const paidAmount =
+      typeof paidAmountRaw === 'number'
+        ? paidAmountRaw
+        : Number(String(paidAmountRaw ?? '').trim());
+    if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+      const message = 'A valid Paid_Amount is required to update Salesforce payment.';
+      console.warn('[Salesforce] Skipping nexus-payment/update — invalid Paid_Amount', {
+        accountId,
+        Paid_Amount: paidAmountRaw,
+      });
+      if (required) throw new BadRequestException(message);
+      return null;
+    }
+
+    const body = {
+      accountId,
+      Is_Paid: payload.Is_Paid !== false,
+      Paid_Amount: Number(paidAmount.toFixed(2)),
+      Paid_Date: this.normalizeSalesforcePaidDate(payload.Paid_Date),
+    };
+
+    const url = this.nexusPaymentUpdateUrl;
+
+    console.log('[Salesforce] PUT nexus-payment/update:', {
+      url,
+      accountId: body.accountId,
+      Is_Paid: body.Is_Paid,
+      Paid_Amount: body.Paid_Amount,
+      Paid_Date: body.Paid_Date,
+      required,
+    });
+
+    try {
+      const accessToken = await this.getIntegrationAccessToken();
+      const res = await axios.put<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      console.log('[Salesforce] nexus-payment/update success:', {
+        status: res.status,
+        accountId: body.accountId,
+      });
+      return res.data || { success: true };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] nexus-payment/update failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+          accountId: body.accountId,
+          required,
+        });
+        if (required) {
+          const desc = this.extractSalesforceErrorDescription(
+            err.response?.data,
+            err.message,
+          );
+          throw new BadRequestException(
+            desc || 'Failed to update payment in Salesforce. Local signup was not completed.',
+          );
+        }
+      } else {
+        console.error('[Salesforce] nexus-payment/update failed:', err);
+        if (required) {
+          throw new BadRequestException(
+            'Failed to update payment in Salesforce. Local signup was not completed.',
+          );
+        }
+      }
+      return null;
+    }
+  }
+
   /**
    * Best-effort: set isAINexusUser=true on the Salesforce account after a successful platform login.
    * Non-fatal — login must not fail if Salesforce rejects the update.
@@ -1281,6 +1440,39 @@ export class OAuthAuthService {
         const desc = this.mapCreateNexusUserErrorMessage(errorMsg);
         throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
       }
+
+      const shouldSyncPayment =
+        payload.Is_paid === true
+        || (payload.paid_amount !== undefined
+          && payload.paid_amount !== null
+          && String(payload.paid_amount).trim() !== '');
+      if (shouldSyncPayment) {
+        const nestedSalesforce =
+          resData.salesforce && typeof resData.salesforce === 'object'
+            ? (resData.salesforce as Record<string, unknown>)
+            : null;
+        const nestedData =
+          resData.data && typeof resData.data === 'object'
+            ? (resData.data as Record<string, unknown>)
+            : null;
+        const accountId =
+          this.extractSalesforceAccountId(resData)
+          || this.extractSalesforceAccountId(nestedSalesforce)
+          || this.extractSalesforceAccountId(nestedData);
+        if (!accountId) {
+          throw new BadRequestException(
+            'Salesforce account was created but accountId was missing, so payment could not be synced. Local signup was not completed.',
+          );
+        }
+        await this.updateSalesforceNexusPayment({
+          accountId,
+          Is_Paid: true,
+          Paid_Amount: payload.paid_amount,
+          Paid_Date: payload.Paid_date,
+          required: true,
+        });
+      }
+
       return resData;
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -1602,6 +1794,87 @@ export class OAuthAuthService {
   /** user.companyCode comes only from Salesforce companyCode (not UEN / accountId). */
   resolveCorporateCompanyCode(info: Record<string, unknown>): string {
     return String(info.companyCode || '').trim();
+  }
+
+  private looksLikeSalesforceAccountId(value: string): boolean {
+    return /^001[a-zA-Z0-9]{12,17}$/.test(String(value || '').trim());
+  }
+
+  private looksLikeCompanyDisplayName(value: string): boolean {
+    const normalized = String(value || '').trim();
+    if (!normalized || this.looksLikeSalesforceAccountId(normalized)) return false;
+    return (
+      normalized.includes(' ')
+      || /(pte|ltd|limited|inc|corp|company|services)/i.test(normalized)
+    );
+  }
+
+  private readCorporateAccountNameFromUserInfoRaw(
+    raw: Record<string, unknown> | null | undefined,
+  ): string {
+    if (!raw || typeof raw !== 'object') return '';
+    const corporate =
+      raw.corporate && typeof raw.corporate === 'object'
+        ? (raw.corporate as Record<string, unknown>)
+        : null;
+    return String(corporate?.accountName || '').trim();
+  }
+
+  /** Resolve human-readable corporate account name for a company reference / companyCode. */
+  async resolveCorporateCompanyDisplayName(companyCode: string): Promise<string> {
+    const code = String(companyCode || '').trim();
+    if (!code) return '';
+
+    const publicCode = String(process.env.CORPORATE_PUBLIC_COMPANY_CODE || '').trim();
+    const publicName = String(process.env.CORPORATE_PUBLIC_COMPANY_NAME || '').trim();
+    if (publicCode && publicName && publicCode.toLowerCase() === code.toLowerCase()) {
+      return publicName;
+    }
+
+    const demoCode = String(process.env.CORPORATE_DEMO_COMPANY_CODE || '').trim();
+    if (demoCode && demoCode.toLowerCase() === code.toLowerCase() && this.looksLikeCompanyDisplayName(demoCode)) {
+      return demoCode;
+    }
+
+    if (this.looksLikeCompanyDisplayName(code)) {
+      return code;
+    }
+
+    if (this.looksLikeSalesforceAccountId(code)) {
+      const fromSalesforce = await this.fetchSalesforceAccountNameById(code);
+      if (fromSalesforce) return fromSalesforce;
+    }
+
+    return '';
+  }
+
+  private async fetchSalesforceAccountNameById(accountId: string): Promise<string | null> {
+    const normalizedId = String(accountId || '').trim();
+    if (!this.looksLikeSalesforceAccountId(normalizedId)) return null;
+
+    try {
+      const accessToken = await this.getIntegrationAccessToken();
+      const apiVersion = String(process.env.SALESFORCE_API_VERSION || 'v59.0').trim();
+      const url = `${this.integrationApiBaseUrl}/services/data/${apiVersion}/sobjects/Account/${encodeURIComponent(normalizedId)}`;
+      const res = await axios.get<Record<string, unknown>>(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+      const name = String(res.data?.Name || res.data?.name || '').trim();
+      return name || null;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.warn('[Salesforce] Could not resolve Account name for companyCode:', {
+          accountId: normalizedId,
+          status: err.response?.status,
+          message: err.message,
+        });
+      }
+      return null;
+    }
   }
 
   /**

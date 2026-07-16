@@ -1,22 +1,18 @@
-/** Interim company reference ID accepted for verification (matches eligibility questionnaire). */
-export const VERIFIED_COMPANY_REFERENCE_ID = '123456';
+import axios from 'src/utils/axios';
 
 /**
- * Verify a numeric company reference / verification code.
+ * Verify a company reference ID against Corporate HR companyCode on the backend.
  * @param {string} referenceId
- * @returns {{ verified: boolean, companyName?: string, industry?: string }}
+ * @returns {Promise<{ verified: boolean, companyName?: string, industry?: string, companyCode?: string }>}
  */
-export function verifyCompanyReferenceId(referenceId) {
-  const id = String(referenceId || '').trim();
-  if (!/^\d+$/.test(id)) {
-    return { verified: false };
-  }
-  if (id === VERIFIED_COMPANY_REFERENCE_ID) {
-    return {
-      verified: true,
-      companyName: 'Corporate account (123456)',
-      industry: 'To be confirmed',
-    };
-  }
-  return { verified: false };
+export async function verifyCompanyReferenceId(referenceId) {
+  const res = await axios.post('/auth/verify-company-reference', {
+    companyReferenceId: String(referenceId || '').trim(),
+  });
+  return {
+    verified: res?.data?.verified === true,
+    companyName: res?.data?.name,
+    industry: res?.data?.industry,
+    companyCode: res?.data?.companyCode,
+  };
 }

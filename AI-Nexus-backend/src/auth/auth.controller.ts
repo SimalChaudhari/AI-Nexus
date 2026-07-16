@@ -277,6 +277,15 @@ export class AuthController {
     return this.authService.validateNricIdentifier(identifier);
   }
 
+  @Post('verify-company-reference')
+  @ApiOperation({
+    summary:
+      'Verify a company reference ID against an existing Corporate HR companyCode (membership eligibility)',
+  })
+  async verifyCompanyReference(@Body('companyReferenceId') companyReferenceId: string) {
+    return this.authService.verifyCompanyReference(companyReferenceId);
+  }
+
   @Post('verified-signup-access')
   @ApiOperation({ summary: 'Validate verified NRIC signup access token and return signup prefill data' })
   async getVerifiedSignupAccess(@Body('token') token: string) {

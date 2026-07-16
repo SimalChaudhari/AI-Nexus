@@ -8,6 +8,7 @@ import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
 import Checkbox from '@mui/material/Checkbox';
 import TableCell from '@mui/material/TableCell';
+import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 
 import { useBoolean } from 'src/hooks/use-boolean';
@@ -21,11 +22,32 @@ import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
-import { fDate } from 'src/utils/format-time';
-
 import { getJobRoleAuditStatus } from './view/user-fee-waiver-audit-panel';
 
 // ----------------------------------------------------------------------
+
+function MetaLine({ label, value }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'block',
+        color: 'text.secondary',
+        fontSize: '0.75rem',
+        lineHeight: 1.5,
+        letterSpacing: 0.1,
+      }}
+    >
+      <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>
+        {label}
+      </Box>
+      {' · '}
+      <Box component="span" sx={{ color: 'text.secondary' }}>
+        {value || '—'}
+      </Box>
+    </Box>
+  );
+}
 
 export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
   const router = useRouter();
@@ -34,6 +56,22 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
   const popover = usePopover();
 
   const jobRoleStatus = getJobRoleAuditStatus(row);
+  const isOAuth = row.authProvider === 'OAUTH';
+  const createdDate = row.createdAt ? new Date(row.createdAt) : null;
+  const createdDateText = createdDate
+    ? `${new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(createdDate)}, ${new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(createdDate)}`
+    : '—';
+  const createdTimeText = createdDate
+    ? new Intl.DateTimeFormat('en-GB', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(createdDate)
+    : '';
 
   return (
     <>
@@ -46,26 +84,33 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
           <Stack spacing={2} direction="row" alignItems="center">
             <Avatar alt={row.name} src={row.avatarUrl} />
 
-            <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start' }}>
+            <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start', minWidth: 0 }}>
               <Link
                 component={RouterLink}
                 href={paths.admin.user.details(row.id)}
                 color="inherit"
-                sx={{ cursor: 'pointer' }}
+                sx={{ cursor: 'pointer', fontWeight: 600 }}
               >
-                {row.name}
+                {row.name || '—'}
               </Link>
-              <Box component="span" sx={{ color: 'text.disabled' }}>
-                {row.email}
-              </Box>
+              <MetaLine label="Username" value={row.username} />
+              <MetaLine label="Email" value={row.email} />
             </Stack>
           </Stack>
         </TableCell>
 
-        <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.username}</TableCell>
-
-        <TableCell sx={{ whiteSpace: 'nowrap', typography: 'body2', color: 'text.secondary' }}>
-          {row.createdAt ? fDate(row.createdAt) : '—'}
+        <TableCell>
+          <Label
+            variant="soft"
+            color={isOAuth ? 'info' : 'default'}
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}
+          >
+            <Iconify
+              icon={isOAuth ? 'solar:shield-keyhole-bold' : 'solar:user-rounded-bold'}
+              width={16}
+            />
+            {isOAuth ? 'OAuth' : 'Local'}
+          </Label>
         </TableCell>
 
         <TableCell>
@@ -113,6 +158,15 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
           >
             {row.status}
           </Label>
+        </TableCell>
+
+        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+          <Typography variant="body2">{createdDateText}</Typography>
+          {createdTimeText ? (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {createdTimeText}
+            </Typography>
+          ) : null}
         </TableCell>
 
         <TableCell>

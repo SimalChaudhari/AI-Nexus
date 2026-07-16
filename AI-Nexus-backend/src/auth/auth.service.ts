@@ -549,13 +549,18 @@ export class AuthService {
       throw new BadRequestException('Password is required');
     }
 
+    const normalizedEmail = normalizeEmail(userDto.email) || String(userDto.email || '').trim().toLowerCase();
+
     const existingUserByEmail = await this.userRepository.findOne({
-      where: { email: userDto.email },
+      where: { email: normalizedEmail },
     });
 
     if (existingUserByEmail && existingUserByEmail.id !== existingUserId) {
       throw new BadRequestException('Email already exists');
     }
+
+    // Also block if the email is already registered in Salesforce eServices.
+    await this.assertEmailAvailableInSalesforce(normalizedEmail);
 
     const existingUserByUsername = await this.userRepository
       .createQueryBuilder('user')
@@ -572,6 +577,35 @@ export class AuthService {
       normalizedUsername,
       hashedPassword,
     };
+  }
+
+  /**
+   * Reject signup when Salesforce eServices already has this email
+   * (user should sign in via SSO instead of creating a duplicate account).
+   */
+  private async assertEmailAvailableInSalesforce(email: string): Promise<void> {
+    const normalized = normalizeEmail(email) || String(email || '').trim().toLowerCase();
+    if (!normalized) {
+      return;
+    }
+
+    try {
+      const sfCheck = await this.oauthAuthService.checkSalesforceUserByEmail(normalized);
+      if (sfCheck?.found) {
+        throw new BadRequestException(
+          'An eServices account already exists for this email address. Please sign in instead of creating a new account.',
+        );
+      }
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Could not verify email with eServices. Please try again.';
+      throw new BadRequestException(message);
+    }
   }
 
   private sanitizeEligibilitySnapshot(snapshot: Record<string, unknown> | undefined): Record<string, unknown> | null {
@@ -729,6 +763,7 @@ export class AuthService {
     try {
       const existingDraft = await this.resolveExistingSignupDraft(userDto);
       const { normalizedUsername, hashedPassword } = await this.validateSignupInput(userDto, existingDraft?.id);
+      const resolvedCompanyCode = this.resolveSignupCompanyCode(userDto);
 
       let draftUser: UserEntity;
 
@@ -738,7 +773,7 @@ export class AuthService {
         existingDraft.lastname = userDto.lastname;
         existingDraft.email = userDto.email;
         existingDraft.contactNumber = userDto.contactNumber?.trim() || null;
-        existingDraft.companyCode = userDto.companyCode?.trim() || null;
+        existingDraft.companyCode = resolvedCompanyCode;
         existingDraft.persona = userDto.persona?.trim() || existingDraft.persona || null;
         existingDraft.password = hashedPassword;
         existingDraft.authProvider = AuthProvider.LOCAL;
@@ -757,7 +792,7 @@ export class AuthService {
           lastname: userDto.lastname,
           email: userDto.email,
           contactNumber: userDto.contactNumber?.trim() || null,
-          companyCode: userDto.companyCode?.trim() || null,
+          companyCode: resolvedCompanyCode,
           persona: userDto.persona?.trim() || null,
           password: hashedPassword,
           authProvider: AuthProvider.LOCAL,
@@ -994,7 +1029,7 @@ export class AuthService {
     }
 
     return {
-      message: 'Membership payment confirmed. Salesforce account creation should continue from the frontend flow.',
+      message: 'Membership payment confirmed. Local account finalized after Salesforce sync.',
       user: draftUser,
       alreadyCompleted: false,
     };
@@ -3626,6 +3661,124 @@ export class AuthService {
     return verificationResponse;
   }
 
+  /**
+   * Public membership check: company reference ID must match a Corporate HR account's companyCode
+   * (or an explicitly configured public/demo company code).
+   */
+  async verifyCompanyReference(companyReferenceId: string): Promise<{
+    verified: boolean;
+    companyCode?: string;
+    name?: string;
+    industry?: string;
+  }> {
+    const code = String(companyReferenceId || '').trim();
+    if (!code) {
+      return { verified: false };
+    }
+
+    const corporateUsers = await this.userRepository
+      .createQueryBuilder('u')
+      .where('u.role = :role', { role: UserRole.Corporate })
+      .andWhere('LOWER(TRIM(u.companyCode)) = LOWER(:code)', { code })
+      .andWhere('u.isDraft = :isDraft', { isDraft: false })
+      .getMany();
+
+    if (corporateUsers.length) {
+      const resolvedCode = String(corporateUsers[0]?.companyCode || code).trim();
+      const resolvedName = await this.resolveVerifiedCorporateCompanyName(resolvedCode, corporateUsers);
+      return {
+        verified: true,
+        companyCode: resolvedCode,
+        name: resolvedName,
+        industry: this.resolveCorporateAccountIndustry(corporateUsers[0]),
+      };
+    }
+
+    const envMatch = this.matchConfiguredCorporateCompanyCode(code);
+    if (envMatch) {
+      const resolvedName = await this.resolveVerifiedCorporateCompanyName(envMatch, []);
+      return {
+        verified: true,
+        companyCode: envMatch,
+        name: resolvedName,
+        industry: 'To be confirmed',
+      };
+    }
+
+    return { verified: false };
+  }
+
+  private async resolveVerifiedCorporateCompanyName(
+    companyCode: string,
+    corporateUsers: UserEntity[],
+  ): Promise<string> {
+    for (const corporateUser of corporateUsers) {
+      const fromUserInfo = this.readCorporateAccountNameFromUserInfo(corporateUser);
+      if (fromUserInfo) return fromUserInfo;
+    }
+
+    const fromSalesforce = await this.oauthAuthService.resolveCorporateCompanyDisplayName(companyCode);
+    if (fromSalesforce) return fromSalesforce;
+
+    return '';
+  }
+
+  private readCorporateAccountNameFromUserInfo(user: UserEntity): string {
+    const raw = user.salesforceUserInfoRaw;
+    if (!raw || typeof raw !== 'object') return '';
+    const corporate =
+      (raw as Record<string, unknown>).corporate
+      && typeof (raw as Record<string, unknown>).corporate === 'object'
+        ? ((raw as Record<string, unknown>).corporate as Record<string, unknown>)
+        : null;
+    return String(corporate?.accountName || '').trim();
+  }
+
+  private matchConfiguredCorporateCompanyCode(code: string): string | null {
+    const candidates = [
+      process.env.CORPORATE_PUBLIC_COMPANY_CODE,
+      process.env.CORPORATE_DEMO_COMPANY_CODE,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    const match = candidates.find((candidate) => candidate.toLowerCase() === code.toLowerCase());
+    return match || null;
+  }
+
+  private resolveCorporateAccountIndustry(user: UserEntity): string {
+    const raw = user.salesforceUserInfoRaw;
+    if (raw && typeof raw === 'object') {
+      const corporate =
+        (raw as Record<string, unknown>).corporate
+        && typeof (raw as Record<string, unknown>).corporate === 'object'
+          ? ((raw as Record<string, unknown>).corporate as Record<string, unknown>)
+          : null;
+      const organisationType = String(corporate?.organisationType || '').trim();
+      if (organisationType) return organisationType;
+    }
+    return 'To be confirmed';
+  }
+
+  /** Prefer explicit companyCode; else use verified company reference from eligibility snapshot. */
+  private resolveSignupCompanyCode(userDto: UserDto): string | null {
+    const explicit = String(userDto.companyCode || '').trim();
+    if (explicit) return explicit;
+
+    const snapshot =
+      userDto.eligibilitySnapshot && typeof userDto.eligibilitySnapshot === 'object'
+        ? userDto.eligibilitySnapshot
+        : null;
+    if (!snapshot) return null;
+
+    const confirmed = (snapshot as Record<string, unknown>).companyReferenceConfirmed === true;
+    const referenceId = String(
+      (snapshot as Record<string, unknown>).companyReferenceId || '',
+    ).trim();
+    if (confirmed && referenceId) return referenceId;
+    return null;
+  }
+
   async register(userDto: UserDto): Promise<{ message: string, user: UserEntity }> {
     try {
       const verifiedSignupUser = userDto.signupAccessToken
@@ -3639,6 +3792,7 @@ export class AuthService {
         userDto,
         verifiedSignupUser?.id
       );
+      const resolvedCompanyCode = this.resolveSignupCompanyCode(userDto);
 
       // Generate verification token
       const verificationToken = crypto.randomBytes(32).toString('hex');
@@ -3652,7 +3806,7 @@ export class AuthService {
         verifiedSignupUser.lastname = userDto.lastname;
         verifiedSignupUser.email = userDto.email;
         verifiedSignupUser.contactNumber = userDto.contactNumber?.trim() || null;
-        verifiedSignupUser.companyCode = userDto.companyCode?.trim() || null;
+        verifiedSignupUser.companyCode = resolvedCompanyCode;
         verifiedSignupUser.persona = userDto.persona?.trim() || verifiedSignupUser.persona || null;
         verifiedSignupUser.password = hashedPassword;
         verifiedSignupUser.authProvider = AuthProvider.LOCAL;
@@ -3674,7 +3828,7 @@ export class AuthService {
           lastname: userDto.lastname,
           email: userDto.email,
           contactNumber: userDto.contactNumber?.trim() || null,
-          companyCode: userDto.companyCode?.trim() || null,
+          companyCode: resolvedCompanyCode,
           persona: userDto.persona?.trim() || null,
           password: hashedPassword,
           authProvider: AuthProvider.LOCAL,

@@ -22,6 +22,7 @@ import {
   SalesforceUserCheckEmailDto,
   SalesforceUserCheckNricDto,
   SetSalesforceNexusPasswordDto,
+  UpdateSalesforceNexusPaymentDto,
   UpdateSalesforceNexusUserDto,
 } from './oauth-auth.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
@@ -337,6 +338,26 @@ export class OAuthAuthController {
     return {
       success: true,
       message: 'Salesforce password set successfully. You can now sign in.',
+      salesforce,
+    };
+  }
+
+  @Post('update-nexus-payment')
+  @ApiOperation({
+    summary: 'PUT Salesforce nexus-payment/update (Is_Paid / Paid_Amount / Paid_Date)',
+  })
+  @ApiBody({ type: UpdateSalesforceNexusPaymentDto })
+  async updateNexusPayment(@Body() dto: UpdateSalesforceNexusPaymentDto) {
+    const salesforce = await this.oauthAuthService.updateSalesforceNexusPayment({
+      accountId: dto.accountId,
+      Is_Paid: dto.Is_Paid !== false,
+      Paid_Amount: dto.Paid_Amount,
+      Paid_Date: dto.Paid_Date,
+      required: true,
+    });
+    return {
+      success: true,
+      message: 'Salesforce payment updated successfully.',
       salesforce,
     };
   }

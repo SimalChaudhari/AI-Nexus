@@ -16,6 +16,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import MenuItem from '@mui/material/MenuItem';
 import LoadingButton from '@mui/lab/LoadingButton';
 import CircularProgress from '@mui/material/CircularProgress';
+import LinearProgress from '@mui/material/LinearProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 import { alpha } from '@mui/material/styles';
 
@@ -33,13 +34,14 @@ import {
   buildPaidIndividualSignUpSchema,
 } from 'src/validations/user.validation';
 
-import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, setSalesforceNexusPassword } from 'src/auth/context/jwt';
+import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, setSalesforceNexusPassword, verifyCompanyReference } from 'src/auth/context/jwt';
 import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
 import {
   buildSalesforceNexusUserPayloadFromSignup,
   resolveVerifiedNricSalesforceFields,
   resolveSalesforceNexusUsernameFromCreateResponse,
 } from 'src/utils/nric-id-type';
+import { assertSalesforceEmailAvailable, SALESFORCE_EMAIL_EXISTS_MESSAGE } from 'src/utils/salesforce-email-check';
 import {
   isApprovedSalesforceStudentMember,
   startStudentMemberSsoLogin,
@@ -53,6 +55,7 @@ import {
   requiresFreeSignupJobAudit,
 } from 'src/utils/individual-signup-form';
 import { FreeSignupAuditDialog } from './free-signup-audit-dialog';
+import { ISCA_PRIVACY_POLICY_URL } from 'src/constants/isca-legal-links';
 
 const SIGNUP_FORM_GRID_SX = {
   display: 'grid',
@@ -105,6 +108,10 @@ export function SimpleSignUpView() {
   const [eligibilityData, setEligibilityData] = useState(null);
   const [scaqSsoPrefillNotice, setScaqSsoPrefillNotice] = useState(false);
   const [companyPrefilled, setCompanyPrefilled] = useState(false);
+  const [companyReferenceVerifying, setCompanyReferenceVerifying] = useState(false);
+  const [companyReferenceVerified, setCompanyReferenceVerified] = useState(null);
+  const [companyVerifiedName, setCompanyVerifiedName] = useState('');
+  const [emailSfChecking, setEmailSfChecking] = useState(false);
   const [nricVerifiedReadOnly, setNricVerifiedReadOnly] = useState(false);
   const [freeSignupAuditOpen, setFreeSignupAuditOpen] = useState(false);
   const [freeSignupAuditEmail, setFreeSignupAuditEmail] = useState('');
@@ -238,8 +245,67 @@ export function SimpleSignUpView() {
     formState: { isSubmitting },
   } = methods;
   const usernameValue = watch('username');
+  const emailValue = watch('email');
   const jobFunctionValue = watch('jobFunction');
   const citizenshipValue = watch('citizenship');
+  const companyCodeValue = watch('companyCode');
+  const prevCompanyCodeRef = useRef(companyCodeValue);
+
+  useEffect(() => {
+    const existsMessage = SALESFORCE_EMAIL_EXISTS_MESSAGE.toLowerCase();
+    setErrorMsg((current) =>
+      String(current || '').toLowerCase().includes(existsMessage) ? '' : current
+    );
+    setPaymentNotice((current) =>
+      String(current?.message || '').toLowerCase().includes(existsMessage) ? null : current
+    );
+  }, [emailValue]);
+
+  const showSalesforceEmailError = (message) => {
+    if (isMembershipFeeFlow) {
+      setPaymentNotice({ severity: 'error', message });
+      setErrorMsg('');
+      return;
+    }
+    setErrorMsg(message);
+    setPaymentNotice(null);
+  };
+
+  const handleEmailBlur = async () => {
+    const email = String(getValues('email') || '').trim();
+    if (!email || !email.includes('@')) return;
+    setEmailSfChecking(true);
+    try {
+      const emailCheck = await assertSalesforceEmailAvailable(email);
+      if (!emailCheck.ok) {
+        showSalesforceEmailError(emailCheck.message);
+      }
+    } finally {
+      setEmailSfChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    if (prevCompanyCodeRef.current === companyCodeValue) return;
+    prevCompanyCodeRef.current = companyCodeValue;
+    setCompanyReferenceVerified(null);
+    setCompanyVerifiedName('');
+    setValue('company', '');
+    setCompanyPrefilled(false);
+  }, [companyCodeValue, setValue]);
+
+  useEffect(() => {
+    const snapshot = eligibilityData?.snapshot;
+    if (!snapshot || snapshot.companyReferenceConfirmed !== true) return;
+    const code = String(snapshot.companyReferenceId || '').trim();
+    if (!code) return;
+    if (!getValues('companyCode')) {
+      setValue('companyCode', code);
+    }
+    prevCompanyCodeRef.current = code;
+    setCompanyReferenceVerified(true);
+    setCompanyVerifiedName(String(snapshot.companyVerifiedName || '').trim());
+  }, [eligibilityData, getValues, setValue]);
 
   useEffect(() => {
     let active = true;
@@ -347,6 +413,7 @@ export function SimpleSignUpView() {
       reset((current) => ({
         ...current,
         company: prefill.company || current.company,
+        companyCode: prefill.companyCode || current.companyCode,
         jobFunction: prefill.jobFunction || current.jobFunction,
         jobFunctionOther: prefill.jobFunctionOther || current.jobFunctionOther,
         yearsOfExperience: prefill.yearsOfExperience || current.yearsOfExperience,
@@ -454,6 +521,7 @@ export function SimpleSignUpView() {
         contactNumber: parsed.values.contactNumber || '',
         password: parsed.values.password || '',
         company: profilePrefill.company || parsed.values.company || '',
+        companyCode: profilePrefill.companyCode || parsed.values.companyCode || '',
         jobFunction: profilePrefill.jobFunction || parsed.values.jobFunction || '',
         jobFunctionOther: profilePrefill.jobFunctionOther || parsed.values.jobFunctionOther || '',
         yearsOfExperience:
@@ -527,30 +595,35 @@ export function SimpleSignUpView() {
     setPaymentRedirectCountdown(5);
     setPaymentNotice(null);
     setErrorMsg('');
-    console.info('[MembershipPayment] Confirmation started', {
+    console.info('[MembershipPayment] Confirmation started (Salesforce first, then local)', {
       refId: trimPaymentLogValue(normalizedPaymentRef),
       sessionId: trimPaymentLogValue(fallbackSessionId),
     });
 
-    confirmMembershipPayment({ ref: normalizedPaymentRef, sessionId: fallbackSessionId })
-      .then(async (response) => {
+    (async () => {
+      try {
+        // Priority: Salesforce account + payment sync must succeed before local finalize.
+        const formValues = getValues();
+        console.info('[MembershipPayment] Salesforce sync START');
+        await ensureSalesforceNexusUserForMembershipSignup(formValues, {
+          isPaid: true,
+          paidAmount: Number(totalAmount.toFixed(2)),
+          paidDate: new Date().toISOString().slice(0, 10),
+          forceCreate: true,
+        });
         if (!active) return;
-        console.info('[MembershipPayment] Confirmation success', {
+        console.info('[MembershipPayment] Salesforce sync SUCCESS');
+
+        const response = await confirmMembershipPayment({
+          ref: normalizedPaymentRef,
+          sessionId: fallbackSessionId,
+        });
+        if (!active) return;
+
+        console.info('[MembershipPayment] Local confirmation success', {
           refId: trimPaymentLogValue(normalizedPaymentRef),
           userId: trimPaymentLogValue(response?.userId),
         });
-
-        try {
-          const formValues = getValues();
-          await ensureSalesforceNexusUserForMembershipSignup(formValues, {
-            isPaid: true,
-            paidAmount: Number(totalAmount.toFixed(2)),
-            paidDate: new Date().toLocaleDateString('en-GB'),
-            forceCreate: true,
-          });
-        } catch (salesforceError) {
-          console.error('[MembershipPayment] Salesforce account creation failed after payment', salesforceError);
-        }
 
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('membershipDraftUserId');
@@ -570,22 +643,34 @@ export function SimpleSignUpView() {
           userId: response?.userId || '',
         });
         setPaymentRedirectCountdown(5);
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!active) return;
-        const notice = resolveMembershipPaymentNotice(error, 'confirm');
+        const isSalesforcePhase =
+          error?.config?.url?.includes?.('create-nexus-user')
+          || error?.config?.url?.includes?.('set-nexus-password')
+          || error?.config?.url?.includes?.('update-nexus-payment')
+          || String(error?.message || '').toLowerCase().includes('salesforce');
+        const notice = isSalesforcePhase
+          ? {
+              severity: 'error',
+              message:
+                error?.message
+                || 'Salesforce account could not be created. Local signup was not completed. Please try again or contact support.',
+            }
+          : resolveMembershipPaymentNotice(error, 'confirm');
         console.error('[MembershipPayment] Confirmation failed', {
           refId: trimPaymentLogValue(normalizedPaymentRef),
           sessionId: trimPaymentLogValue(fallbackSessionId),
+          phase: isSalesforcePhase ? 'salesforce' : 'local',
           message: notice.message,
         });
         setPaymentNotice(notice);
         setErrorMsg('');
-      })
-      .finally(() => {
+      } finally {
         if (!active) return;
         setPaymentConfirming(false);
-      });
+      }
+    })();
 
     return () => {
       active = false;
@@ -635,6 +720,53 @@ export function SimpleSignUpView() {
 
   const buildSubmittedEligibilityData = (data) =>
     mergeSignupEligibilityData(eligibilityData, data, isFreeIndividualSignup);
+
+  const resolveSignupCompanyCode = () => {
+    if (companyReferenceVerified === true) {
+      const code = String(getValues('companyCode') || '').trim();
+      if (code) return code;
+    }
+    const snapshot = eligibilityData?.snapshot;
+    if (!snapshot || typeof snapshot !== 'object') return undefined;
+    if (snapshot.companyReferenceConfirmed !== true) return undefined;
+    const code = String(snapshot.companyReferenceId || '').trim();
+    return code || undefined;
+  };
+
+  const handleVerifyCompanyReference = async () => {
+    const referenceId = String(companyCodeValue || '').trim();
+    if (!referenceId || companyReferenceVerifying) return;
+
+    setCompanyReferenceVerifying(true);
+    try {
+      const result = await verifyCompanyReference({ companyReferenceId: referenceId });
+      const verified = result?.verified === true;
+      const resolvedCode = String(result?.companyCode || referenceId).trim();
+      const companyName = String(result?.name || '').trim();
+
+      if (!verified) {
+        setCompanyReferenceVerified(false);
+        setCompanyVerifiedName('');
+        setValue('company', '');
+        setCompanyPrefilled(false);
+        return;
+      }
+
+      setValue('companyCode', resolvedCode);
+      prevCompanyCodeRef.current = resolvedCode;
+      setCompanyReferenceVerified(true);
+      setCompanyVerifiedName(companyName || '');
+      setValue('company', companyName || '');
+      setCompanyPrefilled(Boolean(companyName));
+    } catch {
+      setCompanyReferenceVerified(false);
+      setCompanyVerifiedName('');
+      setValue('company', '');
+      setCompanyPrefilled(false);
+    } finally {
+      setCompanyReferenceVerifying(false);
+    }
+  };
 
   const ensureSalesforceNexusUserForMembershipSignup = async (data, paymentMeta = {}) => {
     let flow = eligibilityData?.snapshot || null;
@@ -752,6 +884,19 @@ export function SimpleSignUpView() {
       setUsernameSuggestions([]);
       setShowAllSuggestions(false);
       setAppliedSuggestion('');
+
+      setEmailSfChecking(true);
+      let emailCheck;
+      try {
+        emailCheck = await assertSalesforceEmailAvailable(data.email);
+      } finally {
+        setEmailSfChecking(false);
+      }
+      if (!emailCheck.ok) {
+        showSalesforceEmailError(emailCheck.message);
+        return;
+      }
+
       await ensureSalesforceNexusUserForMembershipSignup(data);
       const signupResult = await signUp({
         username: data.username,
@@ -760,6 +905,7 @@ export function SimpleSignUpView() {
         firstName: data.firstName,
         lastName: data.lastName,
         contactNumber: data.contactNumber,
+        companyCode: resolveSignupCompanyCode(),
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         eligibilityData: buildSubmittedEligibilityData(data),
       });
@@ -798,6 +944,19 @@ export function SimpleSignUpView() {
         flow: membershipOutcome || 'default',
       });
 
+      setEmailSfChecking(true);
+      let emailCheck;
+      try {
+        emailCheck = await assertSalesforceEmailAvailable(data.email);
+      } finally {
+        setEmailSfChecking(false);
+      }
+      if (!emailCheck.ok) {
+        showSalesforceEmailError(emailCheck.message);
+        setPaymentActionLoading(false);
+        return;
+      }
+
       const cachedDraftUserId =
         typeof window !== 'undefined' ? sessionStorage.getItem('membershipDraftUserId') || '' : '';
 
@@ -808,6 +967,7 @@ export function SimpleSignUpView() {
         firstName: data.firstName,
         lastName: data.lastName,
         contactNumber: data.contactNumber,
+        companyCode: resolveSignupCompanyCode(),
         signupAccessToken: isVerifiedNricSignupFlow ? signupAccessToken : undefined,
         draftUserId: cachedDraftUserId || undefined,
         eligibilityData: buildSubmittedEligibilityData(data),
@@ -830,6 +990,7 @@ export function SimpleSignUpView() {
               contactNumber: data.contactNumber,
               password: data.password,
               company: data.company,
+              companyCode: data.companyCode,
               jobFunction: data.jobFunction,
               jobFunctionOther: data.jobFunctionOther,
               yearsOfExperience: data.yearsOfExperience,
@@ -1003,7 +1164,14 @@ export function SimpleSignUpView() {
         </Stack>
       )}
 
-      <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+      <Box
+        sx={{
+          ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 0.75fr) 1fr 1fr' },
+          gap: 2,
+        }}
+      >
         <Field.Select
           name="salutation"
           label="Salutation"
@@ -1014,9 +1182,6 @@ export function SimpleSignUpView() {
             <MenuItem key={s} value={s}>{s}</MenuItem>
           ))}
         </Field.Select>
-      </Box>
-
-      <Box>
         <Field.Text
           name="firstName"
           label="First name"
@@ -1030,8 +1195,6 @@ export function SimpleSignUpView() {
             ),
           }}
         />
-      </Box>
-      <Box>
         <Field.Text
           name="lastName"
           label="Last name"
@@ -1053,12 +1216,18 @@ export function SimpleSignUpView() {
           label="Email address"
           required
           InputLabelProps={{ shrink: true }}
+          onBlur={handleEmailBlur}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
                 <Iconify icon="solar:letter-bold-duotone" width={18} />
               </InputAdornment>
             ),
+            endAdornment: emailSfChecking ? (
+              <InputAdornment position="end">
+                <CircularProgress size={16} />
+              </InputAdornment>
+            ) : null,
           }}
         />
       </Box>
@@ -1091,7 +1260,61 @@ export function SimpleSignUpView() {
         />
       </Box>
 
-      <Box>
+      <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+        <Stack spacing={1}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'flex-start' }}
+          >
+            <Box sx={{ flex: 1, width: 1 }}>
+              <Field.Text
+                name="companyCode"
+                label="Company reference (optional)"
+                InputLabelProps={{ shrink: true }}
+                helperText="Optional. Verify your company reference to auto-fill company details."
+                InputProps={{
+                  endAdornment:
+                    companyReferenceVerified === true ? (
+                      <InputAdornment position="end">
+                        <Iconify icon="solar:verified-check-bold" width={22} color="success.main" />
+                      </InputAdornment>
+                    ) : undefined,
+                }}
+              />
+            </Box>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={handleVerifyCompanyReference}
+              disabled={companyReferenceVerifying || !String(companyCodeValue || '').trim()}
+              sx={{ minHeight: 40, mt: { sm: 1 }, flexShrink: 0, textTransform: 'none', fontWeight: 600 }}
+            >
+              {companyReferenceVerifying ? 'Verifying...' : 'Verify'}
+            </Button>
+          </Stack>
+          {companyReferenceVerifying ? <LinearProgress /> : null}
+          {companyReferenceVerified === true && companyVerifiedName ? (
+            <Alert severity="success" icon={<Iconify icon="solar:verified-check-bold" width={22} />}>
+              Company verified: <strong>{companyVerifiedName}</strong>
+            </Alert>
+          ) : null}
+          {companyReferenceVerified === false ? (
+            <Alert severity="warning">
+              Invalid company reference. This field is optional — you may continue without it or try again.
+            </Alert>
+          ) : null}
+        </Stack>
+      </Box>
+
+      <Box
+        sx={{
+          ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+          gap: 2,
+        }}
+      >
         <Field.Text
           name="company"
           label="Company"
@@ -1106,8 +1329,6 @@ export function SimpleSignUpView() {
               : undefined
           }
         />
-      </Box>
-      <Box>
         <Field.Select
           name="jobFunction"
           label="Job function"
@@ -1120,6 +1341,21 @@ export function SimpleSignUpView() {
             </MenuItem>
           ))}
         </Field.Select>
+        <Field.Text
+          name="yearsOfExperience"
+          label="No. of years of relevant work experience in accounting and finance"
+          required
+          placeholder="0"
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+        />
+        <Field.CountrySelect
+          name="countryOfResidence"
+          label="Country of residence"
+          placeholder="Search country"
+          getValue="label"
+          required
+        />
       </Box>
 
       {jobFunctionValue === 'others' ? (
@@ -1132,26 +1368,6 @@ export function SimpleSignUpView() {
           />
         </Box>
       ) : null}
-
-      <Box>
-        <Field.Text
-          name="yearsOfExperience"
-          label="No. of years of relevant work experience in accounting and finance"
-          required
-          placeholder="0"
-          InputLabelProps={{ shrink: true }}
-          inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-        />
-      </Box>
-      <Box>
-        <Field.CountrySelect
-          name="countryOfResidence"
-          label="Country of residence"
-          placeholder="Search country"
-          getValue="label"
-          required
-        />
-      </Box>
 
       {isFreeIndividualSignup ? (
         <>
@@ -1386,12 +1602,14 @@ export function SimpleSignUpView() {
         color: 'text.secondary',
       }}
     >
-      {'By signing up, I agree to '}
-      <Link underline="always" color="text.primary">
-        Terms of service
-      </Link>
-      {' and '}
-      <Link underline="always" color="text.primary">
+      {'By signing up, I agree to the '}
+      <Link
+        href={ISCA_PRIVACY_POLICY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        underline="always"
+        color="text.primary"
+      >
         Privacy policy
       </Link>
       .
