@@ -2919,6 +2919,8 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
   // Derived once from activeLesson so useEffects can use them (must be before YouTube useEffect)
   const [spotlightrDirectSrc, setSpotlightrDirectSrc] = useState(null);
+  /** HTML5 caption tracks from Spotlightr playerSettings.subtitleTracks (gov hybrid CC). */
+  const [spotlightrCaptionTracks, setSpotlightrCaptionTracks] = useState([]);
   /** idle | pending | ready — iframe mounts only after prepare-playback (avoids Spotlightr remount races). */
   const [spotlightrPrepareState, setSpotlightrPrepareState] = useState('idle');
 
@@ -2945,13 +2947,17 @@ export function LearningCoursePlayerView({ course, loading, error }) {
   useLayoutEffect(() => {
     if (!isActiveSpotlightrLesson) {
       setSpotlightrDirectSrc(null);
+      setSpotlightrCaptionTracks([]);
       setSpotlightrPrepareState('idle');
     }
   }, [isActiveSpotlightrLesson, activeLessonId]);
 
-  // Resolve direct MP4 from backend so we use native <video> instead of Spotlightr HLS iframe (.ts / .m3u8.key).
+  // Government hybrid for Spotlightr URLs:
+  // - directUrl + captionTracks → native MP4 + HTML5 CC (best: stable progress + accessibility)
+  // - otherwise → Spotlightr iframe (CC from Spotlightr player when API has no VTT tracks)
   useEffect(() => {
     setSpotlightrDirectSrc(null);
+    setSpotlightrCaptionTracks([]);
     if (!spotlightrMeta?.watchUrl || activeLessonGateBlocked) {
       setSpotlightrPrepareState('idle');
       return undefined;
@@ -2961,18 +2967,39 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     let cancelled = false;
     courseService
       .prepareSpotlightrPlayback(spotlightrMeta.watchUrl)
-      .then(({ directUrl }) => {
+      .then((payload) => {
         if (cancelled) return;
-        const direct = String(directUrl || '').trim();
-        if (direct) {
+        const direct = String(payload?.directUrl || '').trim();
+        const tracks = Array.isArray(payload?.captionTracks)
+          ? payload.captionTracks
+              .map((row) => ({
+                src: String(row?.src || '').trim(),
+                language: String(row?.language || 'en').trim() || 'en',
+                label: String(row?.label || row?.language || 'English').trim() || 'English',
+                isDefault: Boolean(row?.isDefault),
+              }))
+              .filter((row) => row.src)
+          : [];
+
+        // Prefer native only when we can also attach captions (gov accessibility).
+        if (direct && tracks.length > 0) {
+          setSpotlightrCaptionTracks(tracks);
           setSpotlightrDirectSrc(direct);
           setSpotlightrPrepareState('idle');
-        } else {
-          setSpotlightrPrepareState('ready');
+          return;
         }
+
+        // No usable VTT from API → Spotlightr iframe keeps CC + progress API.
+        setSpotlightrCaptionTracks([]);
+        setSpotlightrDirectSrc(null);
+        setSpotlightrPrepareState('ready');
       })
       .catch(() => {
-        if (!cancelled) setSpotlightrPrepareState('ready');
+        if (!cancelled) {
+          setSpotlightrCaptionTracks([]);
+          setSpotlightrDirectSrc(null);
+          setSpotlightrPrepareState('ready');
+        }
       });
 
     return () => {
@@ -6256,6 +6283,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
               embedUrl={!activeLessonGateBlocked ? embedUrl : null}
               spotlightrMeta={!activeLessonGateBlocked && !embedUrl ? activeSpotlightrMeta : null}
               videoSrc={playerNativeVideoSrc}
+              captionTracks={spotlightrCaptionTracks}
               videoPoster={videoPoster}
               videoRef={videoRef}
               youtubeContainerRef={youtubeContainerRef}

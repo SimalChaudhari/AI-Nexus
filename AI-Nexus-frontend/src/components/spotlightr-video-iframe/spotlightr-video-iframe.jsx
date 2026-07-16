@@ -2,7 +2,10 @@ import Box from '@mui/material/Box';
 
 import { parseSpotlightrUrl } from 'src/utils/spotlightr';
 
-/** Official Spotlightr iframe embed (`?fallback=true`). */
+/**
+ * Official Spotlightr standard embed (`?fallback=true`).
+ * Same player admin uses — includes CC when captions exist on the video.
+ */
 export function SpotlightrVideoIframe({
   url,
   title = 'Video',
@@ -19,10 +22,11 @@ export function SpotlightrVideoIframe({
       className="spotlightr"
       title={title}
       src={meta.embedUrl}
+      data-playerid={meta.videoId}
       frameBorder="0"
       scrolling="no"
       name="videoPlayer"
-      allow="autoplay; fullscreen; encrypted-media"
+      allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
       allowFullScreen
       onContextMenu={(event) => {
         event.preventDefault();

@@ -75,7 +75,9 @@ export function unlockSpotlightrForwardSeeking(videoId, container = null, prefer
 }
 
 /**
- * Official Spotlightr advanced embed: script tag immediately before iframe in the same container.
+ * Mount Spotlightr iframe for learner playback.
+ * Advanced embed (script + plain watch URL, no fallback) is required for progress JS API.
+ * Captions/CC come from Spotlightr when the video has transcripts — do not use native MP4.
  * @returns {HTMLIFrameElement|null}
  */
 export function mountSpotlightrEmbed(container, options = {}) {
@@ -85,18 +87,28 @@ export function mountSpotlightrEmbed(container, options = {}) {
   const videoId = String(options?.videoId || '').trim();
   const scriptUrl = String(options?.scriptUrl || '').trim();
   const startSeconds = Number(options?.startSeconds || 0);
-  // Advanced embed (spotlightr.js + plain watch URL). Fallback only when no script is loaded.
   const useFallback = options?.useFallback ?? !scriptUrl;
   if (!watchUrl || !videoId) return null;
 
   while (container.firstChild) container.removeChild(container.firstChild);
 
+  // Official advanced embed: script immediately before iframe in the same container.
+  if (scriptUrl && !useFallback) {
+    const script = container.ownerDocument.createElement('script');
+    script.src = scriptUrl;
+    script.async = true;
+    script.dataset.spotlightr = scriptUrl;
+    container.appendChild(script);
+  }
+
   const iframe = document.createElement('iframe');
-  iframe.className = 'video-player-container spotlightr';
+  iframe.className = useFallback ? 'spotlightr' : 'video-player-container spotlightr';
   iframe.dataset.playerid = videoId;
   iframe.setAttribute('data-playerid', videoId);
-  iframe.setAttribute('watch-type', '');
-  iframe.setAttribute('url-params', '');
+  if (!useFallback) {
+    iframe.setAttribute('watch-type', '');
+    iframe.setAttribute('url-params', '');
+  }
   iframe.src = buildSpotlightrWatchEmbedUrl(watchUrl, startSeconds, { useFallback });
   iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
   iframe.allowFullscreen = true;
@@ -105,7 +117,7 @@ export function mountSpotlightrEmbed(container, options = {}) {
   iframe.setAttribute('allowtransparency', 'true');
   iframe.frameBorder = '0';
   iframe.scrolling = 'no';
-  iframe.name = 'videoPlayerframe';
+  iframe.name = useFallback ? 'videoPlayer' : 'videoPlayerframe';
   iframe.title = options?.title || 'Course video';
   iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
   container.appendChild(iframe);

@@ -734,6 +734,12 @@ export function useSpotlightrLessonPlayer({
       }
     };
 
+    /** Force captions on — Spotlightr JS API (`captions` + truthy params). */
+    const enableSpotlightrCaptions = () => {
+      if (cancelled || playerTeardownRef.current) return;
+      callPlayerApi('captions', true);
+    };
+
     const bindPlayerApi = () => {
       if (cancelled || !isSpotlightrApiAvailable()) return;
       playerTeardownRef.current = false;
@@ -742,6 +748,10 @@ export function useSpotlightrLessonPlayer({
       refreshDurationFromPlayer();
       window.setTimeout(() => refreshDurationFromPlayer(), 2000);
       window.setTimeout(() => refreshDurationFromPlayer(), 5000);
+      // Tracks can load after ready; retry so learner matches admin/watch CC.
+      window.setTimeout(enableSpotlightrCaptions, 800);
+      window.setTimeout(enableSpotlightrCaptions, 2500);
+      window.setTimeout(enableSpotlightrCaptions, 5000);
 
       const resumeMeta = resumeSeekAppliedRef.current;
       const resumeTarget = getResumeSeconds();
@@ -772,6 +782,7 @@ export function useSpotlightrLessonPlayer({
         prog.lastTickAtMs = Date.now();
         if (!pollIntervalIdRef.current) startProgressPoll();
         refreshDurationFromPlayer();
+        enableSpotlightrCaptions();
         // Sync lastTime from the live player so a play→pause race doesn't invent a gap.
         readSpotlightrPlayerTime(
           getApiVideoId(),
@@ -938,10 +949,12 @@ export function useSpotlightrLessonPlayer({
       const mountWrapper = getContainer();
       if (!mountWrapper) return;
 
-      // Plain watch URL (no ?fallback=true) — matches direct Spotlightr links; fallback uses broken Video.js on some HLS streams.
+      // Advanced embed (no fallback) — required for Spotlightr JS API progress / seek / coverage.
+      // Captions still come from Spotlightr when the video has transcripts (not native MP4).
       mountSpotlightrEmbed(mountWrapper, {
         watchUrl: spotlightrMeta.watchUrl,
         videoId,
+        scriptUrl,
         startSeconds: 0,
         useFallback: false,
         title: 'Course video',
