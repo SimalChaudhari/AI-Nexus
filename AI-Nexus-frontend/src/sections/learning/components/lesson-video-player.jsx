@@ -30,6 +30,7 @@ export function LessonVideoPlayer({
   embedUrl,
   spotlightrMeta,
   videoSrc,
+  captionTracks = [],
   videoPoster,
   videoRef,
   youtubeContainerRef,
@@ -52,6 +53,7 @@ export function LessonVideoPlayer({
   const showNative = Boolean(videoSrc && !showYoutube && !showSpotlightr);
   const youtubeIframeSrc = showYoutube ? getYouTubeEmbedIframeSrc(embedUrl) : null;
   const nativeKey = remountKey ? `${remountKey}|${videoSrc || ''}` : videoSrc || 'native';
+  const tracks = Array.isArray(captionTracks) ? captionTracks : [];
 
   return (
     <Box
@@ -105,6 +107,7 @@ export function LessonVideoPlayer({
           controls
           playsInline
           preload="metadata"
+          crossOrigin={tracks.length ? 'anonymous' : undefined}
           {...SECURE_VIDEO_ELEMENT_PROPS}
           onLoadedMetadata={onLoadedMetadata}
           onPlay={onPlay}
@@ -116,13 +119,22 @@ export function LessonVideoPlayer({
             ...getLessonVideoSurfaceSx(),
             ...activePlayerLayerSx,
             objectFit: 'contain',
-            // Soften selection / long-press save UX on some browsers
             WebkitUserSelect: 'none',
             userSelect: 'none',
             WebkitTouchCallout: 'none',
           }}
         >
           <source src={videoSrc} type="video/mp4" />
+          {tracks.map((track) => (
+            <track
+              key={`${track.language}|${track.src}`}
+              kind="captions"
+              src={track.src}
+              srcLang={track.language || 'en'}
+              label={track.label || track.language || 'Captions'}
+              default={Boolean(track.isDefault)}
+            />
+          ))}
         </Box>
       ) : null}
       {floatingOverlay}

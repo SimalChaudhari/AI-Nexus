@@ -1565,7 +1565,8 @@ export class CourseController {
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
     @ApiOperation({
-        summary: 'Enable Spotlightr forward seek and resolve direct MP4 playback URL when available',
+        summary:
+            'Prepare Spotlightr playback: unlock seek settings, resolve direct MP4, and return caption tracks when available',
     })
     async prepareSpotlightrPlayback(
         @Body() body: { url?: string },
@@ -1583,7 +1584,7 @@ export class CourseController {
             this.spotlightrService.isApiCircuitOpen()
         ) {
             return response.status(HttpStatus.OK).json({
-                data: { directUrl: null, settingsUpdated: false },
+                data: { directUrl: null, settingsUpdated: false, captionTracks: [] },
             });
         }
         const data = await this.spotlightrService.preparePlaybackForWatchUrl(url);
