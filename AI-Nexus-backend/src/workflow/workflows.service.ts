@@ -297,7 +297,10 @@ export class WorkflowService {
 
     private canViewFlowiseTemplate(row: any, currentUserId: string): boolean {
         const templateSource = String(row?.templateSource || '');
+        // Community marketplace templates are always listed.
         if (templateSource === 'community_template') return true;
+        // User's saved Flowise "My Templates" should always appear for signed-in users who can fetch them.
+        if (templateSource === 'my_template') return true;
 
         const visibility = this.getFlowiseTemplateVisibility(row);
         if (visibility === 'public') return true;
@@ -312,6 +315,7 @@ export class WorkflowService {
         const flowisePort = (process.env.FLOWISE_PORT || '3002').trim();
         const envBases = [
             process.env.FLOWISE_INTERNAL_URL,
+            process.env.FLOWISE_API_URL,
             process.env.FLOWISE_URL,
             process.env.VITE_FLOWISE_URL,
         ]

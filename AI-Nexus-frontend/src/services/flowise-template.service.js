@@ -122,8 +122,13 @@ const mapFlowiseFlowToTemplate = (flow) => {
       : normalizedSource === 'my_template'
         ? 'Flowise My Template'
         : 'Flowise Template';
-  const rawType = String(flow.type || '').toUpperCase();
-  const flowType = rawType === 'AGENTFLOWV2' || rawType === 'AGENTFLOW' ? 'AGENTFLOW' : rawType || 'CHATFLOW';
+  const rawType = String(flow.type || '').toUpperCase().replace(/\s+/g, '');
+  const flowType =
+    rawType === 'AGENTFLOWV2' || rawType === 'MULTIAGENT' || rawType === 'AGENTFLOW'
+      ? 'AGENTFLOW'
+      : rawType === 'CHATFLOW' || rawType === 'ASSISTANT'
+        ? 'CHATFLOW'
+        : rawType || (normalizedSource === 'my_template' ? 'CHATFLOW' : 'CHATFLOW');
   const resolvedImage = resolveTemplateImage(flow) || getFallbackTemplateImage(flowType, normalizedSource);
 
   return {

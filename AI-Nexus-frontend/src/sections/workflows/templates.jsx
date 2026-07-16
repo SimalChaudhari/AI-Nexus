@@ -105,10 +105,16 @@ export function Templates() {
     setFlowiseTemplatesLoading(true);
     try {
       const items = await flowiseTemplateService.getFlowiseTemplates();
+      // Show Agentflows + Chatflows + My Templates (not Tool-only marketplace tools)
       setFlowiseTemplates(
-        items.filter((item) =>
-          ['AGENTFLOW', 'MULTIAGENT', 'AGENTFLOWV2'].includes(String(item?.flowiseType || '').toUpperCase())
-        )
+        items.filter((item) => {
+          const type = String(item?.flowiseType || '').toUpperCase();
+          const source = String(item?.flowiseTemplateSource || '');
+          if (source === 'my_template' || source === 'workspace_flow') {
+            return type !== 'TOOL';
+          }
+          return ['AGENTFLOW', 'AGENTFLOWV2', 'MULTIAGENT', 'CHATFLOW'].includes(type);
+        })
       );
     } catch {
       setFlowiseTemplates([]);
