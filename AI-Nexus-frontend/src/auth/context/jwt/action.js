@@ -308,6 +308,26 @@ export const validateNricIdentifier = async ({ identifier }) => {
 };
 
 /** **************************************
+ * Verify company reference ID against Corporate HR companyCode
+ *************************************** */
+export const verifyCompanyReference = async ({ companyReferenceId }) => {
+  try {
+    const res = await axios.post('/auth/verify-company-reference', {
+      companyReferenceId: String(companyReferenceId || '').trim(),
+    });
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const errorMessage =
+      normalizedMessage ||
+      error?.message ||
+      (typeof error === 'string' ? error : 'Company reference verification failed. Please try again.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * Verify NRIC manually via checksum (no image / AI)
  *************************************** */
 export const verifyNricManual = async ({

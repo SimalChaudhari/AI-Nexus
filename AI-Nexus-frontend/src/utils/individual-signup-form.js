@@ -24,6 +24,7 @@ export function requiresFreeSignupJobAudit(jobFunction = '') {
 
 export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   company: '',
+  companyCode: '',
   jobFunction: '',
   jobFunctionOther: '',
   yearsOfExperience: '',
@@ -41,6 +42,8 @@ export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
  */
 export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedValues = {}) {
   const companyFromFlow = String(flow.companyVerifiedName || '').trim();
+  const companyCodeFromFlow =
+    flow.companyReferenceConfirmed === true ? String(flow.companyReferenceId || '').trim() : '';
   const verifiedNricFin = String(flow.verifiedNricFin || storedValues.nricFin || '').trim();
   const verifiedNricIdType = String(flow.verifiedNricIdType || storedValues.idType || '').trim();
   const company = String(storedValues.company || companyFromFlow).trim();
@@ -48,6 +51,7 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
 
   return {
     company,
+    companyCode: String(storedValues.companyCode || companyCodeFromFlow).trim(),
     jobFunction: String(storedValues.jobFunction || '').trim(),
     jobFunctionOther: String(storedValues.jobFunctionOther || '').trim(),
     yearsOfExperience:
@@ -79,6 +83,7 @@ export function buildIndividualSignupProfileSnapshot(formData = {}, isFreeSignup
 
   const snapshot = {
     companyName: String(formData.company || '').trim(),
+    companyCode: String(formData.companyCode || '').trim(),
     jobFunction: String(formData.jobFunction || '').trim(),
     jobFunctionLabel,
     jobFunctionOther:

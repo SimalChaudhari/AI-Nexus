@@ -16,6 +16,7 @@ const ProgressPage = lazy(() => import('src/pages/corporate/progress'));
 const LearnerDetailPage = lazy(() => import('src/pages/corporate/learner-detail'));
 const EnrolPage = lazy(() => import('src/pages/corporate/enrol'));
 const ReportsPage = lazy(() => import('src/pages/corporate/reports'));
+const NudgeTrackPage = lazy(() => import('src/pages/corporate/nudge-track'));
 
 // ----------------------------------------------------------------------
 
@@ -60,6 +61,7 @@ export const corporateRoutes = [
       { path: 'progress/:userId', element: <LearnerDetailPage /> },
       { path: 'enrol', element: <EnrolPage /> },
       { path: 'reports', element: <ReportsPage /> },
+      { path: 'nudge-track', element: <NudgeTrackPage /> },
     ],
   },
 ];

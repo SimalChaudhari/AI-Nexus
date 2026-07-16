@@ -11,11 +11,11 @@ export const USER_LIST_QUERY_MAP = {
 export const USER_LIST_STATUS_OPTIONS = [{ value: 'all', label: 'All' }, ...USER_STATUS_OPTIONS];
 
 export const USER_LIST_TABLE_HEAD = [
-  { id: 'name', label: 'Name', width: 160 },
-  { id: 'username', label: 'Username', width: 160 },
-  { id: 'createdAt', label: 'Created', width: 120 },
+  { id: 'name', label: 'Name', width: 240 },
+  { id: 'authProvider', label: 'OAuth', width: 110 },
   { id: 'isVerified', label: 'Email verified', width: 130 },
   { id: 'feeWaiverJobVerified', label: 'Job / HR', width: 150 },
   { id: 'status', label: 'Status', width: 100 },
+  { id: 'createdAt', label: 'Created', width: 180 },
   { id: 'action', label: 'Action', width: 88 },
 ];

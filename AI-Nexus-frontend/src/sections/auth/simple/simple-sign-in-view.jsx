@@ -342,7 +342,7 @@ export function SimpleSignInView() {
           <Iconify icon="solar:buildings-2-bold-duotone" width={18} />
         </Box>
         <Box component="span" sx={landingButtonLabelSx}>
-          Login as a corporate account
+          Login for Organisation Portal
         </Box>
       </Button>
     </Stack>
@@ -467,7 +467,8 @@ export function SimpleSignInView() {
         <Alert severity="warning" sx={{ mb: 2 }}>
           <Stack spacing={1}>
             <Typography variant="body2">
-              Your account is not verified. A verification email has been sent to your email address.
+              Your account is not verified. A verification email has been sent to your email
+              address.
             </Typography>
             {userEmail && (
               <Stack direction="row" spacing={1} alignItems="center">

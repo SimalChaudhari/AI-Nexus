@@ -4,7 +4,6 @@ import { Navigate, useRoutes } from 'react-router-dom';
 import { SplashScreen } from 'src/components/loading-screen';
 
 import { authRoutes } from './auth';
-import { authDemoRoutes } from './auth-demo';
 import { dashboardRoutes } from './dashboard';
 import { adminRoutes } from './admin.routes';
 import { userRoutes } from './user.routes';
@@ -34,7 +33,6 @@ export function Router() {
 
     // Auth
     ...authRoutes,
-    ...authDemoRoutes,
 
     // Admin Routes (Admin only)
     ...adminRoutes,

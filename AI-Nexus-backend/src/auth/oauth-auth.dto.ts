@@ -91,6 +91,24 @@ export class SalesforceUserCheckEmailDto {
   email!: string;
 }
 
+/** PUT /services/apexrest/v1/nexus-payment/update */
+export class UpdateSalesforceNexusPaymentDto {
+  @IsString()
+  @IsNotEmpty()
+  accountId!: string;
+
+  @IsBoolean()
+  @IsOptional()
+  Is_Paid?: boolean;
+
+  @IsNumber()
+  Paid_Amount!: number;
+
+  @IsString()
+  @IsOptional()
+  Paid_Date?: string;
+}
+
 export class UpdateSalesforceNexusUserDto {
   @IsString()
   @IsNotEmpty()

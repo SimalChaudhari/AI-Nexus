@@ -3,13 +3,23 @@ import { useSearchParams } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
+import { toast } from 'src/components/snackbar';
 import { LoadingScreen } from 'src/components/loading-screen';
 
 import {
+  createCorporateNudgeCampaign,
   downloadCorporateCertificateFile,
   getCorporateCertificates,
+  previewCorporateNudgeCampaign,
 } from 'src/services/corporate.service';
 import { useAuthContext } from 'src/auth/hooks';
 
@@ -55,9 +65,55 @@ export function CorporateReportsView() {
   });
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [nudgePreview, setNudgePreview] = useState(null);
+  const [nudgePreviewLoading, setNudgePreviewLoading] = useState(false);
+  const [nudgeSending, setNudgeSending] = useState(false);
+  const [nudgeError, setNudgeError] = useState('');
 
   const loading = certLoading || learnersLoading;
   const error = certError || learnersError;
+
+  const resolvedCompanyCode = isCorporate ? undefined : companyCode || undefined;
+
+  const openSendDialog = useCallback(async () => {
+    setNudgeError('');
+    setSendDialogOpen(true);
+    setNudgePreviewLoading(true);
+    try {
+      const preview = await previewCorporateNudgeCampaign(resolvedCompanyCode);
+      setNudgePreview(preview?.data || preview);
+    } catch (err) {
+      const message =
+        err?.response?.data?.message || err?.message || 'Failed to load nudge list preview';
+      setNudgeError(Array.isArray(message) ? message.join(', ') : message);
+      setNudgePreview(null);
+    } finally {
+      setNudgePreviewLoading(false);
+    }
+  }, [resolvedCompanyCode]);
+
+  const handleSendNudgeCampaign = useCallback(async () => {
+    if (nudgeSending) return;
+    setNudgeSending(true);
+    setNudgeError('');
+    try {
+      const result = await createCorporateNudgeCampaign(resolvedCompanyCode);
+      const eligible = Number(result?.data?.eligibleCount) || 0;
+      const batches = Number(result?.data?.batchCount) || 0;
+      toast.success(
+        result?.message ||
+          `Campaign started in background for ${eligible} learner(s) in ${batches} batch(es). You can close this now.`,
+      );
+      setSendDialogOpen(false);
+    } catch (err) {
+      const message =
+        err?.response?.data?.message || err?.message || 'Failed to start nudge campaign';
+      setNudgeError(Array.isArray(message) ? message.join(', ') : message);
+    } finally {
+      setNudgeSending(false);
+    }
+  }, [nudgeSending, resolvedCompanyCode]);
 
   const updateParams = useCallback(
     (patch) => {
@@ -225,13 +281,150 @@ export function CorporateReportsView() {
             Nudge campaigns
           </Typography>
           <Typography sx={{ color: CORP.muted, lineHeight: 1.5, mb: 2 }}>
-            Send reminder emails to inactive learners or those with pending quizzes and assessments.
+            Send reminders to learners who have not completed the course, or view the email send
+            track.
           </Typography>
-          <CorpBtn variant="ghost" fullWidth>
-            Create nudge list
-          </CorpBtn>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+            <CorpBtn
+              variant="ghost"
+              fullWidth
+              component={RouterLink}
+              href={paths.corporate.nudgeTrack}
+            >
+              View
+            </CorpBtn>
+            <CorpBtn
+              variant="blue"
+              fullWidth
+              onClick={openSendDialog}
+              sx={{
+                color: '#fff !important',
+                bgcolor: CORP.blue,
+                boxShadow: '0 8px 18px rgba(13, 95, 255, 0.28)',
+                '&:hover': {
+                  bgcolor: '#0a4fd6',
+                  color: '#fff !important',
+                  boxShadow: '0 10px 22px rgba(13, 95, 255, 0.34)',
+                },
+                '&.Mui-disabled': {
+                  color: '#fff !important',
+                  bgcolor: CORP.blue,
+                  opacity: 0.55,
+                },
+              }}
+            >
+              Send
+            </CorpBtn>
+          </Box>
         </CorpCard>
       </Box>
+
+      <Dialog
+        fullWidth
+        maxWidth="sm"
+        open={sendDialogOpen}
+        onClose={() => {
+          if (!nudgeSending) setSendDialogOpen(false);
+        }}
+        disableScrollLock
+      >
+        <DialogTitle sx={{ pb: 1.5, color: CORP.navy, fontWeight: 800, bgcolor: '#eef5ff' }}>
+          Send nudge campaign
+        </DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 2 }}>
+          {nudgeError ? (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {nudgeError}
+            </Alert>
+          ) : null}
+          {nudgePreviewLoading ? (
+            <Typography sx={{ color: CORP.muted }}>Loading incomplete learners…</Typography>
+          ) : (
+            <>
+              <Typography variant="body2" sx={{ mb: 1.5 }}>
+                This sends the same AI fluency reminder template to all learners who have{' '}
+                <b>not completed</b> the course.
+              </Typography>
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 1.25,
+                  mb: 1.5,
+                  borderRadius: 1,
+                  bgcolor: 'grey.100',
+                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ color: CORP.navy }}>
+                  Incomplete learners: {nudgePreview?.incompleteCount ?? 0}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Eligible to email now: {nudgePreview?.eligibleCount ?? 0}
+                  {(nudgePreview?.skippedCooldownCount || 0) > 0
+                    ? ` · Skipped (24h cooldown): ${nudgePreview.skippedCooldownCount}`
+                    : ''}
+                  {(nudgePreview?.missingEmailCount || 0) > 0
+                    ? ` · Missing email: ${nudgePreview.missingEmailCount}`
+                    : ''}
+                </Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Sending runs in the background in batches of 100. You can close this dialog after
+                starting — use View to track progress.
+              </Typography>
+              {!nudgePreviewLoading &&
+              nudgePreview &&
+              !(nudgePreview.eligibleCount > 0) ? (
+                <Alert severity="warning" sx={{ mt: 1.5 }}>
+                  {(nudgePreview.incompleteCount || 0) === 0
+                    ? 'No incomplete learners found for this company code. Learners must share the same company code as your corporate account.'
+                    : (nudgePreview.missingEmailCount || 0) > 0
+                      ? 'Incomplete learners have no email address, so nothing can be sent yet.'
+                      : 'No eligible learners to email right now.'}
+                </Alert>
+              ) : null}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <CorpBtn
+            variant="ghost"
+            disabled={nudgeSending}
+            onClick={() => setSendDialogOpen(false)}
+          >
+            Cancel
+          </CorpBtn>
+          <CorpBtn
+            variant="blue"
+            disabled={
+              nudgeSending ||
+              nudgePreviewLoading ||
+              !nudgePreview ||
+              !(Number(nudgePreview.eligibleCount) > 0)
+            }
+            onClick={handleSendNudgeCampaign}
+            sx={{
+              color: '#fff !important',
+              bgcolor: CORP.blue,
+              minWidth: 140,
+              boxShadow: '0 8px 18px rgba(13, 95, 255, 0.28)',
+              '&:hover': {
+                bgcolor: '#0a4fd6',
+                color: '#fff !important',
+                boxShadow: '0 10px 22px rgba(13, 95, 255, 0.34)',
+              },
+              '&.Mui-disabled': {
+                color: '#fff !important',
+                bgcolor: CORP.blue,
+                opacity: 0.55,
+              },
+            }}
+          >
+            {nudgeSending ? 'Starting…' : 'Send emails'}
+          </CorpBtn>
+        </DialogActions>
+      </Dialog>
 
       <CorpCard>
         <Typography sx={{ color: CORP.navy, fontWeight: 700, fontSize: 18, mb: 1.25 }}>

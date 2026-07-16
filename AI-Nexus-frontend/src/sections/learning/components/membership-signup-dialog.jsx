@@ -44,6 +44,7 @@ import {
   getStudentAcademicEmailVerificationStatus,
   submitAccountingDeclarationHrEmail,
   submitAccountingDeclarationCertificate,
+  verifyCompanyReference,
 } from 'src/auth/context/jwt';
 import { CONFIG } from 'src/config-global';
 import { paths } from 'src/routes/paths';
@@ -138,6 +139,7 @@ import {
   MEMBERSHIP_APPLICATION_PATHWAY,
   persistMembershipApplicationPathway,
 } from 'src/utils/membership-application-pathway';
+import { ISCA_PRIVACY_POLICY_URL } from 'src/constants/isca-legal-links';
 
 /** Home “Get Started Now” only; other entry points use default Salesforce associate opt-in. */
 export const MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED = 'home-get-started';
@@ -147,9 +149,6 @@ export const MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP = 'auth-sign-up';
 const ISCA_STUDENT_MEMBERSHIP_INFO_URL = 'https://www.isca.org.sg/membership/StudentMember';
 const ISCA_STUDENT_YOUTH_APP_URL = 'https://eservices.isca.org.sg/youth_app';
 const ISCA_WORKING_MY_APPLICATION_URL = 'https://eservices.isca.org.sg/MyApplication';
-/** Yes / Yes / Yes company reference ID accepted for verification (interim integration). */
-const YES_YES_YES_VERIFIED_COMPANY_REF_ID = '123456';
-
 const ELIGIBILITY_NRIC_NOT_VERIFIED_MESSAGE =
   'Sorry, we are not able to verify your Singaporean/PR status from the documents uploaded, please try again or proceed to the next step of your eligibility check';
 
@@ -989,17 +988,18 @@ function isQuestionnaireNoYesYesPath(state) {
   );
 }
 
-function shouldUseNumericQuestionnaireCompanyVerification(state) {
+function shouldAutoConfirmCompanyReference(state) {
   return (
     isQuestionnaireYesYesYesPath(state)
     || isQuestionnaireYesNoYesPath(state)
-    || isQuestionnaireNoNoYesPath(state)
     || isSgPrUnderCompanyPath(state)
   );
 }
 
 function shouldEarlyCompanyReferenceStep(state) {
   if (state.companyRegistrationUnderCompany !== true) return false;
+  // No / No / Yes: block corporate ref self-registration — HR quotation required instead.
+  if (isNoNoYesSelection(state)) return false;
   if (!isQuestionnaireIscaMemberPath(state)) return true;
   return isQuestionnaireYesYesYesPath(state) || isQuestionnaireYesNoYesPath(state);
 }
@@ -1088,13 +1088,23 @@ function getQuestionnaireIscaMemberStep(state) {
   return null;
 }
 
-/** Questionnaire: not ISCA member, not SG/PR, registering under company (No / No / Yes). */
+/** Answers match No / No / Yes (foreign non-member registering under company). */
+function isNoNoYesSelection(state) {
+  return (
+    state.isIscaMember === false
+    && state.isSingaporePr === false
+    && state.companyRegistrationUnderCompany === true
+  );
+}
+
+/**
+ * Questionnaire: not ISCA member, not SG/PR, registering under company (No / No / Yes).
+ * These users must not self-register with a corporate reference ID — HR must request a quotation.
+ */
 function isQuestionnaireNoNoYesPath(state) {
   return (
     state.initialQuestionnaireSubmitted
-    && state.isIscaMember === false
-    && state.isSingaporePr === false
-    && state.companyRegistrationUnderCompany === true
+    && isNoNoYesSelection(state)
     && !isHomeGetStartedFlow(state)
   );
 }
@@ -1204,34 +1214,6 @@ function isStudentWorkingPersonaPath(state) {
   );
 }
 
-function lookupCompanyByReferenceId(referenceId) {
-  const id = String(referenceId || '').trim();
-  if (!id) return null;
-
-  const catalog = {
-    PWC2024: { name: 'PwC Singapore', industry: 'Professional Services' },
-    ISCA001: { name: 'ISCA Corporate Partner', industry: 'Accounting' },
-  };
-
-  return catalog[id.toUpperCase()] || { name: `Corporate account (${id})`, industry: 'To be confirmed' };
-}
-
-/** Yes / Yes / Yes — numeric company ref; only 123456 verifies for now. */
-function verifyYesYesYesCompanyReference(referenceId) {
-  const id = String(referenceId || '').trim();
-  if (!/^\d+$/.test(id)) {
-    return { verified: false };
-  }
-  if (id === YES_YES_YES_VERIFIED_COMPANY_REF_ID) {
-    return {
-      verified: true,
-      name: 'Corporate account (123456)',
-      industry: 'To be confirmed',
-    };
-  }
-  return { verified: false };
-}
-
 function isAuthSignUpEntryFlow(state) {
   return state?.signupEntrySource === MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP;
 }
@@ -1307,6 +1289,11 @@ function getFlowStep(state) {
     || !state.initialQuestionnaireSubmitted
   ) {
     return 'initial-questionnaire';
+  }
+
+  // Foreign non-ISCA members registering under company cannot use corporate ref ID themselves.
+  if (isQuestionnaireNoNoYesPath(state) && !state.companyReferenceRouteAbandoned) {
+    return 'hr-quotation-required';
   }
 
   if (
@@ -2004,6 +1991,7 @@ function getRequirementLabel(state, step) {
   const labelsByStep = {
     'fee-waiver-choice': 'Fee waiver application',
     'initial-questionnaire': 'Basic eligibility questions',
+    'hr-quotation-required': 'Corporate registration via HR',
     residency: 'Required before course access',
     member: 'Are you already an ISCA Member?',
     'company-registration': 'Company registration check',
@@ -2231,7 +2219,7 @@ function getProgressMeta(state, step) {
   }
 
   if (isQuestionnaireNoNoYesPath(state) && !state.companyReferenceRouteAbandoned) {
-    const steps = ['company-reference', 'result'];
+    const steps = ['initial-questionnaire', 'hr-quotation-required'];
     const currentIndex = steps.indexOf(step);
     return {
       currentStep: currentIndex >= 0 ? currentIndex + 1 : 1,
@@ -2240,7 +2228,11 @@ function getProgressMeta(state, step) {
   }
 
   const baseSteps = ['initial-questionnaire'];
-  if (state.companyRegistrationUnderCompany === true && state.companyReferenceVerified !== true) {
+  if (
+    state.companyRegistrationUnderCompany === true
+    && state.companyReferenceVerified !== true
+    && !isNoNoYesSelection(state)
+  ) {
     baseSteps.push('company-reference');
   }
   if (state.isIscaMember === true) {
@@ -2249,9 +2241,6 @@ function getProgressMeta(state, step) {
     if (isQuestionnaireCorporatePath(state)) {
       baseSteps.push('company-reference', 'result');
     } else if (isStudentWorkingPersonaPath(state)) {
-      if (isQuestionnaireNoNoYesPath(state)) {
-        baseSteps.push('company-reference');
-      }
       if (isSgPrIndividualPath(state) && state.nricSgPrCheckFailed) {
         baseSteps.push('nric');
       }
@@ -2263,7 +2252,7 @@ function getProgressMeta(state, step) {
         baseSteps.push('working-educational-background', 'working-membership-options', 'result');
       }
     } else if (isQuestionnaireNoNoYesPath(state) && !state.companyReferenceRouteAbandoned) {
-      baseSteps.push('company-reference', 'result');
+      baseSteps.push('hr-quotation-required');
     } else if (isSgPrUnderCompanyPath(state)) {
       baseSteps.push('company-reference', 'nric');
       pushMembershipFinalStep(baseSteps, state);
@@ -2276,6 +2265,7 @@ function getProgressMeta(state, step) {
   if (
     [
       'initial-questionnaire',
+      'hr-quotation-required',
       'company-reference',
       'registration-persona',
       'student-academic-email',
@@ -2474,6 +2464,7 @@ export function MembershipSignupDialog({
   const [studentCardVerification, setStudentCardVerification] = useState(null);
   const [studentCardVerificationError, setStudentCardVerificationError] = useState('');
   const [showStudentAcademicEmailSentModal, setShowStudentAcademicEmailSentModal] = useState(false);
+  const [showHrQuotationModal, setShowHrQuotationModal] = useState(false);
   const [experiencedResumeVerifying, setExperiencedResumeVerifying] = useState(false);
   const [experiencedResumeVerificationError, setExperiencedResumeVerificationError] = useState('');
   const [experiencedResumeAssessment, setExperiencedResumeAssessment] = useState(null);
@@ -2483,6 +2474,7 @@ export function MembershipSignupDialog({
   const [accountingVerifError, setAccountingVerifError] = useState('');
   const [accountingVerifSuccess, setAccountingVerifSuccess] = useState('');
   const [accountingCertResult, setAccountingCertResult] = useState(null);
+  const [companyReferenceVerifying, setCompanyReferenceVerifying] = useState(false);
   const resetExperiencedResumeLocalState = () => {
     setExperiencedResumeVerifying(false);
     setExperiencedResumeVerificationError('');
@@ -3276,10 +3268,35 @@ export function MembershipSignupDialog({
   };
 
   const submitInitialQuestionnaire = () => {
+    // No / No / Yes: individuals must not use corporate ref ID — ask HR for quotation.
+    if (isNoNoYesSelection(flowState)) {
+      setShowHrQuotationModal(true);
+      return;
+    }
     setFlowState((prev) => ({
       ...prev,
       initialQuestionnaireSubmitted: true,
     }));
+  };
+
+  const dismissHrQuotationModal = () => {
+    setShowHrQuotationModal(false);
+    setFlowState((prev) => {
+      // Continue-click popup: keep answers so the user can change Q3.
+      if (!prev.initialQuestionnaireSubmitted) {
+        return prev;
+      }
+      // Draft / step recovery: return to questionnaire and clear the company answer.
+      return {
+        ...prev,
+        initialQuestionnaireSubmitted: false,
+        companyRegistrationUnderCompany: null,
+        companyReferenceId: '',
+        companyReferenceVerified: null,
+        companyReferenceConfirmed: null,
+        companyReferenceRouteAbandoned: false,
+      };
+    });
   };
 
   const selectFeeWaiverApplicationChoice = (wantsFeeWaiver) => {
@@ -3307,13 +3324,23 @@ export function MembershipSignupDialog({
     }));
   };
 
-  const verifyCompanyReferenceId = () => {
-    setFlowState((prev) => {
-      if (shouldUseNumericQuestionnaireCompanyVerification(prev)) {
-        const verification = verifyYesYesYesCompanyReference(prev.companyReferenceId);
-        if (!verification.verified) {
+  const verifyCompanyReferenceId = async () => {
+    const referenceId = String(flowState.companyReferenceId || '').trim();
+    if (!referenceId || companyReferenceVerifying) return;
+
+    setCompanyReferenceVerifying(true);
+    try {
+      const result = await verifyCompanyReference({ companyReferenceId: referenceId });
+      const verified = result?.verified === true;
+      const resolvedCode = String(result?.companyCode || referenceId).trim();
+      const companyName = String(result?.name || '').trim();
+      const companyIndustry = String(result?.industry || '').trim();
+
+      setFlowState((prev) => {
+        if (!verified) {
           return {
             ...prev,
+            companyReferenceId: referenceId,
             companyReferenceVerified: false,
             companyVerifiedName: '',
             companyVerifiedIndustry: '',
@@ -3322,28 +3349,32 @@ export function MembershipSignupDialog({
             iscaMemberVerificationPassed: null,
           };
         }
+
+        const autoConfirm = shouldAutoConfirmCompanyReference(prev);
         return {
           ...prev,
+          companyReferenceId: resolvedCode,
           companyReferenceVerified: true,
-          companyVerifiedName: verification.name || '',
-          companyVerifiedIndustry: verification.industry || '',
-          companyReferenceConfirmed: true,
+          companyVerifiedName: companyName || '',
+          companyVerifiedIndustry: companyIndustry || 'To be confirmed',
+          companyReferenceConfirmed: autoConfirm ? true : null,
           eServicesLoginCompleted: false,
           iscaMemberVerificationPassed: null,
         };
-      }
-
-      const company = lookupCompanyByReferenceId(prev.companyReferenceId);
-      return {
+      });
+    } catch {
+      setFlowState((prev) => ({
         ...prev,
-        companyReferenceVerified: Boolean(company),
-        companyVerifiedName: company?.name || '',
-        companyVerifiedIndustry: company?.industry || '',
+        companyReferenceVerified: false,
+        companyVerifiedName: '',
+        companyVerifiedIndustry: '',
         companyReferenceConfirmed: null,
         eServicesLoginCompleted: false,
         iscaMemberVerificationPassed: null,
-      };
-    });
+      }));
+    } finally {
+      setCompanyReferenceVerifying(false);
+    }
   };
 
   const confirmCompanyReference = () => {
@@ -5478,6 +5509,10 @@ export function MembershipSignupDialog({
       }));
       return;
     }
+    if (step === 'hr-quotation-required') {
+      dismissHrQuotationModal();
+      return;
+    }
     if (step === 'registration-persona') {
       setFlowState((prev) => ({
         ...prev,
@@ -6310,13 +6345,15 @@ export function MembershipSignupDialog({
             </Typography>
             <Typography variant="caption" color="text.disabled" sx={{ lineHeight: 1.5 }}>
               By signing up, I agree to the{' '}
-              <Typography component="span" variant="caption" color="primary.main" sx={{ cursor: 'pointer' }}>
-                Terms of Use
-              </Typography>
-              {' '}and{' '}
-              <Typography component="span" variant="caption" color="primary.main" sx={{ cursor: 'pointer' }}>
+              <Link
+                href={ISCA_PRIVACY_POLICY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="caption"
+                color="primary.main"
+              >
                 Privacy Policy
-              </Typography>
+              </Link>
               .
             </Typography>
             <Stack
@@ -6423,6 +6460,26 @@ export function MembershipSignupDialog({
                 }
               >
                 Continue
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        {step === 'hr-quotation-required' && (
+          <Stack spacing={2}>
+            <Alert severity="info" sx={{ '& .MuiAlert-message': { lineHeight: 1.65 } }}>
+              Please get your HR to submit your request to{' '}
+              <Link href="mailto:hello@ainexus.isca.org.sg" underline="hover" sx={{ fontWeight: 700 }}>
+                hello@ainexus.isca.org.sg
+              </Link>{' '}
+              for quotation
+            </Alert>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+              Foreigners who are not ISCA members cannot self-register with a corporate reference ID.
+              Your company HR should submit the quotation request through the corporate portal.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={dismissHrQuotationModal}>
+                Back to eligibility check
               </Button>
             </Stack>
           </Stack>
@@ -6739,11 +6796,11 @@ export function MembershipSignupDialog({
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {isQuestionnaireYesYesYesPath(flowState)
-                    ? 'Enter your numeric company reference ID. We will verify it before continuing to eServices.'
+                    ? 'Enter your company reference ID. We will verify it before continuing to eServices.'
                     : isSgPrUnderCompanyPath(flowState)
-                      ? 'Enter your numeric company reference ID. We will verify it before continuing to NRIC verification.'
+                      ? 'Enter your company reference ID. We will verify it before continuing to NRIC verification.'
                       : isQuestionnaireNoNoYesPath(flowState)
-                        ? 'Enter your numeric company reference ID. We will verify it before continuing to membership registration.'
+                        ? 'Enter your company reference ID. We will verify it before continuing to membership registration.'
                         : 'We will verify your company and display the company name for you to confirm.'}
                 </Typography>
                 <TextField
@@ -6761,8 +6818,11 @@ export function MembershipSignupDialog({
                       companyReferenceRouteAbandoned: false,
                     }))}
                   fullWidth
-                  disabled={flowState.companyReferenceConfirmed === true}
+                  disabled={
+                    flowState.companyReferenceConfirmed === true || companyReferenceVerifying
+                  }
                 />
+                {companyReferenceVerifying ? <LinearProgress /> : null}
               </>
             ) : flowState.companyReferenceVerified === false ? (
               <Stack spacing={2}>
@@ -9657,6 +9717,7 @@ export function MembershipSignupDialog({
               color="inherit"
               size="large"
               onClick={skipCompanyReferenceForNow}
+              disabled={companyReferenceVerifying}
               sx={{ minHeight: 46, textTransform: 'none', fontWeight: 600 }}
             >
               Skip for now
@@ -9666,9 +9727,12 @@ export function MembershipSignupDialog({
               color="primary"
               size="large"
               onClick={verifyCompanyReferenceId}
+              disabled={
+                companyReferenceVerifying || !String(flowState.companyReferenceId || '').trim()
+              }
               sx={{ minHeight: 46, textTransform: 'none', fontWeight: 700, minWidth: 120 }}
             >
-              Verify
+              {companyReferenceVerifying ? 'Verifying...' : 'Verify'}
             </Button>
           </>
         )}
@@ -9680,9 +9744,12 @@ export function MembershipSignupDialog({
             color="primary"
             size="large"
             onClick={verifyCompanyReferenceId}
+            disabled={
+              companyReferenceVerifying || !String(flowState.companyReferenceId || '').trim()
+            }
             sx={{ ...MEMBERSHIP_DIALOG_FOOTER_BUTTON_SX, fontWeight: 700 }}
           >
-            Verify
+            {companyReferenceVerifying ? 'Verifying...' : 'Verify'}
           </Button>
         )}
         {step === 'company-reference'
@@ -9863,6 +9930,33 @@ export function MembershipSignupDialog({
           sx={{ textTransform: 'none', fontWeight: 700 }}
         >
           Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    <Dialog
+      open={showHrQuotationModal}
+      onClose={dismissHrQuotationModal}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle sx={{ fontWeight: 700 }}>Corporate registration</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+          Please get your HR to submit your request to{' '}
+          <Link href="mailto:hello@ainexus.isca.org.sg" underline="hover" sx={{ fontWeight: 700 }}>
+            hello@ainexus.isca.org.sg
+          </Link>{' '}
+          for quotation
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button
+          variant="contained"
+          onClick={dismissHrQuotationModal}
+          sx={{ textTransform: 'none', fontWeight: 700 }}
+        >
+          OK
         </Button>
       </DialogActions>
     </Dialog>

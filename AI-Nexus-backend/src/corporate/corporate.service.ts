@@ -25,12 +25,27 @@ import {
   computeCpeHoursFromWatchSeconds,
   resolveCoursePillarIndex,
 } from '../course/course-program-cpe-summary.util';
+import { buildCourseOverallProgress } from '../course/course-overall-progress.util';
 import { CorporateLearnerNudgeEntity } from './corporate-learner-nudge.entity';
+import { CorporateNudgeCampaignEntity } from './corporate-nudge-campaign.entity';
+import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity';
 
 // ----------------------------------------------------------------------
 
 const AT_RISK_INACTIVE_DAYS = 7;
 const NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+/** Max emails processed per batch in a nudge campaign. Override with CORPORATE_NUDGE_CAMPAIGN_BATCH_SIZE. */
+const NUDGE_CAMPAIGN_BATCH_SIZE = (() => {
+  const raw = Number(process.env.CORPORATE_NUDGE_CAMPAIGN_BATCH_SIZE);
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 500) return Math.floor(raw);
+  return 100;
+})();
+/** Pause between batches (ms) so SMTP is not overloaded. */
+const NUDGE_CAMPAIGN_BATCH_PAUSE_MS = (() => {
+  const raw = Number(process.env.CORPORATE_NUDGE_CAMPAIGN_BATCH_PAUSE_MS);
+  if (Number.isFinite(raw) && raw >= 0 && raw <= 60_000) return Math.floor(raw);
+  return 750;
+})();
 
 export type CorporateLearnerStatus = 'Completed' | 'In Progress' | 'At Risk';
 
@@ -44,6 +59,10 @@ export type CorporatePillarProgress = {
   q?: boolean;
   a?: boolean;
   e?: boolean;
+  /** Equal-weight unit completion % (same as My Progress / learning player). */
+  completionPercent?: number | null;
+  /** Course used for current module / UI progress in this pillar. */
+  courseId?: string | null;
   /** Current module title within this pillar. */
   moduleTitle?: string | null;
   /** Current section (lesson) title within this pillar. */
@@ -101,6 +120,10 @@ export class CorporateService {
     private readonly courseModuleSectionRepository: Repository<CourseModuleSectionEntity>,
     @InjectRepository(CorporateLearnerNudgeEntity)
     private readonly nudgeRepository: Repository<CorporateLearnerNudgeEntity>,
+    @InjectRepository(CorporateNudgeCampaignEntity)
+    private readonly nudgeCampaignRepository: Repository<CorporateNudgeCampaignEntity>,
+    @InjectRepository(CorporateNudgeEmailLogEntity)
+    private readonly nudgeEmailLogRepository: Repository<CorporateNudgeEmailLogEntity>,
     private readonly courseSectionWatchProgressService: CourseSectionWatchProgressService,
     private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
     private readonly courseCertificateService: CourseCertificateService,
@@ -248,7 +271,7 @@ export class CorporateService {
     return { companyCode, data: learner };
   }
 
-  async nudgeLearner(userId: string, companyCodeRaw?: string) {
+  async nudgeLearner(userId: string, companyCodeRaw?: string, sentByUserId?: string) {
     const id = String(userId || '').trim();
     if (!id) throw new NotFoundException('Learner not found');
 
@@ -285,43 +308,540 @@ export class CorporateService {
 
     const rows = await this.buildLearnersForUsers([user]);
     const learner = rows[0];
+    const firstName =
+      String(user.firstname || '').trim() ||
+      String(user.username || '').trim() ||
+      'Learner';
     const learnerName =
-      `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username || 'Learner';
+      `${user.firstname || ''} ${user.lastname || ''}`.trim() || firstName;
+    const progressLabel = await this.buildNudgeProgressLabel(learner);
 
-    await this.emailService.sendCorporateLearnerNudgeEmail({
+    const sendResult = await this.sendAndLogNudgeEmail({
+      companyCode,
+      userId: id,
       toEmail,
+      firstName,
       learnerName,
-      companyLabel: companyCode,
-      pendingMessage: learner?.pending || '',
+      progressLabel,
+      sentByUserId: sentByUserId || null,
+      source: 'single',
+      campaignId: null,
+      updateCooldown: true,
     });
 
-    const now = new Date();
-    if (existing) {
-      existing.lastNudgedAt = now;
-      existing.nudgeCount = Number(existing.nudgeCount || 0) + 1;
-      existing.companyCode = companyCode;
-      await this.nudgeRepository.save(existing);
-    } else {
-      await this.nudgeRepository.save(
-        this.nudgeRepository.create({
-          companyCode,
-          userId: id,
-          lastNudgedAt: now,
-          nudgeCount: 1,
-        }),
-      );
+    if (sendResult.status !== 'sent') {
+      throw new BadRequestException(sendResult.errorMessage || 'Failed to send nudge email');
     }
 
-    const nextState = this.buildNudgeState(now);
+    const nextState = this.buildNudgeState(sendResult.sentAt);
     return {
       companyCode,
       message: 'Nudge email sent successfully',
       data: {
         userId: id,
         email: toEmail,
+        logId: sendResult.logId,
         ...nextState,
       },
     };
+  }
+
+  /** Preview incomplete learners for a nudge campaign (same filter as send). */
+  async previewNudgeCampaign(companyCodeRaw?: string) {
+    const companyCode = await this.resolveCompanyCode(companyCodeRaw);
+    if (!companyCode) throw new ForbiddenException('Company code is required');
+
+    const { incomplete, eligible, skippedCooldown, missingEmail } =
+      await this.collectNudgeCampaignTargets(companyCode);
+
+    return {
+      companyCode,
+      data: {
+        incompleteCount: incomplete.length,
+        eligibleCount: eligible.length,
+        skippedCooldownCount: skippedCooldown.length,
+        missingEmailCount: missingEmail.length,
+        eligible: eligible.slice(0, 50).map((row) => ({
+          userId: row.userId,
+          name: row.name,
+          email: row.email,
+          status: row.status,
+          pending: row.pending,
+        })),
+      },
+    };
+  }
+
+  /** In-process lock so the same campaign is not processed twice. */
+  private readonly runningNudgeCampaignIds = new Set<string>();
+
+  /**
+   * Start a nudge campaign and return immediately.
+   * Batch email sending continues in the background so the user can close the dialog.
+   */
+  async createNudgeCampaign(companyCodeRaw?: string, sentByUserId?: string) {
+    const companyCode = await this.resolveCompanyCode(companyCodeRaw);
+    if (!companyCode) throw new ForbiddenException('Company code is required');
+
+    const { incomplete, eligible, skippedCooldown, missingEmail } =
+      await this.collectNudgeCampaignTargets(companyCode);
+
+    if (!eligible.length && !missingEmail.length && !skippedCooldown.length) {
+      throw new BadRequestException(
+        'No incomplete learners found for this company code. Nothing to send.',
+      );
+    }
+
+    const batches = this.chunkArray(eligible, NUDGE_CAMPAIGN_BATCH_SIZE);
+    const campaign = await this.nudgeCampaignRepository.save(
+      this.nudgeCampaignRepository.create({
+        companyCode,
+        createdByUserId: sentByUserId || null,
+        status: 'running',
+        targetCount: incomplete.length,
+        sentCount: 0,
+        failedCount: 0,
+        skippedCount: skippedCooldown.length + missingEmail.length,
+      }),
+    );
+
+    // Fire-and-forget — HTTP response returns while batches keep running.
+    void this.processNudgeCampaignInBackground({
+      campaignId: campaign.id,
+      companyCode,
+      sentByUserId: sentByUserId || null,
+      eligible,
+      skippedCooldown,
+      missingEmail,
+    }).catch((error) => {
+      console.error(
+        `[corporate-nudge-campaign] Background job failed for ${campaign.id}:`,
+        error instanceof Error ? error.message : error,
+      );
+    });
+
+    return {
+      companyCode,
+      message: `Nudge campaign started in the background. Sending to ${eligible.length} learner(s) in ${batches.length} batch(es). You can close this dialog — progress is saved in View.`,
+      data: {
+        campaignId: campaign.id,
+        status: 'running',
+        background: true,
+        targetCount: incomplete.length,
+        eligibleCount: eligible.length,
+        skippedCount: skippedCooldown.length + missingEmail.length,
+        sentCount: 0,
+        failedCount: 0,
+        batchSize: NUDGE_CAMPAIGN_BATCH_SIZE,
+        batchCount: batches.length,
+        createdAt: campaign.createdAt.toISOString(),
+      },
+    };
+  }
+
+  private async processNudgeCampaignInBackground(input: {
+    campaignId: string;
+    companyCode: string;
+    sentByUserId: string | null;
+    eligible: CorporateLearnerRow[];
+    skippedCooldown: Array<CorporateLearnerRow & { nextNudgeAt?: string | null }>;
+    missingEmail: CorporateLearnerRow[];
+  }) {
+    const { campaignId, companyCode, sentByUserId, eligible, skippedCooldown, missingEmail } =
+      input;
+
+    if (this.runningNudgeCampaignIds.has(campaignId)) {
+      console.warn(`[corporate-nudge-campaign] Already running: ${campaignId}`);
+      return;
+    }
+    this.runningNudgeCampaignIds.add(campaignId);
+
+    let sentCount = 0;
+    let failedCount = 0;
+
+    try {
+      const campaign = await this.nudgeCampaignRepository.findOne({ where: { id: campaignId } });
+      if (!campaign) return;
+
+      for (const row of skippedCooldown) {
+        await this.writeNudgeEmailLog({
+          companyCode,
+          campaignId,
+          userId: row.userId,
+          toEmail: row.email,
+          learnerName: row.name,
+          subject: 'Reminder: Complete AI fluency program',
+          progressLabel: null,
+          status: 'skipped',
+          errorMessage: `Cooldown active until ${row.nextNudgeAt || 'later'}`,
+          sentByUserId,
+          source: 'campaign',
+          sentAt: new Date(),
+        });
+      }
+
+      for (const row of missingEmail) {
+        await this.writeNudgeEmailLog({
+          companyCode,
+          campaignId,
+          userId: row.userId,
+          toEmail: '',
+          learnerName: row.name,
+          subject: 'Reminder: Complete AI fluency program',
+          progressLabel: null,
+          status: 'skipped',
+          errorMessage: 'Learner does not have an email address',
+          sentByUserId,
+          source: 'campaign',
+          sentAt: new Date(),
+        });
+      }
+
+      const batches = this.chunkArray(eligible, NUDGE_CAMPAIGN_BATCH_SIZE);
+      console.log(
+        `[corporate-nudge-campaign] ${campaignId}: ${eligible.length} emails in ${batches.length} batch(es) of up to ${NUDGE_CAMPAIGN_BATCH_SIZE}`,
+      );
+
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const batch = batches[batchIndex];
+        console.log(
+          `[corporate-nudge-campaign] ${campaignId}: batch ${batchIndex + 1}/${batches.length} — ${batch.length} recipient(s)`,
+        );
+
+        for (const row of batch) {
+          const user = await this.userRepository.findOne({ where: { id: row.userId } });
+          if (!user) {
+            failedCount += 1;
+            continue;
+          }
+          const firstName =
+            String(user.firstname || '').trim() ||
+            String(user.username || '').trim() ||
+            'Learner';
+          const progressLabel = await this.buildNudgeProgressLabel(row);
+          const result = await this.sendAndLogNudgeEmail({
+            companyCode,
+            userId: row.userId,
+            toEmail: row.email,
+            firstName,
+            learnerName: row.name,
+            progressLabel,
+            sentByUserId,
+            source: 'campaign',
+            campaignId,
+            updateCooldown: true,
+          });
+          if (result.status === 'sent') sentCount += 1;
+          else failedCount += 1;
+        }
+
+        campaign.sentCount = sentCount;
+        campaign.failedCount = failedCount;
+        campaign.status = 'running';
+        await this.nudgeCampaignRepository.save(campaign);
+
+        if (batchIndex < batches.length - 1 && NUDGE_CAMPAIGN_BATCH_PAUSE_MS > 0) {
+          await new Promise((resolve) => setTimeout(resolve, NUDGE_CAMPAIGN_BATCH_PAUSE_MS));
+        }
+      }
+
+      campaign.sentCount = sentCount;
+      campaign.failedCount = failedCount;
+      campaign.skippedCount = skippedCooldown.length + missingEmail.length;
+      campaign.status = 'completed';
+      await this.nudgeCampaignRepository.save(campaign);
+      console.log(
+        `[corporate-nudge-campaign] ${campaignId}: completed sent=${sentCount} failed=${failedCount}`,
+      );
+    } catch (error) {
+      console.error(
+        `[corporate-nudge-campaign] ${campaignId}: failed`,
+        error instanceof Error ? error.message : error,
+      );
+      try {
+        const campaign = await this.nudgeCampaignRepository.findOne({ where: { id: campaignId } });
+        if (campaign) {
+          campaign.sentCount = sentCount;
+          campaign.failedCount = failedCount;
+          campaign.status = 'failed';
+          await this.nudgeCampaignRepository.save(campaign);
+        }
+      } catch {
+        // best-effort status update
+      }
+    } finally {
+      this.runningNudgeCampaignIds.delete(campaignId);
+    }
+  }
+
+  private chunkArray<T>(items: T[], size: number): T[][] {
+    const chunkSize = Math.max(1, size);
+    const chunks: T[][] = [];
+    for (let i = 0; i < items.length; i += chunkSize) {
+      chunks.push(items.slice(i, i + chunkSize));
+    }
+    return chunks;
+  }
+
+  async listNudgeCampaigns(params: {
+    companyCode?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const companyCode = await this.resolveCompanyCode(params.companyCode);
+    if (!companyCode) throw new ForbiddenException('Company code is required');
+
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(params.limit) || 10));
+
+    const [rows, total] = await this.nudgeCampaignRepository
+      .createQueryBuilder('c')
+      .where('LOWER(TRIM(c.companyCode)) = LOWER(:code)', { code: companyCode })
+      .orderBy('c.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      companyCode,
+      data: rows.map((c) => ({
+        id: c.id,
+        status: c.status,
+        targetCount: c.targetCount,
+        sentCount: c.sentCount,
+        failedCount: c.failedCount,
+        skippedCount: c.skippedCount,
+        createdByUserId: c.createdByUserId,
+        createdAt: c.createdAt.toISOString(),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  async listNudgeEmailLogs(params: {
+    companyCode?: string;
+    campaignId?: string;
+    q?: string;
+    status?: string;
+    source?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const companyCode = await this.resolveCompanyCode(params.companyCode);
+    if (!companyCode) throw new ForbiddenException('Company code is required');
+
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
+    const campaignId = String(params.campaignId || '').trim();
+    const q = String(params.q || '').trim().toLowerCase();
+    const status = String(params.status || '').trim().toLowerCase();
+    const source = String(params.source || '').trim().toLowerCase();
+
+    const qb = this.nudgeEmailLogRepository
+      .createQueryBuilder('l')
+      .where('LOWER(TRIM(l.companyCode)) = LOWER(:code)', { code: companyCode })
+      .orderBy('l.sentAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (campaignId) {
+      qb.andWhere('l.campaignId = :campaignId', { campaignId });
+    }
+    if (status && status !== 'all') {
+      qb.andWhere('LOWER(l.status) = :status', { status });
+    }
+    if (source && source !== 'all') {
+      qb.andWhere('LOWER(l.source) = :source', { source });
+    }
+    if (q) {
+      qb.andWhere(
+        `(
+          LOWER(COALESCE(l.learnerName, '')) LIKE :q
+          OR LOWER(COALESCE(l.toEmail, '')) LIKE :q
+          OR LOWER(COALESCE(l.subject, '')) LIKE :q
+          OR LOWER(COALESCE(l.progressLabel, '')) LIKE :q
+          OR LOWER(COALESCE(l.errorMessage, '')) LIKE :q
+        )`,
+        { q: `%${q}%` },
+      );
+    }
+
+    const [rows, total] = await qb.getManyAndCount();
+
+    return {
+      companyCode,
+      data: rows.map((l) => ({
+        id: l.id,
+        campaignId: l.campaignId,
+        userId: l.userId,
+        toEmail: l.toEmail,
+        learnerName: l.learnerName,
+        subject: l.subject,
+        progressLabel: l.progressLabel,
+        status: l.status,
+        errorMessage: l.errorMessage,
+        sentByUserId: l.sentByUserId,
+        source: l.source,
+        sentAt: l.sentAt.toISOString(),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  private async collectNudgeCampaignTargets(companyCode: string) {
+    const learners = await this.buildLearners(companyCode);
+    const incomplete = learners.filter((l) => l.status !== 'Completed' && !l.cert);
+
+    const eligible: CorporateLearnerRow[] = [];
+    /** Campaign intentionally emails everyone incomplete — cooldown only applies to single nudge. */
+    const skippedCooldown: Array<CorporateLearnerRow & { nextNudgeAt?: string | null }> = [];
+    const missingEmail: CorporateLearnerRow[] = [];
+
+    for (const row of incomplete) {
+      const email = String(row.email || '').trim();
+      if (!email) {
+        missingEmail.push(row);
+        continue;
+      }
+      eligible.push(row);
+    }
+
+    return { incomplete, eligible, skippedCooldown, missingEmail };
+  }
+
+  private async sendAndLogNudgeEmail(input: {
+    companyCode: string;
+    userId: string;
+    toEmail: string;
+    firstName: string;
+    learnerName: string;
+    progressLabel: string;
+    sentByUserId: string | null;
+    source: string;
+    campaignId: string | null;
+    updateCooldown: boolean;
+  }): Promise<{
+    status: 'sent' | 'failed';
+    logId: string;
+    sentAt: Date;
+    errorMessage?: string;
+  }> {
+    const sentAt = new Date();
+    let subject = 'Reminder: Complete AI fluency program';
+    try {
+      const sent = await this.emailService.sendCorporateLearnerNudgeEmail({
+        toEmail: input.toEmail,
+        firstName: input.firstName,
+        progressLabel: input.progressLabel,
+      });
+      subject = sent.subject;
+
+      if (input.updateCooldown) {
+        await this.touchNudgeCooldown(input.companyCode, input.userId, sentAt);
+      }
+
+      const log = await this.writeNudgeEmailLog({
+        companyCode: input.companyCode,
+        campaignId: input.campaignId,
+        userId: input.userId,
+        toEmail: input.toEmail,
+        learnerName: input.learnerName,
+        subject,
+        progressLabel: input.progressLabel,
+        status: 'sent',
+        errorMessage: null,
+        sentByUserId: input.sentByUserId,
+        source: input.source,
+        sentAt,
+      });
+
+      return { status: 'sent', logId: log.id, sentAt };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to send nudge email';
+      const log = await this.writeNudgeEmailLog({
+        companyCode: input.companyCode,
+        campaignId: input.campaignId,
+        userId: input.userId,
+        toEmail: input.toEmail,
+        learnerName: input.learnerName,
+        subject,
+        progressLabel: input.progressLabel,
+        status: 'failed',
+        errorMessage,
+        sentByUserId: input.sentByUserId,
+        source: input.source,
+        sentAt,
+      });
+      return { status: 'failed', logId: log.id, sentAt, errorMessage };
+    }
+  }
+
+  private async touchNudgeCooldown(companyCode: string, userId: string, at: Date) {
+    const existing = await this.nudgeRepository
+      .createQueryBuilder('n')
+      .where('n.userId = :userId', { userId })
+      .andWhere('LOWER(TRIM(n.companyCode)) = LOWER(:code)', { code: companyCode })
+      .getOne();
+
+    if (existing) {
+      existing.lastNudgedAt = at;
+      existing.nudgeCount = Number(existing.nudgeCount || 0) + 1;
+      existing.companyCode = companyCode;
+      await this.nudgeRepository.save(existing);
+      return;
+    }
+
+    await this.nudgeRepository.save(
+      this.nudgeRepository.create({
+        companyCode,
+        userId,
+        lastNudgedAt: at,
+        nudgeCount: 1,
+      }),
+    );
+  }
+
+  private async writeNudgeEmailLog(input: {
+    companyCode: string;
+    campaignId: string | null;
+    userId: string;
+    toEmail: string;
+    learnerName: string | null;
+    subject: string;
+    progressLabel: string | null;
+    status: string;
+    errorMessage: string | null;
+    sentByUserId: string | null;
+    source: string;
+    sentAt: Date;
+  }) {
+    return this.nudgeEmailLogRepository.save(
+      this.nudgeEmailLogRepository.create({
+        companyCode: input.companyCode,
+        campaignId: input.campaignId,
+        userId: input.userId,
+        toEmail: input.toEmail || '—',
+        learnerName: input.learnerName,
+        subject: input.subject,
+        progressLabel: input.progressLabel,
+        status: input.status,
+        errorMessage: input.errorMessage,
+        sentByUserId: input.sentByUserId,
+        source: input.source,
+        sentAt: input.sentAt,
+      }),
+    );
   }
 
   async exportLearnersCsv(params: {
@@ -722,15 +1242,17 @@ export class CorporateService {
     const attachLesson = (
       pillar: CorporatePillarProgress,
       lesson?: PillarLessonInfo,
+      fallbackCourseId?: string | null,
     ): CorporatePillarProgress => ({
       ...pillar,
+      courseId: lesson?.courseId || fallbackCourseId || null,
       moduleTitle: lesson?.moduleTitle || null,
       lessonTitle: lesson?.lessonTitle || null,
     });
 
-    p1 = attachLesson(p1, lessonContext.byPillar.get(1));
-    p2 = attachLesson(p2, lessonContext.byPillar.get(2));
-    p3 = attachLesson(p3, lessonContext.byPillar.get(3));
+    p1 = attachLesson(p1, lessonContext.byPillar.get(1), pillarCourses.get(1)?.id || null);
+    p2 = attachLesson(p2, lessonContext.byPillar.get(2), pillarCourses.get(2)?.id || null);
+    p3 = attachLesson(p3, lessonContext.byPillar.get(3), pillarCourses.get(3)?.id || null);
 
     const hasCert = Boolean(cert);
     const inactiveDays = lastActiveAt
@@ -973,6 +1495,177 @@ export class CorporateService {
     if (days < 7) return `${days} days ago`;
     if (days < 30) return `${days} days ago`;
     return date.toLocaleDateString('en-SG');
+  }
+
+  /**
+   * Same equal-weight unit % as My Progress / learning player (not CPE hours).
+   */
+  private async resolveCourseUiCompletionPercent(
+    userId: string,
+    courseId: string,
+  ): Promise<number | null> {
+    const id = String(courseId || '').trim();
+    const uid = String(userId || '').trim();
+    if (!id || !uid) return null;
+
+    try {
+      const course = await this.courseRepository.findOne({
+        where: { id },
+        select: ['id', 'level'],
+      });
+      if (!course) return null;
+
+      const modules = await this.courseModuleRepository.find({
+        where: { courseId: id },
+        select: ['id'],
+        order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      });
+      const moduleIds = modules.map((m) => m.id);
+      const sections = moduleIds.length
+        ? await this.courseModuleSectionRepository.find({
+            where: { moduleId: In(moduleIds) },
+            select: ['id', 'moduleId'],
+            order: { sortOrder: 'ASC', createdAt: 'ASC' },
+          })
+        : [];
+      const sectionsByModule = new Map<string, Array<{ id: string }>>();
+      for (const section of sections) {
+        const list = sectionsByModule.get(section.moduleId) || [];
+        list.push({ id: section.id });
+        sectionsByModule.set(section.moduleId, list);
+      }
+
+      const sectionProgressBySectionId =
+        await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(uid, id);
+      const quizAssessmentProgress =
+        await this.courseQuizAssessmentProgressService.getLearnerProgress(uid, id);
+
+      const quizCountByModuleId: Record<string, number> = {};
+      const assignmentCountByModuleId: Record<string, number> = {};
+      let courseEndQuizCount = 0;
+      let courseEndAssignmentCount = 0;
+      for (const scope of quizAssessmentProgress.scopes || []) {
+        if (scope.moduleId) {
+          if (scope.quizCount > 0) quizCountByModuleId[scope.moduleId] = scope.quizCount;
+          if (scope.assignmentCount > 0) {
+            assignmentCountByModuleId[scope.moduleId] = scope.assignmentCount;
+          }
+        } else {
+          courseEndQuizCount = scope.quizCount;
+          courseEndAssignmentCount = scope.assignmentCount;
+        }
+      }
+
+      const summary = buildCourseOverallProgress({
+        courseLevel: course.level || null,
+        modules: modules.map((mod) => ({
+          id: mod.id,
+          sections: sectionsByModule.get(mod.id) || [],
+        })),
+        sectionProgressBySectionId,
+        quizAssessmentScopes: quizAssessmentProgress.scopes || [],
+        quizCountByModuleId,
+        assignmentCountByModuleId,
+        courseEndQuizCount,
+        courseEndAssignmentCount,
+      });
+
+      return Math.max(0, Math.min(100, Number(summary.completionPercent) || 0));
+    } catch (error) {
+      console.error(
+        `[corporate-nudge] Failed to resolve UI completion % for user=${uid} course=${id}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Nudge email progress line — client rules:
+   * - % matches learning player / My Progress (equal-weight units), not CPE hours.
+   * - If modules/hours done and only quiz/assessment left → say that (not Module X).
+   * - Pillar 2 milestone = quiz + assessment completed (not module count alone).
+   * - Otherwise show % + current module while still watching modules.
+   */
+  private async buildNudgeProgressLabel(learner?: CorporateLearnerRow | null): Promise<string> {
+    if (!learner) return 'in progress';
+
+    const describeOutstandingQa = (p: CorporatePillarProgress): string | null => {
+      const lackQuiz = !p.q;
+      const lackAssessment = !p.a;
+      if (!lackQuiz && !lackAssessment) return null;
+      if (lackQuiz && lackAssessment) {
+        return 'you only lack the quiz and assessment to be completed';
+      }
+      if (lackQuiz) return 'you only lack the quiz to be completed';
+      return 'you only lack the assessment to be completed';
+    };
+
+    const hoursComplete = (p: CorporatePillarProgress) =>
+      Number(p?.t) > 0 && Number(p?.c) >= Number(p?.t);
+
+    const cpePct = (p: CorporatePillarProgress) => {
+      const earned = Number(p?.c) || 0;
+      const total = Number(p?.t) || 0;
+      return total > 0 ? Math.min(100, Math.round((earned / total) * 100)) : 0;
+    };
+
+    const resolvePct = async (p: CorporatePillarProgress): Promise<number> => {
+      if (p.completionPercent != null && Number.isFinite(Number(p.completionPercent))) {
+        return Math.max(0, Math.min(100, Math.round(Number(p.completionPercent))));
+      }
+      if (p.courseId) {
+        const uiPct = await this.resolveCourseUiCompletionPercent(learner.userId, p.courseId);
+        if (uiPct != null) return uiPct;
+      }
+      return cpePct(p);
+    };
+
+    /** Modules treated as done when hours full, or nearly full while only QA remains. */
+    const modulesEffectivelyDone = async (p: CorporatePillarProgress) => {
+      if (hoursComplete(p)) return true;
+      const outstanding = describeOutstandingQa(p);
+      if (!outstanding) return false;
+      return (await resolvePct(p)) >= 80;
+    };
+
+    // Pillar 1: modules watched but quiz/assessment still open
+    if (await modulesEffectivelyDone(learner.p1)) {
+      const outstanding = describeOutstandingQa(learner.p1);
+      if (outstanding) return outstanding;
+    } else if (Number(learner.p1?.t) > 0 || learner.p1?.courseId || learner.p1?.moduleTitle) {
+      const pct = await resolvePct(learner.p1);
+      const moduleTitle = String(learner.p1?.moduleTitle || '').trim();
+      if (moduleTitle) return `${pct}% complete / on Module ${moduleTitle}`;
+      return `${pct}% complete`;
+    }
+
+    // Pillar 2: milestone = quiz + assessment on a specialisation (p2.e)
+    if (learner.p2?.e) {
+      return 'Pillar 2 specialisation milestone achieved';
+    }
+
+    if (await modulesEffectivelyDone(learner.p2)) {
+      const outstanding = describeOutstandingQa(learner.p2);
+      if (outstanding) return outstanding;
+    } else if (Number(learner.p2?.t) > 0 || String(learner.p2?.moduleTitle || '').trim() || learner.p2?.courseId) {
+      const pct = await resolvePct(learner.p2);
+      const moduleTitle = String(learner.p2?.moduleTitle || '').trim();
+      if (moduleTitle) return `${pct}% complete / on Module ${moduleTitle}`;
+      if (Number(learner.p2?.t) > 0 || learner.p2?.courseId) return `${pct}% complete`;
+    }
+
+    if (await modulesEffectivelyDone(learner.p3)) {
+      const outstanding = describeOutstandingQa(learner.p3);
+      if (outstanding) return outstanding;
+    } else if (Number(learner.p3?.t) > 0 || learner.p3?.courseId) {
+      const pct = await resolvePct(learner.p3);
+      const moduleTitle = String(learner.p3?.moduleTitle || '').trim();
+      if (moduleTitle) return `${pct}% complete / on Module ${moduleTitle}`;
+      return `${pct}% complete`;
+    }
+
+    return 'in progress';
   }
 
   private buildPendingMessage(input: {

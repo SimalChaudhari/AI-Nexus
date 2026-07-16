@@ -1,21 +1,20 @@
 import { Helmet } from 'react-helmet-async';
 
 import { CONFIG } from 'src/config-global';
-
-import { AmplifySignInView } from 'src/sections/auth/amplify';
+import { CorporateNudgeTrackView } from 'src/sections/corporate';
 
 // ----------------------------------------------------------------------
 
-const metadata = { title: `Sign in | Amplify - ${CONFIG.site.name}` };
+const metadata = { title: `Nudge email track | ${CONFIG.site.name}` };
 
 export default function Page() {
   return (
     <>
       <Helmet>
-        <title> {metadata.title}</title>
+        <title>{metadata.title}</title>
       </Helmet>
 
-      <AmplifySignInView />
+      <CorporateNudgeTrackView />
     </>
   );
 }

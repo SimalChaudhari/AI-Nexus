@@ -30,10 +30,10 @@ import {
   createSalesforceNexusUser,
   setSalesforceNexusPassword,
   saveSalesforceMembershipRecord,
-  checkSalesforceUserByEmail,
   checkSalesforceUserByNric,
   updateSalesforceNexusUser,
 } from 'src/auth/context/jwt';
+import { assertSalesforceEmailAvailable } from 'src/utils/salesforce-email-check';
 
 // ----------------------------------------------------------------------
 
@@ -359,30 +359,14 @@ export function SalesforceMembershipCreateStep({
   };
 
   const verifyEmailAvailableInSalesforce = async (email) => {
-    const trimmed = String(email || '').trim().toLowerCase();
-    if (!trimmed || !trimmed.includes('@')) {
-      return {
-        ok: false,
-        message: 'Please enter a valid email address.',
-      };
-    }
     setEmailSfChecking(true);
     setEmailSfError('');
     try {
-      const result = await checkSalesforceUserByEmail(trimmed);
-      if (result?.found) {
-        const message =
-          'An eServices account already exists for this email address. Please sign in instead of creating a new account.';
-        setEmailSfError(message);
-        return { ok: false, message };
+      const result = await assertSalesforceEmailAvailable(email);
+      if (!result.ok) {
+        setEmailSfError(result.message);
       }
-      return { ok: true };
-    } catch (err) {
-      const message =
-        String(err?.message || '').trim()
-        || 'Could not verify email with eServices. Please try again.';
-      setEmailSfError(message);
-      return { ok: false, message };
+      return result;
     } finally {
       setEmailSfChecking(false);
     }

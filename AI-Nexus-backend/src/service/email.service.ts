@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import {
     buildBrandTemplate,
     buildCorporateNudgeBodyHtml,
+    buildCorporateNudgeProgressSentence,
     buildCredentialsBodyHtml,
     buildFeeWaiverHrVerificationBodyHtml,
     buildForumReplyBodyHtml,
@@ -18,6 +19,7 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
+        //  this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
         const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
@@ -31,6 +33,7 @@ export class EmailService {
             });
             return;
         }
+        
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
         const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
@@ -303,46 +306,67 @@ export class EmailService {
     }
 
     /**
-     * Simple corporate HR nudge email — template can be refined later.
+     * Corporate learner nudge — remind them to continue the AI fluency program.
      */
     async sendCorporateLearnerNudgeEmail(params: {
         toEmail: string;
-        learnerName: string;
-        companyLabel?: string;
-        pendingMessage?: string;
-    }): Promise<void> {
-        const { toEmail, learnerName, companyLabel, pendingMessage } = params;
-        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
-        const normalizedPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
-        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedPath}`;
+        firstName: string;
+        progressLabel?: string;
+        courseUrl?: string;
+    }): Promise<{ subject: string; toEmail: string; progressLabel: string }> {
+        const firstName = String(params.firstName || '').trim() || 'there';
+        const progressLabel = String(params.progressLabel || '').trim() || 'in progress';
+        const coursePath = String(process.env.EMAIL_COURSE_PATH || '/learning').trim();
+        const normalizedCoursePath = coursePath.startsWith('/') ? coursePath : `/${coursePath}`;
+        const courseUrl =
+            String(params.courseUrl || '').trim() ||
+            `${this.resolveFrontendBaseUrl()}${normalizedCoursePath}`;
+        const supportEmail = 'hello@ainexus.isca.org.sg';
+        const subject = 'Reminder: Complete AI fluency program';
+        const toEmail = String(params.toEmail || '').trim();
+
+        const ctaLabel = 'Continue the course';
         const bodyHtml = buildCorporateNudgeBodyHtml({
-            companyLabel: companyLabel || '',
-            pendingMessage: pendingMessage || '',
+            progressLabel,
+            courseUrl,
+            ctaLabel,
         });
 
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
-            heading: 'Complete Your Learning Progress',
-            greetingName: learnerName,
-            intro:
-                'Your organisation has sent a friendly reminder to continue your AI Nexus programme and complete your current pillar learning goals.',
+            heading: 'Complete your AI fluency program',
+            greetingPrefix: 'Hi',
+            greetingName: firstName,
+            greetingBold: true,
+            intro: '',
             bodyHtml,
-            ctaLabel: 'Continue Learning',
-            ctaUrl: loginUrl,
-            note: 'If you have already completed the pending items, you can ignore this reminder.',
-            footer: 'AI Nexus corporate learning reminder',
+            footer: 'AINEXUS',
         });
 
         const mailOptions = {
             from: this.fromEmail,
             to: toEmail,
-            subject: 'Reminder: Continue your AI Nexus learning progress',
-            text: `Hello ${learnerName},\n\nYour organisation has asked you to continue your AI Nexus learning and complete your current pillar progress.\n${pendingMessage ? `\nPending item: ${pendingMessage}\n` : ''}\nSign in: ${loginUrl}\n`,
+            subject,
+            text: [
+                `Hi ${firstName},`,
+                '',
+                `Just a quick reminder to complete AI fluency program. ${buildCorporateNudgeProgressSentence(progressLabel, false)}`,
+                'Please set aside some time to finish the remaining modules and any required assessment. You can continue the course here:',
+                `${ctaLabel}: ${courseUrl}`,
+                '',
+                'By completing the course, you will be eligible for the lucky draw, earn applicable CPE hours, and develop the knowledge required for your current and future responsibilities.',
+                '',
+                `Having trouble accessing the course or need assistance? Please contact ${supportEmail}`,
+                '',
+                'Thank you,',
+                'AINEXUS',
+            ].join('\n'),
             html,
         };
 
         try {
             await this.transporter.sendMail(mailOptions);
             console.log(`Corporate nudge email sent to ${toEmail}`);
+            return { subject, toEmail, progressLabel };
         } catch (error) {
             console.error('Error sending corporate nudge email:', error);
             throw new Error('Failed to send nudge email');

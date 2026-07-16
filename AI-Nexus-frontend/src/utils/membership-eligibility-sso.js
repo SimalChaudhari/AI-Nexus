@@ -200,6 +200,10 @@ export function persistFeeWaiverSignupPrefill(
           company: isCorporate ? String(flow.companyVerifiedName || '').trim() : '',
           industry: isCorporate ? String(flow.companyVerifiedIndustry || '').trim() : '',
           companyReferenceId: isCorporate ? String(flow.companyReferenceId || '').trim() : '',
+          companyCode:
+            isCorporate && flow.companyReferenceConfirmed === true
+              ? String(flow.companyReferenceId || '').trim()
+              : '',
           designation: '',
           educationalBackground: educationalBackgroundLabel,
           nricFin: String(flow.verifiedNricFin || '').trim(),
