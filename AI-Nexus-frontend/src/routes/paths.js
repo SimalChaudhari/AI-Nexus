@@ -205,6 +205,7 @@ export const paths = {
     progress: `${ROOTS.CORPORATE}/progress`,
     learner: (userId) => `${ROOTS.CORPORATE}/progress/${userId}`,
     enrol: `${ROOTS.CORPORATE}/enrol`,
+    bulkUploads: `${ROOTS.CORPORATE}/enrol/uploads`,
     reports: `${ROOTS.CORPORATE}/reports`,
     nudgeTrack: `${ROOTS.CORPORATE}/nudge-track`,
   },
@@ -312,6 +313,11 @@ export const paths = {
       root: `${ROOTS.ADMIN}/order`,
       list: `${ROOTS.ADMIN}/order/list`,
       details: (id) => `${ROOTS.ADMIN}/order/${id}`,
+    },
+    corporateMember: {
+      root: `${ROOTS.ADMIN}/corporate-member`,
+      list: `${ROOTS.ADMIN}/corporate-member/list`,
+      details: (id) => `${ROOTS.ADMIN}/corporate-member/${id}`,
     },
     product: {
       root: `${ROOTS.ADMIN}/product`,

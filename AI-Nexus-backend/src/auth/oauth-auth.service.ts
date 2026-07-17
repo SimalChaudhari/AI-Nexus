@@ -1,5 +1,5 @@
 // src/auth/oauth-auth.service.ts
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DeepPartial } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -1689,6 +1689,78 @@ export class OAuthAuthService {
     }
   }
 
+  /**
+   * Salesforce corporateaccandconcheck sometimes returns an unrelated account/contact
+   * with success=true. Only treat as found when returned email + UEN match the request.
+   */
+  enforceCorporateCheckExactMatch(
+    requested: { email: string; uenNumber: string },
+    resData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const nestedRaw =
+      resData.data && typeof resData.data === 'object'
+        ? (resData.data as Record<string, unknown>)
+        : resData;
+    const contact =
+      nestedRaw.contact && typeof nestedRaw.contact === 'object'
+        ? (nestedRaw.contact as Record<string, unknown>)
+        : {};
+    const account =
+      nestedRaw.account && typeof nestedRaw.account === 'object'
+        ? (nestedRaw.account as Record<string, unknown>)
+        : {};
+
+    const returnedEmail = normalizeEmail(String(contact.email || ''));
+    const returnedUen = String(account.uenNumber || '').trim();
+    const requestedEmail = requested.email;
+    const requestedUen = requested.uenNumber;
+
+    const flaggedExists = Boolean(
+      nestedRaw.corporateAccountExists && nestedRaw.contactExists,
+    );
+    if (!flaggedExists) {
+      return resData;
+    }
+
+    const emailMatches = !requestedEmail || returnedEmail === requestedEmail;
+    const uenMatches =
+      !requestedUen
+      || returnedUen.toLowerCase() === requestedUen.toLowerCase();
+
+    // Requested email and/or UEN must match the Salesforce payload exactly.
+    if (emailMatches && uenMatches) {
+      return {
+        ...resData,
+        data: {
+          ...nestedRaw,
+          exactMatch: true,
+        },
+      };
+    }
+
+    console.warn('[Salesforce] corporateaccandconcheck rejected — email/UEN must match exactly:', {
+      requestedEmail: requestedEmail || null,
+      requestedUen: requestedUen || null,
+      returnedEmail: returnedEmail || null,
+      returnedUen: returnedUen || null,
+    });
+
+    return {
+      success: false,
+      message: 'Corporate account/contact email and UEN must match exactly.',
+      errorCode: 'CORPORATE_CHECK_EXACT_MATCH_REQUIRED',
+      data: {
+        corporateAccountExists: false,
+        contactExists: false,
+        exactMatch: false,
+        mismatch: {
+          email: Boolean(requestedEmail) && !emailMatches,
+          uenNumber: Boolean(requestedUen) && !uenMatches,
+        },
+      },
+    };
+  }
+
   /** Check whether Corporate Account / Contact already exist. */
   async checkCorporateSalesforceAccount(payload: {
     uenNumber?: string;
@@ -1727,7 +1799,7 @@ export class OAuthAuthService {
       if (isError) {
         throw new BadRequestException(errorMsg || 'Failed to check corporate Salesforce account.');
       }
-      return resData;
+      return this.enforceCorporateCheckExactMatch({ email, uenNumber }, resData);
     } catch (err: unknown) {
       if (err instanceof BadRequestException) throw err;
       if (axios.isAxiosError(err)) {
@@ -3367,6 +3439,54 @@ export class OAuthAuthService {
     }
   }
 
+  /**
+   * Prefer Salesforce Account Id as stable identity. When the IdP email changed,
+   * reuse the existing local user (matched by salesforceAccountId) and update email.
+   */
+  private async resolveLocalUserForSsoLogin(params: {
+    email: string;
+    salesforceAccountId: string;
+  }): Promise<{ user: UserEntity | null; matchedBy: 'accountId' | 'email' | null }> {
+    const { email, salesforceAccountId } = params;
+
+    if (salesforceAccountId) {
+      const byAccountId = await this.userRepository.findOne({
+        where: { salesforceAccountId },
+      });
+      if (byAccountId) {
+        return { user: byAccountId, matchedBy: 'accountId' };
+      }
+    }
+
+    const byEmail = await this.userRepository.findOne({ where: { email } });
+    if (byEmail) {
+      return { user: byEmail, matchedBy: 'email' };
+    }
+
+    return { user: null, matchedBy: null };
+  }
+
+  /** Update local email when Salesforce/IdP email changed for the same Account Id. */
+  private async applySsoEmailIfChanged(user: UserEntity, email: string): Promise<void> {
+    const current = normalizeEmail(user.email || '');
+    if (!email || current === email) return;
+
+    const emailOwner = await this.userRepository.findOne({ where: { email } });
+    if (emailOwner && emailOwner.id !== user.id) {
+      throw new ConflictException(
+        'This email is already linked to another AI Nexus account. Contact support to merge or update the account.',
+      );
+    }
+
+    console.log('[SSO Login] Updating local email from Salesforce Account Id match:', {
+      userId: user.id,
+      previousEmail: current || null,
+      nextEmail: email,
+      salesforceAccountId: user.salesforceAccountId || null,
+    });
+    user.email = email;
+  }
+
   /** Create or update user from IdP data and issue our access token only (no refresh token). */
   async processOAuthAuthentication(
     idpUserInfo: IdPUserInfo,
@@ -3385,7 +3505,18 @@ export class OAuthAuthService {
     const firstName = idpUserInfo.given_name || idpUserInfo.first_name || idpUserInfo.name || '';
     const lastName = idpUserInfo.family_name || idpUserInfo.last_name || '';
 
-    let user = await this.userRepository.findOne({ where: { email } });
+    // Fetch Salesforce identity early so we can match existing users by Account Id
+    // even when their email changed in Salesforce / eServices.
+    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+    const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+    const salesforceAccountId = String(
+      (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.accountID : '')
+        || (this.isCorporateSalesforceUserInfo(corporateInfo) ? corporateInfo.accountId : '')
+        || '',
+    ).trim();
+
+    const resolved = await this.resolveLocalUserForSsoLogin({ email, salesforceAccountId });
+    let user = resolved.user;
     const isNewUser = !user;
 
     console.log('[SSO Login] Resolved identity:', {
@@ -3393,8 +3524,11 @@ export class OAuthAuthService {
       socialId,
       firstName,
       lastName,
+      salesforceAccountId: salesforceAccountId || null,
+      matchedBy: resolved.matchedBy,
       isNewUser,
       existingUserId: user?.id || null,
+      existingEmail: user?.email || null,
     });
 
     if (!user) {
@@ -3415,19 +3549,23 @@ export class OAuthAuthService {
       user = this.userRepository.create(newUserPartial);
       console.log('[SSO Login] Creating NEW user for SSO email:', email, 'username:', username);
     } else {
+      if (resolved.matchedBy === 'accountId') {
+        await this.applySsoEmailIfChanged(user, email);
+      }
       user.authProvider = AuthProvider.OAUTH;
       user.socialId = socialId || user.socialId || null;
       user.socialAccessToken = idpAccessToken;
       user.isVerified = true;
       if (firstName) user.firstname = firstName;
       if (lastName) user.lastname = lastName;
-      console.log('[SSO Login] Updating EXISTING user via SSO:', { id: user.id, email });
+      console.log('[SSO Login] Updating EXISTING user via SSO:', {
+        id: user.id,
+        email: user.email,
+        matchedBy: resolved.matchedBy,
+      });
     }
 
-    // Best-effort: hit Salesforce custom Apex REST nexus user info using the
-    // IdP access token as a Bearer token. Persist the SCAQ/Associate/account
-    // flags onto the user so the eligibility flow can verify them automatically.
-    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+    // Persist SCAQ/Associate/account flags from nexus (already fetched above).
     if (nexusInfo && typeof nexusInfo === 'object') {
       const previous = {
         accountId: user.salesforceAccountId,
@@ -3462,7 +3600,6 @@ export class OAuthAuthService {
     }
 
     // Corporate HR portal: detect via userinfoforcorporate and assign Corporate role.
-    const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
     if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
       const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
       const accountId = String(corporateInfo.accountId || '').trim();

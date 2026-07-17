@@ -55,11 +55,13 @@ export class UserController {
         @Query('limit') limit?: string,
         @Query('search') search?: string,
         @Query('status') status?: string,
+        @Query('role') role?: string,
         @Res() response?: Response,
     ) {
         const normalizedStatus = this.paginationService.parseEnumQuery(status, UserStatus);
+        const normalizedRole = this.paginationService.parseEnumQuery(role, UserRole);
 
-        const hasFilters = Boolean(page || limit || search || normalizedStatus);
+        const hasFilters = Boolean(page || limit || search || normalizedStatus || normalizedRole);
         if (hasFilters) {
             const result = await this.userService.getAll({
                 usePagination: true,
@@ -67,6 +69,7 @@ export class UserController {
                 limit: this.paginationService.parsePositiveInteger(limit, DEFAULT_USERS_LIMIT),
                 search: search?.trim() || undefined,
                 status: normalizedStatus,
+                role: normalizedRole,
             });
 
             const paginated = result as UserPaginatedListResult;

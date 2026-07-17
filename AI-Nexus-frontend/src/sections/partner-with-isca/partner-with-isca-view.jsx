@@ -38,16 +38,6 @@ import {
   PARTNER_HERO_BODY_SX,
   PARTNER_HERO_EYEBROW_SX,
   PARTNER_HERO_TITLE_SX,
-  PARTNER_MOCKUP_AVATAR_SX,
-  PARTNER_MOCKUP_HEADER_LOGO_SX,
-  PARTNER_MOCKUP_HEADER_SUB_SX,
-  PARTNER_MOCKUP_HEADER_TITLE_SX,
-  PARTNER_MOCKUP_LABEL_SX,
-  PARTNER_MOCKUP_META_SX,
-  PARTNER_MOCKUP_NAME_SX,
-  PARTNER_MOCKUP_PILL_SX,
-  PARTNER_MOCKUP_STAT_VALUE_SX,
-  PARTNER_MOCKUP_TAB_SX,
   PARTNER_SECTION_TITLE_SX,
   PARTNER_STEP_BODY_SX,
   PARTNER_STEP_TITLE_SX,
@@ -61,8 +51,6 @@ import {
   ISCA_PANEL_BG,
   ISCA_RED,
   ISCA_RED_DARK,
-  STAFF_AVATAR_TONES,
-  STATUS_PILL_TONES,
 } from './partner-with-isca-theme';
 
 // ----------------------------------------------------------------------
@@ -93,12 +81,6 @@ const HERO_FOOTER_ANIMATION = {
   initial: { opacity: 0.92, clipPath: 'inset(0 100% 0 0)' },
   animate: { opacity: 1, clipPath: 'inset(0 0 0 0)' },
   transition: { duration: 1.1, ease: HERO_EASE, delay: 1.45 },
-};
-
-const MOCKUP_VALUE_TONE_COLORS = {
-  navy: 'secondary.main',
-  green: '#0F6E56',
-  amber: '#BA7517',
 };
 
 function resolveAssetUrl(url) {
@@ -747,389 +729,57 @@ function BenefitsSection({ section }) {
   );
 }
 
-const STAFF_TABLE_COLUMNS = 'minmax(120px, 1.4fr) minmax(88px, 1fr) minmax(68px, auto) minmax(56px, auto)';
 
-function StaffActivityRowCard({ row }) {
-  const avatarTone = STAFF_AVATAR_TONES[row.initials] || STAFF_AVATAR_TONES.MC;
-  const pillTone = STATUS_PILL_TONES[row.statusTone] || STATUS_PILL_TONES.none;
+function DashboardMockupImage({ imageUrl }) {
+  const src = resolveAssetUrl(imageUrl);
 
-  return (
-    <Box
-      sx={{
-        p: 1.5,
-        borderBottom: `1px solid #f4f6fa`,
-        '&:last-of-type': { borderBottom: 'none' },
-      }}
-    >
-      <Stack direction="row" spacing={1.125} alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Stack direction="row" spacing={1.125} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-          <Box
-            sx={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              bgcolor: avatarTone.bg,
-              color: avatarTone.color,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              ...PARTNER_MOCKUP_AVATAR_SX,
-              flexShrink: 0,
-            }}
-          >
-            {row.initials}
-          </Box>
-          <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ ...PARTNER_MOCKUP_NAME_SX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {row.name}
-            </Typography>
-            <Typography sx={PARTNER_MOCKUP_META_SX}>{row.role}</Typography>
-          </Box>
-        </Stack>
-        <Box
-          component="span"
-          sx={{
-            ...PARTNER_MOCKUP_PILL_SX,
-            px: 1,
-            py: 0.25,
-            borderRadius: '10px',
-            bgcolor: pillTone.bg,
-            color: pillTone.color,
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}
-        >
-          {row.status}
-        </Box>
-      </Stack>
-
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-        <Box sx={{ flex: 1, height: 5, bgcolor: ISCA_BORDER, borderRadius: '3px', overflow: 'hidden' }}>
-          <Box
-            sx={{
-              width: `${row.progress}%`,
-              height: '100%',
-              bgcolor: row.progressColor,
-              borderRadius: '3px',
-            }}
-          />
-        </Box>
-        <Typography sx={{ ...PARTNER_MOCKUP_META_SX, minWidth: 32 }}>{row.progress}%</Typography>
-      </Stack>
-
-      {row.cert === 'download' ? (
-        <Typography component="span" sx={{ ...PARTNER_MOCKUP_META_SX, color: 'primary.main', fontWeight: 700 }}>
-          Download certificate
-        </Typography>
-      ) : (
-        <Typography sx={PARTNER_MOCKUP_META_SX}>Certificate pending</Typography>
-      )}
-    </Box>
-  );
-}
-
-function StaffActivityTable({ staffRows }) {
-  const rows = Array.isArray(staffRows) ? staffRows : [];
-
-  return (
-    <>
+  if (!src) {
+    return (
       <Box
         sx={{
-          display: { xs: 'block', sm: 'none' },
-          border: `1px solid ${ISCA_BORDER}`,
-          borderRadius: '10px',
-          overflow: 'hidden',
-        }}
-      >
-        {rows.map((row) => (
-          <StaffActivityRowCard key={row.name} row={row} />
-        ))}
-      </Box>
-
-      <Box
-        sx={{
-          display: { xs: 'none', sm: 'block' },
-          border: `1px solid ${ISCA_BORDER}`,
-          borderRadius: '10px',
-          overflow: 'hidden',
-          overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
-        <Box sx={{ minWidth: 380 }}>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: STAFF_TABLE_COLUMNS,
-              gap: 1,
-              px: 1.75,
-              py: 1,
-              bgcolor: '#f8f9fc',
-              borderBottom: `1px solid ${ISCA_BORDER}`,
-            }}
-          >
-            {['Staff', 'Progress', 'Status', 'Cert.'].map((label) => (
-              <Typography key={label} sx={{ ...PARTNER_MOCKUP_LABEL_SX, letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
-                {label}
-              </Typography>
-            ))}
-          </Box>
-
-          {rows.map((row) => {
-            const avatarTone = STAFF_AVATAR_TONES[row.initials] || STAFF_AVATAR_TONES.MC;
-            const pillTone = STATUS_PILL_TONES[row.statusTone] || STATUS_PILL_TONES.none;
-
-            return (
-              <Box
-                key={row.name}
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: STAFF_TABLE_COLUMNS,
-                  gap: 1,
-                  px: 1.75,
-                  py: 1.125,
-                  alignItems: 'center',
-                  borderBottom: `1px solid #f4f6fa`,
-                  '&:last-of-type': { borderBottom: 'none' },
-                  '&:hover': { bgcolor: '#fafbfd' },
-                }}
-              >
-                <Stack direction="row" spacing={1.125} alignItems="center" sx={{ minWidth: 0 }}>
-                  <Box
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      bgcolor: avatarTone.bg,
-                      color: avatarTone.color,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      ...PARTNER_MOCKUP_AVATAR_SX,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {row.initials}
-                  </Box>
-                  <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-                    <Typography sx={{ ...PARTNER_MOCKUP_NAME_SX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {row.name}
-                    </Typography>
-                    <Typography sx={{ ...PARTNER_MOCKUP_META_SX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {row.role}
-                    </Typography>
-                  </Box>
-                </Stack>
-
-                <Stack direction="row" spacing={0.625} alignItems="center" sx={{ minWidth: 0 }}>
-                  <Box sx={{ flex: 1, minWidth: 40, height: 5, bgcolor: ISCA_BORDER, borderRadius: '3px', overflow: 'hidden' }}>
-                    <Box
-                      sx={{
-                        width: `${row.progress}%`,
-                        height: '100%',
-                        bgcolor: row.progressColor,
-                        borderRadius: '3px',
-                      }}
-                    />
-                  </Box>
-                  <Typography sx={{ ...PARTNER_MOCKUP_META_SX, minWidth: 28, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {row.progress}%
-                  </Typography>
-                </Stack>
-
-                <Box
-                  component="span"
-                  sx={{
-                    ...PARTNER_MOCKUP_PILL_SX,
-                    px: 1,
-                    py: 0.25,
-                    borderRadius: '10px',
-                    bgcolor: pillTone.bg,
-                    color: pillTone.color,
-                    whiteSpace: 'nowrap',
-                    width: 'fit-content',
-                  }}
-                >
-                  {row.status}
-                </Box>
-
-                {row.cert === 'download' ? (
-                  <Typography
-                    component="span"
-                    sx={{ ...PARTNER_MOCKUP_META_SX, color: 'primary.main', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    Download
-                  </Typography>
-                ) : (
-                  <Typography sx={{ ...PARTNER_MOCKUP_META_SX, color: 'text.disabled', whiteSpace: 'nowrap' }}>
-                    —
-                  </Typography>
-                )}
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
-    </>
-  );
-}
-
-function DashboardMockup({ mockup }) {
-  const tabs = Array.isArray(mockup?.tabs) ? mockup.tabs : [];
-  const summaryStats = Array.isArray(mockup?.summaryStats) ? mockup.summaryStats : [];
-
-  return (
-    <Box
-      sx={{
-        bgcolor: '#fff',
-        border: '1.5px solid #dde4f0',
-        borderRadius: '14px',
-        overflow: 'hidden',
-        minWidth: 0,
-        width: 1,
-      }}
-    >
-      <Box
-        sx={{
-          bgcolor: ISCA_DARK_NAVY,
-          px: 2.5,
-          py: 1.75,
+          width: 1,
+          minHeight: { xs: 240, md: 320 },
+          borderRadius: '14px',
+          border: `1.5px dashed ${ISCA_BORDER}`,
+          bgcolor: '#fff',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 2,
+          justifyContent: 'center',
+          px: 3,
+          textAlign: 'center',
         }}
       >
-        <Stack direction="row" spacing={1.25} alignItems="center">
-          <Box
-            sx={{
-              width: 32,
-              height: 32,
-              bgcolor: ISCA_RED,
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              ...PARTNER_MOCKUP_HEADER_LOGO_SX,
-              color: '#fff',
-            }}
-          >
-            {mockup?.companyLogoText}
-          </Box>
-          <Box>
-            <Typography sx={PARTNER_MOCKUP_HEADER_TITLE_SX}>{mockup?.companyName}</Typography>
-            <Typography sx={PARTNER_MOCKUP_HEADER_SUB_SX}>{mockup?.companySub}</Typography>
-          </Box>
-        </Stack>
-        <Box
-          component="span"
-          sx={{
-            fontFamily: 'monospace',
-            ...PARTNER_MOCKUP_HEADER_LOGO_SX,
-            color: '#ff8a96',
-            bgcolor: 'rgba(232,25,44,0.2)',
-            border: '1px solid rgba(232,25,44,0.3)',
-            borderRadius: '4px',
-            px: 1.25,
-            py: 0.375,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {mockup?.companyCode}
-        </Box>
-      </Box>
-
-      <Box sx={{ display: 'flex', borderBottom: `1px solid ${ISCA_BORDER}`, bgcolor: '#fff' }}>
-        {tabs.map((tab, index) => (
-          <Box
-            key={tab}
-            sx={{
-              px: 2.25,
-              py: 1.25,
-              ...PARTNER_MOCKUP_TAB_SX,
-              color: index === 0 ? 'primary.main' : 'text.secondary',
-              borderBottom: index === 0 ? (theme) => `2px solid ${theme.palette.primary.main}` : '2px solid transparent',
-            }}
-          >
-            {tab}
-          </Box>
-        ))}
-      </Box>
-
-      <Box sx={{ p: 2.5 }}>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(3, 1fr)' },
-            gap: 1.25,
-            mb: 2.5,
-          }}
-        >
-          {summaryStats.map((stat) => (
-            <Box
-              key={stat.label}
-              sx={{
-                bgcolor: '#f8f9fc',
-                border: `1px solid ${ISCA_BORDER}`,
-                borderRadius: '10px',
-                p: '12px 14px',
-              }}
-            >
-              <Typography sx={{ ...PARTNER_MOCKUP_LABEL_SX, mb: 0.5 }}>
-                {stat.label}
-              </Typography>
-              <Typography
-                sx={{
-                  ...PARTNER_MOCKUP_STAT_VALUE_SX,
-                  color: MOCKUP_VALUE_TONE_COLORS[stat.valueTone] || 'secondary.main',
-                }}
-              >
-                {stat.value}
-              </Typography>
-              <Typography
-                sx={{
-                  ...PARTNER_MOCKUP_META_SX,
-                  mt: 0.25,
-                  color: stat.subColor,
-                  fontWeight: String(stat.subColor).includes('primary') ? 600 : 400,
-                }}
-              >
-                {stat.sub}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-
-        <Typography sx={{ ...PARTNER_MOCKUP_LABEL_SX, mb: 1.25, letterSpacing: '0.6px' }}>
-          {mockup?.overallCompletionLabel}
+        <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>
+          Dashboard mockup image will appear here
         </Typography>
-        <Box sx={{ mb: 2.5 }}>
-          <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
-            <Typography sx={{ ...PARTNER_MOCKUP_META_SX, fontSize: 13 }}>
-              {mockup?.overallCompletionSubtitle}
-            </Typography>
-            <Typography sx={{ ...PARTNER_MOCKUP_META_SX, fontSize: 13, fontWeight: 700, color: 'secondary.main' }}>
-              {mockup?.overallCompletionPercent}
-            </Typography>
-          </Stack>
-          <Box sx={{ height: 8, bgcolor: ISCA_BORDER, borderRadius: '4px', overflow: 'hidden' }}>
-            <Box
-              sx={{
-                width: `${Math.max(0, Math.min(100, Number.parseFloat(String(mockup?.overallCompletionPercent || '0')) || 0))}%`,
-                height: '100%',
-                bgcolor: ISCA_RED,
-                borderRadius: '4px',
-              }}
-            />
-          </Box>
-        </Box>
-
-        <Typography sx={{ ...PARTNER_MOCKUP_LABEL_SX, mb: 1.25, letterSpacing: '0.6px' }}>
-          {mockup?.staffActivityLabel}
-        </Typography>
-
-        <StaffActivityTable staffRows={mockup?.staffRows} />
       </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        width: 1,
+        maxWidth: 1,
+        borderRadius: '14px',
+        overflow: 'hidden',
+        border: '1.5px solid #dde4f0',
+        bgcolor: '#fff',
+        lineHeight: 0,
+      }}
+    >
+      <Box
+        component="img"
+        src={src}
+        alt="Corporate dashboard"
+        sx={{
+          width: '100%',
+          maxWidth: '100%',
+          height: 'auto',
+          display: 'block',
+          verticalAlign: 'middle',
+        }}
+      />
     </Box>
   );
 }
@@ -1149,12 +799,13 @@ function DashboardSection({ section }) {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: '1fr 1.6fr' },
-          gap: { xs: 5, md: 8 },
+          // Mobile + laptop: stacked full-width image. Large desktop: side-by-side.
+          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(0, 1.6fr)' },
+          gap: { xs: 4, md: 5, lg: 8 },
           alignItems: 'start',
         }}
       >
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, width: 1 }}>
           <Eyebrow align="left">{section?.eyebrow}</Eyebrow>
           <SectionTitle align="left" sx={{ mb: 1.5 }}>
             {section?.title}
@@ -1190,7 +841,7 @@ function DashboardSection({ section }) {
         </Box>
 
         <Box sx={{ minWidth: 0, width: 1 }}>
-          <DashboardMockup mockup={section?.mockup} />
+          <DashboardMockupImage imageUrl={section?.mockupImageUrl} />
         </Box>
       </Box>
     </PartnerLayoutSection>

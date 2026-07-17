@@ -1,5 +1,26 @@
-import { Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { Request, Response } from 'express';
 
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
@@ -11,6 +32,19 @@ import { CorporateService } from './corporate.service';
 
 type AuthedRequest = Request & {
   user?: { id?: string; role?: string; companyCode?: string | null };
+};
+
+const zipFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
+  const allowedExt = /\.zip$/i.test(file.originalname || '');
+  const allowedMime =
+    /^(application\/zip|application\/x-zip-compressed|application\/octet-stream)$/i.test(
+      file.mimetype || '',
+    ) || !file.mimetype;
+  if (!allowedExt || !allowedMime) {
+    cb(new Error('Only .zip files are allowed') as any, false);
+    return;
+  }
+  cb(null, true);
 };
 
 /**
@@ -238,5 +272,116 @@ export class CorporateController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.status(200).send(buffer);
+  }
+
+  @Post('bulk-enrolment/upload')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Upload one or more bulk enrolment ZIP files' })
+  @ApiConsumes('multipart/form-data')
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+      required: ['files'],
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 500 * 1024 * 1024 },
+      fileFilter: zipFileFilter,
+    }),
+  )
+  async uploadBulkEnrolmentZip(
+    @Req() req: AuthedRequest,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Query('companyCode') companyCode?: string,
+  ) {
+    return this.corporateService.uploadBulkEnrolmentZips({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      uploadedByUserId: req.user?.id,
+      files,
+    });
+  }
+
+  @Get('bulk-enrolment/my-uploads')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'List bulk enrolment ZIP files uploaded by the current user' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async listMyBulkEnrolmentUploads(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.corporateService.listBulkEnrolmentUploads({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      uploadedByUserId: req.user?.id,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  @Get('bulk-enrolment/uploads')
+  @Roles(UserRole.Admin)
+  @ApiOperation({ summary: 'List bulk enrolment ZIP uploads (Admin only)' })
+  @ApiQuery({ name: 'companyCode', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async listBulkEnrolmentUploads(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.corporateService.listBulkEnrolmentUploads({
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  @Get('bulk-enrolment/uploads/:uploadId/download')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Download a bulk enrolment ZIP (owner can download own file; Admin can download any)',
+  })
+  async downloadBulkEnrolmentZip(
+    @Req() req: AuthedRequest,
+    @Res() res: Response,
+    @Param('uploadId') uploadId: string,
+  ) {
+    const { filename, buffer, mimeType } = await this.corporateService.downloadBulkEnrolmentZip({
+      uploadId,
+      requesterUserId: req.user?.id,
+      requesterRole: req.user?.role,
+    });
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(buffer);
+  }
+
+  @Delete('bulk-enrolment/uploads/:uploadId')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Delete a bulk enrolment ZIP (owner can delete own file; Admin can delete any)',
+  })
+  async deleteBulkEnrolmentZip(
+    @Req() req: AuthedRequest,
+    @Param('uploadId') uploadId: string,
+  ) {
+    return this.corporateService.deleteBulkEnrolmentZip({
+      uploadId,
+      requesterUserId: req.user?.id,
+      requesterRole: req.user?.role,
+    });
   }
 }

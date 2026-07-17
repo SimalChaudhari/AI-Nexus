@@ -30,6 +30,7 @@ function normalizeStringArray(value: unknown): string[] | null {
 
 export type UserListQueryOptions = PaginatedQueryOptions & {
     status?: UserStatus;
+    role?: UserRole;
     usePagination?: boolean;
 };
 
@@ -61,11 +62,19 @@ export class UserService {
             100,
         );
         const status = queryOptions?.status;
+        const role = queryOptions?.role;
 
         const query = this.userRepository
             .createQueryBuilder('user')
             .where('user.role != :adminRole', { adminRole: UserRole.Admin })
             .andWhere('user.isDraft = :isDraft', { isDraft: false });
+
+        if (role) {
+            query.andWhere('user.role = :role', { role });
+        } else {
+            // Default Users list excludes Corporate accounts (shown under Corporate Members).
+            query.andWhere('user.role != :corporateRole', { corporateRole: UserRole.Corporate });
+        }
 
         if (status) {
             query.andWhere('user.status = :status', { status });
@@ -78,7 +87,8 @@ export class UserService {
                         .orWhere('user.lastname ILIKE :search', { search: `%${normalized.search}%` })
                         .orWhere('user.username ILIKE :search', { search: `%${normalized.search}%` })
                         .orWhere('user.email ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.contactNumber ILIKE :search', { search: `%${normalized.search}%` });
+                        .orWhere('user.contactNumber ILIKE :search', { search: `%${normalized.search}%` })
+                        .orWhere('user.companyCode ILIKE :search', { search: `%${normalized.search}%` });
                 }),
             );
         }

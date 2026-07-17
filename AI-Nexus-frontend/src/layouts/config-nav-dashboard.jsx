@@ -180,6 +180,11 @@ export const navData = [
         ],
       },
       {
+        title: 'Corporate Members',
+        path: paths.admin.corporateMember.root,
+        icon: <Iconify icon="solar:buildings-3-bold-duotone" width={24} />,
+      },
+      {
         title: 'Labels',
         path: paths.admin.label.root,
         icon: ICONS.label,

@@ -2,7 +2,6 @@ import {
   PARTNER_ISCA_BENEFITS,
   PARTNER_ISCA_DASHBOARD_FEATURES,
   PARTNER_ISCA_FAQS,
-  PARTNER_ISCA_STAFF_ROWS,
   PARTNER_ISCA_STATS,
   PARTNER_ISCA_STEPS,
 } from './partner-with-isca-content';
@@ -13,15 +12,6 @@ export const PARTNER_DASHBOARD_FEATURES_MAX = 8;
 export const PARTNER_STEPS_MAX = 3;
 export const PARTNER_FAQS_MAX = 20;
 export const PARTNER_HERO_ACTIONS_MAX = 4;
-export const PARTNER_MOCKUP_TABS_MAX = 5;
-export const PARTNER_MOCKUP_SUMMARY_STATS_MAX = 3;
-export const PARTNER_MOCKUP_STAFF_ROWS_MAX = 8;
-
-const DEFAULT_MOCKUP_SUMMARY_STATS = [
-  { label: 'Total Enrolled', value: '124', sub: '+18 this month', valueTone: 'navy', subColor: '#3B6D11' },
-  { label: 'Completed', value: '52', sub: '42% rate', valueTone: 'green', subColor: 'text.secondary' },
-  { label: 'Not Started', value: '11', sub: 'Action needed', valueTone: 'amber', subColor: 'primary.main' },
-];
 
 const DEFAULT_HERO_ACTIONS = [
   { label: 'Register Corporate Account', variant: 'red', scrollTo: 'register', href: '' },
@@ -54,19 +44,7 @@ export const DEFAULT_PARTNER_WITH_ISCA_CONTENT = {
     description:
       'From the moment a staff member links their account with your company code, they appear in your dashboard. Track who is enrolled, who has finished, and who needs a nudge — all in one place.',
     features: PARTNER_ISCA_DASHBOARD_FEATURES.map((row) => ({ ...row })),
-    mockup: {
-      companyLogoText: 'PwC',
-      companyName: 'PwC Singapore',
-      companySub: 'Corporate Dashboard',
-      companyCode: 'PWC-SG24',
-      tabs: ['Overview', 'All Staff', 'Reports'],
-      summaryStats: DEFAULT_MOCKUP_SUMMARY_STATS.map((row) => ({ ...row })),
-      overallCompletionLabel: 'Overall Completion',
-      overallCompletionSubtitle: 'All enrolled staff',
-      overallCompletionPercent: '42%',
-      staffActivityLabel: 'Recent Staff Activity',
-      staffRows: PARTNER_ISCA_STAFF_ROWS.map((row) => ({ ...row })),
-    },
+    mockupImageUrl: '',
   },
   howItWorks: {
     eyebrow: 'How it works',
@@ -108,30 +86,6 @@ function normalizeBenefitItem(row) {
   };
 }
 
-function normalizeStaffRow(row) {
-  const progress = Math.max(0, Math.min(100, Number(row?.progress) || 0));
-  return {
-    initials: row?.initials != null ? String(row.initials).slice(0, 3) : '',
-    name: row?.name != null ? String(row.name) : '',
-    role: row?.role != null ? String(row.role) : '',
-    progress,
-    progressColor: row?.progressColor != null ? String(row.progressColor) : '#E8192C',
-    status: row?.status != null ? String(row.status) : '',
-    statusTone: row?.statusTone != null ? String(row.statusTone) : 'none',
-    cert: row?.cert === 'download' ? 'download' : null,
-  };
-}
-
-function normalizeSummaryStat(row) {
-  return {
-    label: row?.label != null ? String(row.label) : '',
-    value: row?.value != null ? String(row.value) : '',
-    sub: row?.sub != null ? String(row.sub) : '',
-    valueTone: row?.valueTone != null ? String(row.valueTone) : 'navy',
-    subColor: row?.subColor != null ? String(row.subColor) : 'text.secondary',
-  };
-}
-
 function normalizeStep(row) {
   return {
     icon: row?.icon != null ? String(row.icon) : '',
@@ -158,8 +112,6 @@ export function normalizePartnerWithIscaContent(source) {
   const heroSource = source.hero && typeof source.hero === 'object' ? source.hero : {};
   const benefitsSource = source.benefits && typeof source.benefits === 'object' ? source.benefits : {};
   const dashboardSource = source.dashboard && typeof source.dashboard === 'object' ? source.dashboard : {};
-  const mockupSource =
-    dashboardSource.mockup && typeof dashboardSource.mockup === 'object' ? dashboardSource.mockup : {};
   const howSource = source.howItWorks && typeof source.howItWorks === 'object' ? source.howItWorks : {};
   const faqSource = source.faq && typeof source.faq === 'object' ? source.faq : {};
   const ctaSource = source.cta && typeof source.cta === 'object' ? source.cta : {};
@@ -168,9 +120,6 @@ export function normalizePartnerWithIscaContent(source) {
   const rawActions = Array.isArray(heroSource.actions) ? heroSource.actions : [];
   const rawBenefits = Array.isArray(benefitsSource.items) ? benefitsSource.items : [];
   const rawFeatures = Array.isArray(dashboardSource.features) ? dashboardSource.features : [];
-  const rawTabs = Array.isArray(mockupSource.tabs) ? mockupSource.tabs : [];
-  const rawSummaryStats = Array.isArray(mockupSource.summaryStats) ? mockupSource.summaryStats : [];
-  const rawStaffRows = Array.isArray(mockupSource.staffRows) ? mockupSource.staffRows : [];
   const rawSteps = Array.isArray(howSource.steps) ? howSource.steps : [];
   const rawFaqs = Array.isArray(faqSource.items) ? faqSource.items : [];
 
@@ -213,43 +162,8 @@ export function normalizePartnerWithIscaContent(source) {
           title: row?.title != null ? String(row.title) : '',
           description: row?.description != null ? String(row.description) : '',
         })),
-      mockup: {
-        companyLogoText:
-          mockupSource.companyLogoText != null
-            ? String(mockupSource.companyLogoText)
-            : base.dashboard.mockup.companyLogoText,
-        companyName:
-          mockupSource.companyName != null ? String(mockupSource.companyName) : base.dashboard.mockup.companyName,
-        companySub:
-          mockupSource.companySub != null ? String(mockupSource.companySub) : base.dashboard.mockup.companySub,
-        companyCode:
-          mockupSource.companyCode != null ? String(mockupSource.companyCode) : base.dashboard.mockup.companyCode,
-        tabs: (rawTabs.length ? rawTabs : base.dashboard.mockup.tabs)
-          .slice(0, PARTNER_MOCKUP_TABS_MAX)
-          .map((tab) => String(tab || '')),
-        summaryStats: (rawSummaryStats.length ? rawSummaryStats : base.dashboard.mockup.summaryStats)
-          .slice(0, PARTNER_MOCKUP_SUMMARY_STATS_MAX)
-          .map(normalizeSummaryStat),
-        overallCompletionLabel:
-          mockupSource.overallCompletionLabel != null
-            ? String(mockupSource.overallCompletionLabel)
-            : base.dashboard.mockup.overallCompletionLabel,
-        overallCompletionSubtitle:
-          mockupSource.overallCompletionSubtitle != null
-            ? String(mockupSource.overallCompletionSubtitle)
-            : base.dashboard.mockup.overallCompletionSubtitle,
-        overallCompletionPercent:
-          mockupSource.overallCompletionPercent != null
-            ? String(mockupSource.overallCompletionPercent)
-            : base.dashboard.mockup.overallCompletionPercent,
-        staffActivityLabel:
-          mockupSource.staffActivityLabel != null
-            ? String(mockupSource.staffActivityLabel)
-            : base.dashboard.mockup.staffActivityLabel,
-        staffRows: (rawStaffRows.length ? rawStaffRows : base.dashboard.mockup.staffRows)
-          .slice(0, PARTNER_MOCKUP_STAFF_ROWS_MAX)
-          .map(normalizeStaffRow),
-      },
+      mockupImageUrl:
+        dashboardSource.mockupImageUrl != null ? String(dashboardSource.mockupImageUrl) : '',
     },
     howItWorks: {
       eyebrow: howSource.eyebrow != null ? String(howSource.eyebrow) : base.howItWorks.eyebrow,

@@ -26,7 +26,6 @@ import {
   PARTNER_BENEFITS_MAX,
   PARTNER_DASHBOARD_FEATURES_MAX,
   PARTNER_FAQS_MAX,
-  PARTNER_MOCKUP_STAFF_ROWS_MAX,
   PARTNER_STATS_MAX,
   PARTNER_STEPS_MAX,
 } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
@@ -159,6 +158,13 @@ export function PartnerWithIscaSettingsCard({
   onHeroDelete,
   onHeroSave,
   onHeroClearOrRemove,
+  mockupImageFile,
+  mockupImageUrl,
+  mockupImageSubmitting,
+  onMockupImageDrop,
+  onMockupImageDelete,
+  onMockupImageSave,
+  onMockupImageClearOrRemove,
 }) {
   const [activeTab, setActiveTab] = useState('hero');
   const [expandedKey, setExpandedKey] = useState(null);
@@ -260,7 +266,6 @@ export function PartnerWithIscaSettingsCard({
     if (type === 'feature') return 'dashboard.features';
     if (type === 'step') return 'howItWorks.steps';
     if (type === 'faq') return 'faq.items';
-    if (type === 'staff') return 'dashboard.mockup.staffRows';
     return '';
   };
 
@@ -269,7 +274,6 @@ export function PartnerWithIscaSettingsCard({
     if (type === 'feature') return { title: '', description: '' };
     if (type === 'step') return { icon: 'solar:buildings-2-bold-duotone', badge: '', title: '', description: '', done: false };
     if (type === 'faq') return { question: '', answer: '' };
-    if (type === 'staff') return { initials: '', name: '', role: '', progress: 0, progressColor: '#E8192C', status: '', statusTone: 'none', cert: null };
     return {};
   };
 
@@ -352,9 +356,6 @@ export function PartnerWithIscaSettingsCard({
   const benefitItems = Array.isArray(benefits.items) ? benefits.items : [];
   const dashboard = content?.dashboard || {};
   const features = Array.isArray(dashboard.features) ? dashboard.features : [];
-  const mockup = dashboard.mockup || {};
-  const summaryStats = Array.isArray(mockup.summaryStats) ? mockup.summaryStats : [];
-  const staffRows = Array.isArray(mockup.staffRows) ? mockup.staffRows : [];
   const howItWorks = content?.howItWorks || {};
   const steps = Array.isArray(howItWorks.steps) ? howItWorks.steps : [];
   const faq = content?.faq || {};
@@ -396,7 +397,7 @@ export function PartnerWithIscaSettingsCard({
                   expanded={expandedKey === rowKey}
                   onToggleExpand={() => setExpandedKey((prev) => (prev === rowKey ? null : rowKey))}
                   onEdit={() => openEditDrawer(type, index)}
-                  onDelete={type === 'feature' || type === 'faq' || type === 'staff' ? () => removeListItem(getListPath(type), index) : undefined}
+                  onDelete={type === 'feature' || type === 'faq' ? () => removeListItem(getListPath(type), index) : undefined}
                   submitting={submitting}
                 />
                 {index < items.length - 1 ? <Divider /> : null}
@@ -612,53 +613,18 @@ export function PartnerWithIscaSettingsCard({
         </Stack>
       </Card>
 
-      <Card sx={{ p: 3 }}>
-        <Stack spacing={2.5}>
-          <SectionCardHeader title="Dashboard mockup" description="Preview data inside the corporate dashboard illustration." />
-          <Grid container spacing={2}>
-            <Grid item xs={6} md={3}><TextField label="Logo text" value={mockup.companyLogoText || ''} onChange={(e) => updateRoot('dashboard.mockup.companyLogoText', e.target.value)} fullWidth /></Grid>
-            <Grid item xs={6} md={3}><TextField label="Company name" value={mockup.companyName || ''} onChange={(e) => updateRoot('dashboard.mockup.companyName', e.target.value)} fullWidth /></Grid>
-            <Grid item xs={6} md={3}><TextField label="Subtitle" value={mockup.companySub || ''} onChange={(e) => updateRoot('dashboard.mockup.companySub', e.target.value)} fullWidth /></Grid>
-            <Grid item xs={6} md={3}><TextField label="Company code" value={mockup.companyCode || ''} onChange={(e) => updateRoot('dashboard.mockup.companyCode', e.target.value)} fullWidth /></Grid>
-          </Grid>
-          <TextField label="Tabs (comma separated)" value={(mockup.tabs || []).join(', ')} onChange={(e) => updateRoot('dashboard.mockup.tabs', e.target.value.split(',').map((v) => v.trim()).filter(Boolean))} fullWidth />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, pt: 1 }}>Summary stats</Typography>
-          <Grid container spacing={1.5}>
-            {summaryStats.map((stat, index) => (
-              <Grid key={`summary-${index}`} item xs={12} md={4}>
-                <FieldBox>
-                  <Stack spacing={1.25}>
-                    <TextField size="small" label="Label" value={stat.label || ''} onChange={(e) => updateListItem('dashboard.mockup.summaryStats', index, 'label', e.target.value)} fullWidth />
-                    <TextField size="small" label="Value" value={stat.value || ''} onChange={(e) => updateListItem('dashboard.mockup.summaryStats', index, 'value', e.target.value)} fullWidth />
-                    <TextField size="small" label="Sub text" value={stat.sub || ''} onChange={(e) => updateListItem('dashboard.mockup.summaryStats', index, 'sub', e.target.value)} fullWidth />
-                    <TextField select size="small" label="Value tone" value={stat.valueTone || 'navy'} onChange={(e) => updateListItem('dashboard.mockup.summaryStats', index, 'valueTone', e.target.value)} fullWidth>
-                      <MenuItem value="navy">Navy</MenuItem>
-                      <MenuItem value="green">Green</MenuItem>
-                      <MenuItem value="amber">Amber</MenuItem>
-                    </TextField>
-                  </Stack>
-                </FieldBox>
-              </Grid>
-            ))}
-          </Grid>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}><TextField label="Overall label" value={mockup.overallCompletionLabel || ''} onChange={(e) => updateRoot('dashboard.mockup.overallCompletionLabel', e.target.value)} fullWidth /></Grid>
-            <Grid item xs={12} md={4}><TextField label="Overall subtitle" value={mockup.overallCompletionSubtitle || ''} onChange={(e) => updateRoot('dashboard.mockup.overallCompletionSubtitle', e.target.value)} fullWidth /></Grid>
-            <Grid item xs={12} md={4}><TextField label="Overall percent" value={mockup.overallCompletionPercent || ''} onChange={(e) => updateRoot('dashboard.mockup.overallCompletionPercent', e.target.value)} fullWidth /></Grid>
-          </Grid>
-          <Divider />
-          {renderListSection({
-            type: 'staff',
-            items: staffRows,
-            max: PARTNER_MOCKUP_STAFF_ROWS_MAX,
-            addLabel: 'Add staff row',
-            getIcon: () => 'solar:user-bold-duotone',
-            getTitle: (row, i) => row.name || `Staff ${i + 1}`,
-            getSubtitle: (row) => `${row.role || '—'} · ${row.progress ?? 0}% · ${row.status || '—'}`,
-          })}
-          <SaveBar submitting={submitting} onSave={onSave} />
-        </Stack>
-      </Card>
+      <HeroImageCard
+        title="Dashboard mockup image"
+        description="Upload the full corporate dashboard illustration shown on the right side of this section."
+        saveLabel="Save mockup image"
+        heroFile={mockupImageFile}
+        heroUrl={mockupImageUrl}
+        heroSubmitting={mockupImageSubmitting}
+        onDrop={onMockupImageDrop}
+        onDelete={onMockupImageDelete}
+        onSave={onMockupImageSave}
+        onClearOrRemove={onMockupImageClearOrRemove}
+      />
     </Stack>
   );
 
@@ -847,26 +813,6 @@ export function PartnerWithIscaSettingsCard({
               <>
                 <TextField label="Question" value={draft.question || ''} onChange={(e) => setDraft((p) => ({ ...p, question: e.target.value }))} fullWidth />
                 <TextField label="Answer" value={draft.answer || ''} onChange={(e) => setDraft((p) => ({ ...p, answer: e.target.value }))} fullWidth multiline minRows={5} />
-              </>
-            )}
-            {drawerType === 'staff' && (
-              <>
-                <Grid container spacing={2}>
-                  <Grid item xs={4}><TextField label="Initials" value={draft.initials || ''} onChange={(e) => setDraft((p) => ({ ...p, initials: e.target.value }))} fullWidth /></Grid>
-                  <Grid item xs={8}><TextField label="Name" value={draft.name || ''} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} fullWidth /></Grid>
-                  <Grid item xs={6}><TextField label="Role" value={draft.role || ''} onChange={(e) => setDraft((p) => ({ ...p, role: e.target.value }))} fullWidth /></Grid>
-                  <Grid item xs={6}><TextField label="Progress %" type="number" value={draft.progress ?? 0} onChange={(e) => setDraft((p) => ({ ...p, progress: Number(e.target.value) }))} fullWidth /></Grid>
-                  <Grid item xs={6}><TextField label="Status" value={draft.status || ''} onChange={(e) => setDraft((p) => ({ ...p, status: e.target.value }))} fullWidth /></Grid>
-                  <Grid item xs={6}>
-                    <TextField select label="Status tone" value={draft.statusTone || 'none'} onChange={(e) => setDraft((p) => ({ ...p, statusTone: e.target.value }))} fullWidth>
-                      <MenuItem value="done">Done</MenuItem>
-                      <MenuItem value="prog">Active</MenuItem>
-                      <MenuItem value="slow">Slow</MenuItem>
-                      <MenuItem value="none">None</MenuItem>
-                    </TextField>
-                  </Grid>
-                </Grid>
-                <FormControlLabel control={<Switch checked={draft.cert === 'download'} onChange={(e) => setDraft((p) => ({ ...p, cert: e.target.checked ? 'download' : null }))} />} label="Certificate download available" />
               </>
             )}
           </Stack>

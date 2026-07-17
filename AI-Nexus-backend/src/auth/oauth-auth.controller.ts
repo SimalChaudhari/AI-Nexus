@@ -389,9 +389,10 @@ export class OAuthAuthController {
       uenNumber: dto.uenNumber,
       email: dto.email,
     });
+    // Preserve success=false when email/UEN do not match exactly.
     return {
-      success: true,
       ...result,
+      success: result.success !== false,
     };
   }
 

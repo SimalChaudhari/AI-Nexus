@@ -71,3 +71,4 @@ pnpm-lock.yaml
 
 # Uploaded files (runtime-generated)
 public/uploads/
+storage/

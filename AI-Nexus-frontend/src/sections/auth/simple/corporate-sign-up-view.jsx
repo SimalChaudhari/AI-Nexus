@@ -147,8 +147,15 @@ export function CorporateSignUpView() {
       try {
         const check = await checkCorporateSalesforceAccount({ email, uenNumber });
         const nested = check?.data || check;
+        const returnedEmail = String(nested?.contact?.email || '').trim().toLowerCase();
+        const returnedUen = String(nested?.account?.uenNumber || '').trim().toLowerCase();
+        // Salesforce may return an unrelated account with success=true — require exact match.
         alreadyExists = Boolean(
-          nested?.corporateAccountExists && nested?.contactExists
+          check?.success !== false
+          && nested?.corporateAccountExists
+          && nested?.contactExists
+          && returnedEmail === email
+          && returnedUen === uenNumber.toLowerCase()
         );
       } catch {
         // Check is best-effort; continue to create when the check fails.

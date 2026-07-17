@@ -107,6 +107,30 @@ export class CorporateLearnerNudgeInitService implements OnModuleInit {
         );
         console.log('✅ corporate_nudge_email_logs table created successfully');
       }
+
+      const bulkUploadsExist = await queryRunner.hasTable('corporate_bulk_enrolment_uploads');
+      if (!bulkUploadsExist) {
+        await queryRunner.query(`
+          CREATE TABLE "corporate_bulk_enrolment_uploads" (
+            "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+            "companyCode" character varying(120) NOT NULL,
+            "uploadedByUserId" uuid,
+            "originalFileName" character varying(255) NOT NULL,
+            "storedFileName" character varying(255) NOT NULL,
+            "sizeBytes" bigint NOT NULL DEFAULT 0,
+            "mimeType" character varying(120),
+            "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+            CONSTRAINT "PK_corporate_bulk_enrolment_uploads" PRIMARY KEY ("id")
+          )
+        `);
+        await queryRunner.query(
+          `CREATE INDEX "IDX_corporate_bulk_enrolment_uploads_company" ON "corporate_bulk_enrolment_uploads" ("companyCode")`,
+        );
+        await queryRunner.query(
+          `CREATE INDEX "IDX_corporate_bulk_enrolment_uploads_created" ON "corporate_bulk_enrolment_uploads" ("createdAt")`,
+        );
+        console.log('✅ corporate_bulk_enrolment_uploads table created successfully');
+      }
     } catch (error) {
       console.error(
         '❌ Error initializing corporate nudge tables:',
