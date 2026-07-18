@@ -214,3 +214,91 @@ export async function downloadCorporateCertificateFile(certificateId, { companyC
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
+
+export async function uploadCorporateBulkEnrolmentZip(files, companyCode) {
+  const list = Array.isArray(files) ? files : files ? [files] : [];
+  const formData = new FormData();
+  list.forEach((file) => formData.append('files', file));
+
+  const response = await axios.post('/corporate/bulk-enrolment/upload', formData, {
+    params: companyCode ? { companyCode } : undefined,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return response.data?.data ?? response.data;
+}
+
+export async function getCorporateBulkEnrolmentUploads({ companyCode, page, limit } = {}) {
+  const response = await axios.get('/corporate/bulk-enrolment/uploads', {
+    params: {
+      ...(companyCode ? { companyCode } : {}),
+      ...(page ? { page } : {}),
+      ...(limit != null ? { limit } : {}),
+    },
+  });
+  return response.data;
+}
+
+export async function getMyCorporateBulkEnrolmentUploads({ companyCode, page, limit } = {}) {
+  const response = await axios.get('/corporate/bulk-enrolment/my-uploads', {
+    params: {
+      ...(companyCode ? { companyCode } : {}),
+      ...(page ? { page } : {}),
+      ...(limit != null ? { limit } : {}),
+    },
+  });
+  return response.data;
+}
+
+export async function deleteCorporateBulkEnrolmentZip(uploadId) {
+  const response = await axios.delete(
+    `/corporate/bulk-enrolment/uploads/${encodeURIComponent(uploadId)}`,
+  );
+  return response.data;
+}
+
+export async function downloadCorporateBulkEnrolmentZip(uploadId, { fileName } = {}) {
+  const response = await axios.get(
+    `/corporate/bulk-enrolment/uploads/${encodeURIComponent(uploadId)}/download`,
+    {
+      responseType: 'blob',
+      skipApiLoading: true,
+      deduplicate: false,
+    },
+  );
+
+  const raw = response.data;
+  const contentType = String(response.headers?.['content-type'] || raw?.type || '');
+  if (contentType.includes('application/json')) {
+    const text = await raw.text();
+    let message = 'ZIP download failed';
+    try {
+      const parsed = JSON.parse(text);
+      message = parsed?.message || parsed?.error || message;
+    } catch {
+      // keep default
+    }
+    throw new Error(message);
+  }
+
+  const disposition = String(response.headers?.['content-disposition'] || '');
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const name = fileName || match?.[1] || 'bulk-enrolment.zip';
+  const blob =
+    raw?.type && String(raw.type).includes('zip')
+      ? raw
+      : new Blob([raw], { type: 'application/zip' });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+}

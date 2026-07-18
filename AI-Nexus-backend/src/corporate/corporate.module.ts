@@ -18,6 +18,7 @@ import { CorporateLearnerNudgeEntity } from './corporate-learner-nudge.entity';
 import { CorporateLearnerNudgeInitService } from './corporate-learner-nudge-init.service';
 import { CorporateNudgeCampaignEntity } from './corporate-nudge-campaign.entity';
 import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity';
+import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-upload.entity';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity
       CorporateLearnerNudgeEntity,
       CorporateNudgeCampaignEntity,
       CorporateNudgeEmailLogEntity,
+      CorporateBulkEnrolmentUploadEntity,
     ]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,

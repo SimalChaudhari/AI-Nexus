@@ -6,6 +6,9 @@ import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Typography from '@mui/material/Typography';
 
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
+
 import { CORP } from '../corporate-theme';
 import { CorpBtn, CorpCard, CorpPageHeader } from '../corporate-ui';
 
@@ -306,11 +309,14 @@ export function CorporateEnrolView() {
                 Do not include foreigners who are not ISCA members in the bulk upload. Please email
                 ISCA separately for a quotation and enrolment arrangement.
               </Box>
+              <Box component="li">
+                Use View uploaded ZIP files to upload and manage bulk enrolment ZIP files.
+              </Box>
             </Box>
           </Box>
 
-          <CorpBtn variant="ghost" fullWidth>
-            Download bulk upload template
+          <CorpBtn variant="blue" fullWidth component={RouterLink} href={paths.corporate.bulkUploads}>
+            View uploaded ZIP files
           </CorpBtn>
         </CorpCard>
       </Box>

@@ -280,6 +280,9 @@ export function AdminSettingsView() {
   const [partnerWithIscaContentSubmitting, setPartnerWithIscaContentSubmitting] = useState(false);
   const [partnerWithIscaHeroFile, setPartnerWithIscaHeroFile] = useState(null);
   const [partnerWithIscaHeroSubmitting, setPartnerWithIscaHeroSubmitting] = useState(false);
+  const [partnerWithIscaMockupImageFile, setPartnerWithIscaMockupImageFile] = useState(null);
+  const [partnerWithIscaMockupImageSubmitting, setPartnerWithIscaMockupImageSubmitting] =
+    useState(false);
   const [footerContent, setFooterContent] = useState(() => normalizeFooterContent(null));
   const [footerContentSubmitting, setFooterContentSubmitting] = useState(false);
   const PROGRAMME_FEES_TIERS_MAX = 8;
@@ -1595,6 +1598,57 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleDropPartnerWithIscaMockupImage = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) setPartnerWithIscaMockupImageFile(file);
+  }, []);
+
+  const handleClearPartnerWithIscaMockupImageSelection = () => {
+    setPartnerWithIscaMockupImageFile(null);
+  };
+
+  const handleUploadPartnerWithIscaMockupImage = async () => {
+    if (!partnerWithIscaMockupImageFile) {
+      toast.error('Please select a mockup image first');
+      return;
+    }
+    try {
+      setPartnerWithIscaMockupImageSubmitting(true);
+      const updated = await appSettingsService.uploadPartnerWithIscaMockupImage(
+        partnerWithIscaMockupImageFile
+      );
+      setPartnerWithIscaContent(
+        normalizePartnerWithIscaContent(updated?.partnerWithIscaContent)
+      );
+      setPartnerWithIscaMockupImageFile(null);
+      toast.success('Dashboard mockup image updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload mockup image');
+    } finally {
+      setPartnerWithIscaMockupImageSubmitting(false);
+    }
+  };
+
+  const handleRemovePartnerWithIscaMockupImage = async () => {
+    if (partnerWithIscaMockupImageFile) {
+      setPartnerWithIscaMockupImageFile(null);
+      return;
+    }
+    if (!String(partnerWithIscaContent?.dashboard?.mockupImageUrl || '').trim()) return;
+    try {
+      setPartnerWithIscaMockupImageSubmitting(true);
+      const updated = await appSettingsService.removePartnerWithIscaMockupImage();
+      setPartnerWithIscaContent(
+        normalizePartnerWithIscaContent(updated?.partnerWithIscaContent)
+      );
+      toast.success('Dashboard mockup image removed');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove mockup image');
+    } finally {
+      setPartnerWithIscaMockupImageSubmitting(false);
+    }
+  };
+
   const handleSaveEmployerContent = async () => {
     try {
       setEmployerContentSubmitting(true);
@@ -2532,6 +2586,17 @@ export function AdminSettingsView() {
         partnerWithIscaHeroFile
           ? handleClearPartnerWithIscaHeroSelection
           : handleRemovePartnerWithIscaHero
+      }
+      mockupImageFile={partnerWithIscaMockupImageFile}
+      mockupImageUrl={partnerWithIscaContent?.dashboard?.mockupImageUrl || ''}
+      mockupImageSubmitting={partnerWithIscaMockupImageSubmitting}
+      onMockupImageDrop={handleDropPartnerWithIscaMockupImage}
+      onMockupImageDelete={handleRemovePartnerWithIscaMockupImage}
+      onMockupImageSave={handleUploadPartnerWithIscaMockupImage}
+      onMockupImageClearOrRemove={
+        partnerWithIscaMockupImageFile
+          ? handleClearPartnerWithIscaMockupImageSelection
+          : handleRemovePartnerWithIscaMockupImage
       }
     />
   );

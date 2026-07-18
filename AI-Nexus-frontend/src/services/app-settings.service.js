@@ -247,6 +247,10 @@ function transformPartnerWithIscaContent(source) {
       ...normalized.hero,
       heroImageUrl: normalizeAssetUrl(normalized.hero?.heroImageUrl || ''),
     },
+    dashboard: {
+      ...normalized.dashboard,
+      mockupImageUrl: normalizeAssetUrl(normalized.dashboard?.mockupImageUrl || ''),
+    },
   };
 }
 
@@ -963,6 +967,22 @@ export const appSettingsService = {
 
   async removePartnerWithIscaHero() {
     const response = await axios.delete('/app-settings/partner-with-isca-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadPartnerWithIscaMockupImage(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await axios.post('/app-settings/partner-with-isca-mockup-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removePartnerWithIscaMockupImage() {
+    const response = await axios.delete('/app-settings/partner-with-isca-mockup-image');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

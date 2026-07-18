@@ -16,7 +16,16 @@ import { getJobRoleAuditStatus, UserFeeWaiverAuditPanel } from './user-fee-waive
 
 // ----------------------------------------------------------------------
 
-export function UserDetailsView({ user, loading, error, onRefresh }) {
+export function UserDetailsView({
+  user,
+  loading,
+  error,
+  onRefresh,
+  listHref = paths.admin.user.list,
+  listLabel = 'Users',
+  heading = 'User details',
+  showEdit = true,
+}) {
   if (loading) {
     return <LoadingScreen />;
   }
@@ -30,7 +39,7 @@ export function UserDetailsView({ user, loading, error, onRefresh }) {
           action={
             <Button
               component={RouterLink}
-              href={paths.admin.user.list}
+              href={listHref}
               startIcon={<Iconify width={16} icon="eva:arrow-ios-back-fill" />}
               sx={{ mt: 3 }}
             >
@@ -149,13 +158,13 @@ export function UserDetailsView({ user, loading, error, onRefresh }) {
 
   return (
     <EntityDetailsLayout
-      heading="User details"
+      heading={heading}
       links={[
         { name: 'Dashboard', href: paths.dashboard.root },
-        { name: 'Users', href: paths.admin.user.list },
+        { name: listLabel, href: listHref },
         { name: fullName },
       ]}
-      editHref={paths.admin.user.edit(user?.id)}
+      editHref={showEdit ? paths.admin.user.edit(user?.id) : undefined}
       header={{
         backgroundImage: '/assets/profilebg.jpg',
         avatarText: initials,

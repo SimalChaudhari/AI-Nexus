@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { existsSync } from 'fs';
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { extname, join } from 'path';
+import { randomUUID } from 'crypto';
 import { In, IsNull, Not, Repository } from 'typeorm';
 
 import { UserEntity, UserRole, UserStatus } from '../user/users.entity';
@@ -29,11 +33,18 @@ import { buildCourseOverallProgress } from '../course/course-overall-progress.ut
 import { CorporateLearnerNudgeEntity } from './corporate-learner-nudge.entity';
 import { CorporateNudgeCampaignEntity } from './corporate-nudge-campaign.entity';
 import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity';
+import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-upload.entity';
 
 // ----------------------------------------------------------------------
 
 const AT_RISK_INACTIVE_DAYS = 7;
 const NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const BULK_ENROLMENT_ZIP_MAX_BYTES = 500 * 1024 * 1024;
+const BULK_ENROLMENT_STORAGE_DIR = join(
+  process.cwd(),
+  'storage',
+  'corporate-bulk-enrolments',
+);
 /** Max emails processed per batch in a nudge campaign. Override with CORPORATE_NUDGE_CAMPAIGN_BATCH_SIZE. */
 const NUDGE_CAMPAIGN_BATCH_SIZE = (() => {
   const raw = Number(process.env.CORPORATE_NUDGE_CAMPAIGN_BATCH_SIZE);
@@ -124,6 +135,8 @@ export class CorporateService {
     private readonly nudgeCampaignRepository: Repository<CorporateNudgeCampaignEntity>,
     @InjectRepository(CorporateNudgeEmailLogEntity)
     private readonly nudgeEmailLogRepository: Repository<CorporateNudgeEmailLogEntity>,
+    @InjectRepository(CorporateBulkEnrolmentUploadEntity)
+    private readonly bulkEnrolmentUploadRepository: Repository<CorporateBulkEnrolmentUploadEntity>,
     private readonly courseSectionWatchProgressService: CourseSectionWatchProgressService,
     private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
     private readonly courseCertificateService: CourseCertificateService,
@@ -1706,5 +1719,206 @@ export class CorporateService {
         : 'No foreign non-member quotation request pending',
       `${inactive} learner${inactive === 1 ? ' has' : 's have'} been inactive for more than ${AT_RISK_INACTIVE_DAYS} days`,
     ];
+  }
+
+  // ----------------------------------------------------------------------
+  // Bulk enrolment ZIP uploads (corporate upload; admin download only)
+  // ----------------------------------------------------------------------
+
+  private assertZipFile(file?: Express.Multer.File) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('A .zip file is required');
+    }
+    if (file.size > BULK_ENROLMENT_ZIP_MAX_BYTES) {
+      throw new BadRequestException('ZIP file must be 500MB or smaller');
+    }
+    const original = String(file.originalname || '');
+    const ext = extname(original).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const mimeOk =
+      mime === 'application/zip' ||
+      mime === 'application/x-zip-compressed' ||
+      mime === 'application/octet-stream' ||
+      !mime;
+    if (ext !== '.zip' || !mimeOk) {
+      throw new BadRequestException('Only .zip files are allowed');
+    }
+  }
+
+  private mapBulkUploadRow(row: CorporateBulkEnrolmentUploadEntity) {
+    return {
+      id: row.id,
+      companyCode: row.companyCode,
+      originalFileName: row.originalFileName,
+      sizeBytes: Number(row.sizeBytes) || 0,
+      uploadedByUserId: row.uploadedByUserId,
+      createdAt: row.createdAt?.toISOString?.() || row.createdAt,
+    };
+  }
+
+  async uploadBulkEnrolmentZip(params: {
+    companyCode?: string;
+    uploadedByUserId?: string;
+    file?: Express.Multer.File;
+  }) {
+    return this.uploadBulkEnrolmentZips({
+      companyCode: params.companyCode,
+      uploadedByUserId: params.uploadedByUserId,
+      files: params.file ? [params.file] : [],
+    });
+  }
+
+  async uploadBulkEnrolmentZips(params: {
+    companyCode?: string;
+    uploadedByUserId?: string;
+    files?: Express.Multer.File[];
+  }) {
+    const files = (params.files || []).filter(Boolean);
+    if (!files.length) {
+      throw new BadRequestException('At least one .zip file is required');
+    }
+    if (files.length > 10) {
+      throw new BadRequestException('You can upload a maximum of 10 ZIP files at once');
+    }
+
+    const companyCode = await this.resolveCompanyCode(params.companyCode);
+    if (!companyCode) {
+      throw new ForbiddenException('Company code is required');
+    }
+
+    await mkdir(BULK_ENROLMENT_STORAGE_DIR, { recursive: true });
+
+    const savedRows: CorporateBulkEnrolmentUploadEntity[] = [];
+    for (const file of files) {
+      this.assertZipFile(file);
+      const storedFileName = `${randomUUID()}.zip`;
+      await writeFile(join(BULK_ENROLMENT_STORAGE_DIR, storedFileName), file.buffer);
+
+      const row = this.bulkEnrolmentUploadRepository.create({
+        companyCode,
+        uploadedByUserId: params.uploadedByUserId || null,
+        originalFileName: String(file.originalname || 'bulk-enrolment.zip').slice(0, 255),
+        storedFileName,
+        sizeBytes: file.size || file.buffer.length,
+        mimeType: file.mimetype || 'application/zip',
+      });
+      savedRows.push(await this.bulkEnrolmentUploadRepository.save(row));
+    }
+
+    return {
+      message:
+        savedRows.length === 1
+          ? 'Bulk enrolment ZIP uploaded successfully'
+          : `${savedRows.length} bulk enrolment ZIP files uploaded successfully`,
+      data: savedRows.map((row) => this.mapBulkUploadRow(row)),
+    };
+  }
+
+  async listBulkEnrolmentUploads(params: {
+    companyCode?: string;
+    uploadedByUserId?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    // Admin may omit companyCode to list all companies' uploads (no env fallback).
+    const companyCode = String(params.companyCode || '').trim();
+    const uploadedByUserId = String(params.uploadedByUserId || '').trim();
+    const page = Number(params.page) > 0 ? Number(params.page) : 1;
+    const limit = Number(params.limit) > 0 ? Math.min(Number(params.limit), 100) : 20;
+
+    const qb = this.bulkEnrolmentUploadRepository
+      .createQueryBuilder('u')
+      .orderBy('u.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (companyCode) {
+      qb.andWhere('LOWER(TRIM(u.companyCode)) = LOWER(:code)', { code: companyCode });
+    }
+    if (uploadedByUserId) {
+      qb.andWhere('u.uploadedByUserId = :uploadedByUserId', { uploadedByUserId });
+    }
+
+    const [rows, totalItems] = await qb.getManyAndCount();
+    return {
+      companyCode: companyCode || null,
+      data: rows.map((row) => this.mapBulkUploadRow(row)),
+      pagination: {
+        page,
+        limit,
+        totalItems,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+      },
+    };
+  }
+
+  async downloadBulkEnrolmentZip(params: {
+    uploadId: string;
+    requesterUserId?: string;
+    requesterRole?: string;
+  }) {
+    const id = String(params.uploadId || '').trim();
+    if (!id) throw new BadRequestException('Upload id is required');
+
+    const row = await this.bulkEnrolmentUploadRepository.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Bulk enrolment upload not found');
+
+    const role = String(params.requesterRole || '');
+    const requesterUserId = String(params.requesterUserId || '').trim();
+    const isAdmin = role === UserRole.Admin;
+    const isOwner = Boolean(requesterUserId && row.uploadedByUserId === requesterUserId);
+
+    if (!isAdmin && !isOwner) {
+      throw new ForbiddenException('You can only download ZIP files that you uploaded');
+    }
+
+    const absolutePath = join(BULK_ENROLMENT_STORAGE_DIR, row.storedFileName);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException('Bulk enrolment file is missing on the server');
+    }
+
+    const buffer = await readFile(absolutePath);
+    const safeName = String(row.originalFileName || 'bulk-enrolment.zip').replace(
+      /[^\w.\- ()[\]]+/g,
+      '_',
+    );
+
+    return {
+      filename: safeName.endsWith('.zip') ? safeName : `${safeName}.zip`,
+      buffer,
+      mimeType: 'application/zip',
+    };
+  }
+
+  async deleteBulkEnrolmentZip(params: {
+    uploadId: string;
+    requesterUserId?: string;
+    requesterRole?: string;
+  }) {
+    const id = String(params.uploadId || '').trim();
+    if (!id) throw new BadRequestException('Upload id is required');
+
+    const row = await this.bulkEnrolmentUploadRepository.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Bulk enrolment upload not found');
+
+    const role = String(params.requesterRole || '');
+    const requesterUserId = String(params.requesterUserId || '').trim();
+    const isAdmin = role === UserRole.Admin;
+    const isOwner = Boolean(requesterUserId && row.uploadedByUserId === requesterUserId);
+
+    if (!isAdmin && !isOwner) {
+      throw new ForbiddenException('You can only delete ZIP files that you uploaded');
+    }
+
+    const absolutePath = join(BULK_ENROLMENT_STORAGE_DIR, row.storedFileName);
+    if (existsSync(absolutePath)) {
+      await unlink(absolutePath).catch(() => undefined);
+    }
+    await this.bulkEnrolmentUploadRepository.delete(row.id);
+
+    return {
+      message: 'Bulk enrolment ZIP deleted successfully',
+      data: { id: row.id },
+    };
   }
 }

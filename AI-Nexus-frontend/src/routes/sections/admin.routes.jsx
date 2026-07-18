@@ -31,6 +31,10 @@ const ProductEditPage = lazy(() => import('src/pages/dashboard/product/edit'));
 const OrderListPage = lazy(() => import('src/pages/dashboard/order/list'));
 const OrderDetailsPage = lazy(() => import('src/pages/dashboard/order/details'));
 
+// Corporate members
+const CorporateMemberListPage = lazy(() => import('src/pages/dashboard/corporate-member/list'));
+const CorporateMemberDetailsPage = lazy(() => import('src/pages/dashboard/corporate-member/details'));
+
 // Invoice
 const InvoiceListPage = lazy(() => import('src/pages/dashboard/invoice/list'));
 const InvoiceDetailsPage = lazy(() => import('src/pages/dashboard/invoice/details'));
@@ -340,6 +344,14 @@ export const adminRoutes = [
           { element: <OrderListPage />, index: true },
           { path: 'list', element: <OrderListPage /> },
           { path: ':id', element: <OrderDetailsPage /> },
+        ],
+      },
+      {
+        path: 'corporate-member',
+        children: [
+          { element: <CorporateMemberListPage />, index: true },
+          { path: 'list', element: <CorporateMemberListPage /> },
+          { path: ':id', element: <CorporateMemberDetailsPage /> },
         ],
       },
       {

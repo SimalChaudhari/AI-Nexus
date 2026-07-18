@@ -218,34 +218,7 @@ export type PartnerWithIscaContent = {
     title?: string;
     description?: string;
     features?: Array<{ title?: string; description?: string }>;
-    mockup?: {
-      companyLogoText?: string;
-      companyName?: string;
-      companySub?: string;
-      companyCode?: string;
-      tabs?: string[];
-      summaryStats?: Array<{
-        label?: string;
-        value?: string;
-        sub?: string;
-        valueTone?: string;
-        subColor?: string;
-      }>;
-      overallCompletionLabel?: string;
-      overallCompletionSubtitle?: string;
-      overallCompletionPercent?: string;
-      staffActivityLabel?: string;
-      staffRows?: Array<{
-        initials?: string;
-        name?: string;
-        role?: string;
-        progress?: number;
-        progressColor?: string;
-        status?: string;
-        statusTone?: string;
-        cert?: string | null;
-      }>;
-    };
+    mockupImageUrl?: string;
   };
   howItWorks?: {
     eyebrow?: string;

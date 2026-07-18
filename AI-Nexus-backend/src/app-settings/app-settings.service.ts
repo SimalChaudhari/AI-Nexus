@@ -316,9 +316,6 @@ const PARTNER_DASHBOARD_FEATURES_MAX = 8;
 const PARTNER_STEPS_MAX = 3;
 const PARTNER_FAQS_MAX = 20;
 const PARTNER_HERO_ACTIONS_MAX = 4;
-const PARTNER_MOCKUP_TABS_MAX = 5;
-const PARTNER_MOCKUP_SUMMARY_STATS_MAX = 3;
-const PARTNER_MOCKUP_STAFF_ROWS_MAX = 8;
 const PARTNER_LOGOS_MAX = 50;
 const FOOTER_STATS_MAX = 4;
 const FOOTER_LINKS_MAX = 8;
@@ -354,34 +351,7 @@ type PartnerWithIscaContentPayload = {
     title?: string;
     description?: string;
     features?: Array<{ title?: string; description?: string }>;
-    mockup?: {
-      companyLogoText?: string;
-      companyName?: string;
-      companySub?: string;
-      companyCode?: string;
-      tabs?: string[];
-      summaryStats?: Array<{
-        label?: string;
-        value?: string;
-        sub?: string;
-        valueTone?: string;
-        subColor?: string;
-      }>;
-      overallCompletionLabel?: string;
-      overallCompletionSubtitle?: string;
-      overallCompletionPercent?: string;
-      staffActivityLabel?: string;
-      staffRows?: Array<{
-        initials?: string;
-        name?: string;
-        role?: string;
-        progress?: number;
-        progressColor?: string;
-        status?: string;
-        statusTone?: string;
-        cert?: string | null;
-      }>;
-    };
+    mockupImageUrl?: string;
   };
   howItWorks?: {
     eyebrow?: string;
@@ -1470,8 +1440,9 @@ export class AppSettingsService {
     const hero = source.hero && typeof source.hero === 'object' ? source.hero : {};
     const benefits = source.benefits && typeof source.benefits === 'object' ? source.benefits : {};
     const dashboard = source.dashboard && typeof source.dashboard === 'object' ? source.dashboard : {};
-    const mockup =
-      dashboard.mockup && typeof dashboard.mockup === 'object' ? dashboard.mockup : {};
+    const mockupImageUrl =
+      this.toStoredUploadPath(dashboard.mockupImageUrl) ||
+      this.cleanText(dashboard.mockupImageUrl, 500);
     const howItWorks =
       source.howItWorks && typeof source.howItWorks === 'object' ? source.howItWorks : {};
     const faq = source.faq && typeof source.faq === 'object' ? source.faq : {};
@@ -1481,9 +1452,6 @@ export class AppSettingsService {
     const rawActions = Array.isArray(hero.actions) ? hero.actions : [];
     const rawBenefits = Array.isArray(benefits.items) ? benefits.items : [];
     const rawFeatures = Array.isArray(dashboard.features) ? dashboard.features : [];
-    const rawTabs = Array.isArray(mockup.tabs) ? mockup.tabs : [];
-    const rawSummaryStats = Array.isArray(mockup.summaryStats) ? mockup.summaryStats : [];
-    const rawStaffRows = Array.isArray(mockup.staffRows) ? mockup.staffRows : [];
     const rawSteps = Array.isArray(howItWorks.steps) ? howItWorks.steps : [];
     const rawFaqs = Array.isArray(faq.items) ? faq.items : [];
 
@@ -1525,34 +1493,7 @@ export class AppSettingsService {
           title: this.cleanText(row?.title, 160),
           description: this.cleanText(row?.description, 500),
         })),
-        mockup: {
-          companyLogoText: this.cleanText(mockup.companyLogoText, 40),
-          companyName: this.cleanText(mockup.companyName, 120),
-          companySub: this.cleanText(mockup.companySub, 120),
-          companyCode: this.cleanText(mockup.companyCode, 40),
-          tabs: rawTabs.slice(0, PARTNER_MOCKUP_TABS_MAX).map((tab: any) => this.cleanText(tab, 40)),
-          summaryStats: rawSummaryStats.slice(0, PARTNER_MOCKUP_SUMMARY_STATS_MAX).map((row: any) => ({
-            label: this.cleanText(row?.label, 80),
-            value: this.cleanText(row?.value, 40),
-            sub: this.cleanText(row?.sub, 80),
-            valueTone: this.cleanText(row?.valueTone, 20),
-            subColor: this.cleanText(row?.subColor, 40),
-          })),
-          overallCompletionLabel: this.cleanText(mockup.overallCompletionLabel, 80),
-          overallCompletionSubtitle: this.cleanText(mockup.overallCompletionSubtitle, 120),
-          overallCompletionPercent: this.cleanText(mockup.overallCompletionPercent, 20),
-          staffActivityLabel: this.cleanText(mockup.staffActivityLabel, 80),
-          staffRows: rawStaffRows.slice(0, PARTNER_MOCKUP_STAFF_ROWS_MAX).map((row: any) => ({
-            initials: this.cleanText(row?.initials, 4),
-            name: this.cleanText(row?.name, 80),
-            role: this.cleanText(row?.role, 80),
-            progress: Math.max(0, Math.min(100, Number(row?.progress) || 0)),
-            progressColor: this.cleanText(row?.progressColor, 20),
-            status: this.cleanText(row?.status, 40),
-            statusTone: this.cleanText(row?.statusTone, 20),
-            cert: row?.cert === 'download' ? 'download' : null,
-          })),
-        },
+        mockupImageUrl,
       },
       howItWorks: {
         eyebrow: this.cleanText(howItWorks.eyebrow, 120),
@@ -2257,6 +2198,47 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Partner with ISCA hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadPartnerWithIscaMockupImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('partner-with-isca-mockup');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'partner-with-isca-mockup', {
+      fileName: 'mockup',
+    });
+    const existing = this.sanitizePartnerWithIscaContent(settings.partnerWithIscaContent || {});
+    settings.partnerWithIscaContent = this.sanitizePartnerWithIscaContent({
+      ...existing,
+      dashboard: {
+        ...existing.dashboard,
+        mockupImageUrl: relativeUrl,
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner with ISCA dashboard mockup image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removePartnerWithIscaMockupImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('partner-with-isca-mockup');
+    const existing = this.sanitizePartnerWithIscaContent(settings.partnerWithIscaContent || {});
+    settings.partnerWithIscaContent = this.sanitizePartnerWithIscaContent({
+      ...existing,
+      dashboard: {
+        ...existing.dashboard,
+        mockupImageUrl: '',
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Partner with ISCA dashboard mockup image removed successfully',
       settings: saved,
     };
   }

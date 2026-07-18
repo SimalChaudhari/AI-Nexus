@@ -1217,4 +1217,51 @@ export class AppSettingsController {
     const result = await this.appSettingsService.removePartnerWithIscaHeroImage();
     return response.status(HttpStatus.OK).json(result);
   }
+
+  @Post('partner-with-isca-mockup-image')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload dashboard mockup image for Partner with ISCA landing page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadPartnerWithIscaMockupImage(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadPartnerWithIscaMockupImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('partner-with-isca-mockup-image')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove dashboard mockup image for Partner with ISCA landing page' })
+  async removePartnerWithIscaMockupImage(@Res() response: Response) {
+    const result = await this.appSettingsService.removePartnerWithIscaMockupImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
 }
