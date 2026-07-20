@@ -1207,7 +1207,7 @@ export class CourseQuestionBankService {
     await this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
 
     const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
-    const row = rows.find((item) => item.id === saved.id);
+    const row = rows.items.find((item) => item.id === saved.id);
     if (!row) throw new NotFoundException('Submission not found after update');
     return row;
   }
@@ -1339,31 +1339,165 @@ export class CourseQuestionBankService {
     requesterId: string,
     requesterRole: string | undefined,
     courseId: string,
-    filterUserId?: string,
-  ): Promise<CourseQuestionAssignmentSubmissionRow[]> {
+    options?: {
+      filterUserId?: string;
+      search?: string;
+      status?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{
+    items: CourseQuestionAssignmentSubmissionRow[];
+    pagination?: {
+      page: number;
+      limit: number;
+      totalItems: number;
+      totalPages: number;
+    };
+    stats?: {
+      total: number;
+      pending: number;
+      passed: number;
+      failed: number;
+    };
+    users?: { id: string; label: string }[];
+  }> {
     await this.courseService.getById(courseId);
     const isAdmin = requesterRole === UserRole.Admin;
+    const filterUserId = options?.filterUserId;
     const effectiveUserId = isAdmin ? filterUserId || undefined : requesterId;
+    const search = String(options?.search || '').trim().toLowerCase();
+    const status = String(options?.status || '').trim().toLowerCase();
+    const usePagination =
+      options?.page != null &&
+      options?.limit != null &&
+      Number(options.page) > 0 &&
+      Number(options.limit) > 0;
+    const page = usePagination ? Math.max(1, Math.floor(Number(options!.page))) : 1;
+    const limit = usePagination
+      ? Math.min(100, Math.max(1, Math.floor(Number(options!.limit))))
+      : 0;
 
-    const where: { courseId: string; userId?: string } = { courseId };
-    if (effectiveUserId) {
-      where.userId = effectiveUserId;
-    } else if (!isAdmin) {
-      where.userId = requesterId;
+    const buildBaseQb = () => {
+      const qb = this.assignmentSubmissionRepo
+        .createQueryBuilder('s')
+        .where('s.courseId = :courseId', { courseId });
+      if (effectiveUserId) {
+        qb.andWhere('s.userId = :userId', { userId: effectiveUserId });
+      } else if (!isAdmin) {
+        qb.andWhere('s.userId = :userId', { userId: requesterId });
+      }
+      return qb;
+    };
+
+    // Stats for course (+ optional learner filter), independent of search/status.
+    const statsRows = await buildBaseQb()
+      .select([
+        's.id AS id',
+        's.evaluationStatus AS "evaluationStatus"',
+        's.manualPassed AS "manualPassed"',
+      ])
+      .getRawMany<{
+        id: string;
+        evaluationStatus: string | null;
+        manualPassed: boolean | null;
+      }>();
+    const stats = {
+      total: statsRows.length,
+      pending: 0,
+      passed: 0,
+      failed: 0,
+    };
+    for (const row of statsRows) {
+      if (row.manualPassed === true) stats.passed += 1;
+      else if (row.manualPassed === false) stats.failed += 1;
+      else if (String(row.evaluationStatus || '') !== 'draft') stats.pending += 1;
     }
 
-    const submissions = await this.assignmentSubmissionRepo.find({
-      where,
-      order: { uploadedAt: 'DESC' },
-    });
-    if (!submissions.length) return [];
+    // Learner filter options.
+    const userIdRows = await buildBaseQb()
+      .select('s.userId', 'userId')
+      .distinct(true)
+      .getRawMany<{ userId: string }>();
+    const distinctUserIds = userIdRows.map((r) => r.userId).filter(Boolean);
+    const filterUsers = distinctUserIds.length
+      ? await this.userRepo.find({
+          where: distinctUserIds.map((id) => ({ id })),
+          select: ['id', 'firstname', 'lastname', 'email', 'username'],
+        })
+      : [];
+    const users = filterUsers
+      .map((u) => {
+        const full = `${String(u.firstname || '').trim()} ${String(u.lastname || '').trim()}`.trim();
+        return {
+          id: u.id,
+          label: full || u.username || u.email || 'Unknown user',
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const qb = buildBaseQb()
+      .leftJoin(CourseQuestionBankEntity, 'q', 'q.id = s.questionId')
+      .leftJoin(UserEntity, 'u', 'u.id = s.userId')
+      .leftJoin(CourseModuleEntity, 'm', 'm.id = q.moduleId');
+
+    if (search) {
+      qb.andWhere(
+        `(
+          LOWER(COALESCE(u.firstname, '')) LIKE :search
+          OR LOWER(COALESCE(u.lastname, '')) LIKE :search
+          OR LOWER(COALESCE(u.email, '')) LIKE :search
+          OR LOWER(COALESCE(u.username, '')) LIKE :search
+          OR LOWER(CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, ''))) LIKE :search
+          OR LOWER(COALESCE(q.prompt, '')) LIKE :search
+          OR LOWER(COALESCE(m.title, '')) LIKE :search
+        )`,
+        { search: `%${search}%` },
+      );
+    }
+
+    if (status === 'draft') {
+      qb.andWhere('s.evaluationStatus = :draftStatus', { draftStatus: 'draft' });
+    } else if (status === 'verified_pass') {
+      qb.andWhere('s.manualPassed = true');
+    } else if (status === 'verified_fail') {
+      qb.andWhere('s.manualPassed = false');
+    } else if (status === 'pending_review') {
+      qb.andWhere('(s.evaluationStatus IS NULL OR s.evaluationStatus != :draftStatus)', {
+        draftStatus: 'draft',
+      }).andWhere('s.manualPassed IS NULL');
+    }
+
+    qb.orderBy('s.uploadedAt', 'DESC');
+
+    const totalItems = await qb.getCount();
+    if (usePagination) {
+      qb.skip((page - 1) * limit).take(limit);
+    }
+
+    const submissions = await qb.getMany();
+    if (!submissions.length) {
+      return {
+        items: [],
+        pagination: usePagination
+          ? {
+              page,
+              limit,
+              totalItems,
+              totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+            }
+          : undefined,
+        stats,
+        users,
+      };
+    }
 
     const questionIds = [...new Set(submissions.map((s) => s.questionId))];
     const userIds = [...new Set(submissions.map((s) => s.userId))];
     const questions = await this.repo.find({
       where: questionIds.map((id) => ({ id })),
     });
-    const users = await this.userRepo.find({
+    const mappedUsers = await this.userRepo.find({
       where: userIds.map((id) => ({ id })),
       select: ['id', 'firstname', 'lastname', 'email', 'username'],
     });
@@ -1377,15 +1511,29 @@ export class CourseQuestionBankService {
         })
       : [];
     const questionById = new Map(questions.map((q) => [q.id, q]));
-    const userById = new Map(users.map((u) => [u.id, u]));
+    const userById = new Map(mappedUsers.map((u) => [u.id, u]));
     const moduleById = new Map(modules.map((m) => [m.id, m]));
 
-    return submissions.map((s) => {
+    const items = submissions.map((s) => {
       const q = questionById.get(s.questionId);
       const u = userById.get(s.userId);
       const mod = q?.moduleId ? moduleById.get(q.moduleId) : null;
       return this.mapSubmissionRow(s, q, u, mod);
     });
+
+    return {
+      items,
+      pagination: usePagination
+        ? {
+            page,
+            limit,
+            totalItems,
+            totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+          }
+        : undefined,
+      stats,
+      users,
+    };
   }
 
   async getMyAssignmentSummary(userId: string): Promise<CourseAssignmentSummaryRow[]> {

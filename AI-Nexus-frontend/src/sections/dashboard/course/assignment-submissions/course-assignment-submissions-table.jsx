@@ -1,18 +1,19 @@
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
-import Chip from '@mui/material/Chip';
-import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
+import Tooltip from '@mui/material/Tooltip';
+import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
+import CircularProgress from '@mui/material/CircularProgress';
 
+import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
+import { TableHeadCustom, TableNoData, TableEmptyRows } from 'src/components/table';
 import { resolveAssetUrl } from 'src/utils/asset-url';
+import { fDateTime } from 'src/utils/format-time';
 
 import {
   truncateSubmissionText,
@@ -27,121 +28,145 @@ import {
 
 export function CourseAssignmentSubmissionsTable({
   rows,
+  headLabel,
   deletingId,
   verifyingId,
-  regradingId,
   onDeleteRow,
   onVerifyRow,
-  onRegradeRow,
   onViewLogRow,
+  notFound = false,
+  emptyRowsCount = 0,
+  emptyRowsHeight = 76,
 }) {
-  if (!rows.length) {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        No assessment files uploaded for this module yet.
-      </Typography>
-    );
-  }
-
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Learner</TableCell>
-          <TableCell>Assessment</TableCell>
-          <TableCell>File</TableCell>
-          <TableCell>Attempts</TableCell>
-          <TableCell>Status</TableCell>
-          <TableCell>Uploaded</TableCell>
-          <TableCell align="right">Actions</TableCell>
-        </TableRow>
-      </TableHead>
+    <Table size="medium" sx={{ minWidth: 1100 }}>
+      <TableHeadCustom headLabel={headLabel} rowCount={rows?.length || 0} />
+
       <TableBody>
-        {rows.map((row) => {
+        {(rows || []).map((row) => {
           const evalDisplay = getSubmissionEvaluationDisplay(row);
-          const busy = deletingId === row.id || verifyingId === row.id || regradingId === row.id;
+          const busy = deletingId === row.id || verifyingId === row.id;
+          const files = getSubmissionFileList(row);
+          const submittedAt = row.submittedAt || row.uploadedAt;
+          const needsReview = row.manualPassed == null && row.evaluationStatus !== 'draft';
 
           return (
-            <TableRow key={row.id}>
-              <TableCell>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {row.userName}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {row.userEmail}
-                </Typography>
-              </TableCell>
-              <TableCell>{truncateSubmissionText(row.questionPrompt)}</TableCell>
-              <TableCell>
-                <Stack spacing={0.5}>
-                  {getSubmissionFileList(row).map((file) => (
-                    <Button
-                      key={`${row.id}-${file.fileUrl}`}
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Iconify icon="solar:download-bold" width={16} />}
-                      href={resolveAssetUrl(file.fileUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      sx={{ justifyContent: 'flex-start' }}
-                    >
-                      {truncateSubmissionText(file.originalFileName, 28)}
-                    </Button>
-                  ))}
+            <TableRow key={row.id} hover>
+              <TableCell sx={{ maxWidth: 200 }}>
+                <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                  <Typography variant="subtitle2" noWrap title={row.userName || ''}>
+                    {row.userName || 'Unknown learner'}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                    title={row.userEmail || ''}
+                  >
+                    {row.userEmail || '—'}
+                  </Typography>
                 </Stack>
               </TableCell>
+
+              <TableCell sx={{ maxWidth: 160 }}>
+                <Typography variant="body2" noWrap title={row.moduleTitle || ''}>
+                  {row.moduleTitle || 'Course-level'}
+                </Typography>
+              </TableCell>
+
+              <TableCell sx={{ maxWidth: 180 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600 }}
+                  noWrap
+                  title={row.questionPrompt || ''}
+                >
+                  {truncateSubmissionText(row.questionPrompt, 48) || 'Assessment'}
+                </Typography>
+              </TableCell>
+
+              <TableCell>
+                {files.length ? (
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                    {files.map((file, fileIndex) => (
+                      <Button
+                        key={`${row.id}-${file.fileUrl}-${fileIndex}`}
+                        size="small"
+                        variant="outlined"
+                        color="inherit"
+                        href={resolveAssetUrl(file.fileUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        startIcon={<Iconify icon="solar:download-minimalistic-bold" width={16} />}
+                        sx={{ textTransform: 'none', fontWeight: 600 }}
+                      >
+                        Download{files.length > 1 ? ` ${fileIndex + 1}` : ''}
+                      </Button>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography variant="caption" color="text.disabled">
+                    —
+                  </Typography>
+                )}
+              </TableCell>
+
+              <TableCell>
+                <Label
+                  variant="soft"
+                  color={getSubmissionAttemptCount(row) > 1 ? 'warning' : 'default'}
+                >
+                  {formatSubmissionAttemptLabel(row)}
+                </Label>
+              </TableCell>
+
+              <TableCell>
+                <Label variant="soft" color={evalDisplay.color}>
+                  {evalDisplay.label}
+                </Label>
+              </TableCell>
+
               <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                <Stack spacing={0.25}>
-                  <Chip
-                    size="small"
-                    variant="soft"
-                    color={getSubmissionAttemptCount(row) > 1 ? 'warning' : 'default'}
-                    label={formatSubmissionAttemptLabel(row)}
-                  />
-                  {Array.isArray(row.attemptHistory) && row.attemptHistory.length ? (
-                    <Typography variant="caption" color="text.secondary">
-                      {row.attemptHistory.filter((item) => item.passed === false).length} failed before
-                    </Typography>
-                  ) : null}
-                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  {submittedAt ? fDateTime(submittedAt) : '—'}
+                </Typography>
               </TableCell>
-              <TableCell sx={{ minWidth: 160 }}>
-                <Stack spacing={0.5}>
-                  <Chip size="small" variant="soft" color={evalDisplay.color} label={evalDisplay.label} />
-                  {row.aiScore != null && row.manualPassed == null ? (
-                    <Typography variant="caption" color="text.secondary">
-                      Score: {row.aiScore}%
-                    </Typography>
-                  ) : null}
-                  {evalDisplay.detail ? (
-                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
-                      {truncateSubmissionText(evalDisplay.detail, 80)}
-                    </Typography>
-                  ) : null}
-                </Stack>
-              </TableCell>
-              <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                {row.uploadedAt ? new Date(row.uploadedAt).toLocaleString() : '—'}
-              </TableCell>
+
               <TableCell align="right">
-                <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                <Stack direction="row" spacing={0.25} justifyContent="flex-end">
                   {canShowVerificationLog(row) ? (
-                    <Tooltip title="Verification log">
+                    <Tooltip title="View log">
                       <span>
-                        <IconButton size="small" color="secondary" disabled={busy} onClick={() => onViewLogRow(row)}>
+                        <IconButton
+                          size="small"
+                          color="default"
+                          disabled={busy}
+                          onClick={() => onViewLogRow(row)}
+                        >
                           <Iconify icon="solar:document-text-bold" width={18} />
                         </IconButton>
                       </span>
                     </Tooltip>
                   ) : null}
-                  <Tooltip title="Manual verify">
+
+                  <Tooltip title={needsReview ? 'Verify submission' : 'Update verification'}>
                     <span>
-                      <IconButton size="small" color="primary" disabled={busy} onClick={() => onVerifyRow(row)}>
-                        <Iconify icon="solar:check-read-bold" width={18} />
+                      <IconButton
+                        size="small"
+                        color={needsReview ? 'warning' : 'primary'}
+                        disabled={busy}
+                        onClick={() => onVerifyRow(row)}
+                      >
+                        {verifyingId === row.id ? (
+                          <CircularProgress size={18} color="inherit" />
+                        ) : (
+                          <Iconify icon="solar:check-read-bold" width={18} />
+                        )}
                       </IconButton>
                     </span>
                   </Tooltip>
-                  <Tooltip title="Delete file">
+
+                  <Tooltip title="Delete submission">
                     <span>
                       <IconButton
                         size="small"
@@ -162,6 +187,9 @@ export function CourseAssignmentSubmissionsTable({
             </TableRow>
           );
         })}
+
+        <TableEmptyRows height={emptyRowsHeight} emptyRows={emptyRowsCount} />
+        <TableNoData notFound={notFound} />
       </TableBody>
     </Table>
   );

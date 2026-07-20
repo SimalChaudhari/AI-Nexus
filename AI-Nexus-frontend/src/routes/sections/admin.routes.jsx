@@ -86,6 +86,7 @@ const CourseEditPage = lazy(() => import('src/pages/dashboard/course/edit'));
 const CourseDetailsPage = lazy(() => import('src/pages/dashboard/course/details'));
 const CourseAttemptsPage = lazy(() => import('src/pages/dashboard/course/attempts'));
 const CourseCertificatesPage = lazy(() => import('src/pages/dashboard/course/certificates'));
+const CourseAssessmentsPage = lazy(() => import('src/pages/dashboard/course/assessments'));
 
 // Label Management (Admin only)
 const LabelListPage = lazy(() => import('src/pages/dashboard/label/list'));
@@ -268,6 +269,7 @@ export const adminRoutes = [
               { path: ':id/edit', element: <ProgramEditPage /> },
             ],
           },
+          { path: ':id/assessments', element: <CourseAssessmentsPage /> },
           { path: ':id', element: <CourseDetailsPage /> },
           { path: ':id/edit', element: <CourseEditPage /> },
         ],

@@ -1231,7 +1231,17 @@ export const courseService = {
         `/courses/${courseId}/question-bank/assignments/submissions`,
         { params }
       );
-      return Array.isArray(response.data?.data) ? response.data.data : [];
+      const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+      // Paginated admin callers pass page/limit; learners still get a plain array.
+      if (params?.page != null || params?.limit != null) {
+        return {
+          data: rows,
+          pagination: response.data?.pagination || null,
+          stats: response.data?.stats || null,
+          users: Array.isArray(response.data?.users) ? response.data.users : [],
+        };
+      }
+      return rows;
     } catch (error) {
       console.error('Error fetching assignment submissions:', error);
       throw error;

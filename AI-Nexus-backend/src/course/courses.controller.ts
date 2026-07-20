@@ -1168,6 +1168,10 @@ export class CourseController {
     async listAssignmentSubmissions(
         @Param('courseId') courseId: string,
         @Query('userId') filterUserId: string,
+        @Query('search') search: string,
+        @Query('status') status: string,
+        @Query('page') pageRaw: string,
+        @Query('limit') limitRaw: string,
         @Req() request: Request,
         @Res() response: Response,
     ) {
@@ -1176,13 +1180,26 @@ export class CourseController {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
         const role = (request as any).user?.role;
-        const data = await this.courseQuestionBankService.listAssignmentSubmissions(
+        const page = pageRaw != null && pageRaw !== '' ? Number(pageRaw) : undefined;
+        const limit = limitRaw != null && limitRaw !== '' ? Number(limitRaw) : undefined;
+        const result = await this.courseQuestionBankService.listAssignmentSubmissions(
             userId,
             role,
             courseId,
-            filterUserId || undefined,
+            {
+                filterUserId: filterUserId || undefined,
+                search: search || undefined,
+                status: status || undefined,
+                page: Number.isFinite(page) ? page : undefined,
+                limit: Number.isFinite(limit) ? limit : undefined,
+            },
         );
-        return response.status(HttpStatus.OK).json({ data });
+        return response.status(HttpStatus.OK).json({
+            data: result.items,
+            pagination: result.pagination,
+            stats: result.stats,
+            users: result.users,
+        });
     }
 
     @Post(':courseId/question-bank/:questionId/assignment/upload')

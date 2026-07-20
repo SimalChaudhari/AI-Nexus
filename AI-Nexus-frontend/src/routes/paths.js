@@ -263,6 +263,7 @@ export const paths = {
       certificates: `${ROOTS.ADMIN}/course/certificates`,
       details: (id) => `${ROOTS.ADMIN}/course/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/course/${id}/edit`,
+      assessments: (id) => `${ROOTS.ADMIN}/course/${id}/assessments`,
     },
     speaker: {
       root: `${ROOTS.ADMIN}/speaker`,

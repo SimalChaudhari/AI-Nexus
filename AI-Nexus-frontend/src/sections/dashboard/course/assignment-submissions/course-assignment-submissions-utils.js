@@ -33,16 +33,32 @@ export function truncateSubmissionText(str, n = 64) {
 
 export function getSubmissionEvaluationDisplay(row) {
   if (row?.manualPassed === true) {
-    return { label: 'Pass', color: 'success', detail: row.manualFeedback || 'Verified by admin' };
+    return {
+      label: 'Verified pass',
+      color: 'success',
+      detail: row.manualFeedback || 'Verified by admin',
+    };
   }
   if (row?.manualPassed === false) {
-    return { label: 'Fail', color: 'error', detail: row.manualFeedback || 'Verified by admin' };
-  }
-  if (row?.evaluationStatus === 'manual_required') {
     return {
-      label: 'Admin review',
+      label: 'Verified fail',
+      color: 'error',
+      detail: row.manualFeedback || 'Verified by admin',
+    };
+  }
+  if (row?.evaluationStatus === 'draft') {
+    return { label: 'Draft', color: 'default', detail: 'Not submitted yet' };
+  }
+  if (
+    row?.evaluationStatus === 'manual_required' ||
+    row?.evaluationStatus === 'pending' ||
+    row?.evaluationStatus === 'processing' ||
+    (row && row.manualPassed == null && row.evaluationStatus !== 'draft')
+  ) {
+    return {
+      label: 'Pending review',
       color: 'warning',
-      detail: row.aiFeedback || 'Awaiting admin verification',
+      detail: 'Awaiting admin verification',
     };
   }
   if (row?.passed === true) {
@@ -58,16 +74,19 @@ export function getSubmissionEvaluationDisplay(row) {
       color: 'error',
       detail:
         row.aiFeedback ||
-        (row.aiScore != null ? `Score ${row.aiScore}% — need at least 70% to pass` : 'Did not meet pass threshold'),
+        (row.aiScore != null
+          ? `Score ${row.aiScore}% — need at least 70% to pass`
+          : 'Did not meet pass threshold'),
     };
   }
-  if (row?.evaluationStatus === 'draft') {
-    return { label: 'Draft', color: 'default', detail: 'Upload files and submit when ready' };
-  }
-  if (row?.evaluationStatus === 'processing' || row?.evaluationStatus === 'pending') {
-    return { label: 'Submitted', color: 'info', detail: 'Awaiting admin review' };
-  }
-  return { label: 'Pending', color: 'default', detail: 'Waiting for admin review' };
+  return { label: 'Pending review', color: 'warning', detail: 'Awaiting admin verification' };
+}
+
+export function getAdminSubmissionStatusKey(row) {
+  if (row?.manualPassed === true) return 'verified_pass';
+  if (row?.manualPassed === false) return 'verified_fail';
+  if (row?.evaluationStatus === 'draft') return 'draft';
+  return 'pending_review';
 }
 
 export function getStructuredQuestionResults(submission) {
