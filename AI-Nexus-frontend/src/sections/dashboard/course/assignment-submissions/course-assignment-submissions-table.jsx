@@ -110,7 +110,7 @@ export function CourseAssignmentSubmissionsTable({
                   <Chip size="small" variant="soft" color={evalDisplay.color} label={evalDisplay.label} />
                   {row.aiScore != null && row.manualPassed == null ? (
                     <Typography variant="caption" color="text.secondary">
-                      AI score: {row.aiScore}%
+                      Score: {row.aiScore}%
                     </Typography>
                   ) : null}
                   {evalDisplay.detail ? (
@@ -126,7 +126,7 @@ export function CourseAssignmentSubmissionsTable({
               <TableCell align="right">
                 <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                   {canShowVerificationLog(row) ? (
-                    <Tooltip title="AI verification log">
+                    <Tooltip title="Verification log">
                       <span>
                         <IconButton size="small" color="secondary" disabled={busy} onClick={() => onViewLogRow(row)}>
                           <Iconify icon="solar:document-text-bold" width={18} />
@@ -138,17 +138,6 @@ export function CourseAssignmentSubmissionsTable({
                     <span>
                       <IconButton size="small" color="primary" disabled={busy} onClick={() => onVerifyRow(row)}>
                         <Iconify icon="solar:check-read-bold" width={18} />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                  <Tooltip title="Re-run AI grading">
-                    <span>
-                      <IconButton size="small" color="info" disabled={busy} onClick={() => onRegradeRow(row)}>
-                        {regradingId === row.id ? (
-                          <CircularProgress size={18} color="inherit" />
-                        ) : (
-                          <Iconify icon="solar:refresh-bold" width={18} />
-                        )}
                       </IconButton>
                     </span>
                   </Tooltip>

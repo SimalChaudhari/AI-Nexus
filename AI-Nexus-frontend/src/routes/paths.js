@@ -46,6 +46,9 @@ export const paths = {
     details: (id) => `/speaker/${id}`,
   },
   flowiseBridge: '/flowise-bridge',
+  affiliate: {
+    dashboard: '/affiliate/dashboard',
+  },
   workflows: '/ai-resources',
   aiAuditFutures: '/ai-audit-futures',
   partnerWithIsca: '/partner-with-isca',
@@ -95,6 +98,9 @@ export const paths = {
       salesforceBridge: `${ROOTS.AUTH}/membership/salesforce-bridge`,
       application: `${ROOTS.AUTH}/membership/application`,
       studentApplication: `${ROOTS.AUTH}/membership/student-application`,
+    },
+    affiliate: {
+      signUp: `${ROOTS.AUTH}/affiliate/sign-up`,
     },
   },
   // DASHBOARD (now under /admin)
@@ -318,6 +324,12 @@ export const paths = {
       root: `${ROOTS.ADMIN}/corporate-member`,
       list: `${ROOTS.ADMIN}/corporate-member/list`,
       details: (id) => `${ROOTS.ADMIN}/corporate-member/${id}`,
+    },
+    payment: {
+      root: `${ROOTS.ADMIN}/payment`,
+      settings: `${ROOTS.ADMIN}/payment`,
+      history: `${ROOTS.ADMIN}/payment/history`,
+      historyDetails: (id) => `${ROOTS.ADMIN}/payment/history/${id}`,
     },
     product: {
       root: `${ROOTS.ADMIN}/product`,

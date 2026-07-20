@@ -404,6 +404,32 @@ function transformFooterContent(source) {
   };
 }
 
+function transformMembershipPaymentSettings(source) {
+  if (!source || typeof source !== 'object') return null;
+  return {
+    currency: source.currency != null ? String(source.currency) : 'SGD',
+    baseAmount: source.baseAmount != null ? Number(source.baseAmount) : 0,
+    verifiedBaseAmount: source.verifiedBaseAmount != null ? Number(source.verifiedBaseAmount) : 0,
+    gstRatePercent: source.gstRatePercent != null ? Number(source.gstRatePercent) : 0,
+    voucherDiscountAmount:
+      source.voucherDiscountAmount != null ? Number(source.voucherDiscountAmount) : 0,
+    referralCode: source.referralCode != null ? String(source.referralCode).toUpperCase() : '',
+    referralLinkPath:
+      source.referralLinkPath != null
+        ? String(source.referralLinkPath)
+        : '/auth/sign-up?membershipOutcome=paid-signup&ref=',
+    websiteBaseUrl:
+      source.websiteBaseUrl != null ? String(source.websiteBaseUrl).replace(/\/$/, '') : '',
+    exampleReferralLink:
+      source.exampleReferralLink != null ? String(source.exampleReferralLink) : '',
+    fullReferralLink: source.fullReferralLink != null ? String(source.fullReferralLink) : '',
+    gstAmount: source.gstAmount != null ? Number(source.gstAmount) : 0,
+    totalAmount: source.totalAmount != null ? Number(source.totalAmount) : 0,
+    verifiedGstAmount: source.verifiedGstAmount != null ? Number(source.verifiedGstAmount) : 0,
+    verifiedTotalAmount: source.verifiedTotalAmount != null ? Number(source.verifiedTotalAmount) : 0,
+  };
+}
+
 function transformSettings(settings) {
   const sourceContent = settings?.homeHeroContent;
   const sourceCards = settings?.homeCardsContent;
@@ -431,6 +457,9 @@ function transformSettings(settings) {
     homeHeroImageUrl: normalizeAssetUrl(settings?.homeHeroImageUrl || ''),
     contactHeroImageUrl: normalizeAssetUrl(settings?.contactHeroImageUrl || ''),
     courseDefaultImageUrl: normalizeAssetUrl(settings?.courseDefaultImageUrl || ''),
+    digitalBadgeImageUrl: normalizeAssetUrl(settings?.digitalBadgeImageUrl || ''),
+    digitalBadgeIssuer:
+      settings?.digitalBadgeIssuer != null ? String(settings.digitalBadgeIssuer) : '',
     homeHeroContent: transformHomeHeroContent(sourceContent),
     homeCardsContent:
       sourceCards && typeof sourceCards === 'object'
@@ -514,6 +543,9 @@ function transformSettings(settings) {
     homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
     partnerWithIscaContent: transformPartnerWithIscaContent(settings?.partnerWithIscaContent),
     footerContent: transformFooterContent(settings?.footerContent),
+    membershipPaymentSettings: transformMembershipPaymentSettings(
+      settings?.membershipPaymentSettings
+    ),
     totalCourseEnrollments:
       typeof settings?.totalCourseEnrollments === 'number' && Number.isFinite(settings.totalCourseEnrollments)
         ? settings.totalCourseEnrollments
@@ -594,6 +626,28 @@ export const appSettingsService = {
 
   async removeCourseDefaultImage() {
     const response = await axios.delete('/app-settings/course-default-image');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadDigitalBadgeImage(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await axios.post('/app-settings/digital-badge-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeDigitalBadgeImage() {
+    const response = await axios.delete('/app-settings/digital-badge-image');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateDigitalBadgeSettings(payload) {
+    const response = await axios.put('/app-settings/digital-badge-settings', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },
@@ -687,6 +741,18 @@ export const appSettingsService = {
     const response = await axios.put('/app-settings/programme-fees-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
+  },
+
+  async getMembershipPaymentSettings() {
+    const response = await axios.get('/app-settings/membership-payment-settings');
+    const data = response.data?.data ?? response.data ?? null;
+    return transformMembershipPaymentSettings(data);
+  },
+
+  async updateMembershipPaymentSettings(payload) {
+    const response = await axios.put('/app-settings/membership-payment-settings', payload || {});
+    const data = response.data?.data ?? response.data?.settings?.membershipPaymentSettings ?? response.data ?? null;
+    return transformMembershipPaymentSettings(data);
   },
 
   async updateHomeTestimonialsContent(payload) {

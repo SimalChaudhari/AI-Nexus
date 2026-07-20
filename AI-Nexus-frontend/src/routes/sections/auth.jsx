@@ -18,6 +18,7 @@ const MembershipSalesforceCreatePage = lazy(() => import('src/pages/auth/members
 const MembershipSalesforceBridgePage = lazy(() => import('src/pages/auth/membership/salesforce-bridge'));
 const MembershipApplicationPage = lazy(() => import('src/pages/auth/membership/application'));
 const StudentMembershipApplicationPage = lazy(() => import('src/pages/auth/membership/student-application'));
+const AffiliateSignUpPage = lazy(() => import('src/pages/auth/affiliate/sign-up'));
 
 const authMembershipCentered = {
   path: 'membership',
@@ -63,6 +64,21 @@ const authMembershipApplication = {
       element: (
         <GuestGuard>
           <StudentMembershipApplicationPage />
+        </GuestGuard>
+      ),
+    },
+  ],
+};
+
+const authAffiliate = {
+  path: 'affiliate',
+  element: <Outlet />,
+  children: [
+    {
+      path: 'sign-up',
+      element: (
+        <GuestGuard>
+          <AffiliateSignUpPage />
         </GuestGuard>
       ),
     },
@@ -183,6 +199,12 @@ export const authRoutes = [
         <Outlet />
       </Suspense>
     ),
-    children: [authSimple, authOauth, authMembershipCentered, authMembershipApplication],
+    children: [
+      authSimple,
+      authOauth,
+      authMembershipCentered,
+      authMembershipApplication,
+      authAffiliate,
+    ],
   },
 ];

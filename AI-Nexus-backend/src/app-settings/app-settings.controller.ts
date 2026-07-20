@@ -353,6 +353,63 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Post('digital-badge-image')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload digital badge artwork for learner My Badges' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    })
+  )
+  async uploadDigitalBadgeImage(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadDigitalBadgeImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('digital-badge-image')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove digital badge artwork (revert to built-in default)' })
+  async removeDigitalBadgeImage(@Res() response: Response) {
+    const result = await this.appSettingsService.removeDigitalBadgeImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('digital-badge-settings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update digital badge issuer and related text settings' })
+  async updateDigitalBadgeSettings(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateDigitalBadgeSettings(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('home-hero-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
@@ -442,6 +499,27 @@ export class AppSettingsController {
   async updateProgrammeFeesContent(@Res() response: Response, @Body() payload: any) {
     const result = await this.appSettingsService.updateProgrammeFeesContent(payload || {});
     return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Get('membership-payment-settings')
+  @ApiOperation({ summary: 'Get membership signup payment amounts, GST, and voucher pricing' })
+  async getMembershipPaymentSettings(@Res() response: Response) {
+    const data = await this.appSettingsService.getMembershipPaymentSettings();
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('membership-payment-settings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update membership signup payment amounts, GST, and voucher pricing' })
+  async updateMembershipPaymentSettings(@Res() response: Response, @Body() payload: any) {
+    await this.appSettingsService.updateMembershipPaymentSettings(payload || {});
+    const data = await this.appSettingsService.getMembershipPaymentSettings();
+    return response.status(HttpStatus.OK).json({
+      message: 'Membership payment settings updated successfully',
+      data,
+    });
   }
 
   @Put('home-testimonials-content')

@@ -196,6 +196,7 @@ const individualSignupSharedFields = {
       return Number.isInteger(parsed) && parsed >= 0 && parsed <= 80;
     }, { message: 'Enter a valid number of years between 0 and 80.' }),
   countryOfResidence: zod.string().min(1, { message: 'Country of residence is required!' }),
+  promoCode: zod.string().optional(),
 };
 
 function refineIndividualSignupProfile(data, ctx) {

@@ -41,8 +41,8 @@ export function CourseAssignmentSubmissionsPanel({ courseId, sx }) {
       </Stack>
 
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-        Learner assessment uploads grouped by module. AI grades submissions automatically; use manual
-        verify when review is needed.
+        Learner assessment uploads grouped by module. Submissions go for admin review — use manual
+        verify to pass or fail.
       </Typography>
 
       {submissions.userOptions.length > 1 ? (

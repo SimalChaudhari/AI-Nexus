@@ -34,6 +34,7 @@ import {
   buildSubmissionAttemptRecord,
   extractVerificationLog,
   mapSubmissionEvaluationFields,
+  isAssignmentAiVerificationEnabled,
   isSubmissionPassedLocked,
   type AssignmentSubmissionAttemptRecord,
   type AssignmentVerificationLogEntry,
@@ -122,6 +123,7 @@ export type CourseQuestionAssignmentSubmissionRow = {
   manualVerifiedBy: string | null;
   passed: boolean | null;
   passedSource: 'manual' | 'ai' | null;
+  isCompleted: boolean;
   attemptCount: number;
   attemptHistory: AssignmentSubmissionAttemptRecord[];
 };
@@ -254,8 +256,10 @@ export class CourseQuestionBankService {
       aiEvaluatedAt: evaluation.aiEvaluatedAt,
       manualPassed: evaluation.manualPassed,
       manualFeedback: evaluation.manualFeedback,
+      manualVerifiedAt: evaluation.manualVerifiedAt,
       passed: evaluation.passed,
       passedSource: evaluation.passedSource,
+      isCompleted: Boolean(sub.isCompleted),
       attemptCount: sub.attemptCount || 1,
     };
   }
@@ -1098,7 +1102,6 @@ export class CourseQuestionBankService {
     }
 
     submission.submittedAt = new Date();
-    submission.evaluationStatus = 'pending';
     submission.fileUrl = files[0]?.fileUrl ?? submission.fileUrl ?? null;
     submission.originalFileName =
       summarizeSubmissionFiles(files) || submission.originalFileName || null;
@@ -1109,8 +1112,39 @@ export class CourseQuestionBankService {
         : {}),
       typedAnswers,
     };
-    const saved = await this.assignmentSubmissionRepo.save(submission);
 
+    // AI verification temporarily disabled:
+    // - auto-pass + issue/restore cert/badge immediately on submit (before admin verify)
+    // - keep admin-review pending (manualPassed stays null)
+    // - admin fail later will hide cert/badge again
+    if (!isAssignmentAiVerificationEnabled()) {
+      submission.evaluationStatus = 'manual_required';
+      submission.manualPassed = null;
+      submission.manualFeedback = null;
+      submission.manualVerifiedAt = null;
+      submission.manualVerifiedBy = null;
+      submission.aiScore = null;
+      submission.aiPassed = null;
+      submission.aiFeedback =
+        'Submitted for admin review. Progress unlocked; admin will verify the submission.';
+      submission.aiEvaluatedAt = null;
+      submission.aiRawResult = {
+        ...submission.aiRawResult,
+        aiVerificationSkipped: true,
+        adminReviewPending: true,
+      };
+      this.quizAssessmentProgressService.markSubmissionCompleted(submission, true);
+      const saved = await this.assignmentSubmissionRepo.save(submission);
+      await this.quizAssessmentProgressService.restoreCredentialAfterAssessmentPass(
+        saved.userId,
+        courseId,
+        { force: true },
+      );
+      return saved;
+    }
+
+    submission.evaluationStatus = 'pending';
+    const saved = await this.assignmentSubmissionRepo.save(submission);
     this.assignmentGradingService.queueGrading(saved.id);
     return saved;
   }
@@ -1156,6 +1190,20 @@ export class CourseQuestionBankService {
     submission.evaluationStatus = 'completed';
     this.quizAssessmentProgressService.markSubmissionCompleted(submission, dto.passed === true);
     const saved = await this.assignmentSubmissionRepo.save(submission);
+
+    if (dto.passed === false) {
+      await this.quizAssessmentProgressService.revokeCredentialAfterAssessmentFail(
+        saved.userId,
+        courseId,
+      );
+    } else {
+      // Admin pass after a prior fail must restore blocked cert/badge.
+      await this.quizAssessmentProgressService.restoreCredentialAfterAssessmentPass(
+        saved.userId,
+        courseId,
+        { force: true },
+      );
+    }
     await this.quizAssessmentProgressService.notifyLearnerProgressUpdate(saved.userId, courseId);
 
     const rows = await this.listAssignmentSubmissions(adminId, UserRole.Admin, courseId);
@@ -1171,6 +1219,11 @@ export class CourseQuestionBankService {
   ): Promise<CourseQuestionAssignmentSubmissionEntity | null> {
     if (requesterRole !== UserRole.Admin) {
       throw new ForbiddenException('Only admins can trigger regrading');
+    }
+    if (!isAssignmentAiVerificationEnabled()) {
+      throw new BadRequestException(
+        'AI verification is currently disabled. Use manual verify instead.',
+      );
     }
     const submission = await this.assignmentSubmissionRepo.findOne({
       where: { id: submissionId, courseId },
@@ -1229,6 +1282,7 @@ export class CourseQuestionBankService {
       manualVerifiedBy: evaluation.manualVerifiedBy,
       passed: evaluation.passed,
       passedSource: evaluation.passedSource,
+      isCompleted: Boolean(s.isCompleted),
       attemptCount: s.attemptCount || 1,
       attemptHistory: Array.isArray(s.attemptHistory) ? s.attemptHistory : [],
     };

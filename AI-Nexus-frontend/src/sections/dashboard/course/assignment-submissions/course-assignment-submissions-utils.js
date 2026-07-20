@@ -38,11 +38,18 @@ export function getSubmissionEvaluationDisplay(row) {
   if (row?.manualPassed === false) {
     return { label: 'Fail', color: 'error', detail: row.manualFeedback || 'Verified by admin' };
   }
+  if (row?.evaluationStatus === 'manual_required') {
+    return {
+      label: 'Admin review',
+      color: 'warning',
+      detail: row.aiFeedback || 'Awaiting admin verification',
+    };
+  }
   if (row?.passed === true) {
     return {
       label: 'Pass',
       color: 'success',
-      detail: row.aiFeedback || (row.aiScore != null ? `Score ${row.aiScore}%` : 'AI graded'),
+      detail: row.aiFeedback || (row.aiScore != null ? `Score ${row.aiScore}%` : 'Graded'),
     };
   }
   if (row?.passed === false) {
@@ -57,17 +64,10 @@ export function getSubmissionEvaluationDisplay(row) {
   if (row?.evaluationStatus === 'draft') {
     return { label: 'Draft', color: 'default', detail: 'Upload files and submit when ready' };
   }
-  if (row?.evaluationStatus === 'manual_required') {
-    return {
-      label: 'Review needed',
-      color: 'warning',
-      detail: row.aiFeedback || 'AI could not verify — admin review required',
-    };
-  }
   if (row?.evaluationStatus === 'processing' || row?.evaluationStatus === 'pending') {
-    return { label: 'Grading…', color: 'info', detail: 'AI is reviewing the submission' };
+    return { label: 'Submitted', color: 'info', detail: 'Awaiting admin review' };
   }
-  return { label: 'Pending', color: 'default', detail: 'Waiting for grading' };
+  return { label: 'Pending', color: 'default', detail: 'Waiting for admin review' };
 }
 
 export function getStructuredQuestionResults(submission) {
@@ -122,6 +122,7 @@ export function mapSubmissionFromApi(row) {
     manualVerifiedAt: row.manualVerifiedAt ?? null,
     passed: row.passed ?? null,
     passedSource: row.passedSource ?? null,
+    isCompleted: Boolean(row.isCompleted),
     verificationLog:
       Array.isArray(row.verificationLog) && row.verificationLog.length
         ? row.verificationLog
@@ -242,17 +243,19 @@ export function getVerificationLogEntries(submission) {
 
   if (submission?.evaluationStatus === 'manual_required' || submission?.passed === false) {
     entries.push({
-      step: 'Issue',
-      status: 'fail',
+      step: 'Status',
+      status: submission?.evaluationStatus === 'manual_required' ? 'info' : 'fail',
       detail:
         issueMessage ||
-        'AI could not complete verification. An admin will review this submission.',
+        (submission?.evaluationStatus === 'manual_required'
+          ? 'Submitted for admin review. An admin will verify this submission.'
+          : 'Verification failed. An admin will review this submission.'),
     });
   }
 
   if (submission?.aiScore != null) {
     entries.push({
-      step: 'AI score',
+      step: 'Score',
       status: 'info',
       detail: `${submission.aiScore}%`,
     });
@@ -266,7 +269,7 @@ export function getVerificationLogEntries(submission) {
   }
   if (submission?.aiFeedback && submission?.evaluationStatus !== 'manual_required') {
     entries.push({
-      step: 'AI feedback',
+      step: 'Feedback',
       status: submission.passed ? 'pass' : submission.passed === false ? 'fail' : 'info',
       detail: submission.aiFeedback,
     });
@@ -290,6 +293,7 @@ export function verificationLogStatusColor(status) {
 
 export function isSubmissionPassedLocked(submission) {
   if (!submission) return false;
+  if (submission.isCompleted === true) return true;
   if (submission.manualPassed === true) return true;
   if (submission.manualPassed === false) return false;
   return submission.passed === true || submission.aiPassed === true;

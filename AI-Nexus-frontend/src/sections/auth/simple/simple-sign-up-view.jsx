@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -35,7 +35,9 @@ import {
 } from 'src/validations/user.validation';
 
 import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, setSalesforceNexusPassword, verifyCompanyReference } from 'src/auth/context/jwt';
-import { confirmMembershipPayment, createMembershipCheckoutSession } from 'src/services/payment.service';
+import { abandonMembershipCheckout, confirmMembershipPayment, createMembershipCheckoutSession, verifyMembershipPayment } from 'src/services/payment.service';
+import { trackAffiliateClick, validateCode } from 'src/services/affiliate.service';
+import { appSettingsService } from 'src/services/app-settings.service';
 import {
   buildSalesforceNexusUserPayloadFromSignup,
   resolveVerifiedNricSalesforceFields,
@@ -55,6 +57,7 @@ import {
   requiresFreeSignupJobAudit,
 } from 'src/utils/individual-signup-form';
 import { FreeSignupAuditDialog } from './free-signup-audit-dialog';
+import { MembershipPaymentConfirmedView } from './membership-payment-confirmed-view';
 import { ISCA_PRIVACY_POLICY_URL } from 'src/constants/isca-legal-links';
 
 const SIGNUP_FORM_GRID_SX = {
@@ -67,6 +70,120 @@ const SIGNUP_FORM_GRID_SX = {
 };
 
 const SIGNUP_FORM_GRID_FULL_WIDTH_SX = { gridColumn: '1 / -1' };
+
+const AFFILIATE_REF_STORAGE_KEY = 'affiliateSignupRef';
+const MEMBERSHIP_DRAFT_FORM_KEY = 'membershipSignupDraftForm';
+const MEMBERSHIP_PAYMENT_CONSENT_KEY = 'membershipPaymentConsent';
+const MEMBERSHIP_ELIGIBILITY_KEY = 'membershipEligibilityFlow';
+const PENDING_MEMBERSHIP_SESSION_KEY = 'pending_membership_session_id';
+const PENDING_MEMBERSHIP_REF_KEY = 'pending_membership_ref';
+const SALESFORCE_NEXUS_USERNAME_KEY = 'salesforceNexusUsername';
+const MEMBERSHIP_DRAFT_USER_ID_KEY = 'membershipDraftUserId';
+const MEMBERSHIP_SALESFORCE_SESSION_KEY = 'membershipSalesforceSession';
+
+/** In-flight Salesforce sync promises keyed by payment ref (prevents React Strict Mode double-create). */
+const membershipSalesforceSyncInFlight = new Map();
+
+function getMembershipSalesforceSyncStorageKey(refId) {
+  return `membershipSfSync:${String(refId || '').trim()}`;
+}
+
+/**
+ * Clear all membership signup draft / payment client state after a successful paid signup.
+ * Prevents the next visitor on the same browser from seeing a pre-filled form.
+ */
+function clearMembershipSignupClientDraftStorage(paymentRefId = '') {
+  if (typeof window === 'undefined') return;
+
+  const keysToRemove = [
+    MEMBERSHIP_DRAFT_USER_ID_KEY,
+    MEMBERSHIP_DRAFT_FORM_KEY,
+    MEMBERSHIP_PAYMENT_CONSENT_KEY,
+    MEMBERSHIP_ELIGIBILITY_KEY,
+    PENDING_MEMBERSHIP_SESSION_KEY,
+    PENDING_MEMBERSHIP_REF_KEY,
+    SALESFORCE_NEXUS_USERNAME_KEY,
+    AFFILIATE_REF_STORAGE_KEY,
+  ];
+
+  keysToRemove.forEach((key) => {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // ignore storage errors
+    }
+  });
+
+  if (paymentRefId) {
+    try {
+      sessionStorage.removeItem(getMembershipSalesforceSyncStorageKey(paymentRefId));
+    } catch {
+      // ignore
+    }
+  }
+
+  // Clear any leftover per-ref Salesforce sync markers.
+  try {
+    const syncPrefix = 'membershipSfSync:';
+    for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith(syncPrefix)) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    localStorage.removeItem(MEMBERSHIP_SALESFORCE_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Run Salesforce membership sync once per payment ref.
+ * Concurrent callers share the same promise; completed syncs are remembered in sessionStorage.
+ */
+async function runMembershipSalesforceSyncOnce(refId, runner) {
+  const key = String(refId || '').trim();
+  if (!key) {
+    return runner();
+  }
+
+  const storageKey = getMembershipSalesforceSyncStorageKey(key);
+  if (typeof window !== 'undefined') {
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing?.startsWith('done:')) {
+      return existing.slice('done:'.length) || null;
+    }
+  }
+
+  if (membershipSalesforceSyncInFlight.has(key)) {
+    return membershipSalesforceSyncInFlight.get(key);
+  }
+
+  const promise = (async () => {
+    try {
+      const username = await runner();
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(storageKey, `done:${username || ''}`);
+      }
+      return username;
+    } catch (error) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(storageKey);
+      }
+      throw error;
+    } finally {
+      membershipSalesforceSyncInFlight.delete(key);
+    }
+  })();
+
+  membershipSalesforceSyncInFlight.set(key, promise);
+  return promise;
+}
 
 function buildEligibilityDataFromFlow(flow, membershipOutcome) {
   if (!flow || typeof flow !== 'object' || Array.isArray(flow)) {
@@ -101,7 +218,7 @@ export function SimpleSignUpView() {
   const [paymentConfirming, setPaymentConfirming] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState(null);
   const [paymentCompletedState, setPaymentCompletedState] = useState(null);
-  const [paymentRedirectCountdown, setPaymentRedirectCountdown] = useState(5);
+  const [paymentRedirectCountdown, setPaymentRedirectCountdown] = useState(15);
   const [verifiedSignupLoading, setVerifiedSignupLoading] = useState(false);
   const [verifiedSignupAccessError, setVerifiedSignupAccessError] = useState('');
   const [verifiedSignupPrefill, setVerifiedSignupPrefill] = useState(null);
@@ -117,6 +234,17 @@ export function SimpleSignUpView() {
   const [freeSignupAuditEmail, setFreeSignupAuditEmail] = useState('');
   const [freeSignupAuditUserId, setFreeSignupAuditUserId] = useState('');
   const [freeSignupAuditLearnerName, setFreeSignupAuditLearnerName] = useState('');
+  const [affiliatePricing, setAffiliatePricing] = useState(null);
+  const [affiliateValidating, setAffiliateValidating] = useState(false);
+  const [membershipFeeConfig, setMembershipFeeConfig] = useState({
+    currency: 'SGD',
+    baseAmount: 365.14,
+    verifiedBaseAmount: 300,
+    gstRatePercent: 9,
+    voucherDiscountAmount: 100,
+  });
+  const affiliateTrackedRef = useRef('');
+  const appliedPromoInputRef = useRef('');
   const freeSignupPrefillRestoredRef = useRef(false);
   const membershipOutcome = searchParams.get('membershipOutcome');
   const returnTo = searchParams.get('returnTo') || '';
@@ -125,14 +253,17 @@ export function SimpleSignUpView() {
   const paymentSessionId = searchParams.get('session_id') || '';
   const isPaidMembershipFlow = membershipOutcome === 'paid-signup';
   const isVerifiedNricSignupFlow = membershipOutcome === 'verified-nric-signup';
+  /** Referral/promo link (`?ref=CODE`) — lock voucher field after auto-fill. */
+  const lockedReferralCode = String(paymentRef || '').trim().toUpperCase();
+  const isPromoLockedFromReferral = Boolean(lockedReferralCode);
   const isMembershipFeeFlow = isPaidMembershipFlow || isVerifiedNricSignupFlow;
   const isFreeIndividualSignup = !isMembershipFeeFlow;
   const signupAccessToken = searchParams.get('signupAccessToken') || '';
-  const membershipDraftFormStorageKey = 'membershipSignupDraftForm';
-  const membershipPaymentConsentKey = 'membershipPaymentConsent';
-  const membershipEligibilityStorageKey = 'membershipEligibilityFlow';
-  const pendingMembershipSessionKey = 'pending_membership_session_id';
-  const pendingMembershipRefKey = 'pending_membership_ref';
+  const membershipDraftFormStorageKey = MEMBERSHIP_DRAFT_FORM_KEY;
+  const membershipPaymentConsentKey = MEMBERSHIP_PAYMENT_CONSENT_KEY;
+  const membershipEligibilityStorageKey = MEMBERSHIP_ELIGIBILITY_KEY;
+  const pendingMembershipSessionKey = PENDING_MEMBERSHIP_SESSION_KEY;
+  const pendingMembershipRefKey = PENDING_MEMBERSHIP_REF_KEY;
   const persistPaymentConsent = (checked) => {
     if (typeof window === 'undefined') return;
 
@@ -156,10 +287,30 @@ export function SimpleSignUpView() {
     if (!normalized) return '(none)';
     return normalized.length > keep ? `${normalized.slice(0, keep)}...` : normalized;
   };
-  const membershipBaseAmount = isVerifiedNricSignupFlow ? 300 : 365.14;
-  const gstRate = 0.09;
-  const gstAmount = membershipBaseAmount * gstRate;
-  const totalAmount = membershipBaseAmount + gstAmount;
+  const membershipBaseAmount = isVerifiedNricSignupFlow
+    ? membershipFeeConfig.verifiedBaseAmount
+    : membershipFeeConfig.baseAmount;
+  const gstRate = (membershipFeeConfig.gstRatePercent || 0) / 100;
+  const standardGstAmount = membershipBaseAmount * gstRate;
+  const standardTotalAmount = membershipBaseAmount + standardGstAmount;
+  const affiliateDiscountApplied = affiliatePricing?.discountApplied === true;
+  const gstAmount = affiliateDiscountApplied ? 0 : standardGstAmount;
+  const totalAmount = affiliateDiscountApplied
+    ? Number(affiliatePricing?.payableAmount ?? membershipFeeConfig.voucherDiscountAmount)
+    : standardTotalAmount;
+  const currencyLabel = String(membershipFeeConfig.currency || 'SGD').toUpperCase();
+  const appliedPromoCodes = [
+    ...new Set(
+      [
+        affiliatePricing?.appliedCode,
+        affiliatePricing?.affiliateCode,
+        affiliatePricing?.voucherCode,
+      ]
+        .map((code) => String(code || '').trim().toUpperCase())
+        .filter(Boolean)
+    ),
+  ];
+  const verifiedPromoCodeLabel = appliedPromoCodes.join(', ') || '—';
   const isVerifiedSignupSignInOnlyState =
     isVerifiedNricSignupFlow
     && !!verifiedSignupAccessError
@@ -168,11 +319,15 @@ export function SimpleSignUpView() {
     ? `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(returnTo)}`
     : paths.auth.simple.signIn;
   const buildPaymentCompleteSignInHref = () => paths.auth.oauth.start;
-  const membershipInfoText = isVerifiedNricSignupFlow
-    ? 'Verified document membership rate applied. Base fee is SGD 300 (excluding GST).'
-    : 'Membership paid plan selected. Base fee is SGD 365.14 (excluding GST).';
+  const membershipInfoText = affiliateDiscountApplied
+    ? `Promo code applied. Discounted rate: ${currencyLabel} ${totalAmount.toFixed(2)} (no separate GST).`
+    : isVerifiedNricSignupFlow
+      ? `Verified document membership rate applied. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`
+      : `Membership paid plan selected. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`;
   const membershipSource = isVerifiedNricSignupFlow ? 'membership-verified-signup' : 'membership-paid-signup';
-  const membershipBadgeLabel = isVerifiedNricSignupFlow ? 'Discount applied' : 'GST included';
+  const membershipBadgeLabel = affiliateDiscountApplied
+    ? 'Promo applied'
+    : isVerifiedNricSignupFlow ? 'Discount applied' : 'GST included';
   const isPaymentReturnProcessing = paymentConfirming;
   const membershipDraftRestoredRef = useRef(false);
   const normalizedPaymentRef =
@@ -249,7 +404,103 @@ export function SimpleSignUpView() {
   const jobFunctionValue = watch('jobFunction');
   const citizenshipValue = watch('citizenship');
   const companyCodeValue = watch('companyCode');
+  const promoCodeValue = watch('promoCode');
   const prevCompanyCodeRef = useRef(companyCodeValue);
+  const suppressCompanyCodeClearRef = useRef(false);
+
+  const applyPromoCode = useCallback(async (codeOverride) => {
+    const code = String(codeOverride ?? getValues('promoCode') ?? '').trim().toUpperCase();
+    if (!code) {
+      setAffiliatePricing({ discountApplied: false, error: 'Enter a code to apply.' });
+      return;
+    }
+
+    setAffiliateValidating(true);
+    try {
+      const result = await validateCode(code);
+      if (result?.valid) {
+        const exactCode = String(result?.appliedCode || code).trim().toUpperCase();
+        appliedPromoInputRef.current = exactCode;
+        setValue('promoCode', exactCode);
+        setAffiliatePricing({
+          discountApplied: true,
+          payableAmount: Number(result?.payableAmount ?? membershipFeeConfig.voucherDiscountAmount),
+          currency: result?.currency || membershipFeeConfig.currency,
+          appliedCode: exactCode,
+          affiliateCode: result?.affiliateCode || undefined,
+          voucherCode: result?.voucherCode || undefined,
+          codeType: result?.codeType || undefined,
+          message: result?.message || 'Promo code applied. Discounted rate applied below.',
+        });
+      } else {
+        appliedPromoInputRef.current = '';
+        setAffiliatePricing({
+          discountApplied: false,
+          error: result?.message || 'This code is invalid or expired.',
+        });
+      }
+    } catch (error) {
+      appliedPromoInputRef.current = '';
+      setAffiliatePricing({
+        discountApplied: false,
+        error: error?.message || 'Could not validate this code. Please try again.',
+      });
+    } finally {
+      setAffiliateValidating(false);
+    }
+  }, [getValues, membershipFeeConfig, setValue]);
+
+  useEffect(() => {
+    const normalized = String(promoCodeValue || '').trim().toUpperCase();
+    if (appliedPromoInputRef.current && normalized !== appliedPromoInputRef.current) {
+      appliedPromoInputRef.current = '';
+      setAffiliatePricing(null);
+    }
+  }, [promoCodeValue]);
+
+  useEffect(() => {
+    let active = true;
+    appSettingsService
+      .getMembershipPaymentSettings()
+      .then((config) => {
+        if (!active || !config) return;
+        setMembershipFeeConfig({
+          currency: config.currency || 'SGD',
+          baseAmount: Number(config.baseAmount) || 365.14,
+          verifiedBaseAmount: Number(config.verifiedBaseAmount) || 300,
+          gstRatePercent: Number(config.gstRatePercent) || 9,
+          voucherDiscountAmount: Number(config.voucherDiscountAmount) || 100,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isMembershipFeeFlow) return;
+    const isPaymentReturn = paymentState === 'success' || paymentState === 'canceled';
+    if (isPaymentReturn) return;
+
+    const refCode = lockedReferralCode;
+    if (!refCode) return;
+
+    sessionStorage.setItem(AFFILIATE_REF_STORAGE_KEY, refCode);
+    setValue('promoCode', refCode);
+
+    if (affiliateTrackedRef.current === refCode) return;
+    affiliateTrackedRef.current = refCode;
+
+    trackAffiliateClick({ affiliateCode: refCode, landingPath: window.location.pathname }).catch(() => {});
+    applyPromoCode(refCode);
+  }, [
+    applyPromoCode,
+    isMembershipFeeFlow,
+    lockedReferralCode,
+    paymentState,
+    setValue,
+  ]);
 
   useEffect(() => {
     const existsMessage = SALESFORCE_EMAIL_EXISTS_MESSAGE.toLowerCase();
@@ -287,7 +538,15 @@ export function SimpleSignUpView() {
 
   useEffect(() => {
     if (prevCompanyCodeRef.current === companyCodeValue) return;
+
+    if (suppressCompanyCodeClearRef.current) {
+      suppressCompanyCodeClearRef.current = false;
+      prevCompanyCodeRef.current = companyCodeValue;
+      return;
+    }
+
     prevCompanyCodeRef.current = companyCodeValue;
+    // User changed the company reference — clear auto-filled company name.
     setCompanyReferenceVerified(null);
     setCompanyVerifiedName('');
     setValue('company', '');
@@ -300,11 +559,18 @@ export function SimpleSignUpView() {
     const code = String(snapshot.companyReferenceId || '').trim();
     if (!code) return;
     if (!getValues('companyCode')) {
+      suppressCompanyCodeClearRef.current = true;
       setValue('companyCode', code);
     }
     prevCompanyCodeRef.current = code;
     setCompanyReferenceVerified(true);
-    setCompanyVerifiedName(String(snapshot.companyVerifiedName || '').trim());
+    const verifiedName = String(snapshot.companyVerifiedName || '').trim();
+    setCompanyVerifiedName(verifiedName);
+    if (verifiedName && !String(getValues('company') || '').trim()) {
+      suppressCompanyCodeClearRef.current = true;
+      setValue('company', verifiedName);
+      setCompanyPrefilled(true);
+    }
   }, [eligibilityData, getValues, setValue]);
 
   useEffect(() => {
@@ -407,8 +673,14 @@ export function SimpleSignUpView() {
       }
 
       const prefill = buildIndividualSignupPrefillFromEligibility(flow || {}, storedValues);
+      const nextCompanyCode = prefill.companyCode || '';
+      prevCompanyCodeRef.current = nextCompanyCode || prevCompanyCodeRef.current;
       setCompanyPrefilled(prefill.companyPrefilled);
       setNricVerifiedReadOnly(prefill.nricVerified);
+      if (nextCompanyCode && prefill.company) {
+        setCompanyReferenceVerified(true);
+        setCompanyVerifiedName(prefill.company);
+      }
 
       reset((current) => ({
         ...current,
@@ -508,10 +780,25 @@ export function SimpleSignUpView() {
       }
 
       const profilePrefill = buildIndividualSignupPrefillFromEligibility(parsed?.flow || {}, parsed.values || {});
-      setCompanyPrefilled(profilePrefill.companyPrefilled);
+      const restoredCompany =
+        profilePrefill.company
+        || parsed.values.company
+        || parsed.companyVerifiedName
+        || '';
+      const restoredCompanyCode = profilePrefill.companyCode || parsed.values.companyCode || '';
+
+      // Prevent companyCode watch effect from clearing company after payment return restore.
+      suppressCompanyCodeClearRef.current = true;
+      prevCompanyCodeRef.current = restoredCompanyCode;
+      setCompanyPrefilled(Boolean(restoredCompany) && (profilePrefill.companyPrefilled || Boolean(restoredCompanyCode)));
+      if (restoredCompanyCode && restoredCompany) {
+        setCompanyReferenceVerified(true);
+        setCompanyVerifiedName(restoredCompany);
+      } else if (restoredCompany) {
+        setCompanyVerifiedName(restoredCompany);
+      }
 
       reset({
-        salutation: parsed.values.salutation || '',
         ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
         salutation: parsed.values.salutation || '',
         username: parsed.values.username || '',
@@ -520,15 +807,34 @@ export function SimpleSignUpView() {
         email: parsed.values.email || '',
         contactNumber: parsed.values.contactNumber || '',
         password: parsed.values.password || '',
-        company: profilePrefill.company || parsed.values.company || '',
-        companyCode: profilePrefill.companyCode || parsed.values.companyCode || '',
+        company: restoredCompany,
+        companyCode: restoredCompanyCode,
         jobFunction: profilePrefill.jobFunction || parsed.values.jobFunction || '',
         jobFunctionOther: profilePrefill.jobFunctionOther || parsed.values.jobFunctionOther || '',
         yearsOfExperience:
           profilePrefill.yearsOfExperience || parsed.values.yearsOfExperience || '',
         countryOfResidence:
           profilePrefill.countryOfResidence || parsed.values.countryOfResidence || '',
+        promoCode: lockedReferralCode || parsed.values.promoCode || '',
       });
+
+      // Re-apply after reset settles — guards against race with companyCode wipe effect.
+      if (restoredCompany) {
+        queueMicrotask(() => {
+          suppressCompanyCodeClearRef.current = true;
+          prevCompanyCodeRef.current = restoredCompanyCode;
+          setValue('company', restoredCompany);
+          if (restoredCompanyCode) {
+            setValue('companyCode', restoredCompanyCode);
+          }
+        });
+      }
+
+      if (parsed?.affiliatePricing?.discountApplied) {
+        appliedPromoInputRef.current = String(parsed.affiliatePricing.appliedCode || '').trim().toUpperCase();
+        setAffiliatePricing(parsed.affiliatePricing);
+      }
+
       membershipDraftRestoredRef.current = true;
     } catch {
       // Ignore invalid cached draft payloads.
@@ -536,21 +842,65 @@ export function SimpleSignUpView() {
   }, [
     isMembershipFeeFlow,
     isPaidMembershipFlow,
+    lockedReferralCode,
     membershipDraftFormStorageKey,
     membershipOutcome,
     membershipPaymentConsentKey,
     returnTo,
     reset,
+    setValue,
   ]);
 
   useEffect(() => {
-    if (!isMembershipFeeFlow || paymentState !== 'canceled') return;
+    if (!isMembershipFeeFlow || paymentState !== 'canceled') return undefined;
 
-    setPaymentNotice({
-      severity: 'warning',
-      message: 'Payment was not completed. Your details are still saved as a draft. Continue payment to create your account.',
-    });
-  }, [isMembershipFeeFlow, paymentState]);
+    let active = true;
+    const draftUserId =
+      typeof window !== 'undefined' ? sessionStorage.getItem('membershipDraftUserId') || '' : '';
+    const refId =
+      typeof window !== 'undefined' ? sessionStorage.getItem(pendingMembershipRefKey) || paymentRef || '' : '';
+
+    (async () => {
+      try {
+        if (draftUserId) {
+          await abandonMembershipCheckout({
+            draftUserId,
+            ref: refId || undefined,
+          });
+        }
+      } catch (error) {
+        console.warn('[MembershipPayment] Draft abandon on cancel failed', {
+          message: error?.message,
+        });
+      } finally {
+        if (!active) return;
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('membershipDraftUserId');
+          sessionStorage.removeItem(pendingMembershipSessionKey);
+          sessionStorage.removeItem(pendingMembershipRefKey);
+          sessionStorage.removeItem('salesforceNexusUsername');
+          if (refId) {
+            sessionStorage.removeItem(getMembershipSalesforceSyncStorageKey(refId));
+          }
+        }
+        setPaymentNotice({
+          severity: 'warning',
+          message:
+            'Payment was not completed. No account was created. Your form details are still on this page — you can pay again when ready.',
+        });
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    isMembershipFeeFlow,
+    paymentRef,
+    paymentState,
+    pendingMembershipRefKey,
+    pendingMembershipSessionKey,
+  ]);
 
   useEffect(() => {
     if (!paymentCompletedState) {
@@ -558,6 +908,7 @@ export function SimpleSignUpView() {
     }
 
     if (paymentRedirectCountdown <= 0) {
+      clearMembershipSignupClientDraftStorage();
       router.replace(buildPaymentCompleteSignInHref());
       return undefined;
     }
@@ -592,27 +943,38 @@ export function SimpleSignUpView() {
 
     setPaymentConfirming(true);
     setPaymentCompletedState(null);
-    setPaymentRedirectCountdown(5);
+    setPaymentRedirectCountdown(15);
     setPaymentNotice(null);
     setErrorMsg('');
-    console.info('[MembershipPayment] Confirmation started (Salesforce first, then local)', {
+    console.info('[MembershipPayment] Confirmation started (verify → local account → Salesforce)', {
       refId: trimPaymentLogValue(normalizedPaymentRef),
       sessionId: trimPaymentLogValue(fallbackSessionId),
     });
 
     (async () => {
       try {
-        // Priority: Salesforce account + payment sync must succeed before local finalize.
+        // Government-grade order:
+        // 1) Verify charged amount with payment provider (no Salesforce before paid proof)
+        // 2) Finalize local account only after payment is verified
+        // 3) Salesforce sync after local success (never create SF on failed/canceled payment)
         const formValues = getValues();
-        console.info('[MembershipPayment] Salesforce sync START');
-        await ensureSalesforceNexusUserForMembershipSignup(formValues, {
-          isPaid: true,
-          paidAmount: Number(totalAmount.toFixed(2)),
-          paidDate: new Date().toISOString().slice(0, 10),
-          forceCreate: true,
+        console.info('[MembershipPayment] Payment verify START');
+        const verifiedPayment = await verifyMembershipPayment({
+          ref: normalizedPaymentRef,
+          sessionId: fallbackSessionId,
         });
         if (!active) return;
-        console.info('[MembershipPayment] Salesforce sync SUCCESS');
+
+        const verifiedAmount = Number(verifiedPayment?.paidAmount);
+        if (!Number.isFinite(verifiedAmount) || verifiedAmount <= 0 || !verifiedPayment?.paymentProofToken) {
+          throw new Error('Payment verification did not return a valid charged amount.');
+        }
+
+        console.info('[MembershipPayment] Payment verify SUCCESS', {
+          refId: trimPaymentLogValue(normalizedPaymentRef),
+          paidAmount: verifiedAmount,
+          currency: verifiedPayment?.currency,
+        });
 
         const response = await confirmMembershipPayment({
           ref: normalizedPaymentRef,
@@ -623,45 +985,124 @@ export function SimpleSignUpView() {
         console.info('[MembershipPayment] Local confirmation success', {
           refId: trimPaymentLogValue(normalizedPaymentRef),
           userId: trimPaymentLogValue(response?.userId),
+          paidAmount: response?.paidAmount,
         });
 
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('membershipDraftUserId');
-          sessionStorage.removeItem(membershipDraftFormStorageKey);
-          sessionStorage.removeItem(membershipPaymentConsentKey);
-          sessionStorage.removeItem(membershipEligibilityStorageKey);
-          sessionStorage.removeItem(pendingMembershipSessionKey);
-          sessionStorage.removeItem(pendingMembershipRefKey);
-          sessionStorage.removeItem('salesforceNexusUsername');
-          localStorage.removeItem('membershipSalesforceSession');
+        let salesforceSyncWarning = '';
+        try {
+          console.info('[MembershipPayment] Salesforce sync START', {
+            refId: trimPaymentLogValue(normalizedPaymentRef),
+            paidAmount: verifiedAmount,
+          });
+          await runMembershipSalesforceSyncOnce(normalizedPaymentRef, () =>
+            ensureSalesforceNexusUserForMembershipSignup(formValues, {
+              isPaid: true,
+              paidAmount: verifiedAmount,
+              paidDate: verifiedPayment.paidDate || new Date().toISOString().slice(0, 10),
+              paymentProofToken: verifiedPayment.paymentProofToken,
+              forceCreate: true,
+              paymentRefId: normalizedPaymentRef,
+            })
+          );
+          console.info('[MembershipPayment] Salesforce sync SUCCESS');
+        } catch (sfError) {
+          salesforceSyncWarning =
+            sfError?.message
+            || 'Payment succeeded and your account was created, but eServices sync needs attention. Please contact support if you cannot sign in to eServices.';
+          console.error('[MembershipPayment] Salesforce sync FAILED after paid local account', {
+            refId: trimPaymentLogValue(normalizedPaymentRef),
+            message: salesforceSyncWarning,
+          });
         }
+        if (!active) return;
 
-        const verifiedEmail = response?.email || getValues('email') || '';
-        setPaymentNotice(null);
+        const successItemName = affiliateDiscountApplied
+          ? 'ISCA membership (promo)'
+          : isVerifiedNricSignupFlow
+            ? 'ISCA membership (verified rate)'
+            : 'ISCA membership';
+        const successMemberName = [formValues.firstName, formValues.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        const successPaidAmount = Number(response?.paidAmount ?? verifiedAmount) || verifiedAmount;
+        const successCurrency = verifiedPayment?.currency || currencyLabel || 'SGD';
+
+        // Payment + account success: wipe all client draft state so the next visitor
+        // does not see a pre-filled membership form on this browser.
+        clearMembershipSignupClientDraftStorage(normalizedPaymentRef);
+        membershipDraftRestoredRef.current = false;
+        setAffiliatePricing(null);
+        appliedPromoInputRef.current = '';
+        setPaymentConsentChecked(false);
+        setEligibilityData(null);
+        reset({ ...INDIVIDUAL_SIGNUP_DEFAULT_VALUES });
+
+        const verifiedEmail = response?.email || formValues.email || '';
+        if (salesforceSyncWarning) {
+          setPaymentNotice({
+            severity: 'warning',
+            message: salesforceSyncWarning,
+          });
+        } else {
+          setPaymentNotice(null);
+        }
         setPaymentCompletedState({
           email: verifiedEmail,
           userId: response?.userId || '',
+          paidAmount: successPaidAmount,
+          currency: successCurrency,
+          memberName: successMemberName,
+          paymentRef: normalizedPaymentRef,
+          itemName: successItemName,
         });
-        setPaymentRedirectCountdown(5);
+        setPaymentRedirectCountdown(15);
       } catch (error) {
         if (!active) return;
-        const isSalesforcePhase =
-          error?.config?.url?.includes?.('create-nexus-user')
-          || error?.config?.url?.includes?.('set-nexus-password')
-          || error?.config?.url?.includes?.('update-nexus-payment')
-          || String(error?.message || '').toLowerCase().includes('salesforce');
-        const notice = isSalesforcePhase
+        const lowerMessage = String(error?.message || '').toLowerCase();
+        const paymentStillPending = lowerMessage.includes('still being processed');
+        const paymentFailedWithoutAccount =
+          !paymentStillPending
+          && (
+            lowerMessage.includes('not completed successfully')
+            || lowerMessage.includes('payment was not completed')
+            || lowerMessage.includes('payment amount validation failed')
+            || lowerMessage.includes('currency validation failed')
+            || lowerMessage.includes('does not match your')
+            || lowerMessage.includes('could not validate')
+            || lowerMessage.includes('valid charged amount')
+          );
+
+        if (paymentFailedWithoutAccount && typeof window !== 'undefined') {
+          const draftUserId = sessionStorage.getItem('membershipDraftUserId') || '';
+          if (draftUserId) {
+            try {
+              await abandonMembershipCheckout({
+                draftUserId,
+                ref: normalizedPaymentRef,
+              });
+            } catch (abandonError) {
+              console.warn('[MembershipPayment] Draft abandon after failed payment skipped', {
+                message: abandonError?.message,
+              });
+            }
+            sessionStorage.removeItem('membershipDraftUserId');
+            sessionStorage.removeItem(pendingMembershipSessionKey);
+            sessionStorage.removeItem(pendingMembershipRefKey);
+          }
+        }
+
+        const notice = paymentFailedWithoutAccount
           ? {
               severity: 'error',
               message:
-                error?.message
-                || 'Salesforce account could not be created. Local signup was not completed. Please try again or contact support.',
+                `${error?.message || 'Payment was not completed.'} No account was created.`,
             }
           : resolveMembershipPaymentNotice(error, 'confirm');
         console.error('[MembershipPayment] Confirmation failed', {
           refId: trimPaymentLogValue(normalizedPaymentRef),
           sessionId: trimPaymentLogValue(fallbackSessionId),
-          phase: isSalesforcePhase ? 'salesforce' : 'local',
+          phase: paymentFailedWithoutAccount ? 'payment' : 'local',
           message: notice.message,
         });
         setPaymentNotice(notice);
@@ -685,6 +1126,7 @@ export function SimpleSignUpView() {
     paymentState,
     pendingMembershipRefKey,
     pendingMembershipSessionKey,
+    reset,
     router,
   ]);
 
@@ -769,6 +1211,13 @@ export function SimpleSignUpView() {
   };
 
   const ensureSalesforceNexusUserForMembershipSignup = async (data, paymentMeta = {}) => {
+    // Paid membership must never create Salesforce accounts without verified payment proof.
+    if (paymentMeta.isPaid === true && !String(paymentMeta.paymentProofToken || '').trim()) {
+      throw new Error(
+        'Salesforce account cannot be created before payment is verified. Please complete payment first.'
+      );
+    }
+
     let flow = eligibilityData?.snapshot || null;
     let storedValues = {};
 
@@ -818,6 +1267,8 @@ export function SimpleSignUpView() {
       email: formValues.email,
       forceCreate,
       isPaid: paymentMeta.isPaid === true,
+      paidAmount: paymentMeta.paidAmount,
+      paymentRefId: paymentMeta.paymentRefId || null,
     });
 
     const createResult = await createSalesforceNexusUser(
@@ -836,6 +1287,7 @@ export function SimpleSignUpView() {
         isPaid: paymentMeta.isPaid === true,
         paidAmount: paymentMeta.paidAmount,
         paidDate: paymentMeta.paidDate,
+        paymentProofToken: paymentMeta.paymentProofToken,
       })
     );
 
@@ -884,6 +1336,15 @@ export function SimpleSignUpView() {
       setUsernameSuggestions([]);
       setShowAllSuggestions(false);
       setAppliedSuggestion('');
+
+      // Paid membership must go through checkout — never create Salesforce/local account here.
+      if (isMembershipFeeFlow) {
+        setPaymentNotice({
+          severity: 'warning',
+          message: 'Please complete membership payment to create your account.',
+        });
+        return;
+      }
 
       setEmailSfChecking(true);
       let emailCheck;
@@ -981,6 +1442,9 @@ export function SimpleSignUpView() {
             membershipOutcome,
             eligibility: eligibilityData,
             paymentConsentChecked: true,
+            affiliatePricing: affiliatePricing?.discountApplied ? affiliatePricing : null,
+            companyVerifiedName: companyVerifiedName || data.company || '',
+            companyReferenceVerified: companyReferenceVerified === true,
             values: {
               salutation: data.salutation,
               username: data.username,
@@ -989,12 +1453,13 @@ export function SimpleSignUpView() {
               email: data.email,
               contactNumber: data.contactNumber,
               password: data.password,
-              company: data.company,
+              company: data.company || companyVerifiedName || '',
               companyCode: data.companyCode,
               jobFunction: data.jobFunction,
               jobFunctionOther: data.jobFunctionOther,
               yearsOfExperience: data.yearsOfExperience,
               countryOfResidence: data.countryOfResidence,
+              promoCode: data.promoCode,
             },
           })
         );
@@ -1022,6 +1487,7 @@ export function SimpleSignUpView() {
         successUrl: `${baseUrl}${paths.auth.simple.signUp}?${successSearch.toString()}`,
         cancelUrl: `${baseUrl}${paths.auth.simple.signUp}?${cancelSearch.toString()}`,
         currency: 'sgd',
+        code: String(data.promoCode || '').trim().toUpperCase() || undefined,
       });
 
       if (!checkoutResponse?.url) {
@@ -1046,12 +1512,31 @@ export function SimpleSignUpView() {
       if (rawMessage.includes('username already exists')) {
         handleSignupError(error, data.username);
       } else {
+        const draftUserId =
+          typeof window !== 'undefined' ? sessionStorage.getItem('membershipDraftUserId') || '' : '';
+        if (draftUserId) {
+          try {
+            await abandonMembershipCheckout({ draftUserId });
+          } catch (abandonError) {
+            console.warn('[MembershipPayment] Draft abandon after checkout start failure skipped', {
+              message: abandonError?.message,
+            });
+          }
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('membershipDraftUserId');
+            sessionStorage.removeItem(pendingMembershipSessionKey);
+            sessionStorage.removeItem(pendingMembershipRefKey);
+          }
+        }
         const notice = resolveMembershipPaymentNotice(error, 'start');
         console.error('[MembershipPayment] Checkout failed', {
           source: membershipSource,
           message: notice.message,
         });
-        setPaymentNotice(notice);
+        setPaymentNotice({
+          ...notice,
+          message: `${notice.message} No account was kept.`,
+        });
         setErrorMsg('');
       }
     } finally {
@@ -1164,14 +1649,7 @@ export function SimpleSignUpView() {
         </Stack>
       )}
 
-      <Box
-        sx={{
-          ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 0.75fr) 1fr 1fr' },
-          gap: 2,
-        }}
-      >
+      <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
         <Field.Select
           name="salutation"
           label="Salutation"
@@ -1182,6 +1660,16 @@ export function SimpleSignUpView() {
             <MenuItem key={s} value={s}>{s}</MenuItem>
           ))}
         </Field.Select>
+      </Box>
+
+      <Box
+        sx={{
+          ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+          gap: 2,
+        }}
+      >
         <Field.Text
           name="firstName"
           label="First name"
@@ -1262,38 +1750,53 @@ export function SimpleSignUpView() {
 
       <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
         <Stack spacing={1}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            alignItems={{ sm: 'flex-start' }}
-          >
-            <Box sx={{ flex: 1, width: 1 }}>
-              <Field.Text
-                name="companyCode"
-                label="Company reference (optional)"
-                InputLabelProps={{ shrink: true }}
-                helperText="Optional. Verify your company reference to auto-fill company details."
-                InputProps={{
-                  endAdornment:
-                    companyReferenceVerified === true ? (
-                      <InputAdornment position="end">
-                        <Iconify icon="solar:verified-check-bold" width={22} color="success.main" />
-                      </InputAdornment>
-                    ) : undefined,
-                }}
-              />
-            </Box>
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={handleVerifyCompanyReference}
-              disabled={companyReferenceVerifying || !String(companyCodeValue || '').trim()}
-              sx={{ minHeight: 40, mt: { sm: 1 }, flexShrink: 0, textTransform: 'none', fontWeight: 600 }}
-            >
-              {companyReferenceVerifying ? 'Verifying...' : 'Verify'}
-            </Button>
-          </Stack>
-          {companyReferenceVerifying ? <LinearProgress /> : null}
+          <Field.Text
+            name="companyCode"
+            label="Company reference (optional)"
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional. Verify your company reference to auto-fill company details."
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Stack direction="row" spacing={0.75} alignItems="center">
+                    {companyReferenceVerified === true ? (
+                      <Iconify icon="solar:verified-check-bold" width={20} color="success.main" />
+                    ) : null}
+                    <LoadingButton
+                      size="small"
+                      variant="contained"
+                      color="inherit"
+                      loading={companyReferenceVerifying}
+                      disabled={!String(companyCodeValue || '').trim()}
+                      onClick={handleVerifyCompanyReference}
+                      sx={{
+                        minWidth: 76,
+                        px: 1.5,
+                        height: 32,
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        boxShadow: 'none',
+                        bgcolor: 'grey.800',
+                        color: 'common.white',
+                        '&:hover': { bgcolor: 'grey.900', boxShadow: 'none' },
+                        '&.Mui-disabled': { bgcolor: 'grey.400', color: 'common.white' },
+                      }}
+                    >
+                      Verify
+                    </LoadingButton>
+                  </Stack>
+                </InputAdornment>
+              ),
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                if (String(companyCodeValue || '').trim()) {
+                  handleVerifyCompanyReference();
+                }
+              }
+            }}
+          />
           {companyReferenceVerified === true && companyVerifiedName ? (
             <Alert severity="success" icon={<Iconify icon="solar:verified-check-bold" width={22} />}>
               Company verified: <strong>{companyVerifiedName}</strong>
@@ -1422,32 +1925,7 @@ export function SimpleSignUpView() {
         </>
       ) : null}
 
-      {isMembershipFeeFlow && (
-        <Box
-          sx={(theme) => ({
-            ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
-            px: 1.5,
-            py: 1.25,
-            borderRadius: 1.5,
-            border: `1px solid ${alpha(theme.palette.success.main, 0.22)}`,
-            bgcolor: alpha(theme.palette.success.main, 0.08),
-          })}
-        >
-          <Stack direction="row" spacing={1} alignItems="flex-start">
-            <Iconify icon="solar:shield-check-bold" width={18} />
-            <Stack spacing={0.25}>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                No separate create account step
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                We save these details as a draft first. Your account is created automatically only after payment succeeds.
-              </Typography>
-            </Stack>
-          </Stack>
-        </Box>
-      )}
-
-      {!isMembershipFeeFlow && (
+      {isMembershipFeeFlow ? null : (
         <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
           <LoadingButton
             fullWidth
@@ -1466,12 +1944,37 @@ export function SimpleSignUpView() {
     </Box>
   );
 
+  const renderNoSeparateStepNotice = isMembershipFeeFlow ? (
+    <Box
+      sx={(theme) => ({
+        width: 1,
+        px: 1.5,
+        py: 1.25,
+        borderRadius: 1.5,
+        border: `1px solid ${alpha(theme.palette.success.main, 0.22)}`,
+        bgcolor: alpha(theme.palette.success.main, 0.08),
+      })}
+    >
+      <Stack direction="row" spacing={1} alignItems="flex-start">
+        <Iconify icon="solar:shield-check-bold" width={18} />
+        <Stack spacing={0.25}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            No separate create account step
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            We save these details as a draft first. Your account is created automatically only after payment succeeds.
+          </Typography>
+        </Stack>
+      </Stack>
+    </Box>
+  ) : null;
+
   const renderMembershipPanel = isMembershipFeeFlow ? (
-    <Stack spacing={1.5} sx={{ position: { md: 'sticky' }, top: { md: 24 } }}>
+    <Stack spacing={1.5} sx={{ width: 1 }}>
       {scaqSsoPrefillNotice && (
         <Alert severity="info" sx={{ borderRadius: 1.5 }}>
           You signed in with Salesforce, but you are not registered as an SCAQ candidate. Your name and email are
-          pre-filled below. Complete paid signup (SGD 365.14 excluding GST) to continue.
+          pre-filled below. Complete paid signup ({currencyLabel} {Number(membershipBaseAmount).toFixed(2)} excluding GST) to continue.
         </Alert>
       )}
       <Box
@@ -1484,20 +1987,172 @@ export function SimpleSignUpView() {
           bgcolor: alpha(theme.palette.info.main, 0.08),
         })}
       >
-        <Stack
-          direction={{ xs: 'column', sm: 'row', md: 'column' }}
-          spacing={1}
-          alignItems={{ xs: 'flex-start', sm: 'center', md: 'flex-start' }}
-        >
+        <Stack spacing={0.5}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
             <Iconify icon="solar:info-circle-bold" width={18} />
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {membershipInfoText}
             </Typography>
           </Stack>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', pl: 3.5 }}>
             Your form details are saved as a draft first. We only activate the account after payment is confirmed.
           </Typography>
+        </Stack>
+      </Box>
+
+      <Box
+        sx={(theme) => ({
+          width: 1,
+          p: 2,
+          borderRadius: 1.5,
+          border: `1px solid ${
+            affiliateDiscountApplied
+              ? alpha(theme.palette.success.main, 0.35)
+              : theme.palette.divider
+          }`,
+          bgcolor: affiliateDiscountApplied
+            ? alpha(theme.palette.success.main, 0.04)
+            : theme.palette.background.paper,
+        })}
+      >
+        <Stack spacing={1.25}>
+          <Stack spacing={0.25}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Iconify icon="solar:ticket-bold-duotone" width={18} sx={{ color: 'text.secondary' }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Voucher / Referral code
+              </Typography>
+              {affiliateDiscountApplied ? (
+                <Chip
+                  size="small"
+                  color="success"
+                  variant="soft"
+                  label="Verified"
+                  sx={{ height: 22, fontWeight: 600 }}
+                />
+              ) : null}
+            </Stack>
+            <Typography variant="caption" sx={{ color: 'text.secondary', pl: 3.5 }}>
+              {isPromoLockedFromReferral
+                ? 'This code came from your referral link and cannot be changed.'
+                : 'Enter a valid code issued by ISCA or your referring partner. The payable amount updates after verification.'}
+            </Typography>
+          </Stack>
+
+          <Field.Text
+            name="promoCode"
+            label="Code"
+            placeholder="e.g. SP001"
+            disabled={isPromoLockedFromReferral}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{
+              style: { textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 },
+              autoComplete: 'off',
+              spellCheck: false,
+              readOnly: isPromoLockedFromReferral,
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Iconify icon="solar:tag-price-bold-duotone" width={18} />
+                </InputAdornment>
+              ),
+              endAdornment: (
+                <InputAdornment position="end">
+                  <LoadingButton
+                    size="small"
+                    variant="contained"
+                    color="inherit"
+                    loading={affiliateValidating}
+                    disabled={
+                      isPromoLockedFromReferral || !String(promoCodeValue || '').trim()
+                    }
+                    onClick={() => applyPromoCode()}
+                    sx={{
+                      minWidth: 76,
+                      px: 1.5,
+                      height: 32,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      boxShadow: 'none',
+                      bgcolor: 'grey.800',
+                      color: 'common.white',
+                      '&:hover': { bgcolor: 'grey.900', boxShadow: 'none' },
+                      '&.Mui-disabled': { bgcolor: 'grey.400', color: 'common.white' },
+                    }}
+                  >
+                    {isPromoLockedFromReferral && affiliateDiscountApplied ? 'Applied' : 'Apply'}
+                  </LoadingButton>
+                </InputAdornment>
+              ),
+            }}
+            onKeyDown={(event) => {
+              if (isPromoLockedFromReferral) {
+                event.preventDefault();
+                return;
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                applyPromoCode();
+              }
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                bgcolor: 'background.default',
+              },
+            }}
+          />
+
+          {affiliateValidating ? (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ pl: 0.25 }}>
+              <CircularProgress size={14} />
+              <Typography variant="caption" color="text.secondary">
+                Verifying code with the registry...
+              </Typography>
+            </Stack>
+          ) : affiliatePricing ? (
+            <Alert
+              severity={affiliateDiscountApplied ? 'success' : 'warning'}
+              variant="outlined"
+              icon={
+                <Iconify
+                  icon={
+                    affiliateDiscountApplied
+                      ? 'solar:verified-check-bold'
+                      : 'solar:danger-triangle-bold'
+                  }
+                  width={20}
+                />
+              }
+              sx={{
+                py: 0.75,
+                alignItems: 'center',
+                '& .MuiAlert-message': { width: 1 },
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {affiliateDiscountApplied
+                  ? `Code verified: ${verifiedPromoCodeLabel}`
+                  : 'Code could not be verified'}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: 'text.secondary' }}>
+                {affiliateDiscountApplied
+                  ? 'A promotional rate has been applied to your payment summary below.'
+                  : (affiliatePricing?.error
+                    || affiliatePricing?.affiliateMessage
+                    || affiliatePricing?.voucherMessage
+                    || 'This code is invalid, inactive, or expired. The standard membership fee applies.')}
+              </Typography>
+            </Alert>
+          ) : promoCodeValue ? (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Select Apply to verify this code before payment.
+            </Typography>
+          ) : (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Optional. Leave blank to continue with the standard membership fee.
+            </Typography>
+          )}
         </Stack>
       </Box>
 
@@ -1518,17 +2173,38 @@ export function SimpleSignUpView() {
             <Chip size="small" color="warning" variant="outlined" label={membershipBadgeLabel} />
           </Stack>
           <Divider sx={{ borderStyle: 'dashed' }} />
-          <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Base amount</span>
-            <strong>SGD {membershipBaseAmount.toFixed(2)}</strong>
-          </Typography>
-          <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>GST (9%)</span>
-            <strong>SGD {gstAmount.toFixed(2)}</strong>
-          </Typography>
+          {affiliateDiscountApplied ? (
+            <>
+              <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Original price</span>
+                <strong>{currencyLabel} {standardTotalAmount.toFixed(2)}</strong>
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ display: 'flex', justifyContent: 'space-between', color: 'success.main' }}
+              >
+                <span>Promotional rate</span>
+                <strong>{currencyLabel} {Number(totalAmount).toFixed(2)}</strong>
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Verified code: {verifiedPromoCodeLabel}
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Base amount</span>
+                <strong>{currencyLabel} {Number(membershipBaseAmount).toFixed(2)}</strong>
+              </Typography>
+              <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>{`GST (${Number(membershipFeeConfig.gstRatePercent) || 9}%)`}</span>
+                <strong>{currencyLabel} {Number(gstAmount).toFixed(2)}</strong>
+              </Typography>
+            </>
+          )}
           <Typography variant="subtitle2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Total payable</span>
-            <strong>SGD {totalAmount.toFixed(2)}</strong>
+            <strong>{currencyLabel} {Number(totalAmount).toFixed(2)}</strong>
           </Typography>
           <FormControlLabel
             sx={{ m: 0, mt: 0.25 }}
@@ -1565,7 +2241,7 @@ export function SimpleSignUpView() {
               disabled={!paymentConsentChecked || verifiedSignupLoading}
               onClick={handleMembershipPayment}
             >
-              {`Pay SGD ${totalAmount.toFixed(2)}`}
+              {`Pay ${currencyLabel} ${Number(totalAmount).toFixed(2)}`}
             </LoadingButton>
           )}
         </Stack>
@@ -1574,21 +2250,24 @@ export function SimpleSignUpView() {
   ) : null;
 
   const renderForm = (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: isMembershipFeeFlow
-          ? { xs: '1fr', md: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)' }
-          : '1fr',
-        gap: { xs: 2, md: 3 },
-        alignItems: 'start',
-      }}
-    >
-      <Box sx={isPaymentReturnProcessing ? { pointerEvents: 'none', opacity: 0.5 } : {}}>
-        {renderAccountFields}
+    <Stack spacing={2}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: isMembershipFeeFlow
+            ? { xs: '1fr', md: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)' }
+            : '1fr',
+          gap: { xs: 2, md: 3 },
+          alignItems: 'start',
+        }}
+      >
+        <Box sx={isPaymentReturnProcessing ? { pointerEvents: 'none', opacity: 0.5 } : {}}>
+          {renderAccountFields}
+        </Box>
+        {renderMembershipPanel}
       </Box>
-      {renderMembershipPanel}
-    </Box>
+      {renderNoSeparateStepNotice}
+    </Stack>
   );
 
   const renderTerms = (
@@ -1617,75 +2296,44 @@ export function SimpleSignUpView() {
   );
 
   const renderPaymentConfirmed = paymentCompletedState ? (
-    <Box
-      sx={(theme) => ({
-        p: 3,
-        borderRadius: 3,
-        border: `1px solid ${alpha(theme.palette.success.main, 0.18)}`,
-        background: `linear-gradient(180deg, ${alpha(theme.palette.success.main, 0.08)} 0%, ${alpha(theme.palette.background.paper, 0.96)} 100%)`,
-        boxShadow: `0 20px 40px ${alpha(theme.palette.success.main, 0.12)}`,
-      })}
-    >
-      <Stack spacing={2.25} alignItems="center" textAlign="center">
-        <Box
-          sx={(theme) => ({
-            width: 68,
-            height: 68,
-            display: 'grid',
-            placeItems: 'center',
-            borderRadius: '50%',
-            color: 'success.main',
-            bgcolor: alpha(theme.palette.success.main, 0.12),
-          })}
-        >
-          <Iconify icon="solar:check-circle-bold" width={34} />
-        </Box>
-
-        <Stack spacing={0.75}>
-          <Typography variant="h5">Payment confirmed</Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 460 }}>
-            Your membership payment was confirmed and your account setup is complete.
-            {paymentCompletedState.email
-              ? ` We sent a verification email to ${paymentCompletedState.email}.`
-              : ' We sent a verification email to your registered email address.'}
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 460 }}>
-            You will be redirected to the sign-in page in {paymentRedirectCountdown} second{paymentRedirectCountdown === 1 ? '' : 's'}.
-            Please verify your email before signing in.
-          </Typography>
-        </Stack>
-
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-          <Button variant="contained" onClick={() => router.replace(buildPaymentCompleteSignInHref())}>
-            Go to sign in now
-          </Button>
-          
-        </Stack>
-      </Stack>
-    </Box>
+    <MembershipPaymentConfirmedView
+      email={paymentCompletedState.email}
+      memberName={paymentCompletedState.memberName}
+      paidAmount={paymentCompletedState.paidAmount}
+      currency={paymentCompletedState.currency}
+      itemName={paymentCompletedState.itemName}
+      paymentRef={paymentCompletedState.paymentRef}
+      redirectCountdown={paymentRedirectCountdown}
+      onSignIn={() => {
+        clearMembershipSignupClientDraftStorage();
+        router.replace(buildPaymentCompleteSignInHref());
+      }}
+    />
   ) : null;
+
+  if (paymentCompletedState) {
+    return renderPaymentConfirmed;
+  }
 
   return (
     <>
       {renderLogo}
 
-      {!paymentCompletedState && renderHead}
+      {renderHead}
 
-      {paymentCompletedState && renderPaymentConfirmed}
-
-      {!paymentCompletedState && isVerifiedNricSignupFlow && verifiedSignupLoading && (
+      {isVerifiedNricSignupFlow && verifiedSignupLoading && (
         <Alert severity="info" sx={{ mb: 2 }}>
           Validating your secure verified signup access...
         </Alert>
       )}
 
-      {!paymentCompletedState && isVerifiedNricSignupFlow && !!verifiedSignupAccessError && (
+      {isVerifiedNricSignupFlow && !!verifiedSignupAccessError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {verifiedSignupAccessError}
         </Alert>
       )}
 
-      {!paymentCompletedState && isVerifiedSignupSignInOnlyState && (
+      {isVerifiedSignupSignInOnlyState && (
         <Stack sx={{ mb: 2 }} alignItems="flex-end">
           <Button component={RouterLink} href={signInHref} variant="contained">
             Sign in
@@ -1693,26 +2341,26 @@ export function SimpleSignUpView() {
         </Stack>
       )}
 
-      {!paymentCompletedState && !paymentConfirming && isVerifiedNricSignupFlow && !verifiedSignupLoading && !verifiedSignupAccessError && (
+      {!paymentConfirming && isVerifiedNricSignupFlow && !verifiedSignupLoading && !verifiedSignupAccessError && (
         <Alert severity="success" sx={{ mb: 2 }}>
           NRIC verification confirmed.
           {verifiedSignupPrefill?.address ? ` Verified address: ${verifiedSignupPrefill.address}` : ''}
         </Alert>
       )}
 
-      {!paymentCompletedState && !paymentConfirming && !!paymentNotice && (
+      {!paymentConfirming && !!paymentNotice && (
         <Alert severity={paymentNotice.severity || 'info'} sx={{ mb: 2 }}>
           {paymentNotice.message}
         </Alert>
       )}
 
-      {!paymentCompletedState && !!errorMsg && (
+      {!!errorMsg && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {errorMsg}
         </Alert>
       )}
 
-      {!paymentCompletedState && !(isVerifiedNricSignupFlow && (verifiedSignupLoading || verifiedSignupAccessError)) && (
+      {!(isVerifiedNricSignupFlow && (verifiedSignupLoading || verifiedSignupAccessError)) && (
         <Box
           sx={(theme) => ({
             p: 2.25,
@@ -1728,7 +2376,7 @@ export function SimpleSignUpView() {
         </Box>
       )}
 
-      {!paymentCompletedState && renderTerms}
+      {renderTerms}
 
       <FreeSignupAuditDialog
         open={freeSignupAuditOpen}

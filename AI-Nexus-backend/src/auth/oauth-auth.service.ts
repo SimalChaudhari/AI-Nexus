@@ -1320,11 +1320,26 @@ export class OAuthAuthService {
     Is_paid?: boolean;
     paid_amount?: string | number;
     Paid_date?: string;
+    paymentProofToken?: string;
   }): Promise<Record<string, unknown>> {
     const email = normalizeEmail(payload.email);
     if (!email) {
       throw new BadRequestException('A valid email address is required.');
     }
+
+    const paymentProof = this.resolveMembershipPaymentProof(payload.paymentProofToken);
+    const isPaid = payload.Is_paid === true || Boolean(paymentProof);
+    if (isPaid && !paymentProof) {
+      throw new BadRequestException(
+        'Paid membership Salesforce sync requires a verified payment proof. Please complete payment verification first.',
+      );
+    }
+    const resolvedPaidAmount = paymentProof
+      ? paymentProof.paidAmount
+      : payload.paid_amount;
+    const resolvedPaidDate = paymentProof
+      ? paymentProof.paidDate
+      : payload.Paid_date;
 
     const idType = String(payload.id_type || '').trim();
     const idNumber = normalizeSingaporeNricFin(payload.id_number || '');
@@ -1390,19 +1405,20 @@ export class OAuthAuthService {
       }
     }
 
-    if (typeof payload.Is_paid === 'boolean') {
-      body.Is_paid = payload.Is_paid;
+    if (isPaid) {
+      body.Is_paid = true;
     }
 
-    const paidAmount = payload.paid_amount;
-    if (paidAmount !== undefined && paidAmount !== null && String(paidAmount).trim() !== '') {
-      const normalizedPaidAmount = typeof paidAmount === 'number' ? paidAmount : Number(paidAmount);
+    if (resolvedPaidAmount !== undefined && resolvedPaidAmount !== null && String(resolvedPaidAmount).trim() !== '') {
+      const normalizedPaidAmount = typeof resolvedPaidAmount === 'number'
+        ? resolvedPaidAmount
+        : Number(resolvedPaidAmount);
       if (!Number.isNaN(normalizedPaidAmount)) {
-        body.paid_amount = normalizedPaidAmount;
+        body.paid_amount = Number(normalizedPaidAmount.toFixed(2));
       }
     }
 
-    const paidDate = payload.Paid_date?.trim();
+    const paidDate = resolvedPaidDate?.trim();
     if (paidDate) {
       body.Paid_date = paidDate;
     }
@@ -1411,6 +1427,8 @@ export class OAuthAuthService {
       url,
       email: body.email,
       salutation: body.salutation,
+      paidAmount: body.paid_amount ?? null,
+      paymentRefId: paymentProof?.refId || null,
     });
 
     try {
@@ -1442,10 +1460,10 @@ export class OAuthAuthService {
       }
 
       const shouldSyncPayment =
-        payload.Is_paid === true
-        || (payload.paid_amount !== undefined
-          && payload.paid_amount !== null
-          && String(payload.paid_amount).trim() !== '');
+        isPaid
+        || (resolvedPaidAmount !== undefined
+          && resolvedPaidAmount !== null
+          && String(resolvedPaidAmount).trim() !== '');
       if (shouldSyncPayment) {
         const nestedSalesforce =
           resData.salesforce && typeof resData.salesforce === 'object'
@@ -1467,8 +1485,10 @@ export class OAuthAuthService {
         await this.updateSalesforceNexusPayment({
           accountId,
           Is_Paid: true,
-          Paid_Amount: payload.paid_amount,
-          Paid_Date: payload.Paid_date,
+          Paid_Amount: typeof body.paid_amount === 'number' || typeof body.paid_amount === 'string'
+            ? body.paid_amount
+            : resolvedPaidAmount,
+          Paid_Date: paidDate,
           required: true,
         });
       }
@@ -1489,6 +1509,52 @@ export class OAuthAuthService {
         throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
       }
       throw err;
+    }
+  }
+
+  /**
+   * Verify server-signed membership payment proof (from /payments/verify-membership-payment).
+   * Client-supplied paid_amount is ignored when a valid proof is present.
+   */
+  private resolveMembershipPaymentProof(token?: string): {
+    refId: string;
+    sessionId: string;
+    paidAmount: number;
+    paidDate: string;
+    currency: string;
+  } | null {
+    const raw = String(token || '').trim();
+    if (!raw) return null;
+    try {
+      const payload = this.jwtService.verify<{
+        purpose?: string;
+        refId?: string;
+        sessionId?: string;
+        paidAmount?: number;
+        paidDate?: string;
+        currency?: string;
+      }>(raw);
+      if (payload?.purpose !== 'membership-payment-proof') {
+        throw new BadRequestException('Invalid membership payment proof.');
+      }
+      const refId = String(payload.refId || '').trim();
+      const paidAmount = Number(payload.paidAmount);
+      const paidDate = String(payload.paidDate || '').trim();
+      if (!refId || !Number.isFinite(paidAmount) || paidAmount <= 0 || !paidDate) {
+        throw new BadRequestException('Membership payment proof is incomplete.');
+      }
+      return {
+        refId,
+        sessionId: String(payload.sessionId || '').trim(),
+        paidAmount: Number(paidAmount.toFixed(2)),
+        paidDate,
+        currency: String(payload.currency || 'SGD').trim().toUpperCase() || 'SGD',
+      };
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(
+        'Membership payment proof is invalid or expired. Please verify payment again.',
+      );
     }
   }
 
@@ -1546,6 +1612,11 @@ export class OAuthAuthService {
             await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
             continue;
           }
+          // Same password already set — treat as success so post-payment sync stays idempotent.
+          if (this.isSalesforcePasswordAlreadySetError(errorMsg)) {
+            console.warn('[Salesforce] setpasswordfornexus: password already set; treating as success');
+            return { success: true, alreadySet: true, message: errorMsg };
+          }
           const desc = this.mapSetNexusPasswordErrorMessage(errorMsg);
           throw new BadRequestException(desc || 'Failed to set Salesforce password.');
         }
@@ -1559,15 +1630,19 @@ export class OAuthAuthService {
             data: err.response?.data,
             message: err.message,
           });
+          const rawDescription = this.extractSalesforceErrorDescription(
+            err.response?.data,
+            err.message,
+          );
+          if (this.isSalesforcePasswordAlreadySetError(rawDescription)) {
+            console.warn('[Salesforce] setpasswordfornexus: password already set; treating as success');
+            return { success: true, alreadySet: true, message: rawDescription };
+          }
           lastError = err;
           if (attempt < MAX_RETRIES) {
             await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
             continue;
           }
-          const rawDescription = this.extractSalesforceErrorDescription(
-            err.response?.data,
-            err.message,
-          );
           const desc = this.mapSetNexusPasswordErrorMessage(rawDescription);
           throw new BadRequestException(desc || 'Failed to set Salesforce password.');
         }
@@ -2505,6 +2580,12 @@ export class OAuthAuthService {
     }
 
     return text;
+  }
+
+  /** True when Salesforce rejected set-password because the same password is already active. */
+  private isSalesforcePasswordAlreadySetError(description: string): boolean {
+    const lower = String(description || '').toLowerCase();
+    return lower.includes('invalid repeated password') || lower.includes('repeated password');
   }
 
   private extractSalesforceErrorDescription(data: unknown, fallbackMessage: string): string {

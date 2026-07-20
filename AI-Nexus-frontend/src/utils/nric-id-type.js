@@ -210,6 +210,7 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   isPaid = false,
   paidAmount = '',
   paidDate = '',
+  paymentProofToken = '',
 } = {}) {
   const payload = {
     salutation: String(salutation || 'Mr.').trim(),
@@ -262,6 +263,11 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   const resolvedPaidDate = String(paidDate || '').trim();
   if (resolvedPaidDate) {
     payload.Paid_date = resolvedPaidDate;
+  }
+
+  const resolvedProofToken = String(paymentProofToken || '').trim();
+  if (resolvedProofToken) {
+    payload.paymentProofToken = resolvedProofToken;
   }
 
   return payload;

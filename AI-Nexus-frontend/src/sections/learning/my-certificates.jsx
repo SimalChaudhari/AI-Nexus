@@ -16,14 +16,11 @@ import AccordionDetails from '@mui/material/AccordionDetails';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
 import { LearningSectionHeader } from './components/learning-section-header';
-import {
-  buildCertificateLinkedInShareText,
-  buildLinkedInFeedShareUrl,
-} from 'src/utils/linkedin-share';
 import { courseService } from 'src/services/course.service';
 import {
   formatCpeHoursLabel,
@@ -454,14 +451,18 @@ export function MyCertificates() {
     }
   };
 
-  const handleShareLinkedIn = (cert) => {
-    const url = buildLinkedInFeedShareUrl(
-      buildCertificateLinkedInShareText({
-        courseTitle: cert?.courseTitle,
-        certificateNo: cert?.certificateNo,
-      })
-    );
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const handleShareLinkedIn = async (cert) => {
+    if (!cert?.id) return;
+    try {
+      const share = await courseService.getCertificateLinkedInShare(cert.id, 'certificate');
+      if (!share?.url) {
+        toast.error('Unable to build LinkedIn share link');
+        return;
+      }
+      window.open(share.url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to share certificate on LinkedIn');
+    }
   };
 
   if (authLoading || loading) return <LoadingScreen />;

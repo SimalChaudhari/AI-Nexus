@@ -251,6 +251,8 @@ export function GuidelinesStepCard({
 function PassedCongratulationsCard({ submission }) {
   const theme = useTheme();
   const submittedAt = formatDateTime(submission?.submittedAt || submission?.uploadedAt);
+  const adminVerified = submission?.manualPassed === true;
+  const verifiedAt = formatDateTime(submission?.manualVerifiedAt || submission?.submittedAt);
 
   return (
     <StepCard accentColor={theme.palette.success.main}>
@@ -275,14 +277,30 @@ function PassedCongratulationsCard({ submission }) {
             Congratulations!
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35, lineHeight: 1.5 }}>
-            You have successfully passed this assessment. No further submission is required.
+            {adminVerified
+              ? 'Your assessment has been successfully verified by an admin. No further submission is required.'
+              : 'You have passed this assessment. An admin will still verify your submission.'}
           </Typography>
+          {adminVerified && submission?.manualFeedback ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 0.75, lineHeight: 1.45 }}
+            >
+              {submission.manualFeedback}
+            </Typography>
+          ) : null}
         </Box>
 
         <Stack direction="row" spacing={0.75} flexWrap="wrap" justifyContent="center" useFlexGap>
           <Chip size="small" color="success" variant="soft" label="Passed" sx={{ fontWeight: 700 }} />
-          {submittedAt ? (
-            <Chip size="small" variant="outlined" label={submittedAt} />
+          {adminVerified ? (
+            <Chip size="small" color="success" variant="outlined" label="Successfully verified" />
+          ) : (
+            <Chip size="small" color="warning" variant="soft" label="Pending admin verification" />
+          )}
+          {(adminVerified ? verifiedAt : submittedAt) ? (
+            <Chip size="small" variant="outlined" label={adminVerified ? verifiedAt : submittedAt} />
           ) : null}
         </Stack>
       </Stack>
@@ -299,43 +317,10 @@ function ResultStatus({ submission }) {
   const theme = useTheme();
   if (!submission || isSubmissionDraft(submission)) return null;
 
+  // Pass card already covers provisional pass + admin-verified pass.
+  if (submission.isCompleted === true || submission.manualPassed === true) return null;
+
   const submittedAt = formatDateTime(submission.submittedAt || submission.uploadedAt);
-
-  // Hide AI pass/fail UI until admin manually grades.
-  if (isAwaitingManualGrading(submission)) {
-    return (
-      <Box
-        sx={{
-          mt: 1,
-          py: 1,
-          px: 1.25,
-          borderRadius: 1,
-          bgcolor: alpha(theme.palette.info.main, 0.06),
-          borderLeft: `2px solid ${alpha(theme.palette.info.main, 0.6)}`,
-        }}
-      >
-        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: 'info.main' }} />
-          <Typography variant="caption" sx={{ fontWeight: 700, color: 'info.main' }}>
-            Submitted
-          </Typography>
-          {submittedAt ? (
-            <Typography variant="caption" color="text.secondary">
-              {submittedAt}
-            </Typography>
-          ) : null}
-        </Stack>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ display: 'block', mt: 0.75, lineHeight: 1.5 }}
-        >
-          Your assessment has been submitted successfully and is awaiting manual grading.
-        </Typography>
-      </Box>
-    );
-  }
-
   const evaluation = getSubmissionEvaluationDisplay(submission);
 
   const statusColor =
@@ -393,8 +378,12 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
   const uploadFiles = async (fileList) => {
     const files = Array.from(fileList || []).filter(Boolean);
     if (!files.length || !courseId || !assignment?.id) return;
-    if (submission?.manualPassed === true) {
-      toast.error('Assessment already passed.');
+    if (submission?.manualPassed === true || submission?.isCompleted === true) {
+      toast.error(
+        submission?.manualPassed === true
+          ? 'Assessment already passed.'
+          : 'Assessment already submitted for admin review.'
+      );
       return;
     }
     setUploading(true);
@@ -415,13 +404,16 @@ function useAssignmentUpload(courseId, assignment, submission, onUploaded, onDel
       toast.error('Upload a file first.');
       return;
     }
-    if (submission?.manualPassed === true) return;
+    if (submission?.manualPassed === true || submission?.isCompleted === true) return;
     setSubmitting(true);
     try {
       const row = await courseService.submitAssignmentSubmission(courseId, assignment.id, {
         typedAnswers: [],
       });
       onUploaded?.(assignment.id, mapSubmissionFromApi(row));
+      toast.success(
+        'Assessment passed. An admin will still verify your submission.'
+      );
     } catch (e) {
       toast.error(e?.response?.data?.message || e?.message || 'Submit failed');
     } finally {
@@ -505,13 +497,19 @@ export function LearningAssessmentStepFlow({
   );
   const files = getSubmissionFileList(submission);
   const busy = upload.uploading || upload.deleting || upload.submitting;
-  const isLocked = submission?.manualPassed === true;
+  const isAdminVerifiedPass = submission?.manualPassed === true;
+  const isProvisionallyPassed = submission?.isCompleted === true || isAdminVerifiedPass;
+  const isLocked = isProvisionallyPassed;
   const isDraft = isSubmissionDraft(submission);
   const awaitingManual = isAwaitingManualGrading(submission);
-  const canSubmit = isDraft && files.length > 0 && !busy;
+  const blockEdits = isProvisionallyPassed || awaitingManual;
+  const canSubmit = isDraft && files.length > 0 && !busy && !blockEdits;
   const evaluation = submission
-    ? awaitingManual
-      ? { label: 'Awaiting grading', color: 'info' }
+    ? isProvisionallyPassed
+      ? {
+          label: isAdminVerifiedPass ? 'Passed · Verified' : 'Passed',
+          color: 'success',
+        }
       : getSubmissionEvaluationDisplay(submission)
     : null;
   const isOpen = Boolean(expanded);
@@ -728,9 +726,9 @@ export function LearningAssessmentStepFlow({
             <Collapse in={activeStep === steps.submit}>
               <StepCard accentColor={theme.palette.primary.main}>
                 <Stack spacing={1}>
-                  {!isLocked ? upload.fileInput : null}
+                  {!blockEdits ? upload.fileInput : null}
 
-                  {!isLocked && files.length === 0 ? (
+                  {!blockEdits && files.length === 0 ? (
                     <Upload
                       multiple
                       value={[]}
@@ -757,7 +755,7 @@ export function LearningAssessmentStepFlow({
                   ))}
 
                   <StepActionRow>
-                    {!isLocked ? (
+                    {!blockEdits ? (
                       <Button
                         size="small"
                         variant="outlined"
@@ -777,14 +775,14 @@ export function LearningAssessmentStepFlow({
                           upload.submitting ? (
                             <CircularProgress size={14} color="inherit" />
                           ) : (
-                            <Iconify icon="solar:cpu-bolt-bold" width={16} />
+                            <Iconify icon="solar:check-circle-bold" width={16} />
                           )
                         }
                       >
                         Submit
                       </Button>
                     ) : null}
-                    {submission && !isLocked && files.length > 0 ? (
+                    {submission && !blockEdits && files.length > 0 ? (
                       <Tooltip title="Clear">
                         <IconButton size="small" disabled={busy} onClick={() => upload.setDeleteOpen(true)} color="error">
                           <Iconify icon="solar:trash-bin-trash-bold" width={18} />

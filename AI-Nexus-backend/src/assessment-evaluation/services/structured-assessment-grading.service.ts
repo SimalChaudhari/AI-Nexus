@@ -6,7 +6,7 @@ import { LocalStorageService } from '../../service/local-storage.service';
 import { CourseQuestionBankEntity } from '../../course/course-question-bank.entity';
 import { CourseQuestionAssignmentSubmissionEntity } from '../../course/course-question-assignment-submission.entity';
 import { getSubmissionFilesFromEntity } from '../../course/course-assignment-file.types';
-import { resolveSubmissionPassed, getAssignmentPassScoreThreshold } from '../../course/course-assignment-submission-evaluation.types';
+import { resolveSubmissionPassed, getAssignmentPassScoreThreshold, isAssignmentAiVerificationEnabled } from '../../course/course-assignment-submission-evaluation.types';
 import { AssessmentBlueprintEntity } from '../entities/assessment-blueprint.entity';
 import { AssessmentQuestionEntity } from '../entities/assessment-question.entity';
 import { AssessmentSubmissionAnswerEntity } from '../entities/assessment-submission-answer.entity';
@@ -48,6 +48,12 @@ export class StructuredAssessmentGradingService {
   ) {}
 
   queueGrading(submissionId: string): void {
+    if (!isAssignmentAiVerificationEnabled()) {
+      this.logger.debug(
+        `Skipping structured AI grading for ${submissionId} (ASSIGNMENT_AI_VERIFICATION_ENABLED is off)`,
+      );
+      return;
+    }
     void this.gradeSubmissionById(submissionId).catch((error) => {
       this.logger.error(
         `Structured grading failed for ${submissionId}: ${

@@ -1250,7 +1250,7 @@ export class CourseController {
     @Post(':courseId/question-bank/:questionId/assignment/submit')
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Submit assessment for AI grading' })
+    @ApiOperation({ summary: 'Submit assessment for admin review' })
     async submitAssignmentSubmission(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
@@ -1269,7 +1269,8 @@ export class CourseController {
             body,
         );
         return response.status(HttpStatus.OK).json({
-            message: 'Assessment submitted for grading',
+            message:
+                'Assessment submitted successfully. It will be reviewed by an admin.',
             data,
         });
     }
@@ -1475,6 +1476,29 @@ export class CourseController {
         response.setHeader('Content-Type', 'application/pdf');
         response.setHeader('Content-Disposition', `inline; filename="${filename}"`);
         return response.status(HttpStatus.OK).send(buffer);
+    }
+
+    @Get('certificates/:certificateId/linkedin-share')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Build LinkedIn share URL/text for a certificate or digital badge' })
+    async getCertificateLinkedInShare(
+        @Param('certificateId') certificateId: string,
+        @Query('kind') kindRaw: string | undefined,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const kind = String(kindRaw || 'certificate').toLowerCase() === 'badge' ? 'badge' : 'certificate';
+        const data = await this.courseCertificateService.getLinkedInShareForUser(
+            userId,
+            certificateId,
+            kind,
+        );
+        return response.status(HttpStatus.OK).json({ data });
     }
 
     @Post(':courseId/certificates/issue')

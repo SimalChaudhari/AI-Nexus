@@ -45,6 +45,14 @@ export class AppSettingsInitService implements OnModuleInit {
           ALTER TABLE "app_settings"
           ADD COLUMN IF NOT EXISTS "courseDefaultImageUrl" varchar
         `);
+        await queryRunner.query(`
+          ALTER TABLE "app_settings"
+          ADD COLUMN IF NOT EXISTS "digitalBadgeImageUrl" varchar
+        `);
+        await queryRunner.query(`
+          ALTER TABLE "app_settings"
+          ADD COLUMN IF NOT EXISTS "digitalBadgeIssuer" varchar
+        `);
       }
 
       const existingRows = await queryRunner.query(`SELECT "id" FROM "app_settings" LIMIT 1`);

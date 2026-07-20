@@ -3,7 +3,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { AppSettingsEntity, WorkflowTemplatesPitchContent } from './app-settings.entity';
+import {
+  AppSettingsEntity,
+  MembershipPaymentSettings,
+  WorkflowTemplatesPitchContent,
+} from './app-settings.entity';
 import { LocalStorageService } from '../service/local-storage.service';
 import { UserEntity, UserRole, UserStatus } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
@@ -118,6 +122,8 @@ type ProgrammeFeesContentPayload = {
     tagline?: string;
   };
 };
+
+type MembershipPaymentSettingsPayload = MembershipPaymentSettings;
 
 type HomeTestimonialsContentPayload = {
   heading?: string;
@@ -414,6 +420,7 @@ export class AppSettingsService {
   private homeCeoLaunchColumnChecked = false;
   private partnerWithIscaColumnChecked = false;
   private footerColumnChecked = false;
+  private membershipPaymentSettingsColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -562,6 +569,14 @@ export class AppSettingsService {
     this.footerColumnChecked = true;
   }
 
+  private async ensureMembershipPaymentSettingsColumn(): Promise<void> {
+    if (this.membershipPaymentSettingsColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "membershipPaymentSettings" jsonb'
+    );
+    this.membershipPaymentSettingsColumnChecked = true;
+  }
+
   async getSettings(): Promise<AppSettingsEntity> {
     await this.ensureHomeCardsColumn();
     await this.ensureHomeJoinColumn();
@@ -579,6 +594,7 @@ export class AppSettingsService {
     await this.ensureHomeCeoLaunchColumn();
     await this.ensurePartnerWithIscaColumn();
     await this.ensureFooterColumn();
+    await this.ensureMembershipPaymentSettingsColumn();
 
     const settings = await this.appSettingsRepository.find({
       order: { createdAt: 'ASC' },
@@ -802,6 +818,52 @@ export class AppSettingsService {
     };
   }
 
+  async uploadDigitalBadgeImage(file: Express.Multer.File): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('digital-badge');
+
+    const relativeUrl = await this.localStorageService.saveFile(file, 'digital-badge', {
+      fileName: 'digital-badge',
+    });
+
+    settings.digitalBadgeImageUrl = relativeUrl;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Digital badge image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeDigitalBadgeImage(): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+
+    await this.localStorageService.clearFolder('digital-badge');
+
+    settings.digitalBadgeImageUrl = null;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Digital badge image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async updateDigitalBadgeSettings(payload: {
+    issuer?: unknown;
+  }): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    const issuer = this.cleanText(payload?.issuer, 120);
+    settings.digitalBadgeIssuer = issuer || null;
+    const saved = await this.appSettingsRepository.save(settings);
+
+    return {
+      message: 'Digital badge settings updated successfully',
+      settings: saved,
+    };
+  }
+
   private cleanText(value: unknown, maxLength?: number): string {
     const cleaned = typeof value === 'string' ? value.trim() : '';
     if (!maxLength || maxLength < 1) return cleaned;
@@ -968,6 +1030,100 @@ export class AppSettingsService {
         name: this.cleanText(nextAgency?.name ?? prevAgency?.name, 200),
         tagline: this.cleanText(nextAgency?.tagline ?? prevAgency?.tagline, 200),
       },
+    };
+  }
+
+  private getDefaultMembershipPaymentSettings(): MembershipPaymentSettingsPayload {
+    const baseAmount = 365.14;
+    const verifiedBaseAmount = 300;
+    const gstRatePercent = 9;
+    const gstRate = gstRatePercent / 100;
+    const gstAmount = Number((baseAmount * gstRate).toFixed(2));
+    const verifiedGstAmount = Number((verifiedBaseAmount * gstRate).toFixed(2));
+
+    return {
+      currency: 'SGD',
+      baseAmount,
+      verifiedBaseAmount,
+      gstRatePercent,
+      voucherDiscountAmount: 100,
+      referralCode: '',
+      referralLinkPath: '/auth/sign-up?membershipOutcome=paid-signup&ref=',
+      gstAmount,
+      totalAmount: Number((baseAmount + gstAmount).toFixed(2)),
+      verifiedGstAmount,
+      verifiedTotalAmount: Number((verifiedBaseAmount + verifiedGstAmount).toFixed(2)),
+    };
+  }
+
+  private sanitizeMembershipPaymentSettings(
+    input: unknown,
+    existing?: MembershipPaymentSettingsPayload | null
+  ): MembershipPaymentSettingsPayload {
+    const defaults = this.getDefaultMembershipPaymentSettings();
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const prev = existing && typeof existing === 'object' ? existing : {};
+
+    const cleanNumber = (value: unknown, fallback: number): number => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+    };
+
+    const currency =
+      this.cleanText(source.currency ?? prev.currency, 10).toUpperCase() || defaults.currency!;
+    const baseAmount = cleanNumber(source.baseAmount ?? prev.baseAmount, defaults.baseAmount!);
+    const verifiedBaseAmount = cleanNumber(
+      source.verifiedBaseAmount ?? prev.verifiedBaseAmount,
+      defaults.verifiedBaseAmount!
+    );
+    const gstRatePercent = cleanNumber(
+      source.gstRatePercent ?? prev.gstRatePercent,
+      defaults.gstRatePercent!
+    );
+    const voucherDiscountAmount = cleanNumber(
+      source.voucherDiscountAmount ?? prev.voucherDiscountAmount,
+      defaults.voucherDiscountAmount!
+    );
+    const referralCodeRaw = this.cleanText(
+      source.referralCode ?? prev.referralCode,
+      64,
+    ).toUpperCase();
+    const referralCode = /^[A-Z0-9_-]{2,64}$/.test(referralCodeRaw)
+      ? referralCodeRaw
+      : '';
+    const referralLinkPathRaw =
+      this.cleanText(source.referralLinkPath ?? prev.referralLinkPath, 200)
+      || defaults.referralLinkPath!;
+    // Prefer canonical auth signup referral path; keep leading slash.
+    let referralLinkPath = referralLinkPathRaw.startsWith('/')
+      ? referralLinkPathRaw
+      : `/${referralLinkPathRaw}`;
+    // Migrate legacy free-signup referral paths → paid membership signup.
+    if (
+      referralLinkPath === '/signup?ref=' ||
+      referralLinkPath === '/auth/sign-up?ref='
+    ) {
+      referralLinkPath = defaults.referralLinkPath!;
+    }
+
+    const gstRate = gstRatePercent / 100;
+    const gstAmount = Number((baseAmount * gstRate).toFixed(2));
+    const totalAmount = Number((baseAmount + gstAmount).toFixed(2));
+    const verifiedGstAmount = Number((verifiedBaseAmount * gstRate).toFixed(2));
+    const verifiedTotalAmount = Number((verifiedBaseAmount + verifiedGstAmount).toFixed(2));
+
+    return {
+      currency,
+      baseAmount,
+      verifiedBaseAmount,
+      gstRatePercent,
+      voucherDiscountAmount,
+      referralCode,
+      referralLinkPath,
+      gstAmount,
+      totalAmount,
+      verifiedGstAmount,
+      verifiedTotalAmount,
     };
   }
 
@@ -1732,6 +1888,56 @@ export class AppSettingsService {
     const saved = await this.appSettingsRepository.save(settings);
     return {
       message: 'Programme fees content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async getMembershipPaymentSettings(): Promise<MembershipPaymentSettingsPayload & {
+    websiteBaseUrl: string;
+    exampleReferralLink: string;
+    fullReferralLink: string;
+  }> {
+    const settings = await this.getSettings();
+    const payment = settings.membershipPaymentSettings
+      ? this.sanitizeMembershipPaymentSettings(
+          settings.membershipPaymentSettings,
+          settings.membershipPaymentSettings
+        )
+      : this.getDefaultMembershipPaymentSettings();
+
+    const websiteBaseUrl = this.getPublicWebsiteBaseUrl();
+    const path = String(
+      payment.referralLinkPath || '/auth/sign-up?membershipOutcome=paid-signup&ref=',
+    );
+    const savedCode = String(payment.referralCode || '').trim().toUpperCase();
+    const fullReferralLink = savedCode ? `${websiteBaseUrl}${path}${savedCode}` : '';
+    const exampleReferralLink = fullReferralLink || `${websiteBaseUrl}${path}SP001`;
+
+    return {
+      ...payment,
+      websiteBaseUrl,
+      exampleReferralLink,
+      fullReferralLink,
+    };
+  }
+
+  /** Public website origin from FRONTEND_URL (production/staging), used for referral links. */
+  private getPublicWebsiteBaseUrl(): string {
+    const raw = String(process.env.FRONTEND_URL || 'http://localhost:3000').trim().replace(/\/$/, '');
+    return raw || 'http://localhost:3000';
+  }
+
+  async updateMembershipPaymentSettings(
+    payload: MembershipPaymentSettingsPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.membershipPaymentSettings = this.sanitizeMembershipPaymentSettings(
+      payload,
+      settings.membershipPaymentSettings
+    );
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Membership payment settings updated successfully',
       settings: saved,
     };
   }
@@ -2548,6 +2754,8 @@ export class AppSettingsService {
     homeJoinContent: HomeJoinContentPayload | null;
     contactHeroImageUrl: string | null;
     courseDefaultImageUrl: string | null;
+    digitalBadgeImageUrl: string | null;
+    digitalBadgeIssuer: string | null;
     contactHeroContent: ContactHeroContentPayload | null;
     workflowTemplatesPitchContent: WorkflowTemplatesPitchContent | null;
     faqContent: FaqContentPayload | null;
@@ -2562,6 +2770,7 @@ export class AppSettingsService {
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     partnerWithIscaContent: PartnerWithIscaContentPayload | null;
     footerContent: FooterContentPayload | null;
+    membershipPaymentSettings: MembershipPaymentSettingsPayload;
     /** Active learner accounts on the platform (non-draft, non-admin). */
     totalCourseEnrollments: number;
   }> {
@@ -2582,6 +2791,8 @@ export class AppSettingsService {
       homeJoinContent: settings.homeJoinContent ?? null,
       contactHeroImageUrl: settings.contactHeroImageUrl ?? null,
       courseDefaultImageUrl: settings.courseDefaultImageUrl ?? null,
+      digitalBadgeImageUrl: settings.digitalBadgeImageUrl ?? null,
+      digitalBadgeIssuer: settings.digitalBadgeIssuer ?? null,
       contactHeroContent: settings.contactHeroContent ?? null,
       workflowTemplatesPitchContent: this.sanitizeWorkflowTemplatesPitchContent(
         settings.workflowTemplatesPitchContent || {},
@@ -2626,6 +2837,12 @@ export class AppSettingsService {
       footerContent: settings.footerContent
         ? this.sanitizeFooterContent(settings.footerContent)
         : this.sanitizeFooterContent(null),
+      membershipPaymentSettings: settings.membershipPaymentSettings
+        ? this.sanitizeMembershipPaymentSettings(
+            settings.membershipPaymentSettings,
+            settings.membershipPaymentSettings
+          )
+        : this.getDefaultMembershipPaymentSettings(),
       totalCourseEnrollments,
     };
   }

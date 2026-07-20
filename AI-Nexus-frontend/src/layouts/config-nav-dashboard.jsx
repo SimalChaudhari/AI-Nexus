@@ -185,6 +185,22 @@ export const navData = [
         icon: <Iconify icon="solar:buildings-3-bold-duotone" width={24} />,
       },
       {
+        title: 'Payment',
+        path: paths.admin.payment.root,
+        icon: <Iconify icon="solar:card-2-bold-duotone" width={24} />,
+        children: [
+          {
+            title: 'Promo & Pricing',
+            path: paths.admin.payment.settings,
+            activeExcludePaths: [paths.admin.payment.history],
+          },
+          {
+            title: 'History',
+            path: paths.admin.payment.history,
+          },
+        ],
+      },
+      {
         title: 'Labels',
         path: paths.admin.label.root,
         icon: ICONS.label,

@@ -35,6 +35,7 @@ import settingsTabHeader from 'src/assets/settings/header.png';
 
 import { useSettingsContext } from 'src/components/settings';
 import { appSettingsService } from 'src/services/app-settings.service';
+import { persistDigitalBadgeSettings } from 'src/utils/digital-badge';
 import { categoryIcons } from 'src/_mock/_category-icons';
 import { Iconify } from 'src/components/iconify';
 import { HeroTextCard } from './components/hero-text-card';
@@ -220,6 +221,11 @@ export function AdminSettingsView() {
   const [courseDefaultImageUrl, setCourseDefaultImageUrl] = useState('');
   const [courseDefaultImageLoading, setCourseDefaultImageLoading] = useState(true);
   const [courseDefaultImageSubmitting, setCourseDefaultImageSubmitting] = useState(false);
+  const [digitalBadgeImageFile, setDigitalBadgeImageFile] = useState(null);
+  const [digitalBadgeImageUrl, setDigitalBadgeImageUrl] = useState('');
+  const [digitalBadgeIssuer, setDigitalBadgeIssuer] = useState('AI Nexus');
+  const [digitalBadgeLoading, setDigitalBadgeLoading] = useState(true);
+  const [digitalBadgeSubmitting, setDigitalBadgeSubmitting] = useState(false);
   const [contactHeroContentSubmitting, setContactHeroContentSubmitting] = useState(false);
   const [workflowPitch, setWorkflowPitch] = useState(() => ({
     heading: DEFAULT_WORKFLOW_TEMPLATES_PITCH.heading,
@@ -486,6 +492,12 @@ export function AdminSettingsView() {
       setHeroUrl(appSettings.homeHeroImageUrl || '');
       setContactHeroUrl(appSettings.contactHeroImageUrl || '');
       setCourseDefaultImageUrl(appSettings.courseDefaultImageUrl || '');
+      setDigitalBadgeImageUrl(appSettings.digitalBadgeImageUrl || '');
+      setDigitalBadgeIssuer(appSettings.digitalBadgeIssuer || 'AI Nexus');
+      persistDigitalBadgeSettings({
+        imageUrl: appSettings.digitalBadgeImageUrl || '',
+        issuer: appSettings.digitalBadgeIssuer || '',
+      });
       const remoteHero = appSettings.homeHeroContent || {};
       const rawStats = Array.isArray(remoteHero.stats) ? remoteHero.stats : [];
       const statsFour = [0, 1, 2, 3].map((i) => ({
@@ -633,6 +645,7 @@ export function AdminSettingsView() {
       setHeroLoading(false);
       setContactHeroLoading(false);
       setCourseDefaultImageLoading(false);
+      setDigitalBadgeLoading(false);
     }
   }, [applyWorkflowPitchFromSettings]);
 
@@ -884,6 +897,85 @@ export function AdminSettingsView() {
       toast.error(error?.message || 'Failed to remove course default image');
     } finally {
       setCourseDefaultImageSubmitting(false);
+    }
+  };
+
+  const handleDropDigitalBadgeImage = useCallback((acceptedFiles) => {
+    const [file] = acceptedFiles || [];
+    if (file) {
+      setDigitalBadgeImageFile(file);
+    }
+  }, []);
+
+  const handleClearDigitalBadgeImageSelection = () => {
+    setDigitalBadgeImageFile(null);
+  };
+
+  const handleUploadDigitalBadgeImage = async () => {
+    if (!digitalBadgeImageFile) {
+      toast.error('Please select a badge image first');
+      return;
+    }
+    try {
+      setDigitalBadgeSubmitting(true);
+      const updatedSettings = await appSettingsService.uploadDigitalBadgeImage(digitalBadgeImageFile);
+      const next = updatedSettings.digitalBadgeImageUrl || '';
+      setDigitalBadgeImageUrl(next);
+      setDigitalBadgeImageFile(null);
+      persistDigitalBadgeSettings({
+        imageUrl: next,
+        issuer: digitalBadgeIssuer || '',
+      });
+      toast.success('Digital badge image updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to upload digital badge image');
+    } finally {
+      setDigitalBadgeSubmitting(false);
+    }
+  };
+
+  const handleRemoveDigitalBadgeImage = async () => {
+    if (digitalBadgeImageFile) {
+      setDigitalBadgeImageFile(null);
+      return;
+    }
+
+    if (!digitalBadgeImageUrl) return;
+
+    try {
+      setDigitalBadgeSubmitting(true);
+      const updatedSettings = await appSettingsService.removeDigitalBadgeImage();
+      const next = updatedSettings.digitalBadgeImageUrl || '';
+      setDigitalBadgeImageUrl(next);
+      persistDigitalBadgeSettings({
+        imageUrl: next,
+        issuer: digitalBadgeIssuer || '',
+      });
+      toast.success('Digital badge image removed — learners will see the default badge');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to remove digital badge image');
+    } finally {
+      setDigitalBadgeSubmitting(false);
+    }
+  };
+
+  const handleSaveDigitalBadgeIssuer = async () => {
+    try {
+      setDigitalBadgeSubmitting(true);
+      const updatedSettings = await appSettingsService.updateDigitalBadgeSettings({
+        issuer: digitalBadgeIssuer,
+      });
+      const nextIssuer = updatedSettings.digitalBadgeIssuer || 'AI Nexus';
+      setDigitalBadgeIssuer(nextIssuer);
+      persistDigitalBadgeSettings({
+        imageUrl: digitalBadgeImageUrl || '',
+        issuer: updatedSettings.digitalBadgeIssuer || '',
+      });
+      toast.success('Digital badge issuer saved');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to save digital badge settings');
+    } finally {
+      setDigitalBadgeSubmitting(false);
     }
   };
 
@@ -2025,6 +2117,13 @@ export function AdminSettingsView() {
       description: 'Manage default fallback image for course cards.',
     },
     {
+      key: 'digital-badge',
+      badge: 'DB',
+      icon: 'solar:verified-check-bold-duotone',
+      title: 'Digital Badge',
+      description: 'Upload badge artwork and issuer label shown on learner My Badges.',
+    },
+    {
       key: 'workflow-templates-pitch',
       badge: 'AI',
       icon: 'solar:clipboard-list-bold-duotone',
@@ -2125,6 +2224,7 @@ export function AdminSettingsView() {
     'join',
     'contact',
     'course-image',
+    'digital-badge',
     'workflow-templates-pitch',
     'programme-fees',
     'programme-structure',
@@ -2151,6 +2251,10 @@ export function AdminSettingsView() {
     }
     if (section === 'employee') {
       navigate(paths.admin.settingsSection('employer'), { replace: true });
+      return;
+    }
+    if (section === 'membership-payment') {
+      navigate(paths.admin.payment.root, { replace: true });
       return;
     }
     if (!validSectionKeys.includes(section)) {
@@ -3011,6 +3115,85 @@ export function AdminSettingsView() {
     </Card>
   );
 
+  const renderDigitalBadgeSettings = (
+    <Card sx={{ p: 3 }}>
+      <Stack spacing={2.5}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Digital Badge
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Manage the badge image and issuer shown on every learner Digital Badge card. If no image is
+            uploaded, the built-in default badge is used.
+          </Typography>
+        </Box>
+
+        <TextField
+          label="Issuer name"
+          value={digitalBadgeIssuer}
+          onChange={(e) => setDigitalBadgeIssuer(e.target.value)}
+          fullWidth
+          helperText="Shown under each badge title (e.g. AI Nexus · Programme name)."
+          disabled={digitalBadgeLoading || digitalBadgeSubmitting}
+        />
+
+        <Stack direction="row" spacing={1.5}>
+          <LoadingButton
+            variant="contained"
+            loading={digitalBadgeSubmitting}
+            onClick={handleSaveDigitalBadgeIssuer}
+            disabled={digitalBadgeLoading}
+          >
+            Save issuer
+          </LoadingButton>
+        </Stack>
+
+        <Box>
+          <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700 }}>
+            Badge artwork
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
+            Upload PNG/JPG (transparent PNG recommended). This image appears on all earned badges.
+          </Typography>
+        </Box>
+
+        <Upload
+          coverPreview
+          value={digitalBadgeImageFile || digitalBadgeImageUrl || null}
+          onDrop={handleDropDigitalBadgeImage}
+          onDelete={digitalBadgeImageFile || digitalBadgeImageUrl ? handleRemoveDigitalBadgeImage : undefined}
+          accept={{
+            'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
+          }}
+          maxSize={5 * 1024 * 1024}
+          disabled={digitalBadgeLoading || digitalBadgeSubmitting}
+          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Max size: 5 MB."
+        />
+
+        <Stack direction="row" spacing={1.5}>
+          <LoadingButton
+            variant="contained"
+            loading={digitalBadgeSubmitting}
+            onClick={handleUploadDigitalBadgeImage}
+            disabled={!digitalBadgeImageFile}
+          >
+            Save badge image
+          </LoadingButton>
+          <Button
+            color="inherit"
+            variant="outlined"
+            onClick={
+              digitalBadgeImageFile ? handleClearDigitalBadgeImageSelection : handleRemoveDigitalBadgeImage
+            }
+            disabled={digitalBadgeSubmitting || (!digitalBadgeImageFile && !digitalBadgeImageUrl)}
+          >
+            {digitalBadgeImageFile ? 'Clear Selected' : 'Remove Current Image'}
+          </Button>
+        </Stack>
+      </Stack>
+    </Card>
+  );
+
   const settingsTabMid = Math.ceil(sectionCards.length / 2);
   const settingsTabRows = [
     sectionCards.slice(0, settingsTabMid),
@@ -3172,6 +3355,7 @@ export function AdminSettingsView() {
         {activeSection === 'join' && renderHomeJoinSettings}
         {activeSection === 'contact' && renderContactHeroSettings}
         {activeSection === 'course-image' && renderCourseDefaultImageSettings}
+        {activeSection === 'digital-badge' && renderDigitalBadgeSettings}
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
         {activeSection === 'programme-structure' && renderProgrammeStructureSettings}

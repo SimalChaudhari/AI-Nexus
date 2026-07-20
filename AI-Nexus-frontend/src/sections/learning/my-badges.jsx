@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Unstable_Grid2';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { useTheme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
 import { useAuthContext } from 'src/auth/hooks';
 import { LoadingScreen } from 'src/components/loading-screen';
-import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
-import { LearningSectionHeader } from './components/learning-section-header';
+import { appSettingsService } from 'src/services/app-settings.service';
 import { courseService } from 'src/services/course.service';
 import {
-  BADGE_IMAGE,
-  CERTIFICATE_ISSUER,
-  mapCertificateRows,
-} from './components/credential-shared';
+  DEFAULT_DIGITAL_BADGE_IMAGE,
+  DEFAULT_DIGITAL_BADGE_ISSUER,
+  getDigitalBadgeImage,
+  getDigitalBadgeIssuer,
+  persistDigitalBadgeSettings,
+} from 'src/utils/digital-badge';
+import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-prompt';
+import { LearningSectionHeader } from './components/learning-section-header';
+import { mapCertificateRows } from './components/credential-shared';
 import {
   CREDENTIAL_GRID_PROPS,
   CREDENTIAL_GRID_SPACING,
@@ -25,9 +33,9 @@ import {
 
 // ----------------------------------------------------------------------
 
-function DigitalBadgeCard({ badge }) {
+function DigitalBadgeCard({ badge, badgeImage, issuerLabel, onShareLinkedIn }) {
   const theme = useTheme();
-  const issuer = badge.programTitle ? `${CERTIFICATE_ISSUER} · ${badge.programTitle}` : CERTIFICATE_ISSUER;
+  const issuer = badge.programTitle ? `${issuerLabel} · ${badge.programTitle}` : issuerLabel;
 
   return (
     <Card sx={getCredentialCardSx(theme)}>
@@ -45,7 +53,7 @@ function DigitalBadgeCard({ badge }) {
       >
         <Box
           component="img"
-          src={BADGE_IMAGE}
+          src={badgeImage}
           alt="Digital badge"
           sx={{ width: '100%', maxWidth: 128, maxHeight: 128, objectFit: 'contain' }}
         />
@@ -73,7 +81,6 @@ function DigitalBadgeCard({ badge }) {
 
       <Box
         sx={{
-          mt: 'auto',
           px: 0.5,
           py: 1.1,
           borderRadius: 1.25,
@@ -87,6 +94,26 @@ function DigitalBadgeCard({ badge }) {
           </Typography>
         </Stack>
       </Box>
+
+      <Divider sx={{ borderColor: alpha(theme.palette.grey[500], 0.16), my: 1 }} />
+
+      <Stack direction="row" justifyContent="flex-end" spacing={0.75} sx={{ mt: 'auto' }}>
+        <Tooltip title="Share on LinkedIn">
+          <IconButton
+            size="small"
+            color="info"
+            onClick={() => onShareLinkedIn(badge)}
+            sx={{
+              width: 34,
+              height: 34,
+              border: `1px solid ${alpha(theme.palette.info.main, 0.28)}`,
+              bgcolor: alpha(theme.palette.info.main, 0.08),
+            }}
+          >
+            <Iconify icon="mdi:linkedin" width={18} />
+          </IconButton>
+        </Tooltip>
+      </Stack>
     </Card>
   );
 }
@@ -96,6 +123,31 @@ export function MyBadges() {
   const { authenticated, loading: authLoading } = useAuthContext();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [badgeImage, setBadgeImage] = useState(() => getDigitalBadgeImage());
+  const [issuerLabel, setIssuerLabel] = useState(() => getDigitalBadgeIssuer());
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const appSettings = await appSettingsService.getPublic();
+        if (cancelled) return;
+        const nextImage = appSettings?.digitalBadgeImageUrl || DEFAULT_DIGITAL_BADGE_IMAGE;
+        const nextIssuer = appSettings?.digitalBadgeIssuer || DEFAULT_DIGITAL_BADGE_ISSUER;
+        setBadgeImage(nextImage);
+        setIssuerLabel(nextIssuer);
+        persistDigitalBadgeSettings({
+          imageUrl: appSettings?.digitalBadgeImageUrl || '',
+          issuer: appSettings?.digitalBadgeIssuer || '',
+        });
+      } catch {
+        // keep local/static fallbacks
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (authLoading) return () => {};
@@ -122,6 +174,20 @@ export function MyBadges() {
   }, [authenticated, authLoading]);
 
   const badges = useMemo(() => mapCertificateRows(rows), [rows]);
+
+  const handleShareLinkedIn = async (badge) => {
+    if (!badge?.id) return;
+    try {
+      const share = await courseService.getCertificateLinkedInShare(badge.id, 'badge');
+      if (!share?.url) {
+        toast.error('Unable to build LinkedIn share link');
+        return;
+      }
+      window.open(share.url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to share badge on LinkedIn');
+    }
+  };
 
   if (authLoading || loading) return <LoadingScreen />;
   if (!authenticated) return <LearningGuestSignInPrompt variant="badges" />;
@@ -162,7 +228,12 @@ export function MyBadges() {
         <Grid container spacing={CREDENTIAL_GRID_SPACING}>
           {badges.map((badge) => (
             <Grid key={badge.id} {...CREDENTIAL_GRID_PROPS}>
-              <DigitalBadgeCard badge={badge} />
+              <DigitalBadgeCard
+                badge={badge}
+                badgeImage={badgeImage}
+                issuerLabel={issuerLabel}
+                onShareLinkedIn={handleShareLinkedIn}
+              />
             </Grid>
           ))}
         </Grid>

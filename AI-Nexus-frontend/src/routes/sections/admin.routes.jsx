@@ -35,6 +35,11 @@ const OrderDetailsPage = lazy(() => import('src/pages/dashboard/order/details'))
 const CorporateMemberListPage = lazy(() => import('src/pages/dashboard/corporate-member/list'));
 const CorporateMemberDetailsPage = lazy(() => import('src/pages/dashboard/corporate-member/details'));
 
+// Payment (membership pricing + voucher codes + history)
+const AdminPaymentPage = lazy(() => import('src/pages/dashboard/payment'));
+const AdminPaymentHistoryPage = lazy(() => import('src/pages/dashboard/payment/history'));
+const AdminPaymentHistoryDetailsPage = lazy(() => import('src/pages/dashboard/payment/history-details'));
+
 // Invoice
 const InvoiceListPage = lazy(() => import('src/pages/dashboard/invoice/list'));
 const InvoiceDetailsPage = lazy(() => import('src/pages/dashboard/invoice/details'));
@@ -354,6 +359,9 @@ export const adminRoutes = [
           { path: ':id', element: <CorporateMemberDetailsPage /> },
         ],
       },
+      { path: 'payment', element: <AdminPaymentPage /> },
+      { path: 'payment/history', element: <AdminPaymentHistoryPage /> },
+      { path: 'payment/history/:id', element: <AdminPaymentHistoryDetailsPage /> },
       {
         path: 'invoice',
         children: [

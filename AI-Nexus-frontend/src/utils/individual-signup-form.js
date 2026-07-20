@@ -34,6 +34,7 @@ export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   citizenship: '',
   citizenshipOther: '',
   imdaFundingAcknowledged: false,
+  promoCode: '',
 };
 
 /**

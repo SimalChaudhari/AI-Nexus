@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, useRoutes } from 'react-router-dom';
+import { Navigate, useLocation, useRoutes } from 'react-router-dom';
 
 import { SplashScreen } from 'src/components/loading-screen';
 
@@ -15,6 +15,13 @@ import { mainRoutes } from './main';
 // ----------------------------------------------------------------------
 
 const FlowiseBridgePage = lazy(() => import('src/pages/flowise-bridge'));
+const AffiliateDashboardPage = lazy(() => import('src/pages/affiliate/dashboard'));
+
+/** Legacy/short referral link (?ref=CODE) -> main sign-up form, preserving the query string. */
+function SignupRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/auth/sign-up${location.search}`} replace />;
+}
 
 export function Router() {
   return useRoutes([
@@ -27,6 +34,18 @@ export function Router() {
       element: (
         <Suspense fallback={<SplashScreen />}>
           <FlowiseBridgePage />
+        </Suspense>
+      ),
+    },
+    {
+      path: '/signup',
+      element: <SignupRedirect />,
+    },
+    {
+      path: '/affiliate/dashboard',
+      element: (
+        <Suspense fallback={<SplashScreen />}>
+          <AffiliateDashboardPage />
         </Suspense>
       ),
     },

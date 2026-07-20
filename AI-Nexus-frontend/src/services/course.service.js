@@ -707,6 +707,18 @@ export const courseService = {
     return response.data;
   },
 
+  async getCertificateLinkedInShare(certificateId, kind = 'certificate') {
+    const response = await axios.get(`/courses/certificates/${certificateId}/linkedin-share`, {
+      params: { kind },
+    });
+    const data = response.data?.data || response.data || {};
+    return {
+      kind: data.kind === 'badge' ? 'badge' : 'certificate',
+      text: data.text || '',
+      url: data.url || '',
+    };
+  },
+
   async issueCourseCertificate(courseId) {
     try {
       const response = await axios.post(`/courses/${courseId}/certificates/issue`);

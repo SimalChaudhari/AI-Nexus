@@ -43,7 +43,7 @@ export function CourseAssignmentSubmissionsManualVerifyDialog({
         </Typography>
         {row?.aiFeedback ? (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            AI note: {row.aiFeedback}
+            Note: {row.aiFeedback}
           </Typography>
         ) : null}
         <FormControl fullWidth size="small" sx={{ mb: 2 }}>

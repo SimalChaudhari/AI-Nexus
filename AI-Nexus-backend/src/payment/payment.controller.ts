@@ -1,8 +1,13 @@
-import { Controller, Post, Get, Query, Body, Req, Res, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Query, Param, Body, Req, Res, HttpStatus, UseGuards, forwardRef, Inject } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
 import { WooshPayService } from './wooshpay.service';
 import { CreateCheckoutDto } from './create-checkout.dto';
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
+import { SessionGuard } from '../jwt/session.guard';
+import { RolesGuard } from '../jwt/roles.guard';
+import { Roles } from '../jwt/roles.decorator';
+import { UserRole } from '../user/users.entity';
 import { CourseEnrollmentService } from '../course/course-enrollment.service';
 import { OrderService } from '../order/order.service';
 import { PaymentService } from './payment.service';
@@ -13,6 +18,13 @@ import { CourseService } from '../course/courses.service';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../service/email.service';
+import { AppSettingsService } from '../app-settings/app-settings.service';
+import { AffiliateService } from '../affiliate/affiliate.service';
+import { AffiliateSaleStatus } from '../affiliate/affiliate-sale.entity';
+import { PaginationService } from '../common/pagination/pagination.service';
+
+/** Signed proof that membership payment was verified server-side (amount must not come from the browser). */
+export const MEMBERSHIP_PAYMENT_PROOF_PURPOSE = 'membership-payment-proof';
 
 @ApiTags('Payments')
 @Controller('payments')
@@ -27,7 +39,49 @@ export class PaymentController {
     private readonly userService: UserService,
     private readonly authService: AuthService,
     private readonly emailService: EmailService,
+    private readonly appSettingsService: AppSettingsService,
+    private readonly jwtService: JwtService,
+    @Inject(forwardRef(() => AffiliateService))
+    private readonly affiliateService: AffiliateService,
+    private readonly paginationService: PaginationService,
   ) {}
+
+  @Get('membership-history')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Admin: list membership payment history with promo/discount details (paginated)',
+  })
+  async listMembershipPaymentHistory(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Res() res?: Response,
+  ) {
+    const result = await this.paymentService.listMembershipPaymentHistory({
+      page: this.paginationService.parsePositiveInteger(page, 1),
+      limit: this.paginationService.parsePositiveInteger(limit, 10),
+      search: search?.trim() || undefined,
+      status: status?.trim() || undefined,
+    });
+
+    return res!.status(HttpStatus.OK).json(result);
+  }
+
+  @Get('membership-history/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: get one membership payment history record' })
+  async getMembershipPaymentHistoryById(@Param('id') id: string, @Res() res: Response) {
+    const data = await this.paymentService.getMembershipPaymentHistoryById(id);
+    if (!data) {
+      return res.status(HttpStatus.NOT_FOUND).json({ message: 'Payment record not found.' });
+    }
+    return res.status(HttpStatus.OK).json({ data });
+  }
 
   private trimPaymentLogValue(value?: string | null, keep = 18): string {
     const trimmed = String(value || '').trim();
@@ -35,14 +89,41 @@ export class PaymentController {
     return trimmed.length > keep ? `${trimmed.slice(0, keep)}...` : trimmed;
   }
 
-  private resolveMembershipPricing(source?: string) {
+  private async resolveMembershipPricing(source?: string, options?: { promo?: boolean }) {
     const membershipSource =
       source === 'membership-verified-signup'
         ? 'membership-verified-signup'
         : 'membership-paid-signup';
-    const baseAmount = membershipSource === 'membership-verified-signup' ? 300 : 365.14;
-    const gstAmount = Number((baseAmount * 0.09).toFixed(2));
-    const totalAmount = Number((baseAmount + gstAmount).toFixed(2));
+    const isVerified = membershipSource === 'membership-verified-signup';
+    const promo = Boolean(options?.promo);
+    const settings = await this.appSettingsService.getMembershipPaymentSettings();
+    const currency = String(settings?.currency || 'SGD').trim().toUpperCase() || 'SGD';
+
+    if (promo) {
+      const payableAmount = Number(settings?.voucherDiscountAmount) || 100;
+      return {
+        membershipSource,
+        baseAmount: payableAmount,
+        gstAmount: 0,
+        totalAmount: payableAmount,
+        totalAmountCents: Math.round(payableAmount * 100),
+        currency,
+        discountApplied: true,
+        itemName: isVerified
+          ? 'ISCA membership (verified rate, promo)'
+          : 'ISCA membership (promo)',
+      };
+    }
+
+    const baseAmount = isVerified
+      ? Number(settings?.verifiedBaseAmount) || 300
+      : Number(settings?.baseAmount) || 365.14;
+    const gstAmount = isVerified
+      ? Number(settings?.verifiedGstAmount) || Number((baseAmount * 0.09).toFixed(2))
+      : Number(settings?.gstAmount) || Number((baseAmount * 0.09).toFixed(2));
+    const totalAmount = isVerified
+      ? Number(settings?.verifiedTotalAmount) || Number((baseAmount + gstAmount).toFixed(2))
+      : Number(settings?.totalAmount) || Number((baseAmount + gstAmount).toFixed(2));
 
     return {
       membershipSource,
@@ -50,11 +131,35 @@ export class PaymentController {
       gstAmount,
       totalAmount,
       totalAmountCents: Math.round(totalAmount * 100),
-      itemName:
-        membershipSource === 'membership-verified-signup'
-          ? 'ISCA membership (verified rate)'
-          : 'ISCA membership',
+      currency,
+      discountApplied: false,
+      itemName: isVerified ? 'ISCA membership (verified rate)' : 'ISCA membership',
     };
+  }
+
+  /** Parse promo/sale linkage markers stored alongside the membership purpose in courseIds. */
+  private parseMembershipRefMarkers(courseIds: string[]): { isPromo: boolean; saleId: string | null } {
+    const saleEntry = courseIds.find((entry) => entry.startsWith('sale:'));
+    return {
+      isPromo: courseIds.includes('promo'),
+      saleId: saleEntry ? saleEntry.slice('sale:'.length) : null,
+    };
+  }
+
+  /** Best-effort: mark the linked affiliate/voucher sale as paid. Never blocks payment fulfillment. */
+  private async completeLinkedAffiliateSale(refId: string): Promise<void> {
+    try {
+      const sale = await this.affiliateService.findSaleByPaymentRef(refId);
+      if (!sale || sale.status === AffiliateSaleStatus.Paid) return;
+      await this.affiliateService.completeSaleAfterPayment(refId);
+    } catch (error) {
+      console.warn(
+        '[Payments] Affiliate sale completion SKIPPED | refId=',
+        this.trimPaymentLogValue(refId),
+        'error=',
+        (error as Error)?.message,
+      );
+    }
   }
 
   private validateRedirectUrl(value: string, label: 'successUrl' | 'cancelUrl'): string | null {
@@ -117,7 +222,7 @@ export class PaymentController {
     return message;
   }
 
-  private validateMembershipPaymentSession(
+  private async validateMembershipPaymentSession(
     refId: string,
     ref: {
       userId: string;
@@ -134,9 +239,10 @@ export class PaymentController {
       amount_subtotal?: number;
       currency?: string;
     },
-  ): string | null {
+  ): Promise<string | null> {
     const membershipPurpose = ref.courseIds[0] || '';
-    const pricing = this.resolveMembershipPricing(membershipPurpose);
+    const { isPromo } = this.parseMembershipRefMarkers(ref.courseIds);
+    const pricing = await this.resolveMembershipPricing(membershipPurpose, { promo: isPromo });
     const sessionClientRef = String(session?.client_reference_id || '').trim();
 
     if (!sessionClientRef) {
@@ -174,6 +280,180 @@ export class PaymentController {
     }
 
     return 'We could not validate the paid amount from the payment provider. Please contact support if you were charged.';
+  }
+
+  /** Charged amount in currency units from provider session (cents), with ref items as last-resort fallback. */
+  private resolveChargedMembershipAmount(params: {
+    session?: { amount_total?: number; amount_subtotal?: number; currency?: string };
+    refItems?: { id: string; name: string; price: number; quantity: number }[] | null;
+  }): { paidAmount: number; paidAmountCents: number; currency: string } | null {
+    const currency = String(params.session?.currency || 'SGD').trim().toUpperCase() || 'SGD';
+    const totalCents = Number(params.session?.amount_total);
+    if (Number.isFinite(totalCents) && totalCents > 0) {
+      return {
+        paidAmount: Number((totalCents / 100).toFixed(2)),
+        paidAmountCents: Math.round(totalCents),
+        currency,
+      };
+    }
+    const subtotalCents = Number(params.session?.amount_subtotal);
+    if (Number.isFinite(subtotalCents) && subtotalCents > 0) {
+      return {
+        paidAmount: Number((subtotalCents / 100).toFixed(2)),
+        paidAmountCents: Math.round(subtotalCents),
+        currency,
+      };
+    }
+    const itemPrice = Number(params.refItems?.[0]?.price);
+    if (Number.isFinite(itemPrice) && itemPrice > 0) {
+      return {
+        paidAmount: Number(itemPrice.toFixed(2)),
+        paidAmountCents: Math.round(itemPrice * 100),
+        currency,
+      };
+    }
+    return null;
+  }
+
+  private signMembershipPaymentProof(payload: {
+    refId: string;
+    sessionId: string;
+    paidAmount: number;
+    paidDate: string;
+    currency: string;
+  }): string {
+    return this.jwtService.sign(
+      {
+        purpose: MEMBERSHIP_PAYMENT_PROOF_PURPOSE,
+        refId: payload.refId,
+        sessionId: payload.sessionId,
+        paidAmount: payload.paidAmount,
+        paidDate: payload.paidDate,
+        currency: payload.currency,
+      },
+      { expiresIn: '45m' },
+    );
+  }
+
+  /**
+   * Verify membership payment with the provider and return the authoritative charged amount.
+   * Does not finalize the local account — Salesforce sync should use paymentProofToken next.
+   */
+  @Post('verify-membership-payment')
+  @ApiOperation({
+    summary: 'Verify membership payment and return server-signed charged amount (pre-Salesforce sync)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['ref'],
+      properties: {
+        ref: { type: 'string' },
+        sessionId: { type: 'string', nullable: true },
+      },
+    },
+  })
+  async verifyMembershipPayment(
+    @Body() body: { ref?: string; sessionId?: string },
+    @Res() res: Response,
+  ) {
+    const refId = String(body?.ref || '').trim();
+    const sessionId = String(body?.sessionId || '').trim();
+
+    if (!refId) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: 'ref is required' });
+    }
+
+    const ref = await this.paymentReferenceService.findById(refId);
+    if (!ref) {
+      return res.status(HttpStatus.NOT_FOUND).json({ message: 'Payment reference not found' });
+    }
+
+    const paymentPurpose = ref.courseIds[0] || '';
+    if (!paymentPurpose.startsWith('membership-')) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message: 'This payment reference is not for membership signup.',
+      });
+    }
+
+    const sessionLookupId = sessionId || ref.wooshpaySessionId || '';
+    if (!sessionLookupId) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Payment session id is required.' });
+    }
+
+    try {
+      const session = await this.wooshPayService.getSession(sessionLookupId);
+      const validationMessage = await this.validateMembershipPaymentSession(refId, ref, session);
+      if (validationMessage) {
+        return res.status(HttpStatus.CONFLICT).json({ message: validationMessage });
+      }
+
+      if (this.isPaymentMarkedAsFailed(session?.payment_status, session?.status)) {
+        return res.status(HttpStatus.CONFLICT).json({
+          message: 'Payment was not completed successfully. Please try again from the signup page.',
+        });
+      }
+
+      if (!this.isPaymentMarkedAsPaid(session?.payment_status, session?.status)) {
+        return res.status(HttpStatus.CONFLICT).json({
+          message: 'Payment is still being processed. Please wait a moment and try again.',
+        });
+      }
+
+      const charged = this.resolveChargedMembershipAmount({
+        session,
+        refItems: ref.items,
+      });
+      if (!charged) {
+        return res.status(HttpStatus.CONFLICT).json({
+          message: 'We could not determine the charged amount from the payment provider.',
+        });
+      }
+
+      const paidDate = new Date().toISOString().slice(0, 10);
+      const resolvedSessionId = String(session?.id || sessionLookupId).trim();
+      const paymentProofToken = this.signMembershipPaymentProof({
+        refId,
+        sessionId: resolvedSessionId,
+        paidAmount: charged.paidAmount,
+        paidDate,
+        currency: charged.currency,
+      });
+
+      console.info(
+        '[Payments] Membership verify SUCCESS | refId=',
+        this.trimPaymentLogValue(refId),
+        'sessionId=',
+        this.trimPaymentLogValue(resolvedSessionId),
+        'paidAmount=',
+        charged.paidAmount.toFixed(2),
+        'currency=',
+        charged.currency,
+      );
+
+      return res.status(HttpStatus.OK).json({
+        paid: true,
+        refId,
+        sessionId: resolvedSessionId,
+        paidAmount: charged.paidAmount,
+        paidAmountCents: charged.paidAmountCents,
+        currency: charged.currency,
+        paidDate,
+        paymentProofToken,
+      });
+    } catch (err: any) {
+      const userMessage = this.getFriendlyPaymentErrorMessage(
+        err,
+        'Could not verify membership payment.',
+      );
+      console.error(
+        '[Payments] Membership verify ERROR | refId=',
+        this.trimPaymentLogValue(refId),
+        'error=',
+        err?.message || userMessage,
+      );
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: userMessage });
+    }
   }
 
   @Post('create-checkout')
@@ -219,6 +499,9 @@ export class PaymentController {
         successUrl: { type: 'string' },
         cancelUrl: { type: 'string' },
         currency: { type: 'string', nullable: true },
+        code: { type: 'string', nullable: true },
+        affiliateCode: { type: 'string', nullable: true },
+        voucherCode: { type: 'string', nullable: true },
       },
     },
   })
@@ -231,6 +514,9 @@ export class PaymentController {
       successUrl?: string;
       cancelUrl?: string;
       currency?: string;
+      code?: string;
+      affiliateCode?: string;
+      voucherCode?: string;
     },
     @Res() res: Response,
   ) {
@@ -238,8 +524,9 @@ export class PaymentController {
     const signupAccessToken = String(body?.signupAccessToken || '').trim();
     const successUrl = String(body?.successUrl || '').trim();
     const cancelUrl = String(body?.cancelUrl || '').trim();
-    const pricing = this.resolveMembershipPricing(body?.source);
-    const { membershipSource, totalAmount, totalAmountCents, itemName } = pricing;
+    const codeInput = String(body?.code || '').trim();
+    const affiliateCodeInput = String(body?.affiliateCode || '').trim();
+    const voucherCodeInput = String(body?.voucherCode || '').trim();
 
     if (!draftUserId) {
       return res.status(HttpStatus.BAD_REQUEST).json({ message: 'draftUserId is required' });
@@ -266,17 +553,6 @@ export class PaymentController {
       });
     }
 
-    console.info(
-      '[Payments] Membership checkout START | draftUserId=',
-      this.trimPaymentLogValue(draftUserId),
-      'source=',
-      membershipSource,
-      'amount=',
-      totalAmount.toFixed(2),
-      'currency=',
-      currency,
-    );
-
     let user: { id: string; email?: string | null; firstname?: string; lastname?: string };
     try {
       user = await this.authService.resolveMembershipSignupDraftForPayment(draftUserId, signupAccessToken);
@@ -292,11 +568,55 @@ export class PaymentController {
       });
     }
 
+    let saleId: string | null = null;
+    let promoApplied = false;
+    if (codeInput || affiliateCodeInput || voucherCodeInput) {
+      try {
+        const { sale, pricing: salePricing } = await this.affiliateService.createPendingSaleForDraft({
+          draftUserId: user.id,
+          code: codeInput || undefined,
+          affiliateCode: affiliateCodeInput || undefined,
+          voucherCode: voucherCodeInput || undefined,
+        });
+        saleId = sale.id;
+        promoApplied = salePricing.discountApplied;
+      } catch (error: any) {
+        console.warn(
+          '[Payments] Membership checkout affiliate/voucher code SKIPPED | draftUserId=',
+          this.trimPaymentLogValue(draftUserId),
+          'error=',
+          error?.message,
+        );
+      }
+    }
+
+    const pricing = await this.resolveMembershipPricing(body?.source, { promo: promoApplied });
+    const { membershipSource, totalAmount, totalAmountCents, itemName } = pricing;
+
+    console.info(
+      '[Payments] Membership checkout START | draftUserId=',
+      this.trimPaymentLogValue(draftUserId),
+      'source=',
+      membershipSource,
+      'amount=',
+      totalAmount.toFixed(2),
+      'currency=',
+      currency,
+      'promo=',
+      promoApplied,
+    );
+
     const customerName = [user.firstname, user.lastname].filter(Boolean).join(' ') || undefined;
+
+    const courseIds = [
+      membershipSource,
+      ...(promoApplied ? ['promo'] : []),
+      ...(saleId ? [`sale:${saleId}`] : []),
+    ];
 
     const { id: refId } = await this.paymentReferenceService.create({
       userId: user.id,
-      courseIds: [membershipSource],
+      courseIds,
       items: [
         {
           id: membershipSource,
@@ -306,6 +626,10 @@ export class PaymentController {
         },
       ],
     });
+
+    if (saleId) {
+      await this.affiliateService.attachPaymentRef(saleId, refId);
+    }
 
     const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${refId}`;
     const finalCancelUrl =
@@ -579,6 +903,110 @@ export class PaymentController {
     }
   }
 
+  @Post('abandon-membership-checkout')
+  @ApiOperation({
+    summary:
+      'Abandon unpaid membership checkout: delete signup draft + pending promo sales (no account without payment)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['draftUserId'],
+      properties: {
+        draftUserId: { type: 'string', format: 'uuid' },
+        ref: { type: 'string', nullable: true },
+      },
+    },
+  })
+  async abandonMembershipCheckout(
+    @Body() body: { draftUserId?: string; ref?: string },
+    @Res() res: Response,
+  ) {
+    const draftUserId = String(body?.draftUserId || '').trim();
+    const refId = String(body?.ref || '').trim();
+
+    if (!draftUserId) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: 'draftUserId is required' });
+    }
+
+    try {
+      if (refId) {
+        const ref = await this.paymentReferenceService.findById(refId);
+        if (ref) {
+          if (ref.userId && ref.userId !== draftUserId) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+              message: 'Payment reference does not match this signup draft.',
+            });
+          }
+
+          const sessionLookupId = ref.wooshpaySessionId || '';
+          if (sessionLookupId) {
+            try {
+              const session = await this.wooshPayService.getSession(sessionLookupId);
+              if (this.isPaymentMarkedAsPaid(session?.payment_status, session?.status)) {
+                console.warn(
+                  '[Payments] Membership abandon BLOCKED | payment already paid, refId=',
+                  this.trimPaymentLogValue(refId),
+                );
+                return res.status(HttpStatus.CONFLICT).json({
+                  message:
+                    'Payment was already completed. Please confirm payment instead of abandoning checkout.',
+                });
+              }
+            } catch (sessionError: any) {
+              console.warn(
+                '[Payments] Membership abandon session check skipped | refId=',
+                this.trimPaymentLogValue(refId),
+                'error=',
+                sessionError?.message,
+              );
+            }
+          }
+
+          try {
+            await this.affiliateService.markSaleCanceled(refId);
+          } catch {
+            // best-effort
+          }
+        }
+      }
+
+      const deletedSales = await this.affiliateService.deletePendingSalesForDraft(draftUserId);
+      const abandonResult = await this.authService.abandonMembershipSignupDraft(draftUserId);
+
+      console.info(
+        '[Payments] Membership abandon SUCCESS | draftUserId=',
+        this.trimPaymentLogValue(draftUserId),
+        'refId=',
+        this.trimPaymentLogValue(refId),
+        'deletedPendingSales=',
+        deletedSales,
+        'reason=',
+        abandonResult.reason,
+      );
+
+      return res.status(HttpStatus.OK).json({
+        abandoned: true,
+        draftUserId,
+        deletedPendingSales: deletedSales,
+        reason: abandonResult.reason,
+        message: 'Unpaid membership checkout was abandoned. No account was kept.',
+      });
+    } catch (err: any) {
+      const status =
+        err?.status || err?.statusCode || HttpStatus.BAD_REQUEST;
+      const message =
+        err?.message || 'Could not abandon membership checkout.';
+      console.error(
+        '[Payments] Membership abandon FAILED | draftUserId=',
+        this.trimPaymentLogValue(draftUserId),
+        'error=',
+        message,
+      );
+      return res.status(status).json({ message });
+    }
+  }
+
   @Post('confirm-membership-payment')
   @ApiOperation({ summary: 'Confirm membership payment and create the user account from draft' })
   @ApiBody({
@@ -629,7 +1057,7 @@ export class PaymentController {
 
     try {
       const session = await this.wooshPayService.getSession(sessionLookupId);
-      const validationMessage = this.validateMembershipPaymentSession(refId, ref, session);
+      const validationMessage = await this.validateMembershipPaymentSession(refId, ref, session);
 
       if (validationMessage) {
         console.warn(
@@ -690,6 +1118,10 @@ export class PaymentController {
       });
 
       const finalizedUser = await this.userService.getById(ref.userId);
+      const charged = this.resolveChargedMembershipAmount({
+        session,
+        refItems: ref.items,
+      });
       console.info(
         '[Payments] Membership confirm SUCCESS | refId=',
         this.trimPaymentLogValue(refId),
@@ -697,6 +1129,8 @@ export class PaymentController {
         this.trimPaymentLogValue(session.id || sessionLookupId),
         'orderId=',
         this.trimPaymentLogValue(result?.orderId),
+        'paidAmount=',
+        charged?.paidAmount?.toFixed(2) ?? '(unknown)',
         'alreadyProcessed=',
         result?.alreadyProcessed ?? false,
       );
@@ -705,6 +1139,9 @@ export class PaymentController {
         message: 'Membership payment confirmed. Your account has been created.',
         email: finalizedUser.email,
         userId: finalizedUser.id,
+        paidAmount: charged?.paidAmount ?? null,
+        currency: charged?.currency ?? 'SGD',
+        paidDate: new Date().toISOString().slice(0, 10),
       });
     } catch (err: any) {
       const userMessage = this.getFriendlyPaymentErrorMessage(
@@ -1259,7 +1696,7 @@ export class PaymentController {
     }
 
     if (membershipPurpose.startsWith('membership-') && ref) {
-      const validationMessage = this.validateMembershipPaymentSession(clientRef, ref, {
+      const validationMessage = await this.validateMembershipPaymentSession(clientRef, ref, {
         client_reference_id: obj?.client_reference_id ?? clientRef,
         payment_status: obj?.payment_status,
         status: obj?.status,
@@ -1297,11 +1734,13 @@ export class PaymentController {
           source,
         });
         console.info('[Payments] Membership fulfill SKIP | already processed, refId=', this.trimPaymentLogValue(clientRef));
+        await this.completeLinkedAffiliateSale(clientRef);
         return { alreadyProcessed: true, orderId: existingOrder?.id };
       }
 
       const finalized = await this.authService.completeMembershipSignupAfterPayment(userId);
       if (finalized.alreadyCompleted) {
+        await this.completeLinkedAffiliateSale(clientRef);
         return { alreadyProcessed: true };
       }
 
@@ -1370,6 +1809,8 @@ export class PaymentController {
           console.error('[Payments] Membership receipt email failed | orderId=', order.id, 'error=', (emailError as Error)?.message);
         }
       }
+
+      await this.completeLinkedAffiliateSale(clientRef);
 
       return { orderId: order.id, alreadyProcessed: false };
     }

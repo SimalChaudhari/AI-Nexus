@@ -310,6 +310,21 @@ export type FooterContent = {
   }>;
 };
 
+export type MembershipPaymentSettings = {
+  currency?: string;
+  baseAmount?: number;
+  verifiedBaseAmount?: number;
+  gstRatePercent?: number;
+  voucherDiscountAmount?: number;
+  /** Active admin promo/referral code shown in admin + used in full signup link. */
+  referralCode?: string;
+  referralLinkPath?: string;
+  gstAmount?: number;
+  totalAmount?: number;
+  verifiedGstAmount?: number;
+  verifiedTotalAmount?: number;
+};
+
 @Entity('app_settings')
 export class AppSettingsEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -341,6 +356,14 @@ export class AppSettingsEntity {
   /** Default fallback image for course cards across public pages. */
   @Column({ type: 'varchar', nullable: true })
   courseDefaultImageUrl?: string | null;
+
+  /** Digital badge artwork shown on learner My Badges (null = built-in static asset). */
+  @Column({ type: 'varchar', nullable: true })
+  digitalBadgeImageUrl?: string | null;
+
+  /** Issuer label on digital badges (e.g. AI Nexus). */
+  @Column({ type: 'varchar', nullable: true })
+  digitalBadgeIssuer?: string | null;
 
   /** Public contact hero text and map points managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
@@ -401,6 +424,10 @@ export class AppSettingsEntity {
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })
   personaCourseMappings?: Array<{ persona: string; courseIds: string[] }> | null;
+
+  /** Membership signup payment amounts, GST rate, and voucher/referral discounted pricing. */
+  @Column({ type: 'jsonb', nullable: true })
+  membershipPaymentSettings?: MembershipPaymentSettings | null;
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;

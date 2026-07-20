@@ -13,6 +13,7 @@ import {
   AssignmentAiGradingResult,
   AssignmentVerificationLogEntry,
   getAssignmentPassScoreThreshold,
+  isAssignmentAiVerificationEnabled,
   resolvePassFromScore,
   resolveSubmissionPassed,
 } from './course-assignment-submission-evaluation.types';
@@ -69,6 +70,12 @@ export class CourseAssignmentGradingService {
   ) {}
 
   queueGrading(submissionId: string): void {
+    if (!isAssignmentAiVerificationEnabled()) {
+      this.logger.debug(
+        `Skipping AI grading for ${submissionId} (ASSIGNMENT_AI_VERIFICATION_ENABLED is off)`,
+      );
+      return;
+    }
     void this.gradeSubmissionById(submissionId).catch((error) => {
       this.logger.error(
         `Assignment grading failed for ${submissionId}: ${

@@ -3,7 +3,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CourseAssignmentGradingService } from './course-assignment-grading.service';
 import { CourseQuizAssessmentProgressService } from './course-quiz-assessment-progress.service';
 import { CourseQuestionAssignmentSubmissionEntity } from './course-question-assignment-submission.entity';
-import { resolveSubmissionPassed } from './course-assignment-submission-evaluation.types';
+import {
+  isAssignmentAiVerificationEnabled,
+  resolveSubmissionPassed,
+} from './course-assignment-submission-evaluation.types';
 import { isStructuredEvaluationEnabled } from '../assessment-evaluation/assessment-evaluation.types';
 import { StructuredAssessmentGradingService } from '../assessment-evaluation/services/structured-assessment-grading.service';
 import { BlueprintIngestionService } from '../assessment-evaluation/services/blueprint-ingestion.service';
@@ -25,6 +28,12 @@ export class AssignmentGradingRouterService {
   }
 
   queueGrading(submissionId: string): void {
+    if (!isAssignmentAiVerificationEnabled()) {
+      this.logger.debug(
+        `Skipping AI grading for ${submissionId} (ASSIGNMENT_AI_VERIFICATION_ENABLED is off)`,
+      );
+      return;
+    }
     if (isStructuredEvaluationEnabled()) {
       void this.gradeStructured(submissionId);
       return;

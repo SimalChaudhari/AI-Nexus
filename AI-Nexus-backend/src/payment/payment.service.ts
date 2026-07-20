@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   PaymentEntity,
   PaymentSource,
   PaymentStatus,
 } from './payment.entity';
+import { AffiliateSaleEntity } from '../affiliate/affiliate-sale.entity';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 export interface UpsertPaymentParams {
   userId: string;
@@ -23,6 +25,13 @@ export interface UpsertPaymentParams {
   orderId?: string | null;
   paidAt?: Date | null;
 }
+
+export type MembershipPaymentHistoryFilters = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+};
 
 /** Statuses that must not be overwritten by a weaker terminal state. */
 const TERMINAL_SUCCESS = new Set<PaymentStatus>([PaymentStatus.Paid, PaymentStatus.Refunded]);
@@ -67,6 +76,9 @@ export class PaymentService {
   constructor(
     @InjectRepository(PaymentEntity)
     private readonly paymentRepository: Repository<PaymentEntity>,
+    @InjectRepository(AffiliateSaleEntity)
+    private readonly affiliateSaleRepository: Repository<AffiliateSaleEntity>,
+    private readonly paginationService: PaginationService,
   ) {}
 
   async findByClientReferenceId(clientReferenceId: string): Promise<PaymentEntity | null> {
@@ -232,5 +244,167 @@ export class PaymentService {
       source: params.source ?? PaymentSource.MarkFailed,
       failureReason: params.failureReason ?? safeStatus,
     });
+  }
+
+  /**
+   * Admin membership payment history: payments + optional promo/sale details.
+   */
+  async listMembershipPaymentHistory(filters: MembershipPaymentHistoryFilters = {}) {
+    const { page, limit, search, hasSearch } = this.paginationService.normalizePaginatedQuery(
+      {
+        page: filters.page,
+        limit: filters.limit,
+        search: filters.search,
+      },
+      10,
+      100,
+    );
+
+    const qb = this.paymentRepository
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.user', 'user')
+      .where('(p.eventType ILIKE :membership OR p.courseIds ILIKE :membership)', {
+        membership: 'membership%',
+      });
+
+    const status = String(filters.status || '').trim().toLowerCase();
+    if (status && status !== 'all') {
+      qb.andWhere('LOWER(p.status) = :status', { status });
+    }
+
+    if (hasSearch) {
+      const term = `%${search}%`;
+      qb.andWhere(
+        `(
+          user.email ILIKE :term
+          OR user.firstname ILIKE :term
+          OR user.lastname ILIKE :term
+          OR p.clientReferenceId ILIKE :term
+          OR p.wooshpaySessionId ILIKE :term
+          OR EXISTS (
+            SELECT 1 FROM affiliate_sales sx
+            WHERE sx."paymentRefId" = p."clientReferenceId"
+              AND (
+                sx."voucherCode" ILIKE :term
+                OR sx."affiliateCode" ILIKE :term
+              )
+          )
+        )`,
+        { term },
+      );
+    }
+
+    qb.orderBy('p.createdAt', 'DESC');
+
+    const totalItems = await qb.clone().getCount();
+    const rows = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    const refIds = rows
+      .map((row) => String(row.clientReferenceId || '').trim())
+      .filter(Boolean);
+
+    const sales = refIds.length
+      ? await this.affiliateSaleRepository.find({
+          where: { paymentRefId: In(refIds) },
+        })
+      : [];
+    const saleByRef = new Map(
+      sales.map((sale) => [String(sale.paymentRefId || '').trim(), sale]),
+    );
+
+    const data = rows.map((payment) =>
+      this.serializeMembershipPaymentHistoryItem(
+        payment,
+        saleByRef.get(String(payment.clientReferenceId || '').trim()),
+      ),
+    );
+
+    return this.paginationService.buildPaginatedResponse(
+      data,
+      page,
+      limit,
+      totalItems,
+      hasSearch ? search : null,
+      undefined,
+    );
+  }
+
+  async getMembershipPaymentHistoryById(id: string) {
+    const payment = await this.paymentRepository.findOne({
+      where: { id },
+      relations: ['user'],
+    });
+    if (!payment) {
+      return null;
+    }
+
+    const isMembership =
+      String(payment.eventType || '').toLowerCase().startsWith('membership')
+      || String(payment.courseIds || '').toLowerCase().startsWith('membership');
+    if (!isMembership) {
+      return null;
+    }
+
+    const sale = payment.clientReferenceId
+      ? await this.affiliateSaleRepository.findOne({
+          where: { paymentRefId: payment.clientReferenceId },
+        })
+      : null;
+
+    return this.serializeMembershipPaymentHistoryItem(payment, sale || undefined);
+  }
+
+  private serializeMembershipPaymentHistoryItem(
+    payment: PaymentEntity,
+    sale?: AffiliateSaleEntity | null,
+  ) {
+    const originalAmount = sale
+      ? Number(sale.originalAmount)
+      : Number(payment.amount);
+    const payableAmount = sale
+      ? Number(sale.payableAmount)
+      : Number(payment.amount);
+    const discountApplied =
+      Boolean(sale?.discountApplied)
+      || String(payment.courseIds || '').includes('promo');
+    const discountAmount = Math.max(0, Number((originalAmount - payableAmount).toFixed(2)));
+    const user = payment.user;
+    const fullName = [user?.firstname, user?.lastname].filter(Boolean).join(' ').trim();
+
+    return {
+      id: payment.id,
+      paymentRef: payment.clientReferenceId,
+      status: payment.status,
+      currency: payment.currency || 'SGD',
+      amount: Number(payment.amount) || 0,
+      originalAmount: Number.isFinite(originalAmount) ? originalAmount : Number(payment.amount) || 0,
+      payableAmount: Number.isFinite(payableAmount) ? payableAmount : Number(payment.amount) || 0,
+      discountApplied,
+      discountAmount,
+      voucherCode: sale?.voucherCode || null,
+      affiliateCode: sale?.affiliateCode || null,
+      eventType: payment.eventType || null,
+      pricingType: String(payment.courseIds || '').includes('membership-verified')
+        ? 'verified'
+        : discountApplied
+          ? 'promo'
+          : 'standard',
+      courseIds: payment.courseIds || null,
+      items: payment.items || null,
+      source: payment.source || null,
+      userId: payment.userId,
+      email: user?.email || null,
+      name: fullName || null,
+      username: user?.username || null,
+      wooshpaySessionId: payment.wooshpaySessionId || null,
+      wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
+      failureReason: payment.failureReason || null,
+    };
   }
 }
