@@ -6,6 +6,8 @@ import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import Link from '@mui/material/Link';
+import Stack from '@mui/material/Stack';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -24,14 +26,35 @@ import { ViewHtmlContent } from 'src/components/html-content';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
 import { useAuthContext } from 'src/auth/hooks';
 import { useAiForumCommentsSocket } from '../../../../hooks/use-ai-forum-comments-socket';
+import { getForumFullName } from 'src/utils/mask-forum-display-name';
 
 function getCommentAuthorName(comment) {
-  const user = comment?.user;
-  if (!user) return 'Anonymous';
-  if (user.firstname || user.lastname) {
-    return [user.firstname, user.lastname].filter(Boolean).join(' ').trim();
+  return getForumFullName(comment?.user);
+}
+
+/** Admin: email links to user profile for lookup / reply. */
+function getCommentAuthorSecondary(comment) {
+  const u = comment?.user;
+  const userId = u?.id || comment?.userId;
+  const email = u?.email || null;
+  if (!email) return null;
+  if (userId) {
+    return (
+      <Link
+        component={RouterLink}
+        href={paths.admin.user.details(userId)}
+        variant="caption"
+        sx={{ wordBreak: 'break-all', display: 'block', mt: 0.15 }}
+      >
+        {email}
+      </Link>
+    );
   }
-  return user.username || user.email || 'Anonymous';
+  return (
+    <Typography variant="caption" sx={{ color: 'text.secondary', wordBreak: 'break-all', display: 'block', mt: 0.15 }}>
+      {email}
+    </Typography>
+  );
 }
 
 function formatRelativeTime(date) {
@@ -282,6 +305,28 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
       icon: 'solar:document-text-bold',
       rows: [
         { label: 'Title', value: post.title || '-' },
+        {
+          label: 'Author',
+          value: (post.author || post.userId) ? (
+            <Stack spacing={0.25} sx={{ mt: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {getForumFullName(post.author)}
+              </Typography>
+              {post.author?.email ? (
+                <Link
+                  component={RouterLink}
+                  href={paths.admin.user.details(post.author?.id || post.userId)}
+                  variant="caption"
+                  sx={{ wordBreak: 'break-all' }}
+                >
+                  {post.author.email}
+                </Link>
+              ) : null}
+            </Stack>
+          ) : (
+            '-'
+          ),
+        },
         { label: 'View Count', value: post.viewCount ?? 0 },
         {
           label: 'Pinned',
@@ -369,6 +414,7 @@ export function AiForumDetailsView({ post, loading, error, onAiForumPostUpdate }
                 linkBase={paths.admin.aiForum.details(post.id)}
                 formatRelativeTime={formatRelativeTime}
                 getCommentAuthorName={getCommentAuthorName}
+                getCommentAuthorSecondary={getCommentAuthorSecondary}
                 expanded={quickLinksExpanded}
                 onToggleExpanded={(commentId) => {
                   setQuickLinksExpanded((prev) => {

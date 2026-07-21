@@ -212,6 +212,8 @@ export const paths = {
     learner: (userId) => `${ROOTS.CORPORATE}/progress/${userId}`,
     enrol: `${ROOTS.CORPORATE}/enrol`,
     bulkUploads: `${ROOTS.CORPORATE}/enrol/uploads`,
+    enrolTrack: `${ROOTS.CORPORATE}/enrol/track`,
+    enrolTrackBatch: (batchId) => `${ROOTS.CORPORATE}/enrol/track/${batchId}`,
     reports: `${ROOTS.CORPORATE}/reports`,
     nudgeTrack: `${ROOTS.CORPORATE}/nudge-track`,
   },

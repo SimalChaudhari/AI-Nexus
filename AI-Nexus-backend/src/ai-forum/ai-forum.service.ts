@@ -14,10 +14,13 @@ import {
     PaginationService,
 } from '../common/pagination/pagination.service';
 import { EmailService } from '../service/email.service';
+import { maskForumDisplayName, toForumPublicUser } from '../utils/mask-forum-display-name.util';
 
 type GetAiForumPostsOptions = PaginatedQueryOptions & {
     userId?: string;
     usePagination?: boolean;
+    /** When true, author/comment user payloads include email for admin lookup. */
+    includeContact?: boolean;
 };
 
 @Injectable()
@@ -40,7 +43,7 @@ export class AiForumService {
 
     async getAll(options: GetAiForumPostsOptions = {}): Promise<any[] | PaginatedResponse<any>> {
         const usePagination = Boolean(options.usePagination);
-        const { userId } = options;
+        const { userId, includeContact = false } = options;
 
         if (usePagination) {
             return this.paginationService.getPaginatedPinnedList({
@@ -53,16 +56,19 @@ export class AiForumService {
                 pinnedJoinAlias: 'pinnedAiForumPost',
                 pinnedEntityIdColumn: 'postId',
                 relations: ['comments', 'comments.user'],
-                enrichEntities: async (posts, currentUserId) =>
-                    Promise.all(
-                        posts.map(async (post) => {
+                enrichEntities: async (posts, currentUserId) => {
+                    const withAuthors = await this.attachAuthorsToPosts(posts, includeContact);
+                    return Promise.all(
+                        withAuthors.map(async (post) => {
                             const commentsWithLikes = await this.enrichCommentsWithLikes(
                                 post.comments || [],
                                 currentUserId,
+                                includeContact,
                             );
                             return { ...post, comments: commentsWithLikes };
                         }),
-                    ),
+                    );
+                },
                 loadPinnedIds: async (postIds, currentUserId) => {
                     const pinnedAiForumPosts = await this.pinnedAiForumRepository.find({
                         where: { userId: currentUserId, postId: In(postIds) },
@@ -98,9 +104,14 @@ export class AiForumService {
                   )
                 : new Set<string>();
 
+        const withAuthors = await this.attachAuthorsToPosts(posts, includeContact);
         return Promise.all(
-            posts.map(async (post) => {
-                const commentsWithLikes = await this.enrichCommentsWithLikes(post.comments || [], userId);
+            withAuthors.map(async (post) => {
+                const commentsWithLikes = await this.enrichCommentsWithLikes(
+                    post.comments || [],
+                    userId,
+                    includeContact,
+                );
                 return {
                     ...post,
                     comments: commentsWithLikes,
@@ -114,7 +125,7 @@ export class AiForumService {
         return this.getAll({ ...options, usePagination: true }) as Promise<PaginatedResponse<any>>;
     }
 
-    async getById(id: string, userId?: string): Promise<any> {
+    async getById(id: string, userId?: string, includeContact = false): Promise<any> {
         const post = await this.aiForumRepository.findOne({
             where: { id },
             relations: ['comments', 'comments.user'],
@@ -123,8 +134,13 @@ export class AiForumService {
             throw new NotFoundException('AiForumPost not found');
         }
 
-        const commentsWithLikes = await this.enrichCommentsWithLikes(post.comments || [], userId);
-        let result: any = { ...post, comments: commentsWithLikes };
+        const [withAuthor] = await this.attachAuthorsToPosts([post], includeContact);
+        const commentsWithLikes = await this.enrichCommentsWithLikes(
+            withAuthor.comments || [],
+            userId,
+            includeContact,
+        );
+        let result: any = { ...withAuthor, comments: commentsWithLikes };
         if (userId) {
             const pinnedAiForumPost = await this.pinnedAiForumRepository.findOne({
                 where: { userId, postId: id },
@@ -134,13 +150,32 @@ export class AiForumService {
         return result;
     }
 
-    /** Serialize comment for WebSocket (no circular refs). */
+    /** Attach author profile. Admin gets id + email for lookup; public gets masked handle only. */
+    private async attachAuthorsToPosts<T extends { userId?: string | null }>(
+        posts: T[],
+        includeContact = false,
+    ): Promise<Array<T & { author: ReturnType<typeof toForumPublicUser> }>> {
+        const authorIds = [...new Set(posts.map((p) => p.userId).filter(Boolean))] as string[];
+        if (!authorIds.length) {
+            return posts.map((post) => ({ ...post, author: null }));
+        }
+        const users = await this.userRepository.find({
+            where: { id: In(authorIds) },
+            select: ['id', 'firstname', 'lastname', 'username', 'email'],
+        });
+        const byId = new Map(users.map((u) => [u.id, toForumPublicUser(u, { includeContact })]));
+        return posts.map((post) => ({
+            ...post,
+            author: post.userId ? byId.get(post.userId) ?? null : null,
+        }));
+    }
+
+    /** Serialize comment for WebSocket (public — no email). */
     private toCommentPayload(
         comment: AiForumCommentEntity & { user?: UserEntity },
         likeCount: number,
         likedByCurrentUser: boolean,
     ): Record<string, unknown> {
-        const user = comment.user;
         return {
             id: comment.id,
             content: comment.content,
@@ -151,21 +186,14 @@ export class AiForumService {
             updatedAt: comment.updatedAt,
             likeCount,
             likedByCurrentUser,
-            user: user
-                ? {
-                    id: user.id,
-                    firstname: user.firstname,
-                    lastname: user.lastname,
-                    username: user.username,
-                    email: user.email,
-                }
-                : null,
+            user: toForumPublicUser(comment.user, { includeContact: false }),
         };
     }
 
     private async enrichCommentsWithLikes(
         comments: AiForumCommentEntity[],
         userId?: string,
+        includeContact = false,
     ): Promise<any[]> {
         if (!comments.length) return [];
         const commentIds = comments.map((c) => c.id);
@@ -192,6 +220,7 @@ export class AiForumService {
             ...comment,
             likeCount: countMap.get(comment.id) || 0,
             likedByCurrentUser: userLikedIds.has(comment.id),
+            user: toForumPublicUser(comment.user, { includeContact }),
         }));
     }
 
@@ -368,7 +397,8 @@ export class AiForumService {
                 if (threadStarter?.email) {
                     const threadStarterName =
                         `${threadStarter.firstname || ''} ${threadStarter.lastname || ''}`.trim() || 'there';
-                    const replierName = `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username || 'A user';
+                    const replierName =
+                        maskForumDisplayName(user.firstname, user.lastname, user.username) || 'A user';
 
                     await this.emailService.sendForumReplyNotificationEmail({
                         toEmail: threadStarter.email,
@@ -390,11 +420,14 @@ export class AiForumService {
 
         return {
             message: 'Comment added successfully',
-            comment: commentWithRelations!,
+            comment: {
+                ...commentWithRelations!,
+                user: toForumPublicUser(commentWithRelations!.user, { includeContact: false }),
+            } as any,
         };
     }
 
-    async getComments(postId: string, userId?: string): Promise<any[]> {
+    async getComments(postId: string, userId?: string, includeContact = false): Promise<any[]> {
         const post = await this.aiForumRepository.findOne({ where: { id: postId } });
         if (!post) {
             throw new NotFoundException('AiForumPost not found');
@@ -438,6 +471,7 @@ export class AiForumService {
             parentCommentId: comment.parentCommentId ?? null,
             likeCount: countMap.get(comment.id) || 0,
             likedByCurrentUser: userLikedIds.has(comment.id),
+            user: toForumPublicUser(comment.user, { includeContact }),
         }));
     }
 
@@ -484,7 +518,10 @@ export class AiForumService {
 
         return {
             message: 'Comment updated successfully',
-            comment: updatedComment!,
+            comment: {
+                ...updatedComment!,
+                user: toForumPublicUser(updatedComment!.user, { includeContact: false }),
+            } as any,
         };
     }
 

@@ -230,6 +230,106 @@ export async function uploadCorporateBulkEnrolmentZip(files, companyCode) {
   return response.data?.data ?? response.data;
 }
 
+export async function enrolCorporateStaff(learner, companyCode) {
+  const response = await axios.post('/corporate/staff-enrol', learner, {
+    params: companyCode ? { companyCode } : undefined,
+  });
+  return response.data?.data ?? response.data;
+}
+
+export async function enrolCorporateStaffBulkCsv(file, companyCode) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await axios.post('/corporate/staff-enrol/bulk-csv', formData, {
+    params: companyCode ? { companyCode } : undefined,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return response.data?.data ?? response.data;
+}
+
+export async function getCorporateStaffEnrolBatches({
+  companyCode,
+  page,
+  limit,
+  q,
+} = {}) {
+  const response = await axios.get('/corporate/staff-enrol/batches', {
+    params: {
+      ...(companyCode ? { companyCode } : {}),
+      ...(page ? { page } : {}),
+      ...(limit != null ? { limit } : {}),
+      ...(q ? { q } : {}),
+    },
+  });
+  return response.data;
+}
+
+export async function getCorporateStaffEnrolBatch(
+  batchId,
+  {
+    companyCode,
+    page,
+    limit,
+    q,
+    status,
+  } = {},
+) {
+  const response = await axios.get(
+    `/corporate/staff-enrol/batches/${encodeURIComponent(batchId)}`,
+    {
+      params: {
+        ...(companyCode ? { companyCode } : {}),
+        ...(page ? { page } : {}),
+        ...(limit != null ? { limit } : {}),
+        ...(q ? { q } : {}),
+        ...(status && status !== 'all' ? { status } : {}),
+      },
+    },
+  );
+  return response.data?.data ?? response.data;
+}
+
+export async function submitCorporateForeignQuotationRequest(payload, companyCode) {
+  const response = await axios.post('/corporate/foreign-quotation-request', payload, {
+    params: companyCode ? { companyCode } : undefined,
+  });
+  return response.data?.data ?? response.data;
+}
+
+export const CORPORATE_STAFF_CSV_TEMPLATE_HEADERS = [
+  'salutation',
+  'first_name',
+  'last_name',
+  'name_as_per_id',
+  'email',
+  'id_type',
+  'id_number',
+  'countryOfResidence',
+  'noOfYearOfRelevantWorkExperience',
+  'learnerAsAnAccounting',
+  'membershipNumber',
+];
+
+export function downloadCorporateStaffCsvTemplate() {
+  const header = CORPORATE_STAFF_CSV_TEMPLATE_HEADERS.join(',');
+  const example =
+    'Mr,Tan,Wei Ming,Tan Wei Ming,tan.weiming@testemail.com,NRIC,S1234567A,Singapore,5,Yes,MEM20260011';
+  const blob = new Blob([`${header}\n${example}\n`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'corporate-staff-enrolment-template.csv';
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 export async function getCorporateBulkEnrolmentUploads({ companyCode, page, limit } = {}) {
   const response = await axios.get('/corporate/bulk-enrolment/uploads', {
     params: {

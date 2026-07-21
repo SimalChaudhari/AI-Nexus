@@ -266,6 +266,20 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.createNexusUserPath}`;
   }
 
+  /** Apex REST path for corporate bulk Nexus user create. */
+  private get createBulkNexusUsersPath(): string {
+    const p =
+      process.env.OAUTH_CREATE_BULK_USER_PATH || '/services/apexrest/createblukuserfornexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get createBulkNexusUsersUrl(): string {
+    const fullUrl = process.env.OAUTH_CREATE_BULK_USER_URL?.trim();
+    if (fullUrl) return fullUrl;
+    // Same host as createuserfornexus (integration API), not Experience Cloud site.
+    return `${this.integrationApiBaseUrl}${this.createBulkNexusUsersPath}`;
+  }
+
   private get userCheckForNricPath(): string {
     const p = process.env.OAUTH_USER_CHECK_FOR_NRIC_PATH || '/services/apexrest/usercheckfornric';
     return p.startsWith('/') ? p : `/${p}`;
@@ -1653,6 +1667,499 @@ export class OAuthAuthService {
     throw lastError ?? new BadRequestException('Failed to set Salesforce password.');
   }
 
+  /**
+   * Bulk-create Salesforce users via Apex REST createblukuserfornexus (corporate fee-waiver enrol).
+   * Body is a JSON array matching Salesforce sample fields.
+   */
+  private buildBulkNexusUserRequestBody(
+    users: Array<{
+      salutation?: string;
+      first_name: string;
+      last_name: string;
+      name_as_per_id?: string;
+      email: string;
+      id_type?: string;
+      id_number?: string;
+      company?: string;
+      department?: string;
+      role?: string;
+      countryOfResidence?: string;
+      noOfYearOfRelevantWorkExperience?: string | number;
+      corporateAccountId?: string;
+      learnerAsAnAccounting?: string;
+      membershipNumber?: string;
+      eligibility?: string;
+      isAuthorisedSubmit?: boolean;
+    }>,
+  ): Array<Record<string, string | number | boolean>> {
+    const list = Array.isArray(users) ? users : [];
+    return list.map((row, index) => {
+      const email = normalizeEmail(row.email);
+      if (!email) {
+        throw new BadRequestException(`Row ${index + 1}: a valid email address is required.`);
+      }
+      const firstName = String(row.first_name || '').trim();
+      const lastName = String(row.last_name || '').trim();
+      if (!firstName || !lastName) {
+        throw new BadRequestException(`Row ${index + 1}: first_name and last_name are required.`);
+      }
+
+      const item: Record<string, string | number | boolean> = {
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        name_as_per_id:
+          String(row.name_as_per_id || '').trim() || `${firstName} ${lastName}`.trim(),
+        isAuthorisedSubmit: row.isAuthorisedSubmit !== false,
+      };
+
+      const salutation = String(row.salutation || '').trim();
+      if (salutation) item.salutation = salutation;
+
+      const idType = String(row.id_type || '').trim();
+      const idNumber = String(row.id_number || '').trim();
+      if (idType) item.id_type = idType;
+      if (idNumber) item.id_number = idNumber;
+
+      const company = String(row.company || '').trim();
+      if (company) item.company = company;
+
+      const department = String(row.department || '').trim();
+      if (department) item.department = department;
+
+      const role = String(row.role || '').trim();
+      if (role) item.role = role;
+
+      const countryOfResidence = String(row.countryOfResidence || '').trim();
+      if (countryOfResidence) item.countryOfResidence = countryOfResidence;
+
+      const yearsRaw = row.noOfYearOfRelevantWorkExperience;
+      if (yearsRaw !== undefined && yearsRaw !== null && String(yearsRaw).trim() !== '') {
+        const normalizedYears =
+          typeof yearsRaw === 'number' ? yearsRaw : Number(yearsRaw);
+        if (!Number.isNaN(normalizedYears)) {
+          item.noOfYearOfRelevantWorkExperience = normalizedYears;
+        } else {
+          item.noOfYearOfRelevantWorkExperience = String(yearsRaw).trim();
+        }
+      }
+
+      const corporateAccountId = String(row.corporateAccountId || '').trim();
+      if (corporateAccountId) item.corporateAccountId = corporateAccountId;
+
+      const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
+      if (learnerAsAnAccounting) item.learnerAsAnAccounting = learnerAsAnAccounting;
+
+      const membershipNumber = String(row.membershipNumber || '').trim();
+      if (membershipNumber) item.membershipNumber = membershipNumber;
+
+      const eligibility = String(row.eligibility || '').trim();
+      if (eligibility) item.eligibility = eligibility;
+
+      return item;
+    });
+  }
+
+  parseBulkNexusCreateRowOutcomes(
+    record: Record<string, unknown>,
+    requestEmails: string[],
+  ): {
+    succeededEmails: string[];
+    failed: Array<{ email: string; message: string }>;
+  } {
+    const normalizedRequest = requestEmails.map((email) =>
+      String(email || '').trim().toLowerCase(),
+    );
+    const succeededEmails: string[] = [];
+    const failed: Array<{ email: string; message: string }> = [];
+    const results = record.results;
+
+    const resolveRowOutcome = (item: Record<string, unknown>) => {
+      const msg = String(
+        item.message
+          || item.Message
+          || item.error
+          || item.errorMessage
+          || item.statusMessage
+          || '',
+      ).trim();
+
+      const explicitSuccess =
+        item.success === true
+        || item.success === 'true'
+        || item.isSuccess === true
+        || item.isSuccess === 'true'
+        || this.isSalesforceBulkSuccessMessage(msg);
+
+      const explicitFail =
+        item.success === false
+        || item.success === 'false'
+        || item.isError === true
+        || item.isError === 'true'
+        || item.failed === true
+        || Boolean(item.errors);
+
+      if (explicitSuccess && !explicitFail) {
+        return { ok: true as const, message: msg };
+      }
+      if (explicitFail || (msg && this.looksLikeSalesforceBulkFailureMessage(msg))) {
+        let errorText = msg;
+        if (!errorText && Array.isArray(item.errors) && item.errors.length) {
+          errorText = item.errors
+            .map((e) =>
+              typeof e === 'string'
+                ? e
+                : String((e as Record<string, unknown>)?.message || JSON.stringify(e)),
+            )
+            .filter(Boolean)
+            .join('; ');
+        }
+        return {
+          ok: false as const,
+          message: this.mapCreateNexusUserErrorMessage(errorText || 'Salesforce create failed.'),
+        };
+      }
+      if (this.isSalesforceBulkSuccessMessage(msg)) {
+        return { ok: true as const, message: msg };
+      }
+      return { ok: true as const, message: msg };
+    };
+
+    if (Array.isArray(results) && results.length) {
+      results.forEach((row, index) => {
+        if (!row || typeof row !== 'object') return;
+        const item = row as Record<string, unknown>;
+        const email = String(
+          item.email || item.Email || normalizedRequest[index] || '',
+        )
+          .trim()
+          .toLowerCase();
+        if (!email) return;
+        const outcome = resolveRowOutcome(item);
+        if (outcome.ok) succeededEmails.push(email);
+        else failed.push({ email, message: outcome.message });
+      });
+      return { succeededEmails, failed };
+    }
+
+    const bulkError = this.extractBulkNexusCreateError(record);
+    if (!bulkError) {
+      return { succeededEmails: [...normalizedRequest], failed: [] };
+    }
+
+    const mapped = this.mapCreateNexusUserErrorMessage(bulkError);
+    return {
+      succeededEmails: [],
+      failed: normalizedRequest.map((email) => ({ email, message: mapped || bulkError })),
+    };
+  }
+
+  async createSalesforceBulkNexusUsersWithOutcomes(
+    users: Array<{
+      salutation?: string;
+      first_name: string;
+      last_name: string;
+      name_as_per_id?: string;
+      email: string;
+      id_type?: string;
+      id_number?: string;
+      company?: string;
+      department?: string;
+      role?: string;
+      countryOfResidence?: string;
+      noOfYearOfRelevantWorkExperience?: string | number;
+      corporateAccountId?: string;
+      learnerAsAnAccounting?: string;
+      membershipNumber?: string;
+      eligibility?: string;
+      isAuthorisedSubmit?: boolean;
+    }>,
+  ): Promise<{
+    raw: Record<string, unknown>;
+    succeededEmails: string[];
+    failed: Array<{ email: string; message: string }>;
+  }> {
+    const list = Array.isArray(users) ? users : [];
+    if (!list.length) {
+      throw new BadRequestException('At least one learner is required for bulk enrolment.');
+    }
+
+    const body = this.buildBulkNexusUserRequestBody(list);
+    const requestEmails = body.map((row) => String(row.email || '').trim().toLowerCase());
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.createBulkNexusUsersUrl;
+
+    console.log('[Salesforce] Creating bulk Nexus users via Apex REST (partial OK):', {
+      url,
+      count: body.length,
+      emails: requestEmails,
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown> | unknown[]>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 120000,
+      });
+      const resData = res.data;
+      const record =
+        resData && typeof resData === 'object' && !Array.isArray(resData)
+          ? (resData as Record<string, unknown>)
+          : { success: true, data: resData };
+      const outcomes = this.parseBulkNexusCreateRowOutcomes(record, requestEmails);
+      return { raw: record, ...outcomes };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        const responseData = err.response?.data;
+        if (responseData && typeof responseData === 'object' && !Array.isArray(responseData)) {
+          const record = responseData as Record<string, unknown>;
+          const outcomes = this.parseBulkNexusCreateRowOutcomes(record, requestEmails);
+          if (outcomes.succeededEmails.length || outcomes.failed.length) {
+            return { raw: record, ...outcomes };
+          }
+        }
+        const bulkError =
+          responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+            ? this.extractBulkNexusCreateError(responseData as Record<string, unknown>)
+            : '';
+        const rawDescription =
+          bulkError || this.extractSalesforceErrorDescription(responseData, err.message);
+        const desc = this.mapCreateNexusUserErrorMessage(rawDescription);
+        return {
+          raw:
+            responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+              ? (responseData as Record<string, unknown>)
+              : { error: desc || rawDescription },
+          succeededEmails: [],
+          failed: requestEmails.map((email) => ({
+            email,
+            message: desc || rawDescription || 'Salesforce bulk create failed.',
+          })),
+        };
+      }
+      throw err;
+    }
+  }
+
+  async createSalesforceBulkNexusUsers(
+    users: Array<{
+      salutation?: string;
+      first_name: string;
+      last_name: string;
+      name_as_per_id?: string;
+      email: string;
+      id_type?: string;
+      id_number?: string;
+      company?: string;
+      department?: string;
+      role?: string;
+      countryOfResidence?: string;
+      noOfYearOfRelevantWorkExperience?: string | number;
+      corporateAccountId?: string;
+      learnerAsAnAccounting?: string;
+      membershipNumber?: string;
+      eligibility?: string;
+      isAuthorisedSubmit?: boolean;
+    }>,
+  ): Promise<Record<string, unknown>> {
+    const list = Array.isArray(users) ? users : [];
+    if (!list.length) {
+      throw new BadRequestException('At least one learner is required for bulk enrolment.');
+    }
+
+    const body = this.buildBulkNexusUserRequestBody(list);
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.createBulkNexusUsersUrl;
+
+    console.log('[Salesforce] Creating bulk Nexus users via Apex REST:', {
+      url,
+      count: body.length,
+      emails: body.map((row) => row.email),
+      samplePayload: body[0],
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown> | unknown[]>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 120000,
+      });
+      console.log('[Salesforce] createblukuserfornexus response status:', res.status);
+
+      const resData = res.data;
+      if (resData && typeof resData === 'object' && !Array.isArray(resData)) {
+        const record = resData as Record<string, unknown>;
+        const bulkError = this.extractBulkNexusCreateError(record);
+        if (bulkError) {
+          console.error('[Salesforce] createblukuserfornexus API returned error:', bulkError);
+          const desc = this.mapCreateNexusUserErrorMessage(bulkError);
+          throw new BadRequestException(
+            desc || 'Failed to create Salesforce bulk membership accounts.',
+          );
+        }
+        const { isError, errorMsg } = this.isSalesforceApiErrorPayload(record);
+        if (isError) {
+          console.error('[Salesforce] createblukuserfornexus API returned error:', errorMsg);
+          const desc = this.mapCreateNexusUserErrorMessage(errorMsg);
+          throw new BadRequestException(
+            desc || 'Failed to create Salesforce bulk membership accounts.',
+          );
+        }
+        return record;
+      }
+
+      return { success: true, data: resData };
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) throw err;
+      if (axios.isAxiosError(err)) {
+        const responseData = err.response?.data;
+        const bulkError =
+          responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+            ? this.extractBulkNexusCreateError(responseData as Record<string, unknown>)
+            : '';
+        console.error('[Salesforce] createblukuserfornexus failed:', {
+          status: err.response?.status,
+          data: responseData,
+          results: JSON.stringify(
+            responseData && typeof responseData === 'object'
+              ? (responseData as Record<string, unknown>).results
+              : null,
+            null,
+            2,
+          ),
+          bulkError,
+          message: err.message,
+        });
+        const rawDescription =
+          bulkError
+          || this.extractSalesforceErrorDescription(responseData, err.message);
+        const desc = this.mapCreateNexusUserErrorMessage(rawDescription);
+        throw new BadRequestException(
+          desc || 'Failed to create Salesforce bulk membership accounts.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /** Pull per-row Apex errors from createblukuserfornexus response shape. */
+  private extractBulkNexusCreateError(record: Record<string, unknown>): string {
+    const results = record.results;
+    const successful = Number(record.successful ?? NaN);
+    const failedCount = Number(record.failed ?? NaN);
+
+    // Explicit aggregate success from Apex summary
+    if (Number.isFinite(successful) && successful > 0 && (!Number.isFinite(failedCount) || failedCount === 0)) {
+      // Still scan results for any explicit failures
+    }
+
+    if (!Array.isArray(results) || !results.length) {
+      // No per-row results — only treat top-level as error if clearly failed
+      if (Number.isFinite(failedCount) && failedCount > 0) {
+        return String(record.message || record.Message || 'Bulk user create failed in Salesforce.').trim();
+      }
+      if (Number.isFinite(successful) && successful > 0) return '';
+      const top = String(record.message || record.Message || record.error || '').trim();
+      if (this.isSalesforceBulkSuccessMessage(top)) return '';
+      // Ambiguous empty payload without success counts — not an error by itself
+      return '';
+    }
+
+    const messages: string[] = [];
+    for (const row of results) {
+      if (!row || typeof row !== 'object') continue;
+      const item = row as Record<string, unknown>;
+      const msg = String(
+        item.message
+          || item.Message
+          || item.error
+          || item.errorMessage
+          || item.statusMessage
+          || '',
+      ).trim();
+
+      const explicitSuccess =
+        item.success === true
+        || item.success === 'true'
+        || item.isSuccess === true
+        || item.isSuccess === 'true'
+        || this.isSalesforceBulkSuccessMessage(msg);
+
+      const explicitFail =
+        item.success === false
+        || item.success === 'false'
+        || item.isError === true
+        || item.isError === 'true'
+        || item.failed === true
+        || Boolean(item.errors);
+
+      if (explicitSuccess && !explicitFail) continue;
+      if (!explicitFail && this.isSalesforceBulkSuccessMessage(msg)) continue;
+      if (!explicitFail && !msg) continue;
+
+      // Real failure row
+      if (!explicitFail && !msg) continue;
+      if (!explicitFail && msg && !this.looksLikeSalesforceBulkFailureMessage(msg)) {
+        // Soft/unknown message without fail flags — ignore
+        continue;
+      }
+
+      const email = String(item.email || item.Email || '').trim();
+      let errorText = msg;
+      if (!errorText && Array.isArray(item.errors) && item.errors.length) {
+        errorText = item.errors
+          .map((e) =>
+            typeof e === 'string'
+              ? e
+              : String((e as Record<string, unknown>)?.message || JSON.stringify(e)),
+          )
+          .filter(Boolean)
+          .join('; ');
+      }
+      if (!errorText && explicitFail) {
+        errorText = JSON.stringify(item);
+      }
+      if (errorText) {
+        messages.push(email ? `${email}: ${errorText}` : errorText);
+      }
+    }
+
+    if (messages.length) return messages.join(' | ');
+    if (Number.isFinite(failedCount) && failedCount > 0) {
+      return String(record.message || record.Message || 'Bulk user create failed in Salesforce.').trim();
+    }
+    return '';
+  }
+
+  private isSalesforceBulkSuccessMessage(message: string): boolean {
+    const lower = String(message || '').toLowerCase();
+    return (
+      lower.includes('created successfully')
+      || lower.includes('account and user created')
+      || (lower.includes('success') && !lower.includes('unsuccess'))
+    );
+  }
+
+  private looksLikeSalesforceBulkFailureMessage(message: string): boolean {
+    const lower = String(message || '').toLowerCase();
+    if (this.isSalesforceBulkSuccessMessage(lower)) return false;
+    return (
+      lower.includes('error')
+      || lower.includes('fail')
+      || lower.includes('duplicate')
+      || lower.includes('already')
+      || lower.includes('exception')
+      || lower.includes('invalid')
+    );
+  }
+
   private isSalesforceApiErrorPayload(resData: Record<string, unknown> | null | undefined): {
     isError: boolean;
     errorMsg: string;
@@ -2549,8 +3056,17 @@ export class OAuthAuthService {
     }
 
     const lower = text.toLowerCase();
+    if (
+      lower.includes('membership_number')
+      || (lower.includes('duplicate') && lower.includes('membership'))
+    ) {
+      return 'This ISCA membership number is already linked to another account in Salesforce. Use a unique membership number, or leave it blank if not applicable.';
+    }
     if (lower.includes('already') && (lower.includes('registered') || lower.includes('exists'))) {
       return 'An account with this NRIC or email already exists. Please sign in instead.';
+    }
+    if (lower.includes('duplicate_value') || lower.includes('duplicate value found')) {
+      return 'Salesforce rejected this enrolment because a unique field already exists (often email, NRIC, or membership number). Check the learner details and try again.';
     }
 
     const withoutStack = text.split('\n')[0]?.trim();

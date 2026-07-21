@@ -8,6 +8,7 @@ import TableRow from '@mui/material/TableRow';
 import Checkbox from '@mui/material/Checkbox';
 import TableCell from '@mui/material/TableCell';
 import IconButton from '@mui/material/IconButton';
+import Typography from '@mui/material/Typography';
 
 import { useBoolean } from 'src/hooks/use-boolean';
 
@@ -18,6 +19,7 @@ import { usePopover, CustomPopover } from 'src/components/custom-popover';
 import { useRouter } from 'src/routes/hooks';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
+import { getForumFullName } from 'src/utils/mask-forum-display-name';
 
 // ----------------------------------------------------------------------
 
@@ -25,6 +27,9 @@ export function AiForumTableRow({ row, selected, onEditRow, onSelectRow, onDelet
   const router = useRouter();
   const confirm = useBoolean();
   const popover = usePopover();
+  const authorId = row.author?.id || row.userId;
+  const authorName = getForumFullName(row.author);
+  const authorEmail = row.author?.email || null;
 
   return (
     <>
@@ -47,6 +52,34 @@ export function AiForumTableRow({ row, selected, onEditRow, onSelectRow, onDelet
               {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : ''}
             </Box>
           </Stack>
+        </TableCell>
+
+        <TableCell>
+          {authorId || row.author ? (
+            <Stack spacing={0.25} alignItems="flex-start">
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {authorName}
+              </Typography>
+              {authorEmail && authorId ? (
+                <Link
+                  component={RouterLink}
+                  href={paths.admin.user.details(authorId)}
+                  variant="caption"
+                  sx={{ wordBreak: 'break-all' }}
+                >
+                  {authorEmail}
+                </Link>
+              ) : authorEmail ? (
+                <Typography variant="caption" sx={{ color: 'text.secondary', wordBreak: 'break-all' }}>
+                  {authorEmail}
+                </Typography>
+              ) : null}
+            </Stack>
+          ) : (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              —
+            </Typography>
+          )}
         </TableCell>
 
         <TableCell>
@@ -131,4 +164,3 @@ export function AiForumTableRow({ row, selected, onEditRow, onSelectRow, onDelet
     </>
   );
 }
-

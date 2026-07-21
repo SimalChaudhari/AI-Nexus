@@ -6,6 +6,7 @@ import Collapse from '@mui/material/Collapse';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import Link from '@mui/material/Link';
 import CircularProgress from 'src/components/loading/circular-progress';
 import { alpha, useTheme } from '@mui/material/styles';
 
@@ -15,6 +16,7 @@ import { CommentRichTextComposer } from './comment-rich-text-composer';
 import { CommentInlineFormActions } from './comment-inline-form-actions';
 import { commentComposerFullWidthWrapSx } from './comment-composer-styles';
 import { isEffectivelyEmptyHtml } from 'src/utils/html-plain-text';
+import { RouterLink } from 'src/routes/components';
 
 // ----------------------------------------------------------------------
 // Comment-style list: avatar, name, time, like + reply + edit/delete, content.
@@ -28,6 +30,12 @@ export function QuickLinksCommentList({
   linkBase,
   formatRelativeTime,
   getCommentAuthorName,
+  /** Optional: render secondary line under author (e.g. admin user id / email link) */
+  getCommentAuthorSecondary,
+  /** Optional: make author name a link (e.g. admin user profile) */
+  getCommentAuthorHref,
+  /** Optional: avatar initial override (defaults to first non-@ letter of author name) */
+  getCommentAuthorInitial,
   expanded,
   onToggleExpanded,
   user,
@@ -78,6 +86,15 @@ export function QuickLinksCommentList({
     const isReplying = replyingToCommentId === comment.id;
     const isEditing = editingCommentId === comment.id;
     const authorName = getCommentAuthorName ? getCommentAuthorName(comment) : comment.user?.username || 'Anonymous';
+    const authorSecondary = getCommentAuthorSecondary?.(comment) || null;
+    const authorHref = getCommentAuthorHref?.(comment) || null;
+    const authorInitial =
+      getCommentAuthorInitial?.(comment) ||
+      String(authorName)
+        .replace(/^@/, '')
+        .replace(/\*/g, '')
+        .charAt(0)
+        .toUpperCase() || '?';
     const showLike = user && !disableLike;
     const showReply = user && !disableReply;
 
@@ -254,7 +271,7 @@ export function QuickLinksCommentList({
                 fontSize: { xs: '0.8rem', sm: '0.875rem' },
               }}
             >
-              {authorName.charAt(0).toUpperCase() || '?'}
+              {authorInitial}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Stack
@@ -265,17 +282,37 @@ export function QuickLinksCommentList({
                 sx={{ mb: 0.75 }}
               >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography
-                    variant="subtitle2"
-                    sx={{
-                      fontWeight: 600,
-                      lineHeight: 1.35,
-                      wordBreak: 'break-word',
-                      display: 'block',
-                    }}
-                  >
-                    {authorName}
-                  </Typography>
+                  {authorHref ? (
+                    <Link
+                      component={RouterLink}
+                      href={authorHref}
+                      variant="subtitle2"
+                      color="inherit"
+                      sx={{
+                        fontWeight: 600,
+                        lineHeight: 1.35,
+                        wordBreak: 'break-word',
+                        display: 'block',
+                      }}
+                    >
+                      {authorName}
+                    </Link>
+                  ) : (
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 600,
+                        lineHeight: 1.35,
+                        wordBreak: 'break-word',
+                        display: 'block',
+                      }}
+                    >
+                      {authorName}
+                    </Typography>
+                  )}
+                  {authorSecondary ? (
+                    <Box sx={{ mt: 0.25 }}>{authorSecondary}</Box>
+                  ) : null}
                   <Typography
                     variant="caption"
                     sx={{ color: 'text.secondary', display: 'block', mt: 0.25, lineHeight: 1.4 }}

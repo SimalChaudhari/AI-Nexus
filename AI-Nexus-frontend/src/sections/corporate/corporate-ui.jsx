@@ -369,7 +369,7 @@ export function CorpAdminChip({ compact = false }) {
   );
 }
 
-export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
+export function CorpPageHeader({ eyebrow, title, subtitle, titleSx, titleActions }) {
   return (
     <Box
       sx={{
@@ -426,8 +426,20 @@ export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
           </Typography>
         ) : null}
       </Box>
-      <Box sx={{ display: { xs: 'none', md: 'block' }, flexShrink: 0 }}>
-        <CorpAdminChip />
+      <Box
+        sx={{
+          display: 'flex',
+          flexShrink: 0,
+          flexWrap: 'wrap',
+          gap: 1,
+          alignItems: 'center',
+          width: { xs: '100%', sm: 'auto' },
+        }}
+      >
+        {titleActions}
+        <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+          <CorpAdminChip />
+        </Box>
       </Box>
     </Box>
   );

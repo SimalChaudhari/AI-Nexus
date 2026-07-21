@@ -19,20 +19,20 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
-        // this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
-        const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
+        // const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
+        // this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
-        if (isDevelopment) {
-            this.transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS,
-                },
-            });
-            return;
-        }
+        // if (isDevelopment) {
+        //     this.transporter = nodemailer.createTransport({
+        //         service: 'gmail',
+        //         auth: {
+        //             user: process.env.SMTP_USER,
+        //             pass: process.env.SMTP_PASS,
+        //         },
+        //     });
+        //     return;
+        // }
         
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
@@ -430,6 +430,82 @@ export class EmailService {
         } catch (error) {
             console.error('Error sending order receipt email:', error);
             throw new Error('Failed to send order receipt email');
+        }
+    }
+
+    private resolveCorporateForeignQuotationEmail(): string {
+        return String(
+            process.env.CORPORATE_FOREIGN_QUOTATION_EMAIL || 'hello@ainexus.isca.org.sg',
+        ).trim();
+    }
+
+    async sendCorporateForeignQuotationRequestEmail(params: {
+        toEmail?: string;
+        companyName: string;
+        contactPerson: string;
+        contactEmail: string;
+        estimatedParticipants: number;
+        companyCode?: string;
+        submittedByName?: string;
+        submittedByEmail?: string;
+    }): Promise<{ subject: string; toEmail: string }> {
+        const toEmail = String(params.toEmail || this.resolveCorporateForeignQuotationEmail()).trim();
+        const companyName = String(params.companyName || '').trim();
+        const contactPerson = String(params.contactPerson || '').trim();
+        const contactEmail = String(params.contactEmail || '').trim();
+        const estimatedParticipants = Number(params.estimatedParticipants);
+        const companyCode = String(params.companyCode || '').trim();
+        const submittedByName = String(params.submittedByName || '').trim();
+        const submittedByEmail = String(params.submittedByEmail || '').trim();
+
+        const subject = `Foreign non-member quotation request — ${companyName || 'Corporate enquiry'}`;
+        const detailLines = [
+            `Company name: ${companyName}`,
+            `Contact person: ${contactPerson}`,
+            `Contact email: ${contactEmail}`,
+            `Estimated number of foreign learners: ${estimatedParticipants}`,
+        ];
+        if (companyCode) detailLines.push(`Company code: ${companyCode}`);
+        if (submittedByName || submittedByEmail) {
+            detailLines.push(
+                `Submitted by: ${[submittedByName, submittedByEmail].filter(Boolean).join(' — ')}`,
+            );
+        }
+
+        const bodyHtml = detailLines.map((line) => `<p style="margin:0 0 10px;">${line}</p>`).join('');
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'Foreign non-member quotation request',
+            greetingName: 'ISCA team',
+            intro:
+                'A corporate HR user has requested a quotation for enrolling foreign non-member learners through AI Fluency.',
+            bodyHtml,
+            footer: 'AI Nexus corporate portal',
+        });
+
+        const text = [
+            'Foreign non-member quotation request',
+            '',
+            ...detailLines,
+            '',
+            'This request was submitted via the AI Nexus corporate enrolment portal.',
+        ].join('\n');
+
+        const mailOptions = {
+            from: this.fromEmail,
+            to: toEmail,
+            replyTo: contactEmail,
+            subject,
+            text,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Corporate foreign quotation request email sent to ${toEmail}`);
+            return { subject, toEmail };
+        } catch (error) {
+            console.error('Error sending corporate foreign quotation request email:', error);
+            throw new Error('Failed to send quotation request email');
         }
     }
 

@@ -131,6 +131,35 @@ export class CorporateLearnerNudgeInitService implements OnModuleInit {
         );
         console.log('✅ corporate_bulk_enrolment_uploads table created successfully');
       }
+
+      const enrolBatchesExist = await queryRunner.hasTable('corporate_staff_enrol_batches');
+      if (!enrolBatchesExist) {
+        await queryRunner.query(`
+          CREATE TABLE "corporate_staff_enrol_batches" (
+            "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+            "companyCode" character varying(120) NOT NULL,
+            "createdByUserId" uuid,
+            "source" character varying(32) NOT NULL DEFAULT 'single',
+            "fileName" character varying(255),
+            "totalReceived" integer NOT NULL DEFAULT 0,
+            "passedCount" integer NOT NULL DEFAULT 0,
+            "skippedCount" integer NOT NULL DEFAULT 0,
+            "message" character varying(512),
+            "rows" jsonb,
+            "summary" jsonb,
+            "batches" jsonb,
+            "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+            CONSTRAINT "PK_corporate_staff_enrol_batches" PRIMARY KEY ("id")
+          )
+        `);
+        await queryRunner.query(
+          `CREATE INDEX "IDX_corporate_staff_enrol_batches_company" ON "corporate_staff_enrol_batches" ("companyCode")`,
+        );
+        await queryRunner.query(
+          `CREATE INDEX "IDX_corporate_staff_enrol_batches_created" ON "corporate_staff_enrol_batches" ("createdAt")`,
+        );
+        console.log('✅ corporate_staff_enrol_batches table created successfully');
+      }
     } catch (error) {
       console.error(
         '❌ Error initializing corporate nudge tables:',

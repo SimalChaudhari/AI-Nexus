@@ -7,6 +7,8 @@ import {
   Query,
   Req,
   Res,
+  Body,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
@@ -19,7 +21,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Request, Response } from 'express';
 
@@ -29,6 +31,11 @@ import { RolesGuard } from '../jwt/roles.guard';
 import { Roles } from '../jwt/roles.decorator';
 import { UserRole } from '../user/users.entity';
 import { CorporateService } from './corporate.service';
+import {
+  CorporateStaffBulkEnrolDto,
+  CorporateStaffLearnerDto,
+} from './corporate-enrol.dto';
+import { CorporateForeignQuotationDto } from './corporate-foreign-quotation.dto';
 
 type AuthedRequest = Request & {
   user?: { id?: string; role?: string; companyCode?: string | null };
@@ -42,6 +49,19 @@ const zipFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
     ) || !file.mimetype;
   if (!allowedExt || !allowedMime) {
     cb(new Error('Only .zip files are allowed') as any, false);
+    return;
+  }
+  cb(null, true);
+};
+
+const csvFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
+  const allowedExt = /\.csv$/i.test(file.originalname || '');
+  const allowedMime =
+    /^(text\/csv|application\/vnd\.ms-excel|application\/octet-stream|text\/plain)$/i.test(
+      file.mimetype || '',
+    ) || !file.mimetype;
+  if (!allowedExt || !allowedMime) {
+    cb(new Error('Only .csv files are allowed') as any, false);
     return;
   }
   cb(null, true);
@@ -272,6 +292,151 @@ export class CorporateController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.status(200).send(buffer);
+  }
+
+  @Post('staff-enrol')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Enrol a single staff learner (createblukuserfornexus + password + local user)',
+  })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiBody({ type: CorporateStaffLearnerDto })
+  async enrolStaff(
+    @Req() req: AuthedRequest,
+    @Body() body: CorporateStaffLearnerDto,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    const data = await this.corporateService.enrolStaff({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      learner: body,
+    });
+    return { data };
+  }
+
+  @Post('staff-enrol/bulk')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Enrol staff learners in bulk (JSON array)' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiBody({ type: CorporateStaffBulkEnrolDto })
+  async enrolStaffBulk(
+    @Req() req: AuthedRequest,
+    @Body() body: CorporateStaffBulkEnrolDto,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    const data = await this.corporateService.enrolStaffBulk({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      learners: body.learners,
+      isAuthorisedSubmit: body.isAuthorisedSubmit,
+    });
+    return { data };
+  }
+
+  @Post('staff-enrol/bulk-csv')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Enrol staff learners from CSV (createblukuserfornexus)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: csvFileFilter,
+    }),
+  )
+  async enrolStaffBulkCsv(
+    @Req() req: AuthedRequest,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    const data = await this.corporateService.enrolStaffBulkFromCsv({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      file,
+    });
+    return { data };
+  }
+
+  @Get('staff-enrol/batches')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'List corporate staff enrolment batch results (track page)' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'q', required: false, description: 'Search file name, message, source, id' })
+  async listStaffEnrolBatches(
+    @Req() req: AuthedRequest,
+    @Query('companyCode') companyCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.corporateService.listStaffEnrolBatches({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      q,
+    });
+  }
+
+  @Get('staff-enrol/batches/:batchId')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Get one corporate staff enrolment batch with row-level track' })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'q', required: false, description: 'Search name, email, reason' })
+  @ApiQuery({ name: 'status', required: false, description: 'all | passed | skipped' })
+  async getStaffEnrolBatch(
+    @Req() req: AuthedRequest,
+    @Param('batchId') batchId: string,
+    @Query('companyCode') companyCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.corporateService.getStaffEnrolBatch({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      batchId,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      q,
+      status,
+    });
+    return { data };
+  }
+
+  @Post('foreign-quotation-request')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Request a quotation for foreign non-member corporate learners',
+  })
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiBody({ type: CorporateForeignQuotationDto })
+  async submitForeignQuotationRequest(
+    @Req() req: AuthedRequest,
+    @Body() body: CorporateForeignQuotationDto,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    const data = await this.corporateService.submitForeignQuotationRequest({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      body,
+    });
+    return { data };
   }
 
   @Post('bulk-enrolment/upload')
