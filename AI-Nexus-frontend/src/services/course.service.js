@@ -303,6 +303,18 @@ export const courseService = {
     }
   },
 
+  /** Admin: pillar → module → section progress for a specific learner (read-only). */
+  async getUserProgressOverview(userId) {
+    try {
+      const response = await axios.get(`/courses/progress/user/${userId}/overview`);
+      const rows = response.data?.data || [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error('Error fetching user progress overview:', error);
+      throw error;
+    }
+  },
+
   async createCourse(courseData, imageFile = null) {
     try {
       const formData = new FormData();

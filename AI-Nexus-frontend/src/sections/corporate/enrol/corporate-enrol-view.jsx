@@ -400,19 +400,29 @@ export function CorporateEnrolView() {
         eyebrow="Staff Enrolment"
         title="Enrol learners individually or in bulk"
         subtitle="Fee-waiver enrolment for Singaporean/PR learners and ISCA Members. Staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
-        titleSx={{ fontSize: { xs: 22, sm: 26, md: 32 } }}
+        titleSx={{ fontSize: { xs: 22, sm: 26, md: 30 } }}
         titleActions={
           <>
-            <CorpBtn variant="ghost" component={RouterLink} href={paths.corporate.enrolTrack}>
+            <CorpBtn
+              variant="ghost"
+              component={RouterLink}
+              href={paths.corporate.enrolTrack}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
+            >
               Enrolment track
             </CorpBtn>
-            <CorpBtn variant="ghost" onClick={downloadCorporateStaffCsvTemplate}>
+            <CorpBtn
+              variant="ghost"
+              onClick={downloadCorporateStaffCsvTemplate}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
+            >
               Download CSV template
             </CorpBtn>
             <CorpBtn
               variant="blue"
               onClick={() => csvInputRef.current?.click()}
               disabled={csvSubmitting}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
               {csvSubmitting ? 'Uploading…' : 'Upload CSV'}
             </CorpBtn>
