@@ -799,6 +799,66 @@ export class CourseCertificateService {
     return this.getCertificatePdfBuffer(certificateId);
   }
 
+  /**
+   * Build LinkedIn feed share text + URL for a learner credential (certificate or digital badge).
+   */
+  async getLinkedInShareForUser(
+    userId: string,
+    certificateId: string,
+    kind: 'certificate' | 'badge' = 'certificate',
+  ): Promise<{ kind: 'certificate' | 'badge'; text: string; url: string }> {
+    const row = await this.certificateRepository.findOne({
+      where: { id: certificateId, userId, status: CourseCertificateStatus.Active },
+      relations: ['course'],
+    });
+    if (!row) {
+      throw new NotFoundException('Certificate not found');
+    }
+    if (!(await this.shouldDisplayCredentialToLearner(userId, row))) {
+      throw new NotFoundException('Certificate not available');
+    }
+
+    let courseTitle = row.course?.title || 'Untitled Course';
+    let programTitle = '';
+    if (row.programId) {
+      const program = await this.programRepository.findOne({
+        where: { id: row.programId },
+        select: ['id', 'title'],
+      });
+      programTitle = program?.title || '';
+      courseTitle = programTitle || courseTitle || 'Programme';
+    }
+
+    const publicSettings = await this.appSettingsService.getPublicSettings();
+    const platformName = 'AI Nexus';
+    const badgeIssuerBase =
+      (publicSettings?.digitalBadgeIssuer && String(publicSettings.digitalBadgeIssuer).trim()) ||
+      platformName;
+    const badgeIssuer = programTitle ? `${badgeIssuerBase} · ${programTitle}` : badgeIssuerBase;
+
+    const text =
+      kind === 'badge'
+        ? [
+            `I just earned the "${courseTitle}" digital badge on ${platformName}!`,
+            `Issued by: ${badgeIssuer}`,
+            row.certificateNo ? `Credential No: ${row.certificateNo}` : null,
+            'Continuing my professional learning journey.',
+          ]
+            .filter(Boolean)
+            .join(' ')
+        : [
+            `I just earned the "${courseTitle}" certificate on ${platformName}!`,
+            row.certificateNo ? `Certificate No: ${row.certificateNo}` : null,
+            'Continuing my professional learning journey.',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+    const url = `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`;
+
+    return { kind, text, url };
+  }
+
   /** PDF by certificate id (caller must enforce authz, e.g. corporate company scope). */
   async getCertificatePdfBuffer(
     certificateId: string,
@@ -996,6 +1056,130 @@ export class CourseCertificateService {
     existing.status = CourseCertificateStatus.Blocked;
     await this.certificateRepository.save(existing);
     return { blocked: true };
+  }
+
+  /**
+   * Admin failed an assessment after provisional pass — hide cert/badge until
+   * the learner passes again (re-submit auto-pass restores them before admin verify).
+   */
+  async revokeCredentialAfterAssessmentFail(
+    userId: string,
+    courseId: string,
+  ): Promise<{ blocked: boolean }> {
+    if (!userId || !courseId) return { blocked: false };
+
+    let blocked = false;
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'programId'],
+    });
+
+    const blockIfActive = async (cert: CourseCertificateEntity | null) => {
+      if (!cert || cert.status !== CourseCertificateStatus.Active) return;
+      cert.status = CourseCertificateStatus.Blocked;
+      await this.certificateRepository.save(cert);
+      blocked = true;
+    };
+
+    await blockIfActive(
+      await this.certificateRepository.findOne({ where: { userId, courseId } }),
+    );
+
+    // Always hide programme credential when any linked assessment is failed by admin.
+    if (course?.programId) {
+      const pillars = await this.getProgramPillarCourses(course.programId);
+      if (pillars.pillar1) {
+        const programCert = await this.certificateRepository.findOne({
+          where: { userId, courseId: pillars.pillar1.id },
+        });
+        if (programCert?.programId === course.programId) {
+          await blockIfActive(programCert);
+        }
+      }
+    }
+
+    return { blocked };
+  }
+
+  /**
+   * Restore cert/badge after assessment is passed again (admin verify pass or learner resubmit).
+   * `force` is used after admin manual pass so a previously blocked credential comes back.
+   */
+  async restoreCredentialAfterAssessmentPass(
+    userId: string,
+    courseId: string,
+    options?: { force?: boolean },
+  ): Promise<{ restored: boolean }> {
+    if (!userId || !courseId) return { restored: false };
+
+    const force = options?.force === true;
+    let restored = false;
+
+    // Normal sync/issue path (also regenerates PDF when reissued).
+    try {
+      const issued = await this.issueIfCourseCompleted(userId, courseId);
+      if (issued.issued) restored = true;
+    } catch (error) {
+      console.error(
+        `[certificate-restore] issueIfCourseCompleted failed for user=${userId} course=${courseId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'programId'],
+    });
+
+    const candidates: CourseCertificateEntity[] = [];
+    const direct = await this.certificateRepository.findOne({ where: { userId, courseId } });
+    if (direct) candidates.push(direct);
+
+    if (course?.programId) {
+      const pillars = await this.getProgramPillarCourses(course.programId);
+      if (pillars.pillar1) {
+        const programCert = await this.certificateRepository.findOne({
+          where: { userId, courseId: pillars.pillar1.id },
+        });
+        if (programCert?.programId === course.programId) {
+          candidates.push(programCert);
+        }
+      }
+    }
+
+    const seen = new Set<string>();
+    for (const cert of candidates) {
+      if (!cert?.id || seen.has(cert.id)) continue;
+      seen.add(cert.id);
+      if (cert.status !== CourseCertificateStatus.Blocked) continue;
+
+      let canRestore = force;
+      if (!canRestore) {
+        if (cert.programId) {
+          canRestore = await this.isProgramCertificateRequirementsMet(userId, cert.programId);
+        } else {
+          canRestore = await this.isCourseFullyCompleted(userId, cert.courseId);
+        }
+      }
+      if (!canRestore) continue;
+
+      cert.status = CourseCertificateStatus.Active;
+      cert.completedAt = new Date();
+      cert.deletedAt = null;
+      await this.certificateRepository.save(cert);
+      restored = true;
+
+      try {
+        await this.ensureCertificatePdfStored(cert.id);
+      } catch (error) {
+        console.error(
+          `[certificate-restore-pdf] failed for cert=${cert.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
+    return { restored };
   }
 
   async unblockCertificateById(id: string) {

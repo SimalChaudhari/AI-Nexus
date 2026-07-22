@@ -12,6 +12,7 @@ export const AI_FORUM_LIST_QUERY_MAP = {
 
 export const AI_FORUM_LIST_TABLE_HEAD = [
   { id: 'title', label: 'Title' },
+  { id: 'author', label: 'Author', width: 200 },
   { id: 'viewCount', label: 'Views', width: 120 },
   { id: 'action', label: 'Action', width: 88 },
 ];

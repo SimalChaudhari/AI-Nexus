@@ -1,4 +1,5 @@
 import axios from 'src/utils/axios';
+import { buildPaginationParams, mapPaginatedResponse } from 'src/utils/pagination-service';
 
 const trimPaymentLogValue = (value, keep = 18) => {
   const normalized = String(value || '').trim();
@@ -32,12 +33,16 @@ export async function createMembershipCheckoutSession({
   successUrl,
   cancelUrl,
   currency = 'sgd',
+  code,
+  affiliateCode,
+  voucherCode,
 }) {
   try {
     console.info('[MembershipPaymentService] Create checkout request', {
       draftUserId: trimPaymentLogValue(draftUserId),
       source: source || 'membership-paid-signup',
       currency: String(currency || 'sgd').toUpperCase(),
+      code: trimPaymentLogValue(code || affiliateCode || voucherCode),
     });
     const response = await axios.post('/payments/create-membership-checkout', {
       draftUserId,
@@ -46,6 +51,9 @@ export async function createMembershipCheckoutSession({
       successUrl,
       cancelUrl,
       currency,
+      code: code || undefined,
+      affiliateCode: affiliateCode || undefined,
+      voucherCode: voucherCode || undefined,
     });
     console.info('[MembershipPaymentService] Create checkout success', {
       refId: trimPaymentLogValue(response?.data?.refId),
@@ -109,6 +117,7 @@ export async function confirmMembershipPayment({ ref, sessionId }) {
     console.info('[MembershipPaymentService] Confirm payment success', {
       refId: trimPaymentLogValue(ref),
       userId: trimPaymentLogValue(response?.data?.userId),
+      paidAmount: response?.data?.paidAmount,
     });
     return response.data;
   } catch (error) {
@@ -119,6 +128,72 @@ export async function confirmMembershipPayment({ ref, sessionId }) {
     console.error('[MembershipPaymentService] Confirm payment failed', {
       refId: trimPaymentLogValue(ref),
       sessionId: trimPaymentLogValue(sessionId),
+      message: errorMessage,
+    });
+    throw new Error(errorMessage);
+  }
+}
+
+/**
+ * Verify membership payment with the provider and return the authoritative charged amount + proof token.
+ * Call this before Salesforce paid sync so Paid_Amount never comes from the browser UI state.
+ */
+export async function verifyMembershipPayment({ ref, sessionId }) {
+  try {
+    console.info('[MembershipPaymentService] Verify payment request', {
+      refId: trimPaymentLogValue(ref),
+      sessionId: trimPaymentLogValue(sessionId),
+    });
+    const response = await axios.post('/payments/verify-membership-payment', {
+      ref,
+      sessionId,
+    });
+    console.info('[MembershipPaymentService] Verify payment success', {
+      refId: trimPaymentLogValue(ref),
+      paidAmount: response?.data?.paidAmount,
+      currency: response?.data?.currency,
+    });
+    return response.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Could not verify membership payment.';
+    console.error('[MembershipPaymentService] Verify payment failed', {
+      refId: trimPaymentLogValue(ref),
+      sessionId: trimPaymentLogValue(sessionId),
+      message: errorMessage,
+    });
+    throw new Error(errorMessage);
+  }
+}
+
+/**
+ * Abandon unpaid membership checkout: deletes server draft user so no account remains without payment.
+ */
+export async function abandonMembershipCheckout({ draftUserId, ref }) {
+  try {
+    console.info('[MembershipPaymentService] Abandon checkout request', {
+      draftUserId: trimPaymentLogValue(draftUserId),
+      refId: trimPaymentLogValue(ref),
+    });
+    const response = await axios.post('/payments/abandon-membership-checkout', {
+      draftUserId,
+      ref,
+    });
+    console.info('[MembershipPaymentService] Abandon checkout success', {
+      draftUserId: trimPaymentLogValue(draftUserId),
+      abandoned: response?.data?.abandoned,
+    });
+    return response.data;
+  } catch (error) {
+    const errorMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Could not abandon membership checkout.';
+    console.error('[MembershipPaymentService] Abandon checkout failed', {
+      draftUserId: trimPaymentLogValue(draftUserId),
+      refId: trimPaymentLogValue(ref),
       message: errorMessage,
     });
     throw new Error(errorMessage);
@@ -146,4 +221,17 @@ export async function markPaymentFailed(ref) {
 export async function getPaymentStatus(ref) {
   const response = await axios.get('/payments/status', { params: { ref } });
   return response.data;
+}
+
+/** Admin: membership payment history (paginated + filters). */
+export async function getMembershipPaymentHistory(params = {}) {
+  const queryParams = buildPaginationParams(params);
+  const response = await axios.get('/payments/membership-history', { params: queryParams });
+  return mapPaginatedResponse(response.data, (row) => row, params);
+}
+
+/** Admin: single membership payment history record. */
+export async function getMembershipPaymentHistoryById(id) {
+  const response = await axios.get(`/payments/membership-history/${id}`);
+  return response.data?.data || response.data || null;
 }

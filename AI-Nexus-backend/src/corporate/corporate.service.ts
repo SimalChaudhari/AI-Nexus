@@ -11,7 +11,7 @@ import { extname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { In, IsNull, Not, Repository } from 'typeorm';
 
-import { UserEntity, UserRole, UserStatus } from '../user/users.entity';
+import { UserEntity, UserRole, UserStatus, AuthProvider } from '../user/users.entity';
 import { ProgramEntity, ProgramStatus } from '../program/programs.entity';
 import { CourseEntity } from '../course/courses.entity';
 import {
@@ -34,12 +34,27 @@ import { CorporateLearnerNudgeEntity } from './corporate-learner-nudge.entity';
 import { CorporateNudgeCampaignEntity } from './corporate-nudge-campaign.entity';
 import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity';
 import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-upload.entity';
+import { CorporateStaffEnrolBatchEntity } from './corporate-staff-enrol-batch.entity';
+import { OAuthAuthService } from '../auth/oauth-auth.service';
+import type { CorporateStaffLearnerDto } from './corporate-enrol.dto';
+import type { CorporateForeignQuotationDto } from './corporate-foreign-quotation.dto';
+import {
+  normalizeSingaporeNricFin,
+  SINGAPORE_NRIC_FIN_USER_MESSAGES,
+  validateSingaporeNricFin,
+} from '../auth/utils/singapore-nric-fin.util';
 
 // ----------------------------------------------------------------------
 
 const AT_RISK_INACTIVE_DAYS = 7;
 const NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const BULK_ENROLMENT_ZIP_MAX_BYTES = 500 * 1024 * 1024;
+const BULK_ENROLMENT_CSV_MAX_BYTES = 5 * 1024 * 1024;
+const BULK_ENROLMENT_CSV_MAX_ROWS = 500;
+const BULK_ENROLMENT_SF_BATCH_SIZE = (() => {
+  const parsed = Number(process.env.BULK_ENROLMENT_SF_BATCH_SIZE || 100);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 100) : 100;
+})();
 const BULK_ENROLMENT_STORAGE_DIR = join(
   process.cwd(),
   'storage',
@@ -137,11 +152,1121 @@ export class CorporateService {
     private readonly nudgeEmailLogRepository: Repository<CorporateNudgeEmailLogEntity>,
     @InjectRepository(CorporateBulkEnrolmentUploadEntity)
     private readonly bulkEnrolmentUploadRepository: Repository<CorporateBulkEnrolmentUploadEntity>,
+    @InjectRepository(CorporateStaffEnrolBatchEntity)
+    private readonly staffEnrolBatchRepository: Repository<CorporateStaffEnrolBatchEntity>,
     private readonly courseSectionWatchProgressService: CourseSectionWatchProgressService,
     private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
     private readonly courseCertificateService: CourseCertificateService,
     private readonly emailService: EmailService,
+    private readonly oauthAuthService: OAuthAuthService,
   ) {}
+
+  private isPassportIdType(idType: string): boolean {
+    return String(idType || '')
+      .trim()
+      .toLowerCase()
+      .includes('passport');
+  }
+
+  private isSingaporeNricIdType(idType: string): boolean {
+    const normalized = String(idType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z]/g, ' ');
+    if (!normalized) return true;
+    if (normalized.includes('passport')) return false;
+    return (
+      normalized.includes('nric')
+      || normalized === 'nric'
+      || normalized.includes('fin')
+    );
+  }
+
+  /**
+   * Validate / normalize staff ID number.
+   * Singapore NRIC/Pink/Blue/FIN → checksum rules from eligibility util.
+   * Passport → required non-empty only.
+   */
+  private validateStaffIdNumber(params: {
+    idType?: string;
+    idNumber?: string;
+  }): { ok: true; normalized: string } | { ok: false; reason: string } {
+    const idType = String(params.idType || '').trim();
+    const idNumber = String(params.idNumber || '').trim();
+
+    if (!idNumber) {
+      return { ok: false, reason: 'NRIC / ID number is required.' };
+    }
+
+    if (this.isPassportIdType(idType) || !this.isSingaporeNricIdType(idType)) {
+      return { ok: true, normalized: idNumber };
+    }
+
+    const normalized = normalizeSingaporeNricFin(idNumber);
+    try {
+      const validation = validateSingaporeNricFin(normalized);
+      if (!validation.isValid) {
+        return { ok: false, reason: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum };
+      }
+      return { ok: true, normalized: validation.normalized };
+    } catch {
+      return { ok: false, reason: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat };
+    }
+  }
+
+  private looksLikeSalesforceAccountId(value: string): boolean {
+    return /^001[a-zA-Z0-9]{12,17}$/.test(String(value || '').trim());
+  }
+
+  private async resolveCorporateAccountId(params: {
+    actorUserId?: string;
+    companyCode?: string;
+  }): Promise<string> {
+    const companyCode = String(params.companyCode || '').trim();
+    const actorUserId = String(params.actorUserId || '').trim();
+
+    if (actorUserId) {
+      const actor = await this.userRepository.findOne({ where: { id: actorUserId } });
+      const fromActor = String(actor?.salesforceAccountId || '').trim();
+      if (fromActor) return fromActor;
+    }
+
+    if (companyCode && this.looksLikeSalesforceAccountId(companyCode)) {
+      return companyCode;
+    }
+
+    if (companyCode) {
+      const corporateUser = await this.userRepository.findOne({
+        where: {
+          role: UserRole.Corporate,
+          companyCode,
+          salesforceAccountId: Not(IsNull()),
+        },
+        order: { updatedAt: 'DESC' },
+      });
+      const fromCompany = String(corporateUser?.salesforceAccountId || '').trim();
+      if (fromCompany) return fromCompany;
+    }
+
+    throw new BadRequestException(
+      'Corporate Salesforce account ID is missing. Please sign in again via corporate SSO so the account can be linked.',
+    );
+  }
+
+  private async resolveEnrolCompanyCode(params: {
+    actorUserId?: string;
+    companyCode?: string;
+  }): Promise<string> {
+    const fromParams = String(params.companyCode || '').trim();
+    if (fromParams) return fromParams;
+    const actorUserId = String(params.actorUserId || '').trim();
+    if (actorUserId) {
+      const actor = await this.userRepository.findOne({ where: { id: actorUserId } });
+      const fromActor = String(actor?.companyCode || '').trim();
+      if (fromActor) return fromActor;
+    }
+    const fallback = String(process.env.CORPORATE_PUBLIC_COMPANY_CODE || '').trim();
+    if (fallback) return fallback;
+    throw new BadRequestException(
+      'Corporate company code is missing. Please sign in again via corporate SSO.',
+    );
+  }
+
+  private normalizeStaffLearner(
+    row: CorporateStaffLearnerDto,
+    corporateAccountId: string,
+    defaults?: { company?: string; countryOfResidence?: string },
+  ) {
+    const firstName = String(row.first_name || '').trim();
+    const lastName = String(row.last_name || '').trim();
+    const email = String(row.email || '').trim().toLowerCase();
+    if (!firstName || !lastName || !email) {
+      throw new BadRequestException('first_name, last_name and email are required for each learner.');
+    }
+
+    const payload: Record<string, string | number | boolean> & {
+      first_name: string;
+      last_name: string;
+      email: string;
+      name_as_per_id: string;
+      corporateAccountId: string;
+      isAuthorisedSubmit: boolean;
+    } = {
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      name_as_per_id:
+        String(row.name_as_per_id || '').trim() || `${firstName} ${lastName}`.trim(),
+      corporateAccountId,
+      isAuthorisedSubmit: true,
+    };
+
+    const salutation = String(row.salutation || '').trim();
+    if (salutation) payload.salutation = salutation;
+
+    const idType = String(row.id_type || '').trim();
+    if (idType) payload.id_type = idType;
+
+    const idNumber = String(row.id_number || '').trim();
+    if (idNumber) payload.id_number = idNumber;
+
+    const company =
+      String(defaults?.company || '').trim() || String(row.company || '').trim();
+    if (company) payload.company = company;
+
+    const department = String(row.department || '').trim();
+    if (department) payload.department = department;
+
+    const role = String(row.role || '').trim();
+    if (role) payload.role = role;
+
+    const countryOfResidence =
+      String(row.countryOfResidence || '').trim()
+      || String(defaults?.countryOfResidence || '').trim()
+      || 'Singapore';
+    payload.countryOfResidence = countryOfResidence;
+
+    if (
+      row.noOfYearOfRelevantWorkExperience !== undefined
+      && row.noOfYearOfRelevantWorkExperience !== null
+      && String(row.noOfYearOfRelevantWorkExperience).trim() !== ''
+    ) {
+      const years = Number(row.noOfYearOfRelevantWorkExperience);
+      if (!Number.isNaN(years)) {
+        payload.noOfYearOfRelevantWorkExperience = years;
+      }
+    }
+
+    const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
+    if (learnerAsAnAccounting) payload.learnerAsAnAccounting = learnerAsAnAccounting;
+
+    const membershipNumber = String(row.membershipNumber || '').trim();
+    if (membershipNumber) payload.membershipNumber = membershipNumber;
+
+    const eligibility = String(row.eligibility || '').trim();
+    if (eligibility) payload.eligibility = eligibility;
+
+    // Salesforce Authorised_Submit_For_Nexus__c expects boolean true after HR checkbox validation.
+
+    return payload;
+  }
+
+  private async generateStaffUsername(
+    email: string,
+    firstName: string,
+    lastName: string,
+  ): Promise<string> {
+    const emailLocal = String(email || '')
+      .split('@')[0]
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase();
+    const baseRaw =
+      emailLocal
+      || `${String(firstName || '').replace(/[^a-zA-Z0-9]/g, '')}${String(lastName || '').replace(/[^a-zA-Z0-9]/g, '')}`.toLowerCase()
+      || 'staff';
+    let base = (baseRaw.slice(0, 20) || 'staff').replace(/[^a-z0-9]/gi, '');
+    if (!/[a-z]/i.test(base) || !/\d/.test(base)) {
+      base = `${base}1`.slice(0, 24);
+    }
+
+    for (let i = 0; i < 30; i += 1) {
+      const candidate = i === 0 ? base : `${base}${i + 1}`.slice(0, 32);
+      const existing = await this.userRepository.findOne({ where: { username: candidate } });
+      if (!existing) return candidate;
+    }
+    return `${base}${Date.now().toString().slice(-5)}`;
+  }
+
+  /**
+   * After Salesforce create succeeds: create local OAuth user row.
+   * Welcome / password email is handled by Salesforce.
+   */
+  private async provisionLocalStaffLearners(params: {
+    companyCode: string;
+    companyName?: string;
+    corporateAccountId: string;
+    learners: Array<{
+      first_name: string;
+      last_name: string;
+      name_as_per_id?: string;
+      email: string;
+      salutation?: string;
+      id_type?: string;
+      id_number?: string;
+      company?: string;
+      department?: string;
+      role?: string;
+      countryOfResidence?: string;
+      noOfYearOfRelevantWorkExperience?: string | number;
+      learnerAsAnAccounting?: string;
+      membershipNumber?: string;
+      eligibility?: string;
+    }>;
+  }): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    failures: Array<{ email: string; step: 'local_user'; message: string }>;
+  }> {
+    const companyCode = String(params.companyCode || '').trim();
+    const companyName = String(params.companyName || '').trim();
+    const corporateAccountId = String(params.corporateAccountId || '').trim();
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const failures: Array<{
+      email: string;
+      step: 'local_user';
+      message: string;
+    }> = [];
+
+    for (const row of params.learners) {
+      const email = String(row.email || '').trim().toLowerCase();
+      const firstName = String(row.first_name || '').trim() || 'Learner';
+      const lastName = String(row.last_name || '').trim() || 'Staff';
+      if (!email) {
+        skipped += 1;
+        continue;
+      }
+
+      const idType = String(row.id_type || '').trim();
+      const idNumber = String(row.id_number || '').trim();
+      const years =
+        row.noOfYearOfRelevantWorkExperience !== undefined
+        && row.noOfYearOfRelevantWorkExperience !== null
+        && !Number.isNaN(Number(row.noOfYearOfRelevantWorkExperience))
+          ? Number(row.noOfYearOfRelevantWorkExperience)
+          : null;
+
+      const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
+      const isAccountingYes = /^yes$/i.test(learnerAsAnAccounting);
+      const jobFunction = isAccountingYes ? 'accounting-finance-related' : '';
+      const jobFunctionLabel = isAccountingYes ? 'Accounting and finance related' : '';
+
+      const eligibilitySnapshot: Record<string, unknown> = {
+        companyCode,
+        companyName: companyName || String(row.company || '').trim() || '',
+        jobFunction,
+        jobFunctionLabel,
+        jobFunctionOther: '',
+        countryOfResidence: String(row.countryOfResidence || '').trim() || 'Singapore',
+        yearsOfRelevantWorkExperience: years,
+        learnerAsAnAccounting,
+        membershipNumber: String(row.membershipNumber || '').trim() || '',
+        salutation: String(row.salutation || '').trim() || '',
+        name_as_per_id: String(row.name_as_per_id || '').trim() || '',
+      };
+      if (idNumber) {
+        eligibilitySnapshot.nricFin = idNumber;
+        eligibilitySnapshot.idType = idType || '';
+        eligibilitySnapshot.verifiedNricIdType = idType || '';
+      }
+
+      try {
+        const existing = await this.userRepository.findOne({ where: { email } });
+
+        if (existing) {
+          if (existing.role === UserRole.Admin || existing.role === UserRole.Corporate) {
+            skipped += 1;
+            continue;
+          }
+          existing.firstname = firstName;
+          existing.lastname = lastName;
+          existing.companyCode = companyCode;
+          existing.password = null;
+          existing.authProvider = AuthProvider.OAUTH;
+          existing.role = UserRole.User;
+          existing.status = UserStatus.Active;
+          existing.isDraft = false;
+          existing.isVerified = true;
+          if (corporateAccountId) existing.salesforceAccountId = corporateAccountId;
+          const prevSnap =
+            existing.eligibilitySnapshot && typeof existing.eligibilitySnapshot === 'object'
+              ? existing.eligibilitySnapshot
+              : {};
+          existing.eligibilitySnapshot = { ...prevSnap, ...eligibilitySnapshot };
+          existing.salesforceUserInfoRaw = {
+            ...(existing.salesforceUserInfoRaw && typeof existing.salesforceUserInfoRaw === 'object'
+              ? existing.salesforceUserInfoRaw
+              : {}),
+            corporate: {
+              accountName: companyName || undefined,
+              companyCode,
+            },
+          };
+          existing.salesforceSyncedAt = new Date();
+          await this.userRepository.save(existing);
+          updated += 1;
+        } else {
+          const username = await this.generateStaffUsername(email, firstName, lastName);
+          const user = this.userRepository.create({
+            username,
+            firstname: firstName,
+            lastname: lastName,
+            email,
+            password: null,
+            authProvider: AuthProvider.OAUTH,
+            companyCode,
+            role: UserRole.User,
+            status: UserStatus.Active,
+            isVerified: true,
+            isDraft: false,
+            salesforceAccountId: corporateAccountId || null,
+            eligibilitySnapshot,
+            salesforceUserInfoRaw: {
+              corporate: {
+                ...(companyName ? { accountName: companyName } : {}),
+                companyCode,
+              },
+            },
+            salesforceSyncedAt: new Date(),
+          });
+          await this.userRepository.save(user);
+          created += 1;
+        }
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to create local OAuth user';
+        failures.push({ email, step: 'local_user', message });
+        console.error('[CorporateEnrol] local user create failed:', { email, message });
+      }
+    }
+
+    return { created, updated, skipped, failures };
+  }
+
+  async enrolStaff(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    learner: CorporateStaffLearnerDto;
+  }) {
+    this.assertAuthorisedSubmit(params.learner?.isAuthorisedSubmit);
+    return this.enrolStaffBulk({
+      actorUserId: params.actorUserId,
+      companyCode: params.companyCode,
+      learners: [params.learner],
+      isAuthorisedSubmit: params.learner?.isAuthorisedSubmit,
+      source: 'single',
+    });
+  }
+
+  private parseAuthorisedSubmitFlag(value: unknown): boolean {
+    if (value === true) return true;
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return normalized === 'true' || normalized === '1';
+  }
+
+  private assertAuthorisedSubmit(value: unknown): void {
+    if (!this.parseAuthorisedSubmitFlag(value)) {
+      throw new BadRequestException(
+        'You must confirm authorisation before submitting enrolment.',
+      );
+    }
+  }
+
+  async enrolStaffBulk(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    learners: CorporateStaffLearnerDto[];
+    isAuthorisedSubmit?: boolean;
+    source?: 'single' | 'csv';
+    fileName?: string;
+  }) {
+    const learners = Array.isArray(params.learners) ? params.learners : [];
+    if (!learners.length) {
+      throw new BadRequestException('At least one learner is required.');
+    }
+
+    const bulkAuthorised = this.parseAuthorisedSubmitFlag(params.isAuthorisedSubmit);
+    const allLearnersAuthorised = learners.every((row) =>
+      this.parseAuthorisedSubmitFlag(row.isAuthorisedSubmit),
+    );
+    if (!bulkAuthorised && !allLearnersAuthorised) {
+      this.assertAuthorisedSubmit(false);
+    }
+    if (learners.length > BULK_ENROLMENT_CSV_MAX_ROWS) {
+      throw new BadRequestException(
+        `Bulk enrolment supports a maximum of ${BULK_ENROLMENT_CSV_MAX_ROWS} learners per request.`,
+      );
+    }
+
+    const companyCode = await this.resolveEnrolCompanyCode({
+      actorUserId: params.actorUserId,
+      companyCode: params.companyCode,
+    });
+    const corporateAccountId = await this.resolveCorporateAccountId({
+      actorUserId: params.actorUserId,
+      companyCode,
+    });
+    const companyName =
+      (await this.oauthAuthService.resolveCorporateCompanyDisplayName(companyCode))
+      || (await this.oauthAuthService.resolveCorporateCompanyDisplayName(corporateAccountId));
+
+    const payload = learners.map((row) =>
+      this.normalizeStaffLearner(row, corporateAccountId, {
+        company: companyName || undefined,
+        countryOfResidence: 'Singapore',
+      }),
+    );
+
+    type StaffEnrolSkippedRow = {
+      email: string;
+      step: 'precheck' | 'salesforce' | 'local_user';
+      reason: string;
+    };
+
+    const skipped: StaffEnrolSkippedRow[] = [];
+    const eligible: typeof payload = [];
+    const seenEmails = new Set<string>();
+    const totalReceived = payload.length;
+
+    console.log('[CorporateEnrol] ===== START =====', {
+      totalReceived,
+      companyCode,
+      batchSize: BULK_ENROLMENT_SF_BATCH_SIZE,
+    });
+
+    // ── 1) Pre-check per row — duplicates/issues are skipped, not fatal.
+    for (const row of payload) {
+      const email = String(row.email || '').trim().toLowerCase();
+      if (!email) {
+        skipped.push({ email: '', step: 'precheck', reason: 'Email is required.' });
+        continue;
+      }
+
+      if (seenEmails.has(email)) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: 'Duplicate email in the same upload batch.',
+        });
+        continue;
+      }
+      seenEmails.add(email);
+
+      const idCheck = this.validateStaffIdNumber({
+        idType: String(row.id_type || ''),
+        idNumber: String(row.id_number || ''),
+      });
+      if (!idCheck.ok) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: idCheck.reason,
+        });
+        continue;
+      }
+      row.id_number = idCheck.normalized;
+
+      const localExisting = await this.userRepository.findOne({ where: { email } });
+      if (localExisting) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: 'Already registered in the app.',
+        });
+        continue;
+      }
+
+      try {
+        const byEmail = await this.oauthAuthService.checkSalesforceUserByEmail(email);
+        if (Boolean(byEmail?.found)) {
+          skipped.push({
+            email,
+            step: 'precheck',
+            reason: 'Already exists in Salesforce.',
+          });
+          continue;
+        }
+      } catch (err) {
+        console.warn('[CorporateEnrol] usercheckforemail failed:', {
+          email,
+          message: err instanceof Error ? err.message : err,
+        });
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: 'Could not verify email in Salesforce.',
+        });
+        continue;
+      }
+
+      eligible.push(row);
+    }
+
+    const precheckPassed = eligible.length;
+    const precheckFailed = totalReceived - precheckPassed;
+    console.log(
+      `[CorporateEnrol] Pre-check done: sent=${totalReceived} | passed=${precheckPassed} | failed/skipped=${precheckFailed}`,
+    );
+    if (precheckFailed > 0) {
+      console.log(
+        '[CorporateEnrol] Pre-check skipped rows:',
+        skipped
+          .filter((row) => row.step === 'precheck')
+          .map((row) => `${row.email || '(empty)'}: ${row.reason}`),
+      );
+    }
+
+    const salesforceBatches: Array<{
+      batchNo: number;
+      size: number;
+      succeeded: number;
+      failed: number;
+    }> = [];
+    const salesforceRawResponses: Record<string, unknown>[] = [];
+    const salesforceSucceededRows: typeof payload = [];
+    const eligibleByEmail = new Map(eligible.map((row) => [String(row.email).toLowerCase(), row]));
+    const totalSfBatches = Math.max(
+      1,
+      Math.ceil(eligible.length / BULK_ENROLMENT_SF_BATCH_SIZE),
+    );
+
+    // ── 2) Salesforce create in batches of 100 — skip failed rows, continue others.
+    for (let offset = 0; offset < eligible.length; offset += BULK_ENROLMENT_SF_BATCH_SIZE) {
+      const batch = eligible.slice(offset, offset + BULK_ENROLMENT_SF_BATCH_SIZE);
+      const batchNo = Math.floor(offset / BULK_ENROLMENT_SF_BATCH_SIZE) + 1;
+      console.log(
+        `[CorporateEnrol] Salesforce batch ${batchNo}/${totalSfBatches} starting (size=${batch.length})`,
+      );
+
+      const batchOutcome = await this.oauthAuthService.createSalesforceBulkNexusUsersWithOutcomes(
+        batch,
+      );
+      salesforceRawResponses.push(batchOutcome.raw);
+
+      const succeededSet = new Set(
+        batchOutcome.succeededEmails.map((email) => email.toLowerCase()),
+      );
+      for (const email of batchOutcome.succeededEmails) {
+        const row = eligibleByEmail.get(email.toLowerCase());
+        if (row) salesforceSucceededRows.push(row);
+      }
+      for (const fail of batchOutcome.failed) {
+        skipped.push({
+          email: fail.email,
+          step: 'salesforce',
+          reason: fail.message || 'Salesforce create failed.',
+        });
+      }
+
+      // Rows neither explicitly succeeded nor failed — treat as failed to avoid orphan SF accounts.
+      for (const row of batch) {
+        const email = String(row.email || '').trim().toLowerCase();
+        if (!email) continue;
+        if (succeededSet.has(email)) continue;
+        if (batchOutcome.failed.some((fail) => fail.email.toLowerCase() === email)) continue;
+        skipped.push({
+          email,
+          step: 'salesforce',
+          reason: 'Salesforce create did not confirm success for this learner.',
+        });
+      }
+
+      const batchSucceeded = batchOutcome.succeededEmails.length;
+      const batchFailed = batch.length - batchSucceeded;
+      salesforceBatches.push({
+        batchNo,
+        size: batch.length,
+        succeeded: batchSucceeded,
+        failed: batchFailed,
+      });
+
+      console.log(
+        `[CorporateEnrol] Salesforce batch ${batchNo}/${totalSfBatches} done: sent=${batch.length} | passed=${batchSucceeded} | failed=${batchFailed}`,
+      );
+      if (batchFailed > 0) {
+        console.log(
+          `[CorporateEnrol] Salesforce batch ${batchNo}/${totalSfBatches} failed emails:`,
+          batchOutcome.failed.map((row) => `${row.email}: ${row.message}`),
+        );
+      }
+    }
+
+    if (!eligible.length) {
+      console.log('[CorporateEnrol] No eligible rows left for Salesforce create.');
+    }
+
+    // ── 3) Local users table entry only for Salesforce successes.
+    console.log(
+      `[CorporateEnrol] Local users create starting for ${salesforceSucceededRows.length} Salesforce success row(s)`,
+    );
+    const local = await this.provisionLocalStaffLearners({
+      companyCode,
+      companyName: companyName || undefined,
+      corporateAccountId,
+      learners: salesforceSucceededRows,
+    });
+
+    for (const fail of local.failures) {
+      skipped.push({
+        email: fail.email,
+        step: 'local_user',
+        reason: fail.message || 'Failed to create local app user.',
+      });
+    }
+
+    const provisioned = local.created + local.updated;
+    const skippedCount = skipped.length;
+    const success = provisioned > 0;
+    const sfPassed = salesforceSucceededRows.length;
+    const sfFailed = skipped.filter((row) => row.step === 'salesforce').length;
+    const localFailed = skipped.filter((row) => row.step === 'local_user').length;
+
+    console.log('[CorporateEnrol] ===== SUMMARY =====', {
+      totalReceived,
+      precheckPassed,
+      precheckFailed,
+      salesforcePassed: sfPassed,
+      salesforceFailed: sfFailed,
+      localCreated: local.created,
+      localUpdated: local.updated,
+      localFailed,
+      finalPassed: provisioned,
+      finalSkipped: skippedCount,
+      batches: salesforceBatches.map(
+        (b) =>
+          `${b.batchNo}/${totalSfBatches}: sent=${b.size} passed=${b.succeeded} failed=${b.failed}`,
+      ),
+    });
+    console.log(
+      `[CorporateEnrol] FINAL: sent=${totalReceived} | passed=${provisioned} | failed/skipped=${skippedCount}`,
+    );
+
+    let message = success
+      ? `${provisioned} staff learner(s) enrolled successfully`
+      : 'No staff learners were enrolled.';
+    if (skippedCount > 0) {
+      message += ` ${skippedCount} row(s) skipped.`;
+    }
+
+    const localFailEmails = new Set(
+      local.failures.map((row) => String(row.email || '').trim().toLowerCase()).filter(Boolean),
+    );
+    const passedEmailSet = new Set(
+      salesforceSucceededRows
+        .map((row) => String(row.email || '').trim().toLowerCase())
+        .filter((email) => email && !localFailEmails.has(email)),
+    );
+
+    const skipByEmail = new Map<string, StaffEnrolSkippedRow>();
+    for (const row of skipped) {
+      const email = String(row.email || '').trim().toLowerCase();
+      if (!email) continue;
+      if (!skipByEmail.has(email)) skipByEmail.set(email, row);
+    }
+
+    const trackRows = payload.map((row) => {
+      const email = String(row.email || '').trim().toLowerCase();
+      const name = `${String(row.first_name || '').trim()} ${String(row.last_name || '').trim()}`.trim();
+      if (passedEmailSet.has(email)) {
+        return {
+          email,
+          name,
+          status: 'passed' as const,
+          step: 'done',
+          reason: null,
+        };
+      }
+      const skip = skipByEmail.get(email);
+      return {
+        email,
+        name,
+        status: 'skipped' as const,
+        step: skip?.step || 'precheck',
+        reason: skip?.reason || 'Skipped.',
+      };
+    });
+
+    const summary = {
+      totalReceived,
+      precheckPassed,
+      precheckFailed,
+      salesforcePassed: sfPassed,
+      salesforceFailed: sfFailed,
+      localCreated: local.created,
+      localUpdated: local.updated,
+      localFailed,
+      finalPassed: provisioned,
+      finalSkipped: skippedCount,
+    };
+
+    let batchId: string | null = null;
+    try {
+      const saved = await this.staffEnrolBatchRepository.save(
+        this.staffEnrolBatchRepository.create({
+          companyCode,
+          createdByUserId: String(params.actorUserId || '').trim() || null,
+          source: params.source === 'csv' ? 'csv' : 'single',
+          fileName: String(params.fileName || '').trim() || null,
+          totalReceived,
+          passedCount: provisioned,
+          skippedCount,
+          message,
+          rows: trackRows,
+          summary,
+          batches: salesforceBatches,
+        }),
+      );
+      batchId = saved.id;
+    } catch (err) {
+      console.error('[CorporateEnrol] failed to save enrol batch track:', err);
+    }
+
+    return {
+      success,
+      message,
+      count: provisioned,
+      batchId,
+      companyCode,
+      companyName: companyName || null,
+      summary,
+      batches: salesforceBatches,
+      skipped,
+      rows: trackRows,
+      salesforce: salesforceRawResponses,
+      local,
+    };
+  }
+
+  private parseCsvLine(line: string): string[] {
+    const cells: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (ch === ',' && !inQuotes) {
+        cells.push(current.trim());
+        current = '';
+        continue;
+      }
+      current += ch;
+    }
+    cells.push(current.trim());
+    return cells;
+  }
+
+  private normalizeCsvHeader(value: string): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^\ufeff/, '')
+      .replace(/[\s-]+/g, '_');
+  }
+
+  parseStaffEnrolmentCsv(buffer: Buffer): CorporateStaffLearnerDto[] {
+    const text = buffer.toString('utf8').replace(/^\ufeff/, '');
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (lines.length < 2) {
+      throw new BadRequestException('CSV must include a header row and at least one learner row.');
+    }
+
+    const headers = this.parseCsvLine(lines[0]).map((h) => this.normalizeCsvHeader(h));
+    const headerIndex = (aliases: string[]) => {
+      for (const alias of aliases) {
+        const idx = headers.indexOf(alias);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    const idx = {
+      salutation: headerIndex(['salutation']),
+      first_name: headerIndex(['first_name', 'firstname', 'first']),
+      last_name: headerIndex(['last_name', 'lastname', 'last']),
+      name_as_per_id: headerIndex(['name_as_per_id', 'fullname_as_per_id', 'full_name', 'fullname']),
+      email: headerIndex(['email', 'work_email']),
+      id_type: headerIndex(['id_type', 'idtype']),
+      id_number: headerIndex(['id_number', 'idnumber', 'nric', 'nric_number']),
+      company: headerIndex(['company']),
+      department: headerIndex(['department', 'dept']),
+      role: headerIndex(['role', 'job_title']),
+      countryOfResidence: headerIndex([
+        'countryofresidence',
+        'country_of_residence',
+        'country',
+      ]),
+      noOfYearOfRelevantWorkExperience: headerIndex([
+        'noofyearofrelevantworkexperience',
+        'no_of_year_of_relevant_work_experience',
+        'years_of_experience',
+        'experience_years',
+      ]),
+      learnerAsAnAccounting: headerIndex([
+        'learnerasanaccounting',
+        'learner_as_an_accounting',
+      ]),
+      membershipNumber: headerIndex([
+        'membershipnumber',
+        'membership_number',
+        'isca_membership',
+      ]),
+      eligibility: headerIndex(['eligibility']),
+    };
+
+    if (idx.first_name < 0 || idx.last_name < 0 || idx.email < 0) {
+      throw new BadRequestException(
+        'CSV header must include first_name, last_name and email columns.',
+      );
+    }
+
+    const learners: CorporateStaffLearnerDto[] = [];
+    for (let rowNo = 1; rowNo < lines.length; rowNo += 1) {
+      const cells = this.parseCsvLine(lines[rowNo]);
+      const read = (columnIndex: number) =>
+        columnIndex >= 0 ? String(cells[columnIndex] || '').trim() : '';
+
+      const firstName = read(idx.first_name);
+      const lastName = read(idx.last_name);
+      const email = read(idx.email);
+      if (!firstName && !lastName && !email) continue;
+
+      const yearsRaw = read(idx.noOfYearOfRelevantWorkExperience);
+      const years = yearsRaw ? Number(yearsRaw) : undefined;
+
+      learners.push({
+        salutation: read(idx.salutation) || undefined,
+        first_name: firstName,
+        last_name: lastName,
+        name_as_per_id: read(idx.name_as_per_id) || undefined,
+        email,
+        id_type: read(idx.id_type) || undefined,
+        id_number: read(idx.id_number) || undefined,
+        company: read(idx.company) || undefined,
+        department: read(idx.department) || undefined,
+        role: read(idx.role) || undefined,
+        countryOfResidence: read(idx.countryOfResidence) || undefined,
+        noOfYearOfRelevantWorkExperience:
+          years !== undefined && !Number.isNaN(years) ? years : undefined,
+        learnerAsAnAccounting: read(idx.learnerAsAnAccounting) || undefined,
+        membershipNumber: read(idx.membershipNumber) || undefined,
+        eligibility: read(idx.eligibility) || undefined,
+      });
+    }
+
+    if (!learners.length) {
+      throw new BadRequestException('No valid learner rows found in the CSV file.');
+    }
+    if (learners.length > BULK_ENROLMENT_CSV_MAX_ROWS) {
+      throw new BadRequestException(
+        `CSV supports a maximum of ${BULK_ENROLMENT_CSV_MAX_ROWS} learner rows.`,
+      );
+    }
+    return learners;
+  }
+
+  async enrolStaffBulkFromCsv(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    file?: Express.Multer.File;
+  }) {
+    const file = params.file;
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('CSV file is required.');
+    }
+    if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
+      throw new BadRequestException('CSV file must be 5MB or smaller.');
+    }
+    const original = String(file.originalname || '').toLowerCase();
+    if (!original.endsWith('.csv')) {
+      throw new BadRequestException('Only .csv files are allowed for bulk staff enrolment.');
+    }
+
+    const learners = this.parseStaffEnrolmentCsv(file.buffer);
+    return this.enrolStaffBulk({
+      actorUserId: params.actorUserId,
+      companyCode: params.companyCode,
+      learners,
+      isAuthorisedSubmit: true,
+      source: 'csv',
+      fileName: String(file.originalname || '').trim() || undefined,
+    });
+  }
+
+  async listStaffEnrolBatches(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    page?: number;
+    limit?: number;
+    q?: string;
+  }) {
+    const companyCode = await this.resolveEnrolCompanyCode({
+      actorUserId: params.actorUserId,
+      companyCode: params.companyCode,
+    });
+    const page = Number(params.page) > 0 ? Number(params.page) : 1;
+    const limit = Number(params.limit) > 0 ? Math.min(Number(params.limit), 100) : 10;
+    const q = String(params.q || '').trim().toLowerCase();
+
+    const qb = this.staffEnrolBatchRepository
+      .createQueryBuilder('b')
+      .where('b.companyCode = :companyCode', { companyCode })
+      .orderBy('b.createdAt', 'DESC');
+
+    if (q) {
+      qb.andWhere(
+        `(LOWER(COALESCE(b.fileName, '')) LIKE :q
+          OR LOWER(COALESCE(b.message, '')) LIKE :q
+          OR LOWER(COALESCE(b.source, '')) LIKE :q
+          OR CAST(b.id AS text) LIKE :q)`,
+        { q: `%${q}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+    const rows = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    return {
+      companyCode,
+      data: rows.map((row) => ({
+        id: row.id,
+        companyCode: row.companyCode,
+        source: row.source,
+        fileName: row.fileName,
+        totalReceived: row.totalReceived,
+        passedCount: row.passedCount,
+        skippedCount: row.skippedCount,
+        message: row.message,
+        createdAt: row.createdAt,
+        summary: row.summary,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit) || 1),
+      },
+    };
+  }
+
+  async getStaffEnrolBatch(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    batchId: string;
+    page?: number;
+    limit?: number;
+    q?: string;
+    status?: string;
+  }) {
+    const companyCode = await this.resolveEnrolCompanyCode({
+      actorUserId: params.actorUserId,
+      companyCode: params.companyCode,
+    });
+    const batchId = String(params.batchId || '').trim();
+    if (!batchId) throw new BadRequestException('Batch id is required.');
+
+    const row = await this.staffEnrolBatchRepository.findOne({
+      where: { id: batchId, companyCode },
+    });
+    if (!row) throw new NotFoundException('Enrolment batch not found.');
+
+    const page = Number(params.page) > 0 ? Number(params.page) : 1;
+    const limit = Number(params.limit) > 0 ? Math.min(Number(params.limit), 100) : 10;
+    const q = String(params.q || '').trim().toLowerCase();
+    const status = String(params.status || '').trim().toLowerCase();
+
+    let trackRows = Array.isArray(row.rows) ? [...row.rows] : [];
+
+    if (status === 'passed' || status === 'skipped') {
+      trackRows = trackRows.filter(
+        (item) => String(item?.status || '').trim().toLowerCase() === status,
+      );
+    }
+
+    if (q) {
+      trackRows = trackRows.filter((item) => {
+        const haystack = [
+          item?.email,
+          item?.name,
+          item?.status,
+          item?.step,
+          item?.reason,
+        ]
+          .map((value) => String(value || '').toLowerCase())
+          .join(' ');
+        return haystack.includes(q);
+      });
+    }
+
+    const total = trackRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit) || 1);
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    const pagedRows = trackRows.slice(start, start + limit);
+
+    return {
+      id: row.id,
+      companyCode: row.companyCode,
+      source: row.source,
+      fileName: row.fileName,
+      totalReceived: row.totalReceived,
+      passedCount: row.passedCount,
+      skippedCount: row.skippedCount,
+      message: row.message,
+      createdAt: row.createdAt,
+      summary: row.summary,
+      batches: row.batches || [],
+      rows: pagedRows,
+      pagination: {
+        page: safePage,
+        limit,
+        total,
+        totalPages,
+      },
+    };
+  }
+
+  async submitForeignQuotationRequest(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    body: CorporateForeignQuotationDto;
+  }) {
+    const companyCode = await this.resolveEnrolCompanyCode({
+      actorUserId: params.actorUserId,
+      companyCode: params.companyCode,
+    });
+
+    let submittedByName = '';
+    let submittedByEmail = '';
+    const actorUserId = String(params.actorUserId || '').trim();
+    if (actorUserId) {
+      const actor = await this.userRepository.findOne({ where: { id: actorUserId } });
+      submittedByName = [actor?.firstname, actor?.lastname].filter(Boolean).join(' ').trim();
+      submittedByEmail = String(actor?.email || '').trim();
+    }
+
+    const mail = await this.emailService.sendCorporateForeignQuotationRequestEmail({
+      companyName: params.body.companyName,
+      contactPerson: params.body.contactPerson,
+      contactEmail: params.body.contactEmail,
+      estimatedParticipants: params.body.estimatedParticipants,
+      companyCode,
+      submittedByName: submittedByName || undefined,
+      submittedByEmail: submittedByEmail || undefined,
+    });
+
+    return {
+      success: true,
+      message: 'Your quotation request has been sent to ISCA. We will contact you shortly.',
+      sentTo: mail.toEmail,
+    };
+  }
 
   private buildNudgeState(lastNudgedAt: Date | null | undefined): {
     lastNudgedAt: string | null;

@@ -69,6 +69,11 @@ export class CreateSalesforceNexusUserDto {
   @IsString()
   @IsOptional()
   Paid_date?: string;
+
+  /** Server-signed proof from POST /payments/verify-membership-payment — required when Is_paid is true. */
+  @IsString()
+  @IsOptional()
+  paymentProofToken?: string;
 }
 
 export class SetSalesforceNexusPasswordDto {

@@ -3,5 +3,7 @@ export { CorporateProgressView } from './progress/corporate-progress-view';
 export { CorporateLearnerDetailView } from './progress/corporate-learner-detail-view';
 export { CorporateEnrolView } from './enrol/corporate-enrol-view';
 export { CorporateBulkUploadsView } from './enrol/corporate-bulk-uploads-view';
+export { CorporateEnrolTrackView } from './enrol/corporate-enrol-track-view';
+export { CorporateEnrolTrackDetailView } from './enrol/corporate-enrol-track-detail-view';
 export { CorporateReportsView } from './reports/corporate-reports-view';
 export { CorporateNudgeTrackView } from './reports/corporate-nudge-track-view';

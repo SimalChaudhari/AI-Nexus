@@ -303,6 +303,18 @@ export const courseService = {
     }
   },
 
+  /** Admin: pillar → module → section progress for a specific learner (read-only). */
+  async getUserProgressOverview(userId) {
+    try {
+      const response = await axios.get(`/courses/progress/user/${userId}/overview`);
+      const rows = response.data?.data || [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error('Error fetching user progress overview:', error);
+      throw error;
+    }
+  },
+
   async createCourse(courseData, imageFile = null) {
     try {
       const formData = new FormData();
@@ -711,6 +723,18 @@ export const courseService = {
       responseType: 'blob',
     });
     return response.data;
+  },
+
+  async getCertificateLinkedInShare(certificateId, kind = 'certificate') {
+    const response = await axios.get(`/courses/certificates/${certificateId}/linkedin-share`, {
+      params: { kind },
+    });
+    const data = response.data?.data || response.data || {};
+    return {
+      kind: data.kind === 'badge' ? 'badge' : 'certificate',
+      text: data.text || '',
+      url: data.url || '',
+    };
   },
 
   async issueCourseCertificate(courseId) {
@@ -1225,7 +1249,17 @@ export const courseService = {
         `/courses/${courseId}/question-bank/assignments/submissions`,
         { params }
       );
-      return Array.isArray(response.data?.data) ? response.data.data : [];
+      const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+      // Paginated admin callers pass page/limit; learners still get a plain array.
+      if (params?.page != null || params?.limit != null) {
+        return {
+          data: rows,
+          pagination: response.data?.pagination || null,
+          stats: response.data?.stats || null,
+          users: Array.isArray(response.data?.users) ? response.data.users : [],
+        };
+      }
+      return rows;
     } catch (error) {
       console.error('Error fetching assignment submissions:', error);
       throw error;

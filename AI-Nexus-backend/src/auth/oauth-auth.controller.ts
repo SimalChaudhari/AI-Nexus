@@ -319,6 +319,7 @@ export class OAuthAuthController {
       Is_paid: dto.Is_paid,
       paid_amount: dto.paid_amount,
       Paid_date: dto.Paid_date,
+      paymentProofToken: dto.paymentProofToken,
     });
     return {
       success: true,

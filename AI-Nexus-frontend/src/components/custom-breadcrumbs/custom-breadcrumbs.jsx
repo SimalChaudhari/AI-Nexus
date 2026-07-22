@@ -21,13 +21,30 @@ export function CustomBreadcrumbs({
   const lastLink = links[links.length - 1].name;
 
   const renderHeading = (
-    <Typography variant="h4" sx={{ mb: 2, ...slotProps?.heading }}>
+    <Typography
+      variant="h4"
+      sx={{
+        mb: 2,
+        minWidth: 0,
+        wordBreak: 'normal',
+        overflowWrap: 'anywhere',
+        ...slotProps?.heading,
+      }}
+    >
       {heading}
     </Typography>
   );
 
   const renderLinks = (
-    <Breadcrumbs separator={<Separator />} sx={slotProps?.breadcrumbs} {...other}>
+    <Breadcrumbs
+      separator={<Separator />}
+      sx={{
+        minWidth: 0,
+        '& .MuiBreadcrumbs-ol': { flexWrap: 'wrap' },
+        ...slotProps?.breadcrumbs,
+      }}
+      {...other}
+    >
       {links.map((link, index) => (
         <BreadcrumbsLink
           key={link.name ?? index}
@@ -39,7 +56,9 @@ export function CustomBreadcrumbs({
     </Breadcrumbs>
   );
 
-  const renderAction = <Box sx={{ flexShrink: 0, ...slotProps?.action }}> {action} </Box>;
+  const renderAction = (
+    <Box sx={{ flexShrink: 0, width: { xs: 1, sm: 'auto' }, ...slotProps?.action }}>{action}</Box>
+  );
 
   const renderMoreLink = (
     <Box component="ul">
@@ -54,9 +73,14 @@ export function CustomBreadcrumbs({
   );
 
   return (
-    <Stack spacing={2} sx={sx}>
-      <Stack direction="row" alignItems="center">
-        <Box sx={{ flexGrow: 1 }}>
+    <Stack spacing={2} sx={{ width: 1, ...sx }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        spacing={2}
+        sx={{ width: 1 }}
+      >
+        <Box sx={{ flexGrow: 1, minWidth: 0, width: { xs: 1, sm: 'auto' } }}>
           {heading && renderHeading}
 
           {!!links.length && renderLinks}

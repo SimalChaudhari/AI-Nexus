@@ -102,12 +102,14 @@ export class AiForumController {
         @Res() response?: Response,
     ) {
         const userId = request.user?.id;
+        const includeContact = request.user?.role === UserRole.Admin;
         const normalizedIsPinned = this.paginationService.parseBooleanQuery(isPinned);
         const hasFilters = Boolean(page || limit || search || normalizedIsPinned !== undefined);
 
         if (hasFilters) {
             const result = await this.postService.getAll({
                 userId,
+                includeContact,
                 usePagination: true,
                 page: this.paginationService.parsePositiveInteger(page, 1),
                 limit: this.paginationService.parsePositiveInteger(limit, 10),
@@ -129,7 +131,7 @@ export class AiForumController {
             });
         }
 
-        const posts = (await this.postService.getAll({ userId })) as any[];
+        const posts = (await this.postService.getAll({ userId, includeContact })) as any[];
         return response!.status(HttpStatus.OK).json({
             length: posts.length,
             data: posts,
@@ -151,7 +153,8 @@ export class AiForumController {
     @ApiOperation({ summary: 'Get post details by id' })
     async getAiForumPostById(@Param('id') id: string, @Req() request: Request, @Res() response: Response) {
         const userId = request.user?.id;
-        const post = await this.postService.getById(id, userId);
+        const includeContact = request.user?.role === UserRole.Admin;
+        const post = await this.postService.getById(id, userId, includeContact);
         return response.status(HttpStatus.OK).json({
             data: post,
         });
@@ -264,7 +267,8 @@ export class AiForumController {
         @Res() response: Response,
     ) {
         const userId = request.user?.id;
-        const comments = await this.postService.getComments(postId, userId);
+        const includeContact = request.user?.role === UserRole.Admin;
+        const comments = await this.postService.getComments(postId, userId, includeContact);
         return response.status(HttpStatus.OK).json({
             length: comments.length,
             data: comments,

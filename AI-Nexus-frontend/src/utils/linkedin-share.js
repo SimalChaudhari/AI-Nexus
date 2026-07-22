@@ -17,6 +17,22 @@ export function buildCertificateLinkedInShareText({
     .join(' ');
 }
 
+export function buildBadgeLinkedInShareText({
+  courseTitle,
+  certificateNo,
+  issuer,
+  platformName = 'AI Nexus',
+}) {
+  return [
+    `I just earned the "${courseTitle || 'Course'}" digital badge on ${platformName}!`,
+    issuer ? `Issued by: ${issuer}` : null,
+    certificateNo ? `Credential No: ${certificateNo}` : null,
+    'Continuing my professional learning journey.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export function buildCourseCompletionLinkedInShareText({
   courseTitle,
   platformName = 'AI Nexus',

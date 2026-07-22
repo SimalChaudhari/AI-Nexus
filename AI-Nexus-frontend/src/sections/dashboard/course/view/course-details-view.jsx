@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -32,7 +33,6 @@ import { getCourseDefaultImage } from 'src/utils/course-default-image';
 import { RichTextContent } from 'src/components/html-content';
 import { courseService } from 'src/services/course.service';
 import { CourseQuestionBankPanel } from '../course-question-bank-panel';
-import { CourseAssignmentSubmissionsPanel } from '../course-assignment-submissions-panel';
 import { getCourseReviews, deleteReview } from 'src/services/review.service';
 
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -50,6 +50,7 @@ const REVIEWS_PER_PAGE = 8;
 
 export function CourseDetailsView({ course, loading, error }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [courseModules, setCourseModules] = useState([]);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -333,161 +334,263 @@ export function CourseDetailsView({ course, loading, error }) {
 
   return (
     <DashboardContent sx={{ p: 0, display: 'block' }}>
-      {/* Full-width hero (YouTube-style): video or image */}
+      {/* Compact hero with title overlay */}
       <Box
         sx={{
           width: '100%',
           position: 'relative',
           bgcolor: 'grey.900',
-          aspectRatio: '16/9',
-          maxHeight: { xs: 240, sm: 360, md: 480 },
+          height: { xs: 200, sm: 260, md: 300 },
+          overflow: 'hidden',
         }}
       >
-        {heroMedia.type === 'video' && heroMedia.url ? (
-          heroMedia.url.startsWith('https://www.youtube-nocookie.com/embed/') ? (
-            <iframe
-              title="Course preview"
-              src={heroMedia.url}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                border: 0,
-              }}
-            />
-          ) : (
-            <Box
-              component="video"
-              src={heroMedia.url}
-              controls
+        <Box
+          component="img"
+          src={heroMedia.url || defaultCourseImage}
+          alt={course?.title}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background: `linear-gradient(180deg, ${alpha(theme.palette.grey[900], 0.15)} 0%, ${alpha(
+              theme.palette.grey[900],
+              0.72
+            )} 100%)`,
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            px: { xs: 2, lg: 3 },
+            pb: 2.5,
+            pt: 6,
+          }}
+        >
+          <Stack spacing={1.25} sx={{ maxWidth: 920 }}>
+            <Stack direction="row" flexWrap="wrap" gap={0.75}>
+              <Chip
+                size="small"
+                label={course.level || 'Beginner'}
+                color={
+                  course.level === 'Advanced'
+                    ? 'error'
+                    : course.level === 'Intermediate'
+                      ? 'warning'
+                      : 'info'
+                }
+                sx={{ fontWeight: 700 }}
+              />
+              <Chip
+                size="small"
+                label={course.freeOrPaid ? 'Paid' : 'Free'}
+                color={course.freeOrPaid ? 'success' : 'default'}
+                sx={{ fontWeight: 700 }}
+              />
+              {course.isBundle ? (
+                <Chip
+                  size="small"
+                  icon={<Iconify icon="solar:layers-bold" width={16} />}
+                  label="Bundle"
+                  color="secondary"
+                  variant="filled"
+                  sx={{ fontWeight: 700 }}
+                />
+              ) : null}
+            </Stack>
+            <Typography
+              variant="h4"
               sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
+                color: 'common.white',
+                fontWeight: 800,
+                lineHeight: 1.25,
+                textShadow: '0 1px 2px rgba(0,0,0,0.35)',
               }}
-            />
-          )
-        ) : (
-          <Box
-            component="img"
-            src={heroMedia.url || defaultCourseImage}
-            alt={course?.title}
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-          />
-        )}
+            >
+              {course.title}
+            </Typography>
+            {course.freeOrPaid && (Number(course.amount) || 0) > 0 ? (
+              <Typography variant="subtitle1" sx={{ color: 'common.white', fontWeight: 700 }}>
+                ${Number(course.amount || 0).toFixed(2)}
+              </Typography>
+            ) : null}
+          </Stack>
+        </Box>
       </Box>
 
-      {/* Content below hero: breadcrumbs, tabs, table-like content */}
-      <Box sx={{ px: { xs: 2, lg: 3 }, py: 3, pt: 2 }}>
+      {/* Content below hero */}
+      <Box sx={{ px: { xs: 2, lg: 3 }, py: 3, pt: 2.5 }}>
         <CustomBreadcrumbs
-          heading="Course Details"
+          heading="Course details"
           links={[
             { name: 'Dashboard', href: paths.dashboard.root },
             { name: 'Course', href: paths.admin.course.list },
             { name: course?.title },
           ]}
           action={
-            <Button
-              component={RouterLink}
-              href={paths.admin.course.edit(course?.id)}
-              variant="contained"
-              startIcon={<Iconify icon="solar:pen-bold" />}
-            >
-              Edit
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                component={RouterLink}
+                href={paths.admin.course.assessments(course?.id)}
+                variant="outlined"
+                startIcon={<Iconify icon="solar:clipboard-check-bold" />}
+              >
+                Assessments
+              </Button>
+              <Button
+                component={RouterLink}
+                href={paths.admin.course.edit(course?.id)}
+                variant="contained"
+                startIcon={<Iconify icon="solar:pen-bold" />}
+              >
+                Edit course
+              </Button>
+            </Stack>
           }
-          sx={{ mb: 2 }}
+          sx={{ mb: 2.5 }}
         />
 
-        <Tabs
-          value={activeTab}
-          onChange={(_, v) => setActiveTab(v)}
+        <Card
           sx={{
-            mb: 2,
-            '& .MuiTab-root': { minHeight: 48, fontWeight: 600 },
+            mb: 2.5,
+            px: 1,
+            borderRadius: 2,
+            bgcolor: alpha(theme.palette.grey[500], 0.04),
+            boxShadow: 'none',
+            border: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Tab value="overview" label="Overview" icon={<Iconify icon="solar:info-circle-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
-          <Tab value="curriculum" label="Curriculum" icon={<Iconify icon="solar:widget-5-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
-          <Tab value="question-bank" label="Question bank" icon={<Iconify icon="solar:clipboard-list-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
-          <Tab value="assignments" label="My assessment" icon={<Iconify icon="solar:document-add-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
-          <Tab value="reviews" label="Reviews" icon={<Iconify icon="solar:chat-round-dots-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
-        </Tabs>
+          <Tabs
+            value={activeTab}
+            onChange={(_, v) => {
+              if (v === 'assignments' && course?.id) {
+                navigate(paths.admin.course.assessments(course.id));
+                return;
+              }
+              setActiveTab(v);
+            }}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              minHeight: 52,
+              '& .MuiTab-root': {
+                minHeight: 52,
+                fontWeight: 700,
+                textTransform: 'none',
+                px: 2,
+              },
+              '& .MuiTabs-indicator': {
+                height: 3,
+                borderRadius: '3px 3px 0 0',
+              },
+            }}
+          >
+            <Tab value="overview" label="Overview" icon={<Iconify icon="solar:info-circle-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+            <Tab value="curriculum" label="Curriculum" icon={<Iconify icon="solar:widget-5-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+            <Tab value="question-bank" label="Question bank" icon={<Iconify icon="solar:clipboard-list-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+            <Tab value="assignments" label="Assessments" icon={<Iconify icon="solar:clipboard-check-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+            <Tab value="reviews" label="Reviews" icon={<Iconify icon="solar:chat-round-dots-bold" width={18} sx={{ mr: 0.5 }} />} iconPosition="start" />
+          </Tabs>
+        </Card>
 
       {activeTab === 'overview' && (
-      <Card sx={{ p: 3 }}>
-        <Stack direction="row" flexWrap="wrap" alignItems="center" gap={1.5} sx={{ mb: 3 }}>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            {course.title}
+      <Card
+        sx={{
+          p: { xs: 2.5, md: 3 },
+          borderRadius: 2,
+          border: `1px solid ${theme.palette.divider}`,
+          boxShadow: 'none',
+        }}
+      >
+        <Stack spacing={0.5} sx={{ mb: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            Course information
           </Typography>
-          <Chip
-            label={course.level || 'Beginner'}
-            color={course.level === 'Advanced' ? 'error' : course.level === 'Intermediate' ? 'warning' : 'info'}
-            size="small"
-          />
-          <Chip
-            label={course.freeOrPaid ? 'Paid' : 'Free'}
-            color={course.freeOrPaid ? 'success' : 'default'}
-            size="small"
-          />
-          {course.isBundle && (
-            <Chip
-              icon={<Iconify icon="solar:layers-bold" width={18} />}
-              label="Bundle product"
-              color="secondary"
-              variant="soft"
-              sx={{ fontWeight: 700 }}
-            />
-          )}
+          <Typography variant="body2" color="text.secondary">
+            Key details, targeting, and marketplace metadata for this course.
+          </Typography>
         </Stack>
 
-        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-          Course Information
-        </Typography>
-
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           <Grid xs={12} sm={6} md={4}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              Title
-            </Typography>
-            <Typography variant="body2">{course.title || '—'}</Typography>
+            <Box
+              sx={{
+                p: 2,
+                height: 1,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
+                Title
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{course.title || '—'}</Typography>
+            </Box>
           </Grid>
           <Grid xs={12} sm={6} md={4}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              Level
-            </Typography>
-            <Chip
-              label={course.level || 'Beginner'}
-              color={course.level === 'Advanced' ? 'error' : course.level === 'Intermediate' ? 'warning' : 'info'}
-              size="small"
-            />
+            <Box
+              sx={{
+                p: 2,
+                height: 1,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
+                Level
+              </Typography>
+              <Chip
+                label={course.level || 'Beginner'}
+                color={course.level === 'Advanced' ? 'error' : course.level === 'Intermediate' ? 'warning' : 'info'}
+                size="small"
+                sx={{ fontWeight: 700 }}
+              />
+            </Box>
           </Grid>
           <Grid xs={12} sm={6} md={4}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              Type
-            </Typography>
-            <Chip
-              label={course.freeOrPaid ? 'Paid' : 'Free'}
-              color={course.freeOrPaid ? 'success' : 'default'}
-              size="small"
-            />
+            <Box
+              sx={{
+                p: 2,
+                height: 1,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
+                Type
+              </Typography>
+              <Chip
+                label={course.freeOrPaid ? 'Paid' : 'Free'}
+                color={course.freeOrPaid ? 'success' : 'default'}
+                size="small"
+                sx={{ fontWeight: 700 }}
+              />
+            </Box>
           </Grid>
           <Grid xs={12} sm={6} md={4}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                height: 1,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
               Bundle
             </Typography>
             {course.isBundle ? (
@@ -509,109 +612,195 @@ export function CourseDetailsView({ course, loading, error }) {
                 Standard single course
               </Typography>
             )}
+            </Box>
           </Grid>
           {course.freeOrPaid && (Number(course.amount) || 0) > 0 && (
             <Grid xs={12} sm={6} md={4}>
-              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+              <Box
+                sx={{
+                  p: 2,
+                  height: 1,
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.success.main, 0.06),
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
+                }}
+              >
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
                 Amount
               </Typography>
-              <Typography variant="body2">${Number(course.amount || 0).toFixed(2)}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                ${Number(course.amount || 0).toFixed(2)}
+              </Typography>
+              </Box>
             </Grid>
           )}
           <Grid xs={12} sm={6} md={4}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              Created At
+            <Box
+              sx={{
+                p: 2,
+                height: 1,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
+              Created
             </Typography>
-            <Typography variant="body2">
-              {course.createdAt ? new Date(course.createdAt).toLocaleString() : '—'}
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {course.createdAt ? fDate(course.createdAt) : '—'}
             </Typography>
+            </Box>
           </Grid>
           <Grid xs={12} sm={6} md={4}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              Updated At
+            <Box
+              sx={{
+                p: 2,
+                height: 1,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75, fontWeight: 700 }}>
+              Updated
             </Typography>
-            <Typography variant="body2">
-              {course.updatedAt ? new Date(course.updatedAt).toLocaleString() : '—'}
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {course.updatedAt ? fDate(course.updatedAt) : '—'}
             </Typography>
+            </Box>
           </Grid>
 
           <Grid xs={12}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 700 }}>
               Roles
             </Typography>
             {roleLabels.length > 0 ? (
-              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
                 {roleLabels.map((label) => (
                   <Chip key={label} label={label} size="small" variant="soft" color="primary" />
                 ))}
               </Stack>
             ) : (
-              <Typography variant="body2">—</Typography>
+              <Typography variant="body2" color="text.secondary">—</Typography>
             )}
+            </Box>
           </Grid>
 
           <Grid xs={12}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              AI Levels
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 700 }}>
+              AI levels
             </Typography>
             {aiLevelLabels.length > 0 ? (
-              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
                 {aiLevelLabels.map((label) => (
                   <Chip key={label} label={label} size="small" variant="soft" color="warning" />
                 ))}
               </Stack>
             ) : (
-              <Typography variant="body2">—</Typography>
+              <Typography variant="body2" color="text.secondary">—</Typography>
             )}
+            </Box>
           </Grid>
 
           <Grid xs={12}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 700 }}>
               Goals
             </Typography>
             {goalLabels.length > 0 ? (
-              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
                 {goalLabels.map((label) => (
                   <Chip key={label} label={label} size="small" variant="soft" color="success" />
                 ))}
               </Stack>
             ) : (
-              <Typography variant="body2">—</Typography>
+              <Typography variant="body2" color="text.secondary">—</Typography>
             )}
+            </Box>
           </Grid>
 
           <Grid xs={12}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-              Use Areas
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 700 }}>
+              Use areas
             </Typography>
             {useAreaLabels.length > 0 ? (
-              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
                 {useAreaLabels.map((label) => (
                   <Chip key={label} label={label} size="small" variant="soft" color="secondary" />
                 ))}
               </Stack>
             ) : (
-              <Typography variant="body2">—</Typography>
+              <Typography variant="body2" color="text.secondary">—</Typography>
             )}
+            </Box>
           </Grid>
 
           <Grid xs={12}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 700 }}>
               Languages
             </Typography>
             {languageLabels.length > 0 ? (
-              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
                 {languageLabels.map((label) => (
                   <Chip key={label} label={label} size="small" variant="soft" />
                 ))}
               </Stack>
             ) : (
-              <Typography variant="body2">—</Typography>
+              <Typography variant="body2" color="text.secondary">—</Typography>
             )}
+            </Box>
           </Grid>
 
           <Grid xs={12}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.grey[500], 0.04),
+                border: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 700 }}>
               Speakers
             </Typography>
             {speakerList.length > 0 ? (
@@ -627,8 +816,9 @@ export function CourseDetailsView({ course, loading, error }) {
                 ))}
               </Stack>
             ) : (
-              <Typography variant="body2">—</Typography>
+              <Typography variant="body2" color="text.secondary">—</Typography>
             )}
+            </Box>
           </Grid>
 
           {(() => {
@@ -783,10 +973,22 @@ export function CourseDetailsView({ course, loading, error }) {
       )}
 
       {activeTab === 'curriculum' && (
-      <Card sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ mb: 3 }}>
-          Curriculum
-        </Typography>
+      <Card
+        sx={{
+          p: { xs: 2.5, md: 3 },
+          borderRadius: 2,
+          border: `1px solid ${theme.palette.divider}`,
+          boxShadow: 'none',
+        }}
+      >
+        <Stack spacing={0.5} sx={{ mb: 2.5 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            Curriculum
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Modules and sections available in this course.
+          </Typography>
+        </Stack>
         {modulesLoading ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Loading curriculum...
@@ -973,15 +1175,23 @@ export function CourseDetailsView({ course, loading, error }) {
         <CourseQuestionBankPanel courseId={course.id} />
       )}
 
-      {activeTab === 'assignments' && course?.id && (
-        <CourseAssignmentSubmissionsPanel courseId={course.id} />
-      )}
-
       {activeTab === 'reviews' && (
-      <Card sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>
-          Reviews {courseReviews.length > 0 ? `(${courseReviews.length})` : ''}
-        </Typography>
+      <Card
+        sx={{
+          p: { xs: 2.5, md: 3 },
+          borderRadius: 2,
+          border: `1px solid ${theme.palette.divider}`,
+          boxShadow: 'none',
+        }}
+      >
+        <Stack spacing={0.5} sx={{ mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            Reviews {courseReviews.length > 0 ? `(${courseReviews.length})` : ''}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Learner ratings and feedback for this course.
+          </Typography>
+        </Stack>
         {reviewsLoading ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Loading reviews...

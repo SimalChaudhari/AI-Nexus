@@ -1168,6 +1168,10 @@ export class CourseController {
     async listAssignmentSubmissions(
         @Param('courseId') courseId: string,
         @Query('userId') filterUserId: string,
+        @Query('search') search: string,
+        @Query('status') status: string,
+        @Query('page') pageRaw: string,
+        @Query('limit') limitRaw: string,
         @Req() request: Request,
         @Res() response: Response,
     ) {
@@ -1176,13 +1180,26 @@ export class CourseController {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
         const role = (request as any).user?.role;
-        const data = await this.courseQuestionBankService.listAssignmentSubmissions(
+        const page = pageRaw != null && pageRaw !== '' ? Number(pageRaw) : undefined;
+        const limit = limitRaw != null && limitRaw !== '' ? Number(limitRaw) : undefined;
+        const result = await this.courseQuestionBankService.listAssignmentSubmissions(
             userId,
             role,
             courseId,
-            filterUserId || undefined,
+            {
+                filterUserId: filterUserId || undefined,
+                search: search || undefined,
+                status: status || undefined,
+                page: Number.isFinite(page) ? page : undefined,
+                limit: Number.isFinite(limit) ? limit : undefined,
+            },
         );
-        return response.status(HttpStatus.OK).json({ data });
+        return response.status(HttpStatus.OK).json({
+            data: result.items,
+            pagination: result.pagination,
+            stats: result.stats,
+            users: result.users,
+        });
     }
 
     @Post(':courseId/question-bank/:questionId/assignment/upload')
@@ -1250,7 +1267,7 @@ export class CourseController {
     @Post(':courseId/question-bank/:questionId/assignment/submit')
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Submit assessment for AI grading' })
+    @ApiOperation({ summary: 'Submit assessment for admin review' })
     async submitAssignmentSubmission(
         @Param('courseId') courseId: string,
         @Param('questionId') questionId: string,
@@ -1269,7 +1286,8 @@ export class CourseController {
             body,
         );
         return response.status(HttpStatus.OK).json({
-            message: 'Assessment submitted for grading',
+            message:
+                'Assessment submitted successfully. It will be reviewed by an admin.',
             data,
         });
     }
@@ -1477,6 +1495,29 @@ export class CourseController {
         return response.status(HttpStatus.OK).send(buffer);
     }
 
+    @Get('certificates/:certificateId/linkedin-share')
+    @UseGuards(SessionGuard, JwtAuthGuard)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Build LinkedIn share URL/text for a certificate or digital badge' })
+    async getCertificateLinkedInShare(
+        @Param('certificateId') certificateId: string,
+        @Query('kind') kindRaw: string | undefined,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        const userId = (request as any).user?.id;
+        if (!userId) {
+            return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
+        }
+        const kind = String(kindRaw || 'certificate').toLowerCase() === 'badge' ? 'badge' : 'certificate';
+        const data = await this.courseCertificateService.getLinkedInShareForUser(
+            userId,
+            certificateId,
+            kind,
+        );
+        return response.status(HttpStatus.OK).json({ data });
+    }
+
     @Post(':courseId/certificates/issue')
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
@@ -1659,164 +1700,34 @@ export class CourseController {
             return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Unauthorized' });
         }
 
-        const allCourses = await this.courseService.getAll({ userId });
-        const trackableCourses = (Array.isArray(allCourses) ? allCourses : []).filter((course) => {
-            if (!course) return false;
-            if (course.isEnrolled || course.accessViaBundle) return true;
-            return !isPaidCourseValue(course.freeOrPaid);
+        const rows = await this.buildProgressOverviewForUser(userId, {
+            includeEmpty: false,
+            includeQuizAssessment: false,
         });
+        return response.status(HttpStatus.OK).json({ data: rows });
+    }
 
-        const rows = await Promise.all(
-            trackableCourses.map(async (course) => {
-                const courseId = String(course.id);
-                const sectionProgressBySectionId =
-                    await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(
-                        userId,
-                        courseId,
-                    );
-                const progressRows = Object.values(sectionProgressBySectionId || {}).filter(Boolean) as any[];
-                const hasMeaningfulProgress = progressRows.some((row) => {
-                    const completion = Number(row?.completionPercent ?? row?.currentProgress ?? 0);
-                    const watched = Number(row?.watchedSeconds ?? 0);
-                    const lastPos = Number(row?.lastPositionSeconds ?? 0);
-                    return (
-                        row?.isViewed === true ||
-                        row?.isWatched === true ||
-                        row?.isCompleted === true ||
-                        Boolean(row?.lastAccessedAt) ||
-                        (Number.isFinite(completion) && completion > 0) ||
-                        (Number.isFinite(watched) && watched > 0) ||
-                        (Number.isFinite(lastPos) && lastPos > 0)
-                    );
-                });
-                if (!hasMeaningfulProgress) {
-                    return null;
-                }
-                const viewedSectionIds = progressRows
-                    .filter(
-                        (row) =>
-                            row?.isWatched === true ||
-                            row?.isCompleted === true ||
-                            row?.isViewed === true ||
-                            Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99,
-                    )
-                    .map((row) => row?.sectionId)
-                    .filter((id) => Boolean(id))
-                    .map((id) => String(id));
-                const latestByTime = progressRows
-                    .filter((row) => row?.lastAccessedAt)
-                    .sort(
-                        (a, b) =>
-                            new Date(String(b.lastAccessedAt)).getTime() -
-                            new Date(String(a.lastAccessedAt)).getTime(),
-                    )[0];
-                const latestByProgress = progressRows
-                    .filter((row) => row?.completionPercent != null || row?.currentProgress != null)
-                    .sort(
-                        (a, b) =>
-                            Number(b?.completionPercent ?? b?.currentProgress ?? 0) -
-                            Number(a?.completionPercent ?? a?.currentProgress ?? 0),
-                    )[0];
-                const currentSectionId = latestByTime?.sectionId || latestByProgress?.sectionId || null;
-                const lastAccessedAt = latestByTime?.lastAccessedAt || null;
+    @Get('progress/user/:userId/overview')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary:
+            'Admin: full pillar/module/section progress overview for a learner (read-only tracking)',
+    })
+    async getUserProgressOverview(
+        @Param('userId') userId: string,
+        @Res() response: Response,
+    ) {
+        if (!userId) {
+            return response.status(HttpStatus.BAD_REQUEST).json({ message: 'userId is required' });
+        }
 
-                const modules = await this.courseModuleService.findByCourseId(courseId);
-                const modulesWithSections = await Promise.all(
-                    modules.map(async (mod) => {
-                        const sections = await this.courseModuleSectionService.findByModuleId(mod.id);
-                        const sectionsWithProgress = sections.map((section) => ({
-                            ...section,
-                            sectionProgress: sectionProgressBySectionId[section.id] ?? null,
-                        }));
-                        return { ...mod, sections: sectionsWithProgress };
-                    }),
-                );
-
-                const quizAssessmentProgress =
-                    await this.courseQuizAssessmentProgressService.getLearnerProgress(
-                        userId,
-                        courseId,
-                    );
-                const quizCountByModuleId: Record<string, number> = {};
-                const assignmentCountByModuleId: Record<string, number> = {};
-                let courseEndQuizCount = 0;
-                let courseEndAssignmentCount = 0;
-                quizAssessmentProgress.scopes.forEach((scope) => {
-                    if (scope.moduleId) {
-                        if (scope.quizCount > 0) {
-                            quizCountByModuleId[scope.moduleId] = scope.quizCount;
-                        }
-                        if (scope.assignmentCount > 0) {
-                            assignmentCountByModuleId[scope.moduleId] = scope.assignmentCount;
-                        }
-                    } else {
-                        courseEndQuizCount = scope.quizCount;
-                        courseEndAssignmentCount = scope.assignmentCount;
-                    }
-                });
-
-                const overallProgress = buildCourseOverallProgress({
-                    courseLevel: course.level || null,
-                    modules: modulesWithSections.map((mod) => ({
-                        id: mod.id,
-                        sections: (mod.sections || []).map((section) => ({ id: section.id })),
-                    })),
-                    sectionProgressBySectionId,
-                    quizAssessmentScopes: quizAssessmentProgress.scopes,
-                    quizCountByModuleId,
-                    assignmentCountByModuleId,
-                    courseEndQuizCount,
-                    courseEndAssignmentCount,
-                });
-
-                const completionPercent = overallProgress.completionPercent;
-                const isCompleted = overallProgress.isCompleted;
-                const quizAssessmentMet = quizAssessmentProgress.quizAssessmentCompleted;
-                const videosCompleted = modulesWithSections.every((mod) =>
-                    (mod.sections || []).every((section) => {
-                        const row = sectionProgressBySectionId[section.id];
-                        return row?.isCompleted === true || row?.isWatched === true;
-                    }),
-                );
-                const hasEarnedCredential =
-                    await this.courseCertificateService.hasDisplayableCredentialForLearner(
-                        userId,
-                        courseId,
-                    );
-                const status = isCompleted ? 'completed' : 'in_progress';
-
-                return {
-                    course: {
-                        id: course.id,
-                        title: course.title,
-                        image: course.image,
-                        level: course.level || null,
-                        programId: course.programId || null,
-                        programPillarIndex: course.programPillarIndex ?? null,
-                        programTitle: course.program?.title || '',
-                        freeOrPaid: course.freeOrPaid,
-                        isEnrolled: Boolean(course.isEnrolled),
-                        accessViaBundle: Boolean(course.accessViaBundle),
-                    },
-                    modules: modulesWithSections,
-                    progress: {
-                        completionPercent,
-                        isCompleted,
-                        status,
-                        completedUnits: overallProgress.completedUnits,
-                        totalUnits: overallProgress.totalUnits,
-                        quizAssessmentCompleted: quizAssessmentMet,
-                        hasEarnedCredential,
-                        videosCompleted,
-                        viewedSectionIds,
-                        currentSectionId: currentSectionId ? String(currentSectionId) : null,
-                        lastAccessedAt,
-                    },
-                };
-            }),
-        );
-
-        return response.status(HttpStatus.OK).json({ data: rows.filter(Boolean) });
+        const rows = await this.buildProgressOverviewForUser(userId, {
+            includeEmpty: true,
+            includeQuizAssessment: true,
+        });
+        return response.status(HttpStatus.OK).json({ data: rows });
     }
 
     @Post('enroll/bulk')
@@ -2558,6 +2469,220 @@ export class CourseController {
         return response.status(HttpStatus.OK).json({
             data: { isFavorite },
         });
+    }
+
+    /**
+     * Shared learner progress tree: courses → modules → sections (+ optional quiz/assessment scopes).
+     * Used by learner My Progress and admin User Tracking tab.
+     */
+    private async buildProgressOverviewForUser(
+        userId: string,
+        options: { includeEmpty?: boolean; includeQuizAssessment?: boolean } = {},
+    ) {
+        const includeEmpty = options.includeEmpty === true;
+        const includeQuizAssessment = options.includeQuizAssessment === true;
+
+        const allCourses = await this.courseService.getAll({ userId });
+        const trackableCourses = (Array.isArray(allCourses) ? allCourses : []).filter((course) => {
+            if (!course) return false;
+            if (course.isEnrolled || course.accessViaBundle) return true;
+            return !isPaidCourseValue(course.freeOrPaid);
+        });
+
+        const rows = await Promise.all(
+            trackableCourses.map(async (course) => {
+                const courseId = String(course.id);
+                const sectionProgressBySectionId =
+                    await this.courseSectionWatchProgressService.getAllSectionProgressForCourse(
+                        userId,
+                        courseId,
+                    );
+                const progressRows = Object.values(sectionProgressBySectionId || {}).filter(
+                    Boolean,
+                ) as any[];
+                const hasMeaningfulProgress = progressRows.some((row) => {
+                    const completion = Number(row?.completionPercent ?? row?.currentProgress ?? 0);
+                    const watched = Number(row?.watchedSeconds ?? 0);
+                    const lastPos = Number(row?.lastPositionSeconds ?? 0);
+                    return (
+                        row?.isViewed === true ||
+                        row?.isWatched === true ||
+                        row?.isCompleted === true ||
+                        Boolean(row?.lastAccessedAt) ||
+                        (Number.isFinite(completion) && completion > 0) ||
+                        (Number.isFinite(watched) && watched > 0) ||
+                        (Number.isFinite(lastPos) && lastPos > 0)
+                    );
+                });
+                if (!includeEmpty && !hasMeaningfulProgress) {
+                    return null;
+                }
+
+                const viewedSectionIds = progressRows
+                    .filter(
+                        (row) =>
+                            row?.isWatched === true ||
+                            row?.isCompleted === true ||
+                            row?.isViewed === true ||
+                            Number(row?.completionPercent ?? row?.currentProgress ?? 0) >= 99,
+                    )
+                    .map((row) => row?.sectionId)
+                    .filter((id) => Boolean(id))
+                    .map((id) => String(id));
+                const latestByTime = progressRows
+                    .filter((row) => row?.lastAccessedAt)
+                    .sort(
+                        (a, b) =>
+                            new Date(String(b.lastAccessedAt)).getTime() -
+                            new Date(String(a.lastAccessedAt)).getTime(),
+                    )[0];
+                const latestByProgress = progressRows
+                    .filter((row) => row?.completionPercent != null || row?.currentProgress != null)
+                    .sort(
+                        (a, b) =>
+                            Number(b?.completionPercent ?? b?.currentProgress ?? 0) -
+                            Number(a?.completionPercent ?? a?.currentProgress ?? 0),
+                    )[0];
+                const currentSectionId =
+                    latestByTime?.sectionId || latestByProgress?.sectionId || null;
+                const lastAccessedAt = latestByTime?.lastAccessedAt || null;
+
+                const modules = await this.courseModuleService.findByCourseId(courseId);
+                const modulesWithSections = await Promise.all(
+                    modules.map(async (mod) => {
+                        const sections = await this.courseModuleSectionService.findByModuleId(
+                            mod.id,
+                        );
+                        const sectionsWithProgress = sections.map((section) => ({
+                            id: section.id,
+                            title: section.title,
+                            subtitle: section.subtitle,
+                            videoUrl: section.videoUrl,
+                            watchtime: section.watchtime,
+                            durationTime: section.durationTime,
+                            sortOrder: section.sortOrder,
+                            sectionProgress: sectionProgressBySectionId[section.id] ?? null,
+                        }));
+                        return {
+                            id: mod.id,
+                            title: mod.title,
+                            description: mod.description,
+                            sortOrder: mod.sortOrder,
+                            sections: sectionsWithProgress,
+                        };
+                    }),
+                );
+
+                const quizAssessmentProgress =
+                    await this.courseQuizAssessmentProgressService.getLearnerProgress(
+                        userId,
+                        courseId,
+                    );
+                const quizCountByModuleId: Record<string, number> = {};
+                const assignmentCountByModuleId: Record<string, number> = {};
+                let courseEndQuizCount = 0;
+                let courseEndAssignmentCount = 0;
+                quizAssessmentProgress.scopes.forEach((scope) => {
+                    if (scope.moduleId) {
+                        if (scope.quizCount > 0) {
+                            quizCountByModuleId[scope.moduleId] = scope.quizCount;
+                        }
+                        if (scope.assignmentCount > 0) {
+                            assignmentCountByModuleId[scope.moduleId] = scope.assignmentCount;
+                        }
+                    } else {
+                        courseEndQuizCount = scope.quizCount;
+                        courseEndAssignmentCount = scope.assignmentCount;
+                    }
+                });
+
+                const overallProgress = buildCourseOverallProgress({
+                    courseLevel: course.level || null,
+                    modules: modulesWithSections.map((mod) => ({
+                        id: mod.id,
+                        sections: (mod.sections || []).map((section) => ({ id: section.id })),
+                    })),
+                    sectionProgressBySectionId,
+                    quizAssessmentScopes: quizAssessmentProgress.scopes,
+                    quizCountByModuleId,
+                    assignmentCountByModuleId,
+                    courseEndQuizCount,
+                    courseEndAssignmentCount,
+                });
+
+                const completionPercent = overallProgress.completionPercent;
+                const isCompleted = overallProgress.isCompleted;
+                const quizAssessmentMet =
+                    await this.courseQuizAssessmentProgressService.isCourseQuizAssessmentRequirementsMet(
+                        userId,
+                        courseId,
+                        course.level || null,
+                    );
+                const level = String(course.level || '').trim().toLowerCase();
+                const isCourseEndModel = level === 'beginner' || level === 'advanced';
+                // Pillar 1/3: only course-end quiz/assessment (hide module-scoped bank items).
+                const displayScopes = isCourseEndModel
+                    ? quizAssessmentProgress.scopes.filter((scope) => scope.moduleId == null)
+                    : quizAssessmentProgress.scopes;
+                const quizAssessmentRequired = displayScopes.some(
+                    (scope) => scope.quizCount > 0 || scope.assignmentCount > 0,
+                );
+                const videosCompleted = modulesWithSections.every((mod) =>
+                    (mod.sections || []).every((section) => {
+                        const row = sectionProgressBySectionId[section.id];
+                        return row?.isCompleted === true || row?.isWatched === true;
+                    }),
+                );
+                const hasEarnedCredential =
+                    await this.courseCertificateService.hasDisplayableCredentialForLearner(
+                        userId,
+                        courseId,
+                    );
+                const status = isCompleted ? 'completed' : 'in_progress';
+
+                const row: Record<string, unknown> = {
+                    course: {
+                        id: course.id,
+                        title: course.title,
+                        image: course.image,
+                        level: course.level || null,
+                        programId: course.programId || null,
+                        programPillarIndex: course.programPillarIndex ?? null,
+                        programTitle: course.program?.title || '',
+                        freeOrPaid: course.freeOrPaid,
+                        isEnrolled: Boolean(course.isEnrolled),
+                        accessViaBundle: Boolean(course.accessViaBundle),
+                    },
+                    modules: modulesWithSections,
+                    progress: {
+                        completionPercent,
+                        isCompleted,
+                        status,
+                        completedUnits: overallProgress.completedUnits,
+                        totalUnits: overallProgress.totalUnits,
+                        quizAssessmentCompleted: quizAssessmentMet,
+                        quizAssessmentRequired,
+                        hasEarnedCredential,
+                        videosCompleted,
+                        viewedSectionIds,
+                        currentSectionId: currentSectionId ? String(currentSectionId) : null,
+                        lastAccessedAt,
+                    },
+                };
+
+                if (includeQuizAssessment) {
+                    row.quizAssessment = {
+                        ...quizAssessmentProgress,
+                        scopes: displayScopes,
+                        quizAssessmentCompleted: quizAssessmentMet,
+                    };
+                }
+
+                return row;
+            }),
+        );
+
+        return rows.filter(Boolean);
     }
 
 }

@@ -3,8 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { courseService } from 'src/services/course.service';
 import { toast } from 'src/components/snackbar';
 
-import { buildSubmissionModuleSummaries } from './course-assignment-submissions-utils';
-
 // ----------------------------------------------------------------------
 
 const PENDING_POLL_MS = 10_000;
@@ -14,12 +12,20 @@ function isPendingEvaluation(row) {
   return status === 'pending' || status === 'processing';
 }
 
-export function useCourseAssignmentSubmissions(courseId) {
+export function useCourseAssignmentSubmissions(courseId, query = {}) {
+  const {
+    filterUserId = '',
+    search = '',
+    status = 'all',
+    page = 0,
+    rowsPerPage = 10,
+  } = query;
+
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
-  const [moduleChoices, setModuleChoices] = useState([]);
-  const [filterUserId, setFilterUserId] = useState('');
-  const [selectedModuleId, setSelectedModuleId] = useState(null);
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState({ total: 0, pending: 0, passed: 0, failed: 0 });
+  const [userOptions, setUserOptions] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [verifyTarget, setVerifyTarget] = useState(null);
@@ -34,47 +40,67 @@ export function useCourseAssignmentSubmissions(courseId) {
       if (!courseId) return;
       if (!silent) setLoading(true);
       try {
-        const [mods, data] = await Promise.all([
-          courseService.getCourseModulesWithSections(courseId),
-          courseService.getAssignmentSubmissions(courseId, {
-            userId: filterUserId || undefined,
-          }),
-        ]);
-        const modOpts = (mods || []).map((m) => ({
-          id: m.id,
-          label: m.title || 'Untitled module',
-        }));
-        setModuleChoices(modOpts);
-        setRows(Array.isArray(data) ? data : []);
+        const result = await courseService.getAssignmentSubmissions(courseId, {
+          userId: filterUserId || undefined,
+          search: search.trim() || undefined,
+          status: status && status !== 'all' ? status : undefined,
+          page: page + 1,
+          limit: rowsPerPage,
+        });
+
+        const list = Array.isArray(result) ? result : result?.data || [];
+        const pagination = Array.isArray(result) ? null : result?.pagination;
+        const nextStats = Array.isArray(result) ? null : result?.stats;
+        const users = Array.isArray(result) ? [] : result?.users || [];
+
+        setRows(list);
+        setTotalItems(
+          pagination?.totalItems != null ? Number(pagination.totalItems) : list.length
+        );
+        if (nextStats) {
+          setStats({
+            total: Number(nextStats.total) || 0,
+            pending: Number(nextStats.pending) || 0,
+            passed: Number(nextStats.passed) || 0,
+            failed: Number(nextStats.failed) || 0,
+          });
+        } else {
+          setStats({
+            total: list.length,
+            pending: list.filter(
+              (row) => row.manualPassed == null && row.evaluationStatus !== 'draft'
+            ).length,
+            passed: list.filter((row) => row.manualPassed === true).length,
+            failed: list.filter((row) => row.manualPassed === false).length,
+          });
+        }
+        if (users.length) {
+          setUserOptions(users);
+        }
       } catch (e) {
         if (!silent) {
           toast.error(
             e?.response?.data?.message || e?.message || 'Failed to load assignment submissions'
           );
+          setRows([]);
+          setTotalItems(0);
         }
-        if (!silent) setRows([]);
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [courseId, filterUserId]
+    [courseId, filterUserId, search, status, page, rowsPerPage]
   );
 
   useEffect(() => {
     loadRows({ silent: false });
   }, [loadRows]);
 
-  useEffect(() => {
-    setSelectedModuleId(null);
-  }, [courseId]);
-
   const hasPendingEvaluations = useMemo(
     () => rows.some((row) => isPendingEvaluation(row)),
     [rows]
   );
 
-  // Poll only while AI grading is in progress. Do not depend on `rows` identity or the
-  // interval will reset on every response and feel like continuous API spam.
   useEffect(() => {
     if (!courseId || !hasPendingEvaluations) return undefined;
 
@@ -87,22 +113,6 @@ export function useCourseAssignmentSubmissions(courseId) {
     return () => clearInterval(timer);
   }, [courseId, hasPendingEvaluations, loadRows]);
 
-  const moduleSummaries = useMemo(
-    () => buildSubmissionModuleSummaries(rows, moduleChoices),
-    [rows, moduleChoices]
-  );
-
-  const activeModule = useMemo(
-    () => moduleSummaries.find((mod) => mod.id === selectedModuleId) || null,
-    [moduleSummaries, selectedModuleId]
-  );
-
-  const userOptions = useMemo(
-    () =>
-      [...new Map(rows.map((r) => [r.userId, { id: r.userId, label: r.userName }])).values()],
-    [rows]
-  );
-
   const handleConfirmDelete = useCallback(async () => {
     const row = deleteTarget;
     if (!courseId || !row?.questionId) return;
@@ -112,35 +122,34 @@ export function useCourseAssignmentSubmissions(courseId) {
         userId: row.userId,
       });
       toast.success('Assessment file deleted');
-      setRows((prev) => prev.filter((item) => item.id !== row.id));
       setDeleteTarget(null);
+      await loadRows({ silent: true });
     } catch (e) {
       toast.error(e?.response?.data?.message || e?.message || 'Delete failed');
     } finally {
       setDeletingId(null);
     }
-  }, [courseId, deleteTarget]);
+  }, [courseId, deleteTarget, loadRows]);
 
   const handleManualVerify = useCallback(
     async ({ passed, feedback }) => {
       if (!courseId || !verifyTarget?.id) return;
       setVerifyingId(verifyTarget.id);
       try {
-        const updated = await courseService.manualVerifyAssignmentSubmission(
-          courseId,
-          verifyTarget.id,
-          { passed, feedback }
-        );
-        setRows((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        await courseService.manualVerifyAssignmentSubmission(courseId, verifyTarget.id, {
+          passed,
+          feedback,
+        });
         toast.success(passed ? 'Marked as pass' : 'Marked as fail');
         setVerifyTarget(null);
+        await loadRows({ silent: true });
       } catch (e) {
         toast.error(e?.response?.data?.message || e?.message || 'Manual verification failed');
       } finally {
         setVerifyingId(null);
       }
     },
-    [courseId, verifyTarget]
+    [courseId, verifyTarget, loadRows]
   );
 
   const handleRegrade = useCallback(
@@ -163,13 +172,9 @@ export function useCourseAssignmentSubmissions(courseId) {
   return {
     loading,
     rows,
-    filterUserId,
-    setFilterUserId,
+    totalItems,
+    stats,
     userOptions,
-    moduleSummaries,
-    activeModule,
-    selectedModuleId,
-    setSelectedModuleId,
     deletingId,
     deleteTarget,
     setDeleteTarget,

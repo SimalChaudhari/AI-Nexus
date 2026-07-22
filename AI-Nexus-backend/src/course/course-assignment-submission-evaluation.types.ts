@@ -12,6 +12,17 @@ export type AssignmentEvaluationStatus =
   | 'manual_required'
   | 'failed';
 
+/**
+ * AI assignment verification is off by default.
+ * Set ASSIGNMENT_AI_VERIFICATION_ENABLED=true to re-enable.
+ */
+export function isAssignmentAiVerificationEnabled(): boolean {
+  const raw = String(process.env.ASSIGNMENT_AI_VERIFICATION_ENABLED || '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
 /** Minimum AI score (0–100) required to pass. Override with ASSIGNMENT_PASS_SCORE_THRESHOLD in .env */
 export function getAssignmentPassScoreThreshold(assessmentPassingPercentage?: number | null): number {
   const perAssessment = Number(assessmentPassingPercentage);
@@ -92,7 +103,9 @@ export function resolveSubmissionPassed(row: {
 export function isSubmissionPassedLocked(submission: {
   manualPassed?: boolean | null;
   aiPassed?: boolean | null;
+  isCompleted?: boolean | null;
 }): boolean {
+  if (submission.isCompleted === true) return true;
   return resolveSubmissionPassed(submission).passed === true;
 }
 

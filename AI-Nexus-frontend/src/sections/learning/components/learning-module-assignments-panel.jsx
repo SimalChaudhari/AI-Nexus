@@ -118,15 +118,19 @@ export function LearningModuleAssignmentsPanel({
 
   const handleUploaded = useCallback(
     (questionId, row) => {
+      const mapped = mapSubmissionFromApi(row);
       setItems((prev) => {
         const next = prev.map((item) =>
-          item.id === questionId ? { ...item, mySubmission: mapSubmissionFromApi(row) } : item
+          item.id === questionId ? { ...item, mySubmission: mapped } : item
         );
         onAssignmentsChange?.(next);
         return next;
       });
+      if (isSubmissionPassedLocked(mapped)) {
+        onAssessmentCompleted?.();
+      }
     },
-    [onAssignmentsChange]
+    [onAssignmentsChange, onAssessmentCompleted]
   );
 
   const handleDeleted = useCallback(

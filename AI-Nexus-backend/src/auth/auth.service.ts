@@ -1029,10 +1029,39 @@ export class AuthService {
     }
 
     return {
-      message: 'Membership payment confirmed. Local account finalized after Salesforce sync.',
+      message: 'Membership payment confirmed. Account finalized after successful payment.',
       user: draftUser,
       alreadyCompleted: false,
     };
+  }
+
+  /**
+   * Hard-delete an unpaid membership signup draft.
+   * Government-grade: no real account remains when payment is canceled or fails.
+   */
+  async abandonMembershipSignupDraft(draftUserId: string): Promise<{
+    abandoned: boolean;
+    reason?: string;
+  }> {
+    const id = String(draftUserId || '').trim();
+    if (!id) {
+      throw new BadRequestException('draftUserId is required.');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      return { abandoned: true, reason: 'already_absent' };
+    }
+
+    if (!user.isDraft) {
+      throw new BadRequestException(
+        'Cannot abandon a completed membership account. Payment was already confirmed.',
+      );
+    }
+
+    await this.userRepository.remove(user);
+    console.info('[Auth] Membership signup draft abandoned (deleted) | draftUserId=', id);
+    return { abandoned: true, reason: 'deleted' };
   }
 
   private getNricImageSignature(buffer?: Buffer): 'jpeg' | 'png' | 'webp' | null {

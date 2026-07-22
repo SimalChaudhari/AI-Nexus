@@ -30,8 +30,18 @@ import { Iconify } from 'src/components/iconify';
 //   rows: Array<{ label: string; value: React.ReactNode }>;
 // }>
 
-export function EntityDetailsLayout({ heading, links, editHref, header, sections, footer }) {
+export function EntityDetailsLayout({
+  heading,
+  links,
+  editHref,
+  header,
+  sections,
+  footer,
+  belowHeader,
+  content,
+}) {
   const theme = useTheme();
+  const showSections = content == null && Array.isArray(sections) && sections.length > 0;
 
   return (
     <DashboardContent>
@@ -136,7 +146,12 @@ export function EntityDetailsLayout({ heading, links, editHref, header, sections
         </Box>
       </Card>
 
+      {belowHeader ? <Box sx={{ mb: 3 }}>{belowHeader}</Box> : null}
+
+      {content != null ? content : null}
+
       {/* Sections */}
+      {showSections ? (
       <Card
         sx={{
           px: { xs: 2, md: 4 },
@@ -146,8 +161,7 @@ export function EntityDetailsLayout({ heading, links, editHref, header, sections
         }}
       >
         <Grid container spacing={{ xs: 3, md: 4 }}>
-          {Array.isArray(sections) &&
-            sections.map((section, idx) => (
+          {sections.map((section, idx) => (
               <Grid
                 key={section.title || idx}
                 xs={12}
@@ -263,6 +277,7 @@ export function EntityDetailsLayout({ heading, links, editHref, header, sections
             ))}
         </Grid>
       </Card>
+      ) : null}
 
       {footer ? <Box sx={{ mt: 3 }}>{footer}</Box> : null}
     </DashboardContent>

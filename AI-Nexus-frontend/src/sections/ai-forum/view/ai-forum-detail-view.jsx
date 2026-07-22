@@ -32,14 +32,12 @@ import {
   DETAIL_PAGE_CONTENT_SX,
   DETAIL_PAGE_WRAPPER_SX,
 } from 'src/components/page-section-header/detail-page-styles';
+import { getForumMaskedDisplayName } from 'src/utils/mask-forum-display-name';
 
 // ----------------------------------------------------------------------
 
 function getCommentAuthorName(comment) {
-  const u = comment?.user;
-  if (!u) return 'Anonymous';
-  if (u.firstname || u.lastname) return [u.firstname, u.lastname].filter(Boolean).join(' ').trim();
-  return u.username || u.email || 'Anonymous';
+  return getForumMaskedDisplayName(comment?.user);
 }
 
 // ----------------------------------------------------------------------
@@ -391,6 +389,18 @@ export function AiForumDetailView() {
           title={post.title}
           headerIcon="solar:chat-round-bold-duotone"
           headerGradient="linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
+          creator={
+            post.author
+              ? {
+                  name: getForumMaskedDisplayName(post.author),
+                  initials: String(getForumMaskedDisplayName(post.author))
+                    .replace(/^@/, '')
+                    .replace(/\*/g, '')
+                    .charAt(0)
+                    .toUpperCase() || '?',
+                }
+              : undefined
+          }
           metaItems={[
             {
               key: 'comments',

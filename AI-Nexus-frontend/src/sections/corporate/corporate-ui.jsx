@@ -369,66 +369,96 @@ export function CorpAdminChip({ compact = false }) {
   );
 }
 
-export function CorpPageHeader({ eyebrow, title, subtitle, titleSx }) {
+export function CorpPageHeader({ eyebrow, title, subtitle, titleSx, titleActions }) {
   return (
     <Box
       sx={{
         display: 'flex',
-        justifyContent: 'space-between',
-        gap: { xs: 1.5, md: 2.75 },
-        alignItems: 'flex-start',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: { xs: 1.5, md: 1.75 },
         mb: { xs: 2, md: 3 },
-        flexDirection: { xs: 'column', sm: 'row' },
         width: '100%',
         minWidth: 0,
       }}
     >
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-        {eyebrow ? (
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 2,
+          width: '100%',
+          minWidth: 0,
+        }}
+      >
+        <Box sx={{ minWidth: 0, flex: 1, maxWidth: '100%' }}>
+          {eyebrow ? (
+            <Typography
+              sx={{
+                color: CORP.blue,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                fontWeight: 900,
+                fontSize: { xs: 11, md: 12 },
+              }}
+            >
+              {eyebrow}
+            </Typography>
+          ) : null}
           <Typography
+            component="h1"
             sx={{
-              color: CORP.blue,
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              fontWeight: 900,
-              fontSize: { xs: 11, md: 12 },
+              fontSize: { xs: 22, sm: 26, md: 32, lg: 36 },
+              letterSpacing: '-0.04em',
+              color: CORP.navy,
+              my: 1,
+              fontWeight: 800,
+              lineHeight: 1.2,
+              overflowWrap: 'break-word',
+              wordBreak: 'normal',
+              ...titleSx,
             }}
           >
-            {eyebrow}
+            {title}
           </Typography>
-        ) : null}
-        <Typography
-          component="h1"
+          {subtitle ? (
+            <Typography
+              sx={{
+                color: CORP.muted,
+                lineHeight: 1.55,
+                m: 0,
+                maxWidth: 880,
+                fontSize: { xs: 13, md: 14 },
+                overflowWrap: 'break-word',
+                wordBreak: 'normal',
+              }}
+            >
+              {subtitle}
+            </Typography>
+          ) : null}
+        </Box>
+
+        {/* Keep admin chip top-right like before (mobile top-bar already shows compact chip). */}
+        <Box sx={{ display: { xs: 'none', md: 'block' }, flexShrink: 0, pt: 0.25 }}>
+          <CorpAdminChip />
+        </Box>
+      </Box>
+
+      {titleActions ? (
+        <Box
           sx={{
-            fontSize: { xs: 22, sm: 26, md: 46 },
-            letterSpacing: '-0.05em',
-            color: CORP.navy,
-            my: 1,
-            fontWeight: 800,
-            lineHeight: 1.15,
-            wordBreak: 'break-word',
-            ...titleSx,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            alignItems: 'center',
+            width: '100%',
+            maxWidth: '100%',
           }}
         >
-          {title}
-        </Typography>
-        {subtitle ? (
-          <Typography
-            sx={{
-              color: CORP.muted,
-              lineHeight: 1.55,
-              m: 0,
-              maxWidth: 880,
-              fontSize: { xs: 13, md: 14 },
-            }}
-          >
-            {subtitle}
-          </Typography>
-        ) : null}
-      </Box>
-      <Box sx={{ display: { xs: 'none', md: 'block' }, flexShrink: 0 }}>
-        <CorpAdminChip />
-      </Box>
+          {titleActions}
+        </Box>
+      ) : null}
     </Box>
   );
 }

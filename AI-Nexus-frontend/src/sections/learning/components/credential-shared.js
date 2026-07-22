@@ -1,7 +1,16 @@
-import { CONFIG } from 'src/config-global';
+import {
+  DEFAULT_DIGITAL_BADGE_IMAGE,
+  DEFAULT_DIGITAL_BADGE_ISSUER,
+  getDigitalBadgeImage,
+  getDigitalBadgeIssuer,
+} from 'src/utils/digital-badge';
 
-export const BADGE_IMAGE = `${CONFIG.site.basePath}/badge/badge.png`.replace(/\/{2,}/g, '/');
-export const CERTIFICATE_ISSUER = 'AI Nexus';
+/** @deprecated Prefer getDigitalBadgeImage() — kept for static fallbacks. */
+export const BADGE_IMAGE = DEFAULT_DIGITAL_BADGE_IMAGE;
+/** @deprecated Prefer getDigitalBadgeIssuer() — kept for static fallbacks. */
+export const CERTIFICATE_ISSUER = DEFAULT_DIGITAL_BADGE_ISSUER;
+
+export { getDigitalBadgeImage, getDigitalBadgeIssuer };
 
 function formatCredentialDateTime(dateStr) {
   if (!dateStr) return '—';
@@ -35,8 +44,9 @@ export function formatCpeHoursLabel(hours) {
 }
 
 export function resolveCertificateBadgeUrl() {
-  if (typeof window === 'undefined') return BADGE_IMAGE;
-  return new URL(BADGE_IMAGE, window.location.origin).href;
+  const src = getDigitalBadgeImage();
+  if (typeof window === 'undefined') return src;
+  return new URL(src, window.location.origin).href;
 }
 
 export function mapCertificateRows(rows) {

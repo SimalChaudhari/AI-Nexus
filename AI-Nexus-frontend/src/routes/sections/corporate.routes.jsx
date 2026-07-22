@@ -16,6 +16,8 @@ const ProgressPage = lazy(() => import('src/pages/corporate/progress'));
 const LearnerDetailPage = lazy(() => import('src/pages/corporate/learner-detail'));
 const EnrolPage = lazy(() => import('src/pages/corporate/enrol'));
 const BulkUploadsPage = lazy(() => import('src/pages/corporate/bulk-uploads'));
+const EnrolTrackPage = lazy(() => import('src/pages/corporate/enrol-track'));
+const EnrolTrackDetailPage = lazy(() => import('src/pages/corporate/enrol-track-detail'));
 const ReportsPage = lazy(() => import('src/pages/corporate/reports'));
 const NudgeTrackPage = lazy(() => import('src/pages/corporate/nudge-track'));
 
@@ -62,6 +64,8 @@ export const corporateRoutes = [
       { path: 'progress/:userId', element: <LearnerDetailPage /> },
       { path: 'enrol', element: <EnrolPage /> },
       { path: 'enrol/uploads', element: <BulkUploadsPage /> },
+      { path: 'enrol/track', element: <EnrolTrackPage /> },
+      { path: 'enrol/track/:batchId', element: <EnrolTrackDetailPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'nudge-track', element: <NudgeTrackPage /> },
     ],

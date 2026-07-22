@@ -19,10 +19,13 @@ import { CorporateLearnerNudgeInitService } from './corporate-learner-nudge-init
 import { CorporateNudgeCampaignEntity } from './corporate-nudge-campaign.entity';
 import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity';
 import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-upload.entity';
+import { CorporateStaffEnrolBatchEntity } from './corporate-staff-enrol-batch.entity';
+import { SsoModule } from '../auth/sso.module';
 
 @Module({
   imports: [
     CourseModule,
+    SsoModule,
     TypeOrmModule.forFeature([
       UserEntity,
       ProgramEntity,
@@ -35,6 +38,7 @@ import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-u
       CorporateNudgeCampaignEntity,
       CorporateNudgeEmailLogEntity,
       CorporateBulkEnrolmentUploadEntity,
+      CorporateStaffEnrolBatchEntity,
     ]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,

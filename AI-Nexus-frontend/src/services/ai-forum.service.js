@@ -31,6 +31,7 @@ export const transformAiForumPost = (post) => {
     updatedAt: post.updatedAt || new Date(),
     isPinned: post.isPinned || false,
     userId: post.userId ?? null,
+    author: post.author ?? null,
   };
 };
 

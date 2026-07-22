@@ -251,9 +251,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               <Field.Text name="username" label="Username" />
               <Field.Text name="email" label="Email" type="email" />
               <Field.Text name="companyCode" label="Company’s Code (optional)" />
-              <Box sx={{ gridColumn: { xs: 'span 1', sm: '1 / -1' } }}>
-                <Field.Phone name="contactNumber" label="Contact number" />
-              </Box>
+              <Field.Phone name="contactNumber" label="Contact number" />
             </Box>
           </Stack>
 

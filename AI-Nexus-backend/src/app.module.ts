@@ -18,6 +18,7 @@ import { ReviewModule } from './review/review.module';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { PaymentModule } from './payment/payment.module';
+import { AffiliateModule } from './affiliate/affiliate.module';
 import { OrderModule } from './order/order.module';
 import { CartModule } from './cart/cart.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -114,6 +115,7 @@ const resolveTypeOrmPoolMax = (): number => {
     LanguageModule,
     ReviewModule,
     PaymentModule,
+    AffiliateModule,
     OrderModule,
     CartModule,
     DashboardModule,

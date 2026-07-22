@@ -10,6 +10,7 @@ import promptsTabIcon from 'src/assets/ai/chat.webp';
 
 import { Templates } from './templates';
 import { MyWorkflows } from './my-workflows';
+import { Skills } from './skills';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
 import { AI_PLAYBOOKS_PROMPTS_TITLE } from './ai-playbooks-labels';
 import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
@@ -198,10 +199,16 @@ export function WorkflowMainSection() {
 
       <Box>
         {activeTab === 'templates' && <Templates />}
-        {activeTab === 'resources' && <MyWorkflows />}
+        {activeTab === 'resources' && (
+          <>
+            <MyWorkflows />
+            <Box sx={{ mt: { xs: 6, md: 8 } }}>
+              <Skills />
+            </Box>
+          </>
+        )}
         {activeTab === 'tools' && toolsComingSoon}
       </Box>
     </>
   );
 }
-

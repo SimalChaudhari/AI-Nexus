@@ -210,6 +210,7 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   isPaid = false,
   paidAmount = '',
   paidDate = '',
+  paymentProofToken = '',
 } = {}) {
   const payload = {
     salutation: String(salutation || 'Mr.').trim(),
@@ -262,6 +263,11 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   const resolvedPaidDate = String(paidDate || '').trim();
   if (resolvedPaidDate) {
     payload.Paid_date = resolvedPaidDate;
+  }
+
+  const resolvedProofToken = String(paymentProofToken || '').trim();
+  if (resolvedProofToken) {
+    payload.paymentProofToken = resolvedProofToken;
   }
 
   return payload;
@@ -324,4 +330,75 @@ export function resolveVerifiedNricSalesforceFields({
   ).trim();
 
   return { idType, idNumber };
+}
+
+// ----------------------------------------------------------------------
+// Singapore NRIC/FIN checksum (same rules as backend singapore-nric-fin.util)
+
+const SINGAPORE_NRIC_FIN_WEIGHTS = [2, 7, 6, 5, 4, 3, 2];
+const ST_SERIES_CHECKSUM_MAP = ['J', 'Z', 'I', 'H', 'G', 'F', 'E', 'D', 'C', 'B', 'A'];
+const FG_SERIES_CHECKSUM_MAP = ['X', 'W', 'U', 'T', 'R', 'Q', 'P', 'N', 'M', 'L', 'K'];
+const M_SERIES_CHECKSUM_MAP = ['X', 'W', 'U', 'T', 'R', 'Q', 'P', 'N', 'J', 'L', 'K'];
+
+export function normalizeSingaporeNricFin(value = '') {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function getSingaporeNricFinOffset(prefix) {
+  if (prefix === 'T' || prefix === 'G') return 4;
+  if (prefix === 'M') return 3;
+  return 0;
+}
+
+function getSingaporeNricFinChecksumMap(prefix) {
+  if (prefix === 'S' || prefix === 'T') return ST_SERIES_CHECKSUM_MAP;
+  if (prefix === 'F' || prefix === 'G') return FG_SERIES_CHECKSUM_MAP;
+  return M_SERIES_CHECKSUM_MAP;
+}
+
+function computeSingaporeNricFinChecksum(prefix, digits) {
+  const total = digits
+    .split('')
+    .reduce((sum, digit, index) => sum + Number(digit) * SINGAPORE_NRIC_FIN_WEIGHTS[index], 0);
+  const remainder = (total + getSingaporeNricFinOffset(prefix)) % 11;
+  return getSingaporeNricFinChecksumMap(prefix)[remainder];
+}
+
+/**
+ * Validates Singapore NRIC/FIN format + checksum.
+ * @returns {{ ok: true, normalized: string } | { ok: false, message: string }}
+ */
+export function validateSingaporeNricFinValue(value = '') {
+  const normalized = normalizeSingaporeNricFin(value);
+  if (!normalized) {
+    return { ok: false, message: 'NRIC / ID number is required.' };
+  }
+  if (!/^[STFGM]\d{7}[A-Z]$/.test(normalized)) {
+    return { ok: false, message: NRIC_FIN_USER_MESSAGES.invalidFormat };
+  }
+  const prefix = normalized[0];
+  const digits = normalized.slice(1, 8);
+  const suffix = normalized[8];
+  const expected = computeSingaporeNricFinChecksum(prefix, digits);
+  if (suffix !== expected) {
+    return { ok: false, message: NRIC_FIN_USER_MESSAGES.invalidChecksum };
+  }
+  return { ok: true, normalized };
+}
+
+/** True when corporate enrol id_type should use Singapore NRIC checksum rules. */
+export function isSingaporeNricIdType(idType = '') {
+  const normalized = String(idType || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ');
+  if (!normalized) return true;
+  if (normalized.includes('passport')) return false;
+  return (
+    normalized.includes('nric')
+    || normalized === 'nric'
+    || normalized.includes('fin')
+  );
 }

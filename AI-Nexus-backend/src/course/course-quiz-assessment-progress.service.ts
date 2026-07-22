@@ -474,11 +474,39 @@ export class CourseQuizAssessmentProgressService {
   async notifyLearnerProgressUpdate(userId: string, courseId: string): Promise<void> {
     if (!userId || !courseId) return;
     try {
-      await this.certificateService.syncCertificateWithCourseCompletion(userId, courseId);
+      await this.certificateService.issueIfCourseCompleted(userId, courseId);
     } catch (error) {
       // Certificate sync is best-effort after quiz/assessment updates.
       console.error(
         `[certificate-sync] failed for user=${userId} course=${courseId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  async revokeCredentialAfterAssessmentFail(userId: string, courseId: string): Promise<void> {
+    if (!userId || !courseId) return;
+    try {
+      await this.certificateService.revokeCredentialAfterAssessmentFail(userId, courseId);
+    } catch (error) {
+      console.error(
+        `[certificate-revoke] failed for user=${userId} course=${courseId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  async restoreCredentialAfterAssessmentPass(
+    userId: string,
+    courseId: string,
+    options?: { force?: boolean },
+  ): Promise<void> {
+    if (!userId || !courseId) return;
+    try {
+      await this.certificateService.restoreCredentialAfterAssessmentPass(userId, courseId, options);
+    } catch (error) {
+      console.error(
+        `[certificate-restore] failed for user=${userId} course=${courseId}:`,
         error instanceof Error ? error.message : error,
       );
     }

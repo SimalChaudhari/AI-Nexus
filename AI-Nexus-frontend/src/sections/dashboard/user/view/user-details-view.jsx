@@ -1,8 +1,16 @@
+import { useMemo } from 'react';
+
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
+
+import { useTabs } from 'src/hooks/use-tabs';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -13,6 +21,22 @@ import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 
 import { buildSalesforceProfileDetailRows } from 'src/components/user-salesforce-profile-fields';
 import { getJobRoleAuditStatus, UserFeeWaiverAuditPanel } from './user-fee-waiver-audit-panel';
+import { UserTrackingPanel } from './user-tracking-panel';
+
+// ----------------------------------------------------------------------
+
+const DETAIL_TABS = [
+  {
+    value: 'profile',
+    label: 'Profile',
+    icon: <Iconify icon="solar:user-id-bold" width={20} />,
+  },
+  {
+    value: 'tracking',
+    label: 'Tracking',
+    icon: <Iconify icon="solar:graph-up-bold" width={20} />,
+  },
+];
 
 // ----------------------------------------------------------------------
 
@@ -26,6 +50,13 @@ export function UserDetailsView({
   heading = 'User details',
   showEdit = true,
 }) {
+  const tabs = useTabs('profile');
+
+  const fullName = useMemo(() => {
+    if (!user) return '-';
+    return user.name || `${user?.firstname || ''} ${user?.lastname || ''}`.trim() || '-';
+  }, [user]);
+
   if (loading) {
     return <LoadingScreen />;
   }
@@ -52,7 +83,6 @@ export function UserDetailsView({
     );
   }
 
-  const fullName = user.name || `${user?.firstname || ''} ${user?.lastname || ''}`.trim() || '-';
   const statusColor =
     (user.status === 'Active' && 'success') ||
     (user.status === 'Banned' && 'error') ||
@@ -156,6 +186,9 @@ export function UserDetailsView({
     },
   ];
 
+  const isProfile = tabs.value === 'profile';
+  const isTracking = tabs.value === 'tracking';
+
   return (
     <EntityDetailsLayout
       heading={heading}
@@ -173,8 +206,30 @@ export function UserDetailsView({
         subtitle: user.email || '-',
         chips: headerChips,
       }}
-      sections={sections}
-      footer={<UserFeeWaiverAuditPanel user={user} onRefresh={onRefresh} />}
+      belowHeader={
+        <Card sx={{ px: { xs: 1, sm: 2 } }}>
+          <Tabs value={tabs.value} onChange={tabs.onChange}>
+            {DETAIL_TABS.map((tab) => (
+              <Tab
+                key={tab.value}
+                value={tab.value}
+                label={tab.label}
+                icon={tab.icon}
+                iconPosition="start"
+              />
+            ))}
+          </Tabs>
+        </Card>
+      }
+      sections={isProfile ? sections : []}
+      content={
+        isTracking ? (
+          <Box>
+            <UserTrackingPanel userId={user.id} />
+          </Box>
+        ) : null
+      }
+      footer={isProfile ? <UserFeeWaiverAuditPanel user={user} onRefresh={onRefresh} /> : null}
     />
   );
 }
