@@ -36,6 +36,7 @@ import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity
 import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-upload.entity';
 import { CorporateStaffEnrolBatchEntity } from './corporate-staff-enrol-batch.entity';
 import { OAuthAuthService } from '../auth/oauth-auth.service';
+import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
 import type { CorporateStaffLearnerDto } from './corporate-enrol.dto';
 import type { CorporateForeignQuotationDto } from './corporate-foreign-quotation.dto';
 import {
@@ -159,6 +160,7 @@ export class CorporateService {
     private readonly courseCertificateService: CourseCertificateService,
     private readonly emailService: EmailService,
     private readonly oauthAuthService: OAuthAuthService,
+    private readonly companyEnrollmentService: CompanyEnrollmentService,
   ) {}
 
   private isPassportIdType(idType: string): boolean {
@@ -1302,8 +1304,20 @@ export class CorporateService {
     const total = learners.length;
     const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+    let enrollmentInvite = null;
+    try {
+      const accountName = await this.oauthAuthService.resolveCorporateCompanyDisplayName(companyCode);
+      enrollmentInvite = await this.companyEnrollmentService.ensureInviteForCompanyCode({
+        companyCode,
+        label: accountName || companyCode,
+      });
+    } catch (err) {
+      console.error('[CorporateOverview] Failed to ensure company QR invite:', err);
+    }
+
     return {
       companyCode,
+      enrollmentInvite,
       metrics: {
         totalLearners: total,
         completed,

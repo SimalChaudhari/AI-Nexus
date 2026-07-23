@@ -19,6 +19,7 @@ import {
   CorpTableHead,
   corpTableSx,
 } from '../corporate-ui';
+import { CorporateEnrollmentQrCard } from './corporate-enrollment-qr-card';
 
 // ----------------------------------------------------------------------
 
@@ -31,6 +32,7 @@ export function CorporateOverviewView() {
   const metrics = data?.metrics || {};
   const learners = Array.isArray(data?.learnersPreview) ? data.learnersPreview : [];
   const actions = Array.isArray(data?.actions) ? data.actions : [];
+  const enrollmentInvite = data?.enrollmentInvite || null;
 
   const metricCards = [
     {
@@ -68,6 +70,15 @@ export function CorporateOverviewView() {
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
+      ) : null}
+
+      {companyCode && companyCode !== '—' ? (
+        <Box sx={{ mb: 2.25 }}>
+          <CorporateEnrollmentQrCard
+            invite={enrollmentInvite}
+            companyCode={companyCode}
+          />
+        </Box>
       ) : null}
 
       <Box

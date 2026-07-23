@@ -134,6 +134,24 @@ export type HomeFundingEligibilityContent = {
   }>;
 };
 
+export type HomeEnrolOptionsContent = {
+  heading?: string;
+  subtitle?: string;
+  comparePrompt?: string;
+  compareLinkLabel?: string;
+  compareHref?: string;
+  cards?: Array<{
+    id?: string;
+    title?: string;
+    description?: string;
+    ctaLabel?: string;
+    icon?: string;
+    accentColor?: string;
+    action?: 'isca' | 'eligibility' | 'register' | string;
+    href?: string;
+  }>;
+};
+
 export type HomeEligibilityMembershipContent = {
   leftPanel?: {
     heading?: string;
@@ -408,6 +426,10 @@ export class AppSettingsEntity {
   /** Home page dual-panel eligibility check + ISCA membership promo. */
   @Column({ type: 'jsonb', nullable: true })
   homeEligibilityMembershipContent?: HomeEligibilityMembershipContent | null;
+
+  /** Home page “How would you like to enrol?” option cards under the hero. */
+  @Column({ type: 'jsonb', nullable: true })
+  homeEnrolOptionsContent?: HomeEnrolOptionsContent | null;
 
   /** Home page CEO launch video section. */
   @Column({ type: 'jsonb', nullable: true })

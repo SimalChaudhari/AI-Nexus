@@ -54,6 +54,7 @@ import {
   NRIC_PAIR_IMAGE_USER_PROMPT,
   NRIC_SINGLE_IMAGE_SYSTEM_PROMPT,
 } from '../ai-prompts/nric-prompts';
+import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
 
 interface ExtractedSingaporeIdentifier {
   identifier: string;
@@ -161,6 +162,7 @@ export class AuthService {
     private readonly oauthAuthService: OAuthAuthService,
     private readonly llmService: LlmService,
     private readonly localStorageService: LocalStorageService,
+    private readonly companyEnrollmentService: CompanyEnrollmentService,
   ) { }
 
   private normalizeUsername(username: string): string {
@@ -3705,6 +3707,27 @@ export class AuthService {
       return { verified: false };
     }
 
+    const enrollmentInvite = await this.companyEnrollmentService.findByCompanyCode(code);
+    if (enrollmentInvite?.isActive) {
+      const validation = await this.companyEnrollmentService.validateForEnrollment({
+        companyCode: code,
+        viaQr: false,
+      });
+      if (validation.valid) {
+        return {
+          verified: true,
+          companyCode: enrollmentInvite.companyCode,
+          name: enrollmentInvite.label || enrollmentInvite.companyCode,
+          industry: 'To be confirmed',
+        };
+      }
+      // Invite exists but blocked (quota) — still treat as known company for name, but mark unverified? 
+      // Prefer failing verify with clear path via enrollment validate on signup.
+      if (validation.reason === 'quota_full' || validation.reason === 'inactive') {
+        throw new BadRequestException(validation.message);
+      }
+    }
+
     const corporateUsers = await this.userRepository
       .createQueryBuilder('u')
       .where('u.role = :role', { role: UserRole.Corporate })
@@ -3808,6 +3831,26 @@ export class AuthService {
     return null;
   }
 
+  private resolveSignupViaQr(userDto: UserDto): boolean {
+    const snapshot =
+      userDto.eligibilitySnapshot && typeof userDto.eligibilitySnapshot === 'object'
+        ? (userDto.eligibilitySnapshot as Record<string, unknown>)
+        : null;
+    return snapshot?.companyEnrollmentViaQr === true;
+  }
+
+  /**
+   * When a company enrollment invite exists for the code, enforce quota / QR rules
+   * and consume one seat atomically before registration completes.
+   */
+  private async consumeCompanyEnrollmentSeatIfNeeded(userDto: UserDto, companyCode: string | null) {
+    if (!companyCode) return;
+    await this.companyEnrollmentService.consumeSeatForEnrollment({
+      companyCode,
+      viaQr: this.resolveSignupViaQr(userDto),
+    });
+  }
+
   async register(userDto: UserDto): Promise<{ message: string, user: UserEntity }> {
     try {
       const verifiedSignupUser = userDto.signupAccessToken
@@ -3822,6 +3865,8 @@ export class AuthService {
         verifiedSignupUser?.id
       );
       const resolvedCompanyCode = this.resolveSignupCompanyCode(userDto);
+      // Reserve seat before creating the account so concurrent signups cannot overbook.
+      await this.consumeCompanyEnrollmentSeatIfNeeded(userDto, resolvedCompanyCode);
 
       // Generate verification token
       const verificationToken = crypto.randomBytes(32).toString('hex');

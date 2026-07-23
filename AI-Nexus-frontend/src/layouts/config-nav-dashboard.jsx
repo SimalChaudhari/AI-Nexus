@@ -192,7 +192,14 @@ export const navData = [
           {
             title: 'Promo & Pricing',
             path: paths.admin.payment.settings,
-            activeExcludePaths: [paths.admin.payment.history],
+            activeExcludePaths: [
+              paths.admin.payment.history,
+              paths.admin.payment.companyEnrollment,
+            ],
+          },
+          {
+            title: 'Company QR enrollment',
+            path: paths.admin.payment.companyEnrollment,
           },
           {
             title: 'History',

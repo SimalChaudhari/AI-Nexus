@@ -17,6 +17,7 @@ import { appSettingsService } from 'src/services/app-settings.service';
 import { useAuthContext } from 'src/auth/hooks';
 
 import { resolveHomeHeroData } from './home-hero-defaults';
+import { HomeEnrolOptionsSection } from './home-enrol-options-section';
 import { FLUID_FONT_SIZES, FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 
 // ----------------------------------------------------------------------
@@ -211,7 +212,7 @@ function HeroFullWidthBackdrop({ imageSrc }) {
           position: 'absolute',
           top: { xs: 52, md: 76 },
           right: 0,
-          bottom: { xs: 40, sm: 44, md: 48 },
+          bottom: 0,
           width: HERO_IMAGE_WIDTH,
           overflow: 'hidden',
         }}
@@ -696,7 +697,7 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
           maxWidth: '100%',
           overflow: 'hidden',
           overflowX: 'hidden',
-          overflowY: 'clip',
+          overflowY: 'visible',
           isolation: 'isolate',
           bgcolor: '#ffffff',
           minHeight: { xs: 'auto', md: 680 },
@@ -704,6 +705,9 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
             xs: `linear-gradient(180deg, ${alpha(NAVY, 0.04)} 0%, #ffffff 28%)`,
             md: '#ffffff',
           },
+          // Leave room at bottom so enrol can overlap the image
+          mb: { xs: 0, md: 0 },
+          pb: { xs: 0, md: 0 },
         }}
       >
         <DashboardContent
@@ -716,7 +720,7 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
             flexDirection: 'column',
             width: '100%',
             maxWidth: '100%',
-            overflow: 'hidden',
+            overflow: 'visible',
             overflowX: 'hidden',
             boxSizing: 'border-box',
             px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
@@ -725,7 +729,7 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
               sm: 'calc(var(--layout-header-mobile-height, 64px) + 8px)',
               md: 'calc(var(--layout-header-desktop-height, 64px) + 2px)',
             },
-            pb: { xs: 2.5, md: 0 },
+            pb: { xs: 6, md: 8 },
           }}
         >
           <HeroFullWidthBackdrop imageSrc={hero.backgroundImageUrl} />
@@ -872,21 +876,57 @@ export function HomeHeroSection({ onOpenMembershipSignup }) {
               </Grid>
             </Grid>
           </Box>
+        </DashboardContent>
+      </Box>
 
+      <Box
+        component="section"
+        sx={{
+          position: 'relative',
+          zIndex: 2,
+          width: '100%',
+          maxWidth: '100%',
+          // Pull enrol up so it slightly overrides the hero image
+          mt: { xs: -5, sm: -7, md: -10 },
+          bgcolor: 'transparent',
+        }}
+      >
+        <DashboardContent
+          variant="fullWidth"
+          sx={{
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            px: { xs: 2, sm: 3, md: 3, lg: 'var(--layout-dashboard-content-px, 24px)' },
+            pb: { xs: 3, md: 4 },
+          }}
+        >
           <Box
             component={m.div}
             initial={HERO_FOOTER_ANIMATION.initial}
             animate={HERO_FOOTER_ANIMATION.animate}
             transition={HERO_FOOTER_ANIMATION.transition}
             sx={{
-              position: 'relative',
-              zIndex: 1,
               width: '100%',
-              mt: { xs: 2.5, md: 'auto' },
-              pt: { xs: 0, md: 6 },
               willChange: 'opacity, transform',
+              borderRadius: { xs: '20px', md: '28px' },
+              bgcolor: alpha('#ffffff', 0.55),
+              backgroundImage: `linear-gradient(
+                180deg,
+                ${alpha('#ffffff', 0.72)} 0%,
+                ${alpha('#ffffff', 0.5)} 45%,
+                ${alpha('#ffffff', 0.82)} 100%
+              )`,
+              backdropFilter: 'blur(18px) saturate(1.15)',
+              WebkitBackdropFilter: 'blur(18px) saturate(1.15)',
+              border: `1px solid ${alpha('#ffffff', 0.65)}`,
+              px: { xs: 1.5, sm: 2, md: 2.5 },
+              pt: { xs: 2.5, md: 3 },
+              pb: { xs: 2, md: 2.5 },
+              boxShadow: `0 -16px 48px ${alpha('#001A70', 0.1)}, inset 0 1px 0 ${alpha('#ffffff', 0.8)}`,
             }}
           >
+            <HomeEnrolOptionsSection onOpenMembershipSignup={onOpenMembershipSignup} />
             <HeroStatsBar stats={hero.stats} iconSize={hero.statIconSize} />
           </Box>
         </DashboardContent>

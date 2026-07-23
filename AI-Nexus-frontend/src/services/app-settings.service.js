@@ -202,6 +202,32 @@ function transformFundingEligibilityContent(source) {
   };
 }
 
+function transformEnrolOptionsCard(row) {
+  return {
+    id: row?.id != null ? String(row.id) : '',
+    title: row?.title != null ? String(row.title) : '',
+    description: row?.description != null ? String(row.description) : '',
+    ctaLabel: row?.ctaLabel != null ? String(row.ctaLabel) : '',
+    icon: row?.icon != null ? String(row.icon) : '',
+    accentColor: row?.accentColor != null ? String(row.accentColor) : '',
+    action: row?.action != null ? String(row.action) : '',
+    href: row?.href != null ? String(row.href) : '',
+  };
+}
+
+function transformEnrolOptionsContent(source) {
+  if (!source || typeof source !== 'object') return null;
+  const rawCards = Array.isArray(source.cards) ? source.cards : [];
+  return {
+    heading: source.heading != null ? String(source.heading) : '',
+    subtitle: source.subtitle != null ? String(source.subtitle) : '',
+    comparePrompt: source.comparePrompt != null ? String(source.comparePrompt) : '',
+    compareLinkLabel: source.compareLinkLabel != null ? String(source.compareLinkLabel) : '',
+    compareHref: source.compareHref != null ? String(source.compareHref) : '',
+    cards: rawCards.slice(0, 6).map(transformEnrolOptionsCard),
+  };
+}
+
 function transformEligibilityMembershipContent(source) {
   if (!source || typeof source !== 'object') return null;
   const left = source.leftPanel && typeof source.leftPanel === 'object' ? source.leftPanel : {};
@@ -537,6 +563,7 @@ function transformSettings(settings) {
     homeFundingEligibilityContent: transformFundingEligibilityContent(
       settings?.homeFundingEligibilityContent
     ),
+    homeEnrolOptionsContent: transformEnrolOptionsContent(settings?.homeEnrolOptionsContent),
     homeEligibilityMembershipContent: transformEligibilityMembershipContent(
       settings?.homeEligibilityMembershipContent
     ),
@@ -815,6 +842,12 @@ export const appSettingsService = {
 
   async updateHomeFundingEligibilityContent(payload) {
     const response = await axios.put('/app-settings/home-funding-eligibility-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateHomeEnrolOptionsContent(payload) {
+    const response = await axios.put('/app-settings/home-enrol-options-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },
