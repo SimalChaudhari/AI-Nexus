@@ -251,6 +251,9 @@ export function SimpleSignUpView() {
   const paymentState = searchParams.get('payment') || '';
   const paymentRef = searchParams.get('ref') || '';
   const paymentSessionId = searchParams.get('session_id') || '';
+  const companyCodeFromUrl = String(searchParams.get('companyCode') || '').trim();
+  const isCompanyQrSignupFlow =
+    searchParams.get('viaQr') === '1' || searchParams.get('viaQr') === 'true';
   const isPaidMembershipFlow = membershipOutcome === 'paid-signup';
   const isVerifiedNricSignupFlow = membershipOutcome === 'verified-nric-signup';
   /** Referral/promo link (`?ref=CODE`) — lock voucher field after auto-fill. */
@@ -258,6 +261,7 @@ export function SimpleSignUpView() {
   const isPromoLockedFromReferral = Boolean(lockedReferralCode);
   const isMembershipFeeFlow = isPaidMembershipFlow || isVerifiedNricSignupFlow;
   const isFreeIndividualSignup = !isMembershipFeeFlow;
+  const isCompanyCodeLockedFromQr = Boolean(isCompanyQrSignupFlow && companyCodeFromUrl);
   const signupAccessToken = searchParams.get('signupAccessToken') || '';
   const membershipDraftFormStorageKey = MEMBERSHIP_DRAFT_FORM_KEY;
   const membershipPaymentConsentKey = MEMBERSHIP_PAYMENT_CONSENT_KEY;
@@ -545,13 +549,37 @@ export function SimpleSignUpView() {
       return;
     }
 
+    if (isCompanyCodeLockedFromQr) {
+      prevCompanyCodeRef.current = companyCodeValue;
+      return;
+    }
+
     prevCompanyCodeRef.current = companyCodeValue;
     // User changed the company reference — clear auto-filled company name.
     setCompanyReferenceVerified(null);
     setCompanyVerifiedName('');
     setValue('company', '');
     setCompanyPrefilled(false);
-  }, [companyCodeValue, setValue]);
+  }, [companyCodeValue, isCompanyCodeLockedFromQr, setValue]);
+
+  // Company QR / deep-link: prefill company code on paid (or free) signup.
+  useEffect(() => {
+    if (!companyCodeFromUrl) return;
+    const code = companyCodeFromUrl.toUpperCase();
+    suppressCompanyCodeClearRef.current = true;
+    setValue('companyCode', code);
+    prevCompanyCodeRef.current = code;
+    setCompanyReferenceVerified(true);
+    setEligibilityData((prev) => ({
+      ...(prev || {}),
+      snapshot: {
+        ...(prev?.snapshot && typeof prev.snapshot === 'object' ? prev.snapshot : {}),
+        companyReferenceId: code,
+        companyReferenceConfirmed: true,
+        companyEnrollmentViaQr: isCompanyQrSignupFlow,
+      },
+    }));
+  }, [companyCodeFromUrl, isCompanyQrSignupFlow, setValue]);
 
   useEffect(() => {
     const snapshot = eligibilityData?.snapshot;
@@ -1168,6 +1196,9 @@ export function SimpleSignUpView() {
       const code = String(getValues('companyCode') || '').trim();
       if (code) return code;
     }
+    if (companyCodeFromUrl) {
+      return companyCodeFromUrl;
+    }
     const snapshot = eligibilityData?.snapshot;
     if (!snapshot || typeof snapshot !== 'object') return undefined;
     if (snapshot.companyReferenceConfirmed !== true) return undefined;
@@ -1469,6 +1500,8 @@ export function SimpleSignUpView() {
       const nextSearch = new URLSearchParams();
       if (membershipOutcome) nextSearch.set('membershipOutcome', membershipOutcome);
       if (returnTo) nextSearch.set('returnTo', returnTo);
+      if (companyCodeFromUrl) nextSearch.set('companyCode', companyCodeFromUrl);
+      if (isCompanyQrSignupFlow) nextSearch.set('viaQr', '1');
       if (isVerifiedNricSignupFlow && signupAccessToken) {
         nextSearch.set('signupAccessToken', signupAccessToken);
       }
@@ -1754,36 +1787,43 @@ export function SimpleSignUpView() {
             name="companyCode"
             label="Company reference (optional)"
             InputLabelProps={{ shrink: true }}
-            helperText="Optional. Verify your company reference to auto-fill company details."
+            helperText={
+              isCompanyCodeLockedFromQr
+                ? 'Pre-filled from your company QR invite.'
+                : 'Optional. Verify your company reference to auto-fill company details.'
+            }
             InputProps={{
+              readOnly: isCompanyCodeLockedFromQr,
               endAdornment: (
                 <InputAdornment position="end">
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     {companyReferenceVerified === true ? (
                       <Iconify icon="solar:verified-check-bold" width={20} color="success.main" />
                     ) : null}
-                    <LoadingButton
-                      size="small"
-                      variant="contained"
-                      color="inherit"
-                      loading={companyReferenceVerifying}
-                      disabled={!String(companyCodeValue || '').trim()}
-                      onClick={handleVerifyCompanyReference}
-                      sx={{
-                        minWidth: 76,
-                        px: 1.5,
-                        height: 32,
-                        textTransform: 'none',
-                        fontWeight: 700,
-                        boxShadow: 'none',
-                        bgcolor: 'grey.800',
-                        color: 'common.white',
-                        '&:hover': { bgcolor: 'grey.900', boxShadow: 'none' },
-                        '&.Mui-disabled': { bgcolor: 'grey.400', color: 'common.white' },
-                      }}
-                    >
-                      Verify
-                    </LoadingButton>
+                    {!isCompanyCodeLockedFromQr ? (
+                      <LoadingButton
+                        size="small"
+                        variant="contained"
+                        color="inherit"
+                        loading={companyReferenceVerifying}
+                        disabled={!String(companyCodeValue || '').trim()}
+                        onClick={handleVerifyCompanyReference}
+                        sx={{
+                          minWidth: 76,
+                          px: 1.5,
+                          height: 32,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          boxShadow: 'none',
+                          bgcolor: 'grey.800',
+                          color: 'common.white',
+                          '&:hover': { bgcolor: 'grey.900', boxShadow: 'none' },
+                          '&.Mui-disabled': { bgcolor: 'grey.400', color: 'common.white' },
+                        }}
+                      >
+                        Verify
+                      </LoadingButton>
+                    ) : null}
                   </Stack>
                 </InputAdornment>
               ),
@@ -1791,7 +1831,7 @@ export function SimpleSignUpView() {
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
-                if (String(companyCodeValue || '').trim()) {
+                if (!isCompanyCodeLockedFromQr && String(companyCodeValue || '').trim()) {
                   handleVerifyCompanyReference();
                 }
               }

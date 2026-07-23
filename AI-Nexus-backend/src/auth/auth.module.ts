@@ -12,6 +12,7 @@ import { LocalStorageModule } from '../service/local-storage.module';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
 import { AuthTokenInitService } from './auth-token-init.service';
+import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AuthTokenInitService } from './auth-token-init.service';
     SsoModule,
     LlmModule,
     LocalStorageModule,
+    CompanyEnrollmentModule,
   ],
   providers: [AuthService, EmailService, AuthTokenService, AuthTokenInitService],
   controllers: [AuthController],

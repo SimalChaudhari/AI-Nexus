@@ -168,6 +168,24 @@ type HomeFundingEligibilityContentPayload = {
   }>;
 };
 
+type HomeEnrolOptionsContentPayload = {
+  heading?: string;
+  subtitle?: string;
+  comparePrompt?: string;
+  compareLinkLabel?: string;
+  compareHref?: string;
+  cards?: Array<{
+    id?: string;
+    title?: string;
+    description?: string;
+    ctaLabel?: string;
+    icon?: string;
+    accentColor?: string;
+    action?: string;
+    href?: string;
+  }>;
+};
+
 type HomeEligibilityMembershipContentPayload = {
   leftPanel?: {
     heading?: string;
@@ -298,6 +316,11 @@ const FUNDING_ELIGIBILITY_HEADING_MAX = 160;
 const FUNDING_ELIGIBILITY_CARD_TITLE_MAX = 120;
 const FUNDING_ELIGIBILITY_ICON_MAX = 120;
 const FUNDING_ELIGIBILITY_ITEMS_MAX = 6;
+const ENROL_OPTIONS_HEADING_MAX = 120;
+const ENROL_OPTIONS_SUBTITLE_MAX = 200;
+const ENROL_OPTIONS_COMPARE_MAX = 160;
+const ENROL_OPTIONS_CTA_MAX = 80;
+const ENROL_OPTIONS_CARDS_MAX = 6;
 const ELIGIBILITY_MEMBERSHIP_HEADING_MAX = 120;
 const ELIGIBILITY_MEMBERSHIP_SUBTITLE_MAX = 200;
 const ELIGIBILITY_MEMBERSHIP_QUESTION_MAX = 160;
@@ -416,6 +439,7 @@ export class AppSettingsService {
   private homeEmployeeColumnChecked = false;
   private homeProgrammeStructureColumnChecked = false;
   private homeFundingEligibilityColumnChecked = false;
+  private homeEnrolOptionsColumnChecked = false;
   private homeEligibilityMembershipColumnChecked = false;
   private homeCeoLaunchColumnChecked = false;
   private partnerWithIscaColumnChecked = false;
@@ -537,6 +561,14 @@ export class AppSettingsService {
     this.homeFundingEligibilityColumnChecked = true;
   }
 
+  private async ensureHomeEnrolOptionsColumn(): Promise<void> {
+    if (this.homeEnrolOptionsColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "homeEnrolOptionsContent" jsonb'
+    );
+    this.homeEnrolOptionsColumnChecked = true;
+  }
+
   private async ensureHomeEligibilityMembershipColumn(): Promise<void> {
     if (this.homeEligibilityMembershipColumnChecked) return;
     await this.appSettingsRepository.query(
@@ -590,6 +622,7 @@ export class AppSettingsService {
     await this.ensureHomeEmployeeColumn();
     await this.ensureHomeProgrammeStructureColumn();
     await this.ensureHomeFundingEligibilityColumn();
+    await this.ensureHomeEnrolOptionsColumn();
     await this.ensureHomeEligibilityMembershipColumn();
     await this.ensureHomeCeoLaunchColumn();
     await this.ensurePartnerWithIscaColumn();
@@ -1438,6 +1471,42 @@ export class AppSettingsService {
     };
   }
 
+  private sanitizeEnrolOptionAction(value: unknown): string {
+    const action = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (action === 'isca' || action === 'eligibility' || action === 'register') {
+      return action;
+    }
+    return 'eligibility';
+  }
+
+  private sanitizeEnrolOptionCard(row: any) {
+    return {
+      id: this.ensureTestimonialsItemId(row?.id),
+      title: this.cleanText(row?.title, FUNDING_ELIGIBILITY_CARD_TITLE_MAX),
+      description: this.cleanText(row?.description),
+      ctaLabel: this.cleanText(row?.ctaLabel, ENROL_OPTIONS_CTA_MAX),
+      icon: this.cleanText(row?.icon, FUNDING_ELIGIBILITY_ICON_MAX) || 'solar:user-rounded-bold-duotone',
+      accentColor: this.sanitizeHexColor(row?.accentColor),
+      action: this.sanitizeEnrolOptionAction(row?.action),
+      href: this.cleanText(row?.href),
+    };
+  }
+
+  private sanitizeHomeEnrolOptionsContent(input: unknown): HomeEnrolOptionsContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const rawCards = Array.isArray(source.cards) ? source.cards : [];
+    return {
+      heading: this.cleanText(source.heading, ENROL_OPTIONS_HEADING_MAX),
+      subtitle: this.cleanText(source.subtitle, ENROL_OPTIONS_SUBTITLE_MAX),
+      comparePrompt: this.cleanText(source.comparePrompt, ENROL_OPTIONS_COMPARE_MAX),
+      compareLinkLabel: this.cleanText(source.compareLinkLabel, ENROL_OPTIONS_CTA_MAX),
+      compareHref: this.cleanText(source.compareHref),
+      cards: rawCards.slice(0, ENROL_OPTIONS_CARDS_MAX).map((row: any) => this.sanitizeEnrolOptionCard(row)),
+    };
+  }
+
   private sanitizeEligibilityMembershipIconColor(value: unknown): 'blue' | 'red' {
     return String(value || '').trim().toLowerCase() === 'red' ? 'red' : 'blue';
   }
@@ -2121,6 +2190,18 @@ export class AppSettingsService {
     };
   }
 
+  async updateHomeEnrolOptionsContent(
+    payload: HomeEnrolOptionsContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.homeEnrolOptionsContent = this.sanitizeHomeEnrolOptionsContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Home enrol options content updated successfully',
+      settings: saved,
+    };
+  }
+
   async updateHomeEligibilityMembershipContent(
     payload: HomeEligibilityMembershipContentPayload
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -2766,6 +2847,7 @@ export class AppSettingsService {
     homeEmployeeContent: HomeEmployeeContentPayload | null;
     homeProgrammeStructureContent: HomeProgrammeStructureContentPayload | null;
     homeFundingEligibilityContent: HomeFundingEligibilityContentPayload | null;
+    homeEnrolOptionsContent: HomeEnrolOptionsContentPayload | null;
     homeEligibilityMembershipContent: HomeEligibilityMembershipContentPayload | null;
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     partnerWithIscaContent: PartnerWithIscaContentPayload | null;
@@ -2824,6 +2906,9 @@ export class AppSettingsService {
         : null,
       homeFundingEligibilityContent: settings.homeFundingEligibilityContent
         ? this.sanitizeHomeFundingEligibilityContent(settings.homeFundingEligibilityContent)
+        : null,
+      homeEnrolOptionsContent: settings.homeEnrolOptionsContent
+        ? this.sanitizeHomeEnrolOptionsContent(settings.homeEnrolOptionsContent)
         : null,
       homeEligibilityMembershipContent: settings.homeEligibilityMembershipContent
         ? this.sanitizeHomeEligibilityMembershipContent(settings.homeEligibilityMembershipContent)

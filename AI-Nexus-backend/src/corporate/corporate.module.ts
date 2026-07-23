@@ -21,11 +21,13 @@ import { CorporateNudgeEmailLogEntity } from './corporate-nudge-email-log.entity
 import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-upload.entity';
 import { CorporateStaffEnrolBatchEntity } from './corporate-staff-enrol-batch.entity';
 import { SsoModule } from '../auth/sso.module';
+import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
 
 @Module({
   imports: [
     CourseModule,
     SsoModule,
+    CompanyEnrollmentModule,
     TypeOrmModule.forFeature([
       UserEntity,
       ProgramEntity,

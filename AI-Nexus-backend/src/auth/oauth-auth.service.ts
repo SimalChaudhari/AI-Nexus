@@ -30,6 +30,7 @@ import {
   isSalesforceCitizenOrPrNricIdType,
 } from './utils/singapore-nric-fin.util';
 import { assertNricFinAvailableForAccountCreation } from './utils/nric-registration-guard.util';
+import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -113,6 +114,7 @@ export class OAuthAuthService {
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     private readonly jwtService: JwtService,
+    private readonly companyEnrollmentService: CompanyEnrollmentService,
   ) {}
 
   private get baseUrl(): string {
@@ -4218,8 +4220,31 @@ export class OAuthAuthService {
         accountId: accountId || null,
         contactEmail: contactEmail || null,
       });
+      if (companyCode) {
+        try {
+          const accountName = String(
+            (corporateInfo as { accountName?: string })?.accountName || '',
+          ).trim();
+          await this.companyEnrollmentService.ensureInviteForCompanyCode({
+            companyCode,
+            label: accountName || companyCode,
+          });
+        } catch (inviteErr) {
+          console.error('[SSO Login] Failed to auto-create company QR invite (non-fatal):', inviteErr);
+        }
+      }
     } else if (user.role === UserRole.Corporate) {
       console.log('[SSO Login] Preserving existing Corporate role (corporate userinfo unavailable).');
+      const existingCode = String(user.companyCode || '').trim();
+      if (existingCode) {
+        try {
+          await this.companyEnrollmentService.ensureInviteForCompanyCode({
+            companyCode: existingCode,
+          });
+        } catch (inviteErr) {
+          console.error('[SSO Login] Failed to ensure company QR invite (non-fatal):', inviteErr);
+        }
+      }
     }
 
     const payload = { id: user.id, email: user.email, role: user.role, type: 'access' };

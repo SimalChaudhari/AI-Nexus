@@ -92,6 +92,13 @@ export class CorporateController {
   @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
   async getOverview(@Req() req: AuthedRequest, @Query('companyCode') companyCode?: string) {
     const data = await this.corporateService.getOverview(this.resolveCompanyCode(req, companyCode));
+    const role = String(req.user?.role || '').toLowerCase();
+    // Corporate users may view QR + seat stats only — hide expiry / admin fields.
+    if (role === 'corporate' && data?.enrollmentInvite) {
+      const { qrValidTill: _qrValidTill, qrExpired: _qrExpired, signupPath: _signupPath, ...invite } =
+        data.enrollmentInvite;
+      return { data: { ...data, enrollmentInvite: invite } };
+    }
     return { data };
   }
 

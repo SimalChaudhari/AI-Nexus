@@ -56,6 +56,7 @@ import { PartnerWithIscaSettingsCard } from './components/partner-with-isca-sett
 import { FooterSettingsCard } from './components/footer-settings-card';
 import { ProgrammeStructureSettingsCard } from './components/programme-structure-settings-card';
 import { FundingEligibilitySettingsCard } from './components/funding-eligibility-settings-card';
+import { EnrolOptionsSettingsCard } from './components/enrol-options-settings-card';
 import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
 import { CeoLaunchSettingsCard } from './components/ceo-launch-settings-card';
 import {
@@ -81,6 +82,9 @@ import {
 import {
   resolveFundingEligibilityContent,
 } from 'src/sections/home/funding-eligibility-defaults';
+import {
+  resolveEnrolOptionsContent,
+} from 'src/sections/home/enrol-options-defaults';
 import {
   resolveCeoLaunchContent,
 } from 'src/sections/home/ceo-launch-defaults';
@@ -260,6 +264,10 @@ export function AdminSettingsView() {
   );
   const [fundingEligibilityContentSubmitting, setFundingEligibilityContentSubmitting] =
     useState(false);
+  const [enrolOptionsContent, setEnrolOptionsContent] = useState(() =>
+    resolveEnrolOptionsContent(null)
+  );
+  const [enrolOptionsContentSubmitting, setEnrolOptionsContentSubmitting] = useState(false);
   const [eligibilityMembershipContent, setEligibilityMembershipContent] = useState(() =>
     resolveEligibilityMembershipContent(null)
   );
@@ -580,6 +588,7 @@ export function AdminSettingsView() {
       setFundingEligibilityContent(
         resolveFundingEligibilityContent(appSettings.homeFundingEligibilityContent)
       );
+      setEnrolOptionsContent(resolveEnrolOptionsContent(appSettings.homeEnrolOptionsContent));
       setEligibilityMembershipContent(
         resolveEligibilityMembershipContent(appSettings.homeEligibilityMembershipContent)
       );
@@ -1367,6 +1376,24 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleSaveEnrolOptionsContent = async (contentOverride) => {
+    const source = contentOverride || enrolOptionsContent;
+    try {
+      setEnrolOptionsContentSubmitting(true);
+      const updated = await appSettingsService.updateHomeEnrolOptionsContent(source);
+      setEnrolOptionsContent(resolveEnrolOptionsContent(updated?.homeEnrolOptionsContent));
+      if (!contentOverride) {
+        toast.success('Enrol options updated');
+      }
+      return updated;
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update enrol options');
+      throw error;
+    } finally {
+      setEnrolOptionsContentSubmitting(false);
+    }
+  };
+
   const handleSaveEligibilityMembershipContent = async (contentOverride) => {
     const source = contentOverride || eligibilityMembershipContent;
     try {
@@ -2089,6 +2116,13 @@ export function AdminSettingsView() {
       description: 'Manage hero background and content together.',
     },
     {
+      key: 'enrol-options',
+      badge: 'EO',
+      icon: 'solar:user-speak-rounded-bold-duotone',
+      title: 'Enrol Options',
+      description: 'How would you like to enrol? — cards under the hero with CTAs and actions.',
+    },
+    {
       key: 'cards',
       badge: 'C',
       iconSrc: settingsTabHomeCards,
@@ -2220,6 +2254,7 @@ export function AdminSettingsView() {
   const validSectionKeys = [
     'logo',
     'hero',
+    'enrol-options',
     'cards',
     'join',
     'contact',
@@ -2620,6 +2655,15 @@ export function AdminSettingsView() {
       setContent={setFundingEligibilityContent}
       submitting={fundingEligibilityContentSubmitting}
       onSave={handleSaveFundingEligibilityContent}
+    />
+  );
+
+  const renderEnrolOptionsSettings = (
+    <EnrolOptionsSettingsCard
+      content={enrolOptionsContent}
+      setContent={setEnrolOptionsContent}
+      submitting={enrolOptionsContentSubmitting}
+      onSave={handleSaveEnrolOptionsContent}
     />
   );
 
@@ -3351,6 +3395,7 @@ export function AdminSettingsView() {
             {renderHomeHeroContentSettings}
           </Stack>
         )}
+        {activeSection === 'enrol-options' && renderEnrolOptionsSettings}
         {activeSection === 'cards' && renderHomeCardsSettings}
         {activeSection === 'join' && renderHomeJoinSettings}
         {activeSection === 'contact' && renderContactHeroSettings}

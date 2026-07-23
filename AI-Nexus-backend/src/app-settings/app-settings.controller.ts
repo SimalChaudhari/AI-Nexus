@@ -696,6 +696,16 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Put('home-enrol-options-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update home page enrol options section content' })
+  async updateHomeEnrolOptionsContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateHomeEnrolOptionsContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('home-eligibility-membership-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

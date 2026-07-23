@@ -331,6 +331,7 @@ export const paths = {
     payment: {
       root: `${ROOTS.ADMIN}/payment`,
       settings: `${ROOTS.ADMIN}/payment`,
+      companyEnrollment: `${ROOTS.ADMIN}/payment/company-enrollment`,
       history: `${ROOTS.ADMIN}/payment/history`,
       historyDetails: (id) => `${ROOTS.ADMIN}/payment/history/${id}`,
     },

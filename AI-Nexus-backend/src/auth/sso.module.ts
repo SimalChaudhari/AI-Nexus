@@ -10,6 +10,7 @@ import { StudentMembershipApplicationController } from './student-membership-app
 import { SsoSyncService } from './sso-sync.service';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
+import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AuthTokenService } from './auth-token.service';
       secret: process.env.JWT_SECRET,
       signOptions: {},
     }),
+    CompanyEnrollmentModule,
   ],
   providers: [OAuthAuthService, SsoSyncService, AuthTokenService],
   controllers: [
