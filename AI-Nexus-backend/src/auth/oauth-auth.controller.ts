@@ -15,6 +15,7 @@ import { Response, Request } from 'express';
 import { OAuthAuthService } from './oauth-auth.service';
 import {
   CreateSalesforceNexusUserDto,
+  SignupSalesforceForNexusDto,
   CreateCorporateSalesforceAccountAndContactDto,
   CheckCorporateSalesforceAccountDto,
   EndEservicesSessionDto,
@@ -320,6 +321,33 @@ export class OAuthAuthController {
       paid_amount: dto.paid_amount,
       Paid_date: dto.Paid_date,
       paymentProofToken: dto.paymentProofToken,
+    });
+    return {
+      success: true,
+      message: 'Salesforce membership account created successfully.',
+      salesforce,
+    };
+  }
+
+  @Post('signup-for-nexus')
+  @ApiOperation({
+    summary:
+      'Create Salesforce membership account via signupfornexus (company QR / pre-paid enrollment)',
+  })
+  @ApiBody({ type: SignupSalesforceForNexusDto })
+  async signupForNexus(@Body() dto: SignupSalesforceForNexusDto) {
+    const salesforce = await this.oauthAuthService.signupSalesforceForNexus({
+      salutation: dto.salutation,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+      name_as_per_id: dto.name_as_per_id,
+      email: dto.email,
+      password: dto.password,
+      company: dto.company,
+      jobFunction: dto.jobFunction,
+      countryOfResidence: dto.countryOfResidence,
+      companyCode: dto.companyCode,
+      noOfYearOfRelevantWorkExperience: dto.noOfYearOfRelevantWorkExperience,
     });
     return {
       success: true,

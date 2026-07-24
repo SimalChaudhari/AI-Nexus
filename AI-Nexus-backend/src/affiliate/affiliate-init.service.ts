@@ -100,8 +100,8 @@ export class AffiliateInitService implements OnModuleInit {
         console.log('✅ affiliate_sales table created');
       }
 
-      // Tables only — do not seed demo voucher codes (admin manages vouchers).
-      await this.seedDefaultAffiliateCode(queryRunner);
+      // Tables only — do not seed demo affiliate/voucher codes (admin manages codes).
+      await this.removeDefaultSeededAffiliateCode(queryRunner);
     } catch (error) {
       console.error(
         '❌ Error initializing affiliate tables:',
@@ -112,14 +112,26 @@ export class AffiliateInitService implements OnModuleInit {
     }
   }
 
-  private async seedDefaultAffiliateCode(queryRunner: {
+  /**
+   * Remove the old auto-seeded SP001 demo affiliate code if present.
+   * Real affiliate codes must be created by admin — never re-seeded here.
+   */
+  private async removeDefaultSeededAffiliateCode(queryRunner: {
+    hasTable: (name: string) => Promise<boolean>;
     query: (sql: string, params?: unknown[]) => Promise<unknown>;
   }) {
+    if (!(await queryRunner.hasTable('affiliate_codes'))) {
+      return;
+    }
+
     await queryRunner.query(
       `
-      INSERT INTO "affiliate_codes" ("code", "label", "isActive")
-      SELECT 'SP001', 'Default salesperson affiliate', true
-      WHERE NOT EXISTS (SELECT 1 FROM "affiliate_codes" WHERE UPPER("code") = 'SP001')
+      DELETE FROM "affiliate_codes"
+      WHERE UPPER("code") = 'SP001'
+        AND (
+          "label" = 'Default salesperson affiliate'
+          OR "label" IS NULL
+        )
       `,
     );
   }

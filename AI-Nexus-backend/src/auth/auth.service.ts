@@ -909,6 +909,28 @@ export class AuthService {
       eligibilitySnapshot: snapshot || undefined,
     } as UserDto;
 
+    const resolvedCompanyCode = this.resolveSignupCompanyCode({
+      ...trackingDto,
+      companyCode: String(
+        (snapshot as Record<string, unknown> | null)?.companyReferenceId
+        || (snapshot as Record<string, unknown> | null)?.companyCode
+        || '',
+      ).trim() || null,
+      eligibilitySnapshot: snapshot || undefined,
+    } as UserDto);
+
+    // Company QR enrollment: reserve seat before saving the OAuth membership record.
+    if (this.resolveSignupViaQr({ eligibilitySnapshot: snapshot || undefined } as UserDto)) {
+      await this.consumeCompanyEnrollmentSeatIfNeeded(
+        {
+          ...trackingDto,
+          companyCode: resolvedCompanyCode,
+          eligibilitySnapshot: snapshot || undefined,
+        } as UserDto,
+        resolvedCompanyCode,
+      );
+    }
+
     if (user) {
       const username = user.username || (await this.buildDraftUsername(firstname, lastname));
       if (!username) {
@@ -918,6 +940,7 @@ export class AuthService {
       user.firstname = firstname;
       user.lastname = lastname;
       user.email = email;
+      user.companyCode = resolvedCompanyCode;
       user.authProvider = AuthProvider.OAUTH;
       user.password = null;
       user.isDraft = false;
@@ -935,6 +958,7 @@ export class AuthService {
         firstname,
         lastname,
         email,
+        companyCode: resolvedCompanyCode,
         password: null,
         authProvider: AuthProvider.OAUTH,
         role: UserRole.User,
@@ -954,6 +978,7 @@ export class AuthService {
       email: user.email,
       eligibilityType: user.eligibilityType,
       salesforceUsername: user.salesforceUsername,
+      companyCode: user.companyCode,
     });
 
     return {

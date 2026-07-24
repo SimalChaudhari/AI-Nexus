@@ -22,6 +22,18 @@ export function requiresFreeSignupJobAudit(jobFunction = '') {
   return Boolean(normalized) && normalized !== 'others';
 }
 
+/** Human-readable job function for Salesforce Apex payloads. */
+export function resolveIndividualSignupJobFunctionLabel(jobFunction = '', jobFunctionOther = '') {
+  const value = String(jobFunction || '').trim();
+  if (!value) return '';
+  if (value === 'others') {
+    return String(jobFunctionOther || '').trim();
+  }
+  return (
+    INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.find((option) => option.value === value)?.label || value
+  );
+}
+
 export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   company: '',
   companyCode: '',

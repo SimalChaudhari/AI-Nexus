@@ -273,15 +273,86 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   return payload;
 }
 
+/**
+ * Payload for POST /services/apexrest/signupfornexus (company QR / pre-paid enrollment).
+ */
+export function buildSalesforceSignupForNexusPayloadFromSignup({
+  salutation = 'Mr',
+  firstName = '',
+  lastName = '',
+  email = '',
+  nameAsPerId = '',
+  password = '',
+  company = '',
+  jobFunction = '',
+  countryOfResidence = '',
+  companyCode = '',
+  yearsOfExperience = '',
+} = {}) {
+  const payload = {
+    salutation: String(salutation || 'Mr').trim(),
+    first_name: String(firstName || '').trim(),
+    last_name: String(lastName || '').trim(),
+    name_as_per_id: String(nameAsPerId || `${firstName} ${lastName}`).trim(),
+    email: String(email || '').trim(),
+    password: String(password || ''),
+  };
+
+  const resolvedCompany = String(company || '').trim();
+  if (resolvedCompany) {
+    payload.company = resolvedCompany;
+  }
+
+  const resolvedJobFunction = String(jobFunction || '').trim();
+  if (resolvedJobFunction) {
+    payload.jobFunction = resolvedJobFunction;
+  }
+
+  const resolvedCountryOfResidence = String(countryOfResidence || '').trim();
+  if (resolvedCountryOfResidence) {
+    payload.countryOfResidence = resolvedCountryOfResidence;
+  }
+
+  const resolvedCompanyCode = String(companyCode || '').trim();
+  if (resolvedCompanyCode) {
+    payload.companyCode = resolvedCompanyCode;
+  }
+
+  const resolvedYearsOfExperience = yearsOfExperience === 0 || yearsOfExperience
+    ? Number(yearsOfExperience)
+    : '';
+  if (resolvedYearsOfExperience !== '' && !Number.isNaN(resolvedYearsOfExperience)) {
+    payload.noOfYearOfRelevantWorkExperience = resolvedYearsOfExperience;
+  }
+
+  return payload;
+}
+
 export function resolveSalesforceNexusUsernameFromCreateResponse(createResult, fallbackEmail = '') {
   const salesforce = createResult?.salesforce ?? createResult;
-  if (salesforce && typeof salesforce === 'object') {
-    const candidate =
-      String(salesforce.username || salesforce.Username || salesforce.userName || salesforce.UserName || '').trim();
+  const nestedData =
+    salesforce && typeof salesforce === 'object' && salesforce.data && typeof salesforce.data === 'object'
+      ? salesforce.data
+      : null;
+  const sources = [salesforce, nestedData, createResult].filter(
+    (item) => item && typeof item === 'object'
+  );
+
+  for (const source of sources) {
+    const candidate = String(
+      source.username
+      || source.Username
+      || source.userName
+      || source.UserName
+      || source.user_name
+      || source.loginUsername
+      || ''
+    ).trim();
     if (candidate) {
       return candidate;
     }
   }
+
   return String(fallbackEmail || '').trim();
 }
 

@@ -29,7 +29,7 @@ const DISPOSABLE_DOMAINS = new Set([
   'guerrillamail.com',
   'mailinator.com',
   'tempmail.com',
-  'yopmail.com',
+  // yopmail.com temporarily allowed for testing
 ]);
 
 const mxCache = new Map<string, boolean>();

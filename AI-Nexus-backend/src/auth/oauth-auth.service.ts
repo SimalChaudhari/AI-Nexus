@@ -252,6 +252,12 @@ export class OAuthAuthService {
     return p.startsWith('/') ? p : `/${p}`;
   }
 
+  /** Apex REST path for company QR / pre-paid enrollment (signupfornexus). */
+  private get signupForNexusPath(): string {
+    const p = process.env.OAUTH_SIGNUP_FOR_NEXUS_PATH || '/services/apexrest/signupfornexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
   /** Salesforce API host for Apex REST (often *.sandbox.my.salesforce.com, not the Experience site). */
   private get integrationApiBaseUrl(): string {
     const url =
@@ -266,6 +272,29 @@ export class OAuthAuthService {
     const fullUrl = process.env.OAUTH_CREATE_USER_URL?.trim();
     if (fullUrl) return fullUrl;
     return `${this.integrationApiBaseUrl}${this.createNexusUserPath}`;
+  }
+
+  get signupForNexusUrl(): string {
+    const fullUrl = process.env.OAUTH_SIGNUP_FOR_NEXUS_URL?.trim();
+    if (fullUrl) return fullUrl;
+
+    // Same Experience Cloud host as createuserfornexus (my.site.com), not my.salesforce.com.
+    const createUserUrl = process.env.OAUTH_CREATE_USER_URL?.trim();
+    if (createUserUrl) {
+      try {
+        const parsed = new URL(createUserUrl);
+        return `${parsed.origin}${this.signupForNexusPath}`;
+      } catch {
+        // fall through
+      }
+    }
+
+    const instanceUrl = process.env.OAUTH_INSTANCE_URL?.trim().replace(/\/$/, '');
+    if (instanceUrl) {
+      return `${instanceUrl}${this.signupForNexusPath}`;
+    }
+
+    return `${this.integrationApiBaseUrl}${this.signupForNexusPath}`;
   }
 
   /** Apex REST path for corporate bulk Nexus user create. */
@@ -1529,6 +1558,131 @@ export class OAuthAuthService {
   }
 
   /**
+   * Create a Salesforce user via Apex REST signupfornexus
+   * (company QR / corporate pre-paid enrollment — no payment proof).
+   */
+  async signupSalesforceForNexus(payload: {
+    salutation: string;
+    first_name: string;
+    last_name: string;
+    name_as_per_id: string;
+    email: string;
+    password: string;
+    company?: string;
+    jobFunction?: string;
+    countryOfResidence?: string;
+    companyCode?: string;
+    noOfYearOfRelevantWorkExperience?: string | number;
+  }): Promise<Record<string, unknown>> {
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      throw new BadRequestException('A valid email address is required.');
+    }
+
+    const password = String(payload.password || '');
+    if (!password || password.length < 8) {
+      throw new BadRequestException('Password is required and must be at least 8 characters long');
+    }
+
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.signupForNexusUrl;
+    const body: Record<string, string | number> = {
+      salutation: payload.salutation.trim(),
+      first_name: payload.first_name.trim(),
+      last_name: payload.last_name.trim(),
+      name_as_per_id: payload.name_as_per_id.trim(),
+      email,
+      password,
+    };
+
+    const company = payload.company?.trim();
+    if (company) {
+      body.company = company;
+    }
+
+    const jobFunction = payload.jobFunction?.trim();
+    if (jobFunction) {
+      body.jobFunction = jobFunction;
+    }
+
+    const countryOfResidence = payload.countryOfResidence?.trim();
+    if (countryOfResidence) {
+      body.countryOfResidence = countryOfResidence;
+    }
+
+    const companyCode = payload.companyCode?.trim();
+    if (companyCode) {
+      body.companyCode = companyCode;
+    }
+
+    const yearsOfExperienceRaw = payload.noOfYearOfRelevantWorkExperience;
+    if (yearsOfExperienceRaw !== undefined && yearsOfExperienceRaw !== null && String(yearsOfExperienceRaw).trim() !== '') {
+      const normalizedYears = typeof yearsOfExperienceRaw === 'number'
+        ? yearsOfExperienceRaw
+        : Number(yearsOfExperienceRaw);
+      if (!Number.isNaN(normalizedYears)) {
+        body.noOfYearOfRelevantWorkExperience = normalizedYears;
+      } else {
+        body.noOfYearOfRelevantWorkExperience = String(yearsOfExperienceRaw).trim();
+      }
+    }
+
+    console.log('[Salesforce] Creating Nexus user via signupfornexus:', {
+      url,
+      email: body.email,
+      companyCode: body.companyCode ?? null,
+      hasPassword: Boolean(password),
+    });
+
+    try {
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+      console.log('[Salesforce] signupfornexus response status:', res.status);
+      const resData = res.data || {};
+      console.log('[Salesforce] signupfornexus response body:', resData);
+      let isError = false;
+      let errorMsg = '';
+      if (resData && typeof resData === 'object') {
+        if ('isError' in resData && (resData.isError === true || resData.isError === 'true')) {
+          isError = true;
+          errorMsg = String(resData.Message || resData.message || '');
+        } else if ('success' in resData && (resData.success === false || resData.success === 'false')) {
+          isError = true;
+          errorMsg = String(resData.message || resData.Message || '');
+        }
+      }
+      if (isError) {
+        console.error('[Salesforce] signupfornexus API returned error:', errorMsg);
+        const desc = this.mapCreateNexusUserErrorMessage(errorMsg);
+        throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
+      }
+
+      return resData;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] signupfornexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const rawDescription = this.extractSalesforceErrorDescription(
+          err.response?.data,
+          err.message,
+        );
+        const desc = this.mapCreateNexusUserErrorMessage(rawDescription);
+        throw new BadRequestException(desc || 'Failed to create Salesforce membership account.');
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Verify server-signed membership payment proof (from /payments/verify-membership-payment).
    * Client-supplied paid_amount is ignored when a valid proof is present.
    */
@@ -2494,6 +2648,34 @@ export class OAuthAuthService {
 
     if (this.looksLikeCompanyDisplayName(code)) {
       return code;
+    }
+
+    // Prefer real account name stored on Corporate HR users for this companyCode.
+    try {
+      const corporateUsers = await this.userRepository
+        .createQueryBuilder('u')
+        .where('u.role = :role', { role: UserRole.Corporate })
+        .andWhere('LOWER(TRIM(u.companyCode)) = LOWER(:code)', { code })
+        .andWhere('u.isDraft = :isDraft', { isDraft: false })
+        .orderBy('u.updatedAt', 'DESC')
+        .take(10)
+        .getMany();
+
+      for (const user of corporateUsers) {
+        const fromRaw = this.readCorporateAccountNameFromUserInfoRaw(user.salesforceUserInfoRaw);
+        if (fromRaw && fromRaw.toLowerCase() !== code.toLowerCase()) {
+          return fromRaw;
+        }
+      }
+
+      for (const user of corporateUsers) {
+        const accountId = String(user.salesforceAccountId || '').trim();
+        if (!this.looksLikeSalesforceAccountId(accountId)) continue;
+        const fromAccount = await this.fetchSalesforceAccountNameById(accountId);
+        if (fromAccount) return fromAccount;
+      }
+    } catch (err) {
+      console.warn('[Corporate] Could not resolve company name from users:', err);
     }
 
     if (this.looksLikeSalesforceAccountId(code)) {
@@ -4199,38 +4381,75 @@ export class OAuthAuthService {
     }
 
     // Corporate HR portal: detect via userinfoforcorporate and assign Corporate role.
+    // Never promote existing staff learners (QR / Enrol Staff) to Corporate — they stay
+    // role=User so they appear on the corporate dashboard learner lists.
     if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
       const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
       const accountId = String(corporateInfo.accountId || '').trim();
       const contactEmail = normalizeEmail(String(corporateInfo.contactEmail || ''));
-      user.role = UserRole.Corporate;
-      // Link learners / corporate dashboard only via Salesforce companyCode.
-      if (companyCode) user.companyCode = companyCode;
-      if (accountId) user.salesforceAccountId = accountId;
-      if (contactEmail && !user.salesforceUsername) user.salesforceUsername = contactEmail;
-      user.salesforceUserInfoRaw = {
-        ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
-          ? user.salesforceUserInfoRaw
-          : {}),
-        corporate: corporateInfo,
-      };
-      user.salesforceSyncedAt = new Date();
-      console.log('[SSO Login] Corporate Salesforce user detected — role set to Corporate:', {
-        companyCode: companyCode || null,
-        accountId: accountId || null,
-        contactEmail: contactEmail || null,
-      });
-      if (companyCode) {
-        try {
-          const accountName = String(
-            (corporateInfo as { accountName?: string })?.accountName || '',
-          ).trim();
-          await this.companyEnrollmentService.ensureInviteForCompanyCode({
-            companyCode,
-            label: accountName || companyCode,
-          });
-        } catch (inviteErr) {
-          console.error('[SSO Login] Failed to auto-create company QR invite (non-fatal):', inviteErr);
+      const existingCompanyCode = String(user.companyCode || '').trim();
+      const snap =
+        user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+          ? (user.eligibilitySnapshot as Record<string, unknown>)
+          : null;
+      const isStaffLearnerAccount =
+        user.role === UserRole.User
+        && Boolean(existingCompanyCode)
+        && (
+          snap?.companyEnrollmentViaQr === true
+          || snap?.companyReferenceConfirmed === true
+          || snap?.eligibilityType === 'company-qr-enrollment'
+          || snap?.source === 'corporate-staff-enrol'
+          || Boolean(String(snap?.companyCode || snap?.companyReferenceId || '').trim())
+        );
+
+      if (isStaffLearnerAccount) {
+        // Keep learner tagged to the company they enrolled under.
+        if (!existingCompanyCode && companyCode) {
+          user.companyCode = companyCode;
+        }
+        console.log('[SSO Login] Staff learner matched corporate userinfo — keeping User role:', {
+          userId: user.id,
+          companyCode: user.companyCode || null,
+          sfCompanyCode: companyCode || null,
+        });
+      } else {
+        user.role = UserRole.Corporate;
+        // Link learners / corporate dashboard only via Salesforce companyCode.
+        if (companyCode) user.companyCode = companyCode;
+        if (accountId) user.salesforceAccountId = accountId;
+        if (contactEmail && !user.salesforceUsername) user.salesforceUsername = contactEmail;
+        user.salesforceUserInfoRaw = {
+          ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+            ? user.salesforceUserInfoRaw
+            : {}),
+          corporate: corporateInfo,
+        };
+        user.salesforceSyncedAt = new Date();
+        console.log('[SSO Login] Corporate Salesforce user detected — role set to Corporate:', {
+          companyCode: companyCode || null,
+          accountId: accountId || null,
+          contactEmail: contactEmail || null,
+        });
+        if (companyCode) {
+          try {
+            let accountName = String(
+              (corporateInfo as { accountName?: string; companyName?: string; name?: string })
+                ?.accountName
+              || (corporateInfo as { companyName?: string })?.companyName
+              || (corporateInfo as { name?: string })?.name
+              || '',
+            ).trim();
+            if (!accountName && accountId) {
+              accountName = (await this.fetchSalesforceAccountNameById(accountId)) || '';
+            }
+            await this.companyEnrollmentService.ensureInviteForCompanyCode({
+              companyCode,
+              label: accountName || companyCode,
+            });
+          } catch (inviteErr) {
+            console.error('[SSO Login] Failed to auto-create company QR invite (non-fatal):', inviteErr);
+          }
         }
       }
     } else if (user.role === UserRole.Corporate) {

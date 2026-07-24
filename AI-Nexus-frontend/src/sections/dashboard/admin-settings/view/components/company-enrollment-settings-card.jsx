@@ -223,13 +223,11 @@ function QrPreviewDialog({ open, row, websiteBaseUrl, onClose }) {
               Official enrollment QR
             </Typography>
             <Typography variant="h6" noWrap sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
-              {row.companyCode}
+              {row.label && row.label !== row.companyCode ? row.label : row.companyCode}
             </Typography>
-            {row.label && row.label !== row.companyCode ? (
-              <Typography sx={{ mt: 0.35, fontSize: 13, color: 'rgba(215,232,255,0.92)' }} noWrap>
-                {row.label}
-              </Typography>
-            ) : null}
+            <Typography sx={{ mt: 0.35, fontSize: 13, color: 'rgba(215,232,255,0.92)' }} noWrap>
+              Company code: {row.companyCode}
+            </Typography>
           </Box>
           <Stack direction="row" spacing={0.25} alignItems="center" sx={{ flexShrink: 0 }}>
             <IconButton
@@ -436,8 +434,6 @@ export function CompanyEnrollmentSettingsCard({ websiteBaseUrl = '' }) {
 
   useEffect(() => {
     loadRows();
-    const timer = setInterval(loadRows, 15000);
-    return () => clearInterval(timer);
   }, [loadRows]);
 
   useEffect(() => {
@@ -560,8 +556,8 @@ export function CompanyEnrollmentSettingsCard({ websiteBaseUrl = '' }) {
         <Box>
           <Typography variant="h6">Company QR enrollment</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Company codes are auto-generated. Edit Valid Till and seat caps (0 = unlimited).
-            Counts refresh automatically.
+            Company codes are auto-generated. Company name is resolved from Salesforce.
+            Edit Valid Till and seat caps (0 = unlimited).
           </Typography>
         </Box>
 
@@ -569,7 +565,7 @@ export function CompanyEnrollmentSettingsCard({ websiteBaseUrl = '' }) {
           fullWidth
           value={filters.state.search}
           onChange={handleFilterSearch}
-          placeholder="Search company code or label..."
+          placeholder="Search company code or company name..."
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -598,7 +594,7 @@ export function CompanyEnrollmentSettingsCard({ websiteBaseUrl = '' }) {
             <TableHead>
               <TableRow>
                 <TableCell>Company code</TableCell>
-                <TableCell>Label</TableCell>
+                <TableCell>Company name</TableCell>
                 <TableCell>Quota / Enrolled</TableCell>
                 <TableCell>Remaining</TableCell>
                 <TableCell>Valid till</TableCell>
@@ -612,7 +608,9 @@ export function CompanyEnrollmentSettingsCard({ websiteBaseUrl = '' }) {
                   <TableCell>
                     <Typography variant="subtitle2">{row.companyCode}</Typography>
                   </TableCell>
-                  <TableCell>{row.label || '—'}</TableCell>
+                  <TableCell>
+                    {row.label && row.label !== row.companyCode ? row.label : '—'}
+                  </TableCell>
                   <TableCell>{formatQuota(row)}</TableCell>
                   <TableCell>{formatRemaining(row)}</TableCell>
                   <TableCell>
@@ -692,11 +690,11 @@ export function CompanyEnrollmentSettingsCard({ websiteBaseUrl = '' }) {
               helperText="Auto-generated — cannot be changed"
             />
             <TextField
-              label="Label"
-              value={form.label}
+              label="Company name"
+              value={form.label && form.label !== form.companyCode ? form.label : ''}
               disabled
               fullWidth
-              helperText="Auto-generated — cannot be changed"
+              helperText="Resolved from Salesforce / corporate login — cannot be changed"
             />
             <TextField
               label="Maximum enrollment"

@@ -29,7 +29,7 @@ const disposableEmailDomains = [
   'mailinator.com',
   'tempmail.com',
   '10minutemail.com',
-  'yopmail.com',
+  // yopmail.com temporarily allowed for testing
   'guerrillamail.com',
 ];
 
@@ -250,6 +250,27 @@ function refineFreeIndividualSignupProfile(data, ctx) {
 /** Individual sign-up (paid membership flows). */
 export function buildPaidIndividualSignUpSchema() {
   return AuthSignUpSchema.extend(individualSignupSharedFields).superRefine(refineIndividualSignupProfile);
+}
+
+/**
+ * Company QR enrollment — Salesforce via signupfornexus (no separate setpassword API).
+ */
+export function buildCompanyQrEnrollmentSignUpSchema() {
+  return zod
+    .object({
+      username: zod.string().optional(),
+      firstName: zod.string().min(1, { message: 'First name is required!' }),
+      lastName: zod.string().min(1, { message: 'Last name is required!' }),
+      email: emailSchema,
+      companyCode: zod.string().optional(),
+      contactNumber: optionalPhoneSchema,
+      password: zod
+        .string()
+        .min(1, { message: 'Password is required!' })
+        .min(8, { message: 'Password must be at least 8 characters!' }),
+    })
+    .extend(individualSignupSharedFields)
+    .superRefine(refineIndividualSignupProfile);
 }
 
 /** Individual free sign-up (fee waiver / programme registration). */

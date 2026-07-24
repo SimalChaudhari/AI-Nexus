@@ -747,6 +747,24 @@ export const createSalesforceNexusUser = async (payload) => {
 };
 
 /** **************************************
+ * Company QR / pre-paid enrollment: Salesforce signupfornexus
+ *************************************** */
+export const signupSalesforceForNexus = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/signup-for-nexus', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const rawMessage = normalizedMessage || error?.message || '';
+    const errorMessage =
+      mapNricFinUserErrorMessage(rawMessage)
+      || (typeof error === 'string' ? error : 'Failed to create Salesforce membership account.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
  * Membership flow: check if NRIC already exists in Salesforce eServices
  *************************************** */
 export const checkSalesforceUserByNric = async (nricNumber) => {
