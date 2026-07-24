@@ -40,7 +40,7 @@ export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   jobFunction: '',
   jobFunctionOther: '',
   yearsOfExperience: '',
-  countryOfResidence: 'Singapore',
+  countryOfResidence: '',
   nricFin: '',
   idType: '',
   citizenship: '',

@@ -57,6 +57,7 @@ import {
   mergeSignupEligibilityData,
   resolveIndividualSignupJobFunctionLabel,
 } from 'src/utils/individual-signup-form';
+import { detectCountryOfResidenceFromIp } from 'src/utils/detect-country-from-ip';
 import { MembershipPaymentConfirmedView } from './membership-payment-confirmed-view';
 import { ISCA_PRIVACY_POLICY_URL } from 'src/constants/isca-legal-links';
 
@@ -989,6 +990,42 @@ export function SimpleSignUpView() {
     setValue,
   ]);
 
+  // IP-based default for Country of residence (skip if draft/prefill already set a value).
+  useEffect(() => {
+    if (!isMembershipFeeFlow && !isCompanyQrEnrollmentFlow) return undefined;
+    if (verifiedSignupLoading) return undefined;
+
+    let active = true;
+
+    void (async () => {
+      // Let draft/prefill restore effects run first.
+      await Promise.resolve();
+      if (!active) return;
+
+      if (String(getValues('countryOfResidence') || '').trim()) return;
+
+      const detected = await detectCountryOfResidenceFromIp();
+      if (!active) return;
+
+      if (String(getValues('countryOfResidence') || '').trim()) return;
+
+      setValue('countryOfResidence', detected, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    getValues,
+    isCompanyQrEnrollmentFlow,
+    isMembershipFeeFlow,
+    setValue,
+    verifiedSignupLoading,
+  ]);
+
   useEffect(() => {
     if (!isMembershipFeeFlow || paymentState !== 'canceled') return undefined;
 
@@ -1800,7 +1837,7 @@ export function SimpleSignUpView() {
         {isCompanyQrEnrollmentFlow
           ? 'COMPANY ENROLLMENT'
           : isMembershipFeeFlow
-            ? 'MEMBERSHIP PAYMENT'
+            ? 'PAYMENT'
             : 'COMPANY QR REQUIRED'}
       </Box>
 
@@ -1810,7 +1847,7 @@ export function SimpleSignUpView() {
           : isVerifiedNricSignupFlow
             ? 'Complete your verified membership setup'
             : isPaidMembershipFlow
-              ? 'Complete your membership payment'
+              ? 'Complete your payment'
               : 'Company QR enrollment'}
       </Typography>
 

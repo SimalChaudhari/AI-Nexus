@@ -12,6 +12,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import { getStudentFeeWaiverResumeFlow, setMembershipSignupDraftUserId } from 'src/auth/context/jwt';
 import {
   MembershipSignupDialog,
+  MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP,
   MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED,
 } from 'src/sections/learning/components/membership-signup-dialog';
 import {
@@ -19,12 +20,14 @@ import {
   continueMembershipSignupDialog,
   ensureNoYesYesFlowAfterEservicesFailure,
   isStudentAcademicFeeWaiverResumeFlow,
+  navigateToPaidMembershipSignup,
   persistStudentFeeWaiverResumeFlow,
   readResumedMembershipEligibilityFlow,
   RESUME_MEMBERSHIP_SIGNUP_QUERY,
   shouldOpenResumedMembershipSignupModal,
   stripResumeMembershipSignupFromPath,
 } from 'src/utils/membership-eligibility-sso';
+import { paths } from 'src/routes/paths';
 
 import { ContactSection } from 'src/sections/contact/view/contact-view';
 
@@ -51,6 +54,9 @@ export function HomeView() {
   const footerReady = useHomePageApisReady();
   useMembershipApplicationPaymentReturn();
   const [membershipSignupOpen, setMembershipSignupOpen] = useState(false);
+  const [membershipEntrySource, setMembershipEntrySource] = useState(
+    MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED
+  );
   const [membershipResumeFlow, setMembershipResumeFlow] = useState(null);
   const [membershipResumeOutcome, setMembershipResumeOutcome] = useState('');
   const studentResumeTokenLoadingRef = useRef('');
@@ -160,8 +166,15 @@ export function HomeView() {
     }
   }, [authenticated, location.search, location.pathname, navigate]);
 
-  const handleOpenMembershipSignup = useCallback(() => {
+  const handleOpenMembershipSignup = useCallback((entrySource) => {
     clearMembershipEligibilityDraftOnModalClose();
+    setMembershipResumeFlow(null);
+    setMembershipResumeOutcome('');
+    setMembershipEntrySource(
+      entrySource === MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP
+        ? MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP
+        : MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED
+    );
     setMembershipSignupOpen(true);
   }, []);
 
@@ -169,6 +182,7 @@ export function HomeView() {
     clearMembershipEligibilityDraftOnModalClose();
     setMembershipResumeFlow(null);
     setMembershipResumeOutcome('');
+    setMembershipEntrySource(MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED);
     setMembershipSignupOpen(false);
   }, []);
 
@@ -221,11 +235,15 @@ export function HomeView() {
       {footerReady ? <HomeFooter sx={{ mt: 0 }} /> : null}
 
       <MembershipSignupDialog
-        entrySource={MEMBERSHIP_SIGNUP_ENTRY_HOME_GET_STARTED}
+        entrySource={membershipEntrySource}
         open={membershipSignupOpen}
         resumeFlowOverride={membershipResumeFlow}
         resumeMembershipOutcome={membershipResumeOutcome}
         onClose={handleCloseMembershipSignup}
+        onDeclineFeeWaiver={() => {
+          handleCloseMembershipSignup();
+          navigateToPaidMembershipSignup(navigate, returnPath || paths.home);
+        }}
         onContinue={(payload) => {
           setMembershipSignupOpen(false);
           continueMembershipSignupDialog({
