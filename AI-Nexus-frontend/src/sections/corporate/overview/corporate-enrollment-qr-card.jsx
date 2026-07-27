@@ -59,6 +59,7 @@ function useQrDataUrl(link) {
  * Corporate dashboard — view-only QR (no expiry / no edit). Admin manages limits elsewhere.
  */
 export function CorporateEnrollmentQrCard({ invite, companyCode }) {
+  // Prefer invite.companyCode (canonical DB key) so QR validates against enrollment invites.
   const code = String(invite?.companyCode || companyCode || '').trim();
   const link = buildSignupLink(code);
   const { dataUrl, loading: qrLoading } = useQrDataUrl(link);
@@ -70,7 +71,8 @@ export function CorporateEnrollmentQrCard({ invite, companyCode }) {
         ? invite.remainingSeats
         : Math.max(0, Number(invite.maxEnrollment) - Number(invite.enrolledCount || 0));
 
-  if (!code) return null;
+  // Do not render a QR without a persisted invite — raw companyCode alone can fail validate.
+  if (!invite?.companyCode || !code) return null;
 
   return (
     <CorpCard>

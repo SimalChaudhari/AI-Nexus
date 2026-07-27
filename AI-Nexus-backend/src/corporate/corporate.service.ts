@@ -1306,7 +1306,12 @@ export class CorporateService {
 
     let enrollmentInvite = null;
     try {
-      const accountName = await this.oauthAuthService.resolveCorporateCompanyDisplayName(companyCode);
+      let accountName = '';
+      try {
+        accountName = await this.oauthAuthService.resolveCorporateCompanyDisplayName(companyCode);
+      } catch (nameErr) {
+        console.warn('[CorporateOverview] Could not resolve company display name:', nameErr);
+      }
       enrollmentInvite = await this.companyEnrollmentService.ensureInviteForCompanyCode({
         companyCode,
         label: accountName || companyCode,

@@ -2100,7 +2100,7 @@ export function SimpleSignUpView() {
               Company verified: <strong>{companyVerifiedName}</strong>
             </Alert>
           ) : null}
-          {companyReferenceVerified === false ? (
+          {companyReferenceVerified === false && !isCompanyQrEnrollmentFlow ? (
             <Alert severity="warning">
               Invalid company reference. This field is optional — you may continue without it or try again.
             </Alert>

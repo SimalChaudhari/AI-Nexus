@@ -35,7 +35,28 @@ export class CompanyEnrollmentService {
   normalizeCode(value?: string | null): string {
     return String(value || '')
       .trim()
-      .toUpperCase();
+      .replace(/\s+/g, ' ')
+      .toUpperCase()
+      .slice(0, 64);
+  }
+
+  /**
+   * Legacy invites once stripped spaces/special chars on create.
+   * Only used as a lookup fallback — never rewrite the caller's code.
+   */
+  private toLegacySafeCode(companyCode: string): string {
+    return companyCode.replace(/[^A-Z0-9_-]/g, '').slice(0, 64);
+  }
+
+  /**
+   * Any non-empty company code is allowed (numeric, alphanumeric, names with spaces, etc.).
+   * Examples: 123456 | ANFBUILDINGSERVICESPTELTD | ANF Building Services Pte Ltd | 001fV00000AdqLyQAJ
+   */
+  private isAllowedCompanyCode(companyCode: string): boolean {
+    const code = String(companyCode || '').trim();
+    if (!code || code.length > 64) return false;
+    // Reject control characters only — everything else is a valid corporate/Salesforce code.
+    return !/[\u0000-\u001F\u007F]/.test(code);
   }
 
   buildSignupPath(companyCode: string): string {
@@ -245,22 +266,35 @@ export class CompanyEnrollmentService {
   async findByCompanyCode(companyCode?: string | null) {
     const code = this.normalizeCode(companyCode);
     if (!code) return null;
+
+    const exact = await this.inviteRepo
+      .createQueryBuilder('i')
+      .where('UPPER(TRIM(i.companyCode)) = :code', { code })
+      .getOne();
+    if (exact) return exact;
+
+    // Legacy rows stored after stripping spaces (e.g. "ANF BUILDING..." → "ANFBUILDING...").
+    const legacySafe = this.toLegacySafeCode(code);
+    if (!legacySafe || legacySafe === code || legacySafe.length < 2) {
+      return null;
+    }
     return this.inviteRepo
       .createQueryBuilder('i')
-      .where('UPPER(i.companyCode) = :code', { code })
+      .where('UPPER(TRIM(i.companyCode)) = :code', { code: legacySafe })
       .getOne();
   }
 
   /**
    * Ensure a QR enrollment invite exists for a corporate companyCode.
    * Creates with unlimited seats and no QR expiry when missing.
+   * Stores the company code exactly as provided (after trim/upper) — no format rewrite.
    */
   async ensureInviteForCompanyCode(input: {
     companyCode?: string | null;
     label?: string | null;
   }): Promise<CompanyEnrollmentStats | null> {
     const companyCode = this.normalizeCode(input.companyCode);
-    if (!companyCode) return null;
+    if (!companyCode || !this.isAllowedCompanyCode(companyCode)) return null;
 
     let nextLabel = String(input.label || '').trim();
     if (!nextLabel || nextLabel.toUpperCase() === companyCode) {
@@ -283,18 +317,10 @@ export class CompanyEnrollmentService {
       return this.serialize(existing);
     }
 
-    // Soft-normalize codes that don't match strict pattern (Salesforce ids can be alphanumeric).
-    const safeCode = /^[A-Z0-9_-]{2,64}$/.test(companyCode)
-      ? companyCode
-      : companyCode.replace(/[^A-Z0-9_-]/g, '').slice(0, 64);
-    if (!safeCode || safeCode.length < 2) {
-      return null;
-    }
-
     const saved = await this.inviteRepo.save(
       this.inviteRepo.create({
-        companyCode: safeCode,
-        label: nextLabel || safeCode,
+        companyCode,
+        label: nextLabel || companyCode,
         isActive: true,
         maxEnrollment: 0,
         enrolledCount: 0,
@@ -315,9 +341,9 @@ export class CompanyEnrollmentService {
     if (!companyCode) {
       throw new BadRequestException('Company code is required.');
     }
-    if (!/^[A-Z0-9_-]{2,64}$/.test(companyCode)) {
+    if (!this.isAllowedCompanyCode(companyCode)) {
       throw new BadRequestException(
-        'Company code may only contain letters, numbers, underscore or hyphen (2–64 chars).',
+        'Company code must be 1–64 characters (any letters, numbers, or symbols).',
       );
     }
 
@@ -364,14 +390,14 @@ export class CompanyEnrollmentService {
       if (!nextCode) {
         throw new BadRequestException('Company code is required.');
       }
-      if (!/^[A-Z0-9_-]{2,64}$/.test(nextCode)) {
+      if (!this.isAllowedCompanyCode(nextCode)) {
         throw new BadRequestException(
-          'Company code may only contain letters, numbers, underscore or hyphen (2–64 chars).',
+          'Company code must be 1–64 characters (any letters, numbers, or symbols).',
         );
       }
       const conflict = await this.inviteRepo
         .createQueryBuilder('i')
-        .where('UPPER(i.companyCode) = :code', { code: nextCode })
+        .where('UPPER(TRIM(i.companyCode)) = :code', { code: nextCode })
         .andWhere('i.id != :id', { id })
         .getOne();
       if (conflict) {
@@ -476,11 +502,22 @@ export class CompanyEnrollmentService {
     if (!companyCode) return null;
 
     return this.dataSource.transaction(async (manager) => {
-      const invite = await manager
+      let invite = await manager
         .createQueryBuilder(CompanyEnrollmentInviteEntity, 'i')
         .setLock('pessimistic_write')
-        .where('UPPER(i.companyCode) = :code', { code: companyCode })
+        .where('UPPER(TRIM(i.companyCode)) = :code', { code: companyCode })
         .getOne();
+
+      if (!invite) {
+        const legacySafe = this.toLegacySafeCode(companyCode);
+        if (legacySafe && legacySafe !== companyCode && legacySafe.length >= 2) {
+          invite = await manager
+            .createQueryBuilder(CompanyEnrollmentInviteEntity, 'i')
+            .setLock('pessimistic_write')
+            .where('UPPER(TRIM(i.companyCode)) = :code', { code: legacySafe })
+            .getOne();
+        }
+      }
 
       if (!invite) {
         return null;
