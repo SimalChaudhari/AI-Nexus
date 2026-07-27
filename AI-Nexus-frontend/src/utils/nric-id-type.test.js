@@ -35,8 +35,6 @@ test('buildSalesforceSignupForNexusPayloadFromSignup includes companyCode for QR
     firstName: 'John',
     lastName: 'Doe Test new 123',
     email: 'john.doenew1235@testemail.com',
-    nameAsPerId: 'John Doe Test new 123',
-    password: 'SecretPass1',
     company: 'Acme Corporation',
     jobFunction: 'Software Engineer',
     countryOfResidence: 'Singapore',
@@ -47,7 +45,8 @@ test('buildSalesforceSignupForNexusPayloadFromSignup includes companyCode for QR
   assert.equal(payload.companyCode, 'ACME001');
   assert.equal(payload.company, 'Acme Corporation');
   assert.equal(payload.jobFunction, 'Software Engineer');
-  assert.equal(payload.password, 'SecretPass1');
+  assert.equal(payload.password, undefined);
+  assert.equal(payload.name_as_per_id, undefined);
   assert.equal(payload.noOfYearOfRelevantWorkExperience, 5.5);
   assert.equal(payload.id_type, undefined);
   assert.equal(payload.Is_paid, undefined);

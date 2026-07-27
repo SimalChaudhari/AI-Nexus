@@ -1560,14 +1560,14 @@ export class OAuthAuthService {
   /**
    * Create a Salesforce user via Apex REST signupfornexus
    * (company QR / corporate pre-paid enrollment — no payment proof).
+   * Password is set afterwards via setpasswordfornexus (same as paid membership).
+   * Body matches Postman contract exactly (all 9 fields always present).
    */
   async signupSalesforceForNexus(payload: {
     salutation: string;
     first_name: string;
     last_name: string;
-    name_as_per_id: string;
     email: string;
-    password: string;
     company?: string;
     jobFunction?: string;
     countryOfResidence?: string;
@@ -1579,41 +1579,20 @@ export class OAuthAuthService {
       throw new BadRequestException('A valid email address is required.');
     }
 
-    const password = String(payload.password || '');
-    if (!password || password.length < 8) {
-      throw new BadRequestException('Password is required and must be at least 8 characters long');
-    }
-
     const accessToken = await this.getIntegrationAccessToken();
     const url = this.signupForNexusUrl;
+
+    // Exact Postman shape — always send these keys (even if empty string).
     const body: Record<string, string | number> = {
-      salutation: payload.salutation.trim(),
-      first_name: payload.first_name.trim(),
-      last_name: payload.last_name.trim(),
-      name_as_per_id: payload.name_as_per_id.trim(),
+      salutation: String(payload.salutation || 'Mr').trim(),
+      first_name: String(payload.first_name || '').trim(),
+      last_name: String(payload.last_name || '').trim(),
       email,
-      password,
+      company: String(payload.company || '').trim(),
+      jobFunction: String(payload.jobFunction || '').trim(),
+      countryOfResidence: String(payload.countryOfResidence || '').trim(),
+      companyCode: String(payload.companyCode || '').trim(),
     };
-
-    const company = payload.company?.trim();
-    if (company) {
-      body.company = company;
-    }
-
-    const jobFunction = payload.jobFunction?.trim();
-    if (jobFunction) {
-      body.jobFunction = jobFunction;
-    }
-
-    const countryOfResidence = payload.countryOfResidence?.trim();
-    if (countryOfResidence) {
-      body.countryOfResidence = countryOfResidence;
-    }
-
-    const companyCode = payload.companyCode?.trim();
-    if (companyCode) {
-      body.companyCode = companyCode;
-    }
 
     const yearsOfExperienceRaw = payload.noOfYearOfRelevantWorkExperience;
     if (yearsOfExperienceRaw !== undefined && yearsOfExperienceRaw !== null && String(yearsOfExperienceRaw).trim() !== '') {
@@ -1622,16 +1601,12 @@ export class OAuthAuthService {
         : Number(yearsOfExperienceRaw);
       if (!Number.isNaN(normalizedYears)) {
         body.noOfYearOfRelevantWorkExperience = normalizedYears;
-      } else {
-        body.noOfYearOfRelevantWorkExperience = String(yearsOfExperienceRaw).trim();
       }
     }
 
     console.log('[Salesforce] Creating Nexus user via signupfornexus:', {
       url,
-      email: body.email,
-      companyCode: body.companyCode ?? null,
-      hasPassword: Boolean(password),
+      body,
     });
 
     try {
@@ -1669,6 +1644,7 @@ export class OAuthAuthService {
         console.error('[Salesforce] signupfornexus failed:', {
           status: err.response?.status,
           data: err.response?.data,
+          requestBody: body,
           message: err.message,
         });
         const rawDescription = this.extractSalesforceErrorDescription(
@@ -3240,6 +3216,12 @@ export class OAuthAuthService {
     }
 
     const lower = text.toLowerCase();
+    if (
+      lower.includes('aura') && lower.includes('visualforce')
+      || lower.includes('can only throw this exception type')
+    ) {
+      return 'Salesforce could not create the account (Apex REST error). Please try a different email, or contact support if this continues.';
+    }
     if (
       lower.includes('membership_number')
       || (lower.includes('duplicate') && lower.includes('membership'))

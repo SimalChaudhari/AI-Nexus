@@ -275,14 +275,13 @@ export function buildSalesforceNexusUserPayloadFromSignup({
 
 /**
  * Payload for POST /services/apexrest/signupfornexus (company QR / pre-paid enrollment).
+ * Exact Postman contract — all 9 fields always present; password via setpasswordfornexus after.
  */
 export function buildSalesforceSignupForNexusPayloadFromSignup({
   salutation = 'Mr',
   firstName = '',
   lastName = '',
   email = '',
-  nameAsPerId = '',
-  password = '',
   company = '',
   jobFunction = '',
   countryOfResidence = '',
@@ -293,30 +292,12 @@ export function buildSalesforceSignupForNexusPayloadFromSignup({
     salutation: String(salutation || 'Mr').trim(),
     first_name: String(firstName || '').trim(),
     last_name: String(lastName || '').trim(),
-    name_as_per_id: String(nameAsPerId || `${firstName} ${lastName}`).trim(),
     email: String(email || '').trim(),
-    password: String(password || ''),
+    company: String(company || '').trim(),
+    jobFunction: String(jobFunction || '').trim(),
+    countryOfResidence: String(countryOfResidence || '').trim(),
+    companyCode: String(companyCode || '').trim(),
   };
-
-  const resolvedCompany = String(company || '').trim();
-  if (resolvedCompany) {
-    payload.company = resolvedCompany;
-  }
-
-  const resolvedJobFunction = String(jobFunction || '').trim();
-  if (resolvedJobFunction) {
-    payload.jobFunction = resolvedJobFunction;
-  }
-
-  const resolvedCountryOfResidence = String(countryOfResidence || '').trim();
-  if (resolvedCountryOfResidence) {
-    payload.countryOfResidence = resolvedCountryOfResidence;
-  }
-
-  const resolvedCompanyCode = String(companyCode || '').trim();
-  if (resolvedCompanyCode) {
-    payload.companyCode = resolvedCompanyCode;
-  }
 
   const resolvedYearsOfExperience = yearsOfExperience === 0 || yearsOfExperience
     ? Number(yearsOfExperience)

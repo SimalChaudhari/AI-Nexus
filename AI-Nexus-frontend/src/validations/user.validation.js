@@ -253,7 +253,7 @@ export function buildPaidIndividualSignUpSchema() {
 }
 
 /**
- * Company QR enrollment — Salesforce via signupfornexus (no separate setpassword API).
+ * Company QR enrollment — signupfornexus then setpasswordfornexus (Salesforce OAuth).
  */
 export function buildCompanyQrEnrollmentSignUpSchema() {
   return zod

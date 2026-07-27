@@ -1464,8 +1464,6 @@ export function SimpleSignUpView() {
           firstName: formValues.firstName,
           lastName: formValues.lastName,
           email: formValues.email,
-          nameAsPerId,
-          password: formValues.password,
           company: formValues.company,
           jobFunction: resolvedJobFunction,
           countryOfResidence: formValues.countryOfResidence,
@@ -1474,7 +1472,6 @@ export function SimpleSignUpView() {
         })
       );
 
-      // Password goes in signupfornexus body — do NOT call setpasswordfornexus separately.
       const username = resolveSalesforceNexusUsernameFromCreateResponse(createResult, formValues.email);
       if (!username) {
         throw new Error(
@@ -1482,7 +1479,16 @@ export function SimpleSignUpView() {
         );
       }
 
-      console.info('[CompanyQrEnrollment] signupfornexus success', {
+      // Same as paid membership: set password via setpasswordfornexus after account create.
+      if (formValues.password) {
+        console.info('[CompanyQrEnrollment] Setting password via setpasswordfornexus', {
+          email: formValues.email,
+          salesforceUsername: username,
+        });
+        await setSalesforceNexusPassword({ username, password: formValues.password });
+      }
+
+      console.info('[CompanyQrEnrollment] signupfornexus + setpassword success', {
         email: formValues.email,
         salesforceUsername: username,
         createResult,
