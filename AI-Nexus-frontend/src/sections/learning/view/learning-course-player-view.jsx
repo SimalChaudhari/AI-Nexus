@@ -251,6 +251,13 @@ function wallElapsedSinceTick(prog) {
   return Math.max(0, Date.now() - prog.lastTickAtMs);
 }
 
+/** Exact playhead seconds — no Math.round (resume must match real player time). */
+function precisePlaybackSeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
 /** Build PUT payload: watchedSeconds always derived from coverage ranges (single source of truth). */
 function buildVideoCoveragePayloadFromRef(rangesRef, lastPosition, durationSeconds, { ended = false } = {}) {
   const dur = roundedVideoDurationSeconds(durationSeconds);
@@ -273,7 +280,7 @@ function buildVideoCoveragePayloadFromRef(rangesRef, lastPosition, durationSecon
     Math.round(s * 100) / 100,
     Math.round(e * 100) / 100,
   ]);
-  const lastPos = Math.max(0, Math.round(Number(lastPosition) || 0));
+  const lastPos = precisePlaybackSeconds(lastPosition);
   return {
     lastPositionSeconds: dur > 0 ? Math.min(dur, lastPos) : lastPos,
     durationSeconds: dur,
@@ -290,24 +297,24 @@ function isAppleMobileDevice() {
   return navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints) > 1;
 }
 
-/** Bookmark for resume — prefer live player time over stale snapshot / coverage end. */
+/** Bookmark for resume — prefer live player time over stale snapshot. Never use coverage end (seek-back safe). */
 function resolveBookmarkLastPositionSeconds(
   currentTimes,
   progLastTimes,
   priorBookmark = 0,
-  coverageRanges = []
+  _coverageRanges = []
 ) {
   const liveCurrent = Math.max(
     0,
     ...(currentTimes || []).map((n) => Number(n)).filter((n) => Number.isFinite(n) && n >= 0)
   );
-  if (liveCurrent > 0) return Math.round(liveCurrent);
+  if (liveCurrent > 0) return precisePlaybackSeconds(liveCurrent);
   const fromProg = Math.max(
     0,
     ...(progLastTimes || []).map((n) => Number(n)).filter((n) => Number.isFinite(n) && n >= 0)
   );
-  if (fromProg > 0) return Math.round(fromProg);
-  return Math.max(Number(priorBookmark || 0), maxCoverageEndPlayer(coverageRanges || []));
+  if (fromProg > 0) return precisePlaybackSeconds(fromProg);
+  return precisePlaybackSeconds(priorBookmark);
 }
 
 /** Best live playhead from mounted players + in-memory prog refs (tab return / background play). */
@@ -350,15 +357,15 @@ function readLivePlayerPositionSeconds(
 
 /** Never rewind the playhead when the player is already ahead of a stale saved bookmark. */
 function resolveResumeSecondsAgainstLive(bookmarkSeconds, liveSeconds) {
-  const bookmark = Math.max(0, Number(bookmarkSeconds) || 0);
-  const live = Math.max(0, Number(liveSeconds) || 0);
+  const bookmark = precisePlaybackSeconds(bookmarkSeconds);
+  const live = precisePlaybackSeconds(liveSeconds);
   if (bookmark <= 0) {
     return { seconds: 0, applied: live <= 0.5 };
   }
   if (live > bookmark + 0.5) {
-    return { seconds: Math.round(live), applied: true };
+    return { seconds: live, applied: true };
   }
-  return { seconds: Math.round(bookmark), applied: false };
+  return { seconds: bookmark, applied: false };
 }
 
 /** Furthest timeline position the learner may seek to (watched coverage + resume point). */
@@ -379,12 +386,6 @@ function computeMaxAllowedTimeline(coverageRangesRef, prog, sectionProgress, dur
 function mergeServerProgressIntoMap(prev, data) {
   if (!data || typeof data !== 'object') return prev || {};
   const next = { ...(prev || {}) };
-  const allowResumeRewind = Boolean(
-    next.isCompleted ||
-      data.isCompleted ||
-      next.isWatched ||
-      data.isWatched
-  );
   const monotonicKeys = ['watchedSeconds', 'durationSeconds', 'completionPercent'];
   monotonicKeys.forEach((k) => {
     if (data[k] === undefined || data[k] === null) return;
@@ -394,12 +395,11 @@ function mergeServerProgressIntoMap(prev, data) {
       next[k] = Math.max(existing, incoming);
     }
   });
+  // lastPosition is a bookmark (may rewind after seek-back) — never Math.max with coverage/max timeline.
   if (data.lastPositionSeconds !== undefined && data.lastPositionSeconds !== null) {
     const incoming = Number(data.lastPositionSeconds);
-    const existing = Number(next.lastPositionSeconds || 0);
-    if (Number.isFinite(incoming)) {
-      next.lastPositionSeconds =
-        allowResumeRewind && incoming > 0 ? incoming : Math.max(existing, incoming);
+    if (Number.isFinite(incoming) && incoming >= 0) {
+      next.lastPositionSeconds = incoming;
     }
   }
   if (data.isCompleted !== undefined && data.isCompleted !== null) {
@@ -440,10 +440,12 @@ function mergeProgressForSidebar(lesson, liveById) {
   const sp = lesson.sectionProgress || {};
   if (!live) return { ...sp };
   const merged = { ...sp, ...live };
-  merged.lastPositionSeconds = Math.max(
-    Number(sp.lastPositionSeconds || 0),
-    Number(live.lastPositionSeconds || 0)
-  );
+  // Prefer live bookmark (supports seek-back); do not Math.max with stale server outline.
+  if (live.lastPositionSeconds !== undefined && live.lastPositionSeconds !== null) {
+    merged.lastPositionSeconds = Math.max(0, Number(live.lastPositionSeconds) || 0);
+  } else {
+    merged.lastPositionSeconds = Math.max(0, Number(sp.lastPositionSeconds || 0));
+  }
   merged.watchedSeconds = Math.max(
     Number(sp.watchedSeconds || 0),
     Number(live.watchedSeconds || 0)
@@ -661,15 +663,11 @@ function computeResumeSecondsFromProgress(sectionProgressData, snap = null, live
   const snapPos = Math.max(0, Number(snap?.lastPositionSeconds || 0));
   const livePos = Math.max(0, Number(liveProgress?.lastPositionSeconds || 0));
   const serverPos = Math.max(0, Number(sectionProgressData?.lastPositionSeconds || 0));
-  if (snapPos > 2) return snapPos;
+  // Resume from saved bookmark only — never coverage range end (that stays high after seek-back).
   if (livePos > 2) return livePos;
+  if (snapPos > 2) return snapPos;
   if (serverPos > 2) return serverPos;
-  const rangeSources = [
-    ...parseCoverageRangePairs(sectionProgressData?.watchedCoverageRanges),
-    ...parseCoverageRangePairs(snap?.watchedCoverageRanges),
-    ...parseCoverageRangePairs(liveProgress?.watchedCoverageRanges),
-  ];
-  return maxCoverageEndPlayer(rangeSources);
+  return 0;
 }
 
 function resolveLessonBookmarkSeconds(
@@ -1396,7 +1394,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     const payload = {
       ...buildVideoCoveragePayloadFromRef(
         videoCoverageRangesRef,
-        Math.max(0, Math.round(Number(lastPosition) || 0)),
+        precisePlaybackSeconds(lastPosition),
         durationSeconds,
         { ended: forceSync }
       ),
@@ -1441,7 +1439,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
     const payload = buildVideoCoveragePayloadFromRef(
       videoCoverageRangesRef,
-      Math.max(0, Math.round(Number(lastPosition) || 0)),
+      precisePlaybackSeconds(lastPosition),
       durationSeconds,
       { ended: true }
     );
@@ -1707,7 +1705,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         parseCoverageRangePairs(videoCoverageRangesRef.current)
       ).map(([s, e]) => [Math.round(s * 100) / 100, Math.round(e * 100) / 100]);
       const payload = {
-        lastPositionSeconds: Math.round(lastPosition),
+        lastPositionSeconds: precisePlaybackSeconds(lastPosition),
         durationSeconds: durRounded,
         watchedSeconds,
         watchedCoverageRanges,
@@ -1971,7 +1969,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
           if (livePos > 2) {
             resumeSeekAppliedRef.current = {
               sectionId,
-              seconds: Math.round(livePos),
+              seconds: precisePlaybackSeconds(livePos),
               applied: true,
             };
           }
@@ -3017,21 +3015,22 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (!spotlightrDirectSrc || !activeLessonId || activeLessonGateBlocked) return undefined;
     const snap = sectionPlayerSnapshotRef.current[activeLessonId] || null;
     const live = liveSectionProgressMapRef.current?.[activeLessonId] || null;
-    const resumeSeconds = Math.max(
-      Number(
-        resumeSeekAppliedRef.current.sectionId === activeLessonId
-          ? resumeSeekAppliedRef.current.seconds || 0
-          : 0
-      ),
-      resolveLessonBookmarkSeconds(
-        activeLessonId,
-        flatLessonsRef.current,
-        liveSectionProgressMapRef.current,
-        sectionProgressDataRef.current,
-        snap,
-        live
-      )
+    const bookmarkSeconds = resolveLessonBookmarkSeconds(
+      activeLessonId,
+      flatLessonsRef.current,
+      liveSectionProgressMapRef.current,
+      sectionProgressDataRef.current,
+      snap,
+      live
     );
+    const metaSeconds =
+      resumeSeekAppliedRef.current.sectionId === activeLessonId &&
+      resumeSeekAppliedRef.current.applied
+        ? Number(resumeSeekAppliedRef.current.seconds || 0)
+        : 0;
+    // Prefer saved bookmark on mount; only keep meta if user already scrubbed (applied).
+    const resumeSeconds =
+      metaSeconds > 2 ? metaSeconds : Math.max(0, Number(bookmarkSeconds) || 0);
 
     const mountKey = `${activeLessonId}|${spotlightrDirectSrc}`;
     if (nativeResumeMountKeyRef.current === mountKey) {
@@ -3040,7 +3039,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
 
     resumeSeekAppliedRef.current = {
       sectionId: activeLessonId,
-      seconds: resumeSeconds > 2 ? Math.round(resumeSeconds) : 0,
+      seconds: resumeSeconds > 2 ? precisePlaybackSeconds(resumeSeconds) : 0,
       applied: !(resumeSeconds > 2),
     };
 
@@ -3058,7 +3057,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
       const meta = resumeSeekAppliedRef.current;
       if (meta.sectionId !== activeLessonId) return;
       meta.applied = true;
-      meta.seconds = Math.round(Number(pos) || resumeSeconds);
+      meta.seconds = precisePlaybackSeconds(Number(pos) || resumeSeconds);
       nativeResumeMountKeyRef.current = mountKey;
       if (confirmId) {
         window.clearInterval(confirmId);
@@ -3083,7 +3082,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         const pos = Number(el.currentTime || 0);
         if (Math.abs(pos - resumeAt) <= 1.5) {
           finishResume(pos);
-          nativeVideoProgressRef.current.lastTime = Math.round(pos);
+          nativeVideoProgressRef.current.lastTime = precisePlaybackSeconds(pos);
           return;
         }
         el.currentTime = resumeAt;
@@ -3170,7 +3169,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (prev.sectionId !== activeLessonId) {
       resumeSeekAppliedRef.current = {
         sectionId: activeLessonId,
-        seconds: resumeSeconds > 2 ? Math.round(resumeSeconds) : 0,
+        seconds: resumeSeconds > 2 ? precisePlaybackSeconds(resumeSeconds) : 0,
         applied: false,
       };
       return;
@@ -3178,9 +3177,10 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     // Once resume is done (or user scrubbed), never reopen forcing from progress echoes.
     if (prev.applied) return;
     if (resumeSeconds > 2) {
+      // Authoritative bookmark may be lower after seek-back — do not only Math.max upward.
       resumeSeekAppliedRef.current = {
         sectionId: activeLessonId,
-        seconds: Math.max(Number(prev.seconds || 0), Math.round(resumeSeconds)),
+        seconds: precisePlaybackSeconds(resumeSeconds),
         applied: false,
       };
     }
@@ -3206,11 +3206,12 @@ export function LearningCoursePlayerView({ course, loading, error }) {
     if (resumeMeta.sectionId !== activeLessonId) {
       resumeSeekAppliedRef.current = {
         sectionId: activeLessonId,
-        seconds: Math.round(resumeSeconds),
+        seconds: precisePlaybackSeconds(resumeSeconds),
         applied: false,
       };
     } else {
-      resumeMeta.seconds = Math.max(Number(resumeMeta.seconds || 0), Math.round(resumeSeconds));
+      // Authoritative bookmark may rewind after seek-back.
+      resumeMeta.seconds = precisePlaybackSeconds(resumeSeconds);
     }
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
 
@@ -3247,7 +3248,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
         ytPlayer.seekTo(resumeSeconds, true);
         youtubeProgressRef.current.lastTime = resumeSeconds;
         resumeSeekAppliedRef.current.applied = true;
-        resumeSeekAppliedRef.current.seconds = Math.round(resumeSeconds);
+        resumeSeekAppliedRef.current.seconds = precisePlaybackSeconds(resumeSeconds);
         return;
       } catch {
         // ignore seek errors
@@ -6371,7 +6372,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                   }
                 } else if (resumeSeconds > 2) {
                   resumeMeta.sectionId = activeLessonId;
-                  resumeMeta.seconds = Math.round(realPos || resumeSeconds);
+                  resumeMeta.seconds = precisePlaybackSeconds(realPos || resumeSeconds);
                   resumeMeta.applied = true;
                 }
                 if (autoPlayNextRef.current && !activeLessonGateBlocked) {
@@ -6478,7 +6479,7 @@ export function LearningCoursePlayerView({ course, loading, error }) {
                 if (activeLessonId) {
                   resumeSeekAppliedRef.current = {
                     sectionId: activeLessonId,
-                    seconds: Math.round(t),
+                    seconds: precisePlaybackSeconds(t),
                     applied: true,
                   };
                   nativeResumeMountKeyRef.current = `${activeLessonId}|${spotlightrDirectSrc || v.currentSrc || 'native'}`;
