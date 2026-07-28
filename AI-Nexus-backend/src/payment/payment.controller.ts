@@ -89,13 +89,18 @@ export class PaymentController {
     return trimmed.length > keep ? `${trimmed.slice(0, keep)}...` : trimmed;
   }
 
-  private async resolveMembershipPricing(source?: string, options?: { promo?: boolean }) {
+  private async resolveMembershipPricing(
+    source?: string,
+    options?: { promo?: boolean; applyGst?: boolean },
+  ) {
     const membershipSource =
       source === 'membership-verified-signup'
         ? 'membership-verified-signup'
         : 'membership-paid-signup';
     const isVerified = membershipSource === 'membership-verified-signup';
     const promo = Boolean(options?.promo);
+    // Default to GST on when unspecified (Singapore / unknown).
+    const applyGst = options?.applyGst !== false;
     const settings = await this.appSettingsService.getMembershipPaymentSettings();
     const currency = String(settings?.currency || 'SGD').trim().toUpperCase() || 'SGD';
 
@@ -109,21 +114,28 @@ export class PaymentController {
         totalAmountCents: Math.round(payableAmount * 100),
         currency,
         discountApplied: true,
+        applyGst: false,
         itemName: isVerified
           ? 'ISCA membership (verified rate, promo)'
           : 'ISCA membership (promo)',
       };
     }
 
-    const baseAmount = isVerified
+    const rawBaseAmount = isVerified
       ? Number(settings?.verifiedBaseAmount) || 300
       : Number(settings?.baseAmount) || 365.14;
-    const gstAmount = isVerified
-      ? Number(settings?.verifiedGstAmount) || Number((baseAmount * 0.09).toFixed(2))
-      : Number(settings?.gstAmount) || Number((baseAmount * 0.09).toFixed(2));
-    const totalAmount = isVerified
-      ? Number(settings?.verifiedTotalAmount) || Number((baseAmount + gstAmount).toFixed(2))
-      : Number(settings?.totalAmount) || Number((baseAmount + gstAmount).toFixed(2));
+    // With GST: keep admin amount as-is. Without GST (international): round to whole SGD.
+    const baseAmount = applyGst ? Number(rawBaseAmount.toFixed(2)) : Math.round(rawBaseAmount);
+    const gstAmount = applyGst
+      ? isVerified
+        ? Number(settings?.verifiedGstAmount) || Number((baseAmount * 0.09).toFixed(2))
+        : Number(settings?.gstAmount) || Number((baseAmount * 0.09).toFixed(2))
+      : 0;
+    const totalAmount = applyGst
+      ? isVerified
+        ? Number(settings?.verifiedTotalAmount) || Number((baseAmount + gstAmount).toFixed(2))
+        : Number(settings?.totalAmount) || Number((baseAmount + gstAmount).toFixed(2))
+      : baseAmount;
 
     return {
       membershipSource,
@@ -133,15 +145,28 @@ export class PaymentController {
       totalAmountCents: Math.round(totalAmount * 100),
       currency,
       discountApplied: false,
-      itemName: isVerified ? 'ISCA membership (verified rate)' : 'ISCA membership',
+      applyGst,
+      itemName: isVerified
+        ? applyGst
+          ? 'ISCA membership (verified rate)'
+          : 'ISCA membership (verified rate, excl. GST)'
+        : applyGst
+          ? 'ISCA membership'
+          : 'ISCA membership (excl. GST)',
     };
   }
 
   /** Parse promo/sale linkage markers stored alongside the membership purpose in courseIds. */
-  private parseMembershipRefMarkers(courseIds: string[]): { isPromo: boolean; saleId: string | null } {
+  private parseMembershipRefMarkers(courseIds: string[]): {
+    isPromo: boolean;
+    applyGst: boolean;
+    saleId: string | null;
+  } {
     const saleEntry = courseIds.find((entry) => entry.startsWith('sale:'));
     return {
       isPromo: courseIds.includes('promo'),
+      // Checkout without GST is marked as `no-gst` (international / non-SG IP).
+      applyGst: !courseIds.includes('no-gst'),
       saleId: saleEntry ? saleEntry.slice('sale:'.length) : null,
     };
   }
@@ -241,8 +266,11 @@ export class PaymentController {
     },
   ): Promise<string | null> {
     const membershipPurpose = ref.courseIds[0] || '';
-    const { isPromo } = this.parseMembershipRefMarkers(ref.courseIds);
-    const pricing = await this.resolveMembershipPricing(membershipPurpose, { promo: isPromo });
+    const { isPromo, applyGst } = this.parseMembershipRefMarkers(ref.courseIds);
+    const pricing = await this.resolveMembershipPricing(membershipPurpose, {
+      promo: isPromo,
+      applyGst,
+    });
     const sessionClientRef = String(session?.client_reference_id || '').trim();
 
     if (!sessionClientRef) {
@@ -502,6 +530,9 @@ export class PaymentController {
         code: { type: 'string', nullable: true },
         affiliateCode: { type: 'string', nullable: true },
         voucherCode: { type: 'string', nullable: true },
+        /** ISO country code from client IP detect (e.g. SG). Non-SG skips GST. */
+        billingCountryCode: { type: 'string', nullable: true },
+        applyGst: { type: 'boolean', nullable: true },
       },
     },
   })
@@ -517,6 +548,8 @@ export class PaymentController {
       code?: string;
       affiliateCode?: string;
       voucherCode?: string;
+      billingCountryCode?: string;
+      applyGst?: boolean;
     },
     @Res() res: Response,
   ) {
@@ -527,6 +560,7 @@ export class PaymentController {
     const codeInput = String(body?.code || '').trim();
     const affiliateCodeInput = String(body?.affiliateCode || '').trim();
     const voucherCodeInput = String(body?.voucherCode || '').trim();
+    const billingCountryCode = String(body?.billingCountryCode || '').trim().toUpperCase();
 
     if (!draftUserId) {
       return res.status(HttpStatus.BAD_REQUEST).json({ message: 'draftUserId is required' });
@@ -590,7 +624,15 @@ export class PaymentController {
       }
     }
 
-    const pricing = await this.resolveMembershipPricing(body?.source, { promo: promoApplied });
+    // GST only for Singapore. Non-SG billingCountryCode (from client IP) skips GST.
+    const applyGst = billingCountryCode
+      ? billingCountryCode === 'SG'
+      : body?.applyGst !== false;
+
+    const pricing = await this.resolveMembershipPricing(body?.source, {
+      promo: promoApplied,
+      applyGst,
+    });
     const { membershipSource, totalAmount, totalAmountCents, itemName } = pricing;
 
     console.info(
@@ -604,6 +646,10 @@ export class PaymentController {
       currency,
       'promo=',
       promoApplied,
+      'applyGst=',
+      applyGst,
+      'billingCountry=',
+      billingCountryCode || '(none)',
     );
 
     const customerName = [user.firstname, user.lastname].filter(Boolean).join(' ') || undefined;
@@ -611,6 +657,7 @@ export class PaymentController {
     const courseIds = [
       membershipSource,
       ...(promoApplied ? ['promo'] : []),
+      ...(!applyGst && !promoApplied ? ['no-gst'] : []),
       ...(saleId ? [`sale:${saleId}`] : []),
     ];
 
@@ -644,7 +691,9 @@ export class PaymentController {
               unit_amount: totalAmountCents,
               product_data: {
                 name: itemName,
-                description: 'Membership signup payment',
+                description: applyGst
+                  ? 'Membership signup payment'
+                  : 'Membership signup payment (GST not applicable outside Singapore)',
               },
             },
             quantity: 1,

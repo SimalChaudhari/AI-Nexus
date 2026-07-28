@@ -57,7 +57,11 @@ import {
   mergeSignupEligibilityData,
   resolveIndividualSignupJobFunctionLabel,
 } from 'src/utils/individual-signup-form';
-import { detectCountryOfResidenceFromIp } from 'src/utils/detect-country-from-ip';
+import {
+  detectCountryCodeFromIp,
+  detectCountryOfResidenceFromIp,
+  isSingaporeCountryCode,
+} from 'src/utils/detect-country-from-ip';
 import { MembershipPaymentConfirmedView } from './membership-payment-confirmed-view';
 import { ISCA_PRIVACY_POLICY_URL } from 'src/constants/isca-legal-links';
 
@@ -245,6 +249,8 @@ export function SimpleSignUpView() {
     gstRatePercent: 9,
     voucherDiscountAmount: 100,
   });
+  /** ISO country from IP; GST applies only when SG (or detection pending/fallback). */
+  const [billingCountryCode, setBillingCountryCode] = useState('SG');
   const affiliateTrackedRef = useRef('');
   const appliedPromoInputRef = useRef('');
   const freeSignupPrefillRestoredRef = useRef(false);
@@ -300,12 +306,19 @@ export function SimpleSignUpView() {
     if (!normalized) return '(none)';
     return normalized.length > keep ? `${normalized.slice(0, keep)}...` : normalized;
   };
-  const membershipBaseAmount = isVerifiedNricSignupFlow
-    ? membershipFeeConfig.verifiedBaseAmount
-    : membershipFeeConfig.baseAmount;
-  const gstRate = (membershipFeeConfig.gstRatePercent || 0) / 100;
-  const standardGstAmount = membershipBaseAmount * gstRate;
-  const standardTotalAmount = membershipBaseAmount + standardGstAmount;
+  const rawMembershipBaseAmount = Number(
+    isVerifiedNricSignupFlow
+      ? membershipFeeConfig.verifiedBaseAmount
+      : membershipFeeConfig.baseAmount
+  ) || 0;
+  const applyGst = isSingaporeCountryCode(billingCountryCode);
+  // GST on (SG): keep admin amount exact. GST off (international): round to whole SGD.
+  const membershipBaseAmount = applyGst
+    ? Number(rawMembershipBaseAmount.toFixed(2))
+    : Math.round(rawMembershipBaseAmount);
+  const gstRate = applyGst ? (membershipFeeConfig.gstRatePercent || 0) / 100 : 0;
+  const standardGstAmount = Number((membershipBaseAmount * gstRate).toFixed(2));
+  const standardTotalAmount = Number((membershipBaseAmount + standardGstAmount).toFixed(2));
   const affiliateDiscountApplied = affiliatePricing?.discountApplied === true;
   const gstAmount = affiliateDiscountApplied ? 0 : standardGstAmount;
   const totalAmount = affiliateDiscountApplied
@@ -334,13 +347,19 @@ export function SimpleSignUpView() {
   const buildPaymentCompleteSignInHref = () => paths.auth.oauth.start;
   const membershipInfoText = affiliateDiscountApplied
     ? `Promo code applied. Discounted rate: ${currencyLabel} ${totalAmount.toFixed(2)} (no separate GST).`
-    : isVerifiedNricSignupFlow
-      ? `Verified document membership rate applied. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`
-      : `Membership paid plan selected. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`;
+    : !applyGst
+      ? `International rate (outside Singapore). Fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} with no GST.`
+      : isVerifiedNricSignupFlow
+        ? `Verified document membership rate applied. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`
+        : `Membership paid plan selected. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`;
   const membershipSource = isVerifiedNricSignupFlow ? 'membership-verified-signup' : 'membership-paid-signup';
   const membershipBadgeLabel = affiliateDiscountApplied
     ? 'Promo applied'
-    : isVerifiedNricSignupFlow ? 'Discount applied' : 'GST included';
+    : !applyGst
+      ? 'No GST'
+      : isVerifiedNricSignupFlow
+        ? 'Discount applied'
+        : 'GST included';
   const isPaymentReturnProcessing = paymentConfirming;
   const membershipDraftRestoredRef = useRef(false);
   const normalizedPaymentRef =
@@ -990,7 +1009,7 @@ export function SimpleSignUpView() {
     setValue,
   ]);
 
-  // IP-based default for Country of residence (skip if draft/prefill already set a value).
+  // IP-based default for Country of residence + GST (skip GST outside Singapore).
   useEffect(() => {
     if (!isMembershipFeeFlow && !isCompanyQrEnrollmentFlow) return undefined;
     if (verifiedSignupLoading) return undefined;
@@ -1001,6 +1020,11 @@ export function SimpleSignUpView() {
       // Let draft/prefill restore effects run first.
       await Promise.resolve();
       if (!active) return;
+
+      const countryCode = await detectCountryCodeFromIp();
+      if (!active) return;
+
+      setBillingCountryCode(countryCode || 'SG');
 
       if (String(getValues('countryOfResidence') || '').trim()) return;
 
@@ -1768,6 +1792,8 @@ export function SimpleSignUpView() {
         cancelUrl: `${baseUrl}${paths.auth.simple.signUp}?${cancelSearch.toString()}`,
         currency: 'sgd',
         code: String(data.promoCode || '').trim().toUpperCase() || undefined,
+        billingCountryCode,
+        applyGst,
       });
 
       if (!checkoutResponse?.url) {
@@ -2225,7 +2251,8 @@ export function SimpleSignUpView() {
       {scaqSsoPrefillNotice && (
         <Alert severity="info" sx={{ borderRadius: 1.5 }}>
           You signed in with Salesforce, but you are not registered as an SCAQ candidate. Your name and email are
-          pre-filled below. Complete paid signup ({currencyLabel} {Number(membershipBaseAmount).toFixed(2)} excluding GST) to continue.
+          pre-filled below. Complete paid signup ({currencyLabel} {Number(totalAmount).toFixed(2)}
+          {applyGst ? ' including GST' : ' (no GST)'}) to continue.
         </Alert>
       )}
       <Box
@@ -2447,10 +2474,16 @@ export function SimpleSignUpView() {
                 <span>Base amount</span>
                 <strong>{currencyLabel} {Number(membershipBaseAmount).toFixed(2)}</strong>
               </Typography>
-              <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>{`GST (${Number(membershipFeeConfig.gstRatePercent) || 9}%)`}</span>
-                <strong>{currencyLabel} {Number(gstAmount).toFixed(2)}</strong>
-              </Typography>
+              {applyGst ? (
+                <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{`GST (${Number(membershipFeeConfig.gstRatePercent) || 9}%)`}</span>
+                  <strong>{currencyLabel} {Number(gstAmount).toFixed(2)}</strong>
+                </Typography>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  GST not applicable (detected outside Singapore).
+                </Typography>
+              )}
             </>
           )}
           <Typography variant="subtitle2" sx={{ display: 'flex', justifyContent: 'space-between' }}>

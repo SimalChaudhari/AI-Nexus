@@ -63,31 +63,50 @@ async function fetchCountryCodeFromIp() {
 }
 
 /**
- * Detect visitor country from public IP and return CountrySelect label.
- * Falls back to Singapore when detection fails.
+ * @param {string} code
+ * @returns {boolean}
+ */
+export function isSingaporeCountryCode(code = '') {
+  return String(code || '').trim().toUpperCase() === 'SG';
+}
+
+/**
+ * Detect visitor ISO country code from public IP.
+ * Falls back to SG when detection fails (GST-safe default).
  * @returns {Promise<string>}
  */
-export async function detectCountryOfResidenceFromIp() {
+export async function detectCountryCodeFromIp() {
   try {
-    const cachedCode = sessionStorage.getItem(GEO_COUNTRY_CACHE_KEY);
-    const cachedLabel = resolveCountryLabelFromCode(cachedCode || '');
-    if (cachedLabel) return cachedLabel;
+    const cachedCode = String(sessionStorage.getItem(GEO_COUNTRY_CACHE_KEY) || '')
+      .trim()
+      .toUpperCase();
+    if (cachedCode) return cachedCode;
   } catch {
     // ignore storage errors
   }
 
   const code = await fetchCountryCodeFromIp();
-  const label = resolveCountryLabelFromCode(code);
-  if (label) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (normalized) {
     try {
-      sessionStorage.setItem(GEO_COUNTRY_CACHE_KEY, code);
+      sessionStorage.setItem(GEO_COUNTRY_CACHE_KEY, normalized);
     } catch {
       // ignore storage errors
     }
-    return label;
+    return normalized;
   }
 
-  return GEO_FALLBACK_COUNTRY_LABEL;
+  return 'SG';
+}
+
+/**
+ * Detect visitor country from public IP and return CountrySelect label.
+ * Falls back to Singapore when detection fails.
+ * @returns {Promise<string>}
+ */
+export async function detectCountryOfResidenceFromIp() {
+  const code = await detectCountryCodeFromIp();
+  return resolveCountryLabelFromCode(code) || GEO_FALLBACK_COUNTRY_LABEL;
 }
 
 export { GEO_FALLBACK_COUNTRY_LABEL };
