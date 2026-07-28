@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
@@ -34,6 +39,11 @@ import {
   updateSalesforceNexusUser,
 } from 'src/auth/context/jwt';
 import { assertSalesforceEmailAvailable } from 'src/utils/salesforce-email-check';
+import {
+  clearPendingNexusPasswordSetup,
+  readPendingNexusPasswordSetup,
+  writePendingNexusPasswordSetup,
+} from 'src/utils/pending-nexus-password-session';
 
 // ----------------------------------------------------------------------
 
@@ -309,9 +319,57 @@ export function SalesforceMembershipCreateStep({
   const [error, setError] = useState('');
   const [emailSfChecking, setEmailSfChecking] = useState(false);
   const [emailSfError, setEmailSfError] = useState('');
+  /** True once createuserfornexus has succeeded in this browser session. */
+  const [accountCreatedPendingPassword, setAccountCreatedPendingPassword] = useState(false);
+  const [backConfirmOpen, setBackConfirmOpen] = useState(false);
   const showPassword = useBoolean();
   const showConfirmPassword = useBoolean();
   const shouldCheckSalesforceEmail = isNricVerifiedFlow || isCorporateFlow;
+
+  const applyPendingPasswordSetup = useCallback((pending) => {
+    if (!pending?.username) return;
+    if (pending.registerForm) {
+      setRegisterForm((prev) => ({
+        ...prev,
+        salutation: pending.registerForm.salutation || prev.salutation || 'Mr.',
+        firstName: pending.registerForm.firstName || prev.firstName,
+        lastName: pending.registerForm.lastName || prev.lastName,
+        nameAsPerId: pending.registerForm.nameAsPerId || prev.nameAsPerId,
+        email: pending.registerForm.email || pending.email || prev.email,
+      }));
+    } else if (pending.email) {
+      setRegisterForm((prev) => ({ ...prev, email: pending.email }));
+    }
+    if (pending.designation) {
+      setDesignation(pending.designation);
+    }
+    setPasswordForm({
+      username: pending.username,
+      password: '',
+      confirmPassword: '',
+    });
+    setAccountCreatedPendingPassword(true);
+    setPhase('set-password');
+    setError('');
+  }, []);
+
+  // Resume Step 2 after refresh / remount / accidental navigation away.
+  useEffect(() => {
+    const pending = readPendingNexusPasswordSetup();
+    if (!pending) return;
+    applyPendingPasswordSetup(pending);
+  }, [applyPendingPasswordSetup]);
+
+  // Warn before leaving the tab once the Salesforce account exists without a password.
+  useEffect(() => {
+    if (!accountCreatedPendingPassword || phase !== 'set-password') return undefined;
+    const onBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [accountCreatedPendingPassword, phase]);
 
   useEffect(() => {
     const email = String(defaultEmail || '').trim();
@@ -383,6 +441,17 @@ export function SalesforceMembershipCreateStep({
     setPasswordForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
+  const persistPendingPasswordSetup = (username, formSnapshot, designationValue) => {
+    writePendingNexusPasswordSetup({
+      username: String(username || '').trim(),
+      email: String(formSnapshot?.email || '').trim(),
+      registerForm: formSnapshot,
+      designation: designationValue,
+      source: 'membership-create-step',
+    });
+    setAccountCreatedPendingPassword(true);
+  };
+
   const handleRegisterSubmit = async (event) => {
     event?.preventDefault?.();
     const { salutation, firstName, lastName, nameAsPerId, email } = registerForm;
@@ -394,6 +463,22 @@ export function SalesforceMembershipCreateStep({
       setError('Please enter your designation.');
       return;
     }
+
+    // Account already created in this session — never call create again; resume password setup.
+    const pending = readPendingNexusPasswordSetup();
+    if (accountCreatedPendingPassword || pending) {
+      const username = String(passwordForm.username || pending?.username || email).trim();
+      persistPendingPasswordSetup(
+        username,
+        { salutation, firstName, lastName, nameAsPerId, email },
+        designation
+      );
+      setPasswordForm({ username, password: '', confirmPassword: '' });
+      setPhase('set-password');
+      setError('');
+      return;
+    }
+
     if (shouldCheckSalesforceEmail) {
       const emailCheck = await verifyEmailAvailableInSalesforce(email);
       if (!emailCheck.ok) {
@@ -427,6 +512,11 @@ export function SalesforceMembershipCreateStep({
       });
       const createResult = await createSalesforceNexusUser(salesforcePayload);
       const username = resolveUsernameFromCreateResponse(createResult, email);
+      persistPendingPasswordSetup(
+        username,
+        { salutation, firstName, lastName, nameAsPerId, email },
+        designation
+      );
       setPasswordForm({ username, password: '', confirmPassword: '' });
       setPhase('set-password');
     } catch (err) {
@@ -436,6 +526,23 @@ export function SalesforceMembershipCreateStep({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleBackFromPassword = () => {
+    if (accountCreatedPendingPassword) {
+      setBackConfirmOpen(true);
+      return;
+    }
+    setError('');
+    setPhase('register');
+  };
+
+  const handleConfirmBackToRegister = () => {
+    setBackConfirmOpen(false);
+    setError(
+      'Your eServices account has already been created. Review your details if needed, then continue to set your password. Do not start a new registration for the same email.'
+    );
+    setPhase('register');
   };
 
   const handleSetPasswordSubmit = async (event) => {
@@ -460,6 +567,9 @@ export function SalesforceMembershipCreateStep({
         username: username.trim(),
         password,
       });
+
+      clearPendingNexusPasswordSetup();
+      setAccountCreatedPendingPassword(false);
 
       const eligibility = buildEligibilityPayloadFromFlow(
         flowState,
@@ -703,6 +813,13 @@ export function SalesforceMembershipCreateStep({
             </>
           )}
 
+          {accountCreatedPendingPassword && (
+            <Alert severity="warning" sx={{ mb: 2.5, borderRadius: 2 }}>
+              Your eServices account already exists from this registration attempt. Continue to set
+              your password to finish — do not create a new account with the same email.
+            </Alert>
+          )}
+
           <Grid container spacing={2.5}>
             <Grid item xs={12} sm={4} md={3}>
               <TextField
@@ -899,7 +1016,7 @@ export function SalesforceMembershipCreateStep({
                 boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
               }}
             >
-              Create
+              {accountCreatedPendingPassword ? 'Continue to set password' : 'Create'}
             </LoadingButton>
           </Stack>
         </Paper>
@@ -940,10 +1057,10 @@ export function SalesforceMembershipCreateStep({
               '& .MuiAlert-icon': { color: 'success.main' },
             }}
           >
-            Membership account created successfully. Set your password below, then sign in with
-            Eservices.
+            Membership account created successfully. You must set your password now to finish
+            registration. Do not leave this step — your email is only finalized after the password
+            is set.
           </Alert>
-
           <Grid container spacing={2.5}>
             <Grid item xs={12}>
               <TextField
@@ -1036,10 +1153,7 @@ export function SalesforceMembershipCreateStep({
               color="secondary"
               disabled={submitting}
               startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={20} />}
-              onClick={() => {
-                setError('');
-                setPhase('register');
-              }}
+              onClick={handleBackFromPassword}
               sx={{ textTransform: 'none', fontWeight: 600, borderWidth: 1.5 }}
             >
               Back
@@ -1072,6 +1186,29 @@ export function SalesforceMembershipCreateStep({
             : 'Next you will set your Salesforce login password, then sign in to the platform.'}
         </Typography>
       )}
+
+      <Dialog
+        open={backConfirmOpen}
+        onClose={() => setBackConfirmOpen(false)}
+        aria-labelledby="pending-password-back-title"
+      >
+        <DialogTitle id="pending-password-back-title">Finish setting your password</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Your eServices account has already been created. Leaving this step without setting a
+            password can leave your account incomplete (forgot-password emails will not work until
+            a password is set). Stay on this screen to complete registration.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleConfirmBackToRegister} color="inherit">
+            Review details
+          </Button>
+          <Button onClick={() => setBackConfirmOpen(false)} variant="contained" autoFocus>
+            Stay and set password
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

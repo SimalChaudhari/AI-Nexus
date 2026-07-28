@@ -32,6 +32,11 @@ import {
   setSalesforceNexusPassword,
 } from 'src/auth/context/jwt';
 import { POST_OAUTH_RETURN_TO_KEY } from 'src/utils/membership-eligibility-sso';
+import {
+  clearPendingNexusPasswordSetup,
+  readPendingNexusPasswordSetupForEmail,
+  writePendingNexusPasswordSetup,
+} from 'src/utils/pending-nexus-password-session';
 
 // ----------------------------------------------------------------------
 
@@ -167,6 +172,25 @@ export function CorporateSignUpView() {
         return;
       }
 
+      const pendingForEmail = readPendingNexusPasswordSetupForEmail(email);
+      if (pendingForEmail?.username) {
+        try {
+          await setSalesforceNexusPassword({
+            username: pendingForEmail.username,
+            password: data.password,
+          });
+          clearPendingNexusPasswordSetup();
+          setInfoMsg('Password set. Redirecting to Salesforce sign-in…');
+          startCorporateSso(email);
+          return;
+        } catch (passwordError) {
+          setErrorMsg(
+            `${passwordError?.message || 'Failed to set password.'} Your corporate account was already created — retry with the same email to finish password setup.`
+          );
+          return;
+        }
+      }
+
       await createCorporateSalesforceAccount({
         account: {
           name: data.companyName.trim(),
@@ -209,10 +233,30 @@ export function CorporateSignUpView() {
         },
       });
 
-      await setSalesforceNexusPassword({
+      writePendingNexusPasswordSetup({
         username: email,
-        password: data.password,
+        email,
+        registerForm: {
+          firstName: data.firstName.trim(),
+          lastName: data.lastName.trim(),
+          email,
+        },
+        designation: String(data.designation || '').trim(),
+        source: 'corporate-sign-up',
       });
+
+      try {
+        await setSalesforceNexusPassword({
+          username: email,
+          password: data.password,
+        });
+        clearPendingNexusPasswordSetup();
+      } catch (passwordError) {
+        setErrorMsg(
+          `${passwordError?.message || 'Failed to set password.'} Your corporate account was created — submit again with the same email and password to finish setup.`
+        );
+        return;
+      }
 
       setInfoMsg('Account created. Redirecting to Salesforce sign-in…');
       startCorporateSso(email);

@@ -39,6 +39,10 @@ import { abandonMembershipCheckout, confirmMembershipPayment, createMembershipCh
 import { trackAffiliateClick, validateCode } from 'src/services/affiliate.service';
 import { appSettingsService } from 'src/services/app-settings.service';
 import {
+  clearPendingNexusPasswordSetup,
+  writePendingNexusPasswordSetup,
+} from 'src/utils/pending-nexus-password-session';
+import {
   buildSalesforceNexusUserPayloadFromSignup,
   resolveVerifiedNricSalesforceFields,
   resolveSalesforceNexusUsernameFromCreateResponse,
@@ -1278,6 +1282,17 @@ export function SimpleSignUpView() {
     if (typeof window !== 'undefined') {
       const existing = sessionStorage.getItem(salesforceUsernameKey);
       if (existing && !forceCreate) {
+        const password = String(data?.password || storedValues?.password || '').trim();
+        if (password) {
+          try {
+            await setSalesforceNexusPassword({ username: existing, password });
+            clearPendingNexusPasswordSetup();
+          } catch (passwordError) {
+            throw new Error(
+              `${passwordError instanceof Error ? passwordError.message : 'Failed to set password.'} An eServices account already exists for this session — retry password setup with the same email.`
+            );
+          }
+        }
         return existing;
       }
     }
@@ -1324,8 +1339,36 @@ export function SimpleSignUpView() {
 
     const username = resolveSalesforceNexusUsernameFromCreateResponse(createResult, formValues.email);
 
-    if (formValues.password && username) {
+    if (!username) {
+      throw new Error('Salesforce account was created but username is missing. Please contact support.');
+    }
+
+    writePendingNexusPasswordSetup({
+      username: String(username).trim(),
+      email: String(formValues.email || '').trim(),
+      registerForm: {
+        salutation: formValues.salutation,
+        firstName: formValues.firstName,
+        lastName: formValues.lastName,
+        nameAsPerId: [formValues.firstName, formValues.lastName].filter(Boolean).join(' ').trim(),
+        email: formValues.email,
+      },
+      source: 'simple-sign-up',
+    });
+
+    if (!formValues.password) {
+      throw new Error(
+        'Your eServices account was created, but a password is required to finish registration. Please enter a password and submit again.'
+      );
+    }
+
+    try {
       await setSalesforceNexusPassword({ username, password: formValues.password });
+      clearPendingNexusPasswordSetup();
+    } catch (passwordError) {
+      throw new Error(
+        `${passwordError instanceof Error ? passwordError.message : 'Failed to set password.'} Your eServices account was created — please retry with the same email and password to complete setup.`
+      );
     }
 
     if (typeof window !== 'undefined' && username) {
