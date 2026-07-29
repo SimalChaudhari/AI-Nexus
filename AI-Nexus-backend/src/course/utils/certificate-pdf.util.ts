@@ -3,12 +3,10 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import {
   BuildCertificatePdfInput,
-  CERT_BRAND as BRAND,
-  CERT_CONTACT,
+  drawTripleLogoHeader,
   fontOrFallback,
   formatCompletedDate,
   registerCertificateFonts,
-  resolveCertificateMarkPath,
 } from './certificate-pdf-shared.util';
 import { drawTranscriptPage } from './transcript-pdf.util';
 
@@ -22,8 +20,8 @@ export type {
 const COA = {
   navy: '#1A4A82',
   navyDeep: '#0E3A6E',
-  lightBlue: '#6FA0C8',
-  midBlue: '#4A7EAF',
+  lightBlue: '#000000',
+  midBlue: '#000000',
   gold: '#C5A24A',
   deco: '#C8C8C8',
   script: '#2A2A2A',
@@ -64,72 +62,8 @@ function hasCjk(text: string): boolean {
   return /[\u3400-\u9FFF\uF900-\uFAFF]/.test(text);
 }
 
-function drawDecorations(doc: PDFKit.PDFDocument) {
-  const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
-  const tl = resolveAsset('public', 'certificate', 'coa-deco-tl.png');
-  const br = resolveAsset('public', 'certificate', 'coa-deco-br.png');
-
-  if (tl) {
-    try {
-      doc.image(tl, 0, 0, { width: 170, height: 140 });
-    } catch {
-      // ignore
-    }
-  } else {
-    drawGuillocheCorner(doc, 0, 0, 200, 170, 'tl');
-  }
-
-  if (br) {
-    try {
-      doc.image(br, pageWidth - 130, pageHeight - 130, { width: 130, height: 130 });
-    } catch {
-      // ignore
-    }
-  } else {
-    drawGuillocheCorner(doc, pageWidth - 180, pageHeight - 180, 180, 180, 'br');
-  }
-}
-
-function drawGuillocheCorner(
-  doc: PDFKit.PDFDocument,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  corner: 'tl' | 'br',
-) {
-  doc.save();
-  doc.strokeColor(COA.deco).lineWidth(0.55);
-  for (let i = 0; i < 14; i += 1) {
-    const t = i / 14;
-    if (corner === 'tl') {
-      doc
-        .moveTo(x, y + h * (0.15 + t * 0.85))
-        .bezierCurveTo(
-          x + w * (0.25 + t * 0.2),
-          y + h * (0.05 + t * 0.15),
-          x + w * (0.55 + t * 0.2),
-          y + h * (0.35 - t * 0.2),
-          x + w * (0.75 + t * 0.25),
-          y,
-        )
-        .stroke();
-    } else {
-      doc
-        .moveTo(x + w, y + h * (0.85 - t * 0.85))
-        .bezierCurveTo(
-          x + w * (0.75 - t * 0.2),
-          y + h * (0.95 - t * 0.15),
-          x + w * (0.45 - t * 0.2),
-          y + h * (0.65 + t * 0.2),
-          x + w * (0.25 - t * 0.25),
-          y + h,
-        )
-        .stroke();
-    }
-  }
-  doc.restore();
+function drawDecorations(_doc: PDFKit.PDFDocument) {
+  // Corner ribbon / patti decorations removed
 }
 
 /**
@@ -141,6 +75,7 @@ function drawVerticalCertificateWord(doc: PDFKit.PDFDocument) {
   doc.save();
   // Official-feel thin calligraphy (closest system match to COA sample)
   const scriptFonts = [
+
     'C:/Windows/Fonts/FRSCRIPT.TTF', // French Script MT
     'C:/Windows/Fonts/KUNSTLER.TTF', // Kunstler Script
     'C:/Windows/Fonts/segoesc.ttf', // Segoe Script
@@ -176,43 +111,7 @@ function drawVerticalCertificateWord(doc: PDFKit.PDFDocument) {
 }
 
 function drawCoaHeaderLockup(doc: PDFKit.PDFDocument, top = 52): number {
-  const pageWidth = doc.page.width;
-  const markPath = resolveCertificateMarkPath();
-  const logoHeight = 30;
-  const logoWidth = Math.round(logoHeight * 2.55);
-  const gap = 6;
-
-  fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-  doc.fontSize(6.5);
-  const orgLines = [...CERT_CONTACT.orgLines];
-  const textWidth = Math.max(...orgLines.map((line) => doc.widthOfString(line)));
-  const totalWidth = logoWidth + gap + textWidth;
-  let x = (pageWidth - totalWidth) / 2;
-
-  if (markPath) {
-    try {
-      doc.image(markPath, x, top, { fit: [logoWidth, logoHeight] });
-    } catch {
-      // fallback mark text
-      fontOrFallback(doc, 'CertSerif-Bold', 'Times-Bold');
-      doc.fontSize(16).fillColor(BRAND.iscaRed).text('IS', x, top + 4, { lineBreak: false });
-      const isW = doc.widthOfString('IS');
-      doc.fillColor(BRAND.iscaBlue).text('CA', x + isW, top + 4, { lineBreak: false });
-    }
-  }
-  x += logoWidth + gap;
-
-  let orgY = top + 1;
-  orgLines.forEach((line) => {
-    fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-    doc
-      .fontSize(6.5)
-      .fillColor(COA.navy)
-      .text(line, x, orgY, { lineBreak: false });
-    orgY += 8;
-  });
-
-  return Math.max(top + logoHeight, orgY) + 48;
+  return drawTripleLogoHeader(doc, top, 38);
 }
 
 function drawCentered(
@@ -223,6 +122,8 @@ function drawCentered(
     size: number;
     color: string;
     bold?: boolean;
+    /** Approximate CSS font-weight (Crimson Pro uses stroke for 500/600). */
+    weight?: 400 | 500 | 600 | 700;
     spacing?: number;
     width?: number;
     x?: number;
@@ -242,7 +143,12 @@ function drawCentered(
   } else if (opts.font === 'script') {
     fontOrFallback(doc, 'CertScript', 'Times-Italic');
   } else if (opts.font === 'serif') {
-    fontOrFallback(doc, opts.bold ? 'CertSerif-Bold' : 'CertSerif', opts.bold ? 'Times-Bold' : 'Times-Roman');
+    const useBoldFace = opts.bold || opts.weight === 700;
+    fontOrFallback(
+      doc,
+      useBoldFace ? 'CertSerif-Bold' : 'CertSerif',
+      useBoldFace ? 'Times-Bold' : 'Times-Roman',
+    );
   } else {
     fontOrFallback(
       doc,
@@ -251,15 +157,25 @@ function drawCentered(
     );
   }
 
-  doc
-    .fontSize(opts.size)
-    .fillColor(opts.color)
-    .text(text, contentX, y, {
-      width: contentWidth,
-      align: 'center',
-      characterSpacing: opts.spacing ?? 0,
-      lineBreak: false,
-    });
+  doc.fontSize(opts.size).fillColor(opts.color);
+
+  // Crimson Pro file is variable (embeds at 400). Stroke approximates heavier weight.
+  const strokeWeight =
+    opts.font === 'serif' && opts.weight != null && opts.weight >= 500 ? opts.weight : null;
+  if (strokeWeight != null) {
+    const lineWidth =
+      strokeWeight >= 700 ? 0.6 : strokeWeight >= 600 ? 0.45 : 0.28;
+    doc.strokeColor(opts.color).lineWidth(lineWidth);
+  }
+
+  doc.text(text, contentX, y, {
+    width: contentWidth,
+    align: 'center',
+    characterSpacing: opts.spacing ?? 0,
+    lineBreak: false,
+    fill: true,
+    stroke: strokeWeight != null,
+  });
 }
 
 /**
@@ -267,7 +183,6 @@ function drawCentered(
  */
 function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdfInput) {
   const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
   const contentX = 70;
   const contentWidth = pageWidth - contentX * 2;
 
@@ -275,42 +190,41 @@ function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdf
   drawDecorations(doc);
   drawVerticalCertificateWord(doc);
 
-  let y = drawCoaHeaderLockup(doc, 50);
-  // Extra breathing room above CERTIFICATE OF ATTENDANCE
-  y += 18;
+  let y = drawCoaHeaderLockup(doc, 40);
+  // Title block sits higher + smaller than body
+  y += 6;
 
-  // Title — two lines, navy, wide tracking (sample) — slightly larger
   drawCentered(doc, 'CERTIFICATE', y, {
-    size: 34,
+    size: 28,
     color: COA.navyDeep,
-    bold: true,
-    spacing: 6,
-    font: 'sans',
+    weight: 700,
+    spacing: 8,
+    font: 'serif',
   });
-  y += 36;
+  y += 28;
   drawCentered(doc, 'OF ATTENDANCE', y, {
-    size: 34,
+    size: 28,
     color: COA.navyDeep,
-    bold: true,
-    spacing: 4.5,
-    font: 'sans',
+    weight: 700,
+    spacing: 5.5,
+    font: 'serif',
   });
 
-  y += 40;
+  y += 36;
   drawCentered(doc, 'has been awarded to', y, {
-    size: 11,
+    size: 10,
     color: COA.lightBlue,
-    spacing: 1.8,
+    spacing: 1.5,
     font: 'sans',
   });
 
-  y += 34;
+  y += 22;
   const learnerName = String(input.learnerName || '').trim() || 'Full Name';
+  // Learner name — Amithen (script); CJK keeps CertCJK
   drawCentered(doc, learnerName, y, {
-    size: hasCjk(learnerName) ? 30 : 32,
+    size: hasCjk(learnerName) ? 30 : 42,
     color: COA.gold,
-    bold: true,
-    font: hasCjk(learnerName) ? 'cjk' : 'sans',
+    font: hasCjk(learnerName) ? 'cjk' : 'script',
   });
 
   y += 62;
@@ -343,7 +257,7 @@ function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdf
     font: 'sans',
   });
 
-  y += 16;
+  y += 20;
   const completedAt = formatCompletedDate(input.completedAt);
   fontOrFallback(doc, 'CertSans', 'Helvetica');
   doc
@@ -395,7 +309,7 @@ function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdf
     y += 15;
   });
 
-  // Signature block — signature image, navy line, then name/title (exact sample order)
+  // Signature block — flows under content so page height can auto-fit
   const signatoryName =
     String(input.signatoryName || 'QUEK MU LIM').trim() || 'QUEK MU LIM';
   const signatoryTitle =
@@ -404,13 +318,12 @@ function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdf
   const issuerName =
     String(input.issuerName || 'ISCA ACADEMY PTE LTD').trim() || 'ISCA ACADEMY PTE LTD';
 
-  // Keep footer fully on-page (avoid bottom clip)
-  const certNoY = pageHeight - 58;
-  const issuerY = certNoY - 24;
-  const titleY = issuerY - 13;
-  const nameY = titleY - 15;
-  const lineY = nameY - 12;
-  const sigY = lineY - 40;
+  const sigY = y + 28;
+  const lineY = sigY + 40;
+  const nameY = lineY + 12;
+  const titleY = nameY + 18;
+  const issuerY = titleY + 16;
+  const certNoY = issuerY + 28;
   const signaturePath = resolveSignaturePath();
 
   if (signaturePath) {
@@ -472,10 +385,73 @@ function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdf
     });
 }
 
+/** A4 width; height is measured from content so page 1 auto-fits. */
+const CERT_PAGE_WIDTH = 595.28;
+const CERT_PAGE_MIN_HEIGHT = 720;
+const CERT_PAGE_MAX_HEIGHT = 1200;
+
+/**
+ * Measure certificate page height by running the same layout Y math (no output).
+ */
+function measureCertificatePageHeight(input: BuildCertificatePdfInput): number {
+  const measure = new PDFDocument({
+    size: [CERT_PAGE_WIDTH, CERT_PAGE_MAX_HEIGHT],
+    margin: 36,
+    autoFirstPage: true,
+  });
+  registerCertificateFonts(measure);
+  registerCjkFont(measure);
+
+  const contentX = 70;
+  const contentWidth = CERT_PAGE_WIDTH - contentX * 2;
+
+  // Match drawCoaHeaderLockup return: top 40, logo ~38, +28
+  let y = Math.max(40 + 38, 40 + 1 + 4 * 8) + 28;
+  y += 6;
+  y += 28; // CERTIFICATE
+  y += 28; // OF ATTENDANCE
+  y += 36; // has been awarded to
+  y += 22; // name start
+  y += 62; // after name
+  y += 26; // after "for attending…"
+
+  const programme =
+    String(input.courseTitle || '').trim() ||
+    'ISCA Sustainability Professional Certification (e-Learning Modules)';
+  fontOrFallback(measure, 'CertSans-Bold', 'Helvetica-Bold');
+  measure.fontSize(13);
+  const programmeH = measure.heightOfString(programme, {
+    width: contentWidth,
+    lineGap: 3,
+  });
+  y += programmeH + 14;
+  y += 20; // on + date
+  y += 34; // CPE heading
+  y += 18;
+
+  const pillarCount =
+    Array.isArray(input.pillarCpeHours) && input.pillarCpeHours.length > 0
+      ? input.pillarCpeHours.length
+      : 1;
+  y += pillarCount * 15;
+
+  // Footer stack (sig → cert no) + bottom margin — same as drawCertificatePage
+  y += 28 + 40 + 12 + 18 + 16 + 28 + 48;
+
+  measure.on('data', () => undefined);
+  measure.end();
+
+  return Math.min(
+    CERT_PAGE_MAX_HEIGHT,
+    Math.max(CERT_PAGE_MIN_HEIGHT, Math.ceil(y)),
+  );
+}
+
 export async function buildCourseCertificatePdf(
   input: BuildCertificatePdfInput,
 ): Promise<{ filename: string; buffer: Buffer }> {
-  const certificatePageSize: [number, number] = [595.28, 841.89];
+  const pageHeight = measureCertificatePageHeight(input);
+  const certificatePageSize: [number, number] = [CERT_PAGE_WIDTH, pageHeight];
   const doc = new PDFDocument({ size: certificatePageSize, margin: 36, autoFirstPage: true });
   registerCertificateFonts(doc);
   registerCjkFont(doc);
