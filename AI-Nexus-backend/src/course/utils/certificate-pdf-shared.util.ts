@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 export type CertificatePdfTranscriptSection = {
@@ -107,7 +107,9 @@ export function formatCpeNumber(hours?: number | null): string {
 }
 
 export function resolveFontPath(fileName: string): string | null {
+  // Prefer module-relative paths so Nest `dist/` and different CWDs still resolve.
   const candidates = [
+    join(__dirname, '..', '..', '..', 'assets', 'fonts', fileName),
     join(process.cwd(), 'assets', 'fonts', fileName),
     join(process.cwd(), 'public', 'certificate', 'fonts', fileName),
   ];
@@ -122,6 +124,101 @@ export function resolveCertificateMarkPath(): string | null {
   return candidates.find((path) => existsSync(path)) || null;
 }
 
+export function resolvePublicCertificateAsset(...parts: string[]): string | null {
+  const path = join(process.cwd(), 'public', 'certificate', ...parts);
+  return existsSync(path) ? path : null;
+}
+
+/** Read PNG/JPEG pixel size (pdfkit openImage is untyped). */
+export function readRasterImageSize(
+  filePath: string,
+): { width: number; height: number } | null {
+  try {
+    const buf = readFileSync(filePath);
+    if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+    }
+    if (buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+      let offset = 2;
+      while (offset + 9 < buf.length) {
+        if (buf[offset] !== 0xff) break;
+        const marker = buf[offset + 1];
+        const size = buf.readUInt16BE(offset + 2);
+        if (marker === 0xc0 || marker === 0xc2) {
+          return {
+            height: buf.readUInt16BE(offset + 5),
+            width: buf.readUInt16BE(offset + 7),
+          };
+        }
+        offset += 2 + size;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Centered header: img2 | img1 | img3 (ISCA | OCC | Charity Council) with thin dividers.
+ * Same lockup on certificate page 1 and transcript.
+ */
+export function drawTripleLogoHeader(
+  doc: PDFKit.PDFDocument,
+  top = 52,
+  logoHeight = 38,
+): number {
+  const pageWidth = doc.page.width;
+  const gap = 4;
+  const dividerGap = 4;
+  const dividerH = Math.max(24, logoHeight - 6);
+
+  const files = ['img2.png', 'img1.png', 'img3.png'];
+  const present = files
+    .map((file) => {
+      const path = resolvePublicCertificateAsset(file);
+      if (!path) return null;
+      const size = readRasterImageSize(path);
+      if (!size || size.height <= 0) return null;
+      return { path, width: (size.width / size.height) * logoHeight };
+    })
+    .filter((item): item is { path: string; width: number } => item != null);
+
+  if (present.length === 0) {
+    return top + logoHeight + 26;
+  }
+
+  const logosWidth = present.reduce((sum, l) => sum + l.width, 0);
+  const dividersWidth = Math.max(0, present.length - 1) * (dividerGap * 2 + 1);
+  const totalWidth = logosWidth + gap * Math.max(0, present.length - 1) + dividersWidth;
+  let x = (pageWidth - totalWidth) / 2;
+  const logoY = top;
+
+  present.forEach((logo, index) => {
+    if (index > 0) {
+      x += gap;
+      const dx = x + dividerGap;
+      const dy = logoY + (logoHeight - dividerH) / 2;
+      doc
+        .moveTo(dx, dy)
+        .lineTo(dx, dy + dividerH)
+        .strokeColor('#9AA0A6')
+        .lineWidth(0.7)
+        .stroke();
+      x += dividerGap * 2 + 1;
+    }
+
+    try {
+      doc.image(logo.path, x, logoY, { height: logoHeight });
+    } catch {
+      // skip
+    }
+    x += logo.width;
+  });
+
+  return top + logoHeight + 28;
+}
+
 export function tryRegisterFont(doc: PDFKit.PDFDocument, name: string, fileName: string) {
   const path = resolveFontPath(fileName);
   if (!path) return;
@@ -133,12 +230,13 @@ export function tryRegisterFont(doc: PDFKit.PDFDocument, name: string, fileName:
 }
 
 export function registerCertificateFonts(doc: PDFKit.PDFDocument) {
-  tryRegisterFont(doc, 'CertSerif', 'times.ttf');
-  tryRegisterFont(doc, 'CertSerif-Bold', 'timesbd.ttf');
-  tryRegisterFont(doc, 'CertScript', 'script.ttf');
-  tryRegisterFont(doc, 'CertScript', 'segoesc.ttf');
-  tryRegisterFont(doc, 'CertSans', 'arial.ttf');
-  tryRegisterFont(doc, 'CertSans-Bold', 'arialbd.ttf');
+  // Design fonts: Crimson Pro (title), Amithen (learner name), Open Sans (body)
+  tryRegisterFont(doc, 'CertSerif', 'CrimsonPro-Regular.ttf');
+  tryRegisterFont(doc, 'CertSerif-Bold', 'CrimsonPro-Bold.ttf');
+  tryRegisterFont(doc, 'CertScript', 'Amithen.ttf');
+  tryRegisterFont(doc, 'CertSans', 'OpenSans-Regular.ttf');
+  tryRegisterFont(doc, 'CertSans-Bold', 'OpenSans-Bold.ttf');
+  tryRegisterFont(doc, 'CertSans-Semi', 'OpenSans-Semibold.ttf');
 }
 
 export function fontOrFallback(

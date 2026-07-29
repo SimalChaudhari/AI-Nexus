@@ -1,23 +1,20 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
-import Chip from '@mui/material/Chip';
 import MenuItem from '@mui/material/MenuItem';
 import Checkbox from '@mui/material/Checkbox';
 import LinearProgress from '@mui/material/LinearProgress';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Typography from '@mui/material/Typography';
-import InputAdornment from '@mui/material/InputAdornment';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 import { useRouter } from 'src/routes/hooks';
 
 import { Form, Field } from 'src/components/hook-form';
-import { Iconify } from 'src/components/iconify';
 import { toast } from 'src/components/snackbar';
 import { useAuthContext } from 'src/auth/hooks';
 import {
@@ -34,10 +31,6 @@ import {
   CorporateForeignQuotationSchema,
   corporateForeignQuotationDefaultValues,
 } from 'src/validations/corporate-foreign-quotation.validation';
-import {
-  isSingaporeNricIdType,
-  validateSingaporeNricFinValue,
-} from 'src/utils/nric-id-type';
 
 import { CORP } from '../corporate-theme';
 import { CorpBtn, CorpCard, CorpPageHeader } from '../corporate-ui';
@@ -126,44 +119,28 @@ function FieldLabel({ label, children, wide, required }) {
   );
 }
 
-function splitFullName(fullName) {
-  const parts = String(fullName || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return { first_name: '', last_name: '' };
-  if (parts.length === 1) return { first_name: parts[0], last_name: parts[0] };
-  return {
-    first_name: parts[0],
-    last_name: parts.slice(1).join(' '),
-  };
-}
-
-/** Maps form → createblukuserfornexus fields (company / corporateAccountId auto on backend). */
 function buildEnrolPayload(form) {
-  const fullName = String(form.fullName || '').trim();
+  const first_name = String(form.firstName || '').trim();
+  const last_name = String(form.lastName || '').trim();
+  const name_as_per_id =
+    String(form.nameAsPerId || '').trim() || `${first_name} ${last_name}`.trim();
   const email = String(form.email || '').trim();
-  const { first_name, last_name } = splitFullName(fullName);
   const payload = {
     salutation: String(form.salutation || '').trim() || undefined,
     first_name,
     last_name,
-    name_as_per_id: fullName,
+    name_as_per_id,
     email,
-    countryOfResidence: String(form.countryOfResidence || '').trim() || 'Singapore',
   };
 
-  const idType = String(form.idType || '').trim();
-  const idNumberRaw = String(form.idNumber || '').trim();
-  if (idType) payload.id_type = idType;
-  if (idNumberRaw) {
-    if (isSingaporeNricIdType(idType)) {
-      const nric = validateSingaporeNricFinValue(idNumberRaw);
-      payload.id_number = nric.ok ? nric.normalized : idNumberRaw;
-    } else {
-      payload.id_number = idNumberRaw;
-    }
-  }
+  const company = String(form.company || '').trim();
+  if (company) payload.company = company;
+
+  const department = String(form.department || '').trim();
+  if (department) payload.department = department;
+
+  const staffRole = String(form.staffRole || '').trim();
+  if (staffRole) payload.staff_role = staffRole;
 
   const yearsRaw = String(form.yearsOfExperience || '').trim();
   if (yearsRaw !== '') {
@@ -171,11 +148,14 @@ function buildEnrolPayload(form) {
     if (!Number.isNaN(years)) payload.noOfYearOfRelevantWorkExperience = years;
   }
 
+  const corporateAccountId = String(form.corporateAccountId || '').trim();
+  if (corporateAccountId) payload.corporateAccountId = corporateAccountId;
+
   const learnerAsAnAccounting = String(form.learnerAsAnAccounting || '').trim();
   if (learnerAsAnAccounting) payload.learnerAsAnAccounting = learnerAsAnAccounting;
 
-  const membershipNumber = String(form.membershipNumber || '').trim();
-  if (membershipNumber) payload.membershipNumber = membershipNumber;
+  const eligibility = String(form.eligibility || '').trim();
+  if (eligibility) payload.eligibility = eligibility;
 
   payload.isAuthorisedSubmit = true;
 
@@ -249,9 +229,22 @@ export function CorporateEnrolView() {
     };
   }, [user?.email, user?.firstname, user?.lastname]);
 
+  const enrolDefaults = useMemo(() => {
+    const sfRaw = user?.salesforceUserInfoRaw;
+    const corporate = sfRaw && typeof sfRaw === 'object' ? sfRaw.corporate : null;
+    const companyFromSf =
+      String(corporate?.accountName || corporate?.companyName || '').trim()
+      || String(user?.companyName || user?.company || '').trim();
+    return {
+      ...corporateEnrolDefaultValues,
+      company: companyFromSf,
+      corporateAccountId: String(user?.salesforceAccountId || '').trim(),
+    };
+  }, [user?.company, user?.companyName, user?.salesforceAccountId, user?.salesforceUserInfoRaw]);
+
   const methods = useForm({
     resolver: zodResolver(CorporateEnrolSchema),
-    defaultValues: corporateEnrolDefaultValues,
+    defaultValues: enrolDefaults,
     mode: 'onTouched',
   });
 
@@ -265,31 +258,15 @@ export function CorporateEnrolView() {
     quotationMethods.reset(quotationDefaults);
   }, [quotationDefaults, quotationMethods]);
 
+  useEffect(() => {
+    methods.reset(enrolDefaults);
+  }, [enrolDefaults, methods]);
+
   const {
-    control,
     reset,
     handleSubmit,
     formState: { isSubmitting },
   } = methods;
-
-  const watchedIdType = useWatch({ control, name: 'idType' });
-  const watchedIdNumber = useWatch({ control, name: 'idNumber' });
-
-  const nricVerifyState = useMemo(() => {
-    const idType = String(watchedIdType || '').trim();
-    const idNumber = String(watchedIdNumber || '').trim();
-    if (!idNumber) return { status: 'idle', message: '' };
-
-    if (!isSingaporeNricIdType(idType)) {
-      return { status: 'accepted', message: 'ID entered' };
-    }
-
-    const result = validateSingaporeNricFinValue(idNumber);
-    if (result.ok) {
-      return { status: 'verified', message: 'Verified', normalized: result.normalized };
-    }
-    return { status: 'invalid', message: result.message || 'Invalid NRIC' };
-  }, [watchedIdNumber, watchedIdType]);
 
   const {
     handleSubmit: handleQuotationSubmit,
@@ -311,7 +288,7 @@ export function CorporateEnrolView() {
         return;
       }
       showEnrolResultToast(result, 'Staff learner enrolled successfully');
-      reset(corporateEnrolDefaultValues);
+      reset(enrolDefaults);
       setAuthorised(false);
       if (result?.batchId) {
         // Keep user on page; track link shown in result card.
@@ -513,8 +490,9 @@ export function CorporateEnrolView() {
                 fontSize: { xs: 13, sm: 14 },
               }}
             >
-              For Singaporean/Permanent Resident learners and ISCA Members only. Company name and
-              corporate account are taken from your HR login automatically. Fields marked{' '}
+              For Singaporean/Permanent Resident learners and ISCA Members only. All
+              createblukuserfornexus fields are collected below (company and corporate account ID
+              are pre-filled from your login when available). Fields marked{' '}
               <Box component="span" sx={{ color: '#d32f2f' }}>
                 *
               </Box>{' '}
@@ -530,11 +508,27 @@ export function CorporateEnrolView() {
                   <MenuItem value="Dr">Dr</MenuItem>
                 </Field.Select>
               </FieldLabel>
-              <FieldLabel label="Full name" required>
+              <FieldLabel label="First name" required>
                 <Field.Text
-                  name="fullName"
+                  name="firstName"
                   size="small"
-                  placeholder="e.g. Tan Wei Ming"
+                  placeholder="e.g. Ahmad"
+                  sx={fieldSx}
+                />
+              </FieldLabel>
+              <FieldLabel label="Last name" required>
+                <Field.Text
+                  name="lastName"
+                  size="small"
+                  placeholder="e.g. Bin Abdullah"
+                  sx={fieldSx}
+                />
+              </FieldLabel>
+              <FieldLabel label="Name as per ID" required>
+                <Field.Text
+                  name="nameAsPerId"
+                  size="small"
+                  placeholder="e.g. Ahmad Bin Abdullah"
                   sx={fieldSx}
                 />
               </FieldLabel>
@@ -547,99 +541,54 @@ export function CorporateEnrolView() {
                   sx={fieldSx}
                 />
               </FieldLabel>
-              <FieldLabel label="ID type" required>
-                <Field.Select name="idType" size="small" sx={fieldSx}>
-                  <MenuItem value="NRIC">NRIC</MenuItem>
-                  <MenuItem value="Pink NRIC">Pink NRIC</MenuItem>
-                  <MenuItem value="Blue NRIC">Blue NRIC</MenuItem>
-                  <MenuItem value="Passport">Passport</MenuItem>
-                </Field.Select>
-              </FieldLabel>
-              <FieldLabel
-                label={
-                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <Box component="span">NRIC / ID number</Box>
-                    {nricVerifyState.status === 'verified' ? (
-                      <Chip
-                        size="small"
-                        icon={<Iconify icon="solar:verified-check-bold" width={16} />}
-                        label="Verified"
-                        sx={{
-                          height: 22,
-                          fontWeight: 800,
-                          fontSize: 11,
-                          bgcolor: '#dcfce7',
-                          color: '#166534',
-                          '& .MuiChip-icon': { color: '#166534' },
-                        }}
-                      />
-                    ) : null}
-                    {nricVerifyState.status === 'invalid' ? (
-                      <Chip
-                        size="small"
-                        label="Invalid"
-                        sx={{
-                          height: 22,
-                          fontWeight: 800,
-                          fontSize: 11,
-                          bgcolor: '#fee2e2',
-                          color: '#b91c1c',
-                        }}
-                      />
-                    ) : null}
-                  </Box>
-                }
-                required
-              >
+              <FieldLabel label="Company" required>
                 <Field.Text
-                  name="idNumber"
+                  name="company"
                   size="small"
-                  placeholder="e.g. S1234567A"
-                  sx={fieldSx}
-                  inputProps={{ style: { textTransform: 'uppercase' } }}
-                  InputProps={{
-                    endAdornment:
-                      nricVerifyState.status === 'verified' ? (
-                        <InputAdornment position="end">
-                          <Iconify
-                            icon="solar:verified-check-bold"
-                            width={20}
-                            sx={{ color: '#166534' }}
-                          />
-                        </InputAdornment>
-                      ) : null,
-                  }}
-                  helperText={
-                    nricVerifyState.status === 'verified'
-                      ? `Checksum verified · ${nricVerifyState.normalized}`
-                      : nricVerifyState.status === 'invalid'
-                        ? nricVerifyState.message
-                        : isSingaporeNricIdType(watchedIdType)
-                          ? 'Enter a valid Singapore NRIC/FIN to see Verified tag'
-                          : undefined
-                  }
-                />
-              </FieldLabel>
-              <FieldLabel label="ISCA membership number" required>
-                <Field.Text
-                  name="membershipNumber"
-                  size="small"
-                  placeholder="e.g. MEM20260031"
+                  placeholder="e.g. Maybank"
                   sx={fieldSx}
                 />
               </FieldLabel>
-              <FieldLabel label="Country of residence" required>
-                <Field.Text name="countryOfResidence" size="small" sx={fieldSx} />
+              <FieldLabel label="Department" required>
+                <Field.Text
+                  name="department"
+                  size="small"
+                  placeholder="e.g. Banking Operations"
+                  sx={fieldSx}
+                />
+              </FieldLabel>
+              <FieldLabel label="Staff role" required>
+                <Field.Text
+                  name="staffRole"
+                  size="small"
+                  placeholder="e.g. Branch Manager"
+                  sx={fieldSx}
+                />
               </FieldLabel>
               <FieldLabel label="Years of relevant work experience" required>
                 <Field.Text
                   name="yearsOfExperience"
                   size="small"
                   type="number"
-                  placeholder="e.g. 5"
+                  placeholder="e.g. 14"
                   sx={fieldSx}
                   inputProps={{ min: 0, step: 0.5 }}
                 />
+              </FieldLabel>
+              <FieldLabel label="Corporate account ID" required>
+                <Field.Text
+                  name="corporateAccountId"
+                  size="small"
+                  placeholder="e.g. 001fV000002uLIa"
+                  sx={fieldSx}
+                />
+              </FieldLabel>
+              <FieldLabel label="Eligibility" required>
+                <Field.Select name="eligibility" size="small" sx={fieldSx}>
+                  <MenuItem value="Singapore Citizen">Singapore Citizen</MenuItem>
+                  <MenuItem value="Singapore PR">Singapore PR</MenuItem>
+                  <MenuItem value="ISCA Member">ISCA Member</MenuItem>
+                </Field.Select>
               </FieldLabel>
               <FieldLabel
                 wide
@@ -776,15 +725,12 @@ export function CorporateEnrolView() {
               }}
             >
               <Box component="li">
-                CSV columns match Salesforce createblukuserfornexus (see template).
+                CSV columns match Salesforce createblukuserfornexus (see template) — include
+                company, department, staff_role, corporateAccountId and eligibility.
               </Box>
               <Box component="li">
-                For Singaporean/PR learners, NRIC must be a valid Singapore NRIC/FIN (checksum
-                validated), e.g. S1234567A.
-              </Box>
-              <Box component="li">For ISCA Members, provide the valid ISCA membership number.</Box>
-              <Box component="li">
-                Company and corporateAccountId are filled automatically from your corporate account.
+                Company and corporateAccountId are pre-filled from your login when available; you
+                can edit them before submit.
               </Box>
               <Box component="li">
                 Use View uploaded ZIP files for supporting document ZIP uploads.

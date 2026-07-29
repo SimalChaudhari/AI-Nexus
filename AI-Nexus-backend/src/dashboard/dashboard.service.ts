@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { UserEntity } from '../user/users.entity';
+import { Repository, SelectQueryBuilder } from 'typeorm';
+import { UserEntity, UserRole } from '../user/users.entity';
 import { CourseEntity } from '../course/courses.entity';
 import { OrderEntity, OrderStatus } from '../order/order.entity';
 import { ReviewEntity } from '../review/review.entity';
@@ -107,7 +107,7 @@ export class DashboardService {
       enrollmentsPrevious,
       statusRows,
     ] = await Promise.all([
-      this.userRepository.count(),
+      this.countPlatformUsers(),
       this.courseRepository.count(),
       this.orderRepository.count(),
       this.orderRepository.count({ where: { status: OrderStatus.Completed } }),
@@ -118,8 +118,8 @@ export class DashboardService {
         .select('COALESCE(SUM(o.totalAmount), 0)', 'total')
         .where('o.status = :status', { status: OrderStatus.Completed })
         .getRawOne<{ total: string }>(),
-      this.countSince(this.userRepository, 'user', sevenDaysAgo),
-      this.countBetween(this.userRepository, 'user', fourteenDaysAgo, sevenDaysAgo),
+      this.countPlatformUsersSince(sevenDaysAgo),
+      this.countPlatformUsersBetween(fourteenDaysAgo, sevenDaysAgo),
       this.countSince(this.courseRepository, 'course', sevenDaysAgo),
       this.countBetween(this.courseRepository, 'course', fourteenDaysAgo, sevenDaysAgo),
       this.countCompletedOrdersSince(sevenDaysAgo),
@@ -273,7 +273,7 @@ export class DashboardService {
     }
 
     const [userRows, courseRows, orderRows, enrollmentRows] = await Promise.all([
-      this.groupCountsByCreatedAt(this.userRepository, 'user', rangeStart, rangeEnd),
+      this.groupPlatformUsersByCreatedAt(rangeStart, rangeEnd),
       this.groupCountsByCreatedAt(this.courseRepository, 'course', rangeStart, rangeEnd),
       this.groupCompletedOrdersByCreatedAt(rangeStart, rangeEnd),
       this.groupCountsByCreatedAt(this.enrollmentRepository, 'enrollment', rangeStart, rangeEnd),
@@ -386,6 +386,48 @@ export class DashboardService {
       });
     }
     return buckets;
+  }
+
+  /**
+   * Same scope as the admin Users list: exclude Admin, Corporate, and draft signups.
+   */
+  private platformUsersQuery(): SelectQueryBuilder<UserEntity> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .where('user.role != :adminRole', { adminRole: UserRole.Admin })
+      .andWhere('user.role != :corporateRole', { corporateRole: UserRole.Corporate })
+      .andWhere('user.isDraft = :isDraft', { isDraft: false });
+  }
+
+  private async countPlatformUsers(): Promise<number> {
+    return this.platformUsersQuery().getCount();
+  }
+
+  private async countPlatformUsersSince(from: Date): Promise<number> {
+    return this.platformUsersQuery().andWhere('user.createdAt >= :from', { from }).getCount();
+  }
+
+  private async countPlatformUsersBetween(from: Date, to: Date): Promise<number> {
+    return this.platformUsersQuery()
+      .andWhere('user.createdAt >= :from AND user.createdAt < :to', { from, to })
+      .getCount();
+  }
+
+  private async groupPlatformUsersByCreatedAt(
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ bucket: string; count: number }>> {
+    const rows = await this.platformUsersQuery()
+      .select(`TO_CHAR(DATE_TRUNC('day', user.createdAt), 'YYYY-MM-DD')`, 'day')
+      .addSelect('COUNT(*)', 'count')
+      .andWhere('user.createdAt >= :from AND user.createdAt < :to', { from, to })
+      .groupBy('day')
+      .getRawMany<{ day: string; count: string }>();
+
+    return rows.map((row) => ({
+      bucket: row.day,
+      count: this.toNumber(row.count),
+    }));
   }
 
   private async countSince(repo: Repository<any>, alias: string, from: Date): Promise<number> {

@@ -35,6 +35,8 @@ export const paths = {
     details: (id) => `/ai-forum/${id}`,
   },
   home: '/home',
+  international: '/international',
+  internationalAiFluency: '/international/ai-fluency',
   learning: '/learning',
   learningCourse: {
     root: '/learning/course',

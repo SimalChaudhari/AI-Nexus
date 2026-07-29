@@ -305,12 +305,13 @@ export const CORPORATE_STAFF_CSV_TEMPLATE_HEADERS = [
   'last_name',
   'name_as_per_id',
   'email',
-  'id_type',
-  'id_number',
-  'countryOfResidence',
+  'company',
+  'department',
+  'staff_role',
   'noOfYearOfRelevantWorkExperience',
+  'corporateAccountId',
   'learnerAsAnAccounting',
-  'membershipNumber',
+  'eligibility',
 ];
 
 export function downloadCorporateStaffCsvTemplate() {

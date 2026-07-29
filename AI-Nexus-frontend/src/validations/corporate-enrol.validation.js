@@ -1,67 +1,50 @@
 import { z as zod } from 'zod';
 
-import {
-  isSingaporeNricIdType,
-  validateSingaporeNricFinValue,
-} from 'src/utils/nric-id-type';
-
 // ----------------------------------------------------------------------
 
 export const corporateEnrolDefaultValues = {
   salutation: 'Mr',
-  fullName: '',
+  firstName: '',
+  lastName: '',
+  nameAsPerId: '',
   email: '',
-  idType: 'NRIC',
-  idNumber: '',
-  membershipNumber: '',
-  countryOfResidence: 'Singapore',
+  company: '',
+  department: '',
+  staffRole: '',
   yearsOfExperience: '',
+  corporateAccountId: '',
   learnerAsAnAccounting: 'Yes',
+  eligibility: 'Singapore Citizen',
 };
 
-export const CorporateEnrolSchema = zod
-  .object({
-    salutation: zod.string().trim().min(1, 'Salutation is required'),
-    fullName: zod
+export const CorporateEnrolSchema = zod.object({
+  salutation: zod.string().trim().min(1, 'Salutation is required'),
+  firstName: zod.string().trim().min(1, 'First name is required'),
+  lastName: zod.string().trim().min(1, 'Last name is required'),
+  nameAsPerId: zod.string().trim().min(1, 'Name as per ID is required'),
+  email: zod
+    .string()
+    .trim()
+    .min(1, 'Work email is required')
+    .email('Enter a valid work email address'),
+  company: zod.string().trim().min(1, 'Company is required'),
+  department: zod.string().trim().min(1, 'Department is required'),
+  staffRole: zod.string().trim().min(1, 'Staff role is required'),
+  yearsOfExperience: zod.preprocess(
+    (val) => (val === undefined || val === null ? '' : String(val)),
+    zod
       .string()
       .trim()
-      .min(1, 'Full name is required')
-      .refine((value) => value.split(/\s+/).filter(Boolean).length >= 2, {
-        message: 'Please enter first and last name',
-      }),
-    email: zod
-      .string()
-      .trim()
-      .min(1, 'Work email is required')
-      .email('Enter a valid work email address'),
-    idType: zod.string().trim().min(1, 'ID type is required'),
-    idNumber: zod.string().trim().min(1, 'NRIC / ID number is required'),
-    membershipNumber: zod.string().trim().min(1, 'ISCA membership number is required'),
-    countryOfResidence: zod.string().trim().min(1, 'Country of residence is required'),
-    yearsOfExperience: zod.preprocess(
-      (val) => (val === undefined || val === null ? '' : String(val)),
-      zod
-        .string()
-        .trim()
-        .min(1, 'Years of relevant work experience is required')
-        .refine((value) => {
-          const years = Number(value);
-          return !Number.isNaN(years) && years >= 0;
-        }, 'Enter a valid number of years (0 or more)'),
-    ),
-    learnerAsAnAccounting: zod.enum(['Yes', 'No'], {
-      required_error: 'Please select Yes or No',
-      invalid_type_error: 'Please select Yes or No',
-    }),
-  })
-  .superRefine((data, ctx) => {
-    if (!isSingaporeNricIdType(data.idType)) return;
-    const result = validateSingaporeNricFinValue(data.idNumber);
-    if (!result.ok) {
-      ctx.addIssue({
-        code: zod.ZodIssueCode.custom,
-        message: result.message,
-        path: ['idNumber'],
-      });
-    }
-  });
+      .min(1, 'Years of relevant work experience is required')
+      .refine((value) => {
+        const years = Number(value);
+        return !Number.isNaN(years) && years >= 0;
+      }, 'Enter a valid number of years (0 or more)'),
+  ),
+  corporateAccountId: zod.string().trim().min(1, 'Corporate account ID is required'),
+  learnerAsAnAccounting: zod.enum(['Yes', 'No'], {
+    required_error: 'Please select Yes or No',
+    invalid_type_error: 'Please select Yes or No',
+  }),
+  eligibility: zod.string().trim().min(1, 'Eligibility is required'),
+});

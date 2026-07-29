@@ -1810,16 +1810,12 @@ export class OAuthAuthService {
       last_name: string;
       name_as_per_id?: string;
       email: string;
-      id_type?: string;
-      id_number?: string;
       company?: string;
       department?: string;
-      role?: string;
-      countryOfResidence?: string;
+      staff_role?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
-      membershipNumber?: string;
       eligibility?: string;
       isAuthorisedSubmit?: boolean;
     }>,
@@ -1848,22 +1844,14 @@ export class OAuthAuthService {
       const salutation = String(row.salutation || '').trim();
       if (salutation) item.salutation = salutation;
 
-      const idType = String(row.id_type || '').trim();
-      const idNumber = String(row.id_number || '').trim();
-      if (idType) item.id_type = idType;
-      if (idNumber) item.id_number = idNumber;
-
       const company = String(row.company || '').trim();
       if (company) item.company = company;
 
       const department = String(row.department || '').trim();
       if (department) item.department = department;
 
-      const role = String(row.role || '').trim();
-      if (role) item.role = role;
-
-      const countryOfResidence = String(row.countryOfResidence || '').trim();
-      if (countryOfResidence) item.countryOfResidence = countryOfResidence;
+      const staffRole = String(row.staff_role || '').trim();
+      if (staffRole) item.staff_role = staffRole;
 
       const yearsRaw = row.noOfYearOfRelevantWorkExperience;
       if (yearsRaw !== undefined && yearsRaw !== null && String(yearsRaw).trim() !== '') {
@@ -1881,9 +1869,6 @@ export class OAuthAuthService {
 
       const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
       if (learnerAsAnAccounting) item.learnerAsAnAccounting = learnerAsAnAccounting;
-
-      const membershipNumber = String(row.membershipNumber || '').trim();
-      if (membershipNumber) item.membershipNumber = membershipNumber;
 
       const eligibility = String(row.eligibility || '').trim();
       if (eligibility) item.eligibility = eligibility;
@@ -1993,16 +1978,12 @@ export class OAuthAuthService {
       last_name: string;
       name_as_per_id?: string;
       email: string;
-      id_type?: string;
-      id_number?: string;
       company?: string;
       department?: string;
-      role?: string;
-      countryOfResidence?: string;
+      staff_role?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
-      membershipNumber?: string;
       eligibility?: string;
       isAuthorisedSubmit?: boolean;
     }>,
@@ -2083,16 +2064,12 @@ export class OAuthAuthService {
       last_name: string;
       name_as_per_id?: string;
       email: string;
-      id_type?: string;
-      id_number?: string;
       company?: string;
       department?: string;
-      role?: string;
-      countryOfResidence?: string;
+      staff_role?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
-      membershipNumber?: string;
       eligibility?: string;
       isAuthorisedSubmit?: boolean;
     }>,

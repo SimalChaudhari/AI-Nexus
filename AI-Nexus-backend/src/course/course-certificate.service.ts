@@ -870,17 +870,7 @@ export class CourseCertificateService {
       throw new NotFoundException('Certificate not found');
     }
 
-    // Prefer already-stored PDF — regenerating on every HR download freezes the UI.
-    if (existing.pdfUrl) {
-      const stored = await this.localStorageService.readFileByUrl(existing.pdfUrl);
-      if (stored?.buffer?.length) {
-        return {
-          filename: stored.fileName || `Certificate-${existing.certificateNo}.pdf`,
-          buffer: stored.buffer,
-        };
-      }
-    }
-
+    // Always regenerate so font/layout design updates appear on download.
     const saved = await this.ensureCertificatePdfStored(certificateId);
     const stored = await this.localStorageService.readFileByUrl(saved.pdfUrl);
     if (!stored?.buffer?.length) {

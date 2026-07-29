@@ -39,11 +39,6 @@ import { OAuthAuthService } from '../auth/oauth-auth.service';
 import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
 import type { CorporateStaffLearnerDto } from './corporate-enrol.dto';
 import type { CorporateForeignQuotationDto } from './corporate-foreign-quotation.dto';
-import {
-  normalizeSingaporeNricFin,
-  SINGAPORE_NRIC_FIN_USER_MESSAGES,
-  validateSingaporeNricFin,
-} from '../auth/utils/singapore-nric-fin.util';
 
 // ----------------------------------------------------------------------
 
@@ -163,59 +158,6 @@ export class CorporateService {
     private readonly companyEnrollmentService: CompanyEnrollmentService,
   ) {}
 
-  private isPassportIdType(idType: string): boolean {
-    return String(idType || '')
-      .trim()
-      .toLowerCase()
-      .includes('passport');
-  }
-
-  private isSingaporeNricIdType(idType: string): boolean {
-    const normalized = String(idType || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z]/g, ' ');
-    if (!normalized) return true;
-    if (normalized.includes('passport')) return false;
-    return (
-      normalized.includes('nric')
-      || normalized === 'nric'
-      || normalized.includes('fin')
-    );
-  }
-
-  /**
-   * Validate / normalize staff ID number.
-   * Singapore NRIC/Pink/Blue/FIN → checksum rules from eligibility util.
-   * Passport → required non-empty only.
-   */
-  private validateStaffIdNumber(params: {
-    idType?: string;
-    idNumber?: string;
-  }): { ok: true; normalized: string } | { ok: false; reason: string } {
-    const idType = String(params.idType || '').trim();
-    const idNumber = String(params.idNumber || '').trim();
-
-    if (!idNumber) {
-      return { ok: false, reason: 'NRIC / ID number is required.' };
-    }
-
-    if (this.isPassportIdType(idType) || !this.isSingaporeNricIdType(idType)) {
-      return { ok: true, normalized: idNumber };
-    }
-
-    const normalized = normalizeSingaporeNricFin(idNumber);
-    try {
-      const validation = validateSingaporeNricFin(normalized);
-      if (!validation.isValid) {
-        return { ok: false, reason: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum };
-      }
-      return { ok: true, normalized: validation.normalized };
-    } catch {
-      return { ok: false, reason: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat };
-    }
-  }
-
   private looksLikeSalesforceAccountId(value: string): boolean {
     return /^001[a-zA-Z0-9]{12,17}$/.test(String(value || '').trim());
   }
@@ -277,7 +219,7 @@ export class CorporateService {
   private normalizeStaffLearner(
     row: CorporateStaffLearnerDto,
     corporateAccountId: string,
-    defaults?: { company?: string; countryOfResidence?: string },
+    defaults?: { company?: string },
   ) {
     const firstName = String(row.first_name || '').trim();
     const lastName = String(row.last_name || '').trim();
@@ -285,6 +227,9 @@ export class CorporateService {
     if (!firstName || !lastName || !email) {
       throw new BadRequestException('first_name, last_name and email are required for each learner.');
     }
+
+    const accountId =
+      String(row.corporateAccountId || '').trim() || String(corporateAccountId || '').trim();
 
     const payload: Record<string, string | number | boolean> & {
       first_name: string;
@@ -299,34 +244,22 @@ export class CorporateService {
       email,
       name_as_per_id:
         String(row.name_as_per_id || '').trim() || `${firstName} ${lastName}`.trim(),
-      corporateAccountId,
+      corporateAccountId: accountId,
       isAuthorisedSubmit: true,
     };
 
     const salutation = String(row.salutation || '').trim();
     if (salutation) payload.salutation = salutation;
 
-    const idType = String(row.id_type || '').trim();
-    if (idType) payload.id_type = idType;
-
-    const idNumber = String(row.id_number || '').trim();
-    if (idNumber) payload.id_number = idNumber;
-
     const company =
-      String(defaults?.company || '').trim() || String(row.company || '').trim();
+      String(row.company || '').trim() || String(defaults?.company || '').trim();
     if (company) payload.company = company;
 
     const department = String(row.department || '').trim();
     if (department) payload.department = department;
 
-    const role = String(row.role || '').trim();
-    if (role) payload.role = role;
-
-    const countryOfResidence =
-      String(row.countryOfResidence || '').trim()
-      || String(defaults?.countryOfResidence || '').trim()
-      || 'Singapore';
-    payload.countryOfResidence = countryOfResidence;
+    const staffRole = String(row.staff_role || '').trim();
+    if (staffRole) payload.staff_role = staffRole;
 
     if (
       row.noOfYearOfRelevantWorkExperience !== undefined
@@ -341,9 +274,6 @@ export class CorporateService {
 
     const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
     if (learnerAsAnAccounting) payload.learnerAsAnAccounting = learnerAsAnAccounting;
-
-    const membershipNumber = String(row.membershipNumber || '').trim();
-    if (membershipNumber) payload.membershipNumber = membershipNumber;
 
     const eligibility = String(row.eligibility || '').trim();
     if (eligibility) payload.eligibility = eligibility;
@@ -393,15 +323,11 @@ export class CorporateService {
       name_as_per_id?: string;
       email: string;
       salutation?: string;
-      id_type?: string;
-      id_number?: string;
       company?: string;
       department?: string;
-      role?: string;
-      countryOfResidence?: string;
+      staff_role?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       learnerAsAnAccounting?: string;
-      membershipNumber?: string;
       eligibility?: string;
     }>;
   }): Promise<{
@@ -432,8 +358,6 @@ export class CorporateService {
         continue;
       }
 
-      const idType = String(row.id_type || '').trim();
-      const idNumber = String(row.id_number || '').trim();
       const years =
         row.noOfYearOfRelevantWorkExperience !== undefined
         && row.noOfYearOfRelevantWorkExperience !== null
@@ -452,18 +376,14 @@ export class CorporateService {
         jobFunction,
         jobFunctionLabel,
         jobFunctionOther: '',
-        countryOfResidence: String(row.countryOfResidence || '').trim() || 'Singapore',
+        department: String(row.department || '').trim() || '',
+        staff_role: String(row.staff_role || '').trim() || '',
         yearsOfRelevantWorkExperience: years,
         learnerAsAnAccounting,
-        membershipNumber: String(row.membershipNumber || '').trim() || '',
+        eligibility: String(row.eligibility || '').trim() || '',
         salutation: String(row.salutation || '').trim() || '',
         name_as_per_id: String(row.name_as_per_id || '').trim() || '',
       };
-      if (idNumber) {
-        eligibilitySnapshot.nricFin = idNumber;
-        eligibilitySnapshot.idType = idType || '';
-        eligibilitySnapshot.verifiedNricIdType = idType || '';
-      }
 
       try {
         const existing = await this.userRepository.findOne({ where: { email } });
@@ -608,7 +528,6 @@ export class CorporateService {
     const payload = learners.map((row) =>
       this.normalizeStaffLearner(row, corporateAccountId, {
         company: companyName || undefined,
-        countryOfResidence: 'Singapore',
       }),
     );
 
@@ -646,20 +565,6 @@ export class CorporateService {
         continue;
       }
       seenEmails.add(email);
-
-      const idCheck = this.validateStaffIdNumber({
-        idType: String(row.id_type || ''),
-        idNumber: String(row.id_number || ''),
-      });
-      if (!idCheck.ok) {
-        skipped.push({
-          email,
-          step: 'precheck',
-          reason: idCheck.reason,
-        });
-        continue;
-      }
-      row.id_number = idCheck.normalized;
 
       const localExisting = await this.userRepository.findOne({ where: { email } });
       if (localExisting) {
@@ -991,30 +896,23 @@ export class CorporateService {
       last_name: headerIndex(['last_name', 'lastname', 'last']),
       name_as_per_id: headerIndex(['name_as_per_id', 'fullname_as_per_id', 'full_name', 'fullname']),
       email: headerIndex(['email', 'work_email']),
-      id_type: headerIndex(['id_type', 'idtype']),
-      id_number: headerIndex(['id_number', 'idnumber', 'nric', 'nric_number']),
       company: headerIndex(['company']),
       department: headerIndex(['department', 'dept']),
-      role: headerIndex(['role', 'job_title']),
-      countryOfResidence: headerIndex([
-        'countryofresidence',
-        'country_of_residence',
-        'country',
-      ]),
+      staff_role: headerIndex(['staff_role', 'staffrole', 'role', 'job_title']),
       noOfYearOfRelevantWorkExperience: headerIndex([
         'noofyearofrelevantworkexperience',
         'no_of_year_of_relevant_work_experience',
         'years_of_experience',
         'experience_years',
       ]),
+      corporateAccountId: headerIndex([
+        'corporateaccountid',
+        'corporate_account_id',
+        'account_id',
+      ]),
       learnerAsAnAccounting: headerIndex([
         'learnerasanaccounting',
         'learner_as_an_accounting',
-      ]),
-      membershipNumber: headerIndex([
-        'membershipnumber',
-        'membership_number',
-        'isca_membership',
       ]),
       eligibility: headerIndex(['eligibility']),
     };
@@ -1045,16 +943,13 @@ export class CorporateService {
         last_name: lastName,
         name_as_per_id: read(idx.name_as_per_id) || undefined,
         email,
-        id_type: read(idx.id_type) || undefined,
-        id_number: read(idx.id_number) || undefined,
         company: read(idx.company) || undefined,
         department: read(idx.department) || undefined,
-        role: read(idx.role) || undefined,
-        countryOfResidence: read(idx.countryOfResidence) || undefined,
+        staff_role: read(idx.staff_role) || undefined,
         noOfYearOfRelevantWorkExperience:
           years !== undefined && !Number.isNaN(years) ? years : undefined,
+        corporateAccountId: read(idx.corporateAccountId) || undefined,
         learnerAsAnAccounting: read(idx.learnerAsAnAccounting) || undefined,
-        membershipNumber: read(idx.membershipNumber) || undefined,
         eligibility: read(idx.eligibility) || undefined,
       });
     }
