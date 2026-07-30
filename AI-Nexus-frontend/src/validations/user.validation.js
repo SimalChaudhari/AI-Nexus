@@ -315,8 +315,8 @@ export const CorporateSignUpSchema = zod.object({
     .min(1, { message: 'Last name is required!' })
     .max(80, { message: 'Last name is too long!' }),
   email: emailSchema,
-  mobilePhone: zod.string().optional(),
-  phone: zod.string().optional(),
+  mobilePhone: optionalPhoneSchema,
+  phone: optionalPhoneSchema,
   designation: zod.string().optional(),
   website: zod.string().optional(),
   // ISCA / newsletter preferences (Salesforce contact)
