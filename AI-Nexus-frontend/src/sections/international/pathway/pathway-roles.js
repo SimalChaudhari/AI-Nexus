@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 export const ROLES = [
   { name:"Board Director",
     blurb:"Oversight over adoption, risk and ethics, with a focus on the strategic questions a board director should be able to ask.",
@@ -26,32 +25,3 @@ export const ROLES = [
     blurb:"Your path focuses on building regulatory chatbots, tracking engagement status and automating the deadline reminders that keep statutory work on time.",
     scores:{'01-07':3, '02-03':3,'01-08':2,'01-09':1,'02-07':2} },
 ];
-=======
-export const ROLES = [
-  { name:"Board Director",
-    blurb:"Oversight over adoption, risk and ethics, with a focus on the strategic questions a board director should be able to ask.",
-    reqExclude:['01-04','01-06'],          // hands-on Excel/reporting & everyday workflows
-    scores:{'03-05':1,'02-02':3,'02-07':3,'03-00':1,'03-01':3,'03-02':3,'03-03':3,'03-04':2,'03-05':2,'03-06':2,'03-07':2,'03-08':2} },
-  { name:"CFO",
-    blurb:"Steering FP&A, reporting and the AI investment decision making. After the foundation modules, your path balances hands-on finance workflows with a governance and ROI lens.",
-    scores:{'02-02':2,'02-05':3,'03-01':2,'03-04':2,'03-05':2,'03-06':3,'03-07':2,'03-08':1} },
-  { name:"Audit Partner",
-    blurb:"Accountable for quality, independence and firm-wide adoption. After the foundation, your path pairs audit-specific tooling with the risk, ethics and vendor decisions that sit with the partner.",
-    scores:{'01-07':1,'02-01':2,'02-03':2,'02-06':3,'03-01':2,'03-03':2,'03-05':2,'03-07':2} },
-  { name:"Auditor",
-    blurb:"Your path is focused on building auditor-specific agents and workflows that you'll use on engagements, plus the smart-workflow building blocks behind them.",
-    scores:{'01-07':1,'01-08':1,'02-06':3} },
-  { name:"Finance Executive",
-    blurb:"Your path is focused on the hands-on core modules: building smart assistants, Excel and data prep, anchored by the finance planning and analysis module.",
-    scores:{'01-07':2,'01-08':1,'01-09':1,'02-05':3} },
-  { name:"Internal Auditor",
-    blurb:"Testing controls and risk from the inside. After the foundation, your path leads with the internal-audit toolkit and risk, ethics and governance.",
-    scores:{'01-07':3, '02-01':3,'01-08':2,'01-09':2,'02-06':1,'02-07':1} },
-  { name:"Tax Practitioner",
-    blurb:"Your path centres on tax-specific AI workflows: deep-research prompts, computation checks and IRAS-grounded agents , with professional judgement kept firmly in the loop",
-    scores:{'01-07':3, '02-04':3,'01-08':2,'01-09':1,'02-07':2} },
-  { name:"Corporate Secretarial Agent",
-    blurb:"Your path focuses on building regulatory chatbots, tracking engagement status and automating the deadline reminders that keep statutory work on time.",
-    scores:{'01-07':3, '02-03':3,'01-08':2,'01-09':1,'02-07':2} },
-];
->>>>>>> 77824e39b799c567de95e0752cc504d0a0a4c3d1
