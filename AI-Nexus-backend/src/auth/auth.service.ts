@@ -14,6 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from './../user/users.entity';
 import { UserRole, UserStatus, AuthProvider } from './../user/users.entity';
 import { normalizeEmail, validateEmail } from './../utils/auth.utils';
+import { assertEmailAvailableForRole } from '../user/user-email-availability.util';
 import { verifyEmailAddress, validateHrContactEmail, validateStudentSchoolEmail, isAllowedStudentSchoolEmail } from './../utils/email-verification.util';
 import { EmailService } from './../service/email.service';
 import { LocalStorageService } from './../service/local-storage.service';
@@ -552,14 +553,12 @@ export class AuthService {
     }
 
     const normalizedEmail = normalizeEmail(userDto.email) || String(userDto.email || '').trim().toLowerCase();
+    const signupRole = userDto.role || UserRole.User;
 
-    const existingUserByEmail = await this.userRepository.findOne({
-      where: { email: normalizedEmail },
+    // Same email: allow 1 User + 1 Corporate; reject duplicate role / third account.
+    await assertEmailAvailableForRole(this.userRepository, normalizedEmail, signupRole, {
+      excludeUserId: existingUserId,
     });
-
-    if (existingUserByEmail && existingUserByEmail.id !== existingUserId) {
-      throw new BadRequestException('Email already exists');
-    }
 
     // Also block if the email is already registered in Salesforce eServices.
     await this.assertEmailAvailableInSalesforce(normalizedEmail);
@@ -592,12 +591,7 @@ export class AuthService {
     }
 
     try {
-      const sfCheck = await this.oauthAuthService.checkSalesforceUserByEmail(normalized);
-      if (sfCheck?.found) {
-        throw new BadRequestException(
-          'An eServices account already exists for this email address. Please sign in instead of creating a new account.',
-        );
-      }
+      await this.oauthAuthService.assertEmailAvailableForIndividualMembershipCreate(normalized);
     } catch (err: unknown) {
       if (err instanceof BadRequestException) {
         throw err;
@@ -608,6 +602,11 @@ export class AuthService {
           : 'Could not verify email with eServices. Please try again.';
       throw new BadRequestException(message);
     }
+  }
+
+  /** Used by membership checkout to block payment when Salesforce will reject the email. */
+  async assertMembershipEmailReadyForPayment(email: string): Promise<void> {
+    await this.assertEmailAvailableInSalesforce(email);
   }
 
   private sanitizeEligibilitySnapshot(snapshot: Record<string, unknown> | undefined): Record<string, unknown> | null {
@@ -3981,14 +3980,53 @@ export class AuthService {
       // const isEmail = validateEmail(identifier);
       // For login identification, only check email format (do not apply disposable/blocked-name rules).
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+      const preferredRoleRaw = String(loginDto.preferredRole || '').trim().toLowerCase();
+      const preferredRole =
+        preferredRoleRaw === 'corporate'
+          ? UserRole.Corporate
+          : preferredRoleRaw === 'user' || preferredRoleRaw === 'individual'
+            ? UserRole.User
+            : null;
 
-      // Find the user by email or username
-      const user = isEmail
-        ? await this.userRepository.findOne({ where: { email: identifier } })
-        : await this.userRepository
+      // Role-aware lookup when Individual + Corporate share the same email/username
+      let user: UserEntity | null = null;
+      if (isEmail) {
+        if (preferredRole) {
+          user = await this.userRepository.findOne({
+            where: { email: identifier, role: preferredRole },
+          });
+        } else {
+          user =
+            (await this.userRepository.findOne({
+              where: { email: identifier, role: UserRole.User },
+            }))
+            || (await this.userRepository.findOne({
+              where: { email: identifier, role: UserRole.Corporate },
+            }))
+            || (await this.userRepository.findOne({ where: { email: identifier } }));
+        }
+      } else {
+        const normalizedUsername = this.normalizeUsername(identifier);
+        const byLocal = this.userRepository
+          .createQueryBuilder('user')
+          .where('LOWER(user.username) = LOWER(:username)', { username: normalizedUsername });
+        if (preferredRole) {
+          byLocal.andWhere('user.role = :role', { role: preferredRole });
+        }
+        user = await byLocal.getOne();
+
+        if (!user) {
+          const bySf = this.userRepository
             .createQueryBuilder('user')
-            .where('LOWER(user.username) = LOWER(:username)', { username: this.normalizeUsername(identifier) })
-            .getOne();
+            .where('LOWER(user.salesforceUsername) = LOWER(:username)', {
+              username: normalizedUsername,
+            });
+          if (preferredRole) {
+            bySf.andWhere('user.role = :role', { role: preferredRole });
+          }
+          user = await bySf.getOne();
+        }
+      }
 
       if (!user) {
         throw new UnauthorizedException(

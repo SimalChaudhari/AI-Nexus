@@ -283,6 +283,21 @@ export const paths = {
       details: (id) => `${ROOTS.ADMIN}/language/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/language/${id}/edit`,
     },
+    international: {
+      root: `${ROOTS.ADMIN}/international`,
+      modules: {
+        root: `${ROOTS.ADMIN}/international/modules`,
+        list: `${ROOTS.ADMIN}/international/modules/list`,
+        new: `${ROOTS.ADMIN}/international/modules/new`,
+        edit: (id) => `${ROOTS.ADMIN}/international/modules/${id}/edit`,
+      },
+      roles: {
+        root: `${ROOTS.ADMIN}/international/roles`,
+        list: `${ROOTS.ADMIN}/international/roles/list`,
+        new: `${ROOTS.ADMIN}/international/roles/new`,
+        edit: (id) => `${ROOTS.ADMIN}/international/roles/${id}/edit`,
+      },
+    },
     label: {
       root: `${ROOTS.ADMIN}/label`,
       new: `${ROOTS.ADMIN}/label/new`,

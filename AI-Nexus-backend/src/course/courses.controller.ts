@@ -76,6 +76,7 @@ import {
     ASSESSMENT_ADMIN_FILE_EXT,
     LEARNER_SUBMISSION_FILE_EXT,
 } from './course-assignment-file.types';
+import { InternationalAiFluencyPathwayService } from './international-ai-fluency-pathway.service';
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
     speakerIds: unknown,
@@ -324,7 +325,19 @@ export class CourseController {
         private readonly courseCertificateService: CourseCertificateService,
         private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
         private readonly appSettingsService: AppSettingsService,
+        private readonly internationalAiFluencyPathwayService: InternationalAiFluencyPathwayService,
     ) {}
+
+    @Get('international/ai-fluency-pathway-modules')
+    @UseGuards(OptionalJwtAuthGuard)
+    @ApiOperation({
+        summary:
+            'International AI Fluency pathway modules with videoUrl/minutes matched by section title (or code)',
+    })
+    async getInternationalAiFluencyPathwayModules(@Res() response: Response) {
+        const data = await this.internationalAiFluencyPathwayService.getPathwayModules();
+        return response.status(HttpStatus.OK).json({ data });
+    }
 
     @Get()
     @UseGuards(OptionalJwtAuthGuard)

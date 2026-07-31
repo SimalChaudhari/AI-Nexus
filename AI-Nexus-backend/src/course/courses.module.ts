@@ -54,6 +54,8 @@ import { ProgramEntity } from '../program/programs.entity';
 import { CourseOptionEntity } from './course-option.entity';
 import { CourseOptionInitService } from './course-option-init.service';
 import { ReviewEntity } from '../review/review.entity';
+import { InternationalAiFluencyPathwayService } from './international-ai-fluency-pathway.service';
+import { IntlPathwayModule } from '../intl-pathway/intl-pathway.module';
 @Module({
     imports: [
         SpeakerModule,
@@ -61,15 +63,17 @@ import { ReviewEntity } from '../review/review.entity';
         ReviewModule,
         AppSettingsModule,
         AssessmentEvaluationModule,
+        IntlPathwayModule,
         TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseQuestionAssignmentSubmissionEntity, CourseCertificateEntity, CategoryEntity, ProgramEntity, CourseOptionEntity, ReviewEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseAssignmentGradingService, AssignmentGradingRouterService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, LocalStorageService, SpotlightrService, VideoDurationService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseAssignmentGradingService, AssignmentGradingRouterService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, InternationalAiFluencyPathwayService, LocalStorageService, SpotlightrService, VideoDurationService],
     controllers: [CourseController],
     exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService],
 })
 export class CourseModule {}
+
 

@@ -221,6 +221,11 @@ export class LoginDto {
     @IsString()
     @IsNotEmpty()
     password!: string;
+
+    /** When set, resolve Individual (`User`) or Corporate row for shared emails. */
+    @IsString()
+    @IsOptional()
+    preferredRole?: string;
 }
 
 // For resend verification email - only email required

@@ -602,6 +602,28 @@ export class PaymentController {
       });
     }
 
+    // Block Stripe/WooshPay checkout when Salesforce will reject this email
+    // (e.g. already linked to a corporate account).
+    try {
+      if (user.email) {
+        await this.authService.assertMembershipEmailReadyForPayment(user.email);
+      }
+    } catch (error: any) {
+      console.warn(
+        '[Payments] Membership checkout BLOCKED | draftUserId=',
+        this.trimPaymentLogValue(draftUserId),
+        'email=',
+        this.trimPaymentLogValue(user.email || ''),
+        'reason=',
+        error?.message || 'email not available for individual membership',
+      );
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message:
+          error?.message
+          || 'This email cannot be used for individual membership payment.',
+      });
+    }
+
     let saleId: string | null = null;
     let promoApplied = false;
     if (codeInput || affiliateCodeInput || voucherCodeInput) {

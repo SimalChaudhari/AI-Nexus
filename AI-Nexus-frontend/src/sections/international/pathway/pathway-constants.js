@@ -14,9 +14,43 @@ export const TIER = {
 };
 
 export function fmtMinutes(min) {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+  const raw = Number(min);
+  if (!Number.isFinite(raw) || raw <= 0) return '0m';
+
+  // Exact split — no rounding of hours/minutes.
+  const totalSeconds = Math.round(Math.abs(raw) * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || (hours === 0 && seconds === 0)) parts.push(`${minutes}m`);
+  // Only show seconds when the source had a fractional minute (exact leftover).
+  if (seconds > 0 && !Number.isInteger(raw)) parts.push(`${seconds}s`);
+
+  return parts.join(' ') || '0m';
+}
+
+/** Compact exact clock for meters: 9h 32m (never rounds minutes up/down). */
+export function fmtClock(min) {
+  return fmtMinutes(min);
+}
+
+/** Prefer API minutes, then catalog row minutes. Always a finite number. */
+export function resolveModuleMinutes(code, minutesByCode, modulesByCode) {
+  const fromApi = Number(minutesByCode?.[code]);
+  if (Number.isFinite(fromApi) && fromApi > 0) return fromApi;
+  const fromRow = Number(modulesByCode?.[code]?.minutes);
+  if (Number.isFinite(fromRow) && fromRow > 0) return fromRow;
+  return 0;
+}
+
+export function sumSelectedMinutes(selectedCodes, minutesByCode, modulesByCode) {
+  return [...selectedCodes].reduce(
+    (total, code) => total + resolveModuleMinutes(code, minutesByCode, modulesByCode),
+    0
+  );
 }
 
 export function roleFoundation(role) {
@@ -27,26 +61,28 @@ export function roleFoundation(role) {
 
 export function roleEntries(role, foundationSet) {
   const locked = new Set(roleFoundation(role));
-  return Object.entries(role.scores).filter(([c]) => !locked.has(c) && !foundationSet.has(c));
+  return Object.entries(role.scores || {}).filter(([c]) => !locked.has(c) && !foundationSet.has(c));
 }
 
-export function autoSelect(role, modulesByCode, foundationSet) {
+export function autoSelect(role, modulesByCode, foundationSet, minutesByCode = {}) {
   const req = roleFoundation(role);
   const selected = new Set(req);
   const entries = roleEntries(role, foundationSet);
+  const mins = (code) => resolveModuleMinutes(code, minutesByCode, modulesByCode);
 
   entries.filter(([, v]) => v === 3).forEach(([c]) => selected.add(c));
 
-  let total = [...selected].reduce((t, c) => t + modulesByCode[c].minutes, 0);
+  let total = [...selected].reduce((t, c) => t + mins(c), 0);
 
   [2, 1].forEach((score) => {
     entries
       .filter(([, v]) => v === score)
-      .sort((a, b) => modulesByCode[a[0]].minutes - modulesByCode[b[0]].minutes)
+      .sort((a, b) => mins(a[0]) - mins(b[0]))
       .forEach(([c]) => {
-        if (total < TARGET && total + modulesByCode[c].minutes <= CAP) {
+        const add = mins(c);
+        if (total < TARGET && total + add <= CAP) {
           selected.add(c);
-          total += modulesByCode[c].minutes;
+          total += add;
         }
       });
   });

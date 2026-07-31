@@ -72,17 +72,28 @@ export class OAuthAuthController {
     required: false,
     description: 'When true, SCAQ verify-only: non-candidates are not persisted to the database',
   })
+  @ApiQuery({
+    name: 'loginAsCorporate',
+    required: false,
+    description: 'When true, SSO resolves/creates the Corporate account row (Org Portal login)',
+  })
   async getAuthUrl(
     @Query('scaqVerify') scaqVerify?: string,
     @Query('deferredAuth') deferredAuth?: string,
+    @Query('loginAsCorporate') loginAsCorporate?: string,
   ) {
     const verify =
       scaqVerify === '1' || scaqVerify === 'true' || scaqVerify === 'yes';
     const deferred =
       deferredAuth === '1' || deferredAuth === 'true' || deferredAuth === 'yes';
+    const corporate =
+      loginAsCorporate === '1'
+      || loginAsCorporate === 'true'
+      || loginAsCorporate === 'yes';
     const { authUrl, state } = this.oauthAuthService.generateAuthUrl({
       scaqVerify: verify,
       deferredAuth: deferred,
+      loginAsCorporate: corporate,
     });
     return {
       success: true,
@@ -100,14 +111,14 @@ export class OAuthAuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { scaqVerify, deferredAuth } = this.oauthAuthService.parseOAuthState(dto.state);
+    const { scaqVerify, deferredAuth, loginAsCorporate } = this.oauthAuthService.parseOAuthState(dto.state);
     const tokens = await this.oauthAuthService.exchangeCodeForToken(dto.code);
     const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
     const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
     const resolution = await this.oauthAuthService.resolveOAuthCallback(
       userInfo,
       tokens.access_token,
-      { scaqVerify },
+      { scaqVerify, loginAsCorporate },
       syncFn,
     );
 
@@ -214,14 +225,14 @@ export class OAuthAuthController {
     }
 
     try {
-      const { scaqVerify, deferredAuth } = this.oauthAuthService.parseOAuthState(state);
+      const { scaqVerify, deferredAuth, loginAsCorporate } = this.oauthAuthService.parseOAuthState(state);
       const tokens = await this.oauthAuthService.exchangeCodeForToken(code);
       const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
       const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
       const resolution = await this.oauthAuthService.resolveOAuthCallback(
         userInfo,
         tokens.access_token,
-        { scaqVerify },
+        { scaqVerify, loginAsCorporate },
         syncFn,
       );
 

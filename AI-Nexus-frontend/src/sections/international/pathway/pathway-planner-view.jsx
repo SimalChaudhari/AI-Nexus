@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, Navigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
@@ -6,10 +6,14 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
+import { resolveAssetUrl } from 'src/utils/asset-url';
+import { getYouTubeVideoId } from 'src/utils/youtube';
+import { buildSpotlightrEmbedUrl, parseSpotlightrUrl } from 'src/utils/spotlightr';
 
 import { getStoredIntlRegion } from '../intl-region';
 import { MODULES } from './pathway-modules';
 import { ROLES } from './pathway-roles';
+import { usePathwayModuleVideos } from './use-pathway-module-videos';
 import {
   DEFAULT_FOUNDATION_NOTE,
   FOUNDATION,
@@ -17,8 +21,10 @@ import {
   TIER,
   autoSelect,
   fmtMinutes,
+  resolveModuleMinutes,
   roleEntries,
   roleFoundation,
+  sumSelectedMinutes,
 } from './pathway-constants';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles';
@@ -76,28 +82,78 @@ const LockIcon = (
 
 export function PathwayPlannerView() {
   const region = getStoredIntlRegion();
+  const { videoUrlsByCode, minutesByCode, modulesByCode, roles: apiRoles } = usePathwayModuleVideos();
+  const roles = apiRoles?.length
+    ? apiRoles.map((r) => ({
+        name: r.name,
+        blurb: r.blurb || '',
+        reqExclude: Array.isArray(r.reqExclude) ? r.reqExclude : [],
+        reqAdd: Array.isArray(r.reqAdd) ? r.reqAdd : [],
+        reqNote: r.reqNote || undefined,
+        scores: r.scores && typeof r.scores === 'object' ? r.scores : {},
+      }))
+    : ROLES;
+
+  const modulesLookup = useMemo(() => {
+    const base = { ...MODULES_BY_CODE };
+    Object.entries(modulesByCode || {}).forEach(([code, row]) => {
+      base[code] = {
+        ...(base[code] || {}),
+        code,
+        title: row.title || base[code]?.title || code,
+        pillar: row.pillar || base[code]?.pillar || '01',
+        minutes: Number(row.minutes) > 0 ? Number(row.minutes) : base[code]?.minutes || 0,
+        bullets: Array.isArray(row.bullets) ? row.bullets : base[code]?.bullets || [],
+      };
+    });
+    return base;
+  }, [modulesByCode]);
+
   const [roleIdx, setRoleIdx] = useState(0);
-  const [selected, setSelected] = useState(() => autoSelect(ROLES[0], MODULES_BY_CODE, FSET));
-  const [lockedSet, setLockedSet] = useState(() => new Set(roleFoundation(ROLES[0])));
+  const [selected, setSelected] = useState(() => autoSelect(roles[0] || ROLES[0], MODULES_BY_CODE, FSET));
+  const [lockedSet, setLockedSet] = useState(() => new Set(roleFoundation(roles[0] || ROLES[0])));
   const [openCodes, setOpenCodes] = useState(() => new Set());
-  const [topicsOpen, setTopicsOpen] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!roles.length) return;
+    const role = roles[Math.min(roleIdx, roles.length - 1)] || roles[0];
+    setLockedSet(new Set(roleFoundation(role)));
+    setSelected(autoSelect(role, modulesLookup, FSET, minutesByCode));
+    setOpenCodes(new Set());
+    // Re-sync when catalog arrives from API
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiRoles, modulesByCode, minutesByCode]);
 
   const totalMinutes = useMemo(
-    () => [...selected].reduce((t, c) => t + (MODULES_BY_CODE[c]?.minutes || 0), 0),
-    [selected]
+    () => sumSelectedMinutes(selected, minutesByCode, modulesLookup),
+    [selected, minutesByCode, modulesLookup]
   );
+
+  const catalogStats = useMemo(() => {
+    const codes = Object.keys(modulesLookup);
+    const pillars = new Set(codes.map((c) => String(modulesLookup[c]?.pillar || '')));
+    const runtime = codes.reduce(
+      (t, c) => t + resolveModuleMinutes(c, minutesByCode, modulesLookup),
+      0
+    );
+    return {
+      moduleCount: codes.length,
+      pillarCount: pillars.size,
+      runtimeLabel: fmtMinutes(runtime),
+    };
+  }, [modulesLookup, minutesByCode]);
 
   if (!region) {
     return <Navigate to={paths.international} replace />;
   }
 
   const pickRole = (i) => {
-    const role = ROLES[i];
+    const role = roles[i];
+    if (!role) return;
     setRoleIdx(i);
     setLockedSet(new Set(roleFoundation(role)));
-    setSelected(autoSelect(role, MODULES_BY_CODE, FSET));
+    setSelected(autoSelect(role, modulesLookup, FSET, minutesByCode));
     setOpenCodes(new Set());
-    setTopicsOpen(new Set());
   };
 
   const toggleModule = (code) => {
@@ -119,20 +175,10 @@ export function PathwayPlannerView() {
     });
   };
 
-  const toggleTopics = (code) => {
-    setTopicsOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
   const resetPath = () => {
-    if (roleIdx === null) return;
-    setSelected(autoSelect(ROLES[roleIdx], MODULES_BY_CODE, FSET));
+    if (roleIdx === null || !roles[roleIdx]) return;
+    setSelected(autoSelect(roles[roleIdx], modulesLookup, FSET, minutesByCode));
     setOpenCodes(new Set());
-    setTopicsOpen(new Set());
   };
 
   return (
@@ -204,15 +250,20 @@ export function PathwayPlannerView() {
             sx={{
               position: { md: 'sticky' },
               top: { md: 20 },
+              zIndex: { md: 2 },
+              alignSelf: 'start',
               display: 'flex',
               flexDirection: 'column',
               gap: 2.75,
+              maxHeight: { md: 'calc(100vh - 40px)' },
+              overflowY: { md: 'auto' },
+              pr: { md: 0.5 },
             }}
           >
             <Box>
               <PanelLabel>Select your role</PanelLabel>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.875 }}>
-                {ROLES.map((role, i) => (
+                {roles.map((role, i) => (
                   <Box
                     key={role.name}
                     component="button"
@@ -296,14 +347,15 @@ export function PathwayPlannerView() {
               </Box>
             ) : (
               <RolePlan
-                role={ROLES[roleIdx]}
+                role={roles[roleIdx]}
                 selected={selected}
                 lockedSet={lockedSet}
                 openCodes={openCodes}
-                topicsOpen={topicsOpen}
+                videoUrlsByCode={videoUrlsByCode}
+                minutesByCode={minutesByCode}
+                modulesLookup={modulesLookup}
                 onToggle={toggleModule}
                 onToggleOpen={toggleOpen}
-                onToggleTopics={toggleTopics}
               />
             )}
           </Box>
@@ -320,7 +372,8 @@ export function PathwayPlannerView() {
           }}
         >
           <Box component="span" sx={{ fontFamily: '"IBM Plex Mono", monospace', color: tokens.inkSoft }}>
-            28 modules · 3 pillars · ~30 hours total runtime.
+            {catalogStats.moduleCount} modules · {catalogStats.pillarCount} pillars ·{' '}
+            {catalogStats.runtimeLabel} total runtime.
           </Box>{' '}
           Recommendations are curated from each module&apos;s content and runtime against the demands of
           your role. Tiers: <strong>Essential</strong> is core to your work ·{' '}
@@ -358,8 +411,11 @@ function BudgetMeter({ totalMinutes, selectedCount, showReset, onReset }) {
   const over = totalMinutes > TARGET;
   const onTarget = Math.abs(totalMinutes - TARGET) <= 30 && totalMinutes > 0;
   const diff = totalMinutes - TARGET;
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
+
+  // Exact split — no rounding of minutes.
+  const totalSeconds = Math.round(Math.max(0, Number(totalMinutes) || 0) * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
 
   let sub;
   if (totalMinutes === 0) sub = 'Pick a role to begin.';
@@ -415,7 +471,7 @@ function BudgetMeter({ totalMinutes, selectedCount, showReset, onReset }) {
             color: tokens.inkFaint,
           }}
         >
-          Target · 10h 00m
+          Target · {fmtMinutes(TARGET)}
         </Typography>
       </Box>
 
@@ -430,14 +486,22 @@ function BudgetMeter({ totalMinutes, selectedCount, showReset, onReset }) {
           my: 1,
         }}
       >
-        {h}
-        <Box component="span" sx={{ fontSize: 15, color: tokens.inkFaint, ml: 0.375 }}>
-          h
-        </Box>{' '}
-        {String(m).padStart(2, '0')}
-        <Box component="span" sx={{ fontSize: 15, color: tokens.inkFaint, ml: 0.375 }}>
-          m
-        </Box>
+        {hours > 0 && (
+          <>
+            {hours}
+            <Box component="span" sx={{ fontSize: 15, color: tokens.inkFaint, ml: 0.375, mr: 0.75 }}>
+              h
+            </Box>
+          </>
+        )}
+        {(minutes > 0 || hours === 0) && (
+          <>
+            {minutes}
+            <Box component="span" sx={{ fontSize: 15, color: tokens.inkFaint, ml: 0.375 }}>
+              m
+            </Box>
+          </>
+        )}
       </Typography>
 
       <Typography sx={{ fontSize: 12.5, color: tokens.inkSoft, mb: 1.75 }}>{sub}</Typography>
@@ -514,13 +578,29 @@ function BudgetMeter({ totalMinutes, selectedCount, showReset, onReset }) {
   );
 }
 
-function RolePlan({ role, selected, lockedSet, openCodes, topicsOpen, onToggle, onToggleOpen, onToggleTopics }) {
+function RolePlan({
+  role,
+  selected,
+  lockedSet,
+  openCodes,
+  videoUrlsByCode,
+  minutesByCode,
+  modulesLookup,
+  onToggle,
+  onToggleOpen,
+}) {
   const req = roleFoundation(role);
   const byTier = { 3: [], 2: [], 1: [] };
   roleEntries(role, FSET).forEach(([c, v]) => byTier[v].push(c));
   Object.values(byTier).forEach((a) => a.sort());
-  const reqMin = req.reduce((t, c) => t + MODULES_BY_CODE[c].minutes, 0);
+  const reqMin = sumSelectedMinutes(req, minutesByCode, modulesLookup);
   const note = role.reqNote || DEFAULT_FOUNDATION_NOTE;
+
+  const tierMinutesLabel = (codes) => {
+    const selectedInTier = codes.filter((c) => selected.has(c));
+    const mins = sumSelectedMinutes(selectedInTier, minutesByCode, modulesLookup);
+    return `${selectedInTier.length}/${codes.length} selected · ${fmtMinutes(mins)}`;
+  };
 
   return (
     <Box>
@@ -570,10 +650,11 @@ function RolePlan({ role, selected, lockedSet, openCodes, topicsOpen, onToggle, 
             locked
             selected={selected.has(code)}
             open={openCodes.has(code)}
-            topicsOpen={topicsOpen.has(code)}
+            videoUrl={videoUrlsByCode?.[code] || ''}
+            minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
+            moduleMeta={modulesLookup?.[code]}
             onToggle={onToggle}
             onToggleOpen={onToggleOpen}
-            onToggleTopics={onToggleTopics}
           />
         ))}
       </TierSection>
@@ -586,7 +667,7 @@ function RolePlan({ role, selected, lockedSet, openCodes, topicsOpen, onToggle, 
             key={t}
             tierKey={TIER[t].k}
             name={`${TIER[t].label} for ${role.name}`}
-            countLabel={`${codes.length} module${codes.length > 1 ? 's' : ''}`}
+            countLabel={tierMinutesLabel(codes)}
           >
             {codes.map((code) => (
               <ModuleCard
@@ -595,10 +676,11 @@ function RolePlan({ role, selected, lockedSet, openCodes, topicsOpen, onToggle, 
                 locked={false}
                 selected={selected.has(code)}
                 open={openCodes.has(code)}
-                topicsOpen={topicsOpen.has(code)}
+                videoUrl={videoUrlsByCode?.[code] || ''}
+                minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
+                moduleMeta={modulesLookup?.[code]}
                 onToggle={onToggle}
                 onToggleOpen={onToggleOpen}
-                onToggleTopics={onToggleTopics}
               />
             ))}
           </TierSection>
@@ -655,14 +737,14 @@ function ModuleCard({
   locked,
   selected,
   open,
-  topicsOpen,
+  videoUrl,
+  minutes: minutesProp,
+  moduleMeta,
   onToggle,
   onToggleOpen,
-  onToggleTopics,
 }) {
-  const m = MODULES_BY_CODE[code];
-  const shown = m.bullets.slice(0, 6);
-  const rest = m.bullets.slice(6);
+  const m = moduleMeta || MODULES_BY_CODE[code] || { code, title: code, pillar: '01', minutes: 0 };
+  const minutes = Number(minutesProp) > 0 ? Number(minutesProp) : Number(m.minutes) || 0;
   const pillarColors = {
     1: { color: '#1d4ed8', bg: '#e7edfc', border: '#c7d6f7' },
     2: { color: '#b91c1c', bg: '#fbe7e7', border: '#f3c9c9' },
@@ -776,25 +858,13 @@ function ModuleCard({
             textAlign: 'right',
           }}
         >
-          {fmtMinutes(m.minutes)}
-          <Typography
-            component="small"
-            sx={{
-              display: 'block',
-              fontSize: 10,
-              color: tokens.inkFaint,
-              fontWeight: 400,
-              letterSpacing: '0.04em',
-            }}
-          >
-            {m.minutes} MIN
-          </Typography>
+          {fmtMinutes(minutes)}
         </Box>
 
         <Box
           component="button"
           type="button"
-          aria-label="Show contents"
+          aria-label="Show video"
           onClick={(e) => {
             e.stopPropagation();
             onToggleOpen(code);
@@ -837,78 +907,156 @@ function ModuleCard({
           borderTop: open ? `1px solid ${tokens.line}` : '1px solid transparent',
         }}
       >
-        <Box sx={{ px: 2, pt: 1.5, pb: 2, pl: 6.5 }}>
-          <Typography
-            sx={{
-              fontFamily: '"IBM Plex Mono", monospace',
-              fontSize: 10.5,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: tokens.inkFaint,
-              mb: 1,
-            }}
-          >
-            What you&apos;ll cover
-          </Typography>
-          <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-            {shown.map((b) => (
-              <TopicItem key={b}>{b}</TopicItem>
-            ))}
-            {topicsOpen &&
-              rest.map((b) => (
-                <TopicItem key={b}>{b}</TopicItem>
-              ))}
-          </Box>
-          {rest.length > 0 && (
-            <Button
-              onClick={() => onToggleTopics(code)}
-              sx={{
-                mt: 1,
-                pl: 2,
-                textTransform: 'none',
-                fontSize: 12.5,
-                color: tokens.pine,
-                fontWeight: 500,
-                justifyContent: 'flex-start',
-                minWidth: 0,
-                '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
-              }}
-            >
-              {topicsOpen
-                ? 'Show fewer topics'
-                : `+ ${rest.length} more topic${rest.length > 1 ? 's' : ''} in this module`}
-            </Button>
-          )}
+        <Box sx={{ px: 2, pt: 1.5, pb: 2, pl: { xs: 2, sm: 6.5 } }}>
+          {open && <ModuleVideoPanel title={m.title} videoUrl={videoUrl} />}
         </Box>
       </Box>
     </Box>
   );
 }
 
-function TopicItem({ children }) {
+function isDirectVideoUrl(url) {
+  if (!url) return false;
+  const cleaned = String(url).split('?')[0].split('#')[0].toLowerCase();
+  return /\.(mp4|webm|ogg|m4v|mov)$/.test(cleaned) || cleaned.includes('/uploads/');
+}
+
+function resolveModuleMedia(videoUrl) {
+  const raw = String(videoUrl || '').trim();
+  if (!raw) return { kind: 'empty' };
+
+  const youtubeId = getYouTubeVideoId(raw);
+  if (youtubeId) {
+    return {
+      kind: 'iframe',
+      src: `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1`,
+    };
+  }
+
+  const spotlightr = parseSpotlightrUrl(raw);
+  if (spotlightr) {
+    return {
+      kind: 'iframe',
+      src: buildSpotlightrEmbedUrl(spotlightr.watchUrl),
+    };
+  }
+
+  const resolved = resolveAssetUrl(raw);
+  if (isDirectVideoUrl(resolved) || isDirectVideoUrl(raw)) {
+    return { kind: 'video', src: resolved };
+  }
+
+  // Unknown absolute URL — try iframe embed as last resort.
+  if (/^https?:\/\//i.test(resolved)) {
+    return { kind: 'iframe', src: resolved };
+  }
+
+  return { kind: 'empty' };
+}
+
+function ModuleVideoPanel({ title, videoUrl }) {
+  const media = resolveModuleMedia(videoUrl);
+
   return (
     <Box
-      component="li"
       sx={{
-        fontSize: 13.5,
-        color: tokens.inkSoft,
-        pl: 2,
         position: 'relative',
-        lineHeight: 1.45,
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          left: 2,
-          top: 8,
-          width: 5,
-          height: 5,
-          borderRadius: '1px',
-          bgcolor: tokens.pine,
-          opacity: 0.6,
-        },
+        width: '100%',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        border: `1px solid ${tokens.line}`,
+        bgcolor: '#0b1220',
+        aspectRatio: '16 / 9',
       }}
     >
-      {children}
+      {media.kind === 'iframe' ? (
+        <Box
+          component="iframe"
+          key={media.src}
+          src={media.src}
+          title={title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            border: 0,
+            display: 'block',
+          }}
+        />
+      ) : media.kind === 'video' ? (
+        <Box
+          component="video"
+          key={media.src}
+          src={media.src}
+          controls
+          playsInline
+          preload="metadata"
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            bgcolor: '#000',
+          }}
+        />
+      ) : (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1.25,
+            px: 2,
+            background: `
+              radial-gradient(circle at 30% 20%, rgba(24,90,165,0.28), transparent 45%),
+              radial-gradient(circle at 80% 70%, rgba(192,0,0,0.18), transparent 40%),
+              #0b1220
+            `,
+          }}
+        >
+          <Box
+            sx={{
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              bgcolor: 'rgba(255,255,255,0.12)',
+              border: '1px solid rgba(255,255,255,0.22)',
+              display: 'grid',
+              placeItems: 'center',
+            }}
+          >
+            <Box
+              component="svg"
+              viewBox="0 0 24 24"
+              sx={{ width: 22, height: 22, ml: '2px', color: '#fff' }}
+            >
+              <path fill="currentColor" d="M8 5v14l11-7z" />
+            </Box>
+          </Box>
+          <Typography
+            sx={{
+              fontFamily: '"IBM Plex Mono", monospace',
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.72)',
+              fontWeight: 500,
+            }}
+          >
+            Module video
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+            Video link not available for this module yet
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -19,7 +19,6 @@ import { LayoutSection } from '../core/layout-section';
 import { navData as mainNavData } from '../config-nav-main';
 import { _account } from '../config-nav-account';
 import { layoutClasses } from '../classes';
-import { LearningAdvertiseButton } from 'src/sections/learning/components/learning-advertise-button';
 
 // ----------------------------------------------------------------------
 
@@ -164,7 +163,6 @@ export function MainLayout({ sx, data, children }) {
           {children}
         </Main>
         {/* ChatbotWidget hidden for now */}
-        {!partnerWithIscaPage && <LearningAdvertiseButton />}
       </LayoutSection>
     </>
   );

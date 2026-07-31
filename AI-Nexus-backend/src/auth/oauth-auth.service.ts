@@ -31,6 +31,7 @@ import {
 } from './utils/singapore-nric-fin.util';
 import { assertNricFinAvailableForAccountCreation } from './utils/nric-registration-guard.util';
 import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
+import { assertEmailAvailableForRole } from '../user/user-email-availability.util';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -1101,40 +1102,59 @@ export class OAuthAuthService {
   }
 
   /** Encode OAuth state (returned by IdP on callback). */
-  buildOAuthState(options?: { scaqVerify?: boolean; deferredAuth?: boolean }): string {
+  buildOAuthState(options?: {
+    scaqVerify?: boolean;
+    deferredAuth?: boolean;
+    loginAsCorporate?: boolean;
+  }): string {
     return Buffer.from(
       JSON.stringify({
         scaqVerify: Boolean(options?.scaqVerify),
         deferredAuth: Boolean(options?.deferredAuth),
+        loginAsCorporate: Boolean(options?.loginAsCorporate),
         ts: Date.now(),
       }),
     ).toString('base64url');
   }
 
   /** Decode OAuth state from the IdP callback. */
-  parseOAuthState(state?: string): { scaqVerify: boolean; deferredAuth: boolean } {
-    if (!state?.trim()) return { scaqVerify: false, deferredAuth: false };
+  parseOAuthState(state?: string): {
+    scaqVerify: boolean;
+    deferredAuth: boolean;
+    loginAsCorporate: boolean;
+  } {
+    if (!state?.trim()) {
+      return { scaqVerify: false, deferredAuth: false, loginAsCorporate: false };
+    }
     try {
       const json = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as {
         scaqVerify?: boolean | number | string;
         deferredAuth?: boolean | number | string;
+        loginAsCorporate?: boolean | number | string;
       };
       const flag = json.scaqVerify;
       const deferred = json.deferredAuth;
+      const corporate = json.loginAsCorporate;
       return {
         scaqVerify: flag === true || flag === 1 || flag === '1',
         deferredAuth: deferred === true || deferred === 1 || deferred === '1',
+        loginAsCorporate: corporate === true || corporate === 1 || corporate === '1',
       };
     } catch {
       return {
         scaqVerify: state === 'scaq_verify' || state.includes('scaq_verify'),
         deferredAuth: state.includes('deferred_auth'),
+        loginAsCorporate: state.includes('login_as_corporate'),
       };
     }
   }
 
   /** Build authorization URL for IdP. */
-  generateAuthUrl(options?: { scaqVerify?: boolean; deferredAuth?: boolean }): { authUrl: string; state: string } {
+  generateAuthUrl(options?: {
+    scaqVerify?: boolean;
+    deferredAuth?: boolean;
+    loginAsCorporate?: boolean;
+  }): { authUrl: string; state: string } {
     const base = this.baseUrl;
     const path = this.authPath;
     const clientId = this.clientId;
@@ -1142,6 +1162,7 @@ export class OAuthAuthService {
     const state = this.buildOAuthState({
       scaqVerify: options?.scaqVerify,
       deferredAuth: options?.deferredAuth,
+      loginAsCorporate: options?.loginAsCorporate,
     });
     const params = new URLSearchParams({
       client_id: clientId,
@@ -1160,7 +1181,7 @@ export class OAuthAuthService {
   async resolveOAuthCallback(
     idpUserInfo: IdPUserInfo,
     idpAccessToken: string,
-    options: { scaqVerify: boolean },
+    options: { scaqVerify: boolean; loginAsCorporate?: boolean },
     syncFn?: (userId: string) => Promise<unknown>,
   ): Promise<OAuthCallbackResolution> {
     const email = normalizeEmail(idpUserInfo.email || idpUserInfo.sub || '');
@@ -1205,7 +1226,9 @@ export class OAuthAuthService {
       };
     }
 
-    const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn);
+    const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn, {
+      loginAsCorporate: Boolean(options.loginAsCorporate),
+    });
     return { mode: 'full-login', result };
   }
 
@@ -1349,6 +1372,56 @@ export class OAuthAuthService {
     }
   }
 
+  /**
+   * Block individual membership create when this email is already a Corporate contact
+   * (local DB and/or Salesforce). Must run BEFORE payment and before createuserfornexus.
+   */
+  async assertEmailAvailableForIndividualMembershipCreate(email: string): Promise<void> {
+    const normalized = normalizeEmail(email);
+    if (!normalized) {
+      throw new BadRequestException('A valid email address is required.');
+    }
+
+    const corporateEmailInUseMessage =
+      'This email address is already associated with a corporate account. Please use a different email for individual membership, or sign in via the Organisation Portal.';
+
+    const localCorporate = await this.userRepository.findOne({
+      where: { email: normalized, role: UserRole.Corporate },
+    });
+    if (localCorporate) {
+      throw new BadRequestException(corporateEmailInUseMessage);
+    }
+
+    try {
+      const check = await this.checkCorporateSalesforceAccount({ email: normalized });
+      const nested =
+        check?.data && typeof check.data === 'object'
+          ? (check.data as Record<string, unknown>)
+          : (check as Record<string, unknown>);
+      const corporateAccountExists = Boolean(nested?.corporateAccountExists);
+      const contactExists = Boolean(nested?.contactExists);
+      const exactMatch = nested?.exactMatch === true;
+      if ((corporateAccountExists && contactExists) || exactMatch) {
+        throw new BadRequestException(corporateEmailInUseMessage);
+      }
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      console.warn(
+        '[Salesforce] Corporate email pre-check skipped (non-fatal):',
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    const sfCheck = await this.checkSalesforceUserByEmail(normalized);
+    if (sfCheck?.found) {
+      throw new BadRequestException(
+        'An eServices account already exists for this email address. Please sign in instead of creating a new account.',
+      );
+    }
+  }
+
   /** Create a Salesforce user via Apex REST createuserfornexus (pre-SSO membership signup). */
   async createSalesforceNexusUser(payload: {
     salutation: string;
@@ -1371,6 +1444,9 @@ export class OAuthAuthService {
     if (!email) {
       throw new BadRequestException('A valid email address is required.');
     }
+
+    // Fail before Salesforce create (and after payment) with the same corporate conflict Apex returns.
+    await this.assertEmailAvailableForIndividualMembershipCreate(email);
 
     const paymentProof = this.resolveMembershipPaymentProof(payload.paymentProofToken);
     const isPaid = payload.Is_paid === true || Boolean(paymentProof);
@@ -3194,6 +3270,12 @@ export class OAuthAuthService {
 
     const lower = text.toLowerCase();
     if (
+      lower.includes('associated with a corporate')
+      || (lower.includes('corporate account') && lower.includes('another email'))
+    ) {
+      return 'This email address is already associated with a corporate account. Please use a different email for individual membership, or sign in via the Organisation Portal.';
+    }
+    if (
       lower.includes('aura') && lower.includes('visualforce')
       || lower.includes('can only throw this exception type')
     ) {
@@ -4180,49 +4262,115 @@ export class OAuthAuthService {
   }
 
   /**
-   * Prefer Salesforce Account Id as stable identity. When the IdP email changed,
-   * reuse the existing local user (matched by salesforceAccountId) and update email.
+   * Resolve local user for SSO by Salesforce username (preferred), then Account Id, then email.
+   * Always scoped by role so Individual and Corporate records stay separate.
    */
   private async resolveLocalUserForSsoLogin(params: {
     email: string;
+    salesforceUsername: string;
     salesforceAccountId: string;
-  }): Promise<{ user: UserEntity | null; matchedBy: 'accountId' | 'email' | null }> {
-    const { email, salesforceAccountId } = params;
+    role: UserRole;
+  }): Promise<{
+    user: UserEntity | null;
+    matchedBy: 'username' | 'accountId' | 'email' | null;
+  }> {
+    const email = normalizeEmail(params.email || '');
+    const salesforceUsername = String(params.salesforceUsername || '').trim();
+    const salesforceAccountId = String(params.salesforceAccountId || '').trim();
+    const { role } = params;
+
+    if (salesforceUsername) {
+      const bySfUsername = await this.userRepository
+        .createQueryBuilder('user')
+        .where('LOWER(user.salesforceUsername) = LOWER(:username)', {
+          username: salesforceUsername,
+        })
+        .andWhere('user.role = :role', { role })
+        .getOne();
+      if (bySfUsername) {
+        return { user: bySfUsername, matchedBy: 'username' };
+      }
+
+      const byLocalUsername = await this.userRepository
+        .createQueryBuilder('user')
+        .where('LOWER(user.username) = LOWER(:username)', {
+          username: salesforceUsername,
+        })
+        .andWhere('user.role = :role', { role })
+        .getOne();
+      if (byLocalUsername) {
+        return { user: byLocalUsername, matchedBy: 'username' };
+      }
+
+      const usernameAsEmail = normalizeEmail(salesforceUsername);
+      if (usernameAsEmail.includes('@')) {
+        const byUsernameEmail = await this.userRepository.findOne({
+          where: { email: usernameAsEmail, role },
+        });
+        if (byUsernameEmail) {
+          return { user: byUsernameEmail, matchedBy: 'username' };
+        }
+      }
+    }
 
     if (salesforceAccountId) {
       const byAccountId = await this.userRepository.findOne({
-        where: { salesforceAccountId },
+        where: { salesforceAccountId, role },
       });
       if (byAccountId) {
         return { user: byAccountId, matchedBy: 'accountId' };
       }
     }
 
-    const byEmail = await this.userRepository.findOne({ where: { email } });
-    if (byEmail) {
-      return { user: byEmail, matchedBy: 'email' };
+    if (email) {
+      const byEmail = await this.userRepository.findOne({ where: { email, role } });
+      if (byEmail) {
+        return { user: byEmail, matchedBy: 'email' };
+      }
     }
 
     return { user: null, matchedBy: null };
   }
 
-  /** Update local email when Salesforce/IdP email changed for the same Account Id. */
+  /** True when an existing User row looks like a corporate staff learner (not HR). */
+  private isStaffLearnerAccount(user: UserEntity): boolean {
+    if (user.role !== UserRole.User) return false;
+    const existingCompanyCode = String(user.companyCode || '').trim();
+    if (!existingCompanyCode) return false;
+    const snap =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? (user.eligibilitySnapshot as Record<string, unknown>)
+        : null;
+    return Boolean(
+      snap?.companyEnrollmentViaQr === true
+      || snap?.companyReferenceConfirmed === true
+      || snap?.eligibilityType === 'company-qr-enrollment'
+      || snap?.source === 'corporate-staff-enrol'
+      || Boolean(String(snap?.companyCode || snap?.companyReferenceId || '').trim()),
+    );
+  }
+
+  /** Update local email when Salesforce identity changed; scoped by role. */
   private async applySsoEmailIfChanged(user: UserEntity, email: string): Promise<void> {
     const current = normalizeEmail(user.email || '');
     if (!email || current === email) return;
 
-    const emailOwner = await this.userRepository.findOne({ where: { email } });
+    const emailOwner = await this.userRepository.findOne({
+      where: { email, role: user.role },
+    });
     if (emailOwner && emailOwner.id !== user.id) {
       throw new ConflictException(
         'This email is already linked to another AI Nexus account. Contact support to merge or update the account.',
       );
     }
 
-    console.log('[SSO Login] Updating local email from Salesforce Account Id match:', {
+    console.log('[SSO Login] Updating local email from Salesforce match:', {
       userId: user.id,
+      role: user.role,
       previousEmail: current || null,
       nextEmail: email,
       salesforceAccountId: user.salesforceAccountId || null,
+      salesforceUsername: user.salesforceUsername || null,
     });
     user.email = email;
   }
@@ -4232,6 +4380,7 @@ export class OAuthAuthService {
     idpUserInfo: IdPUserInfo,
     idpAccessToken: string,
     syncFn?: (userId: string) => Promise<unknown>,
+    options?: { loginAsCorporate?: boolean },
   ): Promise<ProcessOAuthResult> {
     console.log('[SSO Login] Raw IdP userinfo received:', idpUserInfo);
     console.log('[SSO Login] IdP access token (masked):', this.maskToken(idpAccessToken));
@@ -4245,17 +4394,70 @@ export class OAuthAuthService {
     const firstName = idpUserInfo.given_name || idpUserInfo.first_name || idpUserInfo.name || '';
     const lastName = idpUserInfo.family_name || idpUserInfo.last_name || '';
 
-    // Fetch Salesforce identity early so we can match existing users by Account Id
-    // even when their email changed in Salesforce / eServices.
     const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
     const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+    const hasCorporateInfo = this.isCorporateSalesforceUserInfo(corporateInfo);
+
+    const nexusUsername = String(
+      (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.username : '') || '',
+    ).trim();
+    const corporateUsername = hasCorporateInfo
+      ? String(
+          (corporateInfo as { username?: string }).username
+          || (corporateInfo as { contactEmail?: string }).contactEmail
+          || '',
+        ).trim()
+      : '';
+
+    // Org Portal SSO sets loginAsCorporate. Otherwise Corporate only when no nexus username.
+    const preferCorporateLogin =
+      Boolean(options?.loginAsCorporate)
+      || (hasCorporateInfo && !nexusUsername);
+
+    let targetRole: UserRole = preferCorporateLogin ? UserRole.Corporate : UserRole.User;
+    if (preferCorporateLogin) {
+      const staffProbe = await this.resolveLocalUserForSsoLogin({
+        email,
+        salesforceUsername: nexusUsername || corporateUsername || email,
+        salesforceAccountId: String(
+          (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.accountID : '') || '',
+        ).trim(),
+        role: UserRole.User,
+      });
+      if (staffProbe.user && this.isStaffLearnerAccount(staffProbe.user)) {
+        targetRole = UserRole.User;
+        console.log('[SSO Login] Staff learner matched — using Individual record:', {
+          userId: staffProbe.user.id,
+        });
+      }
+    }
+
+    // Corporate → userinfoforcorporate.username ; Individual → userinfonexus.username
+    const salesforceUsername =
+      targetRole === UserRole.Corporate
+        ? (corporateUsername || nexusUsername || email)
+        : (nexusUsername || email);
+
     const salesforceAccountId = String(
-      (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.accountID : '')
-        || (this.isCorporateSalesforceUserInfo(corporateInfo) ? corporateInfo.accountId : '')
-        || '',
+      targetRole === UserRole.Corporate
+        ? (
+            (hasCorporateInfo ? (corporateInfo as { accountId?: string }).accountId : '')
+            || (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.accountID : '')
+            || ''
+          )
+        : (
+            (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.accountID : '')
+            || (hasCorporateInfo ? (corporateInfo as { accountId?: string }).accountId : '')
+            || ''
+          ),
     ).trim();
 
-    const resolved = await this.resolveLocalUserForSsoLogin({ email, salesforceAccountId });
+    const resolved = await this.resolveLocalUserForSsoLogin({
+      email,
+      salesforceUsername,
+      salesforceAccountId,
+      role: targetRole,
+    });
     let user = resolved.user;
     const isNewUser = !user;
 
@@ -4264,7 +4466,11 @@ export class OAuthAuthService {
       socialId,
       firstName,
       lastName,
+      salesforceUsername: salesforceUsername || null,
       salesforceAccountId: salesforceAccountId || null,
+      targetRole,
+      preferCorporateLogin,
+      loginAsCorporate: Boolean(options?.loginAsCorporate),
       matchedBy: resolved.matchedBy,
       isNewUser,
       existingUserId: user?.id || null,
@@ -4272,24 +4478,57 @@ export class OAuthAuthService {
     });
 
     if (!user) {
-      const username = await this.generateUniqueUsername(email, firstName, lastName);
+      const contactEmail =
+        targetRole === UserRole.Corporate && hasCorporateInfo
+          ? normalizeEmail(String((corporateInfo as { contactEmail?: string }).contactEmail || ''))
+          : '';
+      const createEmail = contactEmail || email;
+      await assertEmailAvailableForRole(this.userRepository, createEmail, targetRole);
+
+      const username = await this.generateUniqueUsername(
+        salesforceUsername.includes('@') ? salesforceUsername : createEmail,
+        firstName
+          || (hasCorporateInfo
+            ? String((corporateInfo as { contactFirstName?: string }).contactFirstName || '')
+            : ''),
+        lastName
+          || (hasCorporateInfo
+            ? String((corporateInfo as { contactLastName?: string }).contactLastName || '')
+            : ''),
+      );
       const newUserPartial: DeepPartial<UserEntity> = {
         username,
-        firstname: firstName || 'User',
-        lastname: lastName || email.split('@')[0],
-        email,
+        firstname:
+          firstName
+          || (targetRole === UserRole.Corporate && hasCorporateInfo
+            ? String((corporateInfo as { contactFirstName?: string }).contactFirstName || '')
+            : '')
+          || 'User',
+        lastname:
+          lastName
+          || (targetRole === UserRole.Corporate && hasCorporateInfo
+            ? String((corporateInfo as { contactLastName?: string }).contactLastName || '')
+            : '')
+          || createEmail.split('@')[0],
+        email: createEmail,
         password: null,
         authProvider: AuthProvider.OAUTH,
         socialId: socialId || null,
         socialAccessToken: idpAccessToken,
         isVerified: true,
-        role: UserRole.User,
+        role: targetRole,
         status: UserStatus.Active,
+        salesforceUsername: salesforceUsername || null,
       };
       user = this.userRepository.create(newUserPartial);
-      console.log('[SSO Login] Creating NEW user for SSO email:', email, 'username:', username);
+      console.log('[SSO Login] Creating NEW user for SSO:', {
+        email: createEmail,
+        username,
+        role: targetRole,
+        salesforceUsername,
+      });
     } else {
-      if (resolved.matchedBy === 'accountId') {
+      if (resolved.matchedBy === 'username' || resolved.matchedBy === 'accountId') {
         await this.applySsoEmailIfChanged(user, email);
       }
       user.authProvider = AuthProvider.OAUTH;
@@ -4298,15 +4537,17 @@ export class OAuthAuthService {
       user.isVerified = true;
       if (firstName) user.firstname = firstName;
       if (lastName) user.lastname = lastName;
+      if (salesforceUsername) user.salesforceUsername = salesforceUsername;
       console.log('[SSO Login] Updating EXISTING user via SSO:', {
         id: user.id,
         email: user.email,
+        role: user.role,
         matchedBy: resolved.matchedBy,
       });
     }
 
-    // Persist SCAQ/Associate/account flags from nexus (already fetched above).
-    if (nexusInfo && typeof nexusInfo === 'object') {
+    // Nexus flags only on Individual rows (never overwrite Corporate identity).
+    if (nexusInfo && typeof nexusInfo === 'object' && user.role === UserRole.User) {
       const previous = {
         accountId: user.salesforceAccountId,
         accountType: user.salesforceAccountType,
@@ -4335,82 +4576,87 @@ export class OAuthAuthService {
           isAssociateMember: user.isAssociateMember,
         },
       });
-    } else {
+    } else if (nexusInfo && typeof nexusInfo === 'object' && user.role === UserRole.Corporate) {
+      user.salesforceUserInfoRaw = {
+        ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+          ? user.salesforceUserInfoRaw
+          : {}),
+        nexus: nexusInfo as Record<string, unknown>,
+      };
+    } else if (user.role === UserRole.User) {
       console.warn('[SSO Login] No Salesforce nexus user info available — SCAQ/Associate flags NOT updated.');
     }
 
-    // Corporate HR portal: detect via userinfoforcorporate and assign Corporate role.
-    // Never promote existing staff learners (QR / Enrol Staff) to Corporate — they stay
-    // role=User so they appear on the corporate dashboard learner lists.
-    if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
+    // Corporate HR: update Corporate row only — never promote Individual → Corporate.
+    if (hasCorporateInfo && user.role === UserRole.Corporate) {
       const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
-      const accountId = String(corporateInfo.accountId || '').trim();
-      const contactEmail = normalizeEmail(String(corporateInfo.contactEmail || ''));
-      const existingCompanyCode = String(user.companyCode || '').trim();
-      const snap =
-        user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
-          ? (user.eligibilitySnapshot as Record<string, unknown>)
-          : null;
-      const isStaffLearnerAccount =
-        user.role === UserRole.User
-        && Boolean(existingCompanyCode)
-        && (
-          snap?.companyEnrollmentViaQr === true
-          || snap?.companyReferenceConfirmed === true
-          || snap?.eligibilityType === 'company-qr-enrollment'
-          || snap?.source === 'corporate-staff-enrol'
-          || Boolean(String(snap?.companyCode || snap?.companyReferenceId || '').trim())
-        );
+      const accountId = String((corporateInfo as { accountId?: string }).accountId || '').trim();
+      const contactEmail = normalizeEmail(
+        String((corporateInfo as { contactEmail?: string }).contactEmail || ''),
+      );
+      const contactUsername = String(
+        (corporateInfo as { username?: string }).username || contactEmail || '',
+      ).trim();
 
-      if (isStaffLearnerAccount) {
-        // Keep learner tagged to the company they enrolled under.
-        if (!existingCompanyCode && companyCode) {
-          user.companyCode = companyCode;
-        }
-        console.log('[SSO Login] Staff learner matched corporate userinfo — keeping User role:', {
-          userId: user.id,
-          companyCode: user.companyCode || null,
-          sfCompanyCode: companyCode || null,
-        });
-      } else {
-        user.role = UserRole.Corporate;
-        // Link learners / corporate dashboard only via Salesforce companyCode.
-        if (companyCode) user.companyCode = companyCode;
-        if (accountId) user.salesforceAccountId = accountId;
-        if (contactEmail && !user.salesforceUsername) user.salesforceUsername = contactEmail;
-        user.salesforceUserInfoRaw = {
-          ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
-            ? user.salesforceUserInfoRaw
-            : {}),
-          corporate: corporateInfo,
-        };
-        user.salesforceSyncedAt = new Date();
-        console.log('[SSO Login] Corporate Salesforce user detected — role set to Corporate:', {
-          companyCode: companyCode || null,
-          accountId: accountId || null,
-          contactEmail: contactEmail || null,
-        });
-        if (companyCode) {
-          try {
-            let accountName = String(
-              (corporateInfo as { accountName?: string; companyName?: string; name?: string })
-                ?.accountName
-              || (corporateInfo as { companyName?: string })?.companyName
-              || (corporateInfo as { name?: string })?.name
-              || '',
-            ).trim();
-            if (!accountName && accountId) {
-              accountName = (await this.fetchSalesforceAccountNameById(accountId)) || '';
-            }
-            await this.companyEnrollmentService.ensureInviteForCompanyCode({
-              companyCode,
-              label: accountName || companyCode,
-            });
-          } catch (inviteErr) {
-            console.error('[SSO Login] Failed to auto-create company QR invite (non-fatal):', inviteErr);
+      if (companyCode) user.companyCode = companyCode;
+      if (accountId) user.salesforceAccountId = accountId;
+      if (contactUsername) user.salesforceUsername = contactUsername;
+      if (contactEmail) {
+        await this.applySsoEmailIfChanged(user, contactEmail);
+      }
+      const contactFirst = String(
+        (corporateInfo as { contactFirstName?: string }).contactFirstName || '',
+      ).trim();
+      const contactLast = String(
+        (corporateInfo as { contactLastName?: string }).contactLastName || '',
+      ).trim();
+      if (contactFirst) user.firstname = contactFirst;
+      if (contactLast) user.lastname = contactLast;
+
+      user.salesforceUserInfoRaw = {
+        ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+          ? user.salesforceUserInfoRaw
+          : {}),
+        corporate: corporateInfo,
+      };
+      user.salesforceSyncedAt = new Date();
+      console.log('[SSO Login] Corporate Salesforce user — Corporate record updated:', {
+        companyCode: companyCode || null,
+        accountId: accountId || null,
+        username: contactUsername || null,
+        contactEmail: contactEmail || null,
+      });
+      if (companyCode) {
+        try {
+          let accountName = String(
+            (corporateInfo as { accountName?: string; companyName?: string; name?: string })
+              ?.accountName
+            || (corporateInfo as { companyName?: string })?.companyName
+            || (corporateInfo as { name?: string })?.name
+            || '',
+          ).trim();
+          if (!accountName && accountId) {
+            accountName = (await this.fetchSalesforceAccountNameById(accountId)) || '';
           }
+          await this.companyEnrollmentService.ensureInviteForCompanyCode({
+            companyCode,
+            label: accountName || companyCode,
+          });
+        } catch (inviteErr) {
+          console.error('[SSO Login] Failed to auto-create company QR invite (non-fatal):', inviteErr);
         }
       }
+    } else if (hasCorporateInfo && this.isStaffLearnerAccount(user)) {
+      const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
+      const existingCompanyCode = String(user.companyCode || '').trim();
+      if (!existingCompanyCode && companyCode) {
+        user.companyCode = companyCode;
+      }
+      console.log('[SSO Login] Staff learner matched corporate userinfo — keeping User role:', {
+        userId: user.id,
+        companyCode: user.companyCode || null,
+        sfCompanyCode: companyCode || null,
+      });
     } else if (user.role === UserRole.Corporate) {
       console.log('[SSO Login] Preserving existing Corporate role (corporate userinfo unavailable).');
       const existingCode = String(user.companyCode || '').trim();
@@ -4477,8 +4723,11 @@ export class OAuthAuthService {
     idpUserInfo: IdPUserInfo,
     idpAccessToken: string,
     syncFn?: (userId: string) => Promise<unknown>,
+    options?: { loginAsCorporate?: boolean },
   ): Promise<ProcessOAuthResult> {
-    const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn);
+    const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn, {
+      loginAsCorporate: Boolean(options?.loginAsCorporate),
+    });
     await this.markSalesforceAccountAsAiNexusUser(result.user.salesforceAccountId);
     return result;
   }

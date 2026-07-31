@@ -4,7 +4,11 @@ import { useSearchParams } from 'react-router-dom';
 
 import { CONFIG } from 'src/config-global';
 
-import { LearningTopBar, LearningMainSection } from 'src/sections/learning';
+import {
+  LearningTopBar,
+  LearningMainSection,
+  LearningAdvertiseButton,
+} from 'src/sections/learning';
 import { LEARNING_ADD_TO_CART_ENABLED } from 'src/sections/learning/learning-feature-flags';
 
 // ----------------------------------------------------------------------
@@ -43,6 +47,7 @@ export default function LearningPage() {
         showCart={LEARNING_ADD_TO_CART_ENABLED && activeTab === 'courses'}
       />
       <LearningMainSection activeTab={activeTab} setActiveTab={setActiveTab} />
+      <LearningAdvertiseButton />
     </>
   );
 }

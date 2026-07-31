@@ -31,7 +31,11 @@ export class UserEntity {
     @Column({ type: 'varchar' })
     lastname!: string;
 
-    @Column({ type: 'varchar', unique: true, nullable: true })
+    /**
+     * Not globally unique: one Individual (`User`) + one `Corporate` row may share an email.
+     * Uniqueness is enforced in app logic / indexes per (email, role) when needed.
+     */
+    @Column({ type: 'varchar', nullable: true })
     email!: string | null;
 
     @Column({ type: 'varchar', nullable: true })

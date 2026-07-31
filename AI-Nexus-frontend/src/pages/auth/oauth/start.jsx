@@ -93,8 +93,25 @@ export default function OAuthStartPage() {
           }
         }
 
+        const decodedReturnTo = (() => {
+          if (!returnTo) return '';
+          try {
+            return decodeURIComponent(returnTo);
+          } catch {
+            return returnTo;
+          }
+        })();
+        const loginAsCorporate =
+          params.get('loginAsCorporate') === '1'
+          || params.get('loginAsCorporate') === 'true'
+          || decodedReturnTo.includes('/corporate');
+
         const scaqVerify = params.get('membershipOutcome') === 'scaq-sso-verify';
-        const { authUrl } = await getOAuthAuthUrl({ scaqVerify, deferredAuth: isDeferredMembershipApplication });
+        const { authUrl } = await getOAuthAuthUrl({
+          scaqVerify,
+          deferredAuth: isDeferredMembershipApplication,
+          loginAsCorporate,
+        });
         if (cancelled) return;
         if (authUrl && (authUrl.startsWith('http://') || authUrl.startsWith('https://'))) {
           window.location.href = authUrl;

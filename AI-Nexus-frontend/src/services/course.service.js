@@ -234,6 +234,21 @@ export const courseService = {
     }
   },
 
+  /**
+   * International pathway modules with videoUrl + minutes matched by LMS section title.
+   * GET /courses/international/ai-fluency-pathway-modules
+   */
+  async getInternationalAiFluencyPathwayModules() {
+    try {
+      const response = await axios.get('/courses/international/ai-fluency-pathway-modules');
+      const rows = response.data?.data ?? response.data ?? [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error('Error fetching international AI Fluency pathway modules:', error);
+      throw error;
+    }
+  },
+
   async getCourseById(id) {
     try {
       const response = await axios.get(`/courses/${id}`);

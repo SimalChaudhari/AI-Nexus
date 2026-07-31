@@ -39,11 +39,15 @@ export const clearMembershipSignupDraftUserId = () => {
 /** **************************************
  * Sign in with backend API (supports email or username)
  *************************************** */
-export const signInWithPassword = async ({ email, username, password }) => {
+export const signInWithPassword = async ({ email, username, password, preferredRole } = {}) => {
   try {
     // Use email if provided, otherwise use username
     const identifier = email || username;
-    const params = { identifier, password };
+    const params = {
+      identifier,
+      password,
+      ...(preferredRole ? { preferredRole } : {}),
+    };
     const res = await axios.post('/auth/login', params);
     const { user } = res.data;
 
@@ -666,11 +670,16 @@ export const getStudentFeeWaiverResumeFlow = async ({ token } = {}) => {
 /** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
-export const getOAuthAuthUrl = async ({ scaqVerify = false, deferredAuth = false } = {}) => {
+export const getOAuthAuthUrl = async ({
+  scaqVerify = false,
+  deferredAuth = false,
+  loginAsCorporate = false,
+} = {}) => {
   const res = await axios.get('/auth/oauth/auth-url', {
     params: {
       ...(scaqVerify ? { scaqVerify: '1' } : {}),
       ...(deferredAuth ? { deferredAuth: '1' } : {}),
+      ...(loginAsCorporate ? { loginAsCorporate: '1' } : {}),
     },
   });
   const { authUrl, state } = res.data || {};

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import Typography from '@mui/material/Typography';
@@ -20,13 +19,11 @@ import {
   PARTNER_HERO_EYEBROW_SX,
   PARTNER_HERO_TITLE_SX,
 } from 'src/sections/partner-with-isca/partner-with-isca-typography';
-import { FLUID_FONT_SIZES } from 'src/theme/home-typography';
 
 import heroEarthImage from 'src/assets/international/hero-earth.png';
 import globalLearningImage from 'src/assets/international/global-learning.png';
 
-import { CATALOG_COURSES } from '../catalog-courses';
-import { INTL_REGIONS, getStoredIntlRegion, setStoredIntlRegion } from '../intl-region';
+import { INTL_REGIONS, setStoredIntlRegion } from '../intl-region';
 
 // ----------------------------------------------------------------------
 
@@ -68,19 +65,10 @@ const GLOBAL_POINTS = [
 
 export function InternationalLandingView() {
   const navigate = useNavigate();
-  const [region, setRegion] = useState(() => getStoredIntlRegion());
 
   const handleSelectRegion = (next) => {
     setStoredIntlRegion(next.id);
-    setRegion(next);
-  };
-
-  const handleExplore = (course) => {
-    if (!region) {
-      document.getElementById('intl-step-region')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
-    if (course.path) navigate(course.path);
+    navigate(paths.internationalAiFluency);
   };
 
   return (
@@ -104,9 +92,7 @@ export function InternationalLandingView() {
         [`& .${layoutClasses.content}`]: frontendContentSx,
       }}
     >
-      <HeroSection />
-      <RegionStep region={region} onSelect={handleSelectRegion} />
-      <ProgrammeStep region={region} onExplore={handleExplore} />
+      <HeroSection onSelectRegion={handleSelectRegion} />
       <GlobalSection />
       <TrustBar />
       <IntlFooter />
@@ -122,38 +108,6 @@ function SectionWrap({ id, children, sx, contentSx }) {
       <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, py: 0, ...contentSx }}>
         {children}
       </DashboardContent>
-    </Box>
-  );
-}
-
-function StepTitle({ step, title }) {
-  return (
-    <Box sx={{ mb: 2.75, textAlign: 'center' }}>
-      <Typography
-        sx={{
-          m: 0,
-          mb: 0.5,
-          fontWeight: 800,
-          fontSize: 12,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: RED,
-        }}
-      >
-        {step}
-      </Typography>
-      <Typography
-        sx={{
-          m: 0,
-          fontWeight: 800,
-          fontSize: { xs: 20, md: 24 },
-          letterSpacing: '0.02em',
-          textTransform: 'uppercase',
-          color: NAVY,
-        }}
-      >
-        {title}
-      </Typography>
     </Box>
   );
 }
@@ -308,7 +262,7 @@ function HeroFullWidthBackdrop({ imageSrc }) {
   );
 }
 
-function HeroSection() {
+function HeroSection({ onSelectRegion }) {
   return (
     <Box
       component="section"
@@ -401,314 +355,94 @@ function HeroSection() {
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
-                  gap: { xs: 1.25, sm: 1.25, md: 1.5 },
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: { xs: 1.25, sm: 1.5 },
                   width: '100%',
                   maxWidth: '100%',
-                  pt: { xs: 0.25, md: 0.5 },
                   boxSizing: 'border-box',
                 }}
               >
-                <Button
-                  onClick={() =>
-                    document
-                      .getElementById('intl-step-region')
-                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                  }
-                  variant="contained"
-                  size="large"
-                  sx={{
-                    width: '100%',
-                    justifyContent: 'center',
-                    position: 'relative',
-                    borderRadius: '8px',
-                    fontWeight: 700,
-                    fontSize: FLUID_FONT_SIZES.button,
-                    textTransform: 'none',
-                    boxShadow: 'none',
-                    minHeight: { xs: 48, sm: 50, md: 52 },
-                    px: { xs: 1.5, sm: 1.5, md: 2 },
-                    pr: { xs: 4, sm: 4.25, md: 4.75 },
-                    bgcolor: RED,
-                    color: '#fff',
-                    '&:hover': { bgcolor: '#A00000', boxShadow: 'none' },
-                  }}
-                >
-                  Choose your region
+                {INTL_REGIONS.map((r) => (
                   <Box
+                    key={r.id}
+                    component="button"
+                    type="button"
+                    onClick={() => onSelectRegion(r)}
                     sx={{
-                      position: 'absolute',
-                      right: { xs: 14, sm: 16, md: 18 },
-                      top: '50%',
-                      transform: 'translateY(-50%)',
                       display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 1,
+                      minHeight: { xs: 112, sm: 120 },
+                      px: 1.5,
+                      py: 2,
+                      width: '100%',
+                      bgcolor: '#fff',
+                      border: `1.5px solid ${alpha(NAVY, 0.14)}`,
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      boxShadow: `0 2px 10px ${alpha(NAVY, 0.04)}`,
+                      transition: 'border-color .2s, box-shadow .2s, transform .2s',
+                      '&:hover': {
+                        borderColor: RED,
+                        transform: 'translateY(-2px)',
+                        boxShadow: `0 8px 22px ${alpha(RED, 0.12)}`,
+                      },
                     }}
                   >
-                    <Iconify icon="solar:arrow-right-linear" width={18} />
+                    <Box
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        bgcolor: alpha(NAVY, 0.05),
+                        border: `1px solid ${alpha(NAVY, 0.1)}`,
+                        display: 'grid',
+                        placeItems: 'center',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {r.flagCode ? (
+                        <Box
+                          component="img"
+                          src={`https://flagcdn.com/w160/${r.flagCode}.png`}
+                          srcSet={`https://flagcdn.com/w320/${r.flagCode}.png 2x`}
+                          alt={`${r.label} flag`}
+                          loading="lazy"
+                          sx={{
+                            width: 30,
+                            height: 22,
+                            objectFit: 'cover',
+                            borderRadius: '3px',
+                            boxShadow: `0 1px 4px ${alpha('#000', 0.18)}`,
+                          }}
+                        />
+                      ) : (
+                        <Iconify icon="solar:global-bold-duotone" width={24} sx={{ color: NAVY }} />
+                      )}
+                    </Box>
+                    <Typography sx={{ fontWeight: 800, fontSize: { xs: 14, sm: 15 }, color: NAVY, lineHeight: 1.2 }}>
+                      {r.label}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: { xs: 12, sm: 13 },
+                        color: alpha(NAVY, 0.72),
+                        fontWeight: 500,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {r.nativeLabel}
+                    </Typography>
                   </Box>
-                </Button>
-
-                <Button
-                  onClick={() =>
-                    document
-                      .getElementById('intl-step-programmes')
-                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                  }
-                  variant="outlined"
-                  size="large"
-                  sx={{
-                    width: '100%',
-                    justifyContent: 'center',
-                    position: 'relative',
-                    borderRadius: '8px',
-                    fontWeight: 700,
-                    fontSize: FLUID_FONT_SIZES.button,
-                    textTransform: 'none',
-                    boxShadow: 'none',
-                    minHeight: { xs: 48, sm: 50, md: 52 },
-                    px: { xs: 1.5, sm: 1.5, md: 2 },
-                    pr: { xs: 4, sm: 4.25, md: 4.75 },
-                    bgcolor: '#fff',
-                    color: NAVY,
-                    border: `1.5px solid ${alpha(NAVY, 0.35)}`,
-                    '&:hover': {
-                      bgcolor: alpha(NAVY, 0.04),
-                      borderColor: NAVY,
-                      boxShadow: 'none',
-                    },
-                  }}
-                >
-                  Explore programmes
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      right: { xs: 14, sm: 16, md: 18 },
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      display: 'flex',
-                    }}
-                  >
-                    <Iconify icon="solar:arrow-right-linear" width={18} />
-                  </Box>
-                </Button>
+                ))}
               </Box>
             </Box>
           </Box>
         </Box>
       </DashboardContent>
-    </Box>
-  );
-}
-
-function RegionStep({ region, onSelect }) {
-  return (
-    <SectionWrap id="intl-step-region" sx={{ py: { xs: 4, md: 5 } }}>
-      <StepTitle step="Step 1" title="Choose your region" />
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' },
-          gap: 2,
-        }}
-      >
-        {INTL_REGIONS.map((r) => {
-          const selected = region?.id === r.id;
-          const color = selected ? RED : NAVY;
-          return (
-            <Box
-              key={r.id}
-              component="button"
-              type="button"
-              onClick={() => onSelect(r)}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1.25,
-                minHeight: 148,
-                px: 2,
-                py: 2.5,
-                bgcolor: '#fff',
-                border: `1.5px solid ${selected ? RED : alpha(NAVY, 0.14)}`,
-                borderRadius: '14px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                boxShadow: selected
-                  ? `0 8px 22px ${alpha(RED, 0.14)}`
-                  : `0 2px 10px ${alpha(NAVY, 0.04)}`,
-                transition: 'border-color .2s, box-shadow .2s, transform .2s',
-                '&:hover': {
-                  borderColor: RED,
-                  transform: 'translateY(-2px)',
-                },
-              }}
-            >
-              <Box
-                sx={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: '50%',
-                  bgcolor: selected ? alpha(RED, 0.08) : alpha(NAVY, 0.05),
-                  border: `1px solid ${selected ? alpha(RED, 0.22) : alpha(NAVY, 0.1)}`,
-                  display: 'grid',
-                  placeItems: 'center',
-                  overflow: 'hidden',
-                }}
-              >
-                {r.flagCode ? (
-                  <Box
-                    component="img"
-                    src={`https://flagcdn.com/w160/${r.flagCode}.png`}
-                    srcSet={`https://flagcdn.com/w320/${r.flagCode}.png 2x`}
-                    alt={`${r.label} flag`}
-                    loading="lazy"
-                    sx={{
-                      width: 34,
-                      height: 24,
-                      objectFit: 'cover',
-                      borderRadius: '3px',
-                      boxShadow: `0 1px 4px ${alpha('#000', 0.18)}`,
-                    }}
-                  />
-                ) : (
-                  <Iconify icon="solar:global-bold-duotone" width={26} sx={{ color }} />
-                )}
-              </Box>
-              <Typography sx={{ fontWeight: 800, fontSize: 16, color, lineHeight: 1.2 }}>
-                {r.label}
-              </Typography>
-              <Typography sx={{ fontSize: 13, color: alpha(color, 0.72), fontWeight: 500, lineHeight: 1.2 }}>
-                {r.nativeLabel}
-              </Typography>
-            </Box>
-          );
-        })}
-      </Box>
-    </SectionWrap>
-  );
-}
-
-function ProgrammeStep({ region, onExplore }) {
-  const courses = CATALOG_COURSES.filter((c) => c.enabled);
-
-  return (
-    <SectionWrap id="intl-step-programmes" sx={{ py: { xs: 2, md: 3 }, pb: { xs: 4, md: 5 } }}>
-      <StepTitle step="Step 2" title="Explore our programmes" />
-      {!region && (
-        <Typography sx={{ mb: 2, fontSize: 14, color: alpha(NAVY, 0.65) }}>
-          Select a region above to continue into a programme.
-        </Typography>
-      )}
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: 'repeat(2, 1fr)',
-            md: 'repeat(3, 1fr)',
-            lg: 'repeat(5, 1fr)',
-          },
-          gap: { xs: 1.5, md: 2 },
-        }}
-      >
-        {courses.map((course) => (
-          <ProgrammeCard key={course.id} course={course} onExplore={() => onExplore(course)} />
-        ))}
-      </Box>
-    </SectionWrap>
-  );
-}
-
-function ProgrammeCard({ course, onExplore }) {
-  const clickable = Boolean(course.path);
-
-  return (
-    <Box
-      sx={{
-        height: 1,
-        minHeight: 300,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center',
-        p: 2.5,
-        pt: 3,
-        bgcolor: '#fff',
-        border: `1px solid ${alpha(NAVY, 0.12)}`,
-        borderRadius: '14px',
-        boxShadow: `0 4px 14px ${alpha(NAVY, 0.04)}`,
-      }}
-    >
-      <Box
-        sx={{
-          width: 88,
-          height: 88,
-          borderRadius: '22px',
-          bgcolor: alpha(course.accent, 0.1),
-          border: `1px solid ${alpha(course.accent, 0.14)}`,
-          display: 'grid',
-          placeItems: 'center',
-          mb: 2,
-          flexShrink: 0,
-        }}
-      >
-        <Iconify icon={course.icon} width={48} sx={{ color: course.accent }} />
-      </Box>
-
-      <Typography
-        sx={{
-          m: 0,
-          mb: 1,
-          fontWeight: 800,
-          fontSize: 14,
-          lineHeight: 1.25,
-          letterSpacing: '0.03em',
-          textTransform: 'uppercase',
-          color: course.accent,
-          minHeight: 36,
-        }}
-      >
-        {course.title}
-      </Typography>
-
-      <Typography
-        sx={{
-          m: 0,
-          mb: 2.25,
-          flex: 1,
-          fontSize: 13.5,
-          lineHeight: 1.45,
-          color: alpha(NAVY, 0.72),
-        }}
-      >
-        {course.blurb}
-      </Typography>
-
-      <Button
-        fullWidth
-        variant="contained"
-        onClick={onExplore}
-        disabled={!clickable}
-        endIcon={<Iconify icon="eva:arrow-forward-fill" width={16} />}
-        sx={{
-          mt: 'auto',
-          py: 1.05,
-          borderRadius: '6px',
-          textTransform: 'none',
-          fontWeight: 700,
-          fontSize: 14,
-          bgcolor: course.accent,
-          color: '#fff',
-          boxShadow: 'none',
-          '&:hover': { bgcolor: course.accent, filter: 'brightness(0.92)', boxShadow: 'none' },
-          '&.Mui-disabled': {
-            bgcolor: alpha(course.accent, 0.4),
-            color: '#fff',
-          },
-        }}
-      >
-        {clickable ? course.ctaLabel : 'Coming soon'}
-      </Button>
     </Box>
   );
 }
