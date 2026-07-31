@@ -3977,9 +3977,11 @@ export class AuthService {
       if (!loginDto.password) {
         throw new BadRequestException('Password must be provided.');
       }
-      // const isEmail = validateEmail(identifier);
       // For login identification, only check email format (do not apply disposable/blocked-name rules).
-      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+      // SF usernames are often email-shaped, so we always also match username / salesforceUsername.
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+      const normalizedEmail = looksLikeEmail ? (normalizeEmail(identifier) || identifier.toLowerCase()) : '';
+      const normalizedUsername = this.normalizeUsername(identifier);
       const preferredRoleRaw = String(loginDto.preferredRole || '').trim().toLowerCase();
       const preferredRole =
         preferredRoleRaw === 'corporate'
@@ -3988,50 +3990,60 @@ export class AuthService {
             ? UserRole.User
             : null;
 
-      // Role-aware lookup when Individual + Corporate share the same email/username
-      let user: UserEntity | null = null;
-      if (isEmail) {
-        if (preferredRole) {
-          user = await this.userRepository.findOne({
-            where: { email: identifier, role: preferredRole },
-          });
-        } else {
-          user =
-            (await this.userRepository.findOne({
-              where: { email: identifier, role: UserRole.User },
-            }))
-            || (await this.userRepository.findOne({
-              where: { email: identifier, role: UserRole.Corporate },
-            }))
-            || (await this.userRepository.findOne({ where: { email: identifier } }));
-        }
-      } else {
-        const normalizedUsername = this.normalizeUsername(identifier);
-        const byLocal = this.userRepository
-          .createQueryBuilder('user')
-          .where('LOWER(user.username) = LOWER(:username)', { username: normalizedUsername });
-        if (preferredRole) {
-          byLocal.andWhere('user.role = :role', { role: preferredRole });
-        }
-        user = await byLocal.getOne();
+      // Collect all email/username/salesforceUsername matches, then pick by preferredRole.
+      // preferredRole is a preference only — never hide the only matching account.
+      const matches: UserEntity[] = [];
+      const seenIds = new Set<string>();
+      const pushMatch = (row: UserEntity | null | undefined) => {
+        if (!row?.id || seenIds.has(row.id)) return;
+        seenIds.add(row.id);
+        matches.push(row);
+      };
 
-        if (!user) {
-          const bySf = this.userRepository
-            .createQueryBuilder('user')
-            .where('LOWER(user.salesforceUsername) = LOWER(:username)', {
-              username: normalizedUsername,
-            });
-          if (preferredRole) {
-            bySf.andWhere('user.role = :role', { role: preferredRole });
-          }
-          user = await bySf.getOne();
-        }
+      if (normalizedEmail) {
+        const byEmail = await this.userRepository
+          .createQueryBuilder('user')
+          .where('LOWER(user.email) = LOWER(:email)', { email: normalizedEmail })
+          .getMany();
+        byEmail.forEach(pushMatch);
       }
+
+      if (normalizedUsername) {
+        const byLocal = await this.userRepository
+          .createQueryBuilder('user')
+          .where('LOWER(user.username) = LOWER(:username)', { username: normalizedUsername })
+          .getMany();
+        byLocal.forEach(pushMatch);
+
+        const bySf = await this.userRepository
+          .createQueryBuilder('user')
+          .where('LOWER(user.salesforceUsername) = LOWER(:username)', {
+            username: normalizedUsername,
+          })
+          .getMany();
+        bySf.forEach(pushMatch);
+      }
+
+      const pickPreferredUser = (rows: UserEntity[]): UserEntity | null => {
+        if (!rows.length) return null;
+        if (preferredRole) {
+          const preferred = rows.find((row) => row.role === preferredRole);
+          if (preferred) return preferred;
+        }
+        return (
+          rows.find((row) => row.role === UserRole.User)
+          || rows.find((row) => row.role === UserRole.Corporate)
+          || rows.find((row) => row.role === UserRole.Admin)
+          || rows[0]
+        );
+      };
+
+      const user = pickPreferredUser(matches);
 
       if (!user) {
         throw new UnauthorizedException(
-          isEmail
-            ? 'No account found with this email address. Please check and try again.'
+          looksLikeEmail
+            ? 'No account found with this email or username. Please check and try again.'
             : 'No account found with this username. Please check and try again.',
         );
       }

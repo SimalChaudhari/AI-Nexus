@@ -19,6 +19,24 @@ import { LocalStorageService } from '../service/local-storage.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
 
+/** LinkedIn share text cannot use HTML/markdown — approximate bold with Mathematical Bold Unicode. */
+function toLinkedInBoldText(value: string): string {
+  return Array.from(String(value || ''))
+    .map((ch) => {
+      if (ch >= 'A' && ch <= 'Z') {
+        return String.fromCodePoint(0x1d400 + (ch.charCodeAt(0) - 65));
+      }
+      if (ch >= 'a' && ch <= 'z') {
+        return String.fromCodePoint(0x1d41a + (ch.charCodeAt(0) - 97));
+      }
+      if (ch >= '0' && ch <= '9') {
+        return String.fromCodePoint(0x1d7ce + (ch.charCodeAt(0) - 48));
+      }
+      return ch;
+    })
+    .join('');
+}
+
 type CertificateSyncResult = {
   action: 'issued' | 'reissued' | 'revoked' | 'unchanged' | 'already_active' | 'admin_deleted';
   certificate: CourseCertificateEntity | null;
@@ -818,43 +836,35 @@ export class CourseCertificateService {
       throw new NotFoundException('Certificate not available');
     }
 
-    let courseTitle = row.course?.title || 'Untitled Course';
-    let programTitle = '';
-    if (row.programId) {
-      const program = await this.programRepository.findOne({
-        where: { id: row.programId },
-        select: ['id', 'title'],
-      });
-      programTitle = program?.title || '';
-      courseTitle = programTitle || courseTitle || 'Programme';
-    }
-
-    const publicSettings = await this.appSettingsService.getPublicSettings();
-    const platformName = 'AI Nexus';
-    const badgeIssuerBase =
-      (publicSettings?.digitalBadgeIssuer && String(publicSettings.digitalBadgeIssuer).trim()) ||
-      platformName;
-    const badgeIssuer = programTitle ? `${badgeIssuerBase} · ${programTitle}` : badgeIssuerBase;
+    const websiteUrl = 'https://ainexus.isca.org.sg/';
+    // LinkedIn share text is plain text — use Unicode bold (HTML/markdown not supported).
+    const boldProgramme = toLinkedInBoldText('AIxACCOUNTANCY');
 
     const text =
       kind === 'badge'
         ? [
-            `I just earned the "${courseTitle}" digital badge on ${platformName}!`,
-            `Issued by: ${badgeIssuer}`,
-            row.certificateNo ? `Credential No: ${row.certificateNo}` : null,
-            'Continuing my professional learning journey.',
+            `I'm proud to have earned the ${boldProgramme} digital badge on AI Nexus. Another milestone in my professional learning journey.`,
+            '',
+            'I encourage you to join me on this learning journey and strengthen your AI skills for the future of accountancy.',
+            '',
+            'Issued by AI Nexus',
+            row.certificateNo ? `Credential No.:  ${row.certificateNo}` : null,
           ]
-            .filter(Boolean)
-            .join(' ')
+            .filter((line) => line !== null)
+            .join('\n')
         : [
-            `I just earned the "${courseTitle}" certificate on ${platformName}!`,
-            row.certificateNo ? `Certificate No: ${row.certificateNo}` : null,
-            'Continuing my professional learning journey.',
+            `I'm proud to have earned the ${boldProgramme} certificate on AI Nexus. Another milestone in my professional learning journey.`,
+            '',
+            'I encourage you to join me on this learning journey and strengthen your AI skills for the future of accountancy.',
+            '',
+            'Issued by AI Nexus',
+            row.certificateNo ? `Certificate No.:  ${row.certificateNo}` : null,
           ]
-            .filter(Boolean)
-            .join(' ');
+            .filter((line) => line !== null)
+            .join('\n');
 
-    const url = `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`;
+    // Attach site as share preview so AI Nexus is reachable without printing the URL in the post body.
+    const url = `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}&url=${encodeURIComponent(websiteUrl)}`;
 
     return { kind, text, url };
   }
