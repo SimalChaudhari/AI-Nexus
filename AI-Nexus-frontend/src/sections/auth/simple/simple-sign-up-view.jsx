@@ -31,10 +31,11 @@ import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
 import {
   buildCompanyQrEnrollmentSignUpSchema,
+  buildFreeIndividualSignUpSchema,
   buildPaidIndividualSignUpSchema,
 } from 'src/validations/user.validation';
 
-import { getVerifiedSignupAccess, saveMembershipSignupDraft, createSalesforceNexusUser, signupSalesforceForNexus, setSalesforceNexusPassword, saveSalesforceMembershipRecord, verifyCompanyReference } from 'src/auth/context/jwt';
+import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, signupSalesforceForNexus, setSalesforceNexusPassword, saveSalesforceMembershipRecord, verifyCompanyReference, validateNricIdentifier } from 'src/auth/context/jwt';
 import { abandonMembershipCheckout, confirmMembershipPayment, createMembershipCheckoutSession, verifyMembershipPayment } from 'src/services/payment.service';
 import { trackAffiliateClick, validateCode } from 'src/services/affiliate.service';
 import { appSettingsService } from 'src/services/app-settings.service';
@@ -52,6 +53,7 @@ import {
 } from 'src/utils/membership-application-student';
 import {
   buildIndividualSignupPrefillFromEligibility,
+  INDIVIDUAL_SIGNUP_CITIZENSHIP_OPTIONS,
   INDIVIDUAL_SIGNUP_DEFAULT_VALUES,
   INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS,
   mergeSignupEligibilityData,
@@ -86,6 +88,8 @@ const PENDING_MEMBERSHIP_REF_KEY = 'pending_membership_ref';
 const SALESFORCE_NEXUS_USERNAME_KEY = 'salesforceNexusUsername';
 const MEMBERSHIP_DRAFT_USER_ID_KEY = 'membershipDraftUserId';
 const MEMBERSHIP_SALESFORCE_SESSION_KEY = 'membershipSalesforceSession';
+/** Client-only: Salesforce setpassword after payment — never sent to local draft DB. */
+const MEMBERSHIP_SF_PASSWORD_KEY = 'membershipSalesforcePassword';
 
 /** In-flight Salesforce sync promises keyed by payment ref (prevents React Strict Mode double-create). */
 const membershipSalesforceSyncInFlight = new Map();
@@ -109,6 +113,7 @@ function clearMembershipSignupClientDraftStorage(paymentRefId = '') {
     PENDING_MEMBERSHIP_SESSION_KEY,
     PENDING_MEMBERSHIP_REF_KEY,
     SALESFORCE_NEXUS_USERNAME_KEY,
+    MEMBERSHIP_SF_PASSWORD_KEY,
     AFFILIATE_REF_STORAGE_KEY,
   ];
 
@@ -251,6 +256,8 @@ export function SimpleSignUpView() {
   });
   /** ISO country from IP; GST applies only when SG (or detection pending/fallback). */
   const [billingCountryCode, setBillingCountryCode] = useState('SG');
+  /** Phone dial-code country (ISO), auto-detected from IP like corporate signup. */
+  const [phoneCountry, setPhoneCountry] = useState('SG');
   const affiliateTrackedRef = useRef('');
   const appliedPromoInputRef = useRef('');
   const freeSignupPrefillRestoredRef = useRef(false);
@@ -272,10 +279,16 @@ export function SimpleSignUpView() {
   const isPromoLockedFromReferral = Boolean(lockedReferralCode);
   const isMembershipFeeFlow =
     (isPaidMembershipFlow || isVerifiedNricSignupFlow) && !isCompanyQrEnrollmentFlow;
-  /** Standalone free create-account is disabled — use company QR enrollment instead. */
-  const isFreeIndividualSignup = false;
+  /**
+   * Fee-waiver / free eligibility signup only — not open standalone create-account.
+   * Navigated here after NRIC + eligibility with membershipOutcome=fee-waiver-signup.
+   */
+  const isFreeIndividualSignup =
+    !isCompanyQrEnrollmentFlow
+    && !isMembershipFeeFlow
+    && membershipOutcome === 'fee-waiver-signup';
   const isUnsupportedStandaloneSignup =
-    !isCompanyQrEnrollmentFlow && !isMembershipFeeFlow;
+    !isCompanyQrEnrollmentFlow && !isMembershipFeeFlow && !isFreeIndividualSignup;
   const isCompanyCodeLockedFromQr = Boolean(isCompanyQrEnrollmentFlow);
   const signupAccessToken = searchParams.get('signupAccessToken') || '';
   const membershipDraftFormStorageKey = MEMBERSHIP_DRAFT_FORM_KEY;
@@ -417,8 +430,10 @@ export function SimpleSignUpView() {
     () =>
       isCompanyQrEnrollmentFlow
         ? buildCompanyQrEnrollmentSignUpSchema()
-        : buildPaidIndividualSignUpSchema(),
-    [isCompanyQrEnrollmentFlow]
+        : isFreeIndividualSignup
+          ? buildFreeIndividualSignUpSchema()
+          : buildPaidIndividualSignUpSchema(),
+    [isCompanyQrEnrollmentFlow, isFreeIndividualSignup]
   );
 
   const methods = useForm({
@@ -437,6 +452,7 @@ export function SimpleSignUpView() {
   const usernameValue = watch('username');
   const emailValue = watch('email');
   const jobFunctionValue = watch('jobFunction');
+  const citizenshipValue = watch('citizenship');
   const companyCodeValue = watch('companyCode');
   const promoCodeValue = watch('promoCode');
   const prevCompanyCodeRef = useRef(companyCodeValue);
@@ -842,6 +858,8 @@ export function SimpleSignUpView() {
 
       reset((current) => ({
         ...current,
+        firstName: prefill.firstName || current.firstName,
+        lastName: prefill.lastName || current.lastName,
         company: prefill.company || current.company,
         companyCode: prefill.companyCode || current.companyCode,
         jobFunction: prefill.jobFunction || current.jobFunction,
@@ -1011,7 +1029,9 @@ export function SimpleSignUpView() {
 
   // IP-based default for Country of residence + GST (skip GST outside Singapore).
   useEffect(() => {
-    if (!isMembershipFeeFlow && !isCompanyQrEnrollmentFlow) return undefined;
+    if (!isMembershipFeeFlow && !isCompanyQrEnrollmentFlow && !isFreeIndividualSignup) {
+      return undefined;
+    }
     if (verifiedSignupLoading) return undefined;
 
     let active = true;
@@ -1024,7 +1044,9 @@ export function SimpleSignUpView() {
       const countryCode = await detectCountryCodeFromIp();
       if (!active) return;
 
-      setBillingCountryCode(countryCode || 'SG');
+      const iso = String(countryCode || 'SG').trim().toUpperCase() || 'SG';
+      setBillingCountryCode(iso);
+      setPhoneCountry(iso);
 
       if (String(getValues('countryOfResidence') || '').trim()) return;
 
@@ -1045,6 +1067,7 @@ export function SimpleSignUpView() {
   }, [
     getValues,
     isCompanyQrEnrollmentFlow,
+    isFreeIndividualSignup,
     isMembershipFeeFlow,
     setValue,
     verifiedSignupLoading,
@@ -1156,7 +1179,6 @@ export function SimpleSignUpView() {
         // 1) Verify charged amount with payment provider (no Salesforce before paid proof)
         // 2) Finalize local account only after payment is verified
         // 3) Salesforce sync after local success (never create SF on failed/canceled payment)
-        const formValues = getValues();
         console.info('[MembershipPayment] Payment verify START');
         const verifiedPayment = await verifyMembershipPayment({
           ref: normalizedPaymentRef,
@@ -1193,8 +1215,22 @@ export function SimpleSignUpView() {
             refId: trimPaymentLogValue(normalizedPaymentRef),
             paidAmount: verifiedAmount,
           });
+          const formValues = getValues();
+          const sessionSfPassword =
+            typeof window !== 'undefined'
+              ? String(sessionStorage.getItem(MEMBERSHIP_SF_PASSWORD_KEY) || '').trim()
+              : '';
+          const sfFormValues = {
+            ...formValues,
+            password: String(formValues.password || '').trim() || sessionSfPassword,
+          };
+          if (!sfFormValues.password) {
+            throw new Error(
+              'Payment succeeded but eServices password was missing from this browser session. Please contact support to set your eServices password.'
+            );
+          }
           await runMembershipSalesforceSyncOnce(normalizedPaymentRef, () =>
-            ensureSalesforceNexusUserForMembershipSignup(formValues, {
+            ensureSalesforceNexusUserForMembershipSignup(sfFormValues, {
               isPaid: true,
               paidAmount: verifiedAmount,
               paidDate: verifiedPayment.paidDate || new Date().toISOString().slice(0, 10),
@@ -1578,6 +1614,11 @@ export function SimpleSignUpView() {
     }
   };
 
+  const redirectToEmailVerify = (email) => {
+    const verifySearch = new URLSearchParams({ email }).toString();
+    router.push(`${paths.auth.simple.verify}?${verifySearch}`);
+  };
+
   const handleCreateAccount = handleSubmit(async (data) => {
     try {
       setErrorMsg('');
@@ -1592,6 +1633,85 @@ export function SimpleSignUpView() {
           severity: 'warning',
           message: 'Please complete membership payment to create your account.',
         });
+        return;
+      }
+
+      // Fee-waiver free eligibility:
+      // 1) validate email (+ NRIC if present)
+      // 2) Salesforce create + set password
+      // 3) local DB register (email as username) + email verify — no direct SSO
+      if (isFreeIndividualSignup) {
+        setEmailSfChecking(true);
+        let emailCheck;
+        try {
+          emailCheck = await assertSalesforceEmailAvailable(data.email);
+        } finally {
+          setEmailSfChecking(false);
+        }
+        if (!emailCheck.ok) {
+          showSalesforceEmailError(emailCheck.message);
+          return;
+        }
+
+        const nricFin = String(data.nricFin || '').trim();
+        if (nricFin) {
+          try {
+            const nricCheck = await validateNricIdentifier({ identifier: nricFin });
+            if (nricCheck?.valid !== true) {
+              setErrorMsg(
+                nricCheck?.message
+                || 'The NRIC/FIN number is not valid. Please check and try again.'
+              );
+              return;
+            }
+          } catch (nricErr) {
+            setErrorMsg(
+              nricErr?.message
+              || 'The NRIC/FIN number is not valid. Please check and try again.'
+            );
+            return;
+          }
+        }
+
+        if (!String(data.password || '').trim()) {
+          setErrorMsg('Password is required.');
+          return;
+        }
+
+        const salesforceUsername = await ensureSalesforceNexusUserForMembershipSignup(data, {
+          forceCreate: true,
+        });
+        if (!salesforceUsername) {
+          throw new Error(
+            'Salesforce account was created but username was missing. Please try again or contact support.'
+          );
+        }
+
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('salesforceNexusUsername', String(salesforceUsername).trim());
+        }
+
+        // Local DB account — username = email until later Salesforce SSO sync.
+        // Pass salesforceUsername so register does not re-fail usercheckforemail on the account we just created.
+        await signUp({
+          username: String(data.email || '').trim().toLowerCase(),
+          email: data.email,
+          password: data.password,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          contactNumber: data.contactNumber,
+          companyCode: resolveSignupCompanyCode(),
+          signupAccessToken: signupAccessToken || undefined,
+          salesforceUsername: String(salesforceUsername).trim(),
+          eligibilityData: buildSubmittedEligibilityData(data),
+        });
+
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(membershipEligibilityStorageKey);
+        }
+
+        // HR / employer verification already done in eligibility — skip additional audit dialog.
+        redirectToEmailVerify(data.email);
         return;
       }
 
@@ -1723,10 +1843,19 @@ export function SimpleSignUpView() {
       const cachedDraftUserId =
         typeof window !== 'undefined' ? sessionStorage.getItem('membershipDraftUserId') || '' : '';
 
+      const localUsername = String(data.email || '').trim().toLowerCase();
+
+      // Password stays client-side only (session) for Salesforce setpassword after payment — not sent to local draft API.
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(
+          MEMBERSHIP_SF_PASSWORD_KEY,
+          String(data.password || '')
+        );
+      }
+
       const draftResponse = await saveMembershipSignupDraft({
-        username: data.username,
+        username: localUsername,
         email: data.email,
-        password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
         contactNumber: data.contactNumber,
@@ -1749,11 +1878,12 @@ export function SimpleSignUpView() {
             companyReferenceVerified: companyReferenceVerified === true,
             values: {
               salutation: data.salutation,
-              username: data.username,
+              username: localUsername,
               firstName: data.firstName,
               lastName: data.lastName,
               email: data.email,
               contactNumber: data.contactNumber,
+              // Kept in session for Salesforce setpassword after payment return only.
               password: data.password,
               company: data.company || companyVerifiedName || '',
               companyCode: data.companyCode,
@@ -1870,7 +2000,9 @@ export function SimpleSignUpView() {
           ? 'COMPANY ENROLLMENT'
           : isMembershipFeeFlow
             ? 'PAYMENT'
-            : 'COMPANY QR REQUIRED'}
+            : isFreeIndividualSignup
+              ? 'FEE WAIVER'
+              : 'COMPANY QR REQUIRED'}
       </Box>
 
       <Typography variant="h5" sx={{ textAlign: 'center' }}>
@@ -1880,7 +2012,9 @@ export function SimpleSignUpView() {
             ? 'Complete your verified membership setup'
             : isPaidMembershipFlow
               ? 'Complete your payment'
-              : 'Company QR enrollment'}
+              : isFreeIndividualSignup
+                ? 'Create your account'
+                : 'Company QR enrollment'}
       </Typography>
 
       <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
@@ -1888,7 +2022,9 @@ export function SimpleSignUpView() {
           ? 'Your company has already covered the membership fee. We create your Salesforce eServices account here — then you sign in with eServices.'
           : isMembershipFeeFlow
             ? 'Your details stay saved as a draft. We create your account automatically after successful payment.'
-            : 'Account creation on this page is only available through a company QR invite. Please scan the QR code from your company administrator.'}
+            : isFreeIndividualSignup
+              ? 'You are eligible for fee-waiver registration. Complete your details to create your account.'
+              : 'Account creation on this page is only available through a company QR invite. Please scan the QR code from your company administrator.'}
       </Typography>
 
       <Stack direction="row" spacing={0.5}>
@@ -1906,7 +2042,7 @@ export function SimpleSignUpView() {
 
   const renderAccountFields = (
     <Box sx={SIGNUP_FORM_GRID_SX}>
-      {!isCompanyQrEnrollmentFlow ? (
+      {!isCompanyQrEnrollmentFlow && !isFreeIndividualSignup && !isMembershipFeeFlow ? (
         <>
           <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
             <Field.Text
@@ -2038,7 +2174,12 @@ export function SimpleSignUpView() {
       </Box>
 
       <Box>
-        <Field.Phone name="contactNumber" label="Contact number (optional)" country="SG" />
+        <Field.Phone
+          key={`contactNumber-${phoneCountry}`}
+          name="contactNumber"
+          label="Contact number (optional)"
+          country={phoneCountry}
+        />
       </Box>
       <Box>
         <Field.Text
@@ -2196,6 +2337,59 @@ export function SimpleSignUpView() {
         </Box>
       ) : null}
 
+      {isFreeIndividualSignup ? (
+        <>
+          <Box>
+            <Field.Text
+              name="nricFin"
+              label="NRIC/FIN number"
+              required
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                readOnly: nricVerifiedReadOnly,
+              }}
+              helperText={
+                nricVerifiedReadOnly
+                  ? 'Auto-filled from your verified NRIC upload.'
+                  : 'Enter your NRIC/FIN number.'
+              }
+            />
+          </Box>
+          <Box>
+            <Field.Select
+              name="citizenship"
+              label="Citizenship"
+              required
+              InputLabelProps={{ shrink: true }}
+            >
+              {INDIVIDUAL_SIGNUP_CITIZENSHIP_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Field.Select>
+          </Box>
+
+          {citizenshipValue === 'others' ? (
+            <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+              <Field.Text
+                name="citizenshipOther"
+                label="Please specify your citizenship"
+                required
+                InputLabelProps={{ shrink: true }}
+              />
+            </Box>
+          ) : null}
+
+          <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+            <Field.Checkbox
+              name="imdaFundingAcknowledged"
+              label="I acknowledge that my personal information will be shared with IMDA for funding purposes"
+            />
+          </Box>
+        </>
+      ) : null}
+
       {isCompanyQrEnrollmentFlow ? (
         <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
           <LoadingButton
@@ -2215,6 +2409,21 @@ export function SimpleSignUpView() {
             sx={{ height: 44, fontWeight: 700 }}
           >
             Create eServices account and continue
+          </LoadingButton>
+        </Box>
+      ) : isFreeIndividualSignup ? (
+        <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+          <LoadingButton
+            fullWidth
+            color="inherit"
+            size="large"
+            type="submit"
+            variant="contained"
+            loading={isSubmitting || emailSfChecking}
+            loadingIndicator="Create account..."
+            sx={{ height: 44, fontWeight: 700 }}
+          >
+            Create account
           </LoadingButton>
         </Box>
       ) : null}

@@ -61,6 +61,16 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
   const verifiedNricIdType = String(flow.verifiedNricIdType || storedValues.idType || '').trim();
   const company = String(storedValues.company || companyFromFlow).trim();
   const citizenshipFromIdType = resolveCitizenshipFromSalesforceIdType(verifiedNricIdType);
+  const firstName = String(
+    storedValues.firstName
+    || flow.verifiedNricFirstName
+    || ''
+  ).trim();
+  const lastName = String(
+    storedValues.lastName
+    || flow.verifiedNricLastName
+    || ''
+  ).trim();
 
   return {
     company,
@@ -77,6 +87,13 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
     citizenship: String(storedValues.citizenship || citizenshipFromIdType).trim(),
     citizenshipOther: String(storedValues.citizenshipOther || '').trim(),
     imdaFundingAcknowledged: Boolean(storedValues.imdaFundingAcknowledged),
+    firstName,
+    lastName,
+    nameAsPerId: String(
+      storedValues.nameAsPerId
+      || flow.verifiedNricNameAsPerId
+      || [firstName, lastName].filter(Boolean).join(' ')
+    ).trim(),
     nricVerified: Boolean(verifiedNricFin),
     companyPrefilled: Boolean(companyFromFlow),
   };

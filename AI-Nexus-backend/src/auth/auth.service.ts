@@ -527,7 +527,10 @@ export class AuthService {
     if (!normalizedUsername) {
       throw new BadRequestException('Username is required');
     }
-    if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
+    const isEmailUsername =
+      /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(normalizedUsername);
+    const isAlphanumericUsername = /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername);
+    if (!isEmailUsername && !isAlphanumericUsername) {
       throw new BadRequestException(
         'Username must contain both letters and numbers, and no special characters.'
       );
@@ -560,8 +563,12 @@ export class AuthService {
       excludeUserId: existingUserId,
     });
 
-    // Also block if the email is already registered in Salesforce eServices.
-    await this.assertEmailAvailableInSalesforce(normalizedEmail);
+    // Skip SF email check when this register follows an intentional createuserfornexus
+    // (fee-waiver free signup). Re-checking would falsely fail on the account just created.
+    const salesforceUsernameJustCreated = String(userDto.salesforceUsername || '').trim();
+    if (!salesforceUsernameJustCreated) {
+      await this.assertEmailAvailableInSalesforce(normalizedEmail);
+    }
 
     const existingUserByUsername = await this.userRepository
       .createQueryBuilder('user')
@@ -577,6 +584,56 @@ export class AuthService {
     return {
       normalizedUsername,
       hashedPassword,
+    };
+  }
+
+  /**
+   * Paid membership draft: profile only in local DB (SSO later).
+   * Password is kept client-side for Salesforce setpasswordfornexus after payment — never stored locally.
+   */
+  private async validateMembershipDraftInput(userDto: UserDto, existingUserId?: string) {
+    const emailAsUsername =
+      this.normalizeUsername(userDto.username || '')
+      || this.normalizeUsername(userDto.email || '');
+    if (!emailAsUsername) {
+      throw new BadRequestException('Email is required');
+    }
+    if (!userDto.firstname) {
+      throw new BadRequestException('Firstname is required');
+    }
+    if (!userDto.lastname) {
+      throw new BadRequestException('Lastname is required');
+    }
+    if (!userDto.email) {
+      throw new BadRequestException('Email is required');
+    }
+
+    const emailVerification = await verifyEmailAddress(userDto.email);
+    if (!emailVerification.isValid) {
+      throw new BadRequestException(
+        emailVerification.reason || 'Please provide a valid real email address.'
+      );
+    }
+
+    const normalizedEmail = normalizeEmail(userDto.email) || String(userDto.email || '').trim().toLowerCase();
+    const signupRole = userDto.role || UserRole.User;
+
+    await assertEmailAvailableForRole(this.userRepository, normalizedEmail, signupRole, {
+      excludeUserId: existingUserId,
+    });
+    await this.assertEmailAvailableInSalesforce(normalizedEmail);
+
+    const existingUserByUsername = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', { username: emailAsUsername })
+      .getOne();
+
+    if (existingUserByUsername && existingUserByUsername.id !== existingUserId) {
+      throw new BadRequestException('Username already exists');
+    }
+
+    return {
+      normalizedUsername: emailAsUsername,
     };
   }
 
@@ -763,7 +820,8 @@ export class AuthService {
   async saveMembershipSignupDraft(userDto: UserDto): Promise<{ message: string; draftUserId: string; user: UserEntity }> {
     try {
       const existingDraft = await this.resolveExistingSignupDraft(userDto);
-      const { normalizedUsername, hashedPassword } = await this.validateSignupInput(userDto, existingDraft?.id);
+      // Paid membership is SSO-only locally — never persist password in DB.
+      const { normalizedUsername } = await this.validateMembershipDraftInput(userDto, existingDraft?.id);
       const resolvedCompanyCode = this.resolveSignupCompanyCode(userDto);
 
       let draftUser: UserEntity;
@@ -776,8 +834,8 @@ export class AuthService {
         existingDraft.contactNumber = userDto.contactNumber?.trim() || null;
         existingDraft.companyCode = resolvedCompanyCode;
         existingDraft.persona = userDto.persona?.trim() || existingDraft.persona || null;
-        existingDraft.password = hashedPassword;
-        existingDraft.authProvider = AuthProvider.LOCAL;
+        existingDraft.password = null;
+        existingDraft.authProvider = AuthProvider.OAUTH;
         existingDraft.role = userDto.role || existingDraft.role || UserRole.User;
         existingDraft.status = userDto.status || existingDraft.status || UserStatus.Active;
         existingDraft.isVerified = false;
@@ -795,8 +853,8 @@ export class AuthService {
           contactNumber: userDto.contactNumber?.trim() || null,
           companyCode: resolvedCompanyCode,
           persona: userDto.persona?.trim() || null,
-          password: hashedPassword,
-          authProvider: AuthProvider.LOCAL,
+          password: null,
+          authProvider: AuthProvider.OAUTH,
           role: userDto.role || UserRole.User,
           status: userDto.status || UserStatus.Active,
           isVerified: false,
@@ -1006,7 +1064,7 @@ export class AuthService {
       throw new BadRequestException('This membership signup is already completed. Please sign in.');
     }
 
-    if (!user.username || !user.firstname || !user.lastname || !user.email || !user.password) {
+    if (!user.username || !user.firstname || !user.lastname || !user.email) {
       throw new BadRequestException('Please complete your signup details before continuing to payment.');
     }
 
@@ -1028,7 +1086,7 @@ export class AuthService {
       };
     }
 
-    if (!draftUser.username || !draftUser.firstname || !draftUser.lastname || !draftUser.email || !draftUser.password) {
+    if (!draftUser.username || !draftUser.firstname || !draftUser.lastname || !draftUser.email) {
       throw new BadRequestException('Membership signup draft is incomplete. Please return to the signup page and try again.');
     }
 
@@ -1040,6 +1098,8 @@ export class AuthService {
     draftUser.isVerified = false;
     draftUser.isDraft = false;
     draftUser.authProvider = AuthProvider.OAUTH;
+    // Paid membership signs in via Salesforce SSO — never keep a local password.
+    draftUser.password = null;
     draftUser.verificationToken = verificationToken;
     draftUser.verificationTokenExpires = verificationTokenExpires;
     draftUser.signupAccessTokenHash = null;
@@ -3916,6 +3976,9 @@ export class AuthService {
         verifiedSignupUser.verificationTokenExpires = verificationTokenExpires;
         verifiedSignupUser.signupAccessTokenHash = null;
         verifiedSignupUser.signupAccessTokenExpiresAt = null;
+        if (String(userDto.salesforceUsername || '').trim()) {
+          verifiedSignupUser.salesforceUsername = String(userDto.salesforceUsername).trim();
+        }
         this.applyEligibilityTracking(verifiedSignupUser, userDto);
         newUser = verifiedSignupUser;
       } else {
@@ -3935,6 +3998,7 @@ export class AuthService {
           isVerified: false,
           verificationToken: verificationToken,
           verificationTokenExpires: verificationTokenExpires,
+          salesforceUsername: String(userDto.salesforceUsername || '').trim() || null,
         });
         this.applyEligibilityTracking(newUser, userDto);
       }

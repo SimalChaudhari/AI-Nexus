@@ -1373,8 +1373,9 @@ export class OAuthAuthService {
   }
 
   /**
-   * Block individual membership create when this email is already a Corporate contact
-   * (local DB and/or Salesforce). Must run BEFORE payment and before createuserfornexus.
+   * Block individual membership create when this email is already used in eServices
+   * or already registered locally as Corporate. Does NOT call corporateaccandconcheck
+   * (that API is for the corporate signup form with UEN).
    */
   async assertEmailAvailableForIndividualMembershipCreate(email: string): Promise<void> {
     const normalized = normalizeEmail(email);
@@ -1390,28 +1391,6 @@ export class OAuthAuthService {
     });
     if (localCorporate) {
       throw new BadRequestException(corporateEmailInUseMessage);
-    }
-
-    try {
-      const check = await this.checkCorporateSalesforceAccount({ email: normalized });
-      const nested =
-        check?.data && typeof check.data === 'object'
-          ? (check.data as Record<string, unknown>)
-          : (check as Record<string, unknown>);
-      const corporateAccountExists = Boolean(nested?.corporateAccountExists);
-      const contactExists = Boolean(nested?.contactExists);
-      const exactMatch = nested?.exactMatch === true;
-      if ((corporateAccountExists && contactExists) || exactMatch) {
-        throw new BadRequestException(corporateEmailInUseMessage);
-      }
-    } catch (err: unknown) {
-      if (err instanceof BadRequestException) {
-        throw err;
-      }
-      console.warn(
-        '[Salesforce] Corporate email pre-check skipped (non-fatal):',
-        err instanceof Error ? err.message : err,
-      );
     }
 
     const sfCheck = await this.checkSalesforceUserByEmail(normalized);

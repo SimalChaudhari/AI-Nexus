@@ -79,10 +79,15 @@ export const signUp = async ({
   contactNumber,
   signupAccessToken,
   eligibilityData,
+  salesforceUsername,
 }) => {
   try {
     const trimmedContact =
       typeof contactNumber === 'string' && contactNumber.trim() ? contactNumber.trim() : undefined;
+    const trimmedSfUsername =
+      typeof salesforceUsername === 'string' && salesforceUsername.trim()
+        ? salesforceUsername.trim()
+        : undefined;
     const params = {
       username: username || email.split('@')[0], // Use email prefix as username if not provided
       firstname: firstName,
@@ -91,6 +96,7 @@ export const signUp = async ({
       password,
       companyCode: typeof companyCode === 'string' && companyCode.trim() ? companyCode.trim() : undefined,
       signupAccessToken: signupAccessToken || undefined,
+      salesforceUsername: trimmedSfUsername,
       eligibilityIsSingaporePr: typeof eligibilityData?.isSingaporePr === 'boolean' ? eligibilityData.isSingaporePr : undefined,
       eligibilityIsIscaMember: typeof eligibilityData?.isIscaMember === 'boolean' ? eligibilityData.isIscaMember : undefined,
       eligibilityWantsMembership:
@@ -126,7 +132,6 @@ export const signUp = async ({
  *************************************** */
 export const saveMembershipSignupDraft = async ({
   email,
-  password,
   firstName,
   lastName,
   username,
@@ -144,7 +149,7 @@ export const saveMembershipSignupDraft = async ({
       firstname: firstName,
       lastname: lastName,
       email,
-      password,
+      // Password is never stored in local DB for paid membership (SSO). Kept client-side for Salesforce setpassword only.
       companyCode: typeof companyCode === 'string' && companyCode.trim() ? companyCode.trim() : undefined,
       signupAccessToken: signupAccessToken || undefined,
       draftUserId: draftUserId || undefined,

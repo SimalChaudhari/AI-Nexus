@@ -208,6 +208,9 @@ export function persistFeeWaiverSignupPrefill(
           educationalBackground: educationalBackgroundLabel,
           nricFin: String(flow.verifiedNricFin || '').trim(),
           idType: String(flow.verifiedNricIdType || '').trim(),
+          firstName: String(flow.verifiedNricFirstName || '').trim(),
+          lastName: String(flow.verifiedNricLastName || '').trim(),
+          nameAsPerId: String(flow.verifiedNricNameAsPerId || '').trim(),
         },
       })
     );

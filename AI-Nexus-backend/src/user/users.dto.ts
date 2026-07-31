@@ -17,9 +17,13 @@ import { UserRole, UserStatus } from './users.entity';
 export class UserDto {
     @IsString()
     @IsNotEmpty()
-    @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-        message: 'Username must contain both letters and numbers, and no special characters',
-    })
+    @Matches(
+        /^(?:(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/,
+        {
+            message:
+                'Username must contain both letters and numbers with no special characters, or be a valid email address',
+        },
+    )
     username!: string;
 
     @IsString()
@@ -105,6 +109,15 @@ export class UserDto {
     @IsOptional()
     @IsObject()
     eligibilitySnapshot?: Record<string, unknown>;
+
+    /**
+     * When set, register follows Salesforce create+setpassword — skip re-checking
+     * usercheckforemail (that account was just created for this signup).
+     */
+    @IsOptional()
+    @IsString()
+    @MaxLength(255)
+    salesforceUsername?: string;
 
     @IsEnum(UserRole)
     @IsOptional()

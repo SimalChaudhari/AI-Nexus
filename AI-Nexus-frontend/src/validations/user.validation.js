@@ -249,7 +249,11 @@ function refineFreeIndividualSignupProfile(data, ctx) {
 
 /** Individual sign-up (paid membership flows). */
 export function buildPaidIndividualSignUpSchema() {
-  return AuthSignUpSchema.extend(individualSignupSharedFields).superRefine(refineIndividualSignupProfile);
+  return AuthSignUpSchema.extend({
+    // Username not collected on form — local draft uses email until Salesforce SSO sync.
+    username: zod.string().optional(),
+    ...individualSignupSharedFields,
+  }).superRefine(refineIndividualSignupProfile);
 }
 
 /**
@@ -276,6 +280,8 @@ export function buildCompanyQrEnrollmentSignUpSchema() {
 /** Individual free sign-up (fee waiver / programme registration). */
 export function buildFreeIndividualSignUpSchema() {
   return AuthSignUpSchema.extend({
+    // Username comes from Salesforce create-nexus-user response — do not collect on form.
+    username: zod.string().optional(),
     ...individualSignupSharedFields,
     nricFin: zod.string().optional(),
     citizenship: zod.string().optional(),
