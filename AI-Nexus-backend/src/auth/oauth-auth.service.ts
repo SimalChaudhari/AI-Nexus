@@ -4280,36 +4280,12 @@ export class OAuthAuthService {
     const { role } = params;
 
     if (salesforceUsername) {
-      const bySfUsername = await this.userRepository
-        .createQueryBuilder('user')
-        .where('LOWER(user.salesforceUsername) = LOWER(:username)', {
-          username: salesforceUsername,
-        })
-        .andWhere('user.role = :role', { role })
-        .getOne();
-      if (bySfUsername) {
-        return { user: bySfUsername, matchedBy: 'username' };
-      }
-
-      const byLocalUsername = await this.userRepository
-        .createQueryBuilder('user')
-        .where('LOWER(user.username) = LOWER(:username)', {
-          username: salesforceUsername,
-        })
-        .andWhere('user.role = :role', { role })
-        .getOne();
-      if (byLocalUsername) {
-        return { user: byLocalUsername, matchedBy: 'username' };
-      }
-
-      const usernameAsEmail = normalizeEmail(salesforceUsername);
-      if (usernameAsEmail.includes('@')) {
-        const byUsernameEmail = await this.userRepository.findOne({
-          where: { email: usernameAsEmail, role },
-        });
-        if (byUsernameEmail) {
-          return { user: byUsernameEmail, matchedBy: 'username' };
-        }
+      const byUsername = await this.resolveLocalUserByUsernameOnly({
+        salesforceUsername,
+        role,
+      });
+      if (byUsername.user) {
+        return byUsername;
       }
     }
 
@@ -4327,6 +4303,45 @@ export class OAuthAuthService {
       if (byEmail) {
         return { user: byEmail, matchedBy: 'email' };
       }
+    }
+
+    return { user: null, matchedBy: null };
+  }
+
+  /** Corporate SSO: match only by Salesforce / local username (no email or accountId). */
+  private async resolveLocalUserByUsernameOnly(params: {
+    salesforceUsername: string;
+    role: UserRole;
+  }): Promise<{
+    user: UserEntity | null;
+    matchedBy: 'username' | 'accountId' | 'email' | null;
+  }> {
+    const salesforceUsername = String(params.salesforceUsername || '').trim();
+    const { role } = params;
+    if (!salesforceUsername) {
+      return { user: null, matchedBy: null };
+    }
+
+    const bySfUsername = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.salesforceUsername) = LOWER(:username)', {
+        username: salesforceUsername,
+      })
+      .andWhere('user.role = :role', { role })
+      .getOne();
+    if (bySfUsername) {
+      return { user: bySfUsername, matchedBy: 'username' };
+    }
+
+    const byLocalUsername = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', {
+        username: salesforceUsername,
+      })
+      .andWhere('user.role = :role', { role })
+      .getOne();
+    if (byLocalUsername) {
+      return { user: byLocalUsername, matchedBy: 'username' };
     }
 
     return { user: null, matchedBy: null };
@@ -4401,12 +4416,9 @@ export class OAuthAuthService {
     const nexusUsername = String(
       (nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.username : '') || '',
     ).trim();
+    // Corporate: verify by username only (userinfoforcorporate.username) — not contactEmail.
     const corporateUsername = hasCorporateInfo
-      ? String(
-          (corporateInfo as { username?: string }).username
-          || (corporateInfo as { contactEmail?: string }).contactEmail
-          || '',
-        ).trim()
+      ? String((corporateInfo as { username?: string }).username || '').trim()
       : '';
 
     // Org Portal SSO sets loginAsCorporate. Otherwise Corporate only when no nexus username.
@@ -4432,10 +4444,10 @@ export class OAuthAuthService {
       }
     }
 
-    // Corporate → userinfoforcorporate.username ; Individual → userinfonexus.username
+    // Corporate → userinfoforcorporate.username only ; Individual → userinfonexus.username
     const salesforceUsername =
       targetRole === UserRole.Corporate
-        ? (corporateUsername || nexusUsername || email)
+        ? (corporateUsername || email)
         : (nexusUsername || email);
 
     const salesforceAccountId = String(
@@ -4452,17 +4464,35 @@ export class OAuthAuthService {
           ),
     ).trim();
 
-    const resolved = await this.resolveLocalUserForSsoLogin({
-      email,
-      salesforceUsername,
-      salesforceAccountId,
-      role: targetRole,
-    });
+    // Corporate: match by username only (no contactEmail / accountId / email fallback).
+    let resolved: {
+      user: UserEntity | null;
+      matchedBy: 'username' | 'accountId' | 'email' | null;
+    };
+    if (targetRole === UserRole.Corporate) {
+      if (!corporateUsername) {
+        throw new UnauthorizedException(
+          'Corporate Salesforce account did not return a username. Please contact support.',
+        );
+      }
+      resolved = await this.resolveLocalUserByUsernameOnly({
+        salesforceUsername: corporateUsername,
+        role: UserRole.Corporate,
+      });
+    } else {
+      resolved = await this.resolveLocalUserForSsoLogin({
+        email,
+        salesforceUsername,
+        salesforceAccountId,
+        role: targetRole,
+      });
+    }
     let user = resolved.user;
     const isNewUser = !user;
 
     console.log('[SSO Login] Resolved identity:', {
       email,
+      corporateUsername: corporateUsername || null,
       socialId,
       firstName,
       lastName,
@@ -4485,16 +4515,9 @@ export class OAuthAuthService {
       const createEmail = contactEmail || email;
       await assertEmailAvailableForRole(this.userRepository, createEmail, targetRole);
 
-      const username = await this.generateUniqueUsername(
-        salesforceUsername.includes('@') ? salesforceUsername : createEmail,
-        firstName
-          || (hasCorporateInfo
-            ? String((corporateInfo as { contactFirstName?: string }).contactFirstName || '')
-            : ''),
-        lastName
-          || (hasCorporateInfo
-            ? String((corporateInfo as { contactLastName?: string }).contactLastName || '')
-            : ''),
+      // Use Salesforce username as local DB username (Corporate + Individual).
+      const username = await this.resolveLocalUsernameFromSalesforce(
+        salesforceUsername || createEmail,
       );
       const newUserPartial: DeepPartial<UserEntity> = {
         username,
@@ -4529,7 +4552,10 @@ export class OAuthAuthService {
       });
     } else {
       if (resolved.matchedBy === 'username' || resolved.matchedBy === 'accountId') {
-        await this.applySsoEmailIfChanged(user, email);
+        // Corporate profile email is applied later from contactEmail.
+        if (targetRole !== UserRole.Corporate) {
+          await this.applySsoEmailIfChanged(user, email);
+        }
       }
       user.authProvider = AuthProvider.OAUTH;
       user.socialId = socialId || user.socialId || null;
@@ -4537,7 +4563,10 @@ export class OAuthAuthService {
       user.isVerified = true;
       if (firstName) user.firstname = firstName;
       if (lastName) user.lastname = lastName;
-      if (salesforceUsername) user.salesforceUsername = salesforceUsername;
+      if (salesforceUsername) {
+        user.salesforceUsername = salesforceUsername;
+        await this.applySalesforceUsernameAsLocalUsername(user, salesforceUsername);
+      }
       console.log('[SSO Login] Updating EXISTING user via SSO:', {
         id: user.id,
         email: user.email,
@@ -4566,6 +4595,9 @@ export class OAuthAuthService {
           : user.isAssociateMember ?? null;
       user.salesforceUserInfoRaw = nexusInfo as Record<string, unknown>;
       user.salesforceSyncedAt = new Date();
+      if (user.salesforceUsername) {
+        await this.applySalesforceUsernameAsLocalUsername(user, user.salesforceUsername);
+      }
       console.log('[SSO Login] Salesforce nexus flags applied to user:', {
         before: previous,
         after: {
@@ -4594,13 +4626,15 @@ export class OAuthAuthService {
       const contactEmail = normalizeEmail(
         String((corporateInfo as { contactEmail?: string }).contactEmail || ''),
       );
-      const contactUsername = String(
-        (corporateInfo as { username?: string }).username || contactEmail || '',
-      ).trim();
+      // Identity key is username only; contactEmail is profile email only.
+      const contactUsername = String(corporateUsername || '').trim();
 
       if (companyCode) user.companyCode = companyCode;
       if (accountId) user.salesforceAccountId = accountId;
-      if (contactUsername) user.salesforceUsername = contactUsername;
+      if (contactUsername) {
+        user.salesforceUsername = contactUsername;
+        await this.applySalesforceUsernameAsLocalUsername(user, contactUsername);
+      }
       if (contactEmail) {
         await this.applySsoEmailIfChanged(user, contactEmail);
       }
@@ -4755,6 +4789,57 @@ export class OAuthAuthService {
       username = `${withRequiredPattern}${++n}`;
     }
     return username;
+  }
+
+  /**
+   * Use Salesforce username as the local DB username.
+   * Throws if that username is already taken by another account.
+   */
+  private async resolveLocalUsernameFromSalesforce(salesforceUsername: string): Promise<string> {
+    const candidate = String(salesforceUsername || '').trim();
+    if (!candidate) {
+      throw new BadRequestException('Salesforce username is required.');
+    }
+
+    const existing = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', { username: candidate })
+      .getOne();
+    if (existing) {
+      throw new ConflictException('Username already exists.');
+    }
+
+    return candidate;
+  }
+
+  /** Sync local username to Salesforce username; error if already taken by another user. */
+  private async applySalesforceUsernameAsLocalUsername(
+    user: UserEntity,
+    salesforceUsername: string,
+  ): Promise<void> {
+    const next = String(salesforceUsername || '').trim();
+    if (!next) return;
+
+    const current = String(user.username || '').trim();
+    if (current.toLowerCase() === next.toLowerCase()) {
+      user.username = next;
+      return;
+    }
+
+    const owner = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', { username: next })
+      .getOne();
+    if (owner && owner.id !== user.id) {
+      throw new ConflictException('Username already exists.');
+    }
+
+    console.log('[SSO Login] Syncing local username to Salesforce username:', {
+      userId: user.id,
+      previousUsername: current || null,
+      nextUsername: next,
+    });
+    user.username = next;
   }
 
   /** Build redirect URL for mobile deep link (success or error). */
