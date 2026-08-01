@@ -29,8 +29,9 @@ const LearningInstructorDetailsPage = lazy(() => import('src/pages/learning/inst
 const WorkflowsPage = lazy(() => import('src/pages/workflows'));
 const AiAuditFuturesPage = lazy(() => import('src/pages/ai-audit-futures'));
 const PartnerWithIscaPage = lazy(() => import('src/pages/partner-with-isca'));
-const InternationalPage = lazy(() => import('src/pages/international'));
-const InternationalAiFluencyPage = lazy(() => import('src/pages/international/ai-fluency'));
+// International pages temporarily hidden
+// const InternationalPage = lazy(() => import('src/pages/international'));
+// const InternationalAiFluencyPage = lazy(() => import('src/pages/international/ai-fluency'));
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
 const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
@@ -162,7 +163,7 @@ export const mainRoutes = [
           },
         ],
       },
-      // International landing + AI Fluency pathway (shared SG main nav)
+      /* International landing + AI Fluency pathway — temporarily hidden
       {
         element: (
           <MainLayout>
@@ -182,6 +183,7 @@ export const mainRoutes = [
           },
         ],
       },
+      */
       {
         path: 'pricing',
         element: (

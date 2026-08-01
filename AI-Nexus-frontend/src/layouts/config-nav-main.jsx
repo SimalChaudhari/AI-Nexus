@@ -29,12 +29,12 @@ export const navData = [
     icon: 'solar:hand-shake-bold-duotone',
     iconColor: '#00A76F',
   },
-  {
-    title: 'International',
-    path: paths.international,
-    icon: 'solar:global-bold-duotone',
-    iconColor: '#0f766e',
-  },
+  // {
+  //   title: 'International',
+  //   path: paths.international,
+  //   icon: 'solar:global-bold-duotone',
+  //   iconColor: '#0f766e',
+  // },
   {
     title: 'AI Forum',
     path: paths.aiForum.root,

@@ -86,7 +86,7 @@ const CourseCreatePage = lazy(() => import('src/pages/dashboard/course/new'));
 const CourseEditPage = lazy(() => import('src/pages/dashboard/course/edit'));
 const CourseDetailsPage = lazy(() => import('src/pages/dashboard/course/details'));
 const CourseAttemptsPage = lazy(() => import('src/pages/dashboard/course/attempts'));
-const CourseCertificatesPage = lazy(() => import('src/pages/dashboard/course/certificates'));
+// const CourseCertificatesPage = lazy(() => import('src/pages/dashboard/course/certificates'));
 const CourseAssessmentsPage = lazy(() => import('src/pages/dashboard/course/assessments'));
 
 // Label Management (Admin only)
@@ -124,13 +124,13 @@ const LanguageCreatePage = lazy(() => import('src/pages/dashboard/language/new')
 const LanguageEditPage = lazy(() => import('src/pages/dashboard/language/edit'));
 const LanguageDetailsPage = lazy(() => import('src/pages/dashboard/language/details'));
 
-// International pathway management (Admin only)
-const IntlPathwayModulesListPage = lazy(() => import('src/pages/dashboard/international/modules/list'));
-const IntlPathwayModulesCreatePage = lazy(() => import('src/pages/dashboard/international/modules/new'));
-const IntlPathwayModulesEditPage = lazy(() => import('src/pages/dashboard/international/modules/edit'));
-const IntlPathwayRolesListPage = lazy(() => import('src/pages/dashboard/international/roles/list'));
-const IntlPathwayRolesCreatePage = lazy(() => import('src/pages/dashboard/international/roles/new'));
-const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/international/roles/edit'));
+// International pathway management (Admin only) — temporarily hidden
+// const IntlPathwayModulesListPage = lazy(() => import('src/pages/dashboard/international/modules/list'));
+// const IntlPathwayModulesCreatePage = lazy(() => import('src/pages/dashboard/international/modules/new'));
+// const IntlPathwayModulesEditPage = lazy(() => import('src/pages/dashboard/international/modules/edit'));
+// const IntlPathwayRolesListPage = lazy(() => import('src/pages/dashboard/international/roles/list'));
+// const IntlPathwayRolesCreatePage = lazy(() => import('src/pages/dashboard/international/roles/new'));
+// const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/international/roles/edit'));
 
 // Blog
 const BlogPostsPage = lazy(() => import('src/pages/dashboard/post/list'));
@@ -257,7 +257,7 @@ export const adminRoutes = [
           { path: 'list', element: <CourseListPage /> },
           { path: 'new', element: <CourseCreatePage /> },
           { path: 'attempts', element: <CourseAttemptsPage /> },
-          { path: 'certificates', element: <CourseCertificatesPage /> },
+          // { path: 'certificates', element: <CourseCertificatesPage /> },
           {
             path: 'category',
             children: [
@@ -344,6 +344,7 @@ export const adminRoutes = [
           { path: ':id/edit', element: <LanguageEditPage /> },
         ],
       },
+      /* International pathway — temporarily hidden
       {
         path: 'international',
         children: [
@@ -368,6 +369,7 @@ export const adminRoutes = [
           },
         ],
       },
+      */
       {
         path: 'product',
         children: [

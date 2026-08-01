@@ -29,7 +29,7 @@ const disposableEmailDomains = [
   'mailinator.com',
   'tempmail.com',
   '10minutemail.com',
-  // yopmail.com temporarily allowed for testing
+  'yopmail.com',
   'guerrillamail.com',
 ];
 
