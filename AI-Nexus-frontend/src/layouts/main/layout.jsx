@@ -35,7 +35,9 @@ export function MainLayout({ sx, data, children }) {
 
   const homePage = pathname === '/home';
   const partnerWithIscaPage = pathname === paths.partnerWithIsca;
-  const marketingLandingPage = homePage || partnerWithIscaPage;
+  const internationalPage = pathname === paths.international || pathname?.startsWith(`${paths.international}/`);
+  const marketingLandingPage = homePage || partnerWithIscaPage || internationalPage;
+  const intlShellBg = '#ffffff';
   const isAdminRoute = pathname?.startsWith('/admin');
   const isDashboardRoute = pathname?.startsWith('/dashboard');
   const isCustomerFacingRoute = !isAdminRoute && !isDashboardRoute;
@@ -133,7 +135,9 @@ export function MainLayout({ sx, data, children }) {
             [`& .${layoutClasses.header}`]: { flexShrink: 0 },
             [`& .${layoutClasses.main}`]: { flex: '1 1 0%', minHeight: 0 },
           }),
-          ...(marketingLandingPage && { bgcolor: '#ffffff' }),
+          ...(marketingLandingPage && {
+            bgcolor: intlShellBg,
+          }),
           ...sx,
         }}
       >
@@ -151,7 +155,7 @@ export function MainLayout({ sx, data, children }) {
                     flex: '1 1 auto',
                     minHeight: 'auto',
                     overflow: 'visible',
-                    bgcolor: '#ffffff',
+                    bgcolor: intlShellBg,
                   }
                 : undefined
           }

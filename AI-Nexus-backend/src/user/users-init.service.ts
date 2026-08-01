@@ -24,7 +24,7 @@ export class UsersInitService implements OnModuleInit {
             "username" varchar UNIQUE,
             "firstname" varchar NOT NULL,
             "lastname" varchar NOT NULL,
-            "email" varchar UNIQUE,
+            "email" varchar,
             "persona" varchar,
             "aiExperienceLevel" varchar,
             "aiLearningGoals" jsonb,
@@ -283,6 +283,31 @@ export class UsersInitService implements OnModuleInit {
         ALTER TABLE "users"
         ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP
       `);
+
+      // Step 1: allow same email on Individual + Corporate rows — drop global UNIQUE(email).
+      await queryRunner.query(`
+        DO $UQ$
+        DECLARE r record;
+        BEGIN
+          FOR r IN (
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            JOIN pg_namespace n ON t.relnamespace = n.oid
+            WHERE n.nspname = 'public'
+              AND t.relname = 'users'
+              AND c.contype = 'u'
+              AND pg_get_constraintdef(c.oid) ILIKE '%(email)%'
+              AND pg_get_constraintdef(c.oid) NOT ILIKE '%role%'
+          ) LOOP
+            EXECUTE format('ALTER TABLE "users" DROP CONSTRAINT IF EXISTS %I', r.conname);
+            RAISE NOTICE 'Dropped users email unique constraint: %', r.conname;
+          END LOOP;
+        END $UQ$
+      `);
+      await queryRunner.query(`DROP INDEX IF EXISTS "users_email_key"`);
+      await queryRunner.query(`DROP INDEX IF EXISTS "UQ_users_email"`);
+      console.log('✅ Ensured users.email is not globally UNIQUE');
     } catch (error) {
       console.error(
         '❌ Error ensuring users profile columns:',

@@ -14,6 +14,7 @@ import { useAuthContext } from 'src/auth/hooks';
 import { paths } from 'src/routes/paths';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { navigateToPaidMembershipSignup } from 'src/utils/membership-eligibility-sso';
+import { MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP } from 'src/sections/learning/components/membership-signup-dialog';
 import { FLUID_FONT_SIZES, FLUID_TYPOGRAPHY } from 'src/theme/home-typography';
 
 import {
@@ -183,13 +184,23 @@ export function HomeEnrolOptionsSection({ onOpenMembershipSignup }) {
         return;
       }
 
-      if (option.action === 'register') {
+      const action = String(option?.action || '').trim().toLowerCase();
+
+      // ISCA member → direct SSO login (same as sign-in "Log in via my ISCA account")
+      if (action === 'isca') {
+        window.location.assign(paths.auth.oauth.start);
+        return;
+      }
+
+      // International / paid → paid membership sign-up page
+      if (action === 'register') {
         const returnPath = `${location.pathname}${location.search || ''}` || paths.home;
         navigateToPaidMembershipSignup(navigate, returnPath);
         return;
       }
 
-      onOpenMembershipSignup?.();
+      // Singapore Citizen / PR (non-members) → same fee-waiver choice modal as sign-up
+      onOpenMembershipSignup?.(MEMBERSHIP_SIGNUP_ENTRY_AUTH_SIGN_UP);
     },
     [authenticated, location.pathname, location.search, navigate, onOpenMembershipSignup]
   );

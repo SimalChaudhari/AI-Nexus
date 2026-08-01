@@ -33,7 +33,7 @@ export const validateEmail = (input: string | undefined): boolean => {
     'mailinator.com',
     'tempmail.com',
     '10minutemail.com',
-    'yopmail.com',
+    // yopmail.com temporarily allowed for testing
     'guerrillamail.com',
   ]);
 

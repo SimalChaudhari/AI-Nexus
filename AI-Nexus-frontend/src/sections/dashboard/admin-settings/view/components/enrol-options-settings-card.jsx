@@ -26,9 +26,9 @@ import {
 import { IconPickerDrawer } from './icon-picker-drawer';
 
 const ACTION_OPTIONS = [
-  { value: 'isca', label: 'ISCA member (membership signup)' },
-  { value: 'eligibility', label: 'Eligibility (membership signup)' },
-  { value: 'register', label: 'Register (sign-up page)' },
+  { value: 'isca', label: 'ISCA member (SSO login)' },
+  { value: 'eligibility', label: 'Eligibility (fee-waiver modal)' },
+  { value: 'register', label: 'Register (paid sign-up page)' },
 ];
 
 const emptyCard = () => ({

@@ -127,7 +127,7 @@ export class CompanyEnrollmentController {
   @ApiOperation({ summary: 'List company enrollment invites (admin, paginated)' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
-  @ApiQuery({ name: 'search', required: false, description: 'Search company code or label' })
+  @ApiQuery({ name: 'search', required: false, description: 'Search company code or company name' })
   async list(
     @Query('page') page: string | undefined,
     @Query('limit') limit: string | undefined,

@@ -305,19 +305,18 @@ export const CORPORATE_STAFF_CSV_TEMPLATE_HEADERS = [
   'last_name',
   'name_as_per_id',
   'email',
-  'id_type',
-  'id_number',
-  'countryOfResidence',
+  'company',
+  'department',
+  'staff_role',
   'noOfYearOfRelevantWorkExperience',
+  'corporateAccountId',
   'learnerAsAnAccounting',
-  'membershipNumber',
+  'eligibility',
 ];
 
 export function downloadCorporateStaffCsvTemplate() {
   const header = CORPORATE_STAFF_CSV_TEMPLATE_HEADERS.join(',');
-  const example =
-    'Mr,Tan,Wei Ming,Tan Wei Ming,tan.weiming@testemail.com,NRIC,S1234567A,Singapore,5,Yes,MEM20260011';
-  const blob = new Blob([`${header}\n${example}\n`], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob([`${header}\n`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

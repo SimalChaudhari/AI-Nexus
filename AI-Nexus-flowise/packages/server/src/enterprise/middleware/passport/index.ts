@@ -50,6 +50,16 @@ const secureCookie =
         ? true
         : false
 
+/** Shared parent domain so cookies set on api.flowise.* work on flowise.* UI (split nginx). */
+const cookieDomain = (process.env.COOKIE_DOMAIN || '').trim() || undefined
+
+const authCookieOptions = {
+    httpOnly: true,
+    secure: secureCookie,
+    sameSite: 'lax' as const,
+    ...(cookieDomain ? { domain: cookieDomain } : {})
+}
+
 const _initializePassportMiddleware = async (app: express.Application) => {
     // Configure session middleware
     let options: any = {
@@ -59,7 +69,8 @@ const _initializePassportMiddleware = async (app: express.Application) => {
         cookie: {
             secure: secureCookie,
             httpOnly: true,
-            sameSite: 'lax' // Add sameSite attribute
+            sameSite: 'lax', // Add sameSite attribute
+            ...(cookieDomain ? { domain: cookieDomain } : {})
         }
     }
 
@@ -338,29 +349,13 @@ export const setTokenOrCookies = async (
 
         // Return the token as a cookie in our response.
         let resWithCookies = res
-            .cookie('token', token, {
-                httpOnly: true,
-                secure: secureCookie,
-                sameSite: 'lax'
-            })
-            .cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: secureCookie,
-                sameSite: 'lax'
-            })
+            .cookie('token', token, authCookieOptions)
+            .cookie('refreshToken', refreshToken, authCookieOptions)
         resWithCookies.redirect(dashboardUrl)
     } else {
         // Return the token as a cookie in our response.
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: secureCookie,
-            sameSite: 'lax'
-        })
-            .cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: secureCookie,
-                sameSite: 'lax'
-            })
+        res.cookie('token', token, authCookieOptions)
+            .cookie('refreshToken', refreshToken, authCookieOptions)
             .type('json')
             .send({ ...returnUser })
     }

@@ -76,6 +76,44 @@ export class CreateSalesforceNexusUserDto {
   paymentProofToken?: string;
 }
 
+/**
+ * POST /services/apexrest/signupfornexus — company QR / pre-paid corporate enrollment.
+ * Password is set afterwards via setpasswordfornexus (same as paid membership).
+ */
+export class SignupSalesforceForNexusDto {
+  @IsString()
+  salutation!: string;
+
+  @IsString()
+  first_name!: string;
+
+  @IsString()
+  last_name!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsOptional()
+  company?: string;
+
+  @IsString()
+  @IsOptional()
+  jobFunction?: string;
+
+  @IsString()
+  @IsOptional()
+  countryOfResidence?: string;
+
+  @IsString()
+  @IsOptional()
+  companyCode?: string;
+
+  @IsNumber()
+  @IsOptional()
+  noOfYearOfRelevantWorkExperience?: number;
+}
+
 export class SetSalesforceNexusPasswordDto {
   @IsString()
   username!: string;

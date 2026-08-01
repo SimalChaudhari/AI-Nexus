@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { PaginationService } from '../common/pagination/pagination.service';
+import { UserEntity, UserRole } from '../user/users.entity';
 import { CompanyEnrollmentInviteEntity } from './company-enrollment-invite.entity';
 
 export type CompanyEnrollmentStats = {
@@ -25,6 +26,8 @@ export class CompanyEnrollmentService {
   constructor(
     @InjectRepository(CompanyEnrollmentInviteEntity)
     private readonly inviteRepo: Repository<CompanyEnrollmentInviteEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly dataSource: DataSource,
     private readonly paginationService: PaginationService,
   ) {}
@@ -32,7 +35,28 @@ export class CompanyEnrollmentService {
   normalizeCode(value?: string | null): string {
     return String(value || '')
       .trim()
-      .toUpperCase();
+      .replace(/\s+/g, ' ')
+      .toUpperCase()
+      .slice(0, 64);
+  }
+
+  /**
+   * Legacy invites once stripped spaces/special chars on create.
+   * Only used as a lookup fallback — never rewrite the caller's code.
+   */
+  private toLegacySafeCode(companyCode: string): string {
+    return companyCode.replace(/[^A-Z0-9_-]/g, '').slice(0, 64);
+  }
+
+  /**
+   * Any non-empty company code is allowed (numeric, alphanumeric, names with spaces, etc.).
+   * Examples: 123456 | ANFBUILDINGSERVICESPTELTD | ANF Building Services Pte Ltd | 001fV00000AdqLyQAJ
+   */
+  private isAllowedCompanyCode(companyCode: string): boolean {
+    const code = String(companyCode || '').trim();
+    if (!code || code.length > 64) return false;
+    // Reject control characters only — everything else is a valid corporate/Salesforce code.
+    return !/[\u0000-\u001F\u007F]/.test(code);
   }
 
   buildSignupPath(companyCode: string): string {
@@ -66,6 +90,115 @@ export class CompanyEnrollmentService {
   private remainingSeats(maxEnrollment: number, enrolledCount: number): number | null {
     if (!maxEnrollment || maxEnrollment <= 0) return null;
     return Math.max(0, maxEnrollment - enrolledCount);
+  }
+
+  private readAccountNameFromUser(user: UserEntity): string {
+    const raw = user.salesforceUserInfoRaw;
+    if (!raw || typeof raw !== 'object') return '';
+    const corporate =
+      (raw as Record<string, unknown>).corporate
+      && typeof (raw as Record<string, unknown>).corporate === 'object'
+        ? ((raw as Record<string, unknown>).corporate as Record<string, unknown>)
+        : null;
+    const candidates = [
+      corporate?.accountName,
+      corporate?.companyName,
+      corporate?.name,
+      (raw as Record<string, unknown>).accountName,
+      (raw as Record<string, unknown>).companyName,
+    ];
+    for (const value of candidates) {
+      const name = String(value || '').trim();
+      if (name) return name;
+    }
+    return '';
+  }
+
+  private needsCompanyNameBackfill(label: string | null | undefined, companyCode: string): boolean {
+    const current = String(label || '').trim();
+    const code = String(companyCode || '').trim();
+    if (!current) return true;
+    if (!code) return false;
+    return current.toUpperCase() === code.toUpperCase();
+  }
+
+  /** Resolve real company display name from Corporate HR users for a companyCode. */
+  async resolveCompanyNameFromUsers(companyCode?: string | null): Promise<string> {
+    const code = String(companyCode || '').trim();
+    if (!code) return '';
+
+    const users = await this.userRepo
+      .createQueryBuilder('u')
+      .where('u.role = :role', { role: UserRole.Corporate })
+      .andWhere('LOWER(TRIM(u.companyCode)) = LOWER(:code)', { code })
+      .andWhere('u.isDraft = :isDraft', { isDraft: false })
+      .orderBy('u.updatedAt', 'DESC')
+      .take(10)
+      .getMany();
+
+    for (const user of users) {
+      const name = this.readAccountNameFromUser(user);
+      if (name && name.toUpperCase() !== code.toUpperCase()) return name;
+    }
+    return '';
+  }
+
+  private async resolveCompanyNamesForCodes(codes: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const unique = [...new Set(codes.map((c) => String(c || '').trim()).filter(Boolean))];
+    if (!unique.length) return map;
+
+    const users = await this.userRepo
+      .createQueryBuilder('u')
+      .where('u.role = :role', { role: UserRole.Corporate })
+      .andWhere('LOWER(TRIM(u.companyCode)) IN (:...codes)', {
+        codes: unique.map((c) => c.toLowerCase()),
+      })
+      .andWhere('u.isDraft = :isDraft', { isDraft: false })
+      .orderBy('u.updatedAt', 'DESC')
+      .getMany();
+
+    for (const user of users) {
+      const codeKey = String(user.companyCode || '').trim().toUpperCase();
+      if (!codeKey || map.has(codeKey)) continue;
+      const name = this.readAccountNameFromUser(user);
+      if (name && name.toUpperCase() !== codeKey) {
+        map.set(codeKey, name);
+      }
+    }
+    return map;
+  }
+
+  /** Persist real company names onto invites when label is empty or still equal to company code. */
+  private async backfillCompanyNames(
+    items: CompanyEnrollmentStats[],
+  ): Promise<CompanyEnrollmentStats[]> {
+    const needing = items.filter((item) =>
+      this.needsCompanyNameBackfill(item.label, item.companyCode),
+    );
+    if (!needing.length) return items;
+
+    const nameByCode = await this.resolveCompanyNamesForCodes(
+      needing.map((item) => item.companyCode),
+    );
+    if (!nameByCode.size) return items;
+
+    const updates: Array<{ id: string; label: string }> = [];
+    const nextItems = items.map((item) => {
+      if (!this.needsCompanyNameBackfill(item.label, item.companyCode)) return item;
+      const resolved = nameByCode.get(String(item.companyCode || '').trim().toUpperCase());
+      if (!resolved) return item;
+      updates.push({ id: item.id, label: resolved });
+      return { ...item, label: resolved };
+    });
+
+    if (updates.length) {
+      await Promise.all(
+        updates.map((u) => this.inviteRepo.update({ id: u.id }, { label: u.label })),
+      );
+    }
+
+    return nextItems;
   }
 
   serialize(row: CompanyEnrollmentInviteEntity): CompanyEnrollmentStats {
@@ -108,13 +241,17 @@ export class CompanyEnrollmentService {
 
     qb.orderBy('i.updatedAt', 'DESC').addOrderBy('i.createdAt', 'DESC');
 
-    return this.paginationService.paginateQueryBuilder({
+    const result = await this.paginationService.paginateQueryBuilder({
       queryBuilder: qb,
       page,
       limit,
       search: hasSearch ? search : null,
       mapItem: (row) => this.serialize(row),
     });
+
+    const data = Array.isArray(result?.data) ? result.data : [];
+    result.data = await this.backfillCompanyNames(data);
+    return result;
   }
 
   async getInviteById(id: string) {
@@ -122,36 +259,55 @@ export class CompanyEnrollmentService {
     if (!row) {
       throw new BadRequestException('Company enrollment invite not found.');
     }
-    return this.serialize(row);
+    const [enriched] = await this.backfillCompanyNames([this.serialize(row)]);
+    return enriched;
   }
 
   async findByCompanyCode(companyCode?: string | null) {
     const code = this.normalizeCode(companyCode);
     if (!code) return null;
+
+    const exact = await this.inviteRepo
+      .createQueryBuilder('i')
+      .where('UPPER(TRIM(i.companyCode)) = :code', { code })
+      .getOne();
+    if (exact) return exact;
+
+    // Legacy rows stored after stripping spaces (e.g. "ANF BUILDING..." → "ANFBUILDING...").
+    const legacySafe = this.toLegacySafeCode(code);
+    if (!legacySafe || legacySafe === code || legacySafe.length < 2) {
+      return null;
+    }
     return this.inviteRepo
       .createQueryBuilder('i')
-      .where('UPPER(i.companyCode) = :code', { code })
+      .where('UPPER(TRIM(i.companyCode)) = :code', { code: legacySafe })
       .getOne();
   }
 
   /**
    * Ensure a QR enrollment invite exists for a corporate companyCode.
    * Creates with unlimited seats and no QR expiry when missing.
+   * Stores the company code exactly as provided (after trim/upper) — no format rewrite.
    */
   async ensureInviteForCompanyCode(input: {
     companyCode?: string | null;
     label?: string | null;
   }): Promise<CompanyEnrollmentStats | null> {
     const companyCode = this.normalizeCode(input.companyCode);
-    if (!companyCode) return null;
+    if (!companyCode || !this.isAllowedCompanyCode(companyCode)) return null;
+
+    let nextLabel = String(input.label || '').trim();
+    if (!nextLabel || nextLabel.toUpperCase() === companyCode) {
+      const resolved = await this.resolveCompanyNameFromUsers(companyCode);
+      if (resolved) nextLabel = resolved;
+    }
 
     const existing = await this.findByCompanyCode(companyCode);
     if (existing) {
-      // Keep label fresh if we have a better display name and current label is just the code.
-      const nextLabel = String(input.label || '').trim();
+      // Keep company name fresh when current label is empty or still just the code.
       if (
         nextLabel
-        && (!existing.label || existing.label === existing.companyCode)
+        && this.needsCompanyNameBackfill(existing.label, existing.companyCode)
         && nextLabel !== existing.label
       ) {
         existing.label = nextLabel;
@@ -161,18 +317,10 @@ export class CompanyEnrollmentService {
       return this.serialize(existing);
     }
 
-    // Soft-normalize codes that don't match strict pattern (Salesforce ids can be alphanumeric).
-    const safeCode = /^[A-Z0-9_-]{2,64}$/.test(companyCode)
-      ? companyCode
-      : companyCode.replace(/[^A-Z0-9_-]/g, '').slice(0, 64);
-    if (!safeCode || safeCode.length < 2) {
-      return null;
-    }
-
     const saved = await this.inviteRepo.save(
       this.inviteRepo.create({
-        companyCode: safeCode,
-        label: String(input.label || '').trim() || safeCode,
+        companyCode,
+        label: nextLabel || companyCode,
         isActive: true,
         maxEnrollment: 0,
         enrolledCount: 0,
@@ -193,9 +341,9 @@ export class CompanyEnrollmentService {
     if (!companyCode) {
       throw new BadRequestException('Company code is required.');
     }
-    if (!/^[A-Z0-9_-]{2,64}$/.test(companyCode)) {
+    if (!this.isAllowedCompanyCode(companyCode)) {
       throw new BadRequestException(
-        'Company code may only contain letters, numbers, underscore or hyphen (2–64 chars).',
+        'Company code must be 1–64 characters (any letters, numbers, or symbols).',
       );
     }
 
@@ -204,10 +352,15 @@ export class CompanyEnrollmentService {
       throw new BadRequestException(`Company code ${companyCode} already has an enrollment invite.`);
     }
 
+    let label = String(input.label || '').trim();
+    if (!label || label.toUpperCase() === companyCode) {
+      label = (await this.resolveCompanyNameFromUsers(companyCode)) || companyCode;
+    }
+
     const saved = await this.inviteRepo.save(
       this.inviteRepo.create({
         companyCode,
-        label: String(input.label || '').trim() || companyCode,
+        label,
         isActive: input.isActive !== false,
         maxEnrollment: this.parseMaxEnrollment(input.maxEnrollment),
         enrolledCount: 0,
@@ -237,14 +390,14 @@ export class CompanyEnrollmentService {
       if (!nextCode) {
         throw new BadRequestException('Company code is required.');
       }
-      if (!/^[A-Z0-9_-]{2,64}$/.test(nextCode)) {
+      if (!this.isAllowedCompanyCode(nextCode)) {
         throw new BadRequestException(
-          'Company code may only contain letters, numbers, underscore or hyphen (2–64 chars).',
+          'Company code must be 1–64 characters (any letters, numbers, or symbols).',
         );
       }
       const conflict = await this.inviteRepo
         .createQueryBuilder('i')
-        .where('UPPER(i.companyCode) = :code', { code: nextCode })
+        .where('UPPER(TRIM(i.companyCode)) = :code', { code: nextCode })
         .andWhere('i.id != :id', { id })
         .getOne();
       if (conflict) {
@@ -349,11 +502,22 @@ export class CompanyEnrollmentService {
     if (!companyCode) return null;
 
     return this.dataSource.transaction(async (manager) => {
-      const invite = await manager
+      let invite = await manager
         .createQueryBuilder(CompanyEnrollmentInviteEntity, 'i')
         .setLock('pessimistic_write')
-        .where('UPPER(i.companyCode) = :code', { code: companyCode })
+        .where('UPPER(TRIM(i.companyCode)) = :code', { code: companyCode })
         .getOne();
+
+      if (!invite) {
+        const legacySafe = this.toLegacySafeCode(companyCode);
+        if (legacySafe && legacySafe !== companyCode && legacySafe.length >= 2) {
+          invite = await manager
+            .createQueryBuilder(CompanyEnrollmentInviteEntity, 'i')
+            .setLock('pessimistic_write')
+            .where('UPPER(TRIM(i.companyCode)) = :code', { code: legacySafe })
+            .getOne();
+        }
+      }
 
       if (!invite) {
         return null;

@@ -273,11 +273,62 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   return payload;
 }
 
+/**
+ * Payload for POST /services/apexrest/signupfornexus (company QR / pre-paid enrollment).
+ * Exact Postman contract — all 9 fields always present; password via setpasswordfornexus after.
+ */
+export function buildSalesforceSignupForNexusPayloadFromSignup({
+  salutation = 'Mr',
+  firstName = '',
+  lastName = '',
+  email = '',
+  company = '',
+  jobFunction = '',
+  countryOfResidence = '',
+  companyCode = '',
+  yearsOfExperience = '',
+} = {}) {
+  const payload = {
+    salutation: String(salutation || 'Mr').trim(),
+    first_name: String(firstName || '').trim(),
+    last_name: String(lastName || '').trim(),
+    email: String(email || '').trim(),
+    company: String(company || '').trim(),
+    jobFunction: String(jobFunction || '').trim(),
+    countryOfResidence: String(countryOfResidence || '').trim(),
+    companyCode: String(companyCode || '').trim(),
+  };
+
+  const resolvedYearsOfExperience = yearsOfExperience === 0 || yearsOfExperience
+    ? Number(yearsOfExperience)
+    : '';
+  if (resolvedYearsOfExperience !== '' && !Number.isNaN(resolvedYearsOfExperience)) {
+    payload.noOfYearOfRelevantWorkExperience = resolvedYearsOfExperience;
+  }
+
+  return payload;
+}
+
 export function resolveSalesforceNexusUsernameFromCreateResponse(createResult, fallbackEmail = '') {
   const salesforce = createResult?.salesforce ?? createResult;
-  if (salesforce && typeof salesforce === 'object') {
-    const candidate =
-      String(salesforce.username || salesforce.Username || salesforce.userName || salesforce.UserName || '').trim();
+  const nestedData =
+    salesforce && typeof salesforce === 'object' && salesforce.data && typeof salesforce.data === 'object'
+      ? salesforce.data
+      : null;
+  const sources = [salesforce, nestedData, createResult].filter(
+    (item) => item && typeof item === 'object'
+  );
+
+  for (const source of sources) {
+    const candidate = String(
+      source.username
+      || source.Username
+      || source.userName
+      || source.UserName
+      || source.user_name
+      || source.loginUsername
+      || ''
+    ).trim();
     if (candidate) {
       return candidate;
     }

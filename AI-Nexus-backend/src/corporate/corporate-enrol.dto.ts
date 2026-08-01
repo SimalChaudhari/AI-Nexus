@@ -30,14 +30,6 @@ export class CorporateStaffLearnerDto {
   @IsEmail()
   email!: string;
 
-  @IsString()
-  @IsOptional()
-  id_type?: string;
-
-  @IsString()
-  @IsOptional()
-  id_number?: string;
-
   /** Auto-filled from HR company when omitted */
   @IsString()
   @IsOptional()
@@ -49,11 +41,7 @@ export class CorporateStaffLearnerDto {
 
   @IsString()
   @IsOptional()
-  role?: string;
-
-  @IsString()
-  @IsOptional()
-  countryOfResidence?: string;
+  staff_role?: string;
 
   @IsNumber()
   @IsOptional()
@@ -68,10 +56,6 @@ export class CorporateStaffLearnerDto {
   @IsString()
   @IsOptional()
   learnerAsAnAccounting?: string;
-
-  @IsString()
-  @IsOptional()
-  membershipNumber?: string;
 
   @IsString()
   @IsOptional()

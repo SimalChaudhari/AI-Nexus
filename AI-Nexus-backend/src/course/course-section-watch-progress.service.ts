@@ -206,7 +206,7 @@ export class CourseSectionWatchProgressService {
     const duration = Math.max(0, Math.floor(Number(durationSeconds) || 0));
     const watchedRaw = Math.max(0, Math.floor(Number(watchedSeconds) || 0));
     const watched = duration > 0 ? Math.min(duration, watchedRaw) : watchedRaw;
-    const lastPositionRaw = Math.max(0, Math.floor(Number(lastPositionSeconds) || 0));
+    const lastPositionRaw = Math.max(0, Number(lastPositionSeconds) || 0);
     const lastPosition = duration > 0 ? Math.min(duration, lastPositionRaw) : lastPositionRaw;
     const remaining = Math.max(0, duration - watched);
     const percent = duration > 0 ? Number(((watched / duration) * 100).toFixed(2)) : 0;
@@ -698,7 +698,7 @@ export class CourseSectionWatchProgressService {
     const previousWatched = Math.max(0, Number(existing?.watchedSeconds || 0));
     const dtoLastPosition =
       typeof dto.lastPositionSeconds === 'number'
-        ? Math.max(0, Math.floor(dto.lastPositionSeconds))
+        ? Math.max(0, Number(dto.lastPositionSeconds) || 0)
         : null;
     // Keep resume/watch progress monotonic to avoid rollback from out-of-order updates (pause + pagehide race).
     // After the completion threshold is met, learners may rewind to fill gaps — bookmark the real pause point.

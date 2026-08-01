@@ -158,6 +158,7 @@ export function SimpleSignInView() {
       const { user } = await signInWithPassword({
         [isEmail ? 'email' : 'username']: data.identifier,
         password: data.password,
+        ...(showCorporateForm ? { preferredRole: 'Corporate' } : {}),
       });
       await checkUserSession?.();
 

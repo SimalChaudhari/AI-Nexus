@@ -124,6 +124,14 @@ const LanguageCreatePage = lazy(() => import('src/pages/dashboard/language/new')
 const LanguageEditPage = lazy(() => import('src/pages/dashboard/language/edit'));
 const LanguageDetailsPage = lazy(() => import('src/pages/dashboard/language/details'));
 
+// International pathway management (Admin only)
+const IntlPathwayModulesListPage = lazy(() => import('src/pages/dashboard/international/modules/list'));
+const IntlPathwayModulesCreatePage = lazy(() => import('src/pages/dashboard/international/modules/new'));
+const IntlPathwayModulesEditPage = lazy(() => import('src/pages/dashboard/international/modules/edit'));
+const IntlPathwayRolesListPage = lazy(() => import('src/pages/dashboard/international/roles/list'));
+const IntlPathwayRolesCreatePage = lazy(() => import('src/pages/dashboard/international/roles/new'));
+const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/international/roles/edit'));
+
 // Blog
 const BlogPostsPage = lazy(() => import('src/pages/dashboard/post/list'));
 const BlogPostPage = lazy(() => import('src/pages/dashboard/post/details'));
@@ -334,6 +342,30 @@ export const adminRoutes = [
           { path: 'new', element: <LanguageCreatePage /> },
           { path: ':id', element: <LanguageDetailsPage /> },
           { path: ':id/edit', element: <LanguageEditPage /> },
+        ],
+      },
+      {
+        path: 'international',
+        children: [
+          { element: <IntlPathwayModulesListPage />, index: true },
+          {
+            path: 'modules',
+            children: [
+              { element: <IntlPathwayModulesListPage />, index: true },
+              { path: 'list', element: <IntlPathwayModulesListPage /> },
+              { path: 'new', element: <IntlPathwayModulesCreatePage /> },
+              { path: ':id/edit', element: <IntlPathwayModulesEditPage /> },
+            ],
+          },
+          {
+            path: 'roles',
+            children: [
+              { element: <IntlPathwayRolesListPage />, index: true },
+              { path: 'list', element: <IntlPathwayRolesListPage /> },
+              { path: 'new', element: <IntlPathwayRolesCreatePage /> },
+              { path: ':id/edit', element: <IntlPathwayRolesEditPage /> },
+            ],
+          },
         ],
       },
       {

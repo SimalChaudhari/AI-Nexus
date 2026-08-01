@@ -35,6 +35,8 @@ export const paths = {
     details: (id) => `/ai-forum/${id}`,
   },
   home: '/home',
+  international: '/international',
+  internationalAiFluency: '/international/ai-fluency',
   learning: '/learning',
   learningCourse: {
     root: '/learning/course',
@@ -280,6 +282,21 @@ export const paths = {
       list: `${ROOTS.ADMIN}/language/list`,
       details: (id) => `${ROOTS.ADMIN}/language/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/language/${id}/edit`,
+    },
+    international: {
+      root: `${ROOTS.ADMIN}/international`,
+      modules: {
+        root: `${ROOTS.ADMIN}/international/modules`,
+        list: `${ROOTS.ADMIN}/international/modules/list`,
+        new: `${ROOTS.ADMIN}/international/modules/new`,
+        edit: (id) => `${ROOTS.ADMIN}/international/modules/${id}/edit`,
+      },
+      roles: {
+        root: `${ROOTS.ADMIN}/international/roles`,
+        list: `${ROOTS.ADMIN}/international/roles/list`,
+        new: `${ROOTS.ADMIN}/international/roles/new`,
+        edit: (id) => `${ROOTS.ADMIN}/international/roles/${id}/edit`,
+      },
     },
     label: {
       root: `${ROOTS.ADMIN}/label`,

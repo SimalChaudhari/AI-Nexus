@@ -234,6 +234,21 @@ export const courseService = {
     }
   },
 
+  /**
+   * International pathway modules with videoUrl + minutes matched by LMS section title.
+   * GET /courses/international/ai-fluency-pathway-modules
+   */
+  async getInternationalAiFluencyPathwayModules() {
+    try {
+      const response = await axios.get('/courses/international/ai-fluency-pathway-modules');
+      const rows = response.data?.data ?? response.data ?? [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error('Error fetching international AI Fluency pathway modules:', error);
+      throw error;
+    }
+  },
+
   async getCourseById(id) {
     try {
       const response = await axios.get(`/courses/${id}`);
@@ -671,15 +686,21 @@ export const courseService = {
   },
 
   async prepareSpotlightrPlayback(watchUrl) {
+    const empty = { directUrl: null, settingsUpdated: false, captionTracks: [] };
     const url = String(watchUrl || '').trim();
-    if (!url) return { directUrl: null, settingsUpdated: false };
+    if (!url) return empty;
     try {
       const response = await axios.post('/courses/spotlightr/prepare-playback', { url });
-      return response.data?.data ?? { directUrl: null, settingsUpdated: false };
+      const data = response.data?.data ?? empty;
+      return {
+        directUrl: data?.directUrl ?? null,
+        settingsUpdated: Boolean(data?.settingsUpdated),
+        captionTracks: Array.isArray(data?.captionTracks) ? data.captionTracks : [],
+      };
     } catch (error) {
-      if (error?.response?.status === 401) return { directUrl: null, settingsUpdated: false };
+      if (error?.response?.status === 401) return empty;
       console.error('Error preparing Spotlightr playback:', error);
-      return { directUrl: null, settingsUpdated: false };
+      return empty;
     }
   },
 

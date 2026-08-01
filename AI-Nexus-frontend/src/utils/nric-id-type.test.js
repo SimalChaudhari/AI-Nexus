@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildSalesforceNexusUserPayloadFromSignup } from './nric-id-type.js';
+import {
+  buildSalesforceNexusUserPayloadFromSignup,
+  buildSalesforceSignupForNexusPayloadFromSignup,
+} from './nric-id-type.js';
 
 test('buildSalesforceNexusUserPayloadFromSignup includes the new profile fields', () => {
   const payload = buildSalesforceNexusUserPayloadFromSignup({
@@ -24,4 +27,27 @@ test('buildSalesforceNexusUserPayloadFromSignup includes the new profile fields'
   assert.equal(payload.noOfYearOfRelevantWorkExperience, 10);
   assert.equal(payload.id_type, 'NRIC number');
   assert.equal(payload.id_number, 'S45678967A');
+});
+
+test('buildSalesforceSignupForNexusPayloadFromSignup includes companyCode for QR enrollment', () => {
+  const payload = buildSalesforceSignupForNexusPayloadFromSignup({
+    salutation: 'Mr',
+    firstName: 'John',
+    lastName: 'Doe Test new 123',
+    email: 'john.doenew1235@testemail.com',
+    company: 'Acme Corporation',
+    jobFunction: 'Software Engineer',
+    countryOfResidence: 'Singapore',
+    companyCode: 'ACME001',
+    yearsOfExperience: 5.5,
+  });
+
+  assert.equal(payload.companyCode, 'ACME001');
+  assert.equal(payload.company, 'Acme Corporation');
+  assert.equal(payload.jobFunction, 'Software Engineer');
+  assert.equal(payload.password, undefined);
+  assert.equal(payload.name_as_per_id, undefined);
+  assert.equal(payload.noOfYearOfRelevantWorkExperience, 5.5);
+  assert.equal(payload.id_type, undefined);
+  assert.equal(payload.Is_paid, undefined);
 });

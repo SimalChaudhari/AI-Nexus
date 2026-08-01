@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -25,6 +25,10 @@ import { AnimateLogo2 } from 'src/components/animate';
 import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
 import { CorporateSignUpSchema } from 'src/validations/user.validation';
+import {
+  detectCountryCodeFromIp,
+  resolveCountryLabelFromCode,
+} from 'src/utils/detect-country-from-ip';
 
 import {
   checkCorporateSalesforceAccount,
@@ -32,11 +36,6 @@ import {
   setSalesforceNexusPassword,
 } from 'src/auth/context/jwt';
 import { POST_OAUTH_RETURN_TO_KEY } from 'src/utils/membership-eligibility-sso';
-import {
-  clearPendingNexusPasswordSetup,
-  readPendingNexusPasswordSetupForEmail,
-  writePendingNexusPasswordSetup,
-} from 'src/utils/pending-nexus-password-session';
 
 // ----------------------------------------------------------------------
 
@@ -79,6 +78,7 @@ export function CorporateSignUpView() {
   const returnTo = searchParams.get('returnTo') || paths.corporate.overview;
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState('SG');
 
   const signInHref = `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.corporate.overview)}`;
 
@@ -89,7 +89,7 @@ export function CorporateSignUpView() {
       uenNumber: '',
       organisationType: 'Private Limited',
       businessCountry: 'Singapore',
-      businessCity: 'Singapore',
+      businessCity: '',
       businessState: 'SG',
       businessPostalCode: '',
       businessStreetName: '',
@@ -124,8 +124,31 @@ export function CorporateSignUpView() {
 
   const {
     handleSubmit,
+    setValue,
     formState: { isSubmitting },
   } = methods;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const code = await detectCountryCodeFromIp();
+      if (cancelled) return;
+
+      const iso = String(code || 'SG').trim().toUpperCase() || 'SG';
+      setPhoneCountry(iso);
+
+      const countryLabel = resolveCountryLabelFromCode(iso);
+      if (countryLabel) {
+        setValue('businessCountry', countryLabel, { shouldDirty: false });
+        setValue('businessState', iso, { shouldDirty: false });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setValue]);
 
   const startCorporateSso = (email) => {
     try {
@@ -172,25 +195,6 @@ export function CorporateSignUpView() {
         return;
       }
 
-      const pendingForEmail = readPendingNexusPasswordSetupForEmail(email);
-      if (pendingForEmail?.username) {
-        try {
-          await setSalesforceNexusPassword({
-            username: pendingForEmail.username,
-            password: data.password,
-          });
-          clearPendingNexusPasswordSetup();
-          setInfoMsg('Password set. Redirecting to Salesforce sign-in…');
-          startCorporateSso(email);
-          return;
-        } catch (passwordError) {
-          setErrorMsg(
-            `${passwordError?.message || 'Failed to set password.'} Your corporate account was already created — retry with the same email to finish password setup.`
-          );
-          return;
-        }
-      }
-
       await createCorporateSalesforceAccount({
         account: {
           name: data.companyName.trim(),
@@ -233,30 +237,10 @@ export function CorporateSignUpView() {
         },
       });
 
-      writePendingNexusPasswordSetup({
+      await setSalesforceNexusPassword({
         username: email,
-        email,
-        registerForm: {
-          firstName: data.firstName.trim(),
-          lastName: data.lastName.trim(),
-          email,
-        },
-        designation: String(data.designation || '').trim(),
-        source: 'corporate-sign-up',
+        password: data.password,
       });
-
-      try {
-        await setSalesforceNexusPassword({
-          username: email,
-          password: data.password,
-        });
-        clearPendingNexusPasswordSetup();
-      } catch (passwordError) {
-        setErrorMsg(
-          `${passwordError?.message || 'Failed to set password.'} Your corporate account was created — submit again with the same email and password to finish setup.`
-        );
-        return;
-      }
 
       setInfoMsg('Account created. Redirecting to Salesforce sign-in…');
       startCorporateSso(email);
@@ -426,8 +410,18 @@ export function CorporateSignUpView() {
                 ),
               }}
             />
-            <Field.Text name="mobilePhone" label="Mobile phone" InputLabelProps={{ shrink: true }} />
-            <Field.Text name="phone" label="Office phone" InputLabelProps={{ shrink: true }} />
+            <Field.Phone
+              key={`mobilePhone-${phoneCountry}`}
+              name="mobilePhone"
+              label="Mobile phone"
+              country={phoneCountry}
+            />
+            <Field.Phone
+              key={`phone-${phoneCountry}`}
+              name="phone"
+              label="Office phone"
+              country={phoneCountry}
+            />
             <Field.Text name="designation" label="Designation" InputLabelProps={{ shrink: true }} />
             <Field.Text name="website" label="Website" InputLabelProps={{ shrink: true }} />
           </Stack>

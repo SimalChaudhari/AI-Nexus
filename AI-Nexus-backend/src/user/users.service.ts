@@ -14,6 +14,8 @@ import {
 } from '../common/pagination/pagination.service';
 import { verifyEmailAddress } from '../utils/email-verification.util';
 import { AuthService } from '../auth/auth.service';
+import { normalizeEmail } from '../utils/auth.utils';
+import { assertEmailAvailableForRole } from './user-email-availability.util';
 
 function generateTemporaryPassword(length = 14): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
@@ -132,13 +134,14 @@ export class UserService {
         user: Omit<UserEntity, 'password'>;
         temporaryPasswordEmailSent: boolean;
     }> {
-        // Check if email already exists
-        const existingUserByEmail = await this.userRepository.findOne({
-            where: { email: createUserDto.email },
-        });
-        if (existingUserByEmail) {
-            throw new BadRequestException('Email already exists');
+        if (!createUserDto.email) {
+            throw new BadRequestException('Email is required');
         }
+        const normalizedEmail = normalizeEmail(createUserDto.email);
+        const createRole = createUserDto.role || UserRole.User;
+
+        // Same email allowed once for User + once for Corporate; reject third / duplicate role.
+        await assertEmailAvailableForRole(this.userRepository, normalizedEmail, createRole);
 
         const normalizedUsername = this.normalizeUsername(createUserDto.username || '');
         if (!normalizedUsername) {
@@ -149,10 +152,7 @@ export class UserService {
                 'Username must contain both letters and numbers, and no special characters.',
             );
         }
-        if (!createUserDto.email) {
-            throw new BadRequestException('Email is required');
-        }
-        const createEmailVerification = await verifyEmailAddress(createUserDto.email);
+        const createEmailVerification = await verifyEmailAddress(normalizedEmail);
         if (!createEmailVerification.isValid) {
             throw new BadRequestException(
                 createEmailVerification.reason || 'Please provide a valid real email address.',
@@ -179,7 +179,7 @@ export class UserService {
             username: normalizedUsername,
             firstname: createUserDto.firstname,
             lastname: createUserDto.lastname,
-            email: createUserDto.email,
+            email: normalizedEmail,
             aiExperienceLevel: createUserDto.aiExperienceLevel?.trim() || null,
             aiLearningGoals: normalizeStringArray(createUserDto.aiLearningGoals),
             aiUseAreas: normalizeStringArray(createUserDto.aiUseAreas),
@@ -189,7 +189,7 @@ export class UserService {
             companyCode: createUserDto.companyCode?.trim() || null,
             password: passwordHash,
             authProvider: AuthProvider.LOCAL,
-            role: createUserDto.role || UserRole.User,
+            role: createRole,
             status: createUserDto.status || UserStatus.Active,
             // Admin-provisioned accounts receive credentials by email; skip self-signup verification.
             isVerified: true,
@@ -228,7 +228,7 @@ export class UserService {
             throw new NotFoundException('User not found');
         }
 
-        // Check if email is being updated and if it already exists
+        // Check if email is being updated — allow same email on the other role only
         if (updateUserDto.email && updateUserDto.email !== user.email) {
             const updateEmailVerification = await verifyEmailAddress(updateUserDto.email);
             if (!updateEmailVerification.isValid) {
@@ -236,13 +236,14 @@ export class UserService {
                     updateEmailVerification.reason || 'Please provide a valid real email address.',
                 );
             }
-            const existingUser = await this.userRepository.findOne({
-                where: { email: updateUserDto.email },
-            });
-            if (existingUser) {
-                throw new BadRequestException('Email already exists');
-            }
-            user.email = updateUserDto.email;
+            const targetRole = updateUserDto.role ?? user.role;
+            await assertEmailAvailableForRole(
+                this.userRepository,
+                updateUserDto.email,
+                targetRole,
+                { excludeUserId: user.id },
+            );
+            user.email = normalizeEmail(updateUserDto.email);
         }
 
         // Check if username is being updated and if it already exists
@@ -303,6 +304,14 @@ export class UserService {
             user.password = await bcrypt.hash(updateUserDto.password, 10);
         }
         if (updateUserDto.role !== undefined) {
+            if (updateUserDto.role !== user.role && user.email) {
+                await assertEmailAvailableForRole(
+                    this.userRepository,
+                    user.email,
+                    updateUserDto.role,
+                    { excludeUserId: user.id },
+                );
+            }
             user.role = updateUserDto.role;
         }
         if (updateUserDto.status !== undefined) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
@@ -34,11 +34,6 @@ import {
   updateSalesforceNexusUser,
 } from 'src/auth/context/jwt';
 import { assertSalesforceEmailAvailable } from 'src/utils/salesforce-email-check';
-import {
-  clearPendingNexusPasswordSetup,
-  readPendingNexusPasswordSetup,
-  writePendingNexusPasswordSetup,
-} from 'src/utils/pending-nexus-password-session';
 
 // ----------------------------------------------------------------------
 
@@ -305,62 +300,18 @@ export function SalesforceMembershipCreateStep({
     () => (isNricVerifiedFlow ? resolveNricIdentityForSalesforceApi(flowState) : null),
     [flowState, isNricVerifiedFlow]
   );
+  const [phase, setPhase] = useState('register');
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
   const [designation, setDesignation] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordForm, setPasswordForm] = useState({ username: '', password: '', confirmPassword: '' });
   const [nricIdType, setNricIdType] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitStage, setSubmitStage] = useState('');
   const [error, setError] = useState('');
   const [emailSfChecking, setEmailSfChecking] = useState(false);
   const [emailSfError, setEmailSfError] = useState('');
-  /** True once createuserfornexus has succeeded in this browser session. */
-  const [accountCreatedPendingPassword, setAccountCreatedPendingPassword] = useState(false);
-  const [pendingUsername, setPendingUsername] = useState('');
   const showPassword = useBoolean();
   const showConfirmPassword = useBoolean();
   const shouldCheckSalesforceEmail = isNricVerifiedFlow || isCorporateFlow;
-
-  const applyPendingPasswordSetup = useCallback((pending) => {
-    if (!pending?.username) return;
-    if (pending.registerForm) {
-      setRegisterForm((prev) => ({
-        ...prev,
-        salutation: pending.registerForm.salutation || prev.salutation || 'Mr.',
-        firstName: pending.registerForm.firstName || prev.firstName,
-        lastName: pending.registerForm.lastName || prev.lastName,
-        nameAsPerId: pending.registerForm.nameAsPerId || prev.nameAsPerId,
-        email: pending.registerForm.email || pending.email || prev.email,
-      }));
-    } else if (pending.email) {
-      setRegisterForm((prev) => ({ ...prev, email: pending.email }));
-    }
-    if (pending.designation) {
-      setDesignation(pending.designation);
-    }
-    setPendingUsername(String(pending.username || '').trim());
-    setAccountCreatedPendingPassword(true);
-    setError('');
-  }, []);
-
-  // Resume after refresh / remount when account was created but password not yet set.
-  useEffect(() => {
-    const pending = readPendingNexusPasswordSetup();
-    if (!pending) return;
-    applyPendingPasswordSetup(pending);
-  }, [applyPendingPasswordSetup]);
-
-  // Warn before leaving the tab once the Salesforce account exists without a password.
-  useEffect(() => {
-    if (!accountCreatedPendingPassword) return undefined;
-    const onBeforeUnload = (event) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [accountCreatedPendingPassword]);
 
   useEffect(() => {
     const email = String(defaultEmail || '').trim();
@@ -397,8 +348,8 @@ export function SalesforceMembershipCreateStep({
   }, [flowState?.verifiedNricIdType, isNricVerifiedFlow, nricIdentity?.idType]);
 
   useEffect(() => {
-    onPhaseChange?.(0);
-  }, [onPhaseChange]);
+    onPhaseChange?.(phase === 'register' ? 0 : 1);
+  }, [phase, onPhaseChange]);
 
   const updateRegisterField = (field) => (event) => {
     setRegisterForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -422,83 +373,17 @@ export function SalesforceMembershipCreateStep({
   };
 
   const handleEmailBlur = async () => {
-    if (!shouldCheckSalesforceEmail || accountCreatedPendingPassword) return;
+    if (!shouldCheckSalesforceEmail) return;
     const email = String(registerForm.email || '').trim();
     if (!email) return;
     await verifyEmailAvailableInSalesforce(email);
   };
 
-  const persistPendingPasswordSetup = (username, formSnapshot, designationValue) => {
-    writePendingNexusPasswordSetup({
-      username: String(username || '').trim(),
-      email: String(formSnapshot?.email || '').trim(),
-      registerForm: formSnapshot,
-      designation: designationValue,
-      source: 'membership-create-step',
-    });
-    setPendingUsername(String(username || '').trim());
-    setAccountCreatedPendingPassword(true);
+  const updatePasswordField = (field) => (event) => {
+    setPasswordForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
-  const finishAfterPasswordSet = async (username) => {
-    clearPendingNexusPasswordSetup();
-    setAccountCreatedPendingPassword(false);
-    setPendingUsername('');
-
-    const eligibility = buildEligibilityPayloadFromFlow(
-      flowState,
-      membershipOutcome,
-      username.trim(),
-      registerForm
-    );
-    if (isCorporateFlow) {
-      eligibility.snapshot = {
-        ...eligibility.snapshot,
-        companyName: String(flowState?.companyVerifiedName || '').trim(),
-        industry: String(flowState?.companyVerifiedIndustry || '').trim(),
-        companyReferenceId: String(flowState?.companyReferenceId || '').trim(),
-        designation: String(designation || '').trim(),
-      };
-    }
-    if (isNricVerifiedFlow && nricIdentity?.idNumber) {
-      const resolvedIdType = String(nricIdType || nricIdentity.idType).trim();
-      eligibility.snapshot = {
-        ...eligibility.snapshot,
-        verifiedNricFin: nricIdentity.idNumber,
-        verifiedNricIdType: resolvedIdType,
-        idType: resolvedIdType,
-        nricFin: nricIdentity.idNumber,
-      };
-    }
-    if (flowState) {
-      await saveSalesforceMembershipRecord({
-        email: registerForm.email.trim(),
-        firstname: registerForm.firstName.trim(),
-        lastname: registerForm.lastName.trim(),
-        salutation: registerForm.salutation,
-        nameAsPerId: registerForm.nameAsPerId.trim(),
-        salesforceUsername: username.trim(),
-        draftUserId: draftUserId || undefined,
-        membershipOutcome: membershipOutcome || undefined,
-        eligibilityIsSingaporePr: eligibility.isSingaporePr,
-        eligibilityIsIscaMember: eligibility.isIscaMember,
-        eligibilityWantsMembership: eligibility.wantsIscaMembership,
-        eligibilityType: eligibility.eligibilityType,
-        eligibilitySnapshot: eligibility.snapshot,
-      });
-    }
-
-    onPhaseChange?.(1);
-
-    if (onPasswordSetComplete) {
-      onPasswordSetComplete();
-      return;
-    }
-
-    onAccountCreated?.();
-  };
-
-  const handleSubmit = async (event) => {
+  const handleRegisterSubmit = async (event) => {
     event?.preventDefault?.();
     const { salutation, firstName, lastName, nameAsPerId, email } = registerForm;
     if (!firstName.trim() || !lastName.trim() || !nameAsPerId.trim() || !email.trim()) {
@@ -509,6 +394,57 @@ export function SalesforceMembershipCreateStep({
       setError('Please enter your designation.');
       return;
     }
+    if (shouldCheckSalesforceEmail) {
+      const emailCheck = await verifyEmailAvailableInSalesforce(email);
+      if (!emailCheck.ok) {
+        setError(emailCheck.message);
+        return;
+      }
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      let idType = String(flowState?.verifiedNricIdType || '').trim();
+      let idNumber = String(flowState?.verifiedNricFin || '').trim();
+      if (isNricVerifiedFlow) {
+        const resolved = resolveNricIdentityForSalesforceApi(flowState);
+        idType = String(nricIdType || resolved.idType).trim();
+        idNumber = resolved.idNumber;
+        if (!idType || !idNumber) {
+          setError('Verified NRIC details are missing. Please go back and complete NRIC verification again.');
+          setSubmitting(false);
+          return;
+        }
+      }
+      const salesforcePayload = buildSalesforceNexusUserPayloadFromSignup({
+        salutation,
+        firstName,
+        lastName,
+        nameAsPerId,
+        email,
+        idType,
+        idNumber,
+      });
+      const createResult = await createSalesforceNexusUser(salesforcePayload);
+      const username = resolveUsernameFromCreateResponse(createResult, email);
+      setPasswordForm({ username, password: '', confirmPassword: '' });
+      setPhase('set-password');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to create Salesforce membership account.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSetPasswordSubmit = async (event) => {
+    event?.preventDefault?.();
+    const { username, password, confirmPassword } = passwordForm;
+    if (!username.trim()) {
+      setError('Salesforce username is required.');
+      return;
+    }
     if (!password || password.length < 8) {
       setError('Password must be at least 8 characters.');
       return;
@@ -517,93 +453,67 @@ export function SalesforceMembershipCreateStep({
       setError('Passwords do not match.');
       return;
     }
-
-    const pending = readPendingNexusPasswordSetup();
-    const alreadyCreated = accountCreatedPendingPassword || Boolean(pending?.username);
-    let username = String(pendingUsername || pending?.username || '').trim();
-
     setSubmitting(true);
     setError('');
-    setSubmitStage('');
-
     try {
-      if (!alreadyCreated) {
-        if (shouldCheckSalesforceEmail) {
-          const emailCheck = await verifyEmailAvailableInSalesforce(email);
-          if (!emailCheck.ok) {
-            setError(emailCheck.message);
-            setSubmitting(false);
-            setSubmitStage('');
-            return;
-          }
-        }
-
-        setSubmitStage('Creating your eServices account…');
-        let idType = String(flowState?.verifiedNricIdType || '').trim();
-        let idNumber = String(flowState?.verifiedNricFin || '').trim();
-        if (isNricVerifiedFlow) {
-          const resolved = resolveNricIdentityForSalesforceApi(flowState);
-          idType = String(nricIdType || resolved.idType).trim();
-          idNumber = resolved.idNumber;
-          if (!idType || !idNumber) {
-            setError('Verified NRIC details are missing. Please go back and complete NRIC verification again.');
-            setSubmitting(false);
-            setSubmitStage('');
-            return;
-          }
-        }
-        const salesforcePayload = buildSalesforceNexusUserPayloadFromSignup({
-          salutation,
-          firstName,
-          lastName,
-          nameAsPerId,
-          email,
-          idType,
-          idNumber,
-        });
-        const createResult = await createSalesforceNexusUser(salesforcePayload);
-        username = resolveUsernameFromCreateResponse(createResult, email);
-        persistPendingPasswordSetup(
-          username,
-          { salutation, firstName, lastName, nameAsPerId, email },
-          designation
-        );
-      } else {
-        username = String(username || email).trim();
-        persistPendingPasswordSetup(
-          username,
-          { salutation, firstName, lastName, nameAsPerId, email },
-          designation
-        );
-      }
-
-      if (!username) {
-        setError('Salesforce username is required.');
-        setSubmitting(false);
-        setSubmitStage('');
-        return;
-      }
-
-      setSubmitStage('Setting your login password…');
       await setSalesforceNexusPassword({
         username: username.trim(),
         password,
       });
 
-      await finishAfterPasswordSet(username);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to complete registration.';
-      if (accountCreatedPendingPassword || readPendingNexusPasswordSetup()) {
-        setAccountCreatedPendingPassword(true);
-        setError(
-          `${message} Your eServices account was created. Re-submit your password to finish — you will not create a new account.`
-        );
-      } else {
-        setError(message);
+      const eligibility = buildEligibilityPayloadFromFlow(
+        flowState,
+        membershipOutcome,
+        username.trim(),
+        registerForm
+      );
+      if (isCorporateFlow) {
+        eligibility.snapshot = {
+          ...eligibility.snapshot,
+          companyName: String(flowState?.companyVerifiedName || '').trim(),
+          industry: String(flowState?.companyVerifiedIndustry || '').trim(),
+          companyReferenceId: String(flowState?.companyReferenceId || '').trim(),
+          designation: String(designation || '').trim(),
+        };
       }
+      if (isNricVerifiedFlow && nricIdentity?.idNumber) {
+        const resolvedIdType = String(nricIdType || nricIdentity.idType).trim();
+        eligibility.snapshot = {
+          ...eligibility.snapshot,
+          verifiedNricFin: nricIdentity.idNumber,
+          verifiedNricIdType: resolvedIdType,
+          idType: resolvedIdType,
+          nricFin: nricIdentity.idNumber,
+        };
+      }
+      if (flowState) {
+        await saveSalesforceMembershipRecord({
+          email: registerForm.email.trim(),
+          firstname: registerForm.firstName.trim(),
+          lastname: registerForm.lastName.trim(),
+          salutation: registerForm.salutation,
+          nameAsPerId: registerForm.nameAsPerId.trim(),
+          salesforceUsername: username.trim(),
+          draftUserId: draftUserId || undefined,
+          membershipOutcome: membershipOutcome || undefined,
+          eligibilityIsSingaporePr: eligibility.isSingaporePr,
+          eligibilityIsIscaMember: eligibility.isIscaMember,
+          eligibilityWantsMembership: eligibility.wantsIscaMembership,
+          eligibilityType: eligibility.eligibilityType,
+          eligibilitySnapshot: eligibility.snapshot,
+        });
+      }
+
+      if (onPasswordSetComplete) {
+        onPasswordSetComplete();
+        return;
+      }
+
+      onAccountCreated?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set Salesforce password.');
     } finally {
       setSubmitting(false);
-      setSubmitStage('');
     }
   };
 
@@ -648,24 +558,40 @@ export function SalesforceMembershipCreateStep({
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
-          background: alpha(theme.palette.info.main, 0.1),
-          border: `1px solid ${alpha(theme.palette.info.main, 0.22)}`,
+          background:
+            phase === 'set-password'
+              ? `linear-gradient(135deg, ${alpha(primary.main, 0.15)} 0%, ${alpha(secondary.main, 0.12)} 100%)`
+              : alpha(theme.palette.info.main, 0.1),
+          border: `1px solid ${alpha(phase === 'set-password' ? primary.main : theme.palette.info.main, 0.22)}`,
         }}
       >
-        <Iconify icon="mdi:salesforce" width={28} sx={{ color: 'info.main' }} />
+        <Iconify
+          icon={phase === 'set-password' ? 'solar:lock-password-bold' : 'mdi:salesforce'}
+          width={28}
+          sx={{ color: phase === 'set-password' ? 'primary.main' : 'info.main' }}
+        />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography
           variant={fullPage ? 'h5' : 'subtitle1'}
           sx={{ fontWeight: 800, lineHeight: 1.3 }}
         >
-          {fullPage ? (
+          {phase === 'set-password' ? (
+            <>
+              <Box component="span" sx={{ color: secondary.main }}>
+                Step 2 —{' '}
+              </Box>
+              <Box component="span" sx={{ color: secondary.main }}>
+                Set your login password
+              </Box>
+            </>
+          ) : fullPage ? (
             <>
               <Box component="span" sx={{ color: secondary.main }}>
                 Step 1 —{' '}
               </Box>
               <Box component="span" sx={{ color: secondary.main }}>
-                Create account
+                Account details
               </Box>
             </>
           ) : (
@@ -676,17 +602,19 @@ export function SalesforceMembershipCreateStep({
           variant="body2"
           sx={{ mt: 0.75, lineHeight: 1.65, color: alpha(primary.dark, 0.7) }}
         >
-          {fullPage ? (
-            <>
-              Enter your details and choose a login password. Fields marked with{' '}
-              <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>
-                *
-              </Box>{' '}
-              are required.
-            </>
-          ) : (
-            summary
-          )}
+          {phase === 'set-password'
+            ? 'Your membership account was created. Set your password, then you will sign in with Eservices to open the application form.'
+            : fullPage ? (
+              <>
+                Enter your details exactly as they appear on your ID. Fields marked with{' '}
+                <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                  *
+                </Box>{' '}
+                are required.
+              </>
+            ) : (
+              summary
+            )}
         </Typography>
       </Box>
     </Stack>
@@ -704,13 +632,15 @@ export function SalesforceMembershipCreateStep({
           >
             <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
-                {title || 'Create membership account'}
+                {phase === 'set-password' ? 'Set your Salesforce password' : title || 'Create membership account'}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.65 }}>
-                {summary}
+                {phase === 'set-password'
+                  ? 'Your membership account was created. Choose a password for Salesforce login, then continue to sign in.'
+                  : summary}
               </Typography>
             </Box>
-            {onLoginWithSalesforce && !hideLoginButton && (
+            {phase === 'register' && onLoginWithSalesforce && !hideLoginButton && (
               <Button
                 variant="outlined"
                 color="inherit"
@@ -739,313 +669,407 @@ export function SalesforceMembershipCreateStep({
         >
           <Typography variant="caption" sx={{ fontWeight: 700 }}>
             <Box component="span" sx={{ color: secondary.main }}>
-              Step 1 of 2
+              Step {phase === 'register' ? '1' : '2'} of 3
             </Box>
             {' — '}
             <Box component="span" sx={{ color: secondary.main }}>
-              Create account
+              {phase === 'register' ? 'Account details' : 'Set password'}
             </Box>
           </Typography>
         </Box>
       )}
 
-      <Paper component="form" noValidate onSubmit={handleSubmit} variant="outlined" sx={paperSx}>
-        {fullPage ? sectionIntro : (
-          <>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-              <Iconify icon="mdi:salesforce" width={22} sx={{ color: 'info.main' }} />
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  <Box component="span" sx={{ color: secondary.main }}>
-                    Create account
-                  </Box>
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Register your ISCA Salesforce membership account and set a login password.
-                </Typography>
-              </Box>
-            </Stack>
-            <Divider sx={{ mb: 2 }} />
-          </>
-        )}
-
-        {accountCreatedPendingPassword && (
-          <Alert severity="warning" sx={{ mb: 2.5, borderRadius: 2 }}>
-            Your eServices account already exists from this registration attempt. Enter your
-            password and submit to finish — a new account will not be created.
-          </Alert>
-        )}
-
-        <Grid container spacing={2.5}>
-          <Grid item xs={12} sm={4} md={3}>
-            <TextField
-              select
-              label="Salutation"
-              value={registerForm.salutation}
-              onChange={updateRegisterField('salutation')}
-              fullWidth
-              size={fieldSize}
-              disabled={submitting}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-              SelectProps={{ MenuProps: MEMBERSHIP_SELECT_MENU_PROPS }}
-            >
-              {SALUTATION_OPTIONS.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} sm={8} md={4.5}>
-            <TextField
-              label="First name"
-              value={registerForm.firstName}
-              onChange={updateRegisterField('firstName')}
-              fullWidth
-              size={fieldSize}
-              required
-              disabled={submitting}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-            />
-          </Grid>
-          <Grid item xs={12} sm={12} md={4.5}>
-            <TextField
-              label="Last name"
-              value={registerForm.lastName}
-              onChange={updateRegisterField('lastName')}
-              fullWidth
-              size={fieldSize}
-              required
-              disabled={submitting}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-            />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
-              label="Name as per ID"
-              placeholder="e.g. Tan Zhi Wen"
-              value={registerForm.nameAsPerId}
-              onChange={updateRegisterField('nameAsPerId')}
-              fullWidth
-              size={fieldSize}
-              required
-              disabled={submitting}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-            />
-          </Grid>
-          {isNricVerifiedFlow && nricIdentity?.idType && nricIdentity?.idNumber && (
+      {phase === 'register' && (
+        <Paper component="form" noValidate onSubmit={handleRegisterSubmit} variant="outlined" sx={paperSx}>
+          {fullPage ? sectionIntro : (
             <>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  select
-                  label="ID type"
-                  value={nricIdType}
-                  onChange={(event) => setNricIdType(event.target.value)}
-                  fullWidth
-                  size={fieldSize}
-                  disabled={submitting}
-                  InputLabelProps={INPUT_LABEL_ABOVE}
-                  SelectProps={MEMBERSHIP_SELECT_MENU_PROPS}
-                  helperText="Auto-detected from your NRIC. Change only if incorrect."
-                >
-                  <MenuItem value={SALESFORCE_ID_TYPE_BLUE}>{SALESFORCE_ID_TYPE_BLUE}</MenuItem>
-                  <MenuItem value={SALESFORCE_ID_TYPE_PINK}>{SALESFORCE_ID_TYPE_PINK}</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="NRIC / FIN number"
-                  value={nricIdentity.idNumber}
-                  fullWidth
-                  size={fieldSize}
-                  disabled
-                  InputLabelProps={INPUT_LABEL_ABOVE}
-                  helperText="Sent automatically when creating your account"
-                />
-              </Grid>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <Iconify icon="mdi:salesforce" width={22} sx={{ color: 'info.main' }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Step 1 —{' '}
+                    </Box>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Account details
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Register your ISCA Salesforce membership account.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Divider sx={{ mb: 2 }} />
             </>
           )}
-          <Grid item xs={12}>
-            <TextField
-              label="Email address"
-              type="email"
-              value={registerForm.email}
-              onChange={updateRegisterField('email')}
-              onBlur={handleEmailBlur}
-              fullWidth
-              size={fieldSize}
-              required
-              disabled={submitting || emailSfChecking || accountCreatedPendingPassword}
-              error={Boolean(emailSfError)}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-              helperText={
-                accountCreatedPendingPassword
-                  ? 'Email is locked because your eServices account was already created.'
-                  : emailSfError
-                    || (shouldCheckSalesforceEmail
-                      ? emailSfChecking
-                        ? 'Checking eServices for an existing account with this email...'
-                        : 'We will check if an eServices account already exists for this email before creating a new account.'
-                      : 'Used as your Salesforce username if not assigned separately.')
-              }
-            />
+
+          <Grid container spacing={2.5}>
+            <Grid item xs={12} sm={4} md={3}>
+              <TextField
+                select
+                label="Salutation"
+                value={registerForm.salutation}
+                onChange={updateRegisterField('salutation')}
+                fullWidth
+                size={fieldSize}
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                SelectProps={{ MenuProps: MEMBERSHIP_SELECT_MENU_PROPS }}
+              >
+                {SALUTATION_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={8} md={4.5}>
+              <TextField
+                label="First name"
+                value={registerForm.firstName}
+                onChange={updateRegisterField('firstName')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+              />
+            </Grid>
+            <Grid item xs={12} sm={12} md={4.5}>
+              <TextField
+                label="Last name"
+                value={registerForm.lastName}
+                onChange={updateRegisterField('lastName')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Name as per ID"
+                placeholder="e.g. Tan Zhi Wen"
+                value={registerForm.nameAsPerId}
+                onChange={updateRegisterField('nameAsPerId')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+              />
+            </Grid>
+            {isNricVerifiedFlow && nricIdentity?.idType && nricIdentity?.idNumber && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    select
+                    label="ID type"
+                    value={nricIdType}
+                    onChange={(event) => setNricIdType(event.target.value)}
+                    fullWidth
+                    size={fieldSize}
+                    disabled={submitting}
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                    SelectProps={MEMBERSHIP_SELECT_MENU_PROPS}
+                    helperText="Auto-detected from your NRIC. Change only if incorrect."
+                  >
+                    <MenuItem value={SALESFORCE_ID_TYPE_BLUE}>{SALESFORCE_ID_TYPE_BLUE}</MenuItem>
+                    <MenuItem value={SALESFORCE_ID_TYPE_PINK}>{SALESFORCE_ID_TYPE_PINK}</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="NRIC / FIN number"
+                    value={nricIdentity.idNumber}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                    helperText="Sent automatically when creating your account"
+                  />
+                </Grid>
+              </>
+            )}
+            <Grid item xs={12}>
+              <TextField
+                label="Email address"
+                type="email"
+                value={registerForm.email}
+                onChange={updateRegisterField('email')}
+                onBlur={handleEmailBlur}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting || emailSfChecking}
+                error={Boolean(emailSfError)}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                helperText={
+                  emailSfError
+                  || (shouldCheckSalesforceEmail
+                    ? emailSfChecking
+                      ? 'Checking eServices for an existing account with this email...'
+                      : 'We will check if an eServices account already exists for this email before creating a new account.'
+                    : 'Used as your Salesforce username if not assigned separately.')
+                }
+              />
+            </Grid>
+            {isCorporateFlow && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Company name"
+                    value={String(flowState?.companyVerifiedName || '').trim()}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Industry"
+                    value={String(flowState?.companyVerifiedIndustry || '').trim()}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Company ID"
+                    value={String(flowState?.companyReferenceId || '').trim()}
+                    fullWidth
+                    size={fieldSize}
+                    disabled
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Designation"
+                    value={designation}
+                    onChange={(event) => setDesignation(event.target.value)}
+                    fullWidth
+                    size={fieldSize}
+                    required
+                    disabled={submitting}
+                    InputLabelProps={INPUT_LABEL_ABOVE}
+                  />
+                </Grid>
+              </>
+            )}
           </Grid>
-          {isCorporateFlow && (
-            <>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Company name"
-                  value={String(flowState?.companyVerifiedName || '').trim()}
-                  fullWidth
-                  size={fieldSize}
-                  disabled
-                  InputLabelProps={INPUT_LABEL_ABOVE}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Industry"
-                  value={String(flowState?.companyVerifiedIndustry || '').trim()}
-                  fullWidth
-                  size={fieldSize}
-                  disabled
-                  InputLabelProps={INPUT_LABEL_ABOVE}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Company ID"
-                  value={String(flowState?.companyReferenceId || '').trim()}
-                  fullWidth
-                  size={fieldSize}
-                  disabled
-                  InputLabelProps={INPUT_LABEL_ABOVE}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Designation"
-                  value={designation}
-                  onChange={(event) => setDesignation(event.target.value)}
-                  fullWidth
-                  size={fieldSize}
-                  required
-                  disabled={submitting}
-                  InputLabelProps={INPUT_LABEL_ABOVE}
-                />
-              </Grid>
-            </>
+
+          {error && (
+            <Alert severity="error" onClose={() => setError('')} sx={{ mt: 2.5 }}>
+              {error}
+            </Alert>
           )}
-        </Grid>
 
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: 0.4 }}>
-            Login password
-          </Typography>
-        </Divider>
-
-        <Grid container spacing={2.5}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              label="Password"
-              type={showPassword.value ? 'text' : 'password'}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              fullWidth
-              size={fieldSize}
-              required
-              disabled={submitting}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-              helperText="Minimum 8 characters"
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={showPassword.onToggle} edge="end" aria-label="toggle password">
-                      <Iconify icon={showPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              label="Confirm password"
-              type={showConfirmPassword.value ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              fullWidth
-              size={fieldSize}
-              required
-              disabled={submitting}
-              InputLabelProps={INPUT_LABEL_ABOVE}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={showConfirmPassword.onToggle}
-                      edge="end"
-                      aria-label="toggle confirm password"
-                    >
-                      <Iconify icon={showConfirmPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-        </Grid>
-
-        {submitStage && (
-          <Alert severity="info" icon={<CircularProgress size={18} />} sx={{ mt: 2.5 }}>
-            {submitStage}
-          </Alert>
-        )}
-
-        {error && (
-          <Alert severity="error" onClose={() => setError('')} sx={{ mt: 2.5 }}>
-            {error}
-          </Alert>
-        )}
-
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1.5}
-          sx={{
-            mt: 3,
-            pt: 2.5,
-            borderTop: `1px solid ${alpha(primary.main, 0.1)}`,
-            justifyContent: 'flex-end',
-            bgcolor: fullPage ? alpha(primary.main, 0.02) : 'transparent',
-            mx: fullPage ? { xs: -2.5, md: -3.5 } : 0,
-            mb: fullPage ? { xs: -2.5, md: -3.5 } : 0,
-            px: fullPage ? { xs: 2.5, md: 3.5 } : 0,
-            pb: fullPage ? { xs: 2.5, md: 3 } : 0,
-            borderRadius: fullPage ? '0 0 20px 20px' : 0,
-          }}
-        >
-          <LoadingButton
-            type="submit"
-            variant="contained"
-            color="primary"
-            size="large"
-            loading={submitting}
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
             sx={{
-              minWidth: { sm: 220 },
-              textTransform: 'none',
-              fontWeight: 700,
-              px: 4,
-              boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
+              mt: 3,
+              pt: 2.5,
+              borderTop: `1px solid ${alpha(primary.main, 0.1)}`,
+              justifyContent: 'flex-end',
+              bgcolor: fullPage ? alpha(primary.main, 0.02) : 'transparent',
+              mx: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              mb: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              px: fullPage ? { xs: 2.5, md: 3.5 } : 0,
+              pb: fullPage ? { xs: 2.5, md: 3 } : 0,
+              borderRadius: fullPage ? '0 0 20px 20px' : 0,
             }}
           >
-            {accountCreatedPendingPassword ? 'Complete registration' : 'Create account & continue'}
-          </LoadingButton>
-        </Stack>
-      </Paper>
+            <LoadingButton
+              type="submit"
+              variant="contained"
+              color="primary"
+              size="large"
+              loading={submitting}
+              sx={{
+                minWidth: { sm: 160 },
+                textTransform: 'none',
+                fontWeight: 700,
+                px: 4,
+                boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
+              }}
+            >
+              Create
+            </LoadingButton>
+          </Stack>
+        </Paper>
+      )}
+
+      {phase === 'set-password' && (
+        <Paper component="form" noValidate onSubmit={handleSetPasswordSubmit} variant="outlined" sx={paperSx}>
+          {fullPage ? sectionIntro : (
+            <>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <Iconify icon="solar:lock-password-bold" width={22} sx={{ color: 'primary.main' }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Step 2 —{' '}
+                    </Box>
+                    <Box component="span" sx={{ color: secondary.main }}>
+                      Login password
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Set the password you will use when signing in with Salesforce.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Divider sx={{ mb: 2 }} />
+            </>
+          )}
+
+          <Alert
+            severity="success"
+            icon={<Iconify icon="solar:verified-check-bold" width={22} />}
+            sx={{
+              mb: 3,
+              borderRadius: 2,
+              bgcolor: alpha(theme.palette.success.main, 0.08),
+              border: `1px solid ${alpha(theme.palette.success.main, 0.24)}`,
+              '& .MuiAlert-icon': { color: 'success.main' },
+            }}
+          >
+            Membership account created successfully. Set your password below, then sign in with
+            Eservices.
+          </Alert>
+
+          <Grid container spacing={2.5}>
+            <Grid item xs={12}>
+              <TextField
+                label="Salesforce username"
+                value={passwordForm.username}
+                onChange={updatePasswordField('username')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                helperText="Usually your email address."
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Password"
+                type={showPassword.value ? 'text' : 'password'}
+                value={passwordForm.password}
+                onChange={updatePasswordField('password')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                helperText="Minimum 8 characters"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={showPassword.onToggle} edge="end" aria-label="toggle password">
+                        <Iconify icon={showPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Confirm password"
+                type={showConfirmPassword.value ? 'text' : 'password'}
+                value={passwordForm.confirmPassword}
+                onChange={updatePasswordField('confirmPassword')}
+                fullWidth
+                size={fieldSize}
+                required
+                disabled={submitting}
+                InputLabelProps={INPUT_LABEL_ABOVE}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={showConfirmPassword.onToggle}
+                        edge="end"
+                        aria-label="toggle confirm password"
+                      >
+                        <Iconify icon={showConfirmPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+          </Grid>
+
+          {error && (
+            <Alert severity="error" onClose={() => setError('')} sx={{ mt: 2.5 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            sx={{
+              mt: 3,
+              pt: 2.5,
+              borderTop: `1px solid ${alpha(primary.main, 0.1)}`,
+              justifyContent: 'space-between',
+              bgcolor: fullPage ? alpha(secondary.main, 0.04) : 'transparent',
+              mx: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              mb: fullPage ? { xs: -2.5, md: -3.5 } : 0,
+              px: fullPage ? { xs: 2.5, md: 3.5 } : 0,
+              pb: fullPage ? { xs: 2.5, md: 3 } : 0,
+              borderRadius: fullPage ? '0 0 20px 20px' : 0,
+            }}
+          >
+            <LoadingButton
+              variant="outlined"
+              color="secondary"
+              disabled={submitting}
+              startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={20} />}
+              onClick={() => {
+                setError('');
+                setPhase('register');
+              }}
+              sx={{ textTransform: 'none', fontWeight: 600, borderWidth: 1.5 }}
+            >
+              Back
+            </LoadingButton>
+            <LoadingButton
+              type="submit"
+              variant="contained"
+              color="primary"
+              size="large"
+              loading={submitting}
+              endIcon={<Iconify icon="eva:arrow-ios-forward-fill" width={20} />}
+              sx={{
+                minWidth: { sm: 280 },
+                textTransform: 'none',
+                fontWeight: 700,
+                px: 3,
+                boxShadow: `0 6px 20px ${alpha(primary.main, 0.35)}`,
+              }}
+            >
+              Set password and sign in
+            </LoadingButton>
+          </Stack>
+        </Paper>
+      )}
 
       {!fullPage && (
         <Typography variant="caption" color="text.secondary">
-          After creating your account, you will sign in with Eservices to continue.
+          {phase === 'set-password'
+            ? 'After setting your password, use Login with Eservices on the next screen.'
+            : 'Next you will set your Salesforce login password, then sign in to the platform.'}
         </Typography>
       )}
     </Stack>

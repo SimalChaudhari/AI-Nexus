@@ -20,22 +20,29 @@ const API_TIMEOUT_MS = parsePositiveNumber(process.env.SPOTLIGHTR_API_TIMEOUT_MS
 const CIRCUIT_FAILURE_THRESHOLD = parsePositiveNumber(process.env.SPOTLIGHTR_CIRCUIT_FAILURES, 3);
 const CIRCUIT_OPEN_MS = parsePositiveNumber(process.env.SPOTLIGHTR_CIRCUIT_OPEN_MS, 5 * 60 * 1000);
 
+type SpotlightrCaptionTrack = {
+    src: string;
+    language: string;
+    label: string;
+    isDefault: boolean;
+};
+
+type SpotlightrPlaybackPayload = {
+    directUrl: string | null;
+    settingsUpdated: boolean;
+    captionTracks: SpotlightrCaptionTrack[];
+};
+
 type CacheEntry<T> = { value: T; expiresAt: number };
 
 @Injectable()
 export class SpotlightrService {
     private readonly logger = new Logger(SpotlightrService.name);
     private readonly videoRecordCache = new Map<string, CacheEntry<Record<string, unknown> | null>>();
-    private readonly playbackCache = new Map<
-        string,
-        CacheEntry<{ directUrl: string | null; settingsUpdated: boolean }>
-    >();
+    private readonly playbackCache = new Map<string, CacheEntry<SpotlightrPlaybackPayload>>();
     private readonly settingsApplied = new Set<string>();
     private readonly inflightLookups = new Map<string, Promise<Record<string, unknown> | null>>();
-    private readonly inflightPlayback = new Map<
-        string,
-        Promise<{ directUrl: string | null; settingsUpdated: boolean }>
-    >();
+    private readonly inflightPlayback = new Map<string, Promise<SpotlightrPlaybackPayload>>();
     private consecutiveApiFailures = 0;
     private circuitOpenUntil = 0;
     private circuitOpenLoggedAt = 0;
@@ -144,15 +151,16 @@ export class SpotlightrService {
     }
 
     /**
-     * Enable free timeline seeking for a Spotlightr watch URL and return a direct MP4 when available.
-     * Direct MP4 bypasses the Spotlightr iframe player (and theme forward-seek lock) entirely.
-     * Cached + single-flight so many concurrent learners share one Spotlightr API call per video.
+     * Enable free timeline seeking for a Spotlightr watch URL, resolve direct MP4 when available,
+     * and return caption/VTT tracks from playerSettings.subtitleTracks when present.
+     * Government hybrid: native MP4 + VTT when tracks exist; otherwise learner uses Spotlightr iframe for CC.
      */
-    async preparePlaybackForWatchUrl(watchUrl: string): Promise<{
-        directUrl: string | null;
-        settingsUpdated: boolean;
-    }> {
-        const empty = { directUrl: null as string | null, settingsUpdated: false };
+    async preparePlaybackForWatchUrl(watchUrl: string): Promise<SpotlightrPlaybackPayload> {
+        const empty: SpotlightrPlaybackPayload = {
+            directUrl: null,
+            settingsUpdated: false,
+            captionTracks: [],
+        };
         if (!this.isPreparePlaybackEnabled()) {
             return empty;
         }
@@ -178,7 +186,7 @@ export class SpotlightrService {
             .then((result) => {
                 // Successful lookups stay warm; failures expire quickly so Spotlightr recovery is picked up.
                 const ttl =
-                    result.directUrl || result.settingsUpdated
+                    result.directUrl || result.settingsUpdated || result.captionTracks.length
                         ? PLAYBACK_CACHE_TTL_MS
                         : Math.min(PLAYBACK_CACHE_TTL_MS, 60_000);
                 this.setCached(this.playbackCache, cacheKey, result, ttl);
@@ -195,15 +203,69 @@ export class SpotlightrService {
     private async preparePlaybackUncached(
         watchUrl: string,
         videoId: string | null,
-    ): Promise<{ directUrl: string | null; settingsUpdated: boolean }> {
+    ): Promise<SpotlightrPlaybackPayload> {
         // Settings only need to be applied once per video; do not block playback on Spotlightr.
         const settingsPromise = this.allowForwardSeekingForWatchUrl(watchUrl);
-        const directUrl = videoId ? await this.resolveVideoFileUrl(videoId) : null;
+        const record = videoId ? await this.resolveVideoRecord(videoId) : null;
+        const directUrl = record
+            ? this.resolveVideoFileUrlFromRecord(record)
+            : videoId
+              ? await this.resolveVideoFileUrl(videoId)
+              : null;
+        const captionTracks = record ? this.extractCaptionTracks(record) : [];
         const settingsUpdated = await settingsPromise;
-        return { directUrl, settingsUpdated };
+        return { directUrl, settingsUpdated, captionTracks };
     }
 
-    /** Allow timeline forward/backward jumps for course playback (overrides theme default). */
+    /** Parse Spotlightr playerSettings.subtitleTracks into HTML5-compatible caption entries. */
+    extractCaptionTracks(record: Record<string, unknown>): SpotlightrCaptionTrack[] {
+        const settingsRaw = record?.playerSettings;
+        let settings: Record<string, unknown> | null = null;
+        if (typeof settingsRaw === 'string') {
+            try {
+                const parsed = JSON.parse(settingsRaw);
+                if (parsed && typeof parsed === 'object') settings = parsed as Record<string, unknown>;
+            } catch {
+                settings = null;
+            }
+        } else if (settingsRaw && typeof settingsRaw === 'object') {
+            settings = settingsRaw as Record<string, unknown>;
+        }
+        if (!settings) return [];
+
+        const rawTracks = settings.subtitleTracks;
+        const rows = Array.isArray(rawTracks) ? rawTracks : [];
+        const out: SpotlightrCaptionTrack[] = [];
+        for (const row of rows) {
+            if (!row || typeof row !== 'object') continue;
+            const item = row as Record<string, unknown>;
+            const src = String(item.URL || item.url || item.src || '').trim();
+            if (!src || !/^https?:\/\//i.test(src)) continue;
+            const language = String(item.language || item.srclang || item.lang || 'en').trim() || 'en';
+            const label =
+                String(item.languageName || item.label || language).trim() || language;
+            out.push({
+                src,
+                language,
+                label,
+                isDefault: Boolean(item.default || item.isDefault),
+            });
+        }
+        if (out.length && !out.some((track) => track.isDefault)) {
+            out[0].isDefault = true;
+        }
+        return out;
+    }
+
+    private resolveVideoFileUrlFromRecord(match: Record<string, unknown>): string | null {
+        const original = String(match.originalFileURL || '').trim();
+        if (original && this.isDirectVideoUrl(original)) return original;
+
+        const stream = String(match.url || '').trim();
+        if (stream && this.isDirectVideoUrl(stream)) return stream;
+
+        return this.extractSmallestMp4FromOptimizedUrls(match.optimizedUrls);
+    }
     async allowForwardSeekingForWatchUrl(watchUrl: string): Promise<boolean> {
         const videoId = this.extractWatchUrlVideoId(watchUrl);
         if (!videoId) return false;

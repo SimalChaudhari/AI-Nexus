@@ -23,7 +23,7 @@ import {
 
 // ----------------------------------------------------------------------
 
-const STEPS = ['Create account', 'Sign in'];
+const STEPS = ['Account details', 'Set password', 'Sign in'];
 
 export default function MembershipSalesforceCreatePage() {
   const theme = useTheme();
@@ -172,8 +172,8 @@ export default function MembershipSalesforceCreatePage() {
               variant="body2"
               sx={{ mt: 1, lineHeight: 1.65, maxWidth: 720, color: 'text.primary' }}
             >
-              Enter your account details and login password on one form, then sign in with Eservices
-              to open the application form.
+              Register your membership account, set your password, then sign in with Eservices to
+              open the application form.
             </Typography>
             </Box>
           </Stack>

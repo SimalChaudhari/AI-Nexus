@@ -29,7 +29,7 @@ const disposableEmailDomains = [
   'mailinator.com',
   'tempmail.com',
   '10minutemail.com',
-  'yopmail.com',
+  // yopmail.com temporarily allowed for testing
   'guerrillamail.com',
 ];
 
@@ -249,12 +249,39 @@ function refineFreeIndividualSignupProfile(data, ctx) {
 
 /** Individual sign-up (paid membership flows). */
 export function buildPaidIndividualSignUpSchema() {
-  return AuthSignUpSchema.extend(individualSignupSharedFields).superRefine(refineIndividualSignupProfile);
+  return AuthSignUpSchema.extend({
+    // Username not collected on form — local draft uses email until Salesforce SSO sync.
+    username: zod.string().optional(),
+    ...individualSignupSharedFields,
+  }).superRefine(refineIndividualSignupProfile);
+}
+
+/**
+ * Company QR enrollment — signupfornexus then setpasswordfornexus (Salesforce OAuth).
+ */
+export function buildCompanyQrEnrollmentSignUpSchema() {
+  return zod
+    .object({
+      username: zod.string().optional(),
+      firstName: zod.string().min(1, { message: 'First name is required!' }),
+      lastName: zod.string().min(1, { message: 'Last name is required!' }),
+      email: emailSchema,
+      companyCode: zod.string().optional(),
+      contactNumber: optionalPhoneSchema,
+      password: zod
+        .string()
+        .min(1, { message: 'Password is required!' })
+        .min(8, { message: 'Password must be at least 8 characters!' }),
+    })
+    .extend(individualSignupSharedFields)
+    .superRefine(refineIndividualSignupProfile);
 }
 
 /** Individual free sign-up (fee waiver / programme registration). */
 export function buildFreeIndividualSignUpSchema() {
   return AuthSignUpSchema.extend({
+    // Username comes from Salesforce create-nexus-user response — do not collect on form.
+    username: zod.string().optional(),
     ...individualSignupSharedFields,
     nricFin: zod.string().optional(),
     citizenship: zod.string().optional(),
@@ -294,8 +321,8 @@ export const CorporateSignUpSchema = zod.object({
     .min(1, { message: 'Last name is required!' })
     .max(80, { message: 'Last name is too long!' }),
   email: emailSchema,
-  mobilePhone: zod.string().optional(),
-  phone: zod.string().optional(),
+  mobilePhone: optionalPhoneSchema,
+  phone: optionalPhoneSchema,
   designation: zod.string().optional(),
   website: zod.string().optional(),
   // ISCA / newsletter preferences (Salesforce contact)

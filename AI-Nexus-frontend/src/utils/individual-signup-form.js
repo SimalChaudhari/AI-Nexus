@@ -22,13 +22,25 @@ export function requiresFreeSignupJobAudit(jobFunction = '') {
   return Boolean(normalized) && normalized !== 'others';
 }
 
+/** Human-readable job function for Salesforce Apex payloads. */
+export function resolveIndividualSignupJobFunctionLabel(jobFunction = '', jobFunctionOther = '') {
+  const value = String(jobFunction || '').trim();
+  if (!value) return '';
+  if (value === 'others') {
+    return String(jobFunctionOther || '').trim();
+  }
+  return (
+    INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.find((option) => option.value === value)?.label || value
+  );
+}
+
 export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   company: '',
   companyCode: '',
   jobFunction: '',
   jobFunctionOther: '',
   yearsOfExperience: '',
-  countryOfResidence: 'Singapore',
+  countryOfResidence: '',
   nricFin: '',
   idType: '',
   citizenship: '',
@@ -49,6 +61,16 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
   const verifiedNricIdType = String(flow.verifiedNricIdType || storedValues.idType || '').trim();
   const company = String(storedValues.company || companyFromFlow).trim();
   const citizenshipFromIdType = resolveCitizenshipFromSalesforceIdType(verifiedNricIdType);
+  const firstName = String(
+    storedValues.firstName
+    || flow.verifiedNricFirstName
+    || ''
+  ).trim();
+  const lastName = String(
+    storedValues.lastName
+    || flow.verifiedNricLastName
+    || ''
+  ).trim();
 
   return {
     company,
@@ -65,6 +87,13 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
     citizenship: String(storedValues.citizenship || citizenshipFromIdType).trim(),
     citizenshipOther: String(storedValues.citizenshipOther || '').trim(),
     imdaFundingAcknowledged: Boolean(storedValues.imdaFundingAcknowledged),
+    firstName,
+    lastName,
+    nameAsPerId: String(
+      storedValues.nameAsPerId
+      || flow.verifiedNricNameAsPerId
+      || [firstName, lastName].filter(Boolean).join(' ')
+    ).trim(),
     nricVerified: Boolean(verifiedNricFin),
     companyPrefilled: Boolean(companyFromFlow),
   };

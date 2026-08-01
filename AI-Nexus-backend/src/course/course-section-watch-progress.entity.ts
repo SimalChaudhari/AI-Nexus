@@ -39,7 +39,7 @@ export class CourseSectionWatchProgressEntity {
   @Column({ type: 'uuid' })
   sectionId!: string;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ type: 'double precision', default: 0 })
   lastPositionSeconds!: number;
 
   @Column({ type: 'int', default: 0 })

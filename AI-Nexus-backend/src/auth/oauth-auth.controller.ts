@@ -15,6 +15,7 @@ import { Response, Request } from 'express';
 import { OAuthAuthService } from './oauth-auth.service';
 import {
   CreateSalesforceNexusUserDto,
+  SignupSalesforceForNexusDto,
   CreateCorporateSalesforceAccountAndContactDto,
   CheckCorporateSalesforceAccountDto,
   EndEservicesSessionDto,
@@ -71,17 +72,28 @@ export class OAuthAuthController {
     required: false,
     description: 'When true, SCAQ verify-only: non-candidates are not persisted to the database',
   })
+  @ApiQuery({
+    name: 'loginAsCorporate',
+    required: false,
+    description: 'When true, SSO resolves/creates the Corporate account row (Org Portal login)',
+  })
   async getAuthUrl(
     @Query('scaqVerify') scaqVerify?: string,
     @Query('deferredAuth') deferredAuth?: string,
+    @Query('loginAsCorporate') loginAsCorporate?: string,
   ) {
     const verify =
       scaqVerify === '1' || scaqVerify === 'true' || scaqVerify === 'yes';
     const deferred =
       deferredAuth === '1' || deferredAuth === 'true' || deferredAuth === 'yes';
+    const corporate =
+      loginAsCorporate === '1'
+      || loginAsCorporate === 'true'
+      || loginAsCorporate === 'yes';
     const { authUrl, state } = this.oauthAuthService.generateAuthUrl({
       scaqVerify: verify,
       deferredAuth: deferred,
+      loginAsCorporate: corporate,
     });
     return {
       success: true,
@@ -99,14 +111,14 @@ export class OAuthAuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { scaqVerify, deferredAuth } = this.oauthAuthService.parseOAuthState(dto.state);
+    const { scaqVerify, deferredAuth, loginAsCorporate } = this.oauthAuthService.parseOAuthState(dto.state);
     const tokens = await this.oauthAuthService.exchangeCodeForToken(dto.code);
     const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
     const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
     const resolution = await this.oauthAuthService.resolveOAuthCallback(
       userInfo,
       tokens.access_token,
-      { scaqVerify },
+      { scaqVerify, loginAsCorporate },
       syncFn,
     );
 
@@ -213,14 +225,14 @@ export class OAuthAuthController {
     }
 
     try {
-      const { scaqVerify, deferredAuth } = this.oauthAuthService.parseOAuthState(state);
+      const { scaqVerify, deferredAuth, loginAsCorporate } = this.oauthAuthService.parseOAuthState(state);
       const tokens = await this.oauthAuthService.exchangeCodeForToken(code);
       const userInfo = await this.oauthAuthService.getUserInfo(tokens.access_token);
       const syncFn = (userId: string) => this.ssoSyncService.syncUserData(userId);
       const resolution = await this.oauthAuthService.resolveOAuthCallback(
         userInfo,
         tokens.access_token,
-        { scaqVerify },
+        { scaqVerify, loginAsCorporate },
         syncFn,
       );
 
@@ -320,6 +332,31 @@ export class OAuthAuthController {
       paid_amount: dto.paid_amount,
       Paid_date: dto.Paid_date,
       paymentProofToken: dto.paymentProofToken,
+    });
+    return {
+      success: true,
+      message: 'Salesforce membership account created successfully.',
+      salesforce,
+    };
+  }
+
+  @Post('signup-for-nexus')
+  @ApiOperation({
+    summary:
+      'Create Salesforce membership account via signupfornexus (company QR / pre-paid enrollment)',
+  })
+  @ApiBody({ type: SignupSalesforceForNexusDto })
+  async signupForNexus(@Body() dto: SignupSalesforceForNexusDto) {
+    const salesforce = await this.oauthAuthService.signupSalesforceForNexus({
+      salutation: dto.salutation,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+      email: dto.email,
+      company: dto.company,
+      jobFunction: dto.jobFunction,
+      countryOfResidence: dto.countryOfResidence,
+      companyCode: dto.companyCode,
+      noOfYearOfRelevantWorkExperience: dto.noOfYearOfRelevantWorkExperience,
     });
     return {
       success: true,

@@ -39,11 +39,15 @@ export const clearMembershipSignupDraftUserId = () => {
 /** **************************************
  * Sign in with backend API (supports email or username)
  *************************************** */
-export const signInWithPassword = async ({ email, username, password }) => {
+export const signInWithPassword = async ({ email, username, password, preferredRole } = {}) => {
   try {
     // Use email if provided, otherwise use username
     const identifier = email || username;
-    const params = { identifier, password };
+    const params = {
+      identifier,
+      password,
+      ...(preferredRole ? { preferredRole } : {}),
+    };
     const res = await axios.post('/auth/login', params);
     const { user } = res.data;
 
@@ -75,10 +79,15 @@ export const signUp = async ({
   contactNumber,
   signupAccessToken,
   eligibilityData,
+  salesforceUsername,
 }) => {
   try {
     const trimmedContact =
       typeof contactNumber === 'string' && contactNumber.trim() ? contactNumber.trim() : undefined;
+    const trimmedSfUsername =
+      typeof salesforceUsername === 'string' && salesforceUsername.trim()
+        ? salesforceUsername.trim()
+        : undefined;
     const params = {
       username: username || email.split('@')[0], // Use email prefix as username if not provided
       firstname: firstName,
@@ -87,6 +96,7 @@ export const signUp = async ({
       password,
       companyCode: typeof companyCode === 'string' && companyCode.trim() ? companyCode.trim() : undefined,
       signupAccessToken: signupAccessToken || undefined,
+      salesforceUsername: trimmedSfUsername,
       eligibilityIsSingaporePr: typeof eligibilityData?.isSingaporePr === 'boolean' ? eligibilityData.isSingaporePr : undefined,
       eligibilityIsIscaMember: typeof eligibilityData?.isIscaMember === 'boolean' ? eligibilityData.isIscaMember : undefined,
       eligibilityWantsMembership:
@@ -122,7 +132,6 @@ export const signUp = async ({
  *************************************** */
 export const saveMembershipSignupDraft = async ({
   email,
-  password,
   firstName,
   lastName,
   username,
@@ -140,7 +149,7 @@ export const saveMembershipSignupDraft = async ({
       firstname: firstName,
       lastname: lastName,
       email,
-      password,
+      // Password is never stored in local DB for paid membership (SSO). Kept client-side for Salesforce setpassword only.
       companyCode: typeof companyCode === 'string' && companyCode.trim() ? companyCode.trim() : undefined,
       signupAccessToken: signupAccessToken || undefined,
       draftUserId: draftUserId || undefined,
@@ -666,11 +675,16 @@ export const getStudentFeeWaiverResumeFlow = async ({ token } = {}) => {
 /** **************************************
  * OAuth: get auth URL and redirect to IdP
  *************************************** */
-export const getOAuthAuthUrl = async ({ scaqVerify = false, deferredAuth = false } = {}) => {
+export const getOAuthAuthUrl = async ({
+  scaqVerify = false,
+  deferredAuth = false,
+  loginAsCorporate = false,
+} = {}) => {
   const res = await axios.get('/auth/oauth/auth-url', {
     params: {
       ...(scaqVerify ? { scaqVerify: '1' } : {}),
       ...(deferredAuth ? { deferredAuth: '1' } : {}),
+      ...(loginAsCorporate ? { loginAsCorporate: '1' } : {}),
     },
   });
   const { authUrl, state } = res.data || {};
@@ -734,6 +748,24 @@ export const exchangeOAuthCode = async ({ code, state }) => {
 export const createSalesforceNexusUser = async (payload) => {
   try {
     const res = await axios.post('/auth/oauth/create-nexus-user', payload);
+    return res.data;
+  } catch (error) {
+    const apiMessage = error?.response?.data?.message;
+    const normalizedMessage = Array.isArray(apiMessage) ? apiMessage.join(', ') : apiMessage;
+    const rawMessage = normalizedMessage || error?.message || '';
+    const errorMessage =
+      mapNricFinUserErrorMessage(rawMessage)
+      || (typeof error === 'string' ? error : 'Failed to create Salesforce membership account.');
+    throw new Error(errorMessage);
+  }
+};
+
+/** **************************************
+ * Company QR / pre-paid enrollment: Salesforce signupfornexus
+ *************************************** */
+export const signupSalesforceForNexus = async (payload) => {
+  try {
+    const res = await axios.post('/auth/oauth/signup-for-nexus', payload);
     return res.data;
   } catch (error) {
     const apiMessage = error?.response?.data?.message;

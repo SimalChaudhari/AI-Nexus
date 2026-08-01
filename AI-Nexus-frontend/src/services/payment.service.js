@@ -36,6 +36,8 @@ export async function createMembershipCheckoutSession({
   code,
   affiliateCode,
   voucherCode,
+  billingCountryCode,
+  applyGst,
 }) {
   try {
     console.info('[MembershipPaymentService] Create checkout request', {
@@ -43,6 +45,8 @@ export async function createMembershipCheckoutSession({
       source: source || 'membership-paid-signup',
       currency: String(currency || 'sgd').toUpperCase(),
       code: trimPaymentLogValue(code || affiliateCode || voucherCode),
+      billingCountryCode: String(billingCountryCode || '').trim().toUpperCase() || '(none)',
+      applyGst: applyGst !== false,
     });
     const response = await axios.post('/payments/create-membership-checkout', {
       draftUserId,
@@ -54,6 +58,8 @@ export async function createMembershipCheckoutSession({
       code: code || undefined,
       affiliateCode: affiliateCode || undefined,
       voucherCode: voucherCode || undefined,
+      billingCountryCode: billingCountryCode || undefined,
+      applyGst,
     });
     console.info('[MembershipPaymentService] Create checkout success', {
       refId: trimPaymentLogValue(response?.data?.refId),

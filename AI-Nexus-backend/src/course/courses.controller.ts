@@ -76,6 +76,7 @@ import {
     ASSESSMENT_ADMIN_FILE_EXT,
     LEARNER_SUBMISSION_FILE_EXT,
 } from './course-assignment-file.types';
+import { InternationalAiFluencyPathwayService } from './international-ai-fluency-pathway.service';
 async function orderedSpeakersForCourse(
     speakerService: SpeakerService,
     speakerIds: unknown,
@@ -324,7 +325,19 @@ export class CourseController {
         private readonly courseCertificateService: CourseCertificateService,
         private readonly courseQuizAssessmentProgressService: CourseQuizAssessmentProgressService,
         private readonly appSettingsService: AppSettingsService,
+        private readonly internationalAiFluencyPathwayService: InternationalAiFluencyPathwayService,
     ) {}
+
+    @Get('international/ai-fluency-pathway-modules')
+    @UseGuards(OptionalJwtAuthGuard)
+    @ApiOperation({
+        summary:
+            'International AI Fluency pathway modules with videoUrl/minutes matched by section title (or code)',
+    })
+    async getInternationalAiFluencyPathwayModules(@Res() response: Response) {
+        const data = await this.internationalAiFluencyPathwayService.getPathwayModules();
+        return response.status(HttpStatus.OK).json({ data });
+    }
 
     @Get()
     @UseGuards(OptionalJwtAuthGuard)
@@ -1606,7 +1619,8 @@ export class CourseController {
     @UseGuards(SessionGuard, JwtAuthGuard)
     @ApiBearerAuth('bearer')
     @ApiOperation({
-        summary: 'Enable Spotlightr forward seek and resolve direct MP4 playback URL when available',
+        summary:
+            'Prepare Spotlightr playback: unlock seek settings, resolve direct MP4, and return caption tracks when available',
     })
     async prepareSpotlightrPlayback(
         @Body() body: { url?: string },
@@ -1624,7 +1638,7 @@ export class CourseController {
             this.spotlightrService.isApiCircuitOpen()
         ) {
             return response.status(HttpStatus.OK).json({
-                data: { directUrl: null, settingsUpdated: false },
+                data: { directUrl: null, settingsUpdated: false, captionTracks: [] },
             });
         }
         const data = await this.spotlightrService.preparePlaybackForWatchUrl(url);

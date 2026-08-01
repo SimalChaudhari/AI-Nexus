@@ -22,6 +22,7 @@ import { LearningGuestSignInPrompt } from './components/learning-guest-sign-in-p
 import { LearningSectionHeader } from './components/learning-section-header';
 import { HOME_SECTION_CARD_SX } from 'src/sections/home/home-section-styles';
 import { formatPillarLabel, resolvePillarIndexFromCourse } from './components/credential-shared';
+import { LEARNING_JOURNEY_CERTIFICATES_ENABLED } from './learning-feature-flags';
 import { formatSecondsToClock } from './utils/video-coverage';
 
 // ----------------------------------------------------------------------
@@ -386,13 +387,18 @@ export function MyProgress({ onNavigateToCertificates, onNavigateToBadges }) {
     const loadProgress = async () => {
       try {
         setProgressLoading(true);
-        const [rows, certificates] = await Promise.all([
-          courseService.getMyProgressOverview(),
-          courseService.getMyCertificates().catch(() => []),
-        ]);
+        const rowsPromise = courseService.getMyProgressOverview();
+        const certificatesPromise = LEARNING_JOURNEY_CERTIFICATES_ENABLED
+          ? courseService.getMyCertificates().catch(() => [])
+          : Promise.resolve([]);
+        const [rows, certificates] = await Promise.all([rowsPromise, certificatesPromise]);
         if (cancelled) return;
         setProgressRows(Array.isArray(rows) ? rows : []);
-        setCertificatesCount(Array.isArray(certificates) ? certificates.length : 0);
+        setCertificatesCount(
+          LEARNING_JOURNEY_CERTIFICATES_ENABLED && Array.isArray(certificates)
+            ? certificates.length
+            : 0
+        );
       } finally {
         if (!cancelled) setProgressLoading(false);
       }
@@ -498,14 +504,16 @@ export function MyProgress({ onNavigateToCertificates, onNavigateToBadges }) {
         subtitle={[
           `${courseProgressItems.length} course${courseProgressItems.length === 1 ? '' : 's'} across ${pillarGroups.length} pillar${pillarGroups.length === 1 ? '' : 's'}`,
           hasAnyVideoCourses ? `${formatWatchTime(totalWatchSeconds)} watched` : null,
-          certificatesCount > 0 ? `${certificatesCount} certificate${certificatesCount === 1 ? '' : 's'}` : null,
+          LEARNING_JOURNEY_CERTIFICATES_ENABLED && certificatesCount > 0
+            ? `${certificatesCount} certificate${certificatesCount === 1 ? '' : 's'}`
+            : null,
         ]
           .filter(Boolean)
           .join(' • ')}
       />
 
       <Grid container spacing={1.25} sx={{ mb: 2 }}>
-        <Grid xs={6} sm={4}>
+        <Grid xs={LEARNING_JOURNEY_CERTIFICATES_ENABLED ? 6 : hasAnyVideoCourses ? 6 : 12} sm={LEARNING_JOURNEY_CERTIFICATES_ENABLED ? 4 : hasAnyVideoCourses ? 6 : 12}>
           <StatMiniCard
             icon="solar:book-bold"
             iconColor="primary.main"
@@ -514,7 +522,7 @@ export function MyProgress({ onNavigateToCertificates, onNavigateToBadges }) {
           />
         </Grid>
         {hasAnyVideoCourses ? (
-          <Grid xs={6} sm={4}>
+          <Grid xs={6} sm={LEARNING_JOURNEY_CERTIFICATES_ENABLED ? 4 : 6}>
             <StatMiniCard
               icon="solar:clock-circle-bold"
               iconColor="info.main"
@@ -523,19 +531,23 @@ export function MyProgress({ onNavigateToCertificates, onNavigateToBadges }) {
             />
           </Grid>
         ) : null}
-        <Grid xs={hasAnyVideoCourses ? 12 : 6} sm={4}>
-          <StatMiniCard
-            icon="solar:medal-ribbons-star-bold"
-            iconColor="warning.main"
-            label="Certificates earned"
-            value={certificatesCount}
-          />
-        </Grid>
+        {LEARNING_JOURNEY_CERTIFICATES_ENABLED ? (
+          <Grid xs={hasAnyVideoCourses ? 12 : 6} sm={4}>
+            <StatMiniCard
+              icon="solar:medal-ribbons-star-bold"
+              iconColor="warning.main"
+              label="Certificates earned"
+              value={certificatesCount}
+            />
+          </Grid>
+        ) : null}
       </Grid>
 
-      {(certificatesCount > 0 || typeof onNavigateToBadges === 'function') && (
+      {((LEARNING_JOURNEY_CERTIFICATES_ENABLED && certificatesCount > 0) || typeof onNavigateToBadges === 'function') && (
         <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-          {typeof onNavigateToCertificates === 'function' && certificatesCount > 0 ? (
+          {LEARNING_JOURNEY_CERTIFICATES_ENABLED
+            && typeof onNavigateToCertificates === 'function'
+            && certificatesCount > 0 ? (
             <Button
               size="small"
               variant="soft"

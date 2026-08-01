@@ -48,7 +48,8 @@ const markResumeHandled = ({
     resumeMeta.seconds = target;
   }
   const prog = spotlightrProgressRef.current;
-  prog.lastTime = Math.max(prog.lastTime || 0, target);
+  // Bookmark may rewind after seek-back — set lastTime to target, do not Math.max upward.
+  prog.lastTime = target;
   prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline || 0, target);
 };
 
@@ -305,11 +306,19 @@ export function useSpotlightrLessonPlayer({
       const snapSeconds = Math.max(0, Number(snap?.lastPositionSeconds || 0));
       const serverSeconds = Math.max(0, Number(sp?.lastPositionSeconds || 0));
       const liveLast = Math.max(0, Number(spotlightrProgressRef.current?.lastTime || 0));
-      const fromCoverage = parseCoverageRangePairs(
-        sp?.watchedCoverageRanges || snap?.watchedCoverageRanges
-      ).reduce((max, pair) => Math.max(max, Number(pair?.[1]) || 0), 0);
-      const bookmark = metaSeconds || snapSeconds || serverSeconds || fromCoverage;
-      if (liveLast > bookmark + 0.5) return liveLast;
+      // Bookmark only — never coverage range end (stays high after seek-back → flash then snap).
+      const bookmark =
+        metaSeconds > 2
+          ? metaSeconds
+          : snapSeconds > 2
+            ? snapSeconds
+            : serverSeconds > 2
+              ? serverSeconds
+              : 0;
+      // Mid-session scrub ahead of a stale bookmark: keep live playhead.
+      if (spotlightrProgressRef.current?.isPlaying && liveLast > bookmark + 0.5) {
+        return liveLast;
+      }
       return bookmark;
     };
 
@@ -652,12 +661,14 @@ export function useSpotlightrLessonPlayer({
       const target = Math.max(0, Number(targetSeconds) || 0);
       const liveLast = Math.max(0, Number(spotlightrProgressRef.current?.lastTime || 0));
       if (resumeMeta.sectionId !== activeLessonId || !(target > 2)) return false;
-      if (liveLast > target + 0.5) {
+      // If user already scrubbed after resume applied, keep their playhead.
+      // Do NOT skip seek-back: liveLast can still be a stale higher bookmark / player memory.
+      if (resumeMeta.applied && liveLast > target + 0.5) {
         markResumeHandled({
           resumeOnceRef,
           resumeMeta,
           activeLessonId,
-          seconds: Math.round(liveLast),
+          seconds: liveLast,
           spotlightrProgressRef,
         });
         return true;
@@ -698,8 +709,9 @@ export function useSpotlightrLessonPlayer({
               return;
             }
             const pos = Math.max(0, Number(current) || 0);
-            if (pos >= target - 2) return;
-            if (pos > target + 0.5) return;
+            if (Math.abs(pos - target) <= 2) return;
+            // Player may open at a stale higher position — still force bookmark (incl. seek-back).
+            if (pos > target + 0.5 && tryNum >= 8) return;
 
             if (tryNum < 4 && pos < 0.5) {
               window.setTimeout(() => attemptSeek(tryNum + 1), 350 + tryNum * 150);
@@ -734,6 +746,12 @@ export function useSpotlightrLessonPlayer({
       }
     };
 
+    /** Force captions on — Spotlightr JS API (`captions` + truthy params). */
+    const enableSpotlightrCaptions = () => {
+      if (cancelled || playerTeardownRef.current) return;
+      callPlayerApi('captions', false);
+    };
+
     const bindPlayerApi = () => {
       if (cancelled || !isSpotlightrApiAvailable()) return;
       playerTeardownRef.current = false;
@@ -742,6 +760,10 @@ export function useSpotlightrLessonPlayer({
       refreshDurationFromPlayer();
       window.setTimeout(() => refreshDurationFromPlayer(), 2000);
       window.setTimeout(() => refreshDurationFromPlayer(), 5000);
+      // Tracks can load after ready; retry so learner matches admin/watch CC.
+      window.setTimeout(enableSpotlightrCaptions, 800);
+      window.setTimeout(enableSpotlightrCaptions, 2500);
+      window.setTimeout(enableSpotlightrCaptions, 5000);
 
       const resumeMeta = resumeSeekAppliedRef.current;
       const resumeTarget = getResumeSeconds();
@@ -772,6 +794,7 @@ export function useSpotlightrLessonPlayer({
         prog.lastTickAtMs = Date.now();
         if (!pollIntervalIdRef.current) startProgressPoll();
         refreshDurationFromPlayer();
+        enableSpotlightrCaptions();
         // Sync lastTime from the live player so a play→pause race doesn't invent a gap.
         readSpotlightrPlayerTime(
           getApiVideoId(),
@@ -828,7 +851,7 @@ export function useSpotlightrLessonPlayer({
         if (activeLessonId) {
           resumeSeekAppliedRef.current = {
             sectionId: activeLessonId,
-            seconds: Math.round(t),
+            seconds: t,
             applied: true,
           };
           resumeOnceRef.current = true;
@@ -898,7 +921,7 @@ export function useSpotlightrLessonPlayer({
         if (liveLast > 2 && activeLessonId) {
           resumeSeekAppliedRef.current = {
             sectionId: activeLessonId,
-            seconds: Math.round(liveLast),
+            seconds: liveLast,
             applied: true,
           };
         }
@@ -938,10 +961,12 @@ export function useSpotlightrLessonPlayer({
       const mountWrapper = getContainer();
       if (!mountWrapper) return;
 
-      // Plain watch URL (no ?fallback=true) — matches direct Spotlightr links; fallback uses broken Video.js on some HLS streams.
+      // Advanced embed (no fallback) — required for Spotlightr JS API progress / seek / coverage.
+      // Captions still come from Spotlightr when the video has transcripts (not native MP4).
       mountSpotlightrEmbed(mountWrapper, {
         watchUrl: spotlightrMeta.watchUrl,
         videoId,
+        scriptUrl,
         startSeconds: 0,
         useFallback: false,
         title: 'Course video',
@@ -1029,17 +1054,20 @@ export function useSpotlightrLessonPlayer({
 
     const resumeMeta = resumeSeekAppliedRef.current;
     if (resumeMeta.sectionId === activeLessonId) {
-      resumeMeta.seconds = Math.max(resumeMeta.seconds || 0, resumeSeconds);
+      // Authoritative bookmark may be lower after seek-back.
+      resumeMeta.seconds = resumeSeconds;
     }
 
     const prog = spotlightrProgressRef.current;
-    const livePosition = Math.max(prog.lastTime || 0, prog.maxWatchedTimeline || 0);
-    prog.lastTime = Math.max(livePosition, resumeSeconds);
+    // lastTime = resume bookmark only. Never inflate with maxWatchedTimeline (coverage ceiling).
+    if (!resumeMeta.applied && !prog.isPlaying) {
+      prog.lastTime = resumeSeconds;
+    }
     prog.maxWatchedTimeline = Math.max(prog.maxWatchedTimeline || 0, resumeSeconds);
 
     // Late-arriving progress only: never reload the iframe after playback has started
     // (e.g. SWR revalidate on tab focus would otherwise restart the video).
-    if (resumeMeta.applied || prog.isPlaying || livePosition > resumeSeconds + 1) {
+    if (resumeMeta.applied || prog.isPlaying) {
       return undefined;
     }
 
@@ -1072,5 +1100,12 @@ function getResumeSecondsFromData(
   const snapSeconds = Math.max(0, Number(sectionSnapshot?.lastPositionSeconds || 0));
   const metaSeconds =
     resumeMeta.sectionId === activeLessonId ? Math.max(0, Number(resumeMeta.seconds || 0)) : 0;
-  return Math.max(serverSeconds, snapSeconds, metaSeconds);
+  // After resume/scrub applied, keep the playhead the user landed on.
+  if (resumeMeta.sectionId === activeLessonId && resumeMeta.applied && metaSeconds > 2) {
+    return metaSeconds;
+  }
+  // Otherwise prefer latest saved bookmark (snap > server > pending meta) — never Math.max with stale high meta.
+  if (snapSeconds > 2) return snapSeconds;
+  if (serverSeconds > 2) return serverSeconds;
+  return metaSeconds > 2 ? metaSeconds : 0;
 }

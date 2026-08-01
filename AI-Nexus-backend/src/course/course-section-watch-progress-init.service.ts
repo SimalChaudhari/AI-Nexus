@@ -22,7 +22,7 @@ export class CourseSectionWatchProgressInitService implements OnModuleInit {
             "userId" uuid NOT NULL,
             "courseId" uuid NOT NULL,
             "sectionId" uuid NOT NULL,
-            "lastPositionSeconds" integer NOT NULL DEFAULT 0,
+            "lastPositionSeconds" double precision NOT NULL DEFAULT 0,
             "watchedSeconds" integer NOT NULL DEFAULT 0,
             "watchedCoverageRanges" json,
             "durationSeconds" integer NOT NULL DEFAULT 0,
@@ -60,6 +60,18 @@ export class CourseSectionWatchProgressInitService implements OnModuleInit {
           `);
         } catch (e) {
           if (e instanceof Error && !e.message?.includes('already exists')) throw e;
+        }
+        try {
+          await queryRunner.query(`
+            ALTER TABLE "course_section_watch_progress"
+            ALTER COLUMN "lastPositionSeconds" TYPE double precision
+            USING "lastPositionSeconds"::double precision
+          `);
+        } catch (e) {
+          // Already double precision / no-op on re-run
+          if (e instanceof Error && !/double precision|already/i.test(e.message || '')) {
+            // ignore benign alter failures
+          }
         }
       }
 

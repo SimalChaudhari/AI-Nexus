@@ -30,6 +30,12 @@ export const navData = [
     iconColor: '#00A76F',
   },
   {
+    title: 'International',
+    path: paths.international,
+    icon: 'solar:global-bold-duotone',
+    iconColor: '#0f766e',
+  },
+  {
     title: 'AI Forum',
     path: paths.aiForum.root,
     // Keep nav active on detail routes (e.g. /ai-forum/:id)

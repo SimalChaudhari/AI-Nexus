@@ -94,7 +94,10 @@ export function HeaderBase({
   const isAdminRoute = pathname?.startsWith('/admin');
   const isDashboardRoute = pathname?.startsWith('/dashboard');
   const isHomeRoute = pathname === '/home' || pathname === '/';
+  const isInternationalRoute =
+    pathname === paths.international || pathname?.startsWith(`${paths.international}/`);
   const isCustomerFacingRoute = !isAdminRoute && !isDashboardRoute;
+  const logoHref = isInternationalRoute ? paths.international : paths.home;
   /** Home + wide desktop: transparent header over hero — secondary nav text until scroll */
   const homeNavLightOnHero =
     isHomeRoute && isCustomerFacingRoute && !headerScrolled && !isHomeNarrowSolidHeader;
@@ -242,7 +245,7 @@ export function HeaderBase({
               }
             >
               <Logo
-                href={paths.home}
+                href={logoHref}
                 data-slot="logo"
                 sx={
                   isCustomerFacingRoute
