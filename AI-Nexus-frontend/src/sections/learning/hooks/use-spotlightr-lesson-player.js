@@ -749,7 +749,7 @@ export function useSpotlightrLessonPlayer({
     /** Force captions on — Spotlightr JS API (`captions` + truthy params). */
     const enableSpotlightrCaptions = () => {
       if (cancelled || playerTeardownRef.current) return;
-      callPlayerApi('captions', true);
+      callPlayerApi('captions', false);
     };
 
     const bindPlayerApi = () => {
