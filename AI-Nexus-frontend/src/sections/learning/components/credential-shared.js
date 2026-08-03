@@ -50,23 +50,52 @@ export function resolveCertificateBadgeUrl() {
 }
 
 export function mapCertificateRows(rows) {
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    id: row.id,
-    courseId: row.courseId,
-    programId: row.programId || null,
-    courseTitle: row.courseTitle || 'Untitled Course',
-    programTitle: row.programTitle || '',
-    certificateNo: row.certificateNo || '',
-    learnerName: row.learnerName || 'Learner',
-    completedAt: row.completedAt ? formatCompletedDate(row.completedAt) : '—',
-    issuedOn: formatIssuedOnDate(row.completedAt),
-    earnedCpeHours: Number(row.earnedCpeHours) || 0,
-    allocatedCpeHours: row.allocatedCpeHours != null ? Number(row.allocatedCpeHours) : null,
-    watchedTime: row.watchedTime || '',
-    transcript: Array.isArray(row.transcript) ? row.transcript : [],
-    completedModules: Array.isArray(row.completedModules) ? row.completedModules : [],
-    pdfUrl: row.pdfUrl || null,
-  }));
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const certificateBlocked =
+      Boolean(row.certificateBlocked) || row.status === 'blocked';
+    const badgeBlocked = Boolean(row.badgeBlocked) || row.status === 'blocked';
+    const bothBlocked = certificateBlocked && badgeBlocked;
+
+    let message = row.message || null;
+    if (!message) {
+      if (bothBlocked) {
+        message =
+          'This certificate and digital badge are no longer available. Access has been revoked by an administrator.';
+      } else if (certificateBlocked) {
+        message =
+          'This certificate is no longer available. Access has been revoked by an administrator.';
+      } else if (badgeBlocked) {
+        message =
+          'This digital badge is no longer available. Access has been revoked by an administrator.';
+      }
+    }
+
+    return {
+      id: row.id,
+      courseId: row.courseId,
+      programId: row.programId || null,
+      courseTitle: row.courseTitle || 'Untitled Course',
+      programTitle: row.programTitle || '',
+      certificateNo: row.certificateNo || '',
+      learnerName: row.learnerName || 'Learner',
+      completedAt: row.completedAt ? formatCompletedDate(row.completedAt) : '—',
+      issuedOn: formatIssuedOnDate(row.completedAt),
+      earnedCpeHours: Number(row.earnedCpeHours) || 0,
+      allocatedCpeHours: row.allocatedCpeHours != null ? Number(row.allocatedCpeHours) : null,
+      watchedTime: row.watchedTime || '',
+      transcript: Array.isArray(row.transcript) ? row.transcript : [],
+      completedModules: Array.isArray(row.completedModules) ? row.completedModules : [],
+      pdfUrl: row.pdfUrl || null,
+      status: bothBlocked
+        ? 'blocked'
+        : certificateBlocked || badgeBlocked
+          ? 'partially_blocked'
+          : 'active',
+      certificateBlocked,
+      badgeBlocked,
+      message,
+    };
+  });
 }
 
 export function formatPillarLabel(pillarIndex) {

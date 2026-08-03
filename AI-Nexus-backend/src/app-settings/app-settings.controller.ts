@@ -410,6 +410,32 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Get('credential-visibility')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: get global certificate/badge visibility toggles' })
+  async getCredentialVisibility(@Res() response: Response) {
+    const data = await this.appSettingsService.getCredentialVisibilitySettings();
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('credential-visibility')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: hide or show all certificates and/or badges for learners' })
+  async updateCredentialVisibility(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateCredentialVisibilitySettings(payload || {});
+    return response.status(HttpStatus.OK).json({
+      message: result.message,
+      data: {
+        hideAllCertificates: Boolean(result.settings.hideAllCertificates),
+        hideAllBadges: Boolean(result.settings.hideAllBadges),
+      },
+    });
+  }
+
   @Put('home-hero-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

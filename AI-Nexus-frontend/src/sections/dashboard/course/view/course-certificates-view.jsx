@@ -9,10 +9,14 @@ import Tooltip from '@mui/material/Tooltip';
 import TableBody from '@mui/material/TableBody';
 import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
-import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 
 import { paths } from 'src/routes/paths';
 
@@ -30,29 +34,28 @@ import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import {
   useTable,
   emptyRows,
-  rowInPage,
   TableNoData,
   getComparator,
   TableEmptyRows,
   TableHeadCustom,
-  TableSelectedAction,
   TablePaginationCustom,
   TableLoadingOverlay,
 } from 'src/components/table';
 
 import { fDateTime } from 'src/utils/format-time';
 import { courseService } from 'src/services/course.service';
+import { appSettingsService } from 'src/services/app-settings.service';
 import { CourseCertificatesTableToolbar } from '../course-certificates-table-toolbar';
 import { CourseCertificatesTableFiltersResult } from '../course-certificates-table-filters-result';
 
 const TABLE_HEAD = [
   { id: 'certificateNo', label: 'Certificate No' },
   { id: 'learnerName', label: 'Learner' },
-  { id: 'learnerEmail', label: 'Email', width: 240 },
+  { id: 'learnerEmail', label: 'Email', width: 220 },
   { id: 'courseTitle', label: 'Course' },
-  { id: 'status', label: 'Status', width: 120 },
-  { id: 'completedAt', label: 'Completed At', width: 180 },
-  { id: 'action', label: 'Action', width: 180 },
+  { id: 'status', label: 'Status', width: 200 },
+  { id: 'completedAt', label: 'Completed At', width: 170 },
+  { id: 'action', label: 'Action', width: 140 },
 ];
 
 function applyFilter({ inputData, comparator, filters }) {
@@ -93,6 +96,28 @@ function applyFilter({ inputData, comparator, filters }) {
   return data;
 }
 
+function StatusChips({ row }) {
+  const certBlocked = Boolean(row.certificateBlocked);
+  const badgeBlocked = Boolean(row.badgeBlocked);
+
+  return (
+    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+      <Chip
+        size="small"
+        label={certBlocked ? 'Cert blocked' : 'Certificate'}
+        color={certBlocked ? 'warning' : 'success'}
+        variant="soft"
+      />
+      <Chip
+        size="small"
+        label={badgeBlocked ? 'Badge blocked' : 'Badge'}
+        color={badgeBlocked ? 'warning' : 'info'}
+        variant="soft"
+      />
+    </Stack>
+  );
+}
+
 export function CourseCertificatesView() {
   const table = useTable({ defaultCurrentPage: 0, defaultRowsPerPage: 10 });
   const filters = useSetState({ search: '', userName: '', courseTitle: '' });
@@ -101,11 +126,72 @@ export function CourseCertificatesView() {
   const [loading, setLoading] = useState(true);
   const [tableData, setTableData] = useState([]);
   const [pagination, setPagination] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [targetRow, setTargetRow] = useState(null);
+  const [dialogMode, setDialogMode] = useState('block'); // block | unblock
+  const [blockCertificate, setBlockCertificate] = useState(true);
+  const [blockBadge, setBlockBadge] = useState(true);
+  const [hideAllCertificates, setHideAllCertificates] = useState(false);
+  const [hideAllBadges, setHideAllBadges] = useState(false);
+  const [visibilityLoading, setVisibilityLoading] = useState(true);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
   const debouncedSearch = useDebounce(filters.state.search, 500);
 
-  const selectedRowsInPage = useMemo(
-    () => rowInPage(tableData, 0, table.rowsPerPage),
-    [table.rowsPerPage, tableData]
+  const loadVisibility = useCallback(async () => {
+    try {
+      setVisibilityLoading(true);
+      const data = await appSettingsService.getCredentialVisibility();
+      setHideAllCertificates(Boolean(data.hideAllCertificates));
+      setHideAllBadges(Boolean(data.hideAllBadges));
+    } catch (error) {
+      toast.error(error?.message || 'Failed to load visibility settings');
+    } finally {
+      setVisibilityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadVisibility();
+  }, [loadVisibility]);
+
+  const handleGlobalToggle = useCallback(
+    async (field, nextValue) => {
+      const previous = {
+        hideAllCertificates,
+        hideAllBadges,
+      };
+      const payload =
+        field === 'hideAllCertificates'
+          ? { hideAllCertificates: nextValue }
+          : { hideAllBadges: nextValue };
+
+      if (field === 'hideAllCertificates') setHideAllCertificates(nextValue);
+      else setHideAllBadges(nextValue);
+
+      setVisibilitySaving(true);
+      try {
+        const data = await appSettingsService.updateCredentialVisibility(payload);
+        setHideAllCertificates(Boolean(data.hideAllCertificates));
+        setHideAllBadges(Boolean(data.hideAllBadges));
+        toast.success(
+          field === 'hideAllCertificates'
+            ? nextValue
+              ? 'All certificates are now hidden from learners'
+              : 'Certificates are visible to learners again'
+            : nextValue
+              ? 'All digital badges are now hidden from learners'
+              : 'Digital badges are visible to learners again'
+        );
+      } catch (error) {
+        setHideAllCertificates(previous.hideAllCertificates);
+        setHideAllBadges(previous.hideAllBadges);
+        toast.error(error?.message || 'Failed to update visibility');
+      } finally {
+        setVisibilitySaving(false);
+      }
+    },
+    [hideAllBadges, hideAllCertificates]
   );
 
   const loadData = useCallback(async () => {
@@ -133,7 +219,11 @@ export function CourseCertificatesView() {
     loadData();
   }, [loadData]);
 
-  const dataFiltered = applyFilter({ inputData: tableData, comparator: getComparator('desc', 'completedAt'), filters: filters.state });
+  const dataFiltered = applyFilter({
+    inputData: tableData,
+    comparator: getComparator('desc', 'completedAt'),
+    filters: filters.state,
+  });
 
   const dataInPage = dataFiltered;
   const userOptions = useMemo(
@@ -154,52 +244,94 @@ export function CourseCertificatesView() {
     !!filters.state.search || !!filters.state.userName || !!filters.state.courseTitle;
   const notFound = (!dataFiltered.length && canReset) || !dataFiltered.length;
 
-  const handleDeleteRow = useCallback(
-    async (id) => {
-      try {
-        await courseService.deleteAdminCertificate(id);
-        toast.success('Certificate deleted');
-        await loadData();
-        table.onUpdatePageDeleteRow(dataInPage.length || 1);
-      } catch (error) {
-        toast.error(error?.message || 'Failed to delete certificate');
-      }
+  const openBlockDialog = useCallback(
+    (row) => {
+      setTargetRow(row);
+      setDialogMode('block');
+      setBlockCertificate(true);
+      setBlockBadge(true);
+      confirm.onTrue();
     },
-    [dataInPage.length, loadData, table]
+    [confirm]
   );
 
-  const handleDeleteRows = useCallback(async () => {
-    try {
-      await Promise.all(table.selected.map((id) => courseService.deleteAdminCertificate(id)));
-      toast.success('Certificates deleted');
-      table.setSelected([]);
-      await loadData();
-      table.onUpdatePageDeleteRows({
-        totalRowsInPage: selectedRowsInPage.length,
-        totalRowsFiltered: dataFiltered.length,
-      });
-    } catch (error) {
-      toast.error(error?.message || 'Failed to delete certificates');
+  const openUnblockDialog = useCallback(
+    (row) => {
+      setTargetRow(row);
+      setDialogMode('unblock');
+      setBlockCertificate(Boolean(row.certificateBlocked));
+      setBlockBadge(Boolean(row.badgeBlocked));
+      confirm.onTrue();
+    },
+    [confirm]
+  );
+
+  const handleConfirmAction = useCallback(async () => {
+    if (!targetRow?.id) return;
+    if (!blockCertificate && !blockBadge) {
+      toast.error('Select Certificate, Badge, or both');
+      return;
     }
-  }, [dataFiltered.length, loadData, selectedRowsInPage.length, table]);
 
-  const handleBlockToggle = useCallback(
-    async (row) => {
-      try {
-        if (row.status === 'blocked') {
-          await courseService.unblockAdminCertificate(row.id);
-          toast.success('Certificate unblocked');
-        } else {
-          await courseService.blockAdminCertificate(row.id);
-          toast.success('Certificate blocked');
-        }
-        await loadData();
-      } catch (error) {
-        toast.error(error?.message || 'Failed to update certificate status');
+    const targets = {
+      certificate: blockCertificate,
+      badge: blockBadge,
+    };
+
+    setSaving(true);
+    try {
+      if (dialogMode === 'unblock') {
+        await courseService.unblockAdminCertificate(targetRow.id, targets);
+        toast.success(
+          [
+            blockCertificate ? 'Certificate' : null,
+            blockBadge ? 'Badge' : null,
+          ]
+            .filter(Boolean)
+            .join(' & ') + ' unblocked — learner can view them again'
+        );
+      } else {
+        await courseService.blockAdminCertificate(targetRow.id, targets);
+        toast.success(
+          [
+            blockCertificate ? 'Certificate' : null,
+            blockBadge ? 'Badge' : null,
+          ]
+            .filter(Boolean)
+            .join(' & ') + ' blocked — learner can no longer view them'
+        );
       }
-    },
-    [loadData]
-  );
+      confirm.onFalse();
+      setTargetRow(null);
+      await loadData();
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update credential status');
+    } finally {
+      setSaving(false);
+    }
+  }, [blockBadge, blockCertificate, confirm, dialogMode, loadData, targetRow]);
+
+  const handleDownload = useCallback(async (row) => {
+    if (!row?.id) return;
+    setDownloadingId(row.id);
+    try {
+      const blob = await courseService.downloadAdminCertificatePdf(row.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const safeName = String(row.learnerName || 'Learner').replace(/[^a-z0-9]+/gi, '-');
+      link.download = `Certificate-${row.certificateNo || safeName}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error?.message || 'Failed to download certificate');
+    } finally {
+      setDownloadingId(null);
+    }
+  }, []);
+
+  const learnerLabel = targetRow?.learnerName || 'this learner';
+  const isUnblock = dialogMode === 'unblock';
 
   return (
     <>
@@ -236,6 +368,74 @@ export function CourseCertificatesView() {
           sx={{ mb: { xs: 3, md: 5 } }}
         />
 
+        <Card sx={{ p: 2.5, mb: 2.5 }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'stretch', md: 'center' }}
+            justifyContent="space-between"
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Global learner visibility
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Hide all certificates and/or digital badges from every learner at once.
+              </Typography>
+            </Box>
+
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.5}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              divider={<Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', sm: 'block' } }} />}
+            >
+              <FormControlLabel
+                control={
+                  <Switch
+                    color="warning"
+                    checked={hideAllCertificates}
+                    disabled={visibilityLoading || visibilitySaving}
+                    onChange={(e) => handleGlobalToggle('hideAllCertificates', e.target.checked)}
+                  />
+                }
+                label={
+                  <Stack spacing={0.25} sx={{ pr: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      Hide all certificates
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {hideAllCertificates ? 'Hidden from learners' : 'Visible to learners'}
+                    </Typography>
+                  </Stack>
+                }
+                sx={{ m: 0, mr: { sm: 1 } }}
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    color="warning"
+                    checked={hideAllBadges}
+                    disabled={visibilityLoading || visibilitySaving}
+                    onChange={(e) => handleGlobalToggle('hideAllBadges', e.target.checked)}
+                  />
+                }
+                label={
+                  <Stack spacing={0.25} sx={{ pr: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      Hide all badges
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {hideAllBadges ? 'Hidden from learners' : 'Visible to learners'}
+                    </Typography>
+                  </Stack>
+                }
+                sx={{ m: 0 }}
+              />
+            </Stack>
+          </Stack>
+        </Card>
+
         <Card>
           <CourseCertificatesTableToolbar
             filters={filters}
@@ -254,111 +454,83 @@ export function CourseCertificatesView() {
           )}
 
           <Box sx={{ position: 'relative' }}>
-              <TableSelectedAction
-              dense={table.dense}
-              numSelected={table.selected.length}
-              rowCount={dataFiltered.length}
-              onSelectAllRows={(checked) =>
-                table.onSelectAllRows(
-                  checked,
-                  dataFiltered.map((row) => row.id)
-                )
-              }
-              action={
-                <Tooltip title="Delete">
-                  <IconButton color="primary" onClick={confirm.onTrue}>
-                    <Iconify icon="solar:trash-bin-trash-bold" />
-                  </IconButton>
-                </Tooltip>
-              }
-            />
             <Scrollbar>
-              <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 960 }}>
+              <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 1060 }}>
                 <TableHeadCustom
                   order={table.order}
                   orderBy={table.orderBy}
                   headLabel={TABLE_HEAD}
                   rowCount={dataFiltered.length}
-                  numSelected={table.selected.length}
                   onSort={table.onSort}
-                  onSelectAllRows={(checked) =>
-                    table.onSelectAllRows(
-                      checked,
-                      dataFiltered.map((row) => row.id)
-                    )
-                  }
                 />
                 <TableBody>
-                  {dataInPage.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      hover
-                      selected={table.selected.includes(row.id)}
-                      aria-checked={table.selected.includes(row.id)}
-                    >
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={table.selected.includes(row.id)}
-                          onClick={() => table.onSelectRow(row.id)}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Iconify
-                            icon="solar:medal-ribbons-star-bold"
-                            width={22}
-                            sx={{ color: 'success.main' }}
-                          />
-                          <Typography variant="body2">{row.certificateNo || '—'}</Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.learnerName || '—'}</TableCell>
-                      <TableCell sx={{ maxWidth: 240 }}>
-                        <Typography variant="body2" noWrap>
-                          {row.learnerEmail || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 260 }}>
-                        <Typography variant="body2" noWrap>
-                          {row.courseTitle || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={row.status === 'blocked' ? 'Blocked' : 'Active'}
-                          color={row.status === 'blocked' ? 'warning' : 'success'}
-                          variant="soft"
-                        />
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        {row.completedAt ? fDateTime(row.completedAt) : '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5} sx={{ px: 0.5 }}>
-                          <Tooltip title={row.status === 'blocked' ? 'Unblock' : 'Block'}>
-                            <IconButton
-                              color={row.status === 'blocked' ? 'success' : 'warning'}
-                              onClick={() => handleBlockToggle(row)}
-                            >
-                              <Iconify
-                                icon={
-                                  row.status === 'blocked'
-                                    ? 'solar:shield-check-bold'
-                                    : 'solar:shield-cross-bold'
-                                }
-                              />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete">
-                            <IconButton color="error" onClick={() => handleDeleteRow(row.id)}>
-                              <Iconify icon="solar:trash-bin-trash-bold" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {dataInPage.map((row) => {
+                    const anyBlocked = Boolean(row.certificateBlocked || row.badgeBlocked);
+
+                    return (
+                      <TableRow key={row.id} hover>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Iconify
+                              icon="solar:medal-ribbons-star-bold"
+                              width={22}
+                              sx={{ color: 'success.main' }}
+                            />
+                            <Typography variant="body2">{row.certificateNo || '—'}</Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.learnerName || '—'}</TableCell>
+                        <TableCell sx={{ maxWidth: 220 }}>
+                          <Typography variant="body2" noWrap>
+                            {row.learnerEmail || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ maxWidth: 240 }}>
+                          <Typography variant="body2" noWrap>
+                            {row.courseTitle || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <StatusChips row={row} />
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {row.completedAt ? fDateTime(row.completedAt) : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={0.5} sx={{ px: 0.5 }}>
+                            <Tooltip title="Download">
+                              <span>
+                                <IconButton
+                                  color="primary"
+                                  disabled={downloadingId === row.id || row.certificateBlocked}
+                                  onClick={() => handleDownload(row)}
+                                >
+                                  {downloadingId === row.id ? (
+                                    <CircularProgress size={18} color="inherit" />
+                                  ) : (
+                                    <Iconify icon="solar:download-minimalistic-bold" />
+                                  )}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            {anyBlocked ? (
+                              <Tooltip title="Unblock">
+                                <IconButton color="success" onClick={() => openUnblockDialog(row)}>
+                                  <Iconify icon="solar:shield-check-bold" />
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title="Block">
+                                <IconButton color="warning" onClick={() => openBlockDialog(row)}>
+                                  <Iconify icon="solar:shield-cross-bold" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
 
                   <TableEmptyRows
                     height={table.dense ? 56 : 76}
@@ -386,23 +558,65 @@ export function CourseCertificatesView() {
 
       <ConfirmDialog
         open={confirm.value}
-        onClose={confirm.onFalse}
-        title="Delete Certificates"
+        onClose={() => {
+          if (saving) return;
+          confirm.onFalse();
+          setTargetRow(null);
+        }}
+        title={isUnblock ? 'Unblock credentials' : 'Block credentials'}
         content={
-          <>
-            Are you sure you want to delete <strong>{table.selected.length}</strong> certificate(s)?
-          </>
+          <Stack spacing={2} sx={{ pt: 0.5 }}>
+            <Typography variant="body2">
+              {isUnblock
+                ? `Choose what to restore for ${learnerLabel}. The learner will be able to view the selected items again.`
+                : `Choose what to block for ${learnerLabel}. The learner will no longer see the selected items.`}
+            </Typography>
+
+            <Stack spacing={0.5}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={blockCertificate}
+                    onChange={(e) => setBlockCertificate(e.target.checked)}
+                    disabled={saving || (isUnblock && !targetRow?.certificateBlocked)}
+                  />
+                }
+                label="Certificate"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={blockBadge}
+                    onChange={(e) => setBlockBadge(e.target.checked)}
+                    disabled={saving || (isUnblock && !targetRow?.badgeBlocked)}
+                  />
+                }
+                label="Digital badge"
+              />
+            </Stack>
+
+            <Typography variant="caption" color="text.secondary">
+              You can select Certificate only, Badge only, or both.
+            </Typography>
+          </Stack>
         }
         action={
           <Button
             variant="contained"
-            color="error"
-            onClick={() => {
-              handleDeleteRows();
-              confirm.onFalse();
-            }}
+            color={isUnblock ? 'success' : 'warning'}
+            disabled={saving || (!blockCertificate && !blockBadge)}
+            onClick={handleConfirmAction}
+            startIcon={
+              saving ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <Iconify
+                  icon={isUnblock ? 'solar:shield-check-bold' : 'solar:shield-cross-bold'}
+                />
+              )
+            }
           >
-            Delete
+            {isUnblock ? 'Confirm unblock' : 'Confirm block'}
           </Button>
         }
       />

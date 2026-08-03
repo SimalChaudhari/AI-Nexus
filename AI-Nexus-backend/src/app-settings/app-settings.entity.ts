@@ -383,6 +383,14 @@ export class AppSettingsEntity {
   @Column({ type: 'varchar', nullable: true })
   digitalBadgeIssuer?: string | null;
 
+  /** When true, learners cannot view/download any certificates platform-wide. */
+  @Column({ type: 'boolean', default: false })
+  hideAllCertificates!: boolean;
+
+  /** When true, learners cannot view/share any digital badges platform-wide. */
+  @Column({ type: 'boolean', default: false })
+  hideAllBadges!: boolean;
+
   /** Public contact hero text and map points managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
   contactHeroContent?: ContactHeroContent | null;

@@ -60,6 +60,14 @@ export class CourseCertificateEntity {
   })
   status!: CourseCertificateStatus;
 
+  /** When true, learner cannot view/download the certificate PDF. */
+  @Column({ type: 'boolean', default: false })
+  certificateBlocked!: boolean;
+
+  /** When true, learner cannot view/share the digital badge. */
+  @Column({ type: 'boolean', default: false })
+  badgeBlocked!: boolean;
+
   @Column({ type: 'timestamp', nullable: true })
   deletedAt?: Date | null;
 

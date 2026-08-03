@@ -897,6 +897,35 @@ export class AppSettingsService {
     };
   }
 
+  async updateCredentialVisibilitySettings(payload: {
+    hideAllCertificates?: unknown;
+    hideAllBadges?: unknown;
+  }): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    if (payload?.hideAllCertificates !== undefined) {
+      settings.hideAllCertificates = Boolean(payload.hideAllCertificates);
+    }
+    if (payload?.hideAllBadges !== undefined) {
+      settings.hideAllBadges = Boolean(payload.hideAllBadges);
+    }
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Credential visibility settings updated successfully',
+      settings: saved,
+    };
+  }
+
+  async getCredentialVisibilitySettings(): Promise<{
+    hideAllCertificates: boolean;
+    hideAllBadges: boolean;
+  }> {
+    const settings = await this.getSettings();
+    return {
+      hideAllCertificates: Boolean(settings.hideAllCertificates),
+      hideAllBadges: Boolean(settings.hideAllBadges),
+    };
+  }
+
   private cleanText(value: unknown, maxLength?: number): string {
     const cleaned = typeof value === 'string' ? value.trim() : '';
     if (!maxLength || maxLength < 1) return cleaned;
@@ -2837,6 +2866,8 @@ export class AppSettingsService {
     courseDefaultImageUrl: string | null;
     digitalBadgeImageUrl: string | null;
     digitalBadgeIssuer: string | null;
+    hideAllCertificates: boolean;
+    hideAllBadges: boolean;
     contactHeroContent: ContactHeroContentPayload | null;
     workflowTemplatesPitchContent: WorkflowTemplatesPitchContent | null;
     faqContent: FaqContentPayload | null;
@@ -2875,6 +2906,8 @@ export class AppSettingsService {
       courseDefaultImageUrl: settings.courseDefaultImageUrl ?? null,
       digitalBadgeImageUrl: settings.digitalBadgeImageUrl ?? null,
       digitalBadgeIssuer: settings.digitalBadgeIssuer ?? null,
+      hideAllCertificates: Boolean(settings.hideAllCertificates),
+      hideAllBadges: Boolean(settings.hideAllBadges),
       contactHeroContent: settings.contactHeroContent ?? null,
       workflowTemplatesPitchContent: this.sanitizeWorkflowTemplatesPitchContent(
         settings.workflowTemplatesPitchContent || {},

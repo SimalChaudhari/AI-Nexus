@@ -129,11 +129,15 @@ export const navData = [
             path: paths.admin.course.root,
             deepMatch: true,
             href: paths.admin.course.list,
-            activeExcludePaths: [paths.admin.course.new],
+            activeExcludePaths: [
+              paths.admin.course.new,
+              paths.admin.course.attempts,
+              paths.admin.course.certificates,
+            ],
           },
           { title: 'Categories', path: paths.admin.category.root, deepMatch: true },
           { title: 'Quiz attempts', path: paths.admin.course.attempts },
-          // { title: 'Certificates', path: paths.admin.course.certificates },
+          { title: 'Certificates', path: paths.admin.course.certificates },
         ],
       },
       {

@@ -1559,6 +1559,7 @@ export class CourseController {
         @Query('q') q: string | undefined,
         @Query('userName') userName: string | undefined,
         @Query('courseTitle') courseTitle: string | undefined,
+        @Query('courseId') courseId: string | undefined,
         @Res() response: Response,
     ) {
         const result = await this.courseCertificateService.getAdminCertificates({
@@ -1567,12 +1568,28 @@ export class CourseController {
             q,
             userName,
             courseTitle,
+            courseId,
         });
         return response.status(HttpStatus.OK).json({
             length: result.data.length,
             data: result.data,
             pagination: result.pagination,
         });
+    }
+
+    @Get('certificates/admin/:id/pdf')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({ summary: 'Admin: download certificate PDF by id' })
+    async downloadAdminCertificatePdf(
+        @Param('id') id: string,
+        @Res() response: Response,
+    ) {
+        const { filename, buffer } = await this.courseCertificateService.getCertificatePdfBuffer(id);
+        response.setHeader('Content-Type', 'application/pdf');
+        response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return response.status(HttpStatus.OK).send(buffer);
     }
 
     @Delete('certificates/admin/:id')
@@ -1592,12 +1609,16 @@ export class CourseController {
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Admin: block a certificate (hide from user)' })
+    @ApiOperation({ summary: 'Admin: block certificate and/or digital badge for a learner' })
     async blockAdminCertificate(
         @Param('id') id: string,
+        @Body() body: { certificate?: boolean; badge?: boolean } | undefined,
         @Res() response: Response,
     ) {
-        const result = await this.courseCertificateService.blockCertificateById(id);
+        const result = await this.courseCertificateService.blockCertificateById(id, {
+            certificate: body?.certificate,
+            badge: body?.badge,
+        });
         return response.status(HttpStatus.OK).json({ data: result });
     }
 
@@ -1605,12 +1626,16 @@ export class CourseController {
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)
     @ApiBearerAuth('bearer')
-    @ApiOperation({ summary: 'Admin: unblock a certificate (visible to user again)' })
+    @ApiOperation({ summary: 'Admin: unblock certificate and/or digital badge' })
     async unblockAdminCertificate(
         @Param('id') id: string,
+        @Body() body: { certificate?: boolean; badge?: boolean } | undefined,
         @Res() response: Response,
     ) {
-        const result = await this.courseCertificateService.unblockCertificateById(id);
+        const result = await this.courseCertificateService.unblockCertificateById(id, {
+            certificate: body?.certificate,
+            badge: body?.badge,
+        });
         return response.status(HttpStatus.OK).json({ data: result });
     }
 

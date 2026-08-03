@@ -396,7 +396,8 @@ export function MyProgress({ onNavigateToCertificates, onNavigateToBadges }) {
         setProgressRows(Array.isArray(rows) ? rows : []);
         setCertificatesCount(
           LEARNING_JOURNEY_CERTIFICATES_ENABLED && Array.isArray(certificates)
-            ? certificates.length
+            ? certificates.filter((row) => !row?.certificateBlocked && row?.status !== 'blocked')
+                .length
             : 0
         );
       } finally {

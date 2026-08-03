@@ -10,6 +10,7 @@ import Divider from '@mui/material/Divider';
 import Chip from '@mui/material/Chip';
 import Collapse from '@mui/material/Collapse';
 import Button from '@mui/material/Button';
+import Alert from '@mui/material/Alert';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -220,25 +221,42 @@ function CertificateCard({
   onDownload,
 }) {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const isBlocked = cert.certificateBlocked;
   const moduleCount = getCompletedTranscriptModules(cert.transcript).length;
   const pillarCount = groupTranscriptByPillar(cert.transcript).length;
 
   return (
-    <Card sx={getCredentialCardSx(theme)}>
+    <Card
+      sx={{
+        ...getCredentialCardSx(theme),
+        ...(isBlocked && {
+          opacity: 0.92,
+          bgcolor: alpha(theme.palette.grey[500], 0.04),
+          borderColor: alpha(theme.palette.warning.main, 0.35),
+        }),
+      }}
+    >
       <Stack direction="row" spacing={1.25} alignItems="flex-start" sx={{ mb: 1.25 }}>
         <Box
           sx={{
             width: 42,
             height: 42,
             borderRadius: 1.25,
-            bgcolor: alpha(theme.palette.success.main, 0.12),
+            bgcolor: alpha(
+              isBlocked ? theme.palette.warning.main : theme.palette.success.main,
+              0.12
+            ),
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
           }}
         >
-          <Iconify icon="solar:medal-ribbons-star-bold" width={22} sx={{ color: 'success.main' }} />
+          <Iconify
+            icon={isBlocked ? 'solar:shield-cross-bold' : 'solar:medal-ribbons-star-bold'}
+            width={22}
+            sx={{ color: isBlocked ? 'warning.main' : 'success.main' }}
+          />
         </Box>
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography
@@ -268,108 +286,145 @@ function CertificateCard({
             {cert.courseTitle}
           </Typography>
         </Box>
-        <Chip size="small" label="Issued" color="success" variant="soft" sx={{ height: 24, fontSize: '0.75rem' }} />
-      </Stack>
-
-      <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mb: 1.25 }}>
         <Chip
           size="small"
-          variant="outlined"
-          label={formatCpeHoursLabel(cert.earnedCpeHours)}
-          sx={{ height: 26, fontSize: '0.75rem', fontWeight: 600 }}
+          label={isBlocked ? 'Unavailable' : 'Issued'}
+          color={isBlocked ? 'warning' : 'success'}
+          variant="soft"
+          sx={{ height: 24, fontSize: '0.75rem' }}
         />
       </Stack>
 
-      <Stack spacing={0.5} sx={{ mb: 1.25 }}>
-        <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.4, fontSize: '0.8125rem' }}>
-          <Box component="span" sx={{ fontWeight: 600 }}>No:</Box> {cert.certificateNo || '—'}
-        </Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.4, fontSize: '0.8125rem' }}>
-          <Box component="span" sx={{ fontWeight: 600 }}>Completed:</Box> {cert.completedAt}
-        </Typography>
-      </Stack>
+      {isBlocked ? (
+        <Alert severity="warning" variant="outlined" sx={{ mb: 1.25, py: 0.75, borderRadius: 1.25 }}>
+          <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.45 }}>
+            {cert.message ||
+              'This certificate and digital badge are no longer available. Access has been revoked by an administrator.'}
+          </Typography>
+        </Alert>
+      ) : (
+        <>
+          <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mb: 1.25 }}>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={formatCpeHoursLabel(cert.earnedCpeHours)}
+              sx={{ height: 26, fontSize: '0.75rem', fontWeight: 600 }}
+            />
+          </Stack>
 
-      {moduleCount > 0 ? (
-        <Box sx={{ mb: 1.25 }}>
-          <Button
-            size="small"
-            color="inherit"
-            onClick={() => setTranscriptOpen((open) => !open)}
-            endIcon={
-              <Iconify
-                icon={transcriptOpen ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'}
-                width={16}
-              />
-            }
-            sx={{
-              px: 0.75,
-              minWidth: 0,
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              color: 'text.secondary',
-              justifyContent: 'flex-start',
-            }}
-          >
-            Transcript ({pillarCount > 1 ? `${pillarCount} pillars, ` : ''}{moduleCount} module
-            {moduleCount === 1 ? '' : 's'})
-          </Button>
-          <Collapse in={transcriptOpen}>
-            <Box sx={{ mt: 0.75, maxHeight: 220, overflowY: 'auto' }}>
-              <CertificateTranscript transcript={cert.transcript} compact />
+          <Stack spacing={0.5} sx={{ mb: 1.25 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'text.secondary', lineHeight: 1.4, fontSize: '0.8125rem' }}
+            >
+              <Box component="span" sx={{ fontWeight: 600 }}>
+                No:
+              </Box>{' '}
+              {cert.certificateNo || '—'}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: 'text.secondary', lineHeight: 1.4, fontSize: '0.8125rem' }}
+            >
+              <Box component="span" sx={{ fontWeight: 600 }}>
+                Completed:
+              </Box>{' '}
+              {cert.completedAt}
+            </Typography>
+          </Stack>
+
+          {moduleCount > 0 ? (
+            <Box sx={{ mb: 1.25 }}>
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() => setTranscriptOpen((open) => !open)}
+                endIcon={
+                  <Iconify
+                    icon={transcriptOpen ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'}
+                    width={16}
+                  />
+                }
+                sx={{
+                  px: 0.75,
+                  minWidth: 0,
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  color: 'text.secondary',
+                  justifyContent: 'flex-start',
+                }}
+              >
+                Transcript ({pillarCount > 1 ? `${pillarCount} pillars, ` : ''}
+                {moduleCount} module
+                {moduleCount === 1 ? '' : 's'})
+              </Button>
+              <Collapse in={transcriptOpen}>
+                <Box sx={{ mt: 0.75, maxHeight: 220, overflowY: 'auto' }}>
+                  <CertificateTranscript transcript={cert.transcript} compact />
+                </Box>
+              </Collapse>
             </Box>
-          </Collapse>
-        </Box>
-      ) : null}
+          ) : null}
+        </>
+      )}
 
       <Divider sx={{ borderColor: alpha(theme.palette.grey[500], 0.16), mb: 1 }} />
 
       <Stack direction="row" justifyContent="flex-end" spacing={0.75} sx={{ mt: 'auto' }}>
-        <Tooltip title="Share on LinkedIn">
-          <IconButton
-            size="small"
-            color="info"
-            onClick={() => onShareLinkedIn(cert)}
-            sx={{
-              width: 34,
-              height: 34,
-              border: `1px solid ${alpha(theme.palette.info.main, 0.28)}`,
-              bgcolor: alpha(theme.palette.info.main, 0.08),
-            }}
-          >
-            <Iconify icon="mdi:linkedin" width={18} />
-          </IconButton>
+        <Tooltip title={isBlocked ? 'Sharing unavailable' : 'Share on LinkedIn'}>
+          <span>
+            <IconButton
+              size="small"
+              color="info"
+              disabled={isBlocked}
+              onClick={() => onShareLinkedIn(cert)}
+              sx={{
+                width: 34,
+                height: 34,
+                border: `1px solid ${alpha(theme.palette.info.main, 0.28)}`,
+                bgcolor: alpha(theme.palette.info.main, 0.08),
+              }}
+            >
+              <Iconify icon="mdi:linkedin" width={18} />
+            </IconButton>
+          </span>
         </Tooltip>
-        <Tooltip title="Preview">
-          <IconButton
-            size="small"
-            color="default"
-            onClick={() => onPreview(cert)}
-            disabled={previewLoading}
-            sx={{
-              width: 34,
-              height: 34,
-              border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
-              bgcolor: alpha(theme.palette.grey[500], 0.06),
-            }}
-          >
-            <Iconify icon="solar:eye-bold" width={18} />
-          </IconButton>
+        <Tooltip title={isBlocked ? 'Preview unavailable' : 'Preview'}>
+          <span>
+            <IconButton
+              size="small"
+              color="default"
+              onClick={() => onPreview(cert)}
+              disabled={isBlocked || previewLoading}
+              sx={{
+                width: 34,
+                height: 34,
+                border: `1px solid ${alpha(theme.palette.grey[500], 0.24)}`,
+                bgcolor: alpha(theme.palette.grey[500], 0.06),
+              }}
+            >
+              <Iconify icon="solar:eye-bold" width={18} />
+            </IconButton>
+          </span>
         </Tooltip>
-        <Tooltip title="Download">
-          <IconButton
-            size="small"
-            color="primary"
-            onClick={() => onDownload(cert)}
-            disabled={downloadingId === cert.id}
-            sx={{
-              width: 34,
-              height: 34,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
-              bgcolor: alpha(theme.palette.primary.main, 0.08),
-            }}
-          >
-            <Iconify icon="solar:download-bold" width={18} />
-          </IconButton>
+        <Tooltip title={isBlocked ? 'Download unavailable' : 'Download'}>
+          <span>
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => onDownload(cert)}
+              disabled={isBlocked || downloadingId === cert.id}
+              sx={{
+                width: 34,
+                height: 34,
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+              }}
+            >
+              <Iconify icon="solar:download-bold" width={18} />
+            </IconButton>
+          </span>
         </Tooltip>
       </Stack>
     </Card>
@@ -430,29 +485,59 @@ export function MyCertificates() {
   };
 
   const handleDownload = async (cert) => {
+    if (cert?.certificateBlocked) {
+      toast.error(
+        cert.message ||
+          'This certificate is no longer available. Access has been revoked by an administrator.'
+      );
+      return;
+    }
     setDownloadingId(cert.id);
     try {
       await openCertificatePdf(cert, { download: true });
     } catch (err) {
       console.error('Certificate PDF download failed:', err);
+      toast.error(
+        err?.message ||
+          'This certificate is no longer available. Access has been revoked by an administrator.'
+      );
     } finally {
       setDownloadingId(null);
     }
   };
 
   const handlePreview = async (cert) => {
+    if (cert?.certificateBlocked) {
+      toast.error(
+        cert.message ||
+          'This certificate is no longer available. Access has been revoked by an administrator.'
+      );
+      return;
+    }
     setPreviewLoading(true);
     try {
       await openCertificatePdf(cert, { download: false });
     } catch (err) {
       console.error('Certificate PDF preview failed:', err);
+      toast.error(
+        err?.message ||
+          'This certificate is no longer available. Access has been revoked by an administrator.'
+      );
     } finally {
       setPreviewLoading(false);
     }
   };
 
   const handleShareLinkedIn = async (cert) => {
-    if (!cert?.id) return;
+    if (!cert?.id || cert.certificateBlocked) {
+      if (cert?.certificateBlocked) {
+        toast.error(
+          cert.message ||
+            'This certificate is no longer available. Access has been revoked by an administrator.'
+        );
+      }
+      return;
+    }
     try {
       const share = await courseService.getCertificateLinkedInShare(cert.id, 'certificate');
       if (!share?.url) {
@@ -461,7 +546,10 @@ export function MyCertificates() {
       }
       window.open(share.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      toast.error(error?.message || 'Failed to share certificate on LinkedIn');
+      toast.error(
+        error?.message ||
+          'This certificate is no longer available. Access has been revoked by an administrator.'
+      );
     }
   };
 

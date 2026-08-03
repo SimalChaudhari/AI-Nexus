@@ -486,6 +486,8 @@ function transformSettings(settings) {
     digitalBadgeImageUrl: normalizeAssetUrl(settings?.digitalBadgeImageUrl || ''),
     digitalBadgeIssuer:
       settings?.digitalBadgeIssuer != null ? String(settings.digitalBadgeIssuer) : '',
+    hideAllCertificates: Boolean(settings?.hideAllCertificates),
+    hideAllBadges: Boolean(settings?.hideAllBadges),
     homeHeroContent: transformHomeHeroContent(sourceContent),
     homeCardsContent:
       sourceCards && typeof sourceCards === 'object'
@@ -677,6 +679,24 @@ export const appSettingsService = {
     const response = await axios.put('/app-settings/digital-badge-settings', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
+  },
+
+  async getCredentialVisibility() {
+    const response = await axios.get('/app-settings/credential-visibility');
+    const data = response.data?.data || response.data || {};
+    return {
+      hideAllCertificates: Boolean(data.hideAllCertificates),
+      hideAllBadges: Boolean(data.hideAllBadges),
+    };
+  },
+
+  async updateCredentialVisibility(payload = {}) {
+    const response = await axios.put('/app-settings/credential-visibility', payload);
+    const data = response.data?.data || response.data || {};
+    return {
+      hideAllCertificates: Boolean(data.hideAllCertificates),
+      hideAllBadges: Boolean(data.hideAllBadges),
+    };
   },
 
   async updateHomeHeroContent(payload) {

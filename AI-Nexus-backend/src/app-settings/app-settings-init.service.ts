@@ -55,6 +55,15 @@ export class AppSettingsInitService implements OnModuleInit {
         `);
       }
 
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "hideAllCertificates" boolean NOT NULL DEFAULT false
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "hideAllBadges" boolean NOT NULL DEFAULT false
+      `);
+
       const existingRows = await queryRunner.query(`SELECT "id" FROM "app_settings" LIMIT 1`);
 
       if (!existingRows?.length) {
