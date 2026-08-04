@@ -3,6 +3,9 @@ node_modules
 
 # SSL certificates (local/dev — do not commit private keys)
 AI-Nexus-frontend/ssl/
+ai-international-site
+nexus.bat
+database
 SSL/
 backup
 
@@ -19,6 +22,9 @@ AI-Nexus-backend/.env.*
 AI-Nexus-frontend/.env
 AI-Nexus-frontend/.env.*
 !AI-Nexus-frontend/.env.example
+ai-international-site/.env
+ai-international-site/.env.*
+!ai-international-site/.env.local.example
 AI-Nexus-flowise/packages/server/.env
 AI-Nexus-flowise/packages/server/.env.production
 AI-Nexus-flowise/packages/ui/.env

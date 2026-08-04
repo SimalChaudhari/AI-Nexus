@@ -210,6 +210,7 @@ export const paths = {
   corporate: {
     root: ROOTS.CORPORATE,
     overview: `${ROOTS.CORPORATE}/overview`,
+    profile: `${ROOTS.CORPORATE}/profile`,
     progress: `${ROOTS.CORPORATE}/progress`,
     learner: (userId) => `${ROOTS.CORPORATE}/progress/${userId}`,
     enrol: `${ROOTS.CORPORATE}/enrol`,

@@ -30,6 +30,14 @@ export class CorporateStaffLearnerDto {
   @IsEmail()
   email!: string;
 
+  @IsString()
+  @IsOptional()
+  id_type?: string;
+
+  @IsString()
+  @IsOptional()
+  id_number?: string;
+
   /** Auto-filled from HR company when omitted */
   @IsString()
   @IsOptional()
@@ -41,7 +49,11 @@ export class CorporateStaffLearnerDto {
 
   @IsString()
   @IsOptional()
-  staff_role?: string;
+  jobFunction?: string;
+
+  @IsString()
+  @IsOptional()
+  countryOfResidence?: string;
 
   @IsNumber()
   @IsOptional()
@@ -59,7 +71,30 @@ export class CorporateStaffLearnerDto {
 
   @IsString()
   @IsOptional()
+  membershipNumber?: string;
+
+  /** Citizenship — Singapore Citizen / Singapore PR */
+  @IsString()
+  @IsOptional()
   eligibility?: string;
+
+  @IsString()
+  @IsOptional()
+  phoneNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  organisationType?: string;
+
+  /** ISCA member / Non-member */
+  @IsString()
+  @IsOptional()
+  iscaMemberStatus?: string;
+
+  /** Membership of other accounting bodies (only if non ISCA member) */
+  @IsString()
+  @IsOptional()
+  otherAccountingBodies?: string;
 
   /** HR authorisation checkbox — must be true before enrolment is accepted. */
   @IsOptional()

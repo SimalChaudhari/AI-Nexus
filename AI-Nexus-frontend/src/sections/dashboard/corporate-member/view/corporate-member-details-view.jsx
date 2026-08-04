@@ -285,6 +285,7 @@ export function CorporateMemberDetailsView({ user, loading, error }) {
             </Stack>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               {user.email || '—'}
+              {user.company && user.company !== '-' ? ` · ${user.company}` : ''}
               {companyCode ? ` · ${companyCode}` : ''}
             </Typography>
           </Box>
@@ -304,6 +305,10 @@ export function CorporateMemberDetailsView({ user, loading, error }) {
           <Grid xs={12} md={6}>
             <InfoRow label="Username" value={user.username} />
             <InfoRow label="Contact" value={user.contactNumber || user.phoneNumber} />
+            <InfoRow
+              label="Company name"
+              value={user.company && user.company !== '-' ? user.company : null}
+            />
             <InfoRow label="Company code" value={user.companyCode} />
           </Grid>
           <Grid xs={12} md={6}>

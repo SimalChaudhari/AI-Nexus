@@ -58,6 +58,11 @@ type HomeJoinContentPayload = {
   ctaIcon?: string;
 };
 
+type LearningAdvertiseTabContentPayload = {
+  name?: string;
+  link?: string;
+};
+
 type FaqContentPayload = {
   pageHeading?: string;
   items?: Array<{ question?: string; answer?: string }>;
@@ -291,6 +296,8 @@ const HERO_HEADLINE_MAX_LENGTH = 60;
 const HERO_CTA_LABEL_MAX_LENGTH = 32;
 const HOME_JOIN_HEADING_MAX_LENGTH = 100;
 const HOME_JOIN_CTA_LABEL_MAX_LENGTH = 40;
+const LEARNING_ADVERTISE_TAB_NAME_MAX_LENGTH = 80;
+const LEARNING_ADVERTISE_TAB_LINK_MAX_LENGTH = 500;
 const CONTACT_HEADING_LINE_MAX_LENGTH = 80;
 const FAQ_PAGE_HEADING_MAX_LENGTH = 120;
 const FAQ_QUESTION_MAX_LENGTH = 240;
@@ -444,6 +451,7 @@ export class AppSettingsService {
   private homeCeoLaunchColumnChecked = false;
   private partnerWithIscaColumnChecked = false;
   private footerColumnChecked = false;
+  private learningAdvertiseTabColumnChecked = false;
   private membershipPaymentSettingsColumnChecked = false;
 
   constructor(
@@ -601,6 +609,14 @@ export class AppSettingsService {
     this.footerColumnChecked = true;
   }
 
+  private async ensureLearningAdvertiseTabColumn(): Promise<void> {
+    if (this.learningAdvertiseTabColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "learningAdvertiseTabContent" jsonb'
+    );
+    this.learningAdvertiseTabColumnChecked = true;
+  }
+
   private async ensureMembershipPaymentSettingsColumn(): Promise<void> {
     if (this.membershipPaymentSettingsColumnChecked) return;
     await this.appSettingsRepository.query(
@@ -627,6 +643,7 @@ export class AppSettingsService {
     await this.ensureHomeCeoLaunchColumn();
     await this.ensurePartnerWithIscaColumn();
     await this.ensureFooterColumn();
+    await this.ensureLearningAdvertiseTabColumn();
     await this.ensureMembershipPaymentSettingsColumn();
 
     const settings = await this.appSettingsRepository.find({
@@ -1006,6 +1023,16 @@ export class AppSettingsService {
       ctaLabel: this.cleanText(source.ctaLabel, HOME_JOIN_CTA_LABEL_MAX_LENGTH),
       ctaHref: this.cleanText(source.ctaHref),
       ctaIcon: this.cleanText(source.ctaIcon, 120),
+    };
+  }
+
+  private sanitizeLearningAdvertiseTabContent(
+    input: unknown
+  ): LearningAdvertiseTabContentPayload {
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    return {
+      name: this.cleanText(source.name, LEARNING_ADVERTISE_TAB_NAME_MAX_LENGTH),
+      link: this.cleanText(source.link, LEARNING_ADVERTISE_TAB_LINK_MAX_LENGTH),
     };
   }
 
@@ -2477,6 +2504,18 @@ export class AppSettingsService {
     };
   }
 
+  async updateLearningAdvertiseTabContent(
+    payload: LearningAdvertiseTabContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.learningAdvertiseTabContent = this.sanitizeLearningAdvertiseTabContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Learning advertise tab updated successfully',
+      settings: saved,
+    };
+  }
+
   async uploadPartnerWithIscaHeroImage(
     file: Express.Multer.File
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -2883,6 +2922,7 @@ export class AppSettingsService {
     homeCeoLaunchContent: HomeCeoLaunchContentPayload | null;
     partnerWithIscaContent: PartnerWithIscaContentPayload | null;
     footerContent: FooterContentPayload | null;
+    learningAdvertiseTabContent: LearningAdvertiseTabContentPayload | null;
     membershipPaymentSettings: MembershipPaymentSettingsPayload;
     /** Active learner accounts on the platform (non-draft, non-admin). */
     totalCourseEnrollments: number;
@@ -2955,6 +2995,9 @@ export class AppSettingsService {
       footerContent: settings.footerContent
         ? this.sanitizeFooterContent(settings.footerContent)
         : this.sanitizeFooterContent(null),
+      learningAdvertiseTabContent: settings.learningAdvertiseTabContent
+        ? this.sanitizeLearningAdvertiseTabContent(settings.learningAdvertiseTabContent)
+        : null,
       membershipPaymentSettings: settings.membershipPaymentSettings
         ? this.sanitizeMembershipPaymentSettings(
             settings.membershipPaymentSettings,

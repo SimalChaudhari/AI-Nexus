@@ -1,4 +1,5 @@
 export { CorporateOverviewView } from './overview/corporate-overview-view';
+export { CorporateProfileView } from './profile/corporate-profile-view';
 export { CorporateProgressView } from './progress/corporate-progress-view';
 export { CorporateLearnerDetailView } from './progress/corporate-learner-detail-view';
 export { CorporateEnrolView } from './enrol/corporate-enrol-view';

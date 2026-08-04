@@ -1,9 +1,9 @@
 import { resolve4, resolveMx } from 'dns/promises';
+import { shouldBlockDisposableDomain } from './email-disposable.util';
 
 const EMAIL_REGEX =
   /^(?!\.)(?!.*\.\.)([a-z0-9._%+-]{1,64})@([a-z0-9-]+\.)+[a-z]{2,}$/i;
 
-/** Known disposable / temporary inbox providers — not accepted for official correspondence. */
 /** ISCA and programme operator domains — always accepted when format is valid. */
 export const TRUSTED_ORGANIZATION_EMAIL_DOMAINS = new Set([
   'isca.org.sg',
@@ -23,14 +23,6 @@ export const STUDENT_SCHOOL_EMAIL_DOMAIN_SUFFIXES = [
   'rp.edu.sg',
   'isca.org.sg',
 ];
-
-const DISPOSABLE_DOMAINS = new Set([
-  '10minutemail.com',
-  'guerrillamail.com',
-  'mailinator.com',
-  'tempmail.com',
-  'yopmail.com',
-]);
 
 const mxCache = new Map<string, boolean>();
 const mailDomainCache = new Map<string, boolean>();
@@ -119,7 +111,7 @@ export async function verifyEmailAddress(email: string): Promise<EmailVerificati
   }
 
   const domain = getDomain(normalized);
-  if (DISPOSABLE_DOMAINS.has(domain)) {
+  if (shouldBlockDisposableDomain(domain)) {
     return { isValid: false, reason: 'Disposable email domains are not allowed.' };
   }
 
@@ -150,7 +142,7 @@ export async function validateHrContactEmail(email: string): Promise<EmailVerifi
   }
 
   const domain = getDomain(normalized);
-  if (DISPOSABLE_DOMAINS.has(domain)) {
+  if (shouldBlockDisposableDomain(domain)) {
     return {
       isValid: false,
       reason: 'Temporary or disposable email addresses are not accepted. Please use your employer HR email.',
@@ -201,7 +193,7 @@ export async function validateStudentSchoolEmail(email: string): Promise<EmailVe
     return { isValid: true };
   }
 
-  if (DISPOSABLE_DOMAINS.has(domain)) {
+  if (shouldBlockDisposableDomain(domain)) {
     return { isValid: false, reason: 'Disposable email domains are not allowed.' };
   }
 

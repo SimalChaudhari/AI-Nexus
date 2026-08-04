@@ -52,6 +52,36 @@ export class UserService {
         return username.trim().toLowerCase();
     }
 
+    /** Company display name from Salesforce corporate userinfo (not a DB column). */
+    private resolveCorporateCompanyName(user: UserEntity): string {
+        const raw = user.salesforceUserInfoRaw;
+        if (raw && typeof raw === 'object') {
+            const corporate =
+                (raw as Record<string, unknown>).corporate
+                && typeof (raw as Record<string, unknown>).corporate === 'object'
+                    ? ((raw as Record<string, unknown>).corporate as Record<string, unknown>)
+                    : null;
+            const candidates = [
+                corporate?.accountName,
+                corporate?.companyName,
+                corporate?.name,
+                (raw as Record<string, unknown>).accountName,
+                (raw as Record<string, unknown>).companyName,
+            ];
+            for (const value of candidates) {
+                const name = String(value || '').trim();
+                if (name) return name;
+            }
+        }
+        return '';
+    }
+
+    private withCompanyName<T extends UserEntity>(user: T): T & { companyName: string | null; company: string | null } {
+        const companyName = this.resolveCorporateCompanyName(user) || null;
+        // Frontend transformUser already maps `company` as the display name.
+        return Object.assign(user, { companyName, company: companyName });
+    }
+
     async getAll(queryOptions?: UserListQueryOptions): Promise<UserEntity[] | UserPaginatedListResult> {
         const usePagination = Boolean(queryOptions?.usePagination);
         const normalized = this.paginationService.normalizePaginatedQuery(
@@ -90,7 +120,10 @@ export class UserService {
                         .orWhere('user.username ILIKE :search', { search: `%${normalized.search}%` })
                         .orWhere('user.email ILIKE :search', { search: `%${normalized.search}%` })
                         .orWhere('user.contactNumber ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.companyCode ILIKE :search', { search: `%${normalized.search}%` });
+                        .orWhere('user.companyCode ILIKE :search', { search: `%${normalized.search}%` })
+                        .orWhere(`user."salesforceUserInfoRaw"::text ILIKE :search`, {
+                            search: `%${normalized.search}%`,
+                        });
                 }),
             );
         }
@@ -98,7 +131,8 @@ export class UserService {
         query.orderBy('user.createdAt', 'DESC');
 
         if (!usePagination) {
-            return query.getMany();
+            const rows = await query.getMany();
+            return rows.map((row) => this.withCompanyName(row));
         }
 
         const paginated = await this.paginationService.paginateQueryBuilder({
@@ -109,7 +143,7 @@ export class UserService {
         });
 
         return {
-            data: paginated.data,
+            data: paginated.data.map((row) => this.withCompanyName(row)),
             pagination: {
                 ...paginated.pagination,
                 status: status ?? null,
@@ -121,12 +155,12 @@ export class UserService {
         return this.userRepository.find({ where: { role: UserRole.User, isDraft: false } });
     }
 
-    async getById(id: string): Promise<UserEntity> {
+    async getById(id: string): Promise<UserEntity & { companyName: string | null }> {
         const user = await this.userRepository.findOne({ where: { id } });
         if (!user) {
             throw new NotFoundException("User not found");
         }
-        return user;
+        return this.withCompanyName(user);
     }
 
     async create(createUserDto: Partial<UserDto>): Promise<{

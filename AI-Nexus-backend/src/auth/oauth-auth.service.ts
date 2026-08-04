@@ -1865,12 +1865,18 @@ export class OAuthAuthService {
       last_name: string;
       name_as_per_id?: string;
       email: string;
+      id_type?: string;
+      id_number?: string;
       company?: string;
       department?: string;
-      staff_role?: string;
+      jobFunction?: string;
+      countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
+      accountType?: string;
+      phone?: string;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
+      membershipNumber?: string;
       eligibility?: string;
       isAuthorisedSubmit?: boolean;
     }>,
@@ -1887,6 +1893,7 @@ export class OAuthAuthService {
         throw new BadRequestException(`Row ${index + 1}: first_name and last_name are required.`);
       }
 
+      // Field names must match Salesforce createblukuserfornexus body.
       const item: Record<string, string | number | boolean> = {
         first_name: firstName,
         last_name: lastName,
@@ -1899,14 +1906,37 @@ export class OAuthAuthService {
       const salutation = String(row.salutation || '').trim();
       if (salutation) item.salutation = salutation;
 
+      // Send id_type + id_number together — Apex often ignores NRIC if id_type is missing.
+      const idNumberRaw = String(row.id_number || '').trim();
+      const idNumber = idNumberRaw
+        ? (normalizeSingaporeNricFin(idNumberRaw) || idNumberRaw.toUpperCase().replace(/\s+/g, ''))
+        : '';
+      let idType = String(row.id_type || '').trim();
+      if (idNumber && !idType) {
+        idType = /^[STFG]\d{7}[A-Z]$/i.test(idNumber)
+          ? 'Blue NRIC'
+          : /^M\d{7}[A-Z]$/i.test(idNumber)
+            ? 'Pink NRIC'
+            : 'Passport';
+      }
+      if (idNumber) {
+        item.id_number = idNumber;
+        if (idType) item.id_type = idType;
+      } else if (idType) {
+        item.id_type = idType;
+      }
+
       const company = String(row.company || '').trim();
       if (company) item.company = company;
 
       const department = String(row.department || '').trim();
       if (department) item.department = department;
 
-      const staffRole = String(row.staff_role || '').trim();
-      if (staffRole) item.staff_role = staffRole;
+      const jobFunction = String(row.jobFunction || '').trim();
+      if (jobFunction) item.jobFunction = jobFunction;
+
+      const countryOfResidence = String(row.countryOfResidence || '').trim();
+      if (countryOfResidence) item.countryOfResidence = countryOfResidence;
 
       const yearsRaw = row.noOfYearOfRelevantWorkExperience;
       if (yearsRaw !== undefined && yearsRaw !== null && String(yearsRaw).trim() !== '') {
@@ -1919,11 +1949,20 @@ export class OAuthAuthService {
         }
       }
 
+      const accountType = String(row.accountType || '').trim();
+      if (accountType) item.accountType = accountType;
+
+      const phone = String(row.phone || '').trim();
+      if (phone) item.phone = phone;
+
       const corporateAccountId = String(row.corporateAccountId || '').trim();
       if (corporateAccountId) item.corporateAccountId = corporateAccountId;
 
       const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
       if (learnerAsAnAccounting) item.learnerAsAnAccounting = learnerAsAnAccounting;
+
+      const membershipNumber = String(row.membershipNumber || '').trim();
+      if (membershipNumber) item.membershipNumber = membershipNumber;
 
       const eligibility = String(row.eligibility || '').trim();
       if (eligibility) item.eligibility = eligibility;
@@ -2033,12 +2072,18 @@ export class OAuthAuthService {
       last_name: string;
       name_as_per_id?: string;
       email: string;
+      id_type?: string;
+      id_number?: string;
       company?: string;
       department?: string;
-      staff_role?: string;
+      jobFunction?: string;
+      countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
+      accountType?: string;
+      phone?: string;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
+      membershipNumber?: string;
       eligibility?: string;
       isAuthorisedSubmit?: boolean;
     }>,
@@ -2061,6 +2106,16 @@ export class OAuthAuthService {
       url,
       count: body.length,
       emails: requestEmails,
+      sampleFields: body.slice(0, 3).map((row) => ({
+        email: row.email,
+        hasIdType: Boolean(row.id_type),
+        id_type: row.id_type || null,
+        hasIdNumber: Boolean(row.id_number),
+        id_number: row.id_number
+          ? `${String(row.id_number).slice(0, 1)}****${String(row.id_number).slice(-4)}`
+          : null,
+        keys: Object.keys(row),
+      })),
     });
 
     try {
@@ -2119,12 +2174,18 @@ export class OAuthAuthService {
       last_name: string;
       name_as_per_id?: string;
       email: string;
+      id_type?: string;
+      id_number?: string;
       company?: string;
       department?: string;
-      staff_role?: string;
+      jobFunction?: string;
+      countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
+      accountType?: string;
+      phone?: string;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
+      membershipNumber?: string;
       eligibility?: string;
       isAuthorisedSubmit?: boolean;
     }>,
@@ -2597,11 +2658,23 @@ export class OAuthAuthService {
     }
   }
 
+  /**
+   * Salesforce userinfoforcorporate.role — accept any casing ("corporate" / "Corporate").
+   * Local DB still stores UserRole.Corporate ("Corporate").
+   */
+  isSalesforceCorporateRole(
+    info: Record<string, unknown> | null | undefined,
+  ): boolean {
+    if (!info || typeof info !== 'object') return false;
+    return String(info.role || '').trim().toLowerCase() === 'corporate';
+  }
+
   isCorporateSalesforceUserInfo(
     info: Record<string, unknown> | null | undefined,
   ): info is Record<string, unknown> {
     if (!info || typeof info !== 'object') return false;
     if (info.success === false || info.success === 'false') return false;
+    if (this.isSalesforceCorporateRole(info)) return true;
     const companyCode = String(info.companyCode || '').trim();
     const accountId = String(info.accountId || '').trim();
     const contactId = String(info.contactId || '').trim();
@@ -4399,10 +4472,16 @@ export class OAuthAuthService {
     const corporateUsername = hasCorporateInfo
       ? String((corporateInfo as { username?: string }).username || '').trim()
       : '';
+    const sfSaysCorporateRole = this.isSalesforceCorporateRole(corporateInfo);
 
-    // Org Portal SSO sets loginAsCorporate. Otherwise Corporate only when no nexus username.
+    // Prefer Corporate when:
+    // - Org Portal SSO (loginAsCorporate / returnTo=/corporate), or
+    // - Salesforce userinfoforcorporate.role is "corporate" (any casing), or
+    // - Corporate userinfo exists and there is no individual nexus username
+    // Local DB always stores UserRole.Corporate ("Corporate").
     const preferCorporateLogin =
       Boolean(options?.loginAsCorporate)
+      || sfSaysCorporateRole
       || (hasCorporateInfo && !nexusUsername);
 
     let targetRole: UserRole = preferCorporateLogin ? UserRole.Corporate : UserRole.User;
@@ -4479,6 +4558,7 @@ export class OAuthAuthService {
       salesforceAccountId: salesforceAccountId || null,
       targetRole,
       preferCorporateLogin,
+      sfSaysCorporateRole,
       loginAsCorporate: Boolean(options?.loginAsCorporate),
       matchedBy: resolved.matchedBy,
       isNewUser,

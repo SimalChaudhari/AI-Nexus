@@ -54,6 +54,7 @@ import { TestimonialsSettingsCard } from './components/testimonials-settings-car
 import { EmployerSettingsCard } from './components/employer-settings-card';
 import { PartnerWithIscaSettingsCard } from './components/partner-with-isca-settings-card';
 import { FooterSettingsCard } from './components/footer-settings-card';
+import { LearningAdvertiseTabSettingsCard } from './components/learning-advertise-tab-settings-card';
 import { ProgrammeStructureSettingsCard } from './components/programme-structure-settings-card';
 import { FundingEligibilitySettingsCard } from './components/funding-eligibility-settings-card';
 import { EnrolOptionsSettingsCard } from './components/enrol-options-settings-card';
@@ -299,6 +300,14 @@ export function AdminSettingsView() {
     useState(false);
   const [footerContent, setFooterContent] = useState(() => normalizeFooterContent(null));
   const [footerContentSubmitting, setFooterContentSubmitting] = useState(false);
+  const DEFAULT_LEARNING_ADVERTISE_TAB = {
+    name: 'ISCAcademy Practical AI series',
+    link: 'https://iscacademy.sg',
+  };
+  const [learningAdvertiseTabContent, setLearningAdvertiseTabContent] = useState(
+    DEFAULT_LEARNING_ADVERTISE_TAB
+  );
+  const [learningAdvertiseTabSubmitting, setLearningAdvertiseTabSubmitting] = useState(false);
   const PROGRAMME_FEES_TIERS_MAX = 8;
   const [joinContentSubmitting, setJoinContentSubmitting] = useState(false);
   const [pendingScrollCardIndex, setPendingScrollCardIndex] = useState(null);
@@ -599,6 +608,11 @@ export function AdminSettingsView() {
         normalizePartnerWithIscaContent(appSettings.partnerWithIscaContent)
       );
       setFooterContent(normalizeFooterContent(appSettings.footerContent));
+      const remoteAdvertise = appSettings.learningAdvertiseTabContent || {};
+      setLearningAdvertiseTabContent({
+        name: String(remoteAdvertise?.name ?? DEFAULT_LEARNING_ADVERTISE_TAB.name).trim(),
+        link: String(remoteAdvertise?.link ?? DEFAULT_LEARNING_ADVERTISE_TAB.link).trim(),
+      });
       const remoteJoin = appSettings.homeJoinContent || {};
       setJoinContent({
         heading: String(remoteJoin?.heading || DEFAULT_JOIN_CONTENT.heading).trim(),
@@ -1668,6 +1682,27 @@ export function AdminSettingsView() {
     }
   };
 
+  const handleSaveLearningAdvertiseTabContent = async () => {
+    try {
+      setLearningAdvertiseTabSubmitting(true);
+      const payload = {
+        name: learningAdvertiseTabContent?.name || '',
+        link: learningAdvertiseTabContent?.link || '',
+      };
+      const updated = await appSettingsService.updateLearningAdvertiseTabContent(payload);
+      const next = updated?.learningAdvertiseTabContent || {};
+      setLearningAdvertiseTabContent({
+        name: String(next?.name || '').trim(),
+        link: String(next?.link || '').trim(),
+      });
+      toast.success('Learning advertise tab updated');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to update learning advertise tab');
+    } finally {
+      setLearningAdvertiseTabSubmitting(false);
+    }
+  };
+
   const handleDropPartnerWithIscaHero = useCallback((acceptedFiles) => {
     const [file] = acceptedFiles || [];
     if (file) setPartnerWithIscaHeroFile(file);
@@ -2243,6 +2278,13 @@ export function AdminSettingsView() {
       description: 'Manage footer stats, links, domain line, and copyright text.',
     },
     {
+      key: 'learning-advertise-tab',
+      badge: 'AD',
+      icon: 'solar:megaphone-bold-duotone',
+      title: 'Learning Advertise Tab',
+      description: 'Fixed vertical promo tab on the Learning page — set tab name and link.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       iconSrc: settingsTabHeader,
@@ -2272,6 +2314,7 @@ export function AdminSettingsView() {
     'faq',
     'curriculum',
     'footer',
+    'learning-advertise-tab',
     'header-visibility',
   ];
 
@@ -2755,6 +2798,15 @@ export function AdminSettingsView() {
       setContent={setFooterContent}
       submitting={footerContentSubmitting}
       onSave={handleSaveFooterContent}
+    />
+  );
+
+  const renderLearningAdvertiseTabSettings = (
+    <LearningAdvertiseTabSettingsCard
+      content={learningAdvertiseTabContent}
+      setContent={setLearningAdvertiseTabContent}
+      submitting={learningAdvertiseTabSubmitting}
+      onSave={handleSaveLearningAdvertiseTabContent}
     />
   );
 
@@ -3413,6 +3465,7 @@ export function AdminSettingsView() {
         {activeSection === 'faq' && renderFaqSettings}
         {activeSection === 'curriculum' && renderCurriculumSettings}
         {activeSection === 'footer' && renderFooterSettings}
+        {activeSection === 'learning-advertise-tab' && renderLearningAdvertiseTabSettings}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>
