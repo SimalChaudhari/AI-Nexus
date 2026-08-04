@@ -43,7 +43,14 @@ import { verifyEmailAddress } from '../utils/email-verification.util';
 import {
   normalizeSingaporeNricFin,
   resolveSalesforceIdTypeByCardColorOrNationality,
+  validateSingaporeNricFin,
+  SINGAPORE_NRIC_FIN_USER_MESSAGES,
 } from '../auth/utils/singapore-nric-fin.util';
+import {
+  findUserByVerifiedNricFin,
+  isNricFinRegistrationComplete,
+  NRIC_ALREADY_REGISTERED_MESSAGE,
+} from '../auth/utils/nric-registration-guard.util';
 import * as XLSX from 'xlsx';
 
 // ----------------------------------------------------------------------
@@ -391,6 +398,96 @@ export class CorporateService {
     }
 
     return '';
+  }
+
+  /**
+   * True when the sheet ID looks like / is declared as Singapore NRIC/FIN
+   * (skip checksum for Passport and other non-NRIC IDs).
+   */
+  private isStaffSingaporeNricFinCandidate(idNumber: string, idType?: string): boolean {
+    const type = String(idType || '')
+      .toLowerCase()
+      .replace(/[_/]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (type.includes('passport')) return false;
+
+    const normalized = normalizeSingaporeNricFin(idNumber);
+    if (/^[STFGM]\d{7}[A-Z]$/.test(normalized)) return true;
+
+    return (
+      type.includes('pink')
+      || type.includes('blue')
+      || type.includes('nric')
+      || type === 'fin'
+      || type.includes('fin ')
+    );
+  }
+
+  /**
+   * When NRIC/FIN is present: validate format/checksum (same as registration),
+   * then return normalized value. Passport / other IDs are returned uppercased only.
+   */
+  private validateStaffIdNumberFormat(params: {
+    idNumber?: string;
+    idType?: string;
+  }): { ok: true; value: string; isNricFin: boolean } | { ok: false; message: string } {
+    const raw = String(params.idNumber || '').trim();
+    if (!raw) return { ok: true, value: '', isNricFin: false };
+
+    if (!this.isStaffSingaporeNricFinCandidate(raw, params.idType)) {
+      return {
+        ok: true,
+        value: normalizeSingaporeNricFin(raw) || raw.toUpperCase().replace(/\s+/g, ''),
+        isNricFin: false,
+      };
+    }
+
+    try {
+      const validation = validateSingaporeNricFin(raw);
+      if (!validation.isValid) {
+        return { ok: false, message: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum };
+      }
+      return { ok: true, value: validation.normalized, isNricFin: true };
+    } catch {
+      return { ok: false, message: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat };
+    }
+  }
+
+  /** Local app + Salesforce duplicate check for a verified NRIC/FIN. */
+  private async checkStaffNricAlreadyExists(normalizedNricFin: string): Promise<{
+    ok: true;
+  } | {
+    ok: false;
+    where: 'app' | 'salesforce' | 'lookup';
+    message: string;
+  }> {
+    const normalized = normalizeSingaporeNricFin(normalizedNricFin);
+    if (!normalized) return { ok: true };
+
+    const local = await findUserByVerifiedNricFin(this.userRepository, normalized);
+    if (local && isNricFinRegistrationComplete(local)) {
+      return { ok: false, where: 'app', message: NRIC_ALREADY_REGISTERED_MESSAGE };
+    }
+
+    try {
+      const byNric = await this.oauthAuthService.checkSalesforceUserByNric(normalized);
+      if (Boolean(byNric?.found)) {
+        return {
+          ok: false,
+          where: 'salesforce',
+          message: 'This NRIC/FIN number already exists in Salesforce.',
+        };
+      }
+    } catch {
+      return {
+        ok: false,
+        where: 'lookup',
+        message: 'Could not verify NRIC/FIN in Salesforce.',
+      };
+    }
+
+    return { ok: true };
   }
 
   /** Map sheet "ISCA member/ Non-member" → Salesforce accountType. */
@@ -758,6 +855,7 @@ export class CorporateService {
     const skipped: StaffEnrolSkippedRow[] = [];
     const eligible: typeof payload = [];
     const seenEmails = new Set<string>();
+    const seenNrics = new Set<string>();
     const totalReceived = payload.length;
 
     console.log('[CorporateEnrol] ===== START =====', {
@@ -856,6 +954,36 @@ export class CorporateService {
           reason: 'Is the job function accounting related? is required.',
         });
         continue;
+      }
+
+      // NRIC/FIN present → format/checksum + duplicate (local + Salesforce), same as registration.
+      const idNumberRaw = String(row.id_number || '').trim();
+      if (idNumberRaw) {
+        const idCheck = this.validateStaffIdNumberFormat({
+          idNumber: idNumberRaw,
+          idType: String(row.id_type || '').trim(),
+        });
+        if (!idCheck.ok) {
+          skipped.push({ email, step: 'precheck', reason: idCheck.message });
+          continue;
+        }
+        row.id_number = idCheck.value;
+        if (idCheck.isNricFin && idCheck.value) {
+          if (seenNrics.has(idCheck.value)) {
+            skipped.push({
+              email,
+              step: 'precheck',
+              reason: 'Duplicate NRIC/FIN within the upload file.',
+            });
+            continue;
+          }
+          seenNrics.add(idCheck.value);
+          const nricExists = await this.checkStaffNricAlreadyExists(idCheck.value);
+          if (!nricExists.ok) {
+            skipped.push({ email, step: 'precheck', reason: nricExists.message });
+            continue;
+          }
+        }
       }
 
       const localExisting = await this.userRepository.findOne({ where: { email } });
@@ -1844,6 +1972,8 @@ export class CorporateService {
           requiredColumnsOk: false,
           emailFormatErrors: 0,
           duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
           citizenshipErrors: 0,
           alreadyInApp: 0,
           alreadyInSalesforce: 0,
@@ -1864,6 +1994,8 @@ export class CorporateService {
           requiredColumnsOk: false,
           emailFormatErrors: 0,
           duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
           citizenshipErrors: 0,
           alreadyInApp: 0,
           alreadyInSalesforce: 0,
@@ -1883,6 +2015,8 @@ export class CorporateService {
           requiredColumnsOk: false,
           emailFormatErrors: 0,
           duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
           citizenshipErrors: 0,
           alreadyInApp: 0,
           alreadyInSalesforce: 0,
@@ -1924,6 +2058,8 @@ export class CorporateService {
           requiredColumnsOk: false,
           emailFormatErrors: 0,
           duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
           citizenshipErrors: 0,
           alreadyInApp: 0,
           alreadyInSalesforce: 0,
@@ -1959,8 +2095,11 @@ export class CorporateService {
     }
 
     const seenEmails = new Set<string>();
+    const seenNrics = new Set<string>();
     let emailFormatErrors = 0;
     let duplicateEmails = 0;
+    let nricFormatErrors = 0;
+    let duplicateNrics = 0;
     let citizenshipErrors = 0;
     let alreadyInApp = 0;
     let alreadyInSalesforce = 0;
@@ -2066,6 +2205,29 @@ export class CorporateService {
         );
       }
 
+      // NRIC/FIN present → same validity + uniqueness checks as registration.
+      const idNumberRaw = String(row.id_number || '').trim();
+      const idTypeRaw = String(row.id_type || '').trim();
+      let normalizedNricForLookup = '';
+      if (idNumberRaw) {
+        const idCheck = this.validateStaffIdNumberFormat({
+          idNumber: idNumberRaw,
+          idType: idTypeRaw,
+        });
+        if (!idCheck.ok) {
+          nricFormatErrors += 1;
+          pushRowError('id_number', idCheck.message);
+        } else if (idCheck.isNricFin && idCheck.value) {
+          normalizedNricForLookup = idCheck.value;
+          if (seenNrics.has(normalizedNricForLookup)) {
+            duplicateNrics += 1;
+            pushRowError('id_number', 'Duplicate NRIC/FIN within the upload file.');
+          } else {
+            seenNrics.add(normalizedNricForLookup);
+          }
+        }
+      }
+
       if (!rowHasError && email) {
         const localExisting = await this.userRepository.findOne({ where: { email } });
         if (localExisting) {
@@ -2081,6 +2243,15 @@ export class CorporateService {
           } catch {
             pushRowError('email', 'Could not verify email in Salesforce.');
           }
+        }
+      }
+
+      if (!rowHasError && normalizedNricForLookup) {
+        const nricExists = await this.checkStaffNricAlreadyExists(normalizedNricForLookup);
+        if (!nricExists.ok) {
+          if (nricExists.where === 'app') alreadyInApp += 1;
+          else if (nricExists.where === 'salesforce') alreadyInSalesforce += 1;
+          pushRowError('id_number', nricExists.message);
         }
       }
 
@@ -2108,6 +2279,8 @@ export class CorporateService {
         requiredColumnsOk,
         emailFormatErrors,
         duplicateEmails,
+        nricFormatErrors,
+        duplicateNrics,
         citizenshipErrors,
         alreadyInApp,
         alreadyInSalesforce,
