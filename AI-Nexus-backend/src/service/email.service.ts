@@ -19,9 +19,9 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
-        this.fromEmail = '';
+        // this.fromEmail = '';
         // const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
-        // this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
+        this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
         // if (isDevelopment) {
         //     this.transporter = nodemailer.createTransport({
