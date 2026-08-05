@@ -39,7 +39,7 @@ const SECTION_TABS = [
   { key: 'dashboard', title: 'Dashboard', icon: 'solar:monitor-bold-duotone' },
   { key: 'steps', title: 'How it works', icon: 'solar:map-arrow-right-bold-duotone' },
   { key: 'faq', title: 'FAQ', icon: 'solar:question-circle-bold-duotone' },
-  { key: 'cta', title: 'CTA', icon: 'solar:megaphone-bold-duotone' },
+  { key: 'cta', title: 'CTA', icon: 'solar:speaker-bold' },
 ];
 
 function FieldBox({ children, sx }) {

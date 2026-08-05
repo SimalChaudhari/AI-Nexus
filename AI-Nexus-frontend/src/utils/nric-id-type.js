@@ -333,7 +333,6 @@ export function resolveSalesforceNexusUsernameFromCreateResponse(createResult, f
       return candidate;
     }
   }
-
   return String(fallbackEmail || '').trim();
 }
 

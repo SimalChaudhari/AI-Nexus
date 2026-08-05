@@ -9,6 +9,11 @@ export async function getCorporateOverview(companyCode) {
   return response.data?.data ?? response.data;
 }
 
+export async function getCorporateProfile() {
+  const response = await axios.get('/corporate/profile');
+  return response.data?.data ?? response.data;
+}
+
 export async function getCorporateLearner(userId, companyCode) {
   const response = await axios.get(`/corporate/learners/${encodeURIComponent(userId)}`, {
     params: companyCode ? { companyCode } : undefined,
@@ -237,9 +242,28 @@ export async function enrolCorporateStaff(learner, companyCode) {
   return response.data?.data ?? response.data;
 }
 
-export async function enrolCorporateStaffBulkCsv(file, companyCode) {
+export async function validateCorporateStaffBulkCsv(file, companyCode) {
   const formData = new FormData();
   formData.append('file', file);
+  const response = await axios.post('/corporate/staff-enrol/bulk-csv/validate', formData, {
+    params: companyCode ? { companyCode } : undefined,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return response.data?.data ?? response.data;
+}
+
+export async function enrolCorporateStaffBulkCsv(file, companyCode, options = {}) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const excludeRows = Array.isArray(options.excludeRows)
+    ? options.excludeRows.filter((n) => Number.isFinite(Number(n))).join(',')
+    : String(options.excludeRows || '').trim();
+  if (excludeRows) {
+    formData.append('excludeRows', excludeRows);
+  }
   const response = await axios.post('/corporate/staff-enrol/bulk-csv', formData, {
     params: companyCode ? { companyCode } : undefined,
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -299,28 +323,80 @@ export async function submitCorporateForeignQuotationRequest(payload, companyCod
   return response.data?.data ?? response.data;
 }
 
+/** Human-friendly headers for the downloadable learner enrolment sample. */
 export const CORPORATE_STAFF_CSV_TEMPLATE_HEADERS = [
-  'salutation',
-  'first_name',
-  'last_name',
-  'name_as_per_id',
-  'email',
-  'company',
-  'department',
-  'staff_role',
-  'noOfYearOfRelevantWorkExperience',
-  'corporateAccountId',
-  'learnerAsAnAccounting',
-  'eligibility',
+  'First Name',
+  'Last Name (Surname)',
+  'ID Type',
+  'NRIC/ Fin/ Passport',
+  'Citizenship',
+  'Nationality',
+  'ISCA member/ Non-member',
+  'Membership of other accounting bodies (only if non ISCA member)',
+  'Phone Number',
+  'Corporate email address',
+  'Organisation name',
+  'Organisation type',
+  'Job function',
+  'Is the job function accounting related?',
 ];
 
+/** Example rows for the downloadable sample (organisation / account auto-filled on upload if blank). */
+export const CORPORATE_STAFF_CSV_TEMPLATE_SAMPLE_ROWS = [
+  [
+    'Ahmad',
+    'Bin Abdullah',
+    'Blue',
+    'S8901234G',
+    'Singapore Citizen',
+    'Singaporean',
+    'ISCA member',
+    '',
+    '91234567',
+    'ahmad.abdullah@example.com',
+    'Example Bank Pte Ltd',
+    'Corporate',
+    'Branch Manager',
+    'Yes',
+  ],
+  [
+    'Sarah',
+    'Tan',
+    'Pink',
+    'S9012345A',
+    'Singapore PR',
+    'Malaysian',
+    'Non-member',
+    'ACCA',
+    '98765432',
+    'sarah.tan@example.com',
+    'Example Finance Pte Ltd',
+    'Corporate',
+    'Analyst',
+    'Yes',
+  ],
+];
+
+function escapeCsvCell(value) {
+  const text = String(value ?? '');
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
 export function downloadCorporateStaffCsvTemplate() {
-  const header = CORPORATE_STAFF_CSV_TEMPLATE_HEADERS.join(',');
-  const blob = new Blob([`${header}\n`], { type: 'text/csv;charset=utf-8' });
+  const lines = [
+    CORPORATE_STAFF_CSV_TEMPLATE_HEADERS.map(escapeCsvCell).join(','),
+    ...CORPORATE_STAFF_CSV_TEMPLATE_SAMPLE_ROWS.map((row) =>
+      row.map(escapeCsvCell).join(','),
+    ),
+  ];
+  const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'corporate-staff-enrolment-template.csv';
+  a.download = 'corporate-learner-enrolment-template.csv';
   a.rel = 'noopener';
   a.style.display = 'none';
   document.body.appendChild(a);

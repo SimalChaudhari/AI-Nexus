@@ -725,6 +725,10 @@ export const courseService = {
         transcript: Array.isArray(row?.transcript) ? row.transcript : [],
         completedModules: Array.isArray(row?.completedModules) ? row.completedModules : [],
         pdfUrl: row?.pdfUrl || null,
+        status: row?.status === 'blocked' ? 'blocked' : row?.status || 'active',
+        certificateBlocked: Boolean(row?.certificateBlocked) || row?.status === 'blocked',
+        badgeBlocked: Boolean(row?.badgeBlocked) || row?.status === 'blocked',
+        message: row?.message || null,
       }));
     } catch (error) {
       if (error?.response?.status === 401) return [];
@@ -735,6 +739,13 @@ export const courseService = {
 
   async downloadCertificatePdf(certificateId) {
     const response = await axios.get(`/courses/certificates/${certificateId}/pdf`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  async downloadAdminCertificatePdf(certificateId) {
+    const response = await axios.get(`/courses/certificates/admin/${certificateId}/pdf`, {
       responseType: 'blob',
     });
     return response.data;
@@ -777,6 +788,8 @@ export const courseService = {
         learnerName: row?.learnerName || 'Learner',
         learnerEmail: row?.learnerEmail || '',
         status: row?.status || 'active',
+        certificateBlocked: Boolean(row?.certificateBlocked) || row?.status === 'blocked',
+        badgeBlocked: Boolean(row?.badgeBlocked) || row?.status === 'blocked',
       }));
       const pagination = response.data?.pagination || null;
       return { data, pagination };
@@ -796,9 +809,9 @@ export const courseService = {
     }
   },
 
-  async blockAdminCertificate(certificateId) {
+  async blockAdminCertificate(certificateId, targets = {}) {
     try {
-      const response = await axios.post(`/courses/certificates/admin/${certificateId}/block`);
+      const response = await axios.post(`/courses/certificates/admin/${certificateId}/block`, targets);
       return response.data?.data ?? response.data ?? null;
     } catch (error) {
       console.error('Error blocking admin certificate:', error);
@@ -806,9 +819,12 @@ export const courseService = {
     }
   },
 
-  async unblockAdminCertificate(certificateId) {
+  async unblockAdminCertificate(certificateId, targets = {}) {
     try {
-      const response = await axios.post(`/courses/certificates/admin/${certificateId}/unblock`);
+      const response = await axios.post(
+        `/courses/certificates/admin/${certificateId}/unblock`,
+        targets
+      );
       return response.data?.data ?? response.data ?? null;
     } catch (error) {
       console.error('Error unblocking admin certificate:', error);

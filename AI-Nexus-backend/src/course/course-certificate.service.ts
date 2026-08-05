@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CourseCertificateEntity, CourseCertificateStatus } from './course-certificate.entity';
@@ -322,8 +322,26 @@ export class CourseCertificateService {
   private async blockStandaloneCertificate(userId: string, courseId: string): Promise<void> {
     const existing = await this.certificateRepository.findOne({ where: { userId, courseId } });
     if (existing?.status === CourseCertificateStatus.Active && !existing.programId) {
+      existing.certificateBlocked = true;
+      existing.badgeBlocked = true;
       existing.status = CourseCertificateStatus.Blocked;
       await this.certificateRepository.save(existing);
+    }
+  }
+
+  private syncCredentialBlockStatus(row: CourseCertificateEntity): void {
+    if (row.status === CourseCertificateStatus.Deleted) return;
+    row.status =
+      row.certificateBlocked && row.badgeBlocked
+        ? CourseCertificateStatus.Blocked
+        : CourseCertificateStatus.Active;
+  }
+
+  private clearCredentialBlocks(row: CourseCertificateEntity): void {
+    row.certificateBlocked = false;
+    row.badgeBlocked = false;
+    if (row.status !== CourseCertificateStatus.Deleted) {
+      row.status = CourseCertificateStatus.Active;
     }
   }
 
@@ -336,6 +354,7 @@ export class CourseCertificateService {
 
     if (existing?.status === CourseCertificateStatus.Deleted) {
       existing.status = CourseCertificateStatus.Active;
+      this.clearCredentialBlocks(existing);
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = programId || null;
@@ -354,6 +373,7 @@ export class CourseCertificateService {
 
     if (existing?.status === CourseCertificateStatus.Blocked) {
       existing.status = CourseCertificateStatus.Active;
+      this.clearCredentialBlocks(existing);
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = programId || null;
@@ -367,6 +387,8 @@ export class CourseCertificateService {
       userId,
       courseId,
       programId: programId || null,
+      certificateBlocked: false,
+      badgeBlocked: false,
       certificateNo: await this.buildCertificateNo(completedAt),
       completedAt,
       status: CourseCertificateStatus.Active,
@@ -387,6 +409,7 @@ export class CourseCertificateService {
       }
       if (raced) {
         raced.status = CourseCertificateStatus.Active;
+        this.clearCredentialBlocks(raced);
         raced.completedAt = new Date();
         raced.deletedAt = null;
         raced.programId = programId || null;
@@ -461,6 +484,7 @@ export class CourseCertificateService {
 
     if (existing?.status === CourseCertificateStatus.Deleted) {
       existing.status = CourseCertificateStatus.Active;
+      this.clearCredentialBlocks(existing);
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = null;
@@ -475,6 +499,7 @@ export class CourseCertificateService {
 
     if (existing?.status === CourseCertificateStatus.Blocked) {
       existing.status = CourseCertificateStatus.Active;
+      this.clearCredentialBlocks(existing);
       existing.completedAt = new Date();
       existing.deletedAt = null;
       existing.programId = null;
@@ -488,6 +513,8 @@ export class CourseCertificateService {
       userId,
       courseId,
       programId: null,
+      certificateBlocked: false,
+      badgeBlocked: false,
       certificateNo: await this.buildCertificateNo(completedAt),
       completedAt,
       status: CourseCertificateStatus.Active,
@@ -678,13 +705,21 @@ export class CourseCertificateService {
 
   async getUserCertificates(userId: string) {
     const rows = await this.certificateRepository.find({
-      where: { userId, status: CourseCertificateStatus.Active },
+      where: [
+        { userId, status: CourseCertificateStatus.Active },
+        { userId, status: CourseCertificateStatus.Blocked },
+      ],
       relations: ['course', 'user'],
       order: { completedAt: 'DESC', createdAt: 'DESC' },
     });
 
     const visibleRows: CourseCertificateEntity[] = [];
     for (const row of rows) {
+      // Always include rows with any block so learners see a proper message.
+      if (row.certificateBlocked || row.badgeBlocked || row.status === CourseCertificateStatus.Blocked) {
+        visibleRows.push(row);
+        continue;
+      }
       if (await this.shouldDisplayCredentialToLearner(userId, row)) {
         visibleRows.push(row);
       }
@@ -696,20 +731,53 @@ export class CourseCertificateService {
       : [];
     const programTitleById = new Map(programs.map((program) => [program.id, program.title]));
 
+    const bothBlockedMessage =
+      'This certificate and digital badge are no longer available. Access has been revoked by an administrator.';
+    const certificateBlockedMessage =
+      'This certificate is no longer available. Access has been revoked by an administrator.';
+    const badgeBlockedMessage =
+      'This digital badge is no longer available. Access has been revoked by an administrator.';
+    const allCertificatesHiddenMessage =
+      'Certificates are temporarily unavailable. Please check back later.';
+    const allBadgesHiddenMessage =
+      'Digital badges are temporarily unavailable. Please check back later.';
+
+    const visibility = await this.appSettingsService.getCredentialVisibilitySettings();
+    const hideAllCertificates = Boolean(visibility.hideAllCertificates);
+    const hideAllBadges = Boolean(visibility.hideAllBadges);
+
     return Promise.all(
       visibleRows.map(async (row) => {
         const courseTitle = row.programId
           ? programTitleById.get(row.programId) || row.course?.title || 'Programme'
           : row.course?.title || 'Untitled Course';
-        const [cpe, transcript] = await Promise.all([
-          this.resolveCertificateCpeHours(userId, row),
-          row.programId
-            ? this.buildProgrammeTranscript(userId, row.programId)
-            : this.buildCourseTranscript(userId, row.courseId, courseTitle),
-        ]);
-        const completedModules = transcript.filter((module) => module.isModuleComplete);
+        const learnerName =
+          `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||
+          row.user?.username ||
+          'Learner';
+        const perCertBlocked =
+          !!row.certificateBlocked || row.status === CourseCertificateStatus.Blocked;
+        const perBadgeBlocked =
+          !!row.badgeBlocked || row.status === CourseCertificateStatus.Blocked;
+        const certificateBlocked = hideAllCertificates || perCertBlocked;
+        const badgeBlocked = hideAllBadges || perBadgeBlocked;
+        const bothBlocked = certificateBlocked && badgeBlocked;
 
-        return {
+        let message: string | null = null;
+        if (hideAllCertificates && hideAllBadges) {
+          message =
+            'Certificates and digital badges are temporarily unavailable. Please check back later.';
+        } else if (certificateBlocked && badgeBlocked) {
+          message = bothBlockedMessage;
+        } else if (certificateBlocked) {
+          message = hideAllCertificates
+            ? allCertificatesHiddenMessage
+            : certificateBlockedMessage;
+        } else if (badgeBlocked) {
+          message = hideAllBadges ? allBadgesHiddenMessage : badgeBlockedMessage;
+        }
+
+        const base = {
           id: row.id,
           courseId: row.courseId,
           programId: row.programId || null,
@@ -719,16 +787,45 @@ export class CourseCertificateService {
           courseTitle,
           programTitle: row.programId ? programTitleById.get(row.programId) || '' : '',
           marketData: row.course?.marketData || '',
-          learnerName:
-            `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||
-            row.user?.username ||
-            'Learner',
+          learnerName,
+          certificateBlocked,
+          badgeBlocked,
+          status: bothBlocked
+            ? CourseCertificateStatus.Blocked
+            : certificateBlocked || badgeBlocked
+              ? 'partially_blocked'
+              : CourseCertificateStatus.Active,
+          message,
+        };
+
+        if (bothBlocked) {
+          return {
+            ...base,
+            earnedCpeHours: 0,
+            allocatedCpeHours: null,
+            watchedTime: '',
+            transcript: [],
+            completedModules: [],
+            pdfUrl: null,
+          };
+        }
+
+        const [cpe, transcript] = await Promise.all([
+          this.resolveCertificateCpeHours(userId, row),
+          row.programId
+            ? this.buildProgrammeTranscript(userId, row.programId)
+            : this.buildCourseTranscript(userId, row.courseId, courseTitle),
+        ]);
+        const completedModules = transcript.filter((module) => module.isModuleComplete);
+
+        return {
+          ...base,
           earnedCpeHours: cpe.earnedCpeHours,
           allocatedCpeHours: cpe.allocatedCpeHours,
           watchedTime: cpe.watchedTime,
-          transcript,
-          completedModules,
-          pdfUrl: row.pdfUrl || null,
+          transcript: certificateBlocked ? [] : transcript,
+          completedModules: certificateBlocked ? [] : completedModules,
+          pdfUrl: certificateBlocked ? null : row.pdfUrl || null,
         };
       }),
     );
@@ -805,10 +902,22 @@ export class CourseCertificateService {
     certificateId: string,
   ): Promise<{ filename: string; buffer: Buffer }> {
     const existing = await this.certificateRepository.findOne({
-      where: { id: certificateId, userId, status: CourseCertificateStatus.Active },
+      where: { id: certificateId, userId },
     });
-    if (!existing) {
+    if (!existing || existing.status === CourseCertificateStatus.Deleted) {
       throw new NotFoundException('Certificate not found');
+    }
+    const visibility = await this.appSettingsService.getCredentialVisibilitySettings();
+    if (
+      visibility.hideAllCertificates ||
+      existing.certificateBlocked ||
+      existing.status === CourseCertificateStatus.Blocked
+    ) {
+      throw new ForbiddenException(
+        visibility.hideAllCertificates
+          ? 'Certificates are temporarily unavailable. Please check back later.'
+          : 'This certificate is no longer available. Access has been revoked by an administrator.',
+      );
     }
     if (!(await this.shouldDisplayCredentialToLearner(userId, existing))) {
       throw new NotFoundException('Certificate not available');
@@ -826,11 +935,31 @@ export class CourseCertificateService {
     kind: 'certificate' | 'badge' = 'certificate',
   ): Promise<{ kind: 'certificate' | 'badge'; text: string; url: string }> {
     const row = await this.certificateRepository.findOne({
-      where: { id: certificateId, userId, status: CourseCertificateStatus.Active },
+      where: { id: certificateId, userId },
       relations: ['course'],
     });
-    if (!row) {
+    if (!row || row.status === CourseCertificateStatus.Deleted) {
       throw new NotFoundException('Certificate not found');
+    }
+    const visibility = await this.appSettingsService.getCredentialVisibilitySettings();
+    const targetBlocked =
+      kind === 'badge'
+        ? visibility.hideAllBadges ||
+          !!row.badgeBlocked ||
+          row.status === CourseCertificateStatus.Blocked
+        : visibility.hideAllCertificates ||
+          !!row.certificateBlocked ||
+          row.status === CourseCertificateStatus.Blocked;
+    if (targetBlocked) {
+      throw new ForbiddenException(
+        kind === 'badge'
+          ? visibility.hideAllBadges
+            ? 'Digital badges are temporarily unavailable. Please check back later.'
+            : 'This digital badge is no longer available. Access has been revoked by an administrator.'
+          : visibility.hideAllCertificates
+            ? 'Certificates are temporarily unavailable. Please check back later.'
+            : 'This certificate is no longer available. Access has been revoked by an administrator.',
+      );
     }
     if (!(await this.shouldDisplayCredentialToLearner(userId, row))) {
       throw new NotFoundException('Certificate not available');
@@ -874,9 +1003,9 @@ export class CourseCertificateService {
     certificateId: string,
   ): Promise<{ filename: string; buffer: Buffer }> {
     const existing = await this.certificateRepository.findOne({
-      where: { id: certificateId, status: CourseCertificateStatus.Active },
+      where: { id: certificateId },
     });
-    if (!existing) {
+    if (!existing || existing.status === CourseCertificateStatus.Deleted) {
       throw new NotFoundException('Certificate not found');
     }
 
@@ -896,6 +1025,7 @@ export class CourseCertificateService {
   async getAdminCertificates(filters: {
     userName?: string;
     courseTitle?: string;
+    courseId?: string;
     q?: string;
     page?: number;
     limit?: number;
@@ -907,6 +1037,10 @@ export class CourseCertificateService {
       .where('cert.status != :deletedStatus', { deletedStatus: CourseCertificateStatus.Deleted })
       .orderBy('cert.completedAt', 'DESC')
       .addOrderBy('cert.createdAt', 'DESC');
+
+    if (filters.courseId) {
+      qb.andWhere('cert.courseId = :courseId', { courseId: String(filters.courseId).trim() });
+    }
 
     if (filters.userName) {
       qb.andWhere(
@@ -959,6 +1093,9 @@ export class CourseCertificateService {
       learnerName: `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() || row.user?.username || 'Learner',
       learnerEmail: row.user?.email || '',
       status: row.status || CourseCertificateStatus.Active,
+      certificateBlocked:
+        !!row.certificateBlocked || row.status === CourseCertificateStatus.Blocked,
+      badgeBlocked: !!row.badgeBlocked || row.status === CourseCertificateStatus.Blocked,
     }));
     const totalPages = Math.max(1, Math.ceil(totalItems / limit));
     return {
@@ -1048,14 +1185,31 @@ export class CourseCertificateService {
     return { deleted: true };
   }
 
-  async blockCertificateById(id: string) {
+  async blockCertificateById(
+    id: string,
+    targets: { certificate?: boolean; badge?: boolean } = {},
+  ) {
     const existing = await this.certificateRepository.findOne({ where: { id } });
     if (!existing || existing.status === CourseCertificateStatus.Deleted) {
-      return { blocked: false };
+      return { blocked: false, certificateBlocked: false, badgeBlocked: false };
     }
-    existing.status = CourseCertificateStatus.Blocked;
+
+    const blockBoth =
+      targets.certificate === undefined && targets.badge === undefined;
+    if (blockBoth || targets.certificate === true) {
+      existing.certificateBlocked = true;
+    }
+    if (blockBoth || targets.badge === true) {
+      existing.badgeBlocked = true;
+    }
+
+    this.syncCredentialBlockStatus(existing);
     await this.certificateRepository.save(existing);
-    return { blocked: true };
+    return {
+      blocked: true,
+      certificateBlocked: !!existing.certificateBlocked,
+      badgeBlocked: !!existing.badgeBlocked,
+    };
   }
 
   /**
@@ -1075,8 +1229,11 @@ export class CourseCertificateService {
     });
 
     const blockIfActive = async (cert: CourseCertificateEntity | null) => {
-      if (!cert || cert.status !== CourseCertificateStatus.Active) return;
-      cert.status = CourseCertificateStatus.Blocked;
+      if (!cert || cert.status === CourseCertificateStatus.Deleted) return;
+      if (cert.certificateBlocked && cert.badgeBlocked) return;
+      cert.certificateBlocked = true;
+      cert.badgeBlocked = true;
+      this.syncCredentialBlockStatus(cert);
       await this.certificateRepository.save(cert);
       blocked = true;
     };
@@ -1151,23 +1308,29 @@ export class CourseCertificateService {
     for (const cert of candidates) {
       if (!cert?.id || seen.has(cert.id)) continue;
       seen.add(cert.id);
-      if (cert.status !== CourseCertificateStatus.Blocked) continue;
+    // Restore when fully blocked, or when force is used for any blocked credential channel.
+    const needsRestore =
+      cert.status === CourseCertificateStatus.Blocked ||
+      !!cert.certificateBlocked ||
+      !!cert.badgeBlocked;
+    if (!needsRestore) continue;
 
-      let canRestore = force;
-      if (!canRestore) {
-        if (cert.programId) {
-          canRestore = await this.isProgramCertificateRequirementsMet(userId, cert.programId);
-        } else {
-          canRestore = await this.isCourseFullyCompleted(userId, cert.courseId);
-        }
+    let canRestore = force;
+    if (!canRestore) {
+      if (cert.programId) {
+        canRestore = await this.isProgramCertificateRequirementsMet(userId, cert.programId);
+      } else {
+        canRestore = await this.isCourseFullyCompleted(userId, cert.courseId);
       }
-      if (!canRestore) continue;
+    }
+    if (!canRestore) continue;
 
-      cert.status = CourseCertificateStatus.Active;
-      cert.completedAt = new Date();
-      cert.deletedAt = null;
-      await this.certificateRepository.save(cert);
-      restored = true;
+    cert.status = CourseCertificateStatus.Active;
+    this.clearCredentialBlocks(cert);
+    cert.completedAt = new Date();
+    cert.deletedAt = null;
+    await this.certificateRepository.save(cert);
+    restored = true;
 
       try {
         await this.ensureCertificatePdfStored(cert.id);
@@ -1182,13 +1345,30 @@ export class CourseCertificateService {
     return { restored };
   }
 
-  async unblockCertificateById(id: string) {
+  async unblockCertificateById(
+    id: string,
+    targets: { certificate?: boolean; badge?: boolean } = {},
+  ) {
     const existing = await this.certificateRepository.findOne({ where: { id } });
     if (!existing || existing.status === CourseCertificateStatus.Deleted) {
-      return { unblocked: false };
+      return { unblocked: false, certificateBlocked: false, badgeBlocked: false };
     }
-    existing.status = CourseCertificateStatus.Active;
+
+    const unblockBoth =
+      targets.certificate === undefined && targets.badge === undefined;
+    if (unblockBoth || targets.certificate === true) {
+      existing.certificateBlocked = false;
+    }
+    if (unblockBoth || targets.badge === true) {
+      existing.badgeBlocked = false;
+    }
+
+    this.syncCredentialBlockStatus(existing);
     await this.certificateRepository.save(existing);
-    return { unblocked: true };
+    return {
+      unblocked: true,
+      certificateBlocked: !!existing.certificateBlocked,
+      badgeBlocked: !!existing.badgeBlocked,
+    };
   }
 }

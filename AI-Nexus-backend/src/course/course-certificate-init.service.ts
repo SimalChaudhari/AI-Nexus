@@ -56,6 +56,21 @@ export class CourseCertificateInitService implements OnModuleInit {
         ALTER TABLE "course_certificates"
         ADD COLUMN IF NOT EXISTS "pdfUrl" character varying(500) NULL
       `);
+      await queryRunner.query(`
+        ALTER TABLE "course_certificates"
+        ADD COLUMN IF NOT EXISTS "certificateBlocked" boolean NOT NULL DEFAULT false
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "course_certificates"
+        ADD COLUMN IF NOT EXISTS "badgeBlocked" boolean NOT NULL DEFAULT false
+      `);
+      // Backfill legacy fully-blocked rows so both credentials stay hidden.
+      await queryRunner.query(`
+        UPDATE "course_certificates"
+        SET "certificateBlocked" = true, "badgeBlocked" = true
+        WHERE "status" = 'blocked'
+          AND ("certificateBlocked" = false OR "badgeBlocked" = false)
+      `);
 
       await queryRunner.release();
     } catch (error) {

@@ -11,11 +11,11 @@ export const _account = [
     href: paths.learning,
     icon: <Iconify icon="solar:book-bookmark-bold-duotone" />,
   },
-  {
-    label: 'Certificate',
-    href: `${paths.learning}?tab=certificates`,
-    icon: <Iconify icon="solar:diploma-verified-bold-duotone" />,
-  },
+  // {
+  //   label: 'Certificate',
+  //   href: `${paths.learning}?tab=certificates`,
+  //   icon: <Iconify icon="solar:diploma-verified-bold-duotone" />,
+  // },
   {
     label: 'Persona',
     href: paths.profile.persona,

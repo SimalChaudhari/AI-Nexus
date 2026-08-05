@@ -430,6 +430,16 @@ function transformFooterContent(source) {
   };
 }
 
+function transformLearningAdvertiseTabContent(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+  return {
+    name: source.name != null ? String(source.name) : '',
+    link: source.link != null ? String(source.link) : '',
+  };
+}
+
 function transformMembershipPaymentSettings(source) {
   if (!source || typeof source !== 'object') return null;
   return {
@@ -486,6 +496,8 @@ function transformSettings(settings) {
     digitalBadgeImageUrl: normalizeAssetUrl(settings?.digitalBadgeImageUrl || ''),
     digitalBadgeIssuer:
       settings?.digitalBadgeIssuer != null ? String(settings.digitalBadgeIssuer) : '',
+    hideAllCertificates: Boolean(settings?.hideAllCertificates),
+    hideAllBadges: Boolean(settings?.hideAllBadges),
     homeHeroContent: transformHomeHeroContent(sourceContent),
     homeCardsContent:
       sourceCards && typeof sourceCards === 'object'
@@ -570,6 +582,9 @@ function transformSettings(settings) {
     homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
     partnerWithIscaContent: transformPartnerWithIscaContent(settings?.partnerWithIscaContent),
     footerContent: transformFooterContent(settings?.footerContent),
+    learningAdvertiseTabContent: transformLearningAdvertiseTabContent(
+      settings?.learningAdvertiseTabContent
+    ),
     membershipPaymentSettings: transformMembershipPaymentSettings(
       settings?.membershipPaymentSettings
     ),
@@ -677,6 +692,24 @@ export const appSettingsService = {
     const response = await axios.put('/app-settings/digital-badge-settings', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
+  },
+
+  async getCredentialVisibility() {
+    const response = await axios.get('/app-settings/credential-visibility');
+    const data = response.data?.data || response.data || {};
+    return {
+      hideAllCertificates: Boolean(data.hideAllCertificates),
+      hideAllBadges: Boolean(data.hideAllBadges),
+    };
+  },
+
+  async updateCredentialVisibility(payload = {}) {
+    const response = await axios.put('/app-settings/credential-visibility', payload);
+    const data = response.data?.data || response.data || {};
+    return {
+      hideAllCertificates: Boolean(data.hideAllCertificates),
+      hideAllBadges: Boolean(data.hideAllBadges),
+    };
   },
 
   async updateHomeHeroContent(payload) {
@@ -1050,6 +1083,12 @@ export const appSettingsService = {
 
   async updateFooterContent(payload) {
     const response = await axios.put('/app-settings/footer-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateLearningAdvertiseTabContent(payload) {
+    const response = await axios.put('/app-settings/learning-advertise-tab-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

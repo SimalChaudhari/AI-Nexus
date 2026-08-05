@@ -28,10 +28,11 @@ import { UserSalesforceProfileCard } from 'src/components/user-salesforce-profil
 import { syncApiUserToSession } from 'src/auth/utils/normalize-user-session';
 import { useGetUserProfile, useGetAdminProfile } from 'src/actions/user';
 import { UserNewEditForm } from '../user/user-new-edit-form';
+import { getJobRoleAuditStatus } from '../user/view/user-fee-waiver-audit-panel';
 import {
-  FeeWaiverHrResendPanel,
-  canShowFeeWaiverHrTrigger,
-} from '../user/view/fee-waiver-hr-resend-panel';
+  FeeWaiverHrUserStatusPanel,
+  canShowFeeWaiverHrStatus,
+} from '../user/view/fee-waiver-hr-user-status';
 
 // ----------------------------------------------------------------------
 
@@ -148,7 +149,8 @@ export function CommonProfileView() {
   const hasContactNumber = Boolean(String(user.contactNumber || user.phoneNumber || '').trim());
   const showEmailVerified = Boolean(user.isVerified);
   const showContactVerified = Boolean(user.isVerified) && hasContactNumber;
-  const showFeeWaiverHrTrigger = !isAdmin && canShowFeeWaiverHrTrigger(user);
+  const showFeeWaiverHrStatus = !isAdmin && canShowFeeWaiverHrStatus(user);
+  const jobRoleStatus = showFeeWaiverHrStatus ? getJobRoleAuditStatus(user) : null;
 
   if (isEditMode) {
     return (
@@ -160,7 +162,7 @@ export function CommonProfileView() {
                 Edit profile
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-                Update your name, email, avatar, and other account details. Changes apply after you save.
+                Update your profile image and company code. Email, username, and contact details are view-only.
               </Typography>
             </Box>
             <Button variant="outlined" color="inherit" onClick={() => setIsEditMode(false)} startIcon={<Iconify icon="solar:close-circle-bold" width={20} />}>
@@ -182,57 +184,58 @@ export function CommonProfileView() {
   return (
     <ContentWrapper {...contentShellProps}>
       <Stack spacing={3} sx={{ width: 1, mt: { xs: 1.5, sm: 2, md: 2.5 } }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-            My profile
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 900 }}>
-            Your account overview, platform introduction, and membership details.
-          </Typography>
-        </Box>
-
         <Card
           sx={{
-            overflow: 'visible',
-            border: (t) => `1px solid ${alpha(t.palette.primary.main, 0.12)}`,
-            boxShadow: (t) =>
-              t.palette.mode === 'dark'
-                ? `0 12px 40px ${alpha(theme.palette.common.black, 0.35)}`
-                : `0 12px 40px ${alpha(theme.palette.grey[500], 0.12)}`,
-            borderRadius: 2,
+            overflow: 'hidden',
+            border: `1px solid ${alpha(theme.palette.grey[500], 0.14)}`,
+            boxShadow:
+              theme.palette.mode === 'dark'
+                ? `0 18px 48px ${alpha(theme.palette.common.black, 0.4)}`
+                : `0 18px 48px ${alpha(theme.palette.grey[500], 0.14)}`,
+            borderRadius: 3,
           }}
         >
           <Box
             sx={{
-              height: { xs: 160, sm: 200 },
-              borderTopLeftRadius: (t) => Number(t.shape.borderRadius) * 2,
-              borderTopRightRadius: (t) => Number(t.shape.borderRadius) * 2,
+              position: 'relative',
+              height: { xs: 148, sm: 188 },
               overflow: 'hidden',
-              backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.common.black, 0.2)} 0%, ${alpha(theme.palette.common.black, 0.45)} 100%), url(${coverUrl})`,
+              backgroundImage: `
+                linear-gradient(125deg, ${alpha(theme.palette.primary.darker || theme.palette.primary.dark, 0.72)} 0%, ${alpha(theme.palette.primary.main, 0.35)} 48%, ${alpha(theme.palette.common.black, 0.25)} 100%),
+                url(${coverUrl})
+              `,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                inset: 0,
+                background: `radial-gradient(ellipse at 20% 20%, ${alpha(theme.palette.common.white, 0.18)} 0%, transparent 55%)`,
+                pointerEvents: 'none',
+              },
             }}
           />
 
-          <Box sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2.5, sm: 3 }, pt: 0, bgcolor: 'background.paper' }}>
+          <Box sx={{ px: { xs: 2, sm: 3, md: 3.5 }, pb: { xs: 2.5, sm: 3.5 }, pt: 0, bgcolor: 'background.paper' }}>
             <Stack
               direction={{ xs: 'column', md: 'row' }}
-              spacing={{ xs: 2, md: 2.5 }}
-              alignItems={{ xs: 'center', md: 'flex-start' }}
-              sx={{ mt: { xs: -8, sm: -10 } }}
+              spacing={{ xs: 2, md: 3 }}
+              alignItems={{ xs: 'center', md: 'flex-end' }}
+              sx={{ mt: { xs: -7.5, sm: -9 } }}
             >
               <Avatar
                 src={user.avatarUrl}
                 alt={displayName}
                 sx={{
-                  width: { xs: 112, sm: 128 },
-                  height: { xs: 112, sm: 128 },
-                  fontSize: { xs: '2.5rem', sm: '2.75rem' },
+                  width: { xs: 108, sm: 124 },
+                  height: { xs: 108, sm: 124 },
+                  fontSize: { xs: '2.4rem', sm: '2.7rem' },
                   fontWeight: 700,
                   border: '4px solid',
                   borderColor: 'background.paper',
-                  boxShadow: theme.shadows[8],
-                  bgcolor: alpha(theme.palette.grey[500], 0.24),
+                  boxShadow: `0 10px 28px ${alpha(theme.palette.common.black, 0.18)}`,
+                  bgcolor: alpha(theme.palette.primary.main, 0.16),
+                  color: 'primary.main',
                   flexShrink: 0,
                 }}
               >
@@ -246,10 +249,18 @@ export function CommonProfileView() {
                   minWidth: 0,
                   alignItems: { xs: 'center', md: 'flex-start' },
                   textAlign: { xs: 'center', md: 'left' },
-                  pt: { md: 5.5 },
+                  pb: { md: 0.5 },
                 }}
               >
-                <Typography variant="h3" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: { xs: '1.65rem', sm: '2rem', md: '2.25rem' } }}>
+                <Typography
+                  variant="h3"
+                  sx={{
+                    fontWeight: 800,
+                    lineHeight: 1.15,
+                    fontSize: { xs: '1.6rem', sm: '1.95rem', md: '2.15rem' },
+                    letterSpacing: '-0.02em',
+                  }}
+                >
                   {displayName}
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
@@ -257,267 +268,182 @@ export function CommonProfileView() {
                 </Typography>
                 <Stack
                   direction="row"
+                  spacing={0.75}
+                  alignItems="center"
+                  sx={{ color: 'text.secondary' }}
+                >
+                  <Iconify icon="solar:calendar-bold" width={18} />
+                  <Typography variant="body2">Member since {fDate(user.createdAt) || '—'}</Typography>
+                </Stack>
+                <Stack
+                  direction="row"
                   flexWrap="wrap"
                   useFlexGap
-                  spacing={1.5}
-                  alignItems="center"
-                  justifyContent={{ xs: 'center', md: 'flex-start' }}
-                  sx={{ rowGap: 1 }}
+                  spacing={1}
+                  sx={{ pt: 0.25, justifyContent: { xs: 'center', md: 'flex-start' } }}
                 >
-               
-                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: 'text.secondary' }}>
-                    <Iconify icon="solar:calendar-bold" width={18} />
-                    <Typography variant="body2">Member since {fDate(user.createdAt) || '—'}</Typography>
-                  </Stack>
-                </Stack>
-                <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} sx={{ pt: 0.5, justifyContent: { xs: 'center', md: 'flex-start' } }}>
                   <Label color={normalizedStatus === 'active' ? 'success' : 'error'} variant="soft">
                     {statusLabel}
                   </Label>
                   {user.isVerified && (
                     <Label color="success" variant="soft" startIcon={<Iconify icon="solar:verified-check-bold" width={14} />}>
-                      Verified
+                      Email verified
                     </Label>
                   )}
+                  {jobRoleStatus ? (
+                    <Label color={jobRoleStatus.color} variant="soft">
+                      Job role: {jobRoleStatus.label}
+                    </Label>
+                  ) : null}
                 </Stack>
               </Stack>
 
               <Stack
-                direction="row"
-                flexWrap="wrap"
-                useFlexGap
+                direction={{ xs: 'column', sm: 'row' }}
                 spacing={1}
-                alignItems="flex-start"
-                sx={{ pt: { md: 5 }, flexShrink: 0, alignSelf: { xs: 'center', md: 'flex-start' } }}
+                sx={{
+                  width: { xs: 1, sm: 'auto' },
+                  flexShrink: 0,
+                  alignSelf: { xs: 'stretch', md: 'flex-end' },
+                  pb: { md: 0.5 },
+                }}
               >
                 <Button
                   variant="contained"
                   size="medium"
                   startIcon={<Iconify icon="solar:pen-bold" width={20} />}
                   onClick={() => setIsEditMode(true)}
-                  sx={{ fontWeight: 700 }}
+                  sx={{ fontWeight: 700, borderRadius: 2 }}
                 >
-                  Edit
+                  Edit profile
                 </Button>
+                {!isAdmin ? (
+                  <Button
+                    component={RouterLink}
+                    href={paths.home}
+                    variant="outlined"
+                    color="inherit"
+                    size="medium"
+                    endIcon={<Iconify icon="solar:arrow-right-linear" width={18} />}
+                    sx={{ fontWeight: 700, borderRadius: 2 }}
+                  >
+                    Explore
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
 
             <Divider sx={{ my: { xs: 2.5, sm: 3 } }} />
 
             <Grid container spacing={2.5} alignItems="stretch">
-              <Grid xs={12}>
-                <Box
-                  sx={{
-                    position: 'relative',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    p: { xs: 2.5, sm: 3 },
-                    bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1),
-                    border: (t) => `1px solid ${alpha(t.palette.primary.main, 0.22)}`,
-                  }}
-                >
-                  <Typography
-                    variant="h2"
-                    sx={{
-                      position: 'absolute',
-                      right: 16,
-                      top: 8,
-                      fontWeight: 900,
-                      opacity: 0.07,
-                      lineHeight: 1,
-                      pointerEvents: 'none',
-                      userSelect: 'none',
-                    }}
-                  >
-                    Welcome
-                  </Typography>
-
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    alignItems={{ xs: 'flex-start', sm: 'center' }}
-                    spacing={2.5}
-                    sx={{ position: 'relative' }}
-                  >
-                    <Box
-                      sx={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 1.5,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        bgcolor: alpha(theme.palette.primary.main, 0.2),
-                      }}
-                    >
-                      <Iconify icon="solar:stars-bold-duotone" width={32} sx={{ color: 'primary.main' }} />
-                    </Box>
-
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1, color: 'primary.dark' }}>
-                        Introduction
-                      </Typography>
-                      <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.25, mt: 0.5 }}>
-                        Welcome to {CONFIG.site.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-                        Your hub for AI-powered learning, community, and personalized experiences. Update your profile
-                        below, open Persona to tune preferences, and view ISCA membership when synced from eServices.
-                      </Typography>
-                    </Box>
-
-                    {!isAdmin && (
-                      <Button
-                        component={RouterLink}
-                        href={paths.home}
-                        variant="contained"
-                        color="primary"
-                        size="medium"
-                        endIcon={<Iconify icon="solar:arrow-right-linear" width={18} />}
-                        sx={{ fontWeight: 700, flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'center' } }}
-                      >
-                        Explore platform
-                      </Button>
-                    )}
-                  </Stack>
-                </Box>
-              </Grid>
-
-              <Grid xs={12} md={6}>
-                <ProfileSectionCard title="Contact" subtitle="Email and phone">
-                  <Grid container spacing={2} sx={{ flex: 1 }}>
-                    <Grid xs={12}>
-                      <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                        <Iconify icon="solar:letter-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
-                        <Box sx={{ minWidth: 0 }}>
-                          <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                              Email
-                            </Typography>
-                            {showEmailVerified && (
-                              <Box
-                                component="span"
-                                aria-label="Verified"
-                                title="Verified"
-                                sx={{ display: 'inline-flex', lineHeight: 0, color: 'success.main' }}
-                              >
-                                <Iconify icon="solar:verified-check-bold" width={16} />
-                              </Box>
-                            )}
-                          </Stack>
-                          <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
-                            {user.email}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </Grid>
-                    <Grid xs={12}>
-                      <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                        <Iconify icon="solar:phone-bold" width={22} sx={{ color: 'text.disabled', mt: 0.25 }} />
-                        <Box sx={{ minWidth: 0 }}>
-                          <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                              Contact number
-                            </Typography>
-                            {showContactVerified && (
-                              <Box
-                                component="span"
-                                aria-label="Verified"
-                                title="Verified"
-                                sx={{ display: 'inline-flex', lineHeight: 0, color: 'success.main' }}
-                              >
-                                <Iconify icon="solar:verified-check-bold" width={16} />
-                              </Box>
-                            )}
-                          </Stack>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {user.contactNumber || user.phoneNumber || '—'}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </Grid>
-                  </Grid>
-                  <Button
-                    fullWidth
-                    component={RouterLink}
-                    href={paths.contact}
-                    variant="contained"
-                    color="secondary"
-                    size="medium"
-                    startIcon={<Iconify icon="solar:chat-round-dots-bold" width={20} />}
-                    sx={{ borderRadius: 2, mt: 2, fontWeight: 700 }}
-                  >
-                    Contact us
-                  </Button>
-                </ProfileSectionCard>
-              </Grid>
-
-              <Grid xs={12} md={6}>
-                <Box
-                  component={!isAdmin ? RouterLink : 'div'}
-                  href={!isAdmin ? paths.profile.persona : undefined}
-                  sx={{
-                    height: 1,
-                    display: 'block',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    transition: (t) => t.transitions.create(['transform', 'box-shadow']),
-                    ...(!isAdmin && {
-                      '&:hover': { transform: 'translateY(-2px)', boxShadow: theme.shadows[4] },
-                    }),
-                  }}
-                >
-                  <ProfileSectionCard title="Persona" subtitle="Learning preferences">
-                    <Stack spacing={2} sx={{ flex: 1 }}>
+              <Grid xs={12} md={showFeeWaiverHrStatus ? 5 : 12}>
+                <ProfileSectionCard title="Contact" subtitle="How we reach you" accent="primary">
+                  <Stack spacing={2.25} sx={{ flex: 1 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
                       <Box
                         sx={{
-                          width: 48,
-                          height: 48,
+                          width: 40,
+                          height: 40,
                           borderRadius: 1.5,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          bgcolor: alpha(theme.palette.secondary.main, 0.2),
+                          flexShrink: 0,
+                          bgcolor: alpha(theme.palette.primary.main, 0.12),
                         }}
                       >
-                        <Iconify icon="solar:widget-4-bold-duotone" width={28} sx={{ color: 'secondary.main' }} />
+                        <Iconify icon="solar:letter-bold" width={20} sx={{ color: 'primary.main' }} />
                       </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Goals, tone, and how the platform adapts to you.
-                      </Typography>
-                      {!isAdmin ? (
-                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ fontWeight: 700, color: 'secondary.dark', mt: 'auto' }}>
-                          <span>Open Persona</span>
-                          <Iconify icon="solar:arrow-right-linear" width={18} />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                            Email
+                          </Typography>
+                          {showEmailVerified ? (
+                            <Box
+                              component="span"
+                              aria-label="Verified"
+                              title="Verified"
+                              sx={{ display: 'inline-flex', lineHeight: 0, color: 'success.main' }}
+                            >
+                              <Iconify icon="solar:verified-check-bold" width={16} />
+                            </Box>
+                          ) : null}
                         </Stack>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 'auto' }}>
-                          Admin accounts use the dashboard tools.
+                        <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                          {user.email || '—'}
                         </Typography>
-                      )}
+                      </Box>
                     </Stack>
-                  </ProfileSectionCard>
-                </Box>
+
+                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 1.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          bgcolor: alpha(theme.palette.primary.main, 0.12),
+                        }}
+                      >
+                        <Iconify icon="solar:phone-bold" width={20} sx={{ color: 'primary.main' }} />
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.25 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                            Contact number
+                          </Typography>
+                          {showContactVerified ? (
+                            <Box
+                              component="span"
+                              aria-label="Verified"
+                              title="Verified"
+                              sx={{ display: 'inline-flex', lineHeight: 0, color: 'success.main' }}
+                            >
+                              <Iconify icon="solar:verified-check-bold" width={16} />
+                            </Box>
+                          ) : null}
+                        </Stack>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {user.contactNumber || user.phoneNumber || '—'}
+                        </Typography>
+                      </Box>
+                    </Stack>
+
+                    <Button
+                      fullWidth
+                      component={RouterLink}
+                      href={paths.contact}
+                      variant="outlined"
+                      color="inherit"
+                      size="medium"
+                      startIcon={<Iconify icon="solar:chat-round-dots-bold" width={20} />}
+                      sx={{ borderRadius: 2, mt: 'auto', fontWeight: 700 }}
+                    >
+                      Contact support
+                    </Button>
+                  </Stack>
+                </ProfileSectionCard>
               </Grid>
+
+              {showFeeWaiverHrStatus ? (
+                <Grid xs={12} md={7}>
+                  <ProfileSectionCard
+                    title="Job role verification"
+                    subtitle="HR / employer confirmation for fee waiver"
+                    accent="info"
+                  >
+                    <FeeWaiverHrUserStatusPanel user={user} onRefresh={refreshUser} />
+                  </ProfileSectionCard>
+                </Grid>
+              ) : null}
 
               <Grid xs={12}>
                 <UserSalesforceProfileCard user={user} layout="wide" />
               </Grid>
-
-              {showFeeWaiverHrTrigger ? (
-                <Grid xs={12}>
-                  <ProfileSectionCard
-                    title="Job role verification"
-                    subtitle="Send HR email verification for fee waiver"
-                  >
-                    <FeeWaiverHrResendPanel
-                      user={user}
-                      variant="user"
-                      onRefresh={refreshUser}
-                    />
-                  </ProfileSectionCard>
-                </Grid>
-              ) : null}
             </Grid>
           </Box>
         </Card>

@@ -1,6 +1,8 @@
 import { z as zod } from 'zod';
 import { isValidPhoneNumber } from 'react-phone-number-input';
 
+import { shouldBlockDisposableDomain } from 'src/utils/email-disposable';
+
 // ----------------------------------------------------------------------
 
 const avatarFieldSchema = zod
@@ -22,16 +24,6 @@ export const optionalPhoneSchema = zod
   });
 
 // ----------------------------------------------------------------------
-
-const disposableEmailDomains = [
-  'example.com',
-  'test.com',
-  'mailinator.com',
-  'tempmail.com',
-  '10minutemail.com',
-  // yopmail.com temporarily allowed for testing
-  'guerrillamail.com',
-];
 
 export const trustedOrganizationEmailDomains = ['isca.org.sg', 'ainexus.isca.org.sg'];
 
@@ -75,7 +67,7 @@ const hrEmailSchema = zod
   .email({ message: 'Please enter a valid email address.' })
   .max(254, { message: 'Email address is too long.' })
   .refine(
-    (value) => !disposableEmailDomains.includes(value.split('@')[1]?.toLowerCase() || ''),
+    (value) => !shouldBlockDisposableDomain(value.split('@')[1] || ''),
     { message: 'Temporary or disposable email addresses are not accepted. Please use your employer HR email.' }
   );
 const emailSchema = zod
@@ -86,9 +78,11 @@ const emailSchema = zod
   .email({ message: 'Email must be a valid email address!' })
   .max(100, { message: 'Email must be less than 100 characters!' })
   .refine(
-    (value) => !disposableEmailDomains.includes(value.split('@')[1]?.toLowerCase() || ''),
+    (value) => !shouldBlockDisposableDomain(value.split('@')[1] || ''),
     { message: 'Please enter a real email address.' }
   );
+
+export { emailSchema };
 
 export function isValidPersonalEmail(email) {
   return emailSchema.safeParse(String(email || '').trim()).success;
@@ -131,7 +125,7 @@ export function getStudentSchoolEmailValidationMessage(schoolEmail) {
   }
 
   const domain = value.split('@')[1] || '';
-  if (disposableEmailDomains.includes(domain)) {
+  if (shouldBlockDisposableDomain(domain)) {
     return 'Disposable email domains are not allowed.';
   }
 
@@ -476,6 +470,12 @@ export const ProfileSchema = zod.object({
   companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
 
   contactNumber: optionalPhoneSchema,
+});
+
+/** Site profile edit — only avatar and company code are editable. */
+export const SiteProfileSchema = zod.object({
+  avatar: avatarFieldSchema,
+  companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
 });
 
 // ----------------------------------------------------------------------

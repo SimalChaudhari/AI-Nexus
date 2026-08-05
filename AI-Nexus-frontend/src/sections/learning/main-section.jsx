@@ -5,7 +5,7 @@ import { useTheme } from '@mui/material/styles';
 import { AllCourses } from './all-courses';
 import { MyProgress } from './my-progress';
 import { MyBadges } from './my-badges';
-import { MyCertificates } from './my-certificates';
+// import { MyCertificates } from './my-certificates';
 import { MyFavorites } from './my-favorites';
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -47,8 +47,8 @@ export function LearningMainSection({ activeTab: activeTabProp, setActiveTab: se
       {/* Digital Badges View */}
       {activeTab === 'badges' && <MyBadges />}
 
-      {/* Certificates View */}
-      {activeTab === 'certificates' && <MyCertificates />}
+      {/* Certificates View temporarily hidden */}
+      {/* {activeTab === 'certificates' && <MyCertificates />} */}
 
     </DashboardContent>
   );

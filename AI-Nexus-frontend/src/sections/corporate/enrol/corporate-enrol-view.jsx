@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -6,7 +6,6 @@ import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
 import MenuItem from '@mui/material/MenuItem';
 import Checkbox from '@mui/material/Checkbox';
-import LinearProgress from '@mui/material/LinearProgress';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Typography from '@mui/material/Typography';
 
@@ -18,9 +17,7 @@ import { Form, Field } from 'src/components/hook-form';
 import { toast } from 'src/components/snackbar';
 import { useAuthContext } from 'src/auth/hooks';
 import {
-  downloadCorporateStaffCsvTemplate,
   enrolCorporateStaff,
-  enrolCorporateStaffBulkCsv,
   submitCorporateForeignQuotationRequest,
 } from 'src/services/corporate.service';
 import {
@@ -35,6 +32,7 @@ import {
 import { CORP } from '../corporate-theme';
 import { CorpBtn, CorpCard, CorpPageHeader } from '../corporate-ui';
 import { useCorporateCompanyCode } from '../use-corporate-data';
+import { CorporateCsvUploadDialog } from './corporate-csv-upload-dialog';
 
 // ----------------------------------------------------------------------
 
@@ -133,14 +131,23 @@ function buildEnrolPayload(form) {
     email,
   };
 
+  const idType = String(form.idType || '').trim();
+  if (idType) payload.id_type = idType;
+
+  const idNumber = String(form.idNumber || '').trim();
+  if (idNumber) payload.id_number = idNumber;
+
   const company = String(form.company || '').trim();
   if (company) payload.company = company;
 
   const department = String(form.department || '').trim();
   if (department) payload.department = department;
 
-  const staffRole = String(form.staffRole || '').trim();
-  if (staffRole) payload.staff_role = staffRole;
+  const jobFunction = String(form.jobFunction || '').trim();
+  if (jobFunction) payload.jobFunction = jobFunction;
+
+  const countryOfResidence = String(form.countryOfResidence || '').trim();
+  if (countryOfResidence) payload.countryOfResidence = countryOfResidence;
 
   const yearsRaw = String(form.yearsOfExperience || '').trim();
   if (yearsRaw !== '') {
@@ -154,6 +161,9 @@ function buildEnrolPayload(form) {
   const learnerAsAnAccounting = String(form.learnerAsAnAccounting || '').trim();
   if (learnerAsAnAccounting) payload.learnerAsAnAccounting = learnerAsAnAccounting;
 
+  const membershipNumber = String(form.membershipNumber || '').trim();
+  if (membershipNumber) payload.membershipNumber = membershipNumber;
+
   const eligibility = String(form.eligibility || '').trim();
   if (eligibility) payload.eligibility = eligibility;
 
@@ -166,14 +176,70 @@ function formatApiErrorMessage(err, fallback) {
   const raw = err?.response?.data?.message ?? err?.message ?? fallback;
   const text = Array.isArray(raw) ? raw.filter(Boolean).join(', ') : String(raw || fallback);
   const trimmed = text.trim() || fallback;
-  if (trimmed.length <= 140) return trimmed;
-  return `${trimmed.slice(0, 137)}…`;
+  if (trimmed.length <= 220) return trimmed;
+  return `${trimmed.slice(0, 217)}…`;
 }
 
-/** Short toast only — row-level reasons belong on Enrol Track. */
+function getEnrolSkipRows(result) {
+  const fromSkipped = Array.isArray(result?.skipped) ? result.skipped : [];
+  if (fromSkipped.length) {
+    return fromSkipped
+      .map((row) => ({
+        email: String(row?.email || '').trim(),
+        step: String(row?.step || '').trim(),
+        reason: String(row?.reason || '').trim(),
+      }))
+      .filter((row) => row.email || row.reason);
+  }
+
+  const fromRows = Array.isArray(result?.rows) ? result.rows : [];
+  return fromRows
+    .filter((row) => String(row?.status || '').toLowerCase() === 'skipped')
+    .map((row) => ({
+      email: String(row?.email || '').trim(),
+      step: String(row?.step || '').trim(),
+      reason: String(row?.reason || '').trim(),
+    }))
+    .filter((row) => row.email || row.reason);
+}
+
+function formatSkipReasonLine(row) {
+  const email = row.email || 'Learner';
+  const reason = row.reason || 'Skipped.';
+  return `${email}: ${reason}`;
+}
+
+function buildEnrolFailureToastMessage(result, skippedList, skipped, total) {
+  const firstReason = skippedList.find((row) => row.reason)?.reason;
+  const firstEmail = skippedList.find((row) => row.email)?.email;
+  const trackHint = result?.batchId ? ' See Enrol Track for details.' : '';
+
+  if (skippedList.length === 1 && firstReason) {
+    const line = firstEmail ? `${firstEmail}: ${firstReason}` : firstReason;
+    if (line.length <= 280) return line;
+    return `${line.slice(0, 277)}…`;
+  }
+
+  if (firstReason) {
+    const prefix =
+      skipped > 0
+        ? `No learners enrolled. ${skipped}${total ? ` of ${total}` : ''} row(s) skipped.`
+        : result?.message || 'No staff learners were enrolled.';
+    const detail = firstEmail ? `${firstEmail}: ${firstReason}` : firstReason;
+    const msg = `${prefix} ${detail}${trackHint}`;
+    if (msg.length <= 280) return msg;
+    return `${msg.slice(0, 277)}…`;
+  }
+
+  return skipped > 0
+    ? `No learners enrolled. ${skipped}${total ? ` of ${total}` : ''} row(s) skipped.${trackHint}`
+    : result?.message || 'No staff learners were enrolled.';
+}
+
+/** Toast + optional skip reason from Salesforce / precheck / local. */
 function showEnrolResultToast(result, fallbackSuccessMessage) {
   const summary = result?.summary || {};
-  const skippedList = Array.isArray(result?.skipped) ? result.skipped : [];
+  const skippedList = getEnrolSkipRows(result);
   const passed = Number(summary.finalPassed ?? 0);
   const skipped = Number(
     summary.finalSkipped ?? (skippedList.length > 0 ? skippedList.length : 0),
@@ -182,30 +248,20 @@ function showEnrolResultToast(result, fallbackSuccessMessage) {
   const trackHint = result?.batchId ? ' See Enrol Track for details.' : '';
 
   if (passed <= 0 && (result?.success === false || skipped > 0)) {
-    toast.warning(
-      skipped > 0
-        ? `No learners enrolled. ${skipped}${total ? ` of ${total}` : ''} row(s) skipped.${trackHint}`
-        : result?.message || 'No staff learners were enrolled.',
-    );
+    toast.error(buildEnrolFailureToastMessage(result, skippedList, skipped, total));
     return;
   }
 
   if (skipped > 0) {
-    toast.warning(
-      `${passed} enrolled, ${skipped} skipped${total ? ` of ${total}` : ''}.${trackHint}`,
-    );
+    const firstReason = skippedList.find((row) => row.reason)?.reason;
+    const extra = firstReason ? ` ${firstReason}` : '';
+    const msg = `${passed} enrolled, ${skipped} skipped${total ? ` of ${total}` : ''}.${extra}${trackHint}`;
+    toast.warning(msg.length <= 280 ? msg : `${msg.slice(0, 277)}…`);
     return;
   }
 
   toast.success(result?.message || fallbackSuccessMessage);
 }
-
-const CSV_PROGRESS_STEPS = [
-  { label: 'Reading CSV…', value: 18 },
-  { label: 'Checking emails in app & Salesforce…', value: 42 },
-  { label: 'Creating learners in Salesforce (batches of 100)…', value: 72 },
-  { label: 'Saving local users & track records…', value: 90 },
-];
 
 // ----------------------------------------------------------------------
 
@@ -213,11 +269,9 @@ export function CorporateEnrolView() {
   const router = useRouter();
   const companyCode = useCorporateCompanyCode();
   const { user } = useAuthContext();
-  const csvInputRef = useRef(null);
 
   const [authorised, setAuthorised] = useState(false);
-  const [csvSubmitting, setCsvSubmitting] = useState(false);
-  const [csvProgress, setCsvProgress] = useState({ active: false, label: '', value: 0 });
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [lastEnrolResult, setLastEnrolResult] = useState(null);
 
   const quotationDefaults = useMemo(() => {
@@ -298,46 +352,13 @@ export function CorporateEnrolView() {
     }
   });
 
-  const handleCsvSelected = async (event) => {
-    const file = event.target.files?.[0] || null;
-    event.target.value = '';
-    if (!file) return;
-    if (!/\.csv$/i.test(file.name || '')) {
-      toast.error('Only .csv files are allowed');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('CSV file must be 5MB or smaller');
-      return;
-    }
-
-    setCsvSubmitting(true);
-    setCsvProgress({ active: true, label: CSV_PROGRESS_STEPS[0].label, value: CSV_PROGRESS_STEPS[0].value });
-    let stepIndex = 0;
-    const progressTimer = window.setInterval(() => {
-      stepIndex = Math.min(stepIndex + 1, CSV_PROGRESS_STEPS.length - 1);
-      const step = CSV_PROGRESS_STEPS[stepIndex];
-      setCsvProgress({ active: true, label: step.label, value: step.value });
-    }, 2200);
-
-    try {
-      const result = await enrolCorporateStaffBulkCsv(file, companyCode || undefined);
-      setCsvProgress({ active: true, label: 'Finishing…', value: 100 });
-      setLastEnrolResult(result || null);
-      showEnrolResultToast(result, 'Bulk staff enrolment submitted successfully');
-      if (result?.batchId) {
-        window.setTimeout(() => {
-          router.push(paths.corporate.enrolTrackBatch(result.batchId));
-        }, 700);
-      }
-    } catch (err) {
-      toast.error(formatApiErrorMessage(err, 'Failed to enrol staff from CSV'));
-    } finally {
-      window.clearInterval(progressTimer);
-      setCsvSubmitting(false);
+  const handleCsvEnrolSuccess = (result) => {
+    setLastEnrolResult(result || null);
+    showEnrolResultToast(result, 'Bulk staff enrolment submitted successfully');
+    if (result?.batchId) {
       window.setTimeout(() => {
-        setCsvProgress({ active: false, label: '', value: 0 });
-      }, 400);
+        router.push(paths.corporate.enrolTrackBatch(result.batchId));
+      }, 700);
     }
   };
 
@@ -365,18 +386,17 @@ export function CorporateEnrolView() {
 
   return (
     <Box sx={{ width: '100%', minWidth: 0, overflowX: 'hidden' }}>
-      <input
-        ref={csvInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        hidden
-        onChange={handleCsvSelected}
+      <CorporateCsvUploadDialog
+        open={csvDialogOpen}
+        onClose={() => setCsvDialogOpen(false)}
+        companyCode={companyCode}
+        onSuccess={handleCsvEnrolSuccess}
       />
 
       <CorpPageHeader
         eyebrow="Staff Enrolment"
         title="Enrol learners individually or in bulk"
-        subtitle="Fee-waiver enrolment for Singaporean/PR learners and ISCA Members. Staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
+        subtitle="Fee-waiver enrolment for Singapore Citizen and Singapore PR learners. Staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
         titleSx={{ fontSize: { xs: 22, sm: 26, md: 30 } }}
         titleActions={
           <>
@@ -389,47 +409,15 @@ export function CorporateEnrolView() {
               Enrolment track
             </CorpBtn>
             <CorpBtn
-              variant="ghost"
-              onClick={downloadCorporateStaffCsvTemplate}
-              sx={{ width: { xs: '100%', sm: 'auto' } }}
-            >
-              Download CSV template
-            </CorpBtn>
-            <CorpBtn
               variant="blue"
-              onClick={() => csvInputRef.current?.click()}
-              disabled={csvSubmitting}
+              onClick={() => setCsvDialogOpen(true)}
               sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
-              {csvSubmitting ? 'Uploading…' : 'Upload CSV'}
+              Upload CSV
             </CorpBtn>
           </>
         }
       />
-
-      {csvProgress.active ? (
-        <CorpCard sx={{ mb: { xs: 1.75, md: 2.25 }, overflow: 'hidden' }}>
-          <Typography sx={{ color: CORP.navy, fontWeight: 700, mb: 1, fontSize: { xs: 14, sm: 15 } }}>
-            Upload in progress
-          </Typography>
-          <Typography sx={{ color: CORP.muted, mb: 1.25, fontSize: 13 }}>
-            {csvProgress.label}
-          </Typography>
-          <LinearProgress
-            variant="determinate"
-            value={csvProgress.value}
-            sx={{
-              height: 10,
-              borderRadius: 999,
-              bgcolor: '#e8eef6',
-              '& .MuiLinearProgress-bar': { bgcolor: CORP.blue, borderRadius: 999 },
-            }}
-          />
-          <Typography sx={{ color: CORP.muted, mt: 1, fontSize: 12 }}>
-            {csvProgress.value}% · Please keep this page open until enrolment finishes.
-          </Typography>
-        </CorpCard>
-      ) : null}
 
       {lastEnrolResult ? (
         <CorpCard sx={{ mb: { xs: 1.75, md: 2.25 }, overflow: 'hidden' }}>
@@ -442,6 +430,37 @@ export function CorporateEnrolView() {
               ? ` Sent ${lastEnrolResult.summary.totalReceived ?? '—'} · Passed ${lastEnrolResult.summary.finalPassed ?? lastEnrolResult.count ?? 0} · Skipped ${lastEnrolResult.summary.finalSkipped ?? 0}.`
               : null}
           </Typography>
+          {getEnrolSkipRows(lastEnrolResult).length ? (
+            <Box
+              sx={{
+                mb: 1.5,
+                p: 1.25,
+                borderRadius: '12px',
+                bgcolor: '#FFF5F5',
+                border: '1px solid #FECACA',
+              }}
+            >
+              <Typography sx={{ color: '#991B1B', fontWeight: 700, fontSize: 12.5, mb: 0.75 }}>
+                Skipped / failed
+              </Typography>
+              <Box component="ul" sx={{ m: 0, pl: 2.25, display: 'grid', gap: 0.75 }}>
+                {getEnrolSkipRows(lastEnrolResult).map((row) => (
+                  <Typography
+                    key={`${row.email}-${row.step}-${row.reason}`}
+                    component="li"
+                    sx={{ color: '#7F1D1D', fontSize: 13, lineHeight: 1.45 }}
+                  >
+                    {formatSkipReasonLine(row)}
+                    {row.step ? (
+                      <Box component="span" sx={{ color: '#B91C1C', display: 'block', fontSize: 11.5, mt: 0.25 }}>
+                        Step: {row.step}
+                      </Box>
+                    ) : null}
+                  </Typography>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {lastEnrolResult.batchId ? (
               <CorpBtn
@@ -490,7 +509,7 @@ export function CorporateEnrolView() {
                 fontSize: { xs: 13, sm: 14 },
               }}
             >
-              For Singaporean/Permanent Resident learners and ISCA Members only. All
+              For Singapore Citizen and Singapore PR learners only. All
               createblukuserfornexus fields are collected below (company and corporate account ID
               are pre-filled from your login when available). Fields marked{' '}
               <Box component="span" sx={{ color: '#d32f2f' }}>
@@ -500,8 +519,11 @@ export function CorporateEnrolView() {
             </Typography>
 
             <Box sx={formGridSx}>
-              <FieldLabel label="Salutation" required>
+              <FieldLabel label="Salutation">
                 <Field.Select name="salutation" size="small" sx={fieldSx}>
+                  <MenuItem value="">
+                    <em>Optional</em>
+                  </MenuItem>
                   <MenuItem value="Mr">Mr</MenuItem>
                   <MenuItem value="Ms">Ms</MenuItem>
                   <MenuItem value="Mrs">Mrs</MenuItem>
@@ -541,27 +563,59 @@ export function CorporateEnrolView() {
                   sx={fieldSx}
                 />
               </FieldLabel>
+              <FieldLabel label="ID type">
+                <Field.Select name="idType" size="small" sx={fieldSx}>
+                  <MenuItem value="">
+                    <em>Optional</em>
+                  </MenuItem>
+                  <MenuItem value="NRIC">NRIC</MenuItem>
+                  <MenuItem value="Blue NRIC">Blue NRIC</MenuItem>
+                  <MenuItem value="Pink NRIC">Pink NRIC</MenuItem>
+                  <MenuItem value="FIN">FIN</MenuItem>
+                  <MenuItem value="Passport">Passport</MenuItem>
+                </Field.Select>
+              </FieldLabel>
+              <FieldLabel label="ID number">
+                <Field.Text
+                  name="idNumber"
+                  size="small"
+                  placeholder="e.g. S8901234G (optional)"
+                  sx={fieldSx}
+                />
+              </FieldLabel>
               <FieldLabel label="Company" required>
                 <Field.Text
                   name="company"
                   size="small"
                   placeholder="e.g. Maybank"
-                  sx={fieldSx}
+                  InputProps={{ readOnly: true }}
+                  sx={{
+                    ...fieldSx,
+                    '& .MuiInputBase-root': { bgcolor: 'action.hover' },
+                  }}
                 />
               </FieldLabel>
-              <FieldLabel label="Department" required>
+              <FieldLabel label="Department">
                 <Field.Text
                   name="department"
                   size="small"
-                  placeholder="e.g. Banking Operations"
+                  placeholder="e.g. Banking Operations (optional)"
                   sx={fieldSx}
                 />
               </FieldLabel>
-              <FieldLabel label="Staff role" required>
+              <FieldLabel label="Job function" required>
                 <Field.Text
-                  name="staffRole"
+                  name="jobFunction"
                   size="small"
                   placeholder="e.g. Branch Manager"
+                  sx={fieldSx}
+                />
+              </FieldLabel>
+              <FieldLabel label="Country of residence">
+                <Field.Text
+                  name="countryOfResidence"
+                  size="small"
+                  placeholder="e.g. Singapore (optional)"
                   sx={fieldSx}
                 />
               </FieldLabel>
@@ -580,6 +634,18 @@ export function CorporateEnrolView() {
                   name="corporateAccountId"
                   size="small"
                   placeholder="e.g. 001fV000002uLIa"
+                  InputProps={{ readOnly: true }}
+                  sx={{
+                    ...fieldSx,
+                    '& .MuiInputBase-root': { bgcolor: 'action.hover' },
+                  }}
+                />
+              </FieldLabel>
+              <FieldLabel label="Membership number">
+                <Field.Text
+                  name="membershipNumber"
+                  size="small"
+                  placeholder="e.g. MEM20260031 (optional)"
                   sx={fieldSx}
                 />
               </FieldLabel>
@@ -587,14 +653,9 @@ export function CorporateEnrolView() {
                 <Field.Select name="eligibility" size="small" sx={fieldSx}>
                   <MenuItem value="Singapore Citizen">Singapore Citizen</MenuItem>
                   <MenuItem value="Singapore PR">Singapore PR</MenuItem>
-                  <MenuItem value="ISCA Member">ISCA Member</MenuItem>
                 </Field.Select>
               </FieldLabel>
-              <FieldLabel
-                wide
-                required
-                label="Is the learner working as an accounting and related profession?"
-              >
+              <FieldLabel label="Learner as an accounting professional" required>
                 <Field.Select name="learnerAsAnAccounting" size="small" sx={fieldSx}>
                   <MenuItem value="Yes">Yes</MenuItem>
                   <MenuItem value="No">No</MenuItem>
@@ -672,7 +733,7 @@ export function CorporateEnrolView() {
             }}
           >
             <Typography sx={{ fontWeight: 700, color: CORP.navy, fontSize: { xs: 14, sm: 16 } }}>
-              Foreign non-member rule
+              Foreign non-member quotation
             </Typography>
             <Typography
               sx={{
@@ -683,15 +744,16 @@ export function CorporateEnrolView() {
                 wordBreak: 'break-word',
               }}
             >
-              Foreigners who are not ISCA members cannot be enrolled through the single or bulk
-              enrolment flow. Send your request to{' '}
+              Fee-waiver enrolment is for <strong>Singapore Citizen</strong> and{' '}
+              <strong>Singapore PR</strong> only. For foreign
+              non-member learners, use the quotation form below or email{' '}
               <Link
                 href="mailto:hello@ainexus.isca.org.sg"
                 sx={{ color: CORP.blue, wordBreak: 'break-all' }}
               >
                 hello@ainexus.isca.org.sg
-              </Link>{' '}
-              for a separate quotation and enrolment arrangement.
+              </Link>
+              .
             </Typography>
           </Box>
 
@@ -725,12 +787,21 @@ export function CorporateEnrolView() {
               }}
             >
               <Box component="li">
-                CSV columns match Salesforce createblukuserfornexus (see template) — include
-                company, department, staff_role, corporateAccountId and eligibility.
+                Header labels are flexible (examples): First Name → first_name, Last Name →
+                last_name, Name as per ID → name_as_per_id, Email → email, ID Type → id_type,
+                ID Number → id_number, Company → company, Department → department, Job Function → jobFunction,
+                Country of Residence → countryOfResidence, Years of experience →
+                noOfYearOfRelevantWorkExperience, Corporate Account ID → corporateAccountId,
+                Learner as an Accounting Professional → learnerAsAnAccounting, Membership Number
+                → membershipNumber, Citizenship/Eligibility → eligibility. Close spellings
+                (≥80% match) are accepted; weaker matches return an error with a rename
+                suggestion.
               </Box>
               <Box component="li">
-                Company and corporateAccountId are pre-filled from your login when available; you
-                can edit them before submit.
+                Click <strong>Upload CSV</strong> to open the upload popup. Download the template
+                there, choose your file, and wait for validation (columns, emails, duplicates,
+                citizenship, existing app / Salesforce accounts). Submit stays disabled until
+                validation passes. NRIC / ID number is optional.
               </Box>
               <Box component="li">
                 Use View uploaded ZIP files for supporting document ZIP uploads.

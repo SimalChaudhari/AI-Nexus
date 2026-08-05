@@ -54,14 +54,17 @@ const zipFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
   cb(null, true);
 };
 
-const csvFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
-  const allowedExt = /\.csv$/i.test(file.originalname || '');
+const csvOrExcelFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
+  const name = String(file.originalname || '');
+  const allowedExt = /\.(csv|xlsx|xls)$/i.test(name);
+  const mime = String(file.mimetype || '');
   const allowedMime =
-    /^(text\/csv|application\/vnd\.ms-excel|application\/octet-stream|text\/plain)$/i.test(
-      file.mimetype || '',
-    ) || !file.mimetype;
+    !mime
+    || /^(text\/csv|text\/plain|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|application\/octet-stream)$/i.test(
+      mime,
+    );
   if (!allowedExt || !allowedMime) {
-    cb(new Error('Only .csv files are allowed') as any, false);
+    cb(new Error('Only .csv, .xlsx or .xls files are allowed') as any, false);
     return;
   }
   cb(null, true);
@@ -84,6 +87,16 @@ export class CorporateController {
       return String(req.user?.companyCode || '').trim() || undefined;
     }
     return queryCode;
+  }
+
+  @Get('profile')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Corporate HR profile (Salesforce userinfoforcorporate + local account)',
+  })
+  async getProfile(@Req() req: AuthedRequest) {
+    const data = await this.corporateService.getHrProfile(req.user?.id);
+    return { data };
   }
 
   @Get('overview')
@@ -340,9 +353,12 @@ export class CorporateController {
     return { data };
   }
 
-  @Post('staff-enrol/bulk-csv')
+  @Post('staff-enrol/bulk-csv/validate')
   @Roles(UserRole.Corporate, UserRole.Admin)
-  @ApiOperation({ summary: 'Enrol staff learners from CSV (createblukuserfornexus)' })
+  @ApiOperation({
+    summary:
+      'Validate bulk staff CSV/Excel before enrolment (columns, emails, duplicates, citizenship, local+SF)',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
   @ApiBody({
@@ -357,19 +373,59 @@ export class CorporateController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
-      fileFilter: csvFileFilter,
+      limits: { fileSize: 1024 * 1024 * 1024 },
+      fileFilter: csvOrExcelFileFilter,
+    }),
+  )
+  async validateStaffBulkCsv(
+    @Req() req: AuthedRequest,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('companyCode') companyCode?: string,
+  ) {
+    const data = await this.corporateService.validateStaffEnrolmentCsv({
+      actorUserId: req.user?.id,
+      companyCode: this.resolveCompanyCode(req, companyCode),
+      file,
+    });
+    return { data };
+  }
+
+  @Post('staff-enrol/bulk-csv')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({ summary: 'Enrol staff learners from CSV/Excel (createblukuserfornexus)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiQuery({ name: 'companyCode', required: false, description: 'Admin override only' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        excludeRows: {
+          type: 'string',
+          description: 'Comma-separated sheet row numbers to skip (header = row 1)',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 1024 * 1024 * 1024 },
+      fileFilter: csvOrExcelFileFilter,
     }),
   )
   async enrolStaffBulkCsv(
     @Req() req: AuthedRequest,
     @UploadedFile() file: Express.Multer.File,
+    @Body('excludeRows') excludeRows?: string,
     @Query('companyCode') companyCode?: string,
   ) {
     const data = await this.corporateService.enrolStaffBulkFromCsv({
       actorUserId: req.user?.id,
       companyCode: this.resolveCompanyCode(req, companyCode),
       file,
+      excludeRows,
     });
     return { data };
   }

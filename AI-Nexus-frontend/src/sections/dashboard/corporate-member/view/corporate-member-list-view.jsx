@@ -34,6 +34,7 @@ import { CorporateMemberTableToolbar } from '../corporate-member-table-toolbar';
 
 const TABLE_HEAD = [
   { id: 'name', label: 'Corporate Member' },
+  { id: 'company', label: 'Company Name', width: 200 },
   { id: 'companyCode', label: 'Company Code', width: 160 },
   { id: 'status', label: 'Status', width: 120 },
   { id: 'createdAt', label: 'Registered', width: 140 },

@@ -24,7 +24,7 @@ import { toast } from 'src/components/snackbar';
 import { Form, Field } from 'src/components/hook-form';
 import { createUser, updateUser } from 'src/store/slices/userSlice';
 import { userService } from 'src/services/user.service';
-import { NewUserSchema, ProfileSchema } from 'src/validations/user.validation';
+import { NewUserSchema, SiteProfileSchema } from 'src/validations/user.validation';
 import { fData } from 'src/utils/format-number';
 
 // ----------------------------------------------------------------------
@@ -73,7 +73,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   }, [currentUser, isProfileEdit]);
 
   const validationSchema = isProfileEdit
-    ? ProfileSchema
+    ? SiteProfileSchema
     : currentUser
       ? NewUserSchema.omit({ password: true })
       : NewUserSchema;
@@ -113,16 +113,29 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   const onSubmit = handleSubmit(
     async (data) => {
       try {
-        const backendData = {
-          username: data.username?.trim(),
-          firstname: data.firstname?.trim(),
-          lastname: data.lastname?.trim(),
-          email: data.email?.trim().toLowerCase(),
-          companyCode: typeof data.companyCode === 'string' && data.companyCode.trim() ? data.companyCode.trim() : null,
-          contactNumber:
-            typeof data.contactNumber === 'string' && data.contactNumber.trim() ? data.contactNumber.trim() : null,
-          avatar: data.avatar,
-        };
+        const backendData = isProfileEdit
+          ? {
+              companyCode:
+                typeof data.companyCode === 'string' && data.companyCode.trim()
+                  ? data.companyCode.trim()
+                  : null,
+              avatar: data.avatar,
+            }
+          : {
+              username: data.username?.trim(),
+              firstname: data.firstname?.trim(),
+              lastname: data.lastname?.trim(),
+              email: data.email?.trim().toLowerCase(),
+              companyCode:
+                typeof data.companyCode === 'string' && data.companyCode.trim()
+                  ? data.companyCode.trim()
+                  : null,
+              contactNumber:
+                typeof data.contactNumber === 'string' && data.contactNumber.trim()
+                  ? data.contactNumber.trim()
+                  : null,
+              avatar: data.avatar,
+            };
 
         if (!isProfileEdit) {
           const normalizedStatus = normalizeStatus(data.status || 'Active');
@@ -207,51 +220,184 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
         <Card sx={{ ...cardSx, p: { xs: 2.5, md: 4 } }}>
           <CardHeader
             title="Profile details"
-            subheader="Update your name, username, email, contact number, and profile image."
+            subheader="You can update your profile image and company code. Other details are view-only."
             sx={{ p: 0, mb: 3 }}
           />
           <Divider sx={{ mb: 4 }} />
 
-          <Stack spacing={4}>
+          <Stack spacing={3}>
             <Box
               sx={{
-                py: 2.5,
-                px: { xs: 1, md: 2 },
-                borderRadius: 2,
-                border: `1px dashed ${alpha(theme.palette.grey[500], 0.24)}`,
-                bgcolor: alpha(theme.palette.grey[500], 0.03),
+                p: { xs: 2, md: 2.5 },
+                borderRadius: 2.5,
+                border: `1.5px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.05),
               }}
             >
-              <Field.UploadAvatar
-                name="avatar"
-                maxSize={AVATAR_MAX_BYTES}
-                helperText={
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ mb: 2 }}
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Box>
                   <Typography
-                    variant="caption"
-                    sx={{ mt: 2, display: 'block', textAlign: 'center', color: 'text.secondary', lineHeight: 1.5 }}
+                    variant="overline"
+                    sx={{ fontWeight: 800, letterSpacing: 1, color: 'primary.main' }}
                   >
-                    Upload JPG, JPEG, PNG, GIF, or WEBP image.
-                    <br /> Maximum file size: {fData(AVATAR_MAX_BYTES)}.
+                    Editable
                   </Typography>
-                }
-              />
+                  <Typography variant="body2" color="text.secondary">
+                    Profile image and company code
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    px: 1,
+                    py: 0.35,
+                    borderRadius: 1,
+                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    color: 'primary.dark',
+                    typography: 'caption',
+                    fontWeight: 700,
+                  }}
+                >
+                  Can edit
+                </Box>
+              </Stack>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 2.5,
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: '1fr 1fr',
+                    md: '1fr 1fr',
+                  },
+                  alignItems: 'stretch',
+                }}
+              >
+                <Box
+                  sx={{
+                    py: 2.5,
+                    px: { xs: 1.5, md: 2 },
+                    borderRadius: 2,
+                    border: `1px dashed ${alpha(theme.palette.primary.main, 0.4)}`,
+                    bgcolor: alpha(theme.palette.background.paper, 0.7),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Field.UploadAvatar
+                    name="avatar"
+                    maxSize={AVATAR_MAX_BYTES}
+                    helperText={
+                      <Typography
+                        variant="caption"
+                        sx={{ mt: 2, display: 'block', textAlign: 'center', color: 'text.secondary', lineHeight: 1.5 }}
+                      >
+                        Upload JPG, JPEG, PNG, GIF, or WEBP.
+                        <br /> Max {fData(AVATAR_MAX_BYTES)}.
+                      </Typography>
+                    }
+                  />
+                </Box>
+
+                <Box
+                  sx={{
+                    p: { xs: 2, md: 2.5 },
+                    borderRadius: 2,
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                    bgcolor: alpha(theme.palette.background.paper, 0.7),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                    Company code
+                  </Typography>
+                  <Field.Text
+                    name="companyCode"
+                    label="Company’s Code (optional)"
+                    helperText="Enter your company code if you have one."
+                  />
+                </Box>
+              </Box>
             </Box>
 
             <Box
-              rowGap={2.5}
-              columnGap={2}
-              display="grid"
-              gridTemplateColumns={{
-                xs: 'repeat(1, 1fr)',
-                sm: 'repeat(2, 1fr)',
+              sx={{
+                p: { xs: 2, md: 2.5 },
+                borderRadius: 2.5,
+                border: `1px solid ${alpha(theme.palette.grey[500], 0.18)}`,
+                bgcolor: alpha(theme.palette.grey[500], theme.palette.mode === 'dark' ? 0.08 : 0.04),
               }}
             >
-              <Field.Text name="firstname" label="First name" />
-              <Field.Text name="lastname" label="Last name" />
-              <Field.Text name="username" label="Username" />
-              <Field.Text name="email" label="Email" type="email" />
-              <Field.Text name="companyCode" label="Company’s Code (optional)" />
-              <Field.Phone name="contactNumber" label="Contact number" />
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ mb: 2 }}
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Box>
+                  <Typography
+                    variant="overline"
+                    sx={{ fontWeight: 800, letterSpacing: 1, color: 'text.secondary' }}
+                  >
+                    Personal details
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    These fields are view-only and cannot be changed here.
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    px: 1,
+                    py: 0.35,
+                    borderRadius: 1,
+                    bgcolor: alpha(theme.palette.grey[500], 0.14),
+                    color: 'text.secondary',
+                    typography: 'caption',
+                    fontWeight: 700,
+                  }}
+                >
+                  View only
+                </Box>
+              </Stack>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 2,
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, 1fr)',
+                    md: 'repeat(3, 1fr)',
+                  },
+                }}
+              >
+                <Field.Text name="firstname" label="First name" disabled />
+                <Field.Text name="lastname" label="Last name" disabled />
+                <Field.Text name="username" label="Username" disabled />
+                <Field.Text name="email" label="Email" type="email" disabled />
+                <Box sx={{ gridColumn: { xs: 'auto', sm: 'span 1', md: 'span 2' } }}>
+                  <Field.Phone
+                    name="contactNumber"
+                    label="Contact number"
+                    disabled
+                    autoDetectCountry
+                  />
+                </Box>
+              </Box>
             </Box>
           </Stack>
 

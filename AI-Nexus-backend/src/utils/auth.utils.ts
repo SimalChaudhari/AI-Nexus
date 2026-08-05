@@ -1,4 +1,5 @@
 import { UserRole } from './../user/users.entity';
+import { shouldBlockDisposableDomain } from './email-disposable.util';
 
 /** Normalize email for lookups and storage: trim + lowercase. */
 export function normalizeEmail(email: string | undefined): string {
@@ -27,18 +28,9 @@ export const validateEmail = (input: string | undefined): boolean => {
     'temp',
     'example',
   ]);
-  const blockedDomains = new Set([
-    'example.com',
-    'test.com',
-    'mailinator.com',
-    'tempmail.com',
-    '10minutemail.com',
-    // yopmail.com temporarily allowed for testing
-    'guerrillamail.com',
-  ]);
 
   if (blockedLocalParts.has(localPart)) return false;
-  if (blockedDomains.has(domain)) return false;
+  if (shouldBlockDisposableDomain(domain)) return false;
   return true;
 };
 

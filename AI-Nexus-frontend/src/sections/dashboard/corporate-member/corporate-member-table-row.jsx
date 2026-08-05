@@ -81,6 +81,12 @@ export function CorporateMemberTableRow({ row, selected, onSelectRow, onViewRow 
       </TableCell>
 
       <TableCell>
+        <Typography variant="body2" noWrap sx={{ maxWidth: 220 }}>
+          {row.company && row.company !== '-' ? row.company : '—'}
+        </Typography>
+      </TableCell>
+
+      <TableCell>
         <Label variant="soft" color="info">
           {row.companyCode || '—'}
         </Label>

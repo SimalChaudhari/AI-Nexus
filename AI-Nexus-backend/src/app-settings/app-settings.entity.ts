@@ -328,6 +328,12 @@ export type FooterContent = {
   }>;
 };
 
+/** Fixed vertical promo tab on the Learning page (right edge). */
+export type LearningAdvertiseTabContent = {
+  name?: string;
+  link?: string;
+};
+
 export type MembershipPaymentSettings = {
   currency?: string;
   baseAmount?: number;
@@ -382,6 +388,14 @@ export class AppSettingsEntity {
   /** Issuer label on digital badges (e.g. AI Nexus). */
   @Column({ type: 'varchar', nullable: true })
   digitalBadgeIssuer?: string | null;
+
+  /** When true, learners cannot view/download any certificates platform-wide. */
+  @Column({ type: 'boolean', default: false })
+  hideAllCertificates!: boolean;
+
+  /** When true, learners cannot view/share any digital badges platform-wide. */
+  @Column({ type: 'boolean', default: false })
+  hideAllBadges!: boolean;
 
   /** Public contact hero text and map points managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })
@@ -442,6 +456,10 @@ export class AppSettingsEntity {
   /** Public site footer — stats band, links, and copyright. */
   @Column({ type: 'jsonb', nullable: true })
   footerContent?: FooterContent | null;
+
+  /** Learning page fixed vertical advertise / promo tab (name + link). */
+  @Column({ type: 'jsonb', nullable: true })
+  learningAdvertiseTabContent?: LearningAdvertiseTabContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

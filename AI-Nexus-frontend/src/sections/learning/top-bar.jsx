@@ -189,6 +189,7 @@ export function LearningTopBar({
               >
                 Digital Badge
               </Button>
+              {/* Certificates tab temporarily hidden
               <Button
                 onClick={() => setActiveTab('certificates')}
                 variant={activeTab === 'certificates' ? 'contained' : 'text'}
@@ -218,6 +219,7 @@ export function LearningTopBar({
               >
                 Certificates
               </Button>
+              */}
             </Stack>
           </Stack>
 
