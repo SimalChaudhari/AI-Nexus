@@ -6,9 +6,6 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
-import promptsTabIcon from 'src/assets/ai/chat.webp';
-
-import { Templates } from './templates';
 import { MyWorkflows } from './my-workflows';
 import { Skills } from './skills';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
@@ -18,12 +15,13 @@ import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
 // ----------------------------------------------------------------------
 
 const WORKFLOW_MAIN_TABS = [
-  {
-    id: 'templates',
-    label: 'Templates',
-    icon: 'solar:widget-5-bold-duotone',
-    imageSrc: null,
-  },
+  // Templates tab hidden for now — restore when ready to show again
+  // {
+  //   id: 'templates',
+  //   label: 'Templates',
+  //   icon: 'solar:widget-5-bold-duotone',
+  //   imageSrc: null,
+  // },
   {
     id: 'resources',
     label: AI_PLAYBOOKS_PROMPTS_TITLE,
@@ -44,12 +42,8 @@ export function WorkflowMainSection() {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
-  const resolveTab = (tab) =>
-    tab === 'resources' || tab === 'workflows' || tab === 'tools'
-      ? tab === 'tools'
-        ? 'tools'
-        : 'resources'
-      : 'templates';
+  // Default to AI Playbook Prompts while Templates is hidden
+  const resolveTab = (tab) => (tab === 'tools' ? 'tools' : 'resources');
   const initialTab = resolveTab(tabFromQuery);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -198,7 +192,6 @@ export function WorkflowMainSection() {
       </Box>
 
       <Box>
-        {activeTab === 'templates' && <Templates />}
         {activeTab === 'resources' && (
           <>
             <MyWorkflows />

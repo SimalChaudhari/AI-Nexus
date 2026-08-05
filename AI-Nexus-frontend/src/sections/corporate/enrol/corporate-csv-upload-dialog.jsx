@@ -31,8 +31,10 @@ import {
   CORPORATE_STAFF_CSV_TEMPLATE_HEADERS,
   downloadCorporateStaffCsvTemplate,
   enrolCorporateStaffBulkCsv,
+  getCorporateStaffBulkCsvProgress,
   validateCorporateStaffBulkCsv,
 } from 'src/services/corporate.service';
+import { uuidv4 } from 'src/utils/uuidv4';
 
 import { CORP } from '../corporate-theme';
 import { CorpBtn } from '../corporate-ui';
@@ -76,11 +78,7 @@ function formatApiErrorMessage(err, fallback) {
   return `${trimmed.slice(0, 177)}…`;
 }
 
-const SUBMIT_PROGRESS_STEPS = [
-  { label: 'Submitting validated file…', value: 25 },
-  { label: 'Creating learners in Salesforce…', value: 65 },
-  { label: 'Saving local users & track records…', value: 90 },
-];
+const PROGRESS_POLL_MS = 700;
 
 // ----------------------------------------------------------------------
 
@@ -96,17 +94,69 @@ export function CorporateCsvUploadDialog({
   const [submitting, setSubmitting] = useState(false);
   const [validation, setValidation] = useState(null);
   const [skippedRows, setSkippedRows] = useState(() => new Set());
-  const [progress, setProgress] = useState({ active: false, label: '', value: 0 });
+  /** When set, useEffect polls backend for accurate row % until cleared. */
+  const [progressJob, setProgressJob] = useState(null);
+  const [progress, setProgress] = useState({
+    active: false,
+    phase: '',
+    label: '',
+    value: 0,
+    current: null,
+    total: null,
+  });
   const [helpAnchorEl, setHelpAnchorEl] = useState(null);
+
+  // Accurate live progress: poll backend while a validate/enrol job is active.
+  useEffect(() => {
+    const jobId = String(progressJob?.jobId || '').trim();
+    const phase = progressJob?.phase || '';
+    if (!jobId) return undefined;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const snapshot = await getCorporateStaffBulkCsvProgress(jobId);
+        if (cancelled || !snapshot || typeof snapshot !== 'object') return;
+        const percent = Number(snapshot.percent);
+        setProgress((prev) => ({
+          active: true,
+          phase: snapshot.phase || phase || prev.phase,
+          label: String(snapshot.label || prev.label || ''),
+          value: Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : prev.value,
+          current: snapshot.current != null ? Number(snapshot.current) : prev.current,
+          total: snapshot.total != null ? Number(snapshot.total) : prev.total,
+        }));
+      } catch {
+        // Ignore transient poll errors while the main request is still running.
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, PROGRESS_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [progressJob]);
 
   useEffect(() => {
     if (!open) {
+      setProgressJob(null);
       setFile(null);
       setValidation(null);
       setValidating(false);
       setSubmitting(false);
       setSkippedRows(new Set());
-      setProgress({ active: false, label: '', value: 0 });
+      setProgress({
+        active: false,
+        phase: '',
+        label: '',
+        value: 0,
+        current: null,
+        total: null,
+      });
       setHelpAnchorEl(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -142,14 +192,52 @@ export function CorporateCsvUploadDialog({
 
   const runValidate = async (selectedFile) => {
     if (!selectedFile) return;
+    const progressJobId = uuidv4();
     setValidating(true);
     setValidation(null);
     setSkippedRows(new Set());
+    setProgress({
+      active: true,
+      phase: 'validate',
+      label: 'Starting validation…',
+      value: 0,
+      current: null,
+      total: null,
+    });
+    setProgressJob({ jobId: progressJobId, phase: 'validate' });
     try {
       const result = await validateCorporateStaffBulkCsv(
         selectedFile,
         companyCode || undefined,
+        {
+          progressJobId,
+          onUploadProgress: (uploadPercent) => {
+            // File transfer only — row % starts after the server begins processing.
+            setProgress((prev) => {
+              if (prev.current != null && prev.current > 0) return prev;
+              return {
+                ...prev,
+                active: true,
+                phase: 'validate',
+                label:
+                  uploadPercent < 100
+                    ? `Uploading file… ${uploadPercent}%`
+                    : 'Starting validation…',
+                value: 0,
+                current: 0,
+                total: prev.total,
+              };
+            });
+          },
+        },
       );
+      setProgress((prev) => ({
+        ...prev,
+        active: true,
+        phase: 'validate',
+        label: 'Validation complete',
+        value: 100,
+      }));
       setValidation(result || null);
       if (result?.valid) {
         toast.success(
@@ -180,7 +268,18 @@ export function CorporateCsvUploadDialog({
       });
       toast.error(formatApiErrorMessage(err, 'CSV validation failed'));
     } finally {
+      setProgressJob(null);
       setValidating(false);
+      window.setTimeout(() => {
+        setProgress({
+          active: false,
+          phase: '',
+          label: '',
+          value: 0,
+          current: null,
+          total: null,
+        });
+      }, 500);
     }
   };
 
@@ -219,34 +318,64 @@ export function CorporateCsvUploadDialog({
 
   const handleSubmit = async () => {
     if (!canSubmit || !file) return;
+    const progressJobId = uuidv4();
     setSubmitting(true);
     setProgress({
       active: true,
-      label: SUBMIT_PROGRESS_STEPS[0].label,
-      value: SUBMIT_PROGRESS_STEPS[0].value,
+      phase: 'enrol',
+      label: 'Starting enrolment…',
+      value: 0,
+      current: null,
+      total: null,
     });
-    let stepIndex = 0;
-    const progressTimer = window.setInterval(() => {
-      stepIndex = Math.min(stepIndex + 1, SUBMIT_PROGRESS_STEPS.length - 1);
-      const step = SUBMIT_PROGRESS_STEPS[stepIndex];
-      setProgress({ active: true, label: step.label, value: step.value });
-    }, 2200);
+    setProgressJob({ jobId: progressJobId, phase: 'enrol' });
 
     try {
       const excludeRows = errorRows.map((row) => row.row);
       const result = await enrolCorporateStaffBulkCsv(file, companyCode || undefined, {
         excludeRows,
+        progressJobId,
+        onUploadProgress: (uploadPercent) => {
+          setProgress((prev) => {
+            if (prev.current != null && prev.current > 0) return prev;
+            return {
+              ...prev,
+              active: true,
+              phase: 'enrol',
+              label:
+                uploadPercent < 100
+                  ? `Uploading file… ${uploadPercent}%`
+                  : 'Starting enrolment…',
+              value: 0,
+              current: 0,
+              total: prev.total,
+            };
+          });
+        },
       });
-      setProgress({ active: true, label: 'Finishing…', value: 100 });
+      setProgress((prev) => ({
+        ...prev,
+        active: true,
+        phase: 'enrol',
+        label: 'Enrolment complete',
+        value: 100,
+      }));
       onSuccess?.(result);
       onClose?.();
     } catch (err) {
       toast.error(formatApiErrorMessage(err, 'Failed to enrol learners from upload'));
     } finally {
-      window.clearInterval(progressTimer);
+      setProgressJob(null);
       setSubmitting(false);
       window.setTimeout(() => {
-        setProgress({ active: false, label: '', value: 0 });
+        setProgress({
+          active: false,
+          phase: '',
+          label: '',
+          value: 0,
+          current: null,
+          total: null,
+        });
       }, 400);
     }
   };
@@ -256,6 +385,12 @@ export function CorporateCsvUploadDialog({
   const fullScreen = useMediaQuery(theme.breakpoints.down('md'));
   const hasResults = Boolean(validation) || validating || progress.active;
   const expanded = hasResults || Boolean(file);
+  const progressTitle =
+    progress.phase === 'validate' ? 'Validation in progress' : 'Enrolment in progress';
+  const progressDetail =
+    progress.current != null && progress.total != null && progress.total > 0
+      ? `${progress.current} of ${progress.total} rows`
+      : null;
 
   const headCellSx = {
     fontWeight: 800,
@@ -486,7 +621,78 @@ export function CorporateCsvUploadDialog({
           </Typography>
         ) : null}
 
-        {validating ? (
+        {progress.active ? (
+          <Box
+            sx={{
+              mb: 2,
+              flexShrink: 0,
+              p: 2,
+              borderRadius: 1.5,
+              border: `1px solid ${CORP.line}`,
+              bgcolor: '#f8fafc',
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: 1.5,
+                mb: 0.75,
+              }}
+            >
+              <Typography sx={{ color: CORP.navy, fontWeight: 800, fontSize: 14 }}>
+                {progressTitle}
+              </Typography>
+              <Typography
+                sx={{
+                  color: CORP.blue,
+                  fontWeight: 800,
+                  fontSize: 18,
+                  fontVariantNumeric: 'tabular-nums',
+                  flexShrink: 0,
+                }}
+              >
+                {Math.round(progress.value)}%
+              </Typography>
+            </Box>
+            <Typography sx={{ color: CORP.muted, mb: 1.25, fontSize: 13, lineHeight: 1.45 }}>
+              {progress.label}
+            </Typography>
+            {progressDetail ? (
+              <Typography
+                sx={{
+                  color: CORP.navy,
+                  fontWeight: 800,
+                  fontSize: 15,
+                  mb: 1.25,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {progressDetail}
+              </Typography>
+            ) : null}
+            <LinearProgress
+              variant="determinate"
+              value={progress.value}
+              sx={{
+                height: 12,
+                borderRadius: 999,
+                bgcolor: '#e8eef6',
+                '& .MuiLinearProgress-bar': {
+                  bgcolor: CORP.blue,
+                  borderRadius: 999,
+                  transition: 'transform 0.35s ease',
+                },
+              }}
+            />
+            <Typography sx={{ color: CORP.muted, mt: 1, fontSize: 12 }}>
+              Please keep this window open until it finishes.
+            </Typography>
+          </Box>
+        ) : null}
+
+        {validating && !progress.active ? (
           <Box
             sx={{
               display: 'flex',
@@ -503,25 +709,6 @@ export function CorporateCsvUploadDialog({
             <Typography sx={{ fontSize: 13, color: CORP.muted, textAlign: 'center' }}>
               Validating emails, citizenship, and existing accounts…
             </Typography>
-          </Box>
-        ) : null}
-
-        {progress.active ? (
-          <Box sx={{ mb: 2, flexShrink: 0 }}>
-            <Typography sx={{ color: CORP.navy, fontWeight: 700, mb: 1, fontSize: 14 }}>
-              Enrolment in progress
-            </Typography>
-            <Typography sx={{ color: CORP.muted, mb: 1, fontSize: 13 }}>{progress.label}</Typography>
-            <LinearProgress
-              variant="determinate"
-              value={progress.value}
-              sx={{
-                height: 10,
-                borderRadius: 999,
-                bgcolor: '#e8eef6',
-                '& .MuiLinearProgress-bar': { bgcolor: CORP.blue, borderRadius: 999 },
-              }}
-            />
           </Box>
         ) : null}
 
@@ -816,7 +1003,7 @@ export function CorporateCsvUploadDialog({
           disabled={!canSubmit}
         >
           {submitting
-            ? 'Submitting…'
+            ? `Submitting… ${Math.round(progress.value)}%`
             : skippedErrorCount > 0
               ? `Submit ${readyRows.length} ready row(s)`
               : 'Submit enrolment'}

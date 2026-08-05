@@ -136,8 +136,40 @@ type PillarLessonInfo = {
   lessonTitle: string | null;
 };
 
+/** Live progress for CSV validate / enrol — polled by the corporate upload dialog. */
+export type StaffEnrolProgressSnapshot = {
+  jobId: string;
+  phase: 'validate' | 'enrol';
+  status: 'running' | 'done' | 'error';
+  percent: number;
+  label: string;
+  current?: number;
+  total?: number;
+  error?: string | null;
+  updatedAt: string;
+};
+
+type StaffEnrolProgressJob = {
+  jobId: string;
+  actorUserId: string;
+  phase: 'validate' | 'enrol';
+  status: 'running' | 'done' | 'error';
+  percent: number;
+  label: string;
+  current?: number;
+  total?: number;
+  error?: string | null;
+  updatedAt: number;
+  expiresAt: number;
+};
+
+const STAFF_ENROL_PROGRESS_TTL_MS = 30 * 60 * 1000;
+const STAFF_ENROL_PROGRESS_DONE_TTL_MS = 10 * 60 * 1000;
+
 @Injectable()
 export class CorporateService {
+  private readonly staffEnrolProgressJobs = new Map<string, StaffEnrolProgressJob>();
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -170,6 +202,136 @@ export class CorporateService {
     private readonly oauthAuthService: OAuthAuthService,
     private readonly companyEnrollmentService: CompanyEnrollmentService,
   ) {}
+
+  private pruneStaffEnrolProgressJobs() {
+    const now = Date.now();
+    for (const [id, job] of this.staffEnrolProgressJobs.entries()) {
+      if (job.expiresAt <= now) this.staffEnrolProgressJobs.delete(id);
+    }
+  }
+
+  private clampProgressPercent(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  /** Exact sheet progress: 1/100 → 1%, 2/200 → 1%, 50/100 → 50%. */
+  private rowBasedPercent(current: number, total: number): number {
+    const t = Math.max(0, Number(total) || 0);
+    const c = Math.max(0, Number(current) || 0);
+    if (t <= 0 || c <= 0) return 0;
+    return this.clampProgressPercent((c / t) * 100);
+  }
+
+  startStaffEnrolProgressJob(params: {
+    jobId?: string;
+    actorUserId?: string;
+    phase: 'validate' | 'enrol';
+    label?: string;
+  }): string | null {
+    const jobId = String(params.jobId || '').trim();
+    if (!jobId || jobId.length > 80) return null;
+    this.pruneStaffEnrolProgressJobs();
+    const now = Date.now();
+    this.staffEnrolProgressJobs.set(jobId, {
+      jobId,
+      actorUserId: String(params.actorUserId || '').trim(),
+      phase: params.phase,
+      status: 'running',
+      percent: 0,
+      label: params.label || (params.phase === 'validate' ? 'Starting validation…' : 'Starting enrolment…'),
+      error: null,
+      updatedAt: now,
+      expiresAt: now + STAFF_ENROL_PROGRESS_TTL_MS,
+    });
+    console.log(
+      `[CorporateCsvProgress] ${params.phase} started (job ${jobId.slice(0, 8)}…)`,
+    );
+    return jobId;
+  }
+
+  private setStaffEnrolProgress(
+    jobId: string | null | undefined,
+    patch: {
+      percent?: number;
+      label?: string;
+      current?: number;
+      total?: number;
+      status?: 'running' | 'done' | 'error';
+      error?: string | null;
+    },
+  ) {
+    const id = String(jobId || '').trim();
+    if (!id) return;
+    const existing = this.staffEnrolProgressJobs.get(id);
+    if (!existing) return;
+    const now = Date.now();
+    const percent =
+      patch.percent != null
+        ? this.clampProgressPercent(patch.percent)
+        : existing.percent;
+    const prevPercent = existing.percent;
+    const prevCurrent = existing.current;
+    const prevStatus = existing.status;
+    existing.percent = percent;
+    if (patch.label != null) existing.label = String(patch.label);
+    if (patch.current != null) existing.current = patch.current;
+    if (patch.total != null) existing.total = patch.total;
+    if (patch.status != null) existing.status = patch.status;
+    if (patch.error !== undefined) existing.error = patch.error;
+    existing.updatedAt = now;
+    existing.expiresAt =
+      existing.status === 'running'
+        ? now + STAFF_ENROL_PROGRESS_TTL_MS
+        : now + STAFF_ENROL_PROGRESS_DONE_TTL_MS;
+    this.staffEnrolProgressJobs.set(id, existing);
+
+    const currentChanged = existing.current !== prevCurrent;
+    const percentChanged = existing.percent !== prevPercent;
+    const statusChanged = existing.status !== prevStatus;
+    // Log every row / status change so terminal shows real sheet progress.
+    if (currentChanged || percentChanged || statusChanged || patch.label != null) {
+      const rowPart =
+        existing.current != null && existing.total != null
+          ? ` | row ${existing.current}/${existing.total}`
+          : '';
+      const statusPart =
+        existing.status && existing.status !== 'running'
+          ? ` | ${existing.status}`
+          : '';
+      console.log(
+        `[CorporateCsvProgress] ${existing.phase} ${existing.percent}%${rowPart}${statusPart} — ${existing.label}`,
+      );
+      if (existing.error) {
+        console.log(`[CorporateCsvProgress] error: ${existing.error}`);
+      }
+    }
+  }
+
+  getStaffEnrolProgress(params: {
+    jobId: string;
+    actorUserId?: string;
+  }): StaffEnrolProgressSnapshot | null {
+    this.pruneStaffEnrolProgressJobs();
+    const jobId = String(params.jobId || '').trim();
+    const job = this.staffEnrolProgressJobs.get(jobId);
+    if (!job) return null;
+    const actorUserId = String(params.actorUserId || '').trim();
+    if (job.actorUserId && actorUserId && job.actorUserId !== actorUserId) {
+      return null;
+    }
+    return {
+      jobId: job.jobId,
+      phase: job.phase,
+      status: job.status,
+      percent: job.percent,
+      label: job.label,
+      current: job.current,
+      total: job.total,
+      error: job.error ?? null,
+      updatedAt: new Date(job.updatedAt).toISOString(),
+    };
+  }
 
   private looksLikeSalesforceAccountId(value: string): boolean {
     return /^001[a-zA-Z0-9]{12,17}$/.test(String(value || '').trim());
@@ -809,12 +971,24 @@ export class CorporateService {
     isAuthorisedSubmit?: boolean;
     source?: 'single' | 'csv' | 'excel';
     fileName?: string;
+    progressJobId?: string | null;
   }) {
     const learners = Array.isArray(params.learners) ? params.learners : [];
     if (!learners.length) {
       throw new BadRequestException('At least one learner is required.');
     }
 
+    const progressJobId = String(params.progressJobId || '').trim() || null;
+    const reportProgress = (patch: {
+      percent?: number;
+      label?: string;
+      current?: number;
+      total?: number;
+      status?: 'running' | 'done' | 'error';
+      error?: string | null;
+    }) => this.setStaffEnrolProgress(progressJobId, patch);
+
+    try {
     const bulkAuthorised = this.parseAuthorisedSubmitFlag(params.isAuthorisedSubmit);
     const allLearnersAuthorised = learners.every((row) =>
       this.parseAuthorisedSubmitFlag(row.isAuthorisedSubmit),
@@ -827,6 +1001,13 @@ export class CorporateService {
         `Bulk enrolment supports a maximum of ${BULK_ENROLMENT_CSV_MAX_ROWS} learners per request.`,
       );
     }
+
+    reportProgress({
+      percent: 0,
+      label: 'Preparing enrolment…',
+      current: 0,
+      total: learners.length,
+    });
 
     const companyCode = await this.resolveEnrolCompanyCode({
       actorUserId: params.actorUserId,
@@ -864,8 +1045,17 @@ export class CorporateService {
       batchSize: BULK_ENROLMENT_SF_BATCH_SIZE,
     });
 
+    reportProgress({
+      percent: 0,
+      label: `Checking learners (0/${totalReceived})…`,
+      current: 0,
+      total: totalReceived,
+    });
+
     // ── 1) Pre-check per row — duplicates/issues are skipped, not fatal.
-    for (const row of payload) {
+    for (let i = 0; i < payload.length; i += 1) {
+      const row = payload[i];
+      try {
       const email = String(row.email || '').trim().toLowerCase();
       if (!email) {
         skipped.push({ email: '', step: 'precheck', reason: 'Email is required.' });
@@ -1020,6 +1210,16 @@ export class CorporateService {
       }
 
       eligible.push(row);
+      } finally {
+        const currentRow = i + 1;
+        // Check phase = first half of the bar (row-accurate).
+        reportProgress({
+          percent: Math.round((currentRow / Math.max(1, totalReceived)) * 50),
+          label: `Checking learner ${currentRow} of ${totalReceived}…`,
+          current: currentRow,
+          total: totalReceived,
+        });
+      }
     }
 
     const precheckPassed = eligible.length;
@@ -1036,6 +1236,13 @@ export class CorporateService {
       );
     }
 
+    reportProgress({
+      percent: 50,
+      label: `Pre-check done — ${precheckPassed} of ${totalReceived} ready to enrol`,
+      current: totalReceived,
+      total: totalReceived,
+    });
+
     const salesforceBatches: Array<{
       batchNo: number;
       size: number;
@@ -1049,6 +1256,8 @@ export class CorporateService {
       1,
       Math.ceil(eligible.length / BULK_ENROLMENT_SF_BATCH_SIZE),
     );
+    const enrolTotal = Math.max(1, eligible.length);
+    let enrolledRowsDone = 0;
 
     // ── 2) Salesforce create in batches of 100 — skip failed rows, continue others.
     for (let offset = 0; offset < eligible.length; offset += BULK_ENROLMENT_SF_BATCH_SIZE) {
@@ -1057,6 +1266,13 @@ export class CorporateService {
       console.log(
         `[CorporateEnrol] Salesforce batch ${batchNo}/${totalSfBatches} starting (size=${batch.length})`,
       );
+
+      reportProgress({
+        percent: 50 + Math.round((enrolledRowsDone / enrolTotal) * 50),
+        label: `Enrolling learners ${enrolledRowsDone} of ${enrolTotal}…`,
+        current: enrolledRowsDone,
+        total: enrolTotal,
+      });
 
       const batchOutcome = await this.oauthAuthService.createSalesforceBulkNexusUsersWithOutcomes(
         batch,
@@ -1100,6 +1316,14 @@ export class CorporateService {
         failed: batchFailed,
       });
 
+      enrolledRowsDone += batch.length;
+      reportProgress({
+        percent: 50 + Math.round((enrolledRowsDone / enrolTotal) * 50),
+        label: `Enrolled ${enrolledRowsDone} of ${enrolTotal} learners…`,
+        current: enrolledRowsDone,
+        total: enrolTotal,
+      });
+
       console.log(
         `[CorporateEnrol] Salesforce batch ${batchNo}/${totalSfBatches} done: sent=${batch.length} | passed=${batchSucceeded} | failed=${batchFailed}`,
       );
@@ -1113,12 +1337,24 @@ export class CorporateService {
 
     if (!eligible.length) {
       console.log('[CorporateEnrol] No eligible rows left for Salesforce create.');
+      reportProgress({
+        percent: 100,
+        label: 'No learners left to enrol after pre-check',
+        current: totalReceived,
+        total: totalReceived,
+      });
     }
 
     // ── 3) Local users table entry only for Salesforce successes.
     console.log(
       `[CorporateEnrol] Local users create starting for ${salesforceSucceededRows.length} Salesforce success row(s)`,
     );
+    reportProgress({
+      percent: eligible.length ? 99 : 100,
+      label: `Saving local users (${salesforceSucceededRows.length})…`,
+      current: enrolledRowsDone || totalReceived,
+      total: eligible.length ? enrolTotal : totalReceived,
+    });
     const local = await this.provisionLocalStaffLearners({
       companyCode,
       companyName: companyName || undefined,
@@ -1219,6 +1455,13 @@ export class CorporateService {
       finalSkipped: skippedCount,
     };
 
+    reportProgress({
+      percent: 99,
+      label: 'Saving enrolment track record…',
+      current: totalReceived,
+      total: totalReceived,
+    });
+
     let batchId: string | null = null;
     try {
       const saved = await this.staffEnrolBatchRepository.save(
@@ -1244,6 +1487,16 @@ export class CorporateService {
       console.error('[CorporateEnrol] failed to save enrol batch track:', err);
     }
 
+    reportProgress({
+      percent: 100,
+      label: success
+        ? `Enrolment complete — ${provisioned} of ${totalReceived} enrolled`
+        : 'Enrolment finished',
+      status: 'done',
+      current: totalReceived,
+      total: totalReceived,
+    });
+
     return {
       success,
       message,
@@ -1258,6 +1511,17 @@ export class CorporateService {
       salesforce: salesforceRawResponses,
       local,
     };
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Enrolment failed.';
+      reportProgress({
+        percent: 100,
+        label: 'Enrolment failed',
+        status: 'error',
+        error: message,
+      });
+      throw err;
+    }
   }
 
   private parseCsvLine(line: string): string[] {
@@ -1951,8 +2215,21 @@ export class CorporateService {
     actorUserId?: string;
     companyCode?: string;
     file?: Express.Multer.File;
+    progressJobId?: string | null;
   }) {
     const file = params.file;
+    const progressJobId = String(params.progressJobId || '').trim() || null;
+    const reportProgress = (patch: {
+      percent?: number;
+      label?: string;
+      current?: number;
+      total?: number;
+      status?: 'running' | 'done' | 'error';
+      error?: string | null;
+    }) => this.setStaffEnrolProgress(progressJobId, patch);
+
+    reportProgress({ percent: 0, label: 'Reading upload…' });
+
     const errors: Array<{
       type: 'file' | 'header' | 'row';
       row?: number;
@@ -1962,6 +2239,12 @@ export class CorporateService {
     }> = [];
 
     if (!file?.buffer?.length) {
+      reportProgress({
+        percent: 100,
+        label: 'Validation failed',
+        status: 'error',
+        error: 'CSV or Excel file is required.',
+      });
       return {
         valid: false,
         fileName: '',
@@ -1984,6 +2267,12 @@ export class CorporateService {
 
     const original = String(file.originalname || '').toLowerCase();
     if (!this.isStaffEnrolmentSpreadsheetFile(original)) {
+      reportProgress({
+        percent: 100,
+        label: 'Validation failed',
+        status: 'error',
+        error: 'Only .csv, .xlsx or .xls files are allowed.',
+      });
       return {
         valid: false,
         fileName: String(file.originalname || ''),
@@ -2005,6 +2294,12 @@ export class CorporateService {
     }
 
     if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
+      reportProgress({
+        percent: 100,
+        label: 'Validation failed',
+        status: 'error',
+        error: 'CSV file must be 1GB or smaller.',
+      });
       return {
         valid: false,
         fileName: String(file.originalname || ''),
@@ -2027,6 +2322,7 @@ export class CorporateService {
 
     let learners: CorporateStaffLearnerDto[] = [];
     let requiredColumnsOk = true;
+    reportProgress({ percent: 0, label: 'Parsing spreadsheet…' });
     try {
       learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
     } catch (err: unknown) {
@@ -2048,6 +2344,12 @@ export class CorporateService {
       for (const msg of messages) {
         errors.push({ type: 'header', message: String(msg) });
       }
+      reportProgress({
+        percent: 100,
+        label: 'Validation failed',
+        status: 'error',
+        error: messages[0] || 'Invalid CSV headers or content.',
+      });
       return {
         valid: false,
         fileName: String(file.originalname || ''),
@@ -2111,6 +2413,14 @@ export class CorporateService {
       statusLabel: string;
       messages: string[];
     }> = [];
+
+    const totalLearners = learners.length;
+    reportProgress({
+      percent: 0,
+      label: `Validating rows (0/${totalLearners})…`,
+      current: 0,
+      total: totalLearners,
+    });
 
     for (let i = 0; i < learners.length; i += 1) {
       const row = learners[i];
@@ -2264,9 +2574,27 @@ export class CorporateService {
         statusLabel: rowHasError ? rowMessages[0] || 'Failed' : 'Ready',
         messages: rowMessages,
       });
+
+      const currentRow = i + 1;
+      reportProgress({
+        percent: this.rowBasedPercent(currentRow, totalLearners),
+        label: `Validating row ${currentRow} of ${totalLearners}…`,
+        current: currentRow,
+        total: totalLearners,
+      });
     }
 
     const valid = errors.length === 0 && validRows > 0;
+
+    reportProgress({
+      percent: 100,
+      label: valid
+        ? `Validation complete — ${validRows} ready`
+        : `Validation complete — ${validRows} ready, ${errors.length} issue(s)`,
+      status: 'done',
+      current: totalLearners,
+      total: totalLearners,
+    });
 
     return {
       valid,
@@ -2294,38 +2622,68 @@ export class CorporateService {
     companyCode?: string;
     file?: Express.Multer.File;
     excludeRows?: string | number[] | null;
+    progressJobId?: string | null;
   }) {
     const file = params.file;
-    if (!file?.buffer?.length) {
-      throw new BadRequestException('CSV or Excel file is required.');
-    }
-    if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
-      throw new BadRequestException('Upload file must be 1GB or smaller.');
-    }
-    const original = String(file.originalname || '').toLowerCase();
-    if (!this.isStaffEnrolmentSpreadsheetFile(original)) {
-      throw new BadRequestException(
-        'Only .csv, .xlsx or .xls files are allowed for bulk learner enrolment.',
-      );
-    }
+    const progressJobId = String(params.progressJobId || '').trim() || null;
+    try {
+      if (progressJobId) {
+        this.setStaffEnrolProgress(progressJobId, {
+          percent: 2,
+          label: 'Reading upload…',
+        });
+      }
+      if (!file?.buffer?.length) {
+        throw new BadRequestException('CSV or Excel file is required.');
+      }
+      if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
+        throw new BadRequestException('Upload file must be 1GB or smaller.');
+      }
+      const original = String(file.originalname || '').toLowerCase();
+      if (!this.isStaffEnrolmentSpreadsheetFile(original)) {
+        throw new BadRequestException(
+          'Only .csv, .xlsx or .xls files are allowed for bulk learner enrolment.',
+        );
+      }
 
-    let learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
-    const exclude = this.parseExcludeRowNumbers(params.excludeRows);
-    if (exclude.size) {
-      learners = learners.filter((_row, index) => !exclude.has(index + 2));
-    }
-    if (!learners.length) {
-      throw new BadRequestException('No learner rows left to enrol after skipping errors.');
-    }
+      if (progressJobId) {
+        this.setStaffEnrolProgress(progressJobId, {
+          percent: 4,
+          label: 'Parsing spreadsheet…',
+        });
+      }
 
-    return this.enrolStaffBulk({
-      actorUserId: params.actorUserId,
-      companyCode: params.companyCode,
-      learners,
-      isAuthorisedSubmit: true,
-      source: this.isStaffEnrolmentExcelFile(original) ? 'excel' : 'csv',
-      fileName: String(file.originalname || '').trim() || undefined,
-    });
+      let learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
+      const exclude = this.parseExcludeRowNumbers(params.excludeRows);
+      if (exclude.size) {
+        learners = learners.filter((_row, index) => !exclude.has(index + 2));
+      }
+      if (!learners.length) {
+        throw new BadRequestException('No learner rows left to enrol after skipping errors.');
+      }
+
+      return await this.enrolStaffBulk({
+        actorUserId: params.actorUserId,
+        companyCode: params.companyCode,
+        learners,
+        isAuthorisedSubmit: true,
+        source: this.isStaffEnrolmentExcelFile(original) ? 'excel' : 'csv',
+        fileName: String(file.originalname || '').trim() || undefined,
+        progressJobId,
+      });
+    } catch (err) {
+      if (progressJobId) {
+        const message =
+          err instanceof Error ? err.message : 'Enrolment failed.';
+        this.setStaffEnrolProgress(progressJobId, {
+          percent: 100,
+          label: 'Enrolment failed',
+          status: 'error',
+          error: message,
+        });
+      }
+      throw err;
+    }
   }
 
   async listStaffEnrolBatches(params: {

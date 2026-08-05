@@ -242,15 +242,24 @@ export async function enrolCorporateStaff(learner, companyCode) {
   return response.data?.data ?? response.data;
 }
 
-export async function validateCorporateStaffBulkCsv(file, companyCode) {
+export async function validateCorporateStaffBulkCsv(file, companyCode, options = {}) {
   const formData = new FormData();
   formData.append('file', file);
+  const progressJobId = String(options.progressJobId || '').trim();
+  if (progressJobId) {
+    formData.append('progressJobId', progressJobId);
+  }
   const response = await axios.post('/corporate/staff-enrol/bulk-csv/validate', formData, {
     params: companyCode ? { companyCode } : undefined,
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 0,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
+    onUploadProgress: (event) => {
+      if (typeof options.onUploadProgress !== 'function') return;
+      if (!event?.total) return;
+      options.onUploadProgress(Math.round((event.loaded * 100) / event.total));
+    },
   });
   return response.data?.data ?? response.data;
 }
@@ -264,13 +273,29 @@ export async function enrolCorporateStaffBulkCsv(file, companyCode, options = {}
   if (excludeRows) {
     formData.append('excludeRows', excludeRows);
   }
+  const progressJobId = String(options.progressJobId || '').trim();
+  if (progressJobId) {
+    formData.append('progressJobId', progressJobId);
+  }
   const response = await axios.post('/corporate/staff-enrol/bulk-csv', formData, {
     params: companyCode ? { companyCode } : undefined,
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 0,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
+    onUploadProgress: (event) => {
+      if (typeof options.onUploadProgress !== 'function') return;
+      if (!event?.total) return;
+      options.onUploadProgress(Math.round((event.loaded * 100) / event.total));
+    },
   });
+  return response.data?.data ?? response.data;
+}
+
+export async function getCorporateStaffBulkCsvProgress(jobId) {
+  const id = String(jobId || '').trim();
+  if (!id) return null;
+  const response = await axios.get(`/corporate/staff-enrol/bulk-csv/progress/${encodeURIComponent(id)}`);
   return response.data?.data ?? response.data;
 }
 

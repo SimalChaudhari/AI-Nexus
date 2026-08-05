@@ -658,7 +658,6 @@ export class OAuthAuthService {
 
     const accessToken = await this.getIntegrationAccessToken();
     const url = this.buildUserCheckForEmailUrl(normalized);
-    console.log('[Salesforce] usercheckforemail:', { url, email: normalized });
 
     try {
       const res = await axios.get<Record<string, unknown>>(url, {
@@ -669,10 +668,6 @@ export class OAuthAuthService {
         timeout: 30000,
       });
       const parsed = this.parseSalesforceUserCheckPayload(res.data);
-      console.log('[Salesforce] usercheckforemail result:', {
-        found: parsed.found,
-        emailAddress: parsed.emailAddress ? '[present]' : '',
-      });
       return parsed;
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
@@ -1333,13 +1328,11 @@ export class OAuthAuthService {
   async getIntegrationAccessToken(): Promise<string> {
     const staticToken = process.env.OAUTH_INTEGRATION_ACCESS_TOKEN?.trim();
     if (staticToken) {
-      console.log('[Salesforce] Using OAUTH_INTEGRATION_ACCESS_TOKEN from environment.');
       return staticToken;
     }
 
     const url = this.integrationTokenUrl;
     const { grantType, body } = this.buildIntegrationTokenRequestBody();
-    console.log('[Salesforce] Requesting integration access token via', grantType, 'at', url);
 
     try {
       const res = await axios.post<{ access_token?: string }>(url, body.toString(), {
@@ -1350,7 +1343,6 @@ export class OAuthAuthService {
       if (!token) {
         throw new UnauthorizedException('Salesforce integration token response did not include access_token.');
       }
-      console.log('[Salesforce] Integration access token obtained via', grantType);
       return token;
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {

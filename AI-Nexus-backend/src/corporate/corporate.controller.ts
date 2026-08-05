@@ -366,6 +366,10 @@ export class CorporateController {
       type: 'object',
       properties: {
         file: { type: 'string', format: 'binary' },
+        progressJobId: {
+          type: 'string',
+          description: 'Optional client job id for live progress polling',
+        },
       },
       required: ['file'],
     },
@@ -380,12 +384,23 @@ export class CorporateController {
   async validateStaffBulkCsv(
     @Req() req: AuthedRequest,
     @UploadedFile() file: Express.Multer.File,
+    @Body('progressJobId') progressJobId?: string,
     @Query('companyCode') companyCode?: string,
   ) {
+    const jobId = String(progressJobId || '').trim();
+    if (jobId) {
+      this.corporateService.startStaffEnrolProgressJob({
+        jobId,
+        actorUserId: req.user?.id,
+        phase: 'validate',
+        label: 'Starting validation…',
+      });
+    }
     const data = await this.corporateService.validateStaffEnrolmentCsv({
       actorUserId: req.user?.id,
       companyCode: this.resolveCompanyCode(req, companyCode),
       file,
+      progressJobId: jobId || null,
     });
     return { data };
   }
@@ -404,6 +419,10 @@ export class CorporateController {
           type: 'string',
           description: 'Comma-separated sheet row numbers to skip (header = row 1)',
         },
+        progressJobId: {
+          type: 'string',
+          description: 'Optional client job id for live progress polling',
+        },
       },
       required: ['file'],
     },
@@ -419,13 +438,40 @@ export class CorporateController {
     @Req() req: AuthedRequest,
     @UploadedFile() file: Express.Multer.File,
     @Body('excludeRows') excludeRows?: string,
+    @Body('progressJobId') progressJobId?: string,
     @Query('companyCode') companyCode?: string,
   ) {
+    const jobId = String(progressJobId || '').trim();
+    if (jobId) {
+      this.corporateService.startStaffEnrolProgressJob({
+        jobId,
+        actorUserId: req.user?.id,
+        phase: 'enrol',
+        label: 'Starting enrolment…',
+      });
+    }
     const data = await this.corporateService.enrolStaffBulkFromCsv({
       actorUserId: req.user?.id,
       companyCode: this.resolveCompanyCode(req, companyCode),
       file,
       excludeRows,
+      progressJobId: jobId || null,
+    });
+    return { data };
+  }
+
+  @Get('staff-enrol/bulk-csv/progress/:jobId')
+  @Roles(UserRole.Corporate, UserRole.Admin)
+  @ApiOperation({
+    summary: 'Poll live progress for a CSV validate / enrol job (client-supplied jobId)',
+  })
+  async getStaffBulkCsvProgress(
+    @Req() req: AuthedRequest,
+    @Param('jobId') jobId: string,
+  ) {
+    const data = this.corporateService.getStaffEnrolProgress({
+      jobId,
+      actorUserId: req.user?.id,
     });
     return { data };
   }
