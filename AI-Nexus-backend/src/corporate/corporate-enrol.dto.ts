@@ -49,6 +49,9 @@ export class CorporateStaffLearnerDto {
 
   @IsString()
   @IsOptional()
+  jobFunction?: string;
+
+  @IsString()
   @IsOptional()
   countryOfResidence?: string;
 

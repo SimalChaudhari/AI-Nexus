@@ -775,6 +775,8 @@ function IntlFooter({ regions = INTL_REGIONS }) {
       title: 'Platform',
       links: [
         { label: 'AI Fluency', href: paths.internationalAiFluency },
+        { label: 'Register', href: paths.auth.signUp },
+        { label: 'Sign in', href: paths.auth.signIn },
         { label: 'FFAQ', href: null },
         { label: 'Sustainability Qualifications', href: null },
         { label: 'Accountify', href: null },
