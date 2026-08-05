@@ -769,11 +769,40 @@ export class AuthService {
     user.eligibilityIsIscaMember = eligibilityIsIscaMember;
     user.eligibilityWantsMembership = eligibilityWantsMembership;
     user.eligibilityType = eligibilityType;
-    user.eligibilitySnapshot = snapshot ?? {
+
+    // Merge into the existing snapshot so server-managed fields (especially
+    // feeWaiverAudit / HR verification tokens) are not wiped by signup payloads
+    // that only send client-side eligibility data.
+    const existingSnapshot =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? user.eligibilitySnapshot
+        : {};
+    const incomingSnapshot = snapshot ?? {
       isSingaporePr: eligibilityIsSingaporePr,
       isIscaMember: eligibilityIsIscaMember,
       wantsIscaMembership: eligibilityWantsMembership,
       eligibilityType,
+    };
+    const existingAudit =
+      existingSnapshot.feeWaiverAudit && typeof existingSnapshot.feeWaiverAudit === 'object'
+        ? (existingSnapshot.feeWaiverAudit as Record<string, unknown>)
+        : null;
+    const incomingAudit =
+      incomingSnapshot.feeWaiverAudit && typeof incomingSnapshot.feeWaiverAudit === 'object'
+        ? (incomingSnapshot.feeWaiverAudit as Record<string, unknown>)
+        : null;
+
+    user.eligibilitySnapshot = {
+      ...existingSnapshot,
+      ...incomingSnapshot,
+      ...(existingAudit || incomingAudit
+        ? {
+            feeWaiverAudit: {
+              ...(existingAudit || {}),
+              ...(incomingAudit || {}),
+            },
+          }
+        : {}),
     };
     user.eligibilityCheckedAt = new Date();
   }
@@ -2962,7 +2991,14 @@ export class AuthService {
       ? method
       : 'hr-email';
 
-    const hrVerificationToken = crypto.randomBytes(32).toString('hex');
+    // Keep the pending token so previously emailed HR links stay valid.
+    const existingToken = String(existingAudit?.hrVerificationToken || '').trim();
+    const canReuseToken =
+      status === 'pending_hr_verification'
+      && existingToken.length > 0;
+    const hrVerificationToken = canReuseToken
+      ? existingToken
+      : crypto.randomBytes(32).toString('hex');
     const learnerName =
       `${user.firstname || ''} ${user.lastname || ''}`.trim()
       || String(existingAudit?.learnerEmail || user.email || 'Learner');

@@ -5,7 +5,8 @@ node_modules
 AI-Nexus-frontend/ssl/
 ai-international-site
 nexus.bat
-database
+
+/database/
 SSL/
 backup
 

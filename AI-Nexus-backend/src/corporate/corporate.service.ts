@@ -1898,7 +1898,7 @@ export class CorporateService {
       throw new BadRequestException('Could not read the Excel file. Please upload a valid .xlsx or .xls file.');
     }
 
-    const sheetName = workbook.SheetNames.find((name) => String(name || '').trim()) || '';
+    const sheetName = workbook.SheetNames.find((name: string) => String(name || '').trim()) || '';
     if (!sheetName) {
       throw new BadRequestException('Excel file has no worksheets.');
     }
