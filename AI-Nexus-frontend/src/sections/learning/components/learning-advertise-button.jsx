@@ -5,7 +5,7 @@ import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
-const NAVIGATE_PATH = 'https://iscacademy.sg';
+const NAVIGATE_PATH = 'https://iscacademy.sg/practical-ai-series/';
 const BUTTON_LABEL = 'ISCAcademy Practical AI series';
 
 /**
