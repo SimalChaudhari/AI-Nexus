@@ -472,5 +472,11 @@ export const ProfileSchema = zod.object({
   contactNumber: optionalPhoneSchema,
 });
 
+/** Site profile edit — only avatar and company code are editable. */
+export const SiteProfileSchema = zod.object({
+  avatar: avatarFieldSchema,
+  companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
+});
+
 // ----------------------------------------------------------------------
 

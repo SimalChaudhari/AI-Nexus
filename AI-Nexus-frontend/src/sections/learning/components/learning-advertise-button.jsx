@@ -8,8 +8,8 @@ import { appSettingsService } from 'src/services/app-settings.service';
 
 // ----------------------------------------------------------------------
 
-const NAVIGATE_PATH = 'https://iscacademy.sg/practical-ai-series/';
-const BUTTON_LABEL = 'ISCAcademy Practical AI series';
+const DEFAULT_LINK = 'https://iscacademy.sg/';
+const DEFAULT_NAME = 'ISCAcademy Practical AI series';
 
 /**
  * Fixed vertical promo tab on the right edge (vertically centered).
@@ -104,7 +104,7 @@ export function LearningAdvertiseButton() {
         },
       }}
     >
-      <Iconify icon="solar:megaphone-bold-duotone" width={20} />
+      <Iconify icon="mdi:megaphone" width={20} />
       <Box
         component="span"
         sx={{

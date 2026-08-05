@@ -2153,7 +2153,8 @@ export function AdminSettingsView() {
     {
       key: 'enrol-options',
       badge: 'EO',
-      icon: 'solar:user-speak-rounded-bold-duotone',
+      icon: 'solar:user-speak-rounded-bold',
+      iconColor: '#E53935',
       title: 'Enrol Options',
       description: 'How would you like to enrol? — cards under the hero with CTAs and actions.',
     },
@@ -2188,35 +2189,40 @@ export function AdminSettingsView() {
     {
       key: 'digital-badge',
       badge: 'DB',
-      icon: 'solar:verified-check-bold-duotone',
+      icon: 'solar:verified-check-bold',
+      iconColor: '#1E88E5',
       title: 'Digital Badge',
       description: 'Upload badge artwork and issuer label shown on learner My Badges.',
     },
     {
       key: 'workflow-templates-pitch',
       badge: 'AI',
-      icon: 'solar:clipboard-list-bold-duotone',
+      icon: 'solar:clipboard-list-bold',
+      iconColor: '#00897B',
       title: 'Workflows intro',
       description: 'Edit the “Why use AI resources?” strip on the workflow templates page.',
     },
     {
       key: 'programme-fees',
       badge: 'F',
-      icon: 'solar:wallet-money-bold-duotone',
+      icon: 'solar:wallet-money-bold',
+      iconColor: '#43A047',
       title: 'Programme Fees',
       description: 'Configure programme fee tiers and funding information on the home page.',
     },
     {
       key: 'programme-structure',
       badge: 'PS',
-      icon: 'solar:map-arrow-right-bold-duotone',
+      icon: 'solar:map-arrow-right-bold',
+      iconColor: '#5E35B1',
       title: 'Programme Structure',
       description: 'Learning journey timeline — phases with titles and rich descriptions on the home page.',
     },
     {
       key: 'eligibility-membership',
       badge: 'EM',
-      icon: 'solar:user-check-rounded-bold-duotone',
+      icon: 'solar:user-check-rounded-bold',
+      iconColor: '#039BE5',
       title: 'Eligibility & Membership',
       description:
         'Dual-panel “Am I Eligible?” and ISCA membership promo — questions, benefits, CTAs, and left-panel photo.',
@@ -2224,63 +2230,72 @@ export function AdminSettingsView() {
     {
       key: 'funding-eligibility',
       badge: 'FE',
-      icon: 'solar:wallet-money-bold-duotone',
+      icon: 'solar:wallet-money-bold',
+      iconColor: '#FB8C00',
       title: 'Funding & Eligibility',
       description: 'Funding & eligibility cards on the home page — icon, title, and description per item.',
     },
     {
       key: 'ceo-launch',
       badge: 'CEO',
-      icon: 'solar:videocamera-record-bold-duotone',
+      icon: 'solar:videocamera-record-bold',
+      iconColor: '#D81B60',
       title: 'CEO Launch Video',
       description: 'Why AI Fluency Matters — video, quote, stats, and play CTA on the home page.',
     },
     {
       key: 'testimonials',
       badge: 'T',
-      icon: 'solar:chat-round-like-bold-duotone',
+      icon: 'solar:chat-round-like-bold',
+      iconColor: '#8E24AA',
       title: 'Testimonials',
       description: 'Learner testimonials and industry quotes on the home page.',
     },
     {
       key: 'employer',
       badge: 'E',
-      icon: 'solar:buildings-2-bold-duotone',
+      icon: 'solar:buildings-2-bold',
+      iconColor: '#3949AB',
       title: 'Employer',
       description: 'Home learners / employer block — hero image, copy, benefits, and CTAs.',
     },
     {
       key: 'partner-with-isca',
       badge: 'PI',
-      icon: 'solar:handshake-bold-duotone',
+      icon: 'solar:hand-shake-bold',
+      iconColor: '#00838F',
       title: 'Partner with ISCA',
       description: 'Manage the full Partner with ISCA employer landing page.',
     },
     {
       key: 'faq',
       badge: 'FAQ',
-      icon: 'solar:question-circle-bold-duotone',
+      icon: 'solar:question-circle-bold',
+      iconColor: '#F4511E',
       title: 'FAQs Page',
       description: 'Configure FAQs shown on the home page.',
     },
     {
       key: 'curriculum',
       badge: 'CU',
-      icon: 'solar:book-2-bold-duotone',
+      icon: 'solar:book-2-bold',
+      iconColor: '#6D4C41',
       title: 'Curriculum',
       description: 'Add courses to the home page curriculum — each course’s modules are shown automatically.',
     },
     {
       key: 'footer',
       badge: 'FT',
-      icon: 'solar:layers-minimalistic-bold-duotone',
+      icon: 'solar:layers-minimalistic-bold',
+      iconColor: '#546E7A',
       title: 'Footer',
       description: 'Manage footer stats, links, domain line, and copyright text.',
     },
     {
       key: 'learning-advertise-tab',
       badge: 'AD',
-      icon: 'solar:megaphone-bold-duotone',
+      icon: 'mdi:megaphone',
+      iconColor: '#C62828',
       title: 'Learning Advertise Tab',
       description: 'Fixed vertical promo tab on the Learning page — set tab name and link.',
     },
@@ -3315,7 +3330,19 @@ export function AdminSettingsView() {
         }}
       />
     ) : (
-      <Iconify icon={sectionItem.icon || 'solar:settings-bold-duotone'} width={20} />
+      <Iconify
+        icon={sectionItem.icon || 'solar:settings-bold'}
+        width={20}
+        sx={{
+          color: sectionItem.iconColor || 'primary.main',
+          opacity: 1,
+          flexShrink: 0,
+          '& path, & g, & rect, & circle': {
+            fill: 'currentColor !important',
+            stroke: 'none',
+          },
+        }}
+      />
     );
 
   const renderSettingsTab = (sectionItem) => {
@@ -3345,8 +3372,8 @@ export function AdminSettingsView() {
             color: 'primary.main',
             bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.65),
           },
-          '& .MuiSvgIcon-root, & svg': { opacity: selected ? 1 : 0.88, flexShrink: 0 },
-          '& img': { opacity: selected ? 1 : 0.88 },
+          '& .MuiSvgIcon-root, & svg': { opacity: 1, flexShrink: 0 },
+          '& img': { opacity: 1 },
         })}
       >
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0, width: 1 }}>
