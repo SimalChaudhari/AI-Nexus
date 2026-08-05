@@ -1275,6 +1275,16 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Put('learning-advertise-tab-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update Learning page advertise tab (name + link)' })
+  async updateLearningAdvertiseTabContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateLearningAdvertiseTabContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Put('partner-with-isca-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

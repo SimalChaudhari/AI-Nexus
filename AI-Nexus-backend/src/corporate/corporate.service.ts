@@ -39,14 +39,27 @@ import { OAuthAuthService } from '../auth/oauth-auth.service';
 import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
 import type { CorporateStaffLearnerDto } from './corporate-enrol.dto';
 import type { CorporateForeignQuotationDto } from './corporate-foreign-quotation.dto';
+import { verifyEmailAddress } from '../utils/email-verification.util';
+import {
+  normalizeSingaporeNricFin,
+  resolveSalesforceIdTypeByCardColorOrNationality,
+  validateSingaporeNricFin,
+  SINGAPORE_NRIC_FIN_USER_MESSAGES,
+} from '../auth/utils/singapore-nric-fin.util';
+import {
+  findUserByVerifiedNricFin,
+  isNricFinRegistrationComplete,
+  NRIC_ALREADY_REGISTERED_MESSAGE,
+} from '../auth/utils/nric-registration-guard.util';
+import * as XLSX from 'xlsx';
 
 // ----------------------------------------------------------------------
 
 const AT_RISK_INACTIVE_DAYS = 7;
 const NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const BULK_ENROLMENT_ZIP_MAX_BYTES = 500 * 1024 * 1024;
-const BULK_ENROLMENT_CSV_MAX_BYTES = 5 * 1024 * 1024;
-const BULK_ENROLMENT_CSV_MAX_ROWS = 500;
+const BULK_ENROLMENT_CSV_MAX_BYTES = 1024 * 1024 * 1024; // 1 GB
+const BULK_ENROLMENT_CSV_MAX_ROWS = 2000;
 const BULK_ENROLMENT_SF_BATCH_SIZE = (() => {
   const parsed = Number(process.env.BULK_ENROLMENT_SF_BATCH_SIZE || 100);
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 100) : 100;
@@ -251,6 +264,25 @@ export class CorporateService {
     const salutation = String(row.salutation || '').trim();
     if (salutation) payload.salutation = salutation;
 
+    // Sheet "NRIC/ Fin/ Passport" → Salesforce `id_number`.
+    // Salesforce typically persists NRIC only when BOTH id_type + id_number are present.
+    const idNumberRaw = String(row.id_number || '').trim();
+    const idNumber = idNumberRaw
+      ? (normalizeSingaporeNricFin(idNumberRaw) || idNumberRaw.toUpperCase().replace(/\s+/g, ''))
+      : '';
+    const idTypeResolved = this.resolveStaffSalesforceIdType({
+      idType: String(row.id_type || '').trim(),
+      idNumber,
+      eligibility: String(row.eligibility || '').trim(),
+      countryOfResidence: String(row.countryOfResidence || '').trim(),
+    });
+    if (idNumber) {
+      payload.id_number = idNumber;
+      if (idTypeResolved) payload.id_type = idTypeResolved;
+    } else if (idTypeResolved) {
+      payload.id_type = idTypeResolved;
+    }
+
     const company =
       String(row.company || '').trim() || String(defaults?.company || '').trim();
     if (company) payload.company = company;
@@ -258,8 +290,11 @@ export class CorporateService {
     const department = String(row.department || '').trim();
     if (department) payload.department = department;
 
-    const staffRole = String(row.staff_role || '').trim();
-    if (staffRole) payload.staff_role = staffRole;
+    const jobFunction = String(row.jobFunction || '').trim();
+    if (jobFunction) payload.jobFunction = jobFunction;
+
+    const countryOfResidence = String(row.countryOfResidence || '').trim();
+    if (countryOfResidence) payload.countryOfResidence = countryOfResidence;
 
     if (
       row.noOfYearOfRelevantWorkExperience !== undefined
@@ -272,15 +307,272 @@ export class CorporateService {
       }
     }
 
-    const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
-    if (learnerAsAnAccounting) payload.learnerAsAnAccounting = learnerAsAnAccounting;
+    const learnerAsAnAccounting =
+      String(row.learnerAsAnAccounting || '').trim() || 'Yes';
+    payload.learnerAsAnAccounting = learnerAsAnAccounting;
 
-    const eligibility = String(row.eligibility || '').trim();
-    if (eligibility) payload.eligibility = eligibility;
+    const membershipNumber = String(row.membershipNumber || '').trim();
+    // Only real ISCA membership numbers go to Salesforce `membershipNumber`.
+    // Do NOT map "Membership of other accounting bodies" (e.g. ACCA) into this field.
+    if (membershipNumber) payload.membershipNumber = membershipNumber;
+
+    // Sheet column "Phone Number" (DTO.phoneNumber) → Salesforce body field `phone` only.
+    const phone = String(row.phoneNumber || '').trim();
+    if (phone) payload.phone = phone;
+
+    const organisationType = String(row.organisationType || '').trim();
+    if (organisationType) payload.organisationType = organisationType;
+
+    const iscaMemberStatus = String(row.iscaMemberStatus || '').trim();
+    if (iscaMemberStatus) payload.iscaMemberStatus = iscaMemberStatus;
+
+    // Sheet "ISCA member/ Non-member" → Salesforce `accountType`.
+    const accountTypeFromRow = String((row as { accountType?: string }).accountType || '').trim();
+    const accountType =
+      accountTypeFromRow
+      || this.resolveSalesforceAccountTypeFromIscaStatus(iscaMemberStatus);
+    if (accountType) payload.accountType = accountType;
+
+    const otherAccountingBodies = String(row.otherAccountingBodies || '').trim();
+    if (otherAccountingBodies) {
+      // Kept locally only — not Salesforce membershipNumber.
+      payload.otherAccountingBodies = otherAccountingBodies;
+    }
+
+    const eligibilityRaw = String(row.eligibility || '').trim();
+    if (eligibilityRaw) {
+      const resolved = this.resolveStaffEligibility(eligibilityRaw);
+      if (resolved.value) {
+        payload.eligibility = resolved.value;
+      } else {
+        // Keep raw so precheck can skip with a clear reason (do not fail whole CSV).
+        payload.eligibility = eligibilityRaw;
+        (payload as Record<string, unknown>)._eligibilityInvalidReason = resolved.reason;
+      }
+    }
 
     // Salesforce Authorised_Submit_For_Nexus__c expects boolean true after HR checkbox validation.
 
     return payload;
+  }
+
+  /**
+   * Map sheet ID Type (+ citizenship) → Salesforce id_type picklist.
+   * When NRIC is present but ID Type is blank/"NRIC", derive Blue/Pink NRIC.
+   */
+  private resolveStaffSalesforceIdType(params: {
+    idType?: string;
+    idNumber?: string;
+    eligibility?: string;
+    countryOfResidence?: string;
+  }): string {
+    const raw = String(params.idType || '').trim();
+    const lower = raw.toLowerCase().replace(/[_/]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const idNumber = String(params.idNumber || '').trim().toUpperCase();
+    const eligibility = String(params.eligibility || '').trim().toLowerCase();
+
+    if (lower === 'passport' || lower.includes('passport')) return 'Passport';
+    if (lower.includes('pink')) return 'Pink NRIC';
+    if (lower.includes('blue')) return 'Blue NRIC';
+    if (lower === 'nric number' || lower === 'nric' || lower === 'fin' || lower.includes('nric')) {
+      if (eligibility.includes('pr') || eligibility.includes('permanent')) return 'Pink NRIC';
+      if (eligibility.includes('citizen')) return 'Blue NRIC';
+      return resolveSalesforceIdTypeByCardColorOrNationality({
+        nationality: params.countryOfResidence || params.eligibility,
+      });
+    }
+
+    if (raw) return raw;
+
+    // ID number filled but ID Type blank — still send a valid SF id_type so NRIC inserts.
+    if (idNumber) {
+      if (/^[STFG]\d{7}[A-Z]$/.test(idNumber)) {
+        if (eligibility.includes('pr') || eligibility.includes('permanent')) return 'Pink NRIC';
+        if (eligibility.includes('citizen')) return 'Blue NRIC';
+        return resolveSalesforceIdTypeByCardColorOrNationality({
+          nationality: params.countryOfResidence || params.eligibility,
+        });
+      }
+      if (/^M\d{7}[A-Z]$/.test(idNumber)) return 'Pink NRIC';
+      return 'Passport';
+    }
+
+    return '';
+  }
+
+  /**
+   * True when the sheet ID looks like / is declared as Singapore NRIC/FIN
+   * (skip checksum for Passport and other non-NRIC IDs).
+   */
+  private isStaffSingaporeNricFinCandidate(idNumber: string, idType?: string): boolean {
+    const type = String(idType || '')
+      .toLowerCase()
+      .replace(/[_/]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (type.includes('passport')) return false;
+
+    const normalized = normalizeSingaporeNricFin(idNumber);
+    if (/^[STFGM]\d{7}[A-Z]$/.test(normalized)) return true;
+
+    return (
+      type.includes('pink')
+      || type.includes('blue')
+      || type.includes('nric')
+      || type === 'fin'
+      || type.includes('fin ')
+    );
+  }
+
+  /**
+   * When NRIC/FIN is present: validate format/checksum (same as registration),
+   * then return normalized value. Passport / other IDs are returned uppercased only.
+   */
+  private validateStaffIdNumberFormat(params: {
+    idNumber?: string;
+    idType?: string;
+  }): { ok: true; value: string; isNricFin: boolean } | { ok: false; message: string } {
+    const raw = String(params.idNumber || '').trim();
+    if (!raw) return { ok: true, value: '', isNricFin: false };
+
+    if (!this.isStaffSingaporeNricFinCandidate(raw, params.idType)) {
+      return {
+        ok: true,
+        value: normalizeSingaporeNricFin(raw) || raw.toUpperCase().replace(/\s+/g, ''),
+        isNricFin: false,
+      };
+    }
+
+    try {
+      const validation = validateSingaporeNricFin(raw);
+      if (!validation.isValid) {
+        return { ok: false, message: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum };
+      }
+      return { ok: true, value: validation.normalized, isNricFin: true };
+    } catch {
+      return { ok: false, message: SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat };
+    }
+  }
+
+  /** Local app + Salesforce duplicate check for a verified NRIC/FIN. */
+  private async checkStaffNricAlreadyExists(normalizedNricFin: string): Promise<{
+    ok: true;
+  } | {
+    ok: false;
+    where: 'app' | 'salesforce' | 'lookup';
+    message: string;
+  }> {
+    const normalized = normalizeSingaporeNricFin(normalizedNricFin);
+    if (!normalized) return { ok: true };
+
+    const local = await findUserByVerifiedNricFin(this.userRepository, normalized);
+    if (local && isNricFinRegistrationComplete(local)) {
+      return { ok: false, where: 'app', message: NRIC_ALREADY_REGISTERED_MESSAGE };
+    }
+
+    try {
+      const byNric = await this.oauthAuthService.checkSalesforceUserByNric(normalized);
+      if (Boolean(byNric?.found)) {
+        return {
+          ok: false,
+          where: 'salesforce',
+          message: 'This NRIC/FIN number already exists in Salesforce.',
+        };
+      }
+    } catch {
+      return {
+        ok: false,
+        where: 'lookup',
+        message: 'Could not verify NRIC/FIN in Salesforce.',
+      };
+    }
+
+    return { ok: true };
+  }
+
+  /** Map sheet "ISCA member/ Non-member" → Salesforce accountType. */
+  private resolveSalesforceAccountTypeFromIscaStatus(status: string): string {
+    const raw = String(status || '').trim();
+    if (!raw) return '';
+    const lower = raw.toLowerCase().replace(/[_/]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (/non\s*member/.test(lower)) return 'Non member';
+    if (
+      lower === 'member'
+      || lower === 'isca member'
+      || /^isca\s+member$/.test(lower)
+      || (lower.includes('isca') && lower.includes('member') && !lower.includes('non'))
+    ) {
+      return 'Member';
+    }
+    if (lower.includes('member') && !lower.includes('non')) return 'Member';
+    return raw;
+  }
+
+  /**
+   * Corporate fee-waiver enrol — Salesforce Citizenship__c restricted picklist.
+   * Allowed: Singapore Citizen, Singapore PR only.
+   * Legacy CSV values Foreigner/foreign still map to Singapore PR.
+   */
+  private resolveStaffEligibility(raw: string): { value: string | null; reason?: string } {
+    const trimmed = String(raw || '').trim();
+    const allowedLabel = 'Singapore Citizen, Singapore PR';
+    if (!trimmed) {
+      return {
+        value: null,
+        reason: `Citizenship is required. Allowed: ${allowedLabel}.`,
+      };
+    }
+
+    const aliases: Record<string, string> = {
+      'singapore citizen': 'Singapore Citizen',
+      singaporean: 'Singapore Citizen',
+      'sg citizen': 'Singapore Citizen',
+      citizen: 'Singapore Citizen',
+      'singapore pr': 'Singapore PR',
+      'singapore permanent resident': 'Singapore PR',
+      'permanent resident': 'Singapore PR',
+      'sg pr': 'Singapore PR',
+      pr: 'Singapore PR',
+      // Legacy CSV values — treat as Singapore PR (no Foreigner option in UI).
+      foreigner: 'Singapore PR',
+      foreign: 'Singapore PR',
+      'non citizen': 'Singapore PR',
+      'non-citizen': 'Singapore PR',
+    };
+
+    const key = trimmed.toLowerCase().replace(/\s+/g, ' ');
+    if (aliases[key]) return { value: aliases[key] };
+
+    const allowed = ['Singapore Citizen', 'Singapore PR'] as const;
+    const exact = allowed.find((item) => item.toLowerCase() === key);
+    if (exact) return { value: exact };
+
+    return {
+      value: null,
+      reason:
+        `Invalid citizenship "${trimmed}". `
+        + `Allowed: ${allowedLabel}. `
+        + 'ISCA Member is not a Citizenship value — use Singapore Citizen or Singapore PR. '
+        + 'Do not put a country name (e.g. Malaysia).',
+    };
+  }
+
+  /** Persist fee-waiver citizenship flags used by learner list display. */
+  private applyStaffEligibilityFlags(
+    user: UserEntity,
+    eligibilityRaw: string,
+  ): void {
+    const eligibility = String(eligibilityRaw || '').trim();
+    const lower = eligibility.toLowerCase();
+    const isCitizen = lower === 'singapore citizen';
+    const isPr =
+      lower === 'singapore pr'
+      || lower === 'foreigner'; // legacy input; treated as PR
+
+    user.eligibilityType = eligibility || null;
+    user.eligibilityIsIscaMember = false;
+    // True for Singapore PR (and legacy Foreigner). Citizen keeps type but not the PR flag.
+    user.eligibilityIsSingaporePr = isPr ? true : isCitizen ? false : null;
   }
 
   private async generateStaffUsername(
@@ -323,12 +615,21 @@ export class CorporateService {
       name_as_per_id?: string;
       email: string;
       salutation?: string;
+      id_type?: string;
+      id_number?: string;
       company?: string;
       department?: string;
-      staff_role?: string;
+      jobFunction?: string;
+      countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       learnerAsAnAccounting?: string;
+      membershipNumber?: string;
       eligibility?: string;
+      /** Salesforce body field — mapped from sheet column "Phone Number". */
+      phone?: string;
+      organisationType?: string;
+      iscaMemberStatus?: string;
+      otherAccountingBodies?: string;
     }>;
   }): Promise<{
     created: number;
@@ -367,8 +668,11 @@ export class CorporateService {
 
       const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
       const isAccountingYes = /^yes$/i.test(learnerAsAnAccounting);
-      const jobFunction = isAccountingYes ? 'accounting-finance-related' : '';
-      const jobFunctionLabel = isAccountingYes ? 'Accounting and finance related' : '';
+      const staffJobFunction = String(row.jobFunction || '').trim();
+      const jobFunction =
+        staffJobFunction || (isAccountingYes ? 'accounting-finance-related' : '');
+      const jobFunctionLabel =
+        staffJobFunction || (isAccountingYes ? 'Accounting and finance related' : '');
 
       const eligibilitySnapshot: Record<string, unknown> = {
         companyCode,
@@ -377,13 +681,22 @@ export class CorporateService {
         jobFunctionLabel,
         jobFunctionOther: '',
         department: String(row.department || '').trim() || '',
-        staff_role: String(row.staff_role || '').trim() || '',
+        role: staffJobFunction || '',
         yearsOfRelevantWorkExperience: years,
         learnerAsAnAccounting,
         eligibility: String(row.eligibility || '').trim() || '',
         salutation: String(row.salutation || '').trim() || '',
         name_as_per_id: String(row.name_as_per_id || '').trim() || '',
+        id_type: String(row.id_type || '').trim() || '',
+        id_number: String(row.id_number || '').trim() || '',
+        countryOfResidence: String(row.countryOfResidence || '').trim() || '',
+        membershipNumber: String(row.membershipNumber || '').trim() || '',
+        phoneNumber: String(row.phone || '').trim() || '',
+        organisationType: String(row.organisationType || '').trim() || '',
+        iscaMemberStatus: String(row.iscaMemberStatus || '').trim() || '',
+        otherAccountingBodies: String(row.otherAccountingBodies || '').trim() || '',
       };
+      const resolvedEligibility = String(row.eligibility || '').trim();
 
       try {
         const existing = await this.userRepository.findOne({ where: { email } });
@@ -402,6 +715,7 @@ export class CorporateService {
           existing.status = UserStatus.Active;
           existing.isDraft = false;
           existing.isVerified = true;
+          this.applyStaffEligibilityFlags(existing, resolvedEligibility);
           if (corporateAccountId) existing.salesforceAccountId = corporateAccountId;
           const prevSnap =
             existing.eligibilitySnapshot && typeof existing.eligibilitySnapshot === 'object'
@@ -444,6 +758,7 @@ export class CorporateService {
             },
             salesforceSyncedAt: new Date(),
           });
+          this.applyStaffEligibilityFlags(user, resolvedEligibility);
           await this.userRepository.save(user);
           created += 1;
         }
@@ -492,7 +807,7 @@ export class CorporateService {
     companyCode?: string;
     learners: CorporateStaffLearnerDto[];
     isAuthorisedSubmit?: boolean;
-    source?: 'single' | 'csv';
+    source?: 'single' | 'csv' | 'excel';
     fileName?: string;
   }) {
     const learners = Array.isArray(params.learners) ? params.learners : [];
@@ -540,6 +855,7 @@ export class CorporateService {
     const skipped: StaffEnrolSkippedRow[] = [];
     const eligible: typeof payload = [];
     const seenEmails = new Set<string>();
+    const seenNrics = new Set<string>();
     const totalReceived = payload.length;
 
     console.log('[CorporateEnrol] ===== START =====', {
@@ -556,6 +872,17 @@ export class CorporateService {
         continue;
       }
 
+      // Same rules as registration: format, disposable domains, MX/DNS.
+      const emailVerification = await verifyEmailAddress(email);
+      if (!emailVerification.isValid) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: emailVerification.reason || 'Email must be a valid email address!',
+        });
+        continue;
+      }
+
       if (seenEmails.has(email)) {
         skipped.push({
           email,
@@ -565,6 +892,99 @@ export class CorporateService {
         continue;
       }
       seenEmails.add(email);
+
+      const eligibilityInvalidReason = String(
+        (row as Record<string, unknown>)._eligibilityInvalidReason || '',
+      ).trim();
+      if (eligibilityInvalidReason) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: eligibilityInvalidReason,
+        });
+        continue;
+      }
+
+      const eligibility = String(row.eligibility || '').trim();
+      if (!eligibility) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason:
+            'Citizenship is required. Allowed: Singapore Citizen, Singapore PR.',
+        });
+        continue;
+      }
+      const eligibilityResolved = this.resolveStaffEligibility(eligibility);
+      if (!eligibilityResolved.value) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason:
+            eligibilityResolved.reason
+            || 'Invalid citizenship value.',
+        });
+        continue;
+      }
+      row.eligibility = eligibilityResolved.value;
+      delete (row as Record<string, unknown>)._eligibilityInvalidReason;
+
+      // Optional when blank; if provided they are included in the SF payload.
+      const iscaMemberStatus = String(row.iscaMemberStatus || '').trim();
+      if (
+        iscaMemberStatus
+        && /non[\s-]*member/i.test(iscaMemberStatus)
+        && !String(row.otherAccountingBodies || '').trim()
+      ) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: 'Membership of other accounting bodies is required for Non-member.',
+        });
+        continue;
+      }
+      if (!String(row.company || '').trim()) {
+        skipped.push({ email, step: 'precheck', reason: 'Organisation name is required.' });
+        continue;
+      }
+      if (!String(row.learnerAsAnAccounting || '').trim()) {
+        skipped.push({
+          email,
+          step: 'precheck',
+          reason: 'Is the job function accounting related? is required.',
+        });
+        continue;
+      }
+
+      // NRIC/FIN present → format/checksum + duplicate (local + Salesforce), same as registration.
+      const idNumberRaw = String(row.id_number || '').trim();
+      if (idNumberRaw) {
+        const idCheck = this.validateStaffIdNumberFormat({
+          idNumber: idNumberRaw,
+          idType: String(row.id_type || '').trim(),
+        });
+        if (!idCheck.ok) {
+          skipped.push({ email, step: 'precheck', reason: idCheck.message });
+          continue;
+        }
+        row.id_number = idCheck.value;
+        if (idCheck.isNricFin && idCheck.value) {
+          if (seenNrics.has(idCheck.value)) {
+            skipped.push({
+              email,
+              step: 'precheck',
+              reason: 'Duplicate NRIC/FIN within the upload file.',
+            });
+            continue;
+          }
+          seenNrics.add(idCheck.value);
+          const nricExists = await this.checkStaffNricAlreadyExists(idCheck.value);
+          if (!nricExists.ok) {
+            skipped.push({ email, step: 'precheck', reason: nricExists.message });
+            continue;
+          }
+        }
+      }
 
       const localExisting = await this.userRepository.findOne({ where: { email } });
       if (localExisting) {
@@ -805,7 +1225,10 @@ export class CorporateService {
         this.staffEnrolBatchRepository.create({
           companyCode,
           createdByUserId: String(params.actorUserId || '').trim() || null,
-          source: params.source === 'csv' ? 'csv' : 'single',
+          source:
+            params.source === 'csv' || params.source === 'excel'
+              ? params.source
+              : 'single',
           fileName: String(params.fileName || '').trim() || null,
           totalReceived,
           passedCount: provisioned,
@@ -868,7 +1291,588 @@ export class CorporateService {
       .trim()
       .toLowerCase()
       .replace(/^\ufeff/, '')
-      .replace(/[\s-]+/g, '_');
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+  }
+
+  /** Compact form for fuzzy compare (ignore separators). */
+  private compactCsvHeader(value: string): string {
+    return this.normalizeCsvHeader(value).replace(/_/g, '');
+  }
+
+  /** Similarity ratio 0..1 (Levenshtein-based). */
+  private stringSimilarity(a: string, b: string): number {
+    const left = String(a || '');
+    const right = String(b || '');
+    if (left === right) return 1;
+    if (!left.length || !right.length) return 0;
+
+    const rows = left.length + 1;
+    const cols = right.length + 1;
+    const dist: number[] = new Array(cols);
+    for (let j = 0; j < cols; j += 1) dist[j] = j;
+
+    for (let i = 1; i < rows; i += 1) {
+      let prev = dist[0];
+      dist[0] = i;
+      for (let j = 1; j < cols; j += 1) {
+        const temp = dist[j];
+        const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+        dist[j] = Math.min(
+          dist[j] + 1,
+          dist[j - 1] + 1,
+          prev + cost,
+        );
+        prev = temp;
+      }
+    }
+
+    const distance = dist[right.length];
+    return 1 - distance / Math.max(left.length, right.length);
+  }
+
+  private bestHeaderSimilarity(
+    header: string,
+    aliases: string[],
+  ): { alias: string; score: number } {
+    const normalized = this.normalizeCsvHeader(header);
+    const compact = this.compactCsvHeader(header);
+    let bestAlias = aliases[0] || '';
+    let bestScore = 0;
+
+    for (const alias of aliases) {
+      const aliasNorm = this.normalizeCsvHeader(alias);
+      const aliasCompact = this.compactCsvHeader(alias);
+      const score = Math.max(
+        this.stringSimilarity(normalized, aliasNorm),
+        this.stringSimilarity(compact, aliasCompact),
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestAlias = aliasNorm;
+      }
+    }
+    return { alias: bestAlias, score: bestScore };
+  }
+
+  /**
+   * Resolve CSV columns with exact + fuzzy (≥80%) alias matching.
+   * Near-miss headers (<80% but suggestive) return a clear suggestion error.
+   */
+  private resolveStaffEnrolmentHeaderIndexes(rawHeaders: string[]): {
+    salutation: number;
+    first_name: number;
+    last_name: number;
+    name_as_per_id: number;
+    email: number;
+    id_type: number;
+    id_number: number;
+    company: number;
+    department: number;
+    jobFunction: number;
+    countryOfResidence: number;
+    noOfYearOfRelevantWorkExperience: number;
+    corporateAccountId: number;
+    learnerAsAnAccounting: number;
+    membershipNumber: number;
+    eligibility: number;
+    phoneNumber: number;
+    organisationType: number;
+    iscaMemberStatus: number;
+    otherAccountingBodies: number;
+  } {
+    const FUZZY_ACCEPT = 0.8;
+
+    type FieldKey =
+      | 'salutation'
+      | 'first_name'
+      | 'last_name'
+      | 'name_as_per_id'
+      | 'email'
+      | 'id_type'
+      | 'id_number'
+      | 'company'
+      | 'department'
+      | 'jobFunction'
+      | 'countryOfResidence'
+      | 'noOfYearOfRelevantWorkExperience'
+      | 'corporateAccountId'
+      | 'learnerAsAnAccounting'
+      | 'membershipNumber'
+      | 'eligibility'
+      | 'phoneNumber'
+      | 'organisationType'
+      | 'iscaMemberStatus'
+      | 'otherAccountingBodies';
+
+    const fieldAliases: Record<FieldKey, string[]> = {
+      salutation: ['salutation'],
+      first_name: [
+        'first_name',
+        'firstname',
+        'first',
+        'first name',
+      ],
+      last_name: [
+        'last_name',
+        'lastname',
+        'last',
+        'last name',
+        'last name (surname)',
+        'last_name_preferred',
+        'last_name_surname',
+        'surname',
+      ],
+      name_as_per_id: [
+        'name_as_per_id',
+        'name as per id',
+        'fullname_as_per_id',
+        'full_name',
+        'fullname',
+      ],
+      email: [
+        'email',
+        'work_email',
+        'corporate_email_address',
+        'corporate email address',
+        'corporate_email',
+        'email_address',
+      ],
+      id_number: [
+        'nric/ fin/ passport',
+        'nric/fin/passport',
+        'nric fin passport',
+        'nric / fin / passport',
+        'nric/fin/passport number',
+        'nric fin passport number',
+        'nric_fin_passport',
+        'nric_number',
+        'nric number',
+        'nric no',
+        'nric_no',
+        'nricno',
+        'nric',
+        'nrci',
+        'nrci_number',
+        'nrci number',
+        'nrci no',
+        'id_number',
+        'id number',
+        'idnumber',
+        'id no',
+        'id_no',
+        'idno',
+        'identity_number',
+        'identity number',
+        'identification_number',
+        'identification number',
+        'fin',
+        'fin_number',
+        'fin number',
+        'passport',
+        'passport_number',
+        'passport number',
+        'passport no',
+      ],
+      id_type: [
+        'id_type',
+        'id type',
+        'idtype',
+        'identity_type',
+        'nric_type',
+        'id type (nric/fin/passport)',
+        'blue nric',
+        'pink nric',
+      ],
+      company: [
+        'company',
+        'organisation_name',
+        'organization_name',
+        'organisation name',
+        'organization name',
+        'organisation',
+        'organization',
+        'company_name',
+        'account_name',
+      ],
+      department: ['department', 'dept'],
+      jobFunction: [
+        'jobfunction',
+        'job_function',
+        'job function',
+        'role',
+        'staff_role',
+        'staffrole',
+        'job_title',
+        'job_title_designation',
+        'designation',
+      ],
+      countryOfResidence: [
+        'countryofresidence',
+        'country_of_residence',
+        'country of residence',
+        'country',
+        'residence_country',
+        'nationality',
+      ],
+      noOfYearOfRelevantWorkExperience: [
+        'noofyearofrelevantworkexperience',
+        'no_of_year_of_relevant_work_experience',
+        'years_of_experience',
+        'experience_years',
+        'years_of_relevant_work_experience',
+        'number_of_years_of_relevant_work_experience',
+      ],
+      corporateAccountId: [
+        'corporateaccountid',
+        'corporate_account_id',
+        'company_account_id',
+        'account_id',
+        'corporate_accountid',
+      ],
+      learnerAsAnAccounting: [
+        'learnerasanaccounting',
+        'learner_as_an_accounting',
+        'is the job function accounting related?',
+        'is the job function accounting related',
+        'is_the_job_function_accounting_related',
+        'is_the_learner_working_as_an_accounting_and_related_profession',
+        'accounting_related',
+        'job_function_accounting_related',
+        'learner_as_an_accounting_professional',
+      ],
+      membershipNumber: [
+        'membershipnumber',
+        'membership_number',
+        'member_number',
+        'isca_membership_number',
+      ],
+      eligibility: [
+        'eligibility',
+        'citizenship',
+        'citizenship_eligibility',
+      ],
+      phoneNumber: [
+        'phone',
+        'phone number',
+        'phone_number',
+        'phonenumber',
+        'phone no',
+        'phone_no',
+        'phoneno',
+        'telephone',
+        'tel',
+        'mobile',
+        'mobile_number',
+        'mobile number',
+        'handphone',
+        'contact_number',
+        'contact number',
+        'contact no',
+      ],
+      organisationType: [
+        'organisation type',
+        'organization type',
+        'organisation_type',
+        'organization_type',
+        'organisationtype',
+        'organizationtype',
+        'org_type',
+      ],
+      iscaMemberStatus: [
+        'isca member/ non-member',
+        'isca member / non-member',
+        'isca member/non-member',
+        'isca_member_non_member',
+        'isca member non member',
+        'isca member',
+        'isca_member',
+        'isca_member_status',
+        'member_status',
+        'isca membership status',
+        'account type',
+        'account_type',
+        'accounttype',
+        'non-member',
+        'non member',
+      ],
+      otherAccountingBodies: [
+        'membership of other accounting bodies (only if non isca member)',
+        'membership of other accounting bodies',
+        'other accounting bodies',
+        'other_accounting_bodies',
+        'membership_of_other_accounting_bodies',
+      ],
+    };
+
+    const displayName: Record<FieldKey, string> = {
+      salutation: 'Salutation (optional)',
+      first_name: 'First Name (required)',
+      last_name: 'Last Name (Surname) (required)',
+      name_as_per_id: 'Name as per ID (optional)',
+      email: 'Corporate email address (required)',
+      id_type: 'ID Type (optional)',
+      id_number: 'NRIC/ Fin/ Passport (optional → Salesforce id_number)',
+      company: 'Organisation name (required)',
+      department: 'Department (optional)',
+      jobFunction: 'Job function (optional)',
+      countryOfResidence: 'Nationality (optional → countryOfResidence)',
+      noOfYearOfRelevantWorkExperience: 'Years of experience (optional)',
+      corporateAccountId: 'Corporate Account ID (optional / auto)',
+      learnerAsAnAccounting: 'Is the job function accounting related? (required)',
+      membershipNumber: 'ISCA membership number (optional)',
+      eligibility: 'Citizenship (required)',
+      phoneNumber: 'Phone Number (optional → Salesforce phone)',
+      organisationType: 'Organisation type (optional)',
+      iscaMemberStatus: 'ISCA member/ Non-member (optional → accountType)',
+      otherAccountingBodies:
+        'Membership of other accounting bodies (required only if Non-member)',
+    };
+
+    const usedIndexes = new Set<number>();
+    const resolved: Record<FieldKey, number> = {
+      salutation: -1,
+      first_name: -1,
+      last_name: -1,
+      name_as_per_id: -1,
+      email: -1,
+      id_type: -1,
+      id_number: -1,
+      company: -1,
+      department: -1,
+      jobFunction: -1,
+      countryOfResidence: -1,
+      noOfYearOfRelevantWorkExperience: -1,
+      corporateAccountId: -1,
+      learnerAsAnAccounting: -1,
+      membershipNumber: -1,
+      eligibility: -1,
+      phoneNumber: -1,
+      organisationType: -1,
+      iscaMemberStatus: -1,
+      otherAccountingBodies: -1,
+    };
+
+    const fieldKeys = Object.keys(fieldAliases) as FieldKey[];
+
+    // Pass 1: exact normalized / compact match
+    for (const key of fieldKeys) {
+      const aliases = fieldAliases[key].map((a) => this.normalizeCsvHeader(a));
+      const compactAliases = fieldAliases[key].map((a) => this.compactCsvHeader(a));
+      for (let i = 0; i < rawHeaders.length; i += 1) {
+        if (usedIndexes.has(i)) continue;
+        const header = rawHeaders[i];
+        const norm = this.normalizeCsvHeader(header);
+        const compact = this.compactCsvHeader(header);
+        if (aliases.includes(norm) || compactAliases.includes(compact)) {
+          resolved[key] = i;
+          usedIndexes.add(i);
+          break;
+        }
+      }
+    }
+
+    // Pass 2: fuzzy ≥ 80% — map known fields only; never fail on extra columns
+    for (const key of fieldKeys) {
+      if (resolved[key] >= 0) continue;
+      let bestIdx = -1;
+      let bestScore = 0;
+      for (let i = 0; i < rawHeaders.length; i += 1) {
+        if (usedIndexes.has(i)) continue;
+        const { score } = this.bestHeaderSimilarity(rawHeaders[i], fieldAliases[key]);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0 && bestScore >= FUZZY_ACCEPT) {
+        resolved[key] = bestIdx;
+        usedIndexes.add(bestIdx);
+      }
+    }
+
+    // Phone Number fallback: any unused header that clearly means phone.
+    if (resolved.phoneNumber < 0) {
+      for (let i = 0; i < rawHeaders.length; i += 1) {
+        if (usedIndexes.has(i)) continue;
+        const compact = this.compactCsvHeader(rawHeaders[i]);
+        if (
+          compact.includes('phone')
+          || compact === 'tel'
+          || compact.includes('telephone')
+          || compact.includes('mobile')
+          || compact === 'hp'
+          || compact.includes('handphone')
+        ) {
+          resolved.phoneNumber = i;
+          usedIndexes.add(i);
+          break;
+        }
+      }
+    }
+
+    // NRIC / ID number fallback: unused header that clearly means NRIC/FIN/Passport/ID no.
+    if (resolved.id_number < 0) {
+      for (let i = 0; i < rawHeaders.length; i += 1) {
+        if (usedIndexes.has(i)) continue;
+        const compact = this.compactCsvHeader(rawHeaders[i]);
+        if (
+          compact.includes('idtype')
+          || compact === 'type'
+          || compact.endsWith('type')
+        ) {
+          continue;
+        }
+        if (
+          compact.includes('nric')
+          || compact.includes('nrci')
+          || compact.includes('passport')
+          || (compact.includes('fin') && !compact.includes('finance'))
+          || compact === 'idnumber'
+          || compact === 'idno'
+          || compact.includes('identitynumber')
+        ) {
+          resolved.id_number = i;
+          usedIndexes.add(i);
+          break;
+        }
+      }
+    }
+
+    // ISCA member/ Non-member → accountType
+    if (resolved.iscaMemberStatus < 0) {
+      for (let i = 0; i < rawHeaders.length; i += 1) {
+        if (usedIndexes.has(i)) continue;
+        const compact = this.compactCsvHeader(rawHeaders[i]);
+        if (
+          compact.includes('iscamember')
+          || compact.includes('nonmember')
+          || compact === 'accounttype'
+          || (compact.includes('member') && compact.includes('isca'))
+        ) {
+          resolved.iscaMemberStatus = i;
+          usedIndexes.add(i);
+          break;
+        }
+      }
+    }
+
+    // Extra / unknown columns are intentionally ignored (valid).
+    // Optional columns (insert into SF only when present):
+    // id_type, id_number, department, jobFunction, countryOfResidence,
+    // noOfYearOfRelevantWorkExperience, membershipNumber, phoneNumber,
+    // organisationType, iscaMemberStatus, otherAccountingBodies.
+    const missingRequired: string[] = [];
+    if (resolved.first_name < 0) missingRequired.push(displayName.first_name);
+    if (resolved.last_name < 0) missingRequired.push(displayName.last_name);
+    if (resolved.email < 0) missingRequired.push(displayName.email);
+    if (resolved.eligibility < 0) missingRequired.push(displayName.eligibility);
+    if (resolved.company < 0) missingRequired.push('Organisation name');
+    if (resolved.learnerAsAnAccounting < 0) {
+      missingRequired.push('Is the job function accounting related?');
+    }
+    if (missingRequired.length) {
+      throw new BadRequestException(
+        `CSV header must include: ${missingRequired.join(', ')}. `
+        + 'Extra columns are ignored. Close spellings (≥80% match) are accepted automatically.',
+      );
+    }
+
+    return resolved;
+  }
+
+  private isStaffEnrolmentSpreadsheetFile(fileName: string): boolean {
+    return /\.(csv|xlsx|xls)$/i.test(String(fileName || ''));
+  }
+
+  private isStaffEnrolmentExcelFile(fileName: string): boolean {
+    return /\.(xlsx|xls)$/i.test(String(fileName || ''));
+  }
+
+  private parseExcludeRowNumbers(raw?: string | number[] | null): Set<number> {
+    if (Array.isArray(raw)) {
+      return new Set(
+        raw.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n >= 2),
+      );
+    }
+    const text = String(raw || '').trim();
+    if (!text) return new Set();
+    return new Set(
+      text
+        .split(/[,\s]+/)
+        .map((part) => Number(part))
+        .filter((n) => Number.isFinite(n) && n >= 2),
+    );
+  }
+
+  private spreadsheetCellToString(cell: unknown): string {
+    if (cell === null || cell === undefined) return '';
+    if (typeof cell === 'number' && Number.isFinite(cell)) {
+      // Excel often stores phone digits as numbers — avoid scientific notation.
+      if (Number.isInteger(cell)) return String(Math.trunc(cell));
+      return String(cell);
+    }
+    return String(cell)
+      .replace(/\u00a0/g, ' ')
+      .replace(/^\ufeff/, '')
+      .trim();
+  }
+
+  private mapStaffEnrolmentTableToLearners(
+    rawHeaders: string[],
+    dataRows: string[][],
+  ): CorporateStaffLearnerDto[] {
+    const idx = this.resolveStaffEnrolmentHeaderIndexes(rawHeaders);
+    const learners: CorporateStaffLearnerDto[] = [];
+
+    for (const cells of dataRows) {
+      const read = (columnIndex: number) =>
+        columnIndex >= 0 ? this.spreadsheetCellToString(cells[columnIndex]) : '';
+
+      const firstName = read(idx.first_name);
+      const lastName = read(idx.last_name);
+      const email = read(idx.email);
+      if (!firstName && !lastName && !email) continue;
+
+      const yearsRaw = read(idx.noOfYearOfRelevantWorkExperience);
+      const years = yearsRaw ? Number(yearsRaw) : undefined;
+      const phoneValue = read(idx.phoneNumber);
+
+      learners.push({
+        salutation: read(idx.salutation) || undefined,
+        first_name: firstName,
+        last_name: lastName,
+        name_as_per_id: read(idx.name_as_per_id) || undefined,
+        email,
+        id_type: read(idx.id_type) || undefined,
+        id_number: read(idx.id_number) || undefined,
+        company: read(idx.company) || undefined,
+        department: read(idx.department) || undefined,
+        jobFunction: read(idx.jobFunction) || undefined,
+        countryOfResidence: read(idx.countryOfResidence) || undefined,
+        noOfYearOfRelevantWorkExperience:
+          years !== undefined && !Number.isNaN(years) ? years : undefined,
+        corporateAccountId: read(idx.corporateAccountId) || undefined,
+        learnerAsAnAccounting: read(idx.learnerAsAnAccounting) || undefined,
+        membershipNumber: read(idx.membershipNumber) || undefined,
+        eligibility: read(idx.eligibility) || undefined,
+        phoneNumber: phoneValue || undefined,
+        organisationType: read(idx.organisationType) || undefined,
+        iscaMemberStatus: read(idx.iscaMemberStatus) || undefined,
+        otherAccountingBodies: read(idx.otherAccountingBodies) || undefined,
+      });
+    }
+
+    if (!learners.length) {
+      throw new BadRequestException('No valid learner rows found in the upload file.');
+    }
+    if (learners.length > BULK_ENROLMENT_CSV_MAX_ROWS) {
+      throw new BadRequestException(
+        `Upload supports a maximum of ${BULK_ENROLMENT_CSV_MAX_ROWS} learner rows.`,
+      );
+    }
+    return learners;
   }
 
   parseStaffEnrolmentCsv(buffer: Buffer): CorporateStaffLearnerDto[] {
@@ -881,114 +1885,445 @@ export class CorporateService {
       throw new BadRequestException('CSV must include a header row and at least one learner row.');
     }
 
-    const headers = this.parseCsvLine(lines[0]).map((h) => this.normalizeCsvHeader(h));
-    const headerIndex = (aliases: string[]) => {
-      for (const alias of aliases) {
-        const idx = headers.indexOf(alias);
-        if (idx >= 0) return idx;
-      }
-      return -1;
-    };
+    const rawHeaders = this.parseCsvLine(lines[0]);
+    const dataRows = lines.slice(1).map((line) => this.parseCsvLine(line));
+    return this.mapStaffEnrolmentTableToLearners(rawHeaders, dataRows);
+  }
 
-    const idx = {
-      salutation: headerIndex(['salutation']),
-      first_name: headerIndex(['first_name', 'firstname', 'first']),
-      last_name: headerIndex(['last_name', 'lastname', 'last']),
-      name_as_per_id: headerIndex(['name_as_per_id', 'fullname_as_per_id', 'full_name', 'fullname']),
-      email: headerIndex(['email', 'work_email']),
-      company: headerIndex(['company']),
-      department: headerIndex(['department', 'dept']),
-      staff_role: headerIndex(['staff_role', 'staffrole', 'role', 'job_title']),
-      noOfYearOfRelevantWorkExperience: headerIndex([
-        'noofyearofrelevantworkexperience',
-        'no_of_year_of_relevant_work_experience',
-        'years_of_experience',
-        'experience_years',
-      ]),
-      corporateAccountId: headerIndex([
-        'corporateaccountid',
-        'corporate_account_id',
-        'account_id',
-      ]),
-      learnerAsAnAccounting: headerIndex([
-        'learnerasanaccounting',
-        'learner_as_an_accounting',
-      ]),
-      eligibility: headerIndex(['eligibility']),
-    };
+  parseStaffEnrolmentExcel(buffer: Buffer): CorporateStaffLearnerDto[] {
+    let workbook: XLSX.WorkBook;
+    try {
+      workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false, raw: false });
+    } catch {
+      throw new BadRequestException('Could not read the Excel file. Please upload a valid .xlsx or .xls file.');
+    }
 
-    if (idx.first_name < 0 || idx.last_name < 0 || idx.email < 0) {
+    const sheetName = workbook.SheetNames.find((name) => String(name || '').trim()) || '';
+    if (!sheetName) {
+      throw new BadRequestException('Excel file has no worksheets.');
+    }
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      throw new BadRequestException('Excel worksheet could not be read.');
+    }
+
+    const matrix = XLSX.utils.sheet_to_json<(string | number | boolean | null | undefined)[]>(
+      sheet,
+      {
+        header: 1,
+        defval: '',
+        blankrows: false,
+        raw: false,
+      },
+    );
+
+    const normalizedRows = (Array.isArray(matrix) ? matrix : [])
+      .map((row) =>
+        (Array.isArray(row) ? row : []).map((cell) => this.spreadsheetCellToString(cell)),
+      )
+      .filter((row) => row.some((cell) => cell.length > 0));
+
+    if (normalizedRows.length < 2) {
       throw new BadRequestException(
-        'CSV header must include first_name, last_name and email columns.',
+        'Excel must include a header row and at least one learner row on the first sheet.',
       );
     }
 
-    const learners: CorporateStaffLearnerDto[] = [];
-    for (let rowNo = 1; rowNo < lines.length; rowNo += 1) {
-      const cells = this.parseCsvLine(lines[rowNo]);
-      const read = (columnIndex: number) =>
-        columnIndex >= 0 ? String(cells[columnIndex] || '').trim() : '';
+    const rawHeaders = normalizedRows[0];
+    const dataRows = normalizedRows.slice(1);
+    return this.mapStaffEnrolmentTableToLearners(rawHeaders, dataRows);
+  }
 
-      const firstName = read(idx.first_name);
-      const lastName = read(idx.last_name);
-      const email = read(idx.email);
-      if (!firstName && !lastName && !email) continue;
+  parseStaffEnrolmentFile(buffer: Buffer, fileName = ''): CorporateStaffLearnerDto[] {
+    const name = String(fileName || '').toLowerCase();
+    if (this.isStaffEnrolmentExcelFile(name)) {
+      return this.parseStaffEnrolmentExcel(buffer);
+    }
+    return this.parseStaffEnrolmentCsv(buffer);
+  }
 
-      const yearsRaw = read(idx.noOfYearOfRelevantWorkExperience);
-      const years = yearsRaw ? Number(yearsRaw) : undefined;
+  /**
+   * Validate CSV before enrolment: columns, email format, in-file duplicates,
+   * citizenship, company code, and existing local / Salesforce emails.
+   * Does not create users.
+   */
+  async validateStaffEnrolmentCsv(params: {
+    actorUserId?: string;
+    companyCode?: string;
+    file?: Express.Multer.File;
+  }) {
+    const file = params.file;
+    const errors: Array<{
+      type: 'file' | 'header' | 'row';
+      row?: number;
+      email?: string;
+      field?: string;
+      message: string;
+    }> = [];
 
-      learners.push({
-        salutation: read(idx.salutation) || undefined,
-        first_name: firstName,
-        last_name: lastName,
-        name_as_per_id: read(idx.name_as_per_id) || undefined,
-        email,
-        company: read(idx.company) || undefined,
-        department: read(idx.department) || undefined,
-        staff_role: read(idx.staff_role) || undefined,
-        noOfYearOfRelevantWorkExperience:
-          years !== undefined && !Number.isNaN(years) ? years : undefined,
-        corporateAccountId: read(idx.corporateAccountId) || undefined,
-        learnerAsAnAccounting: read(idx.learnerAsAnAccounting) || undefined,
-        eligibility: read(idx.eligibility) || undefined,
+    if (!file?.buffer?.length) {
+      return {
+        valid: false,
+        fileName: '',
+        rowCount: 0,
+        errors: [{ type: 'file', message: 'CSV or Excel file is required.' }],
+        rows: [],
+        summary: {
+          requiredColumnsOk: false,
+          emailFormatErrors: 0,
+          duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
+          citizenshipErrors: 0,
+          alreadyInApp: 0,
+          alreadyInSalesforce: 0,
+          validRows: 0,
+        },
+      };
+    }
+
+    const original = String(file.originalname || '').toLowerCase();
+    if (!this.isStaffEnrolmentSpreadsheetFile(original)) {
+      return {
+        valid: false,
+        fileName: String(file.originalname || ''),
+        rowCount: 0,
+        errors: [{ type: 'file', message: 'Only .csv, .xlsx or .xls files are allowed.' }],
+        rows: [],
+        summary: {
+          requiredColumnsOk: false,
+          emailFormatErrors: 0,
+          duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
+          citizenshipErrors: 0,
+          alreadyInApp: 0,
+          alreadyInSalesforce: 0,
+          validRows: 0,
+        },
+      };
+    }
+
+    if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
+      return {
+        valid: false,
+        fileName: String(file.originalname || ''),
+        rowCount: 0,
+        errors: [{ type: 'file', message: 'CSV file must be 1GB or smaller.' }],
+        rows: [],
+        summary: {
+          requiredColumnsOk: false,
+          emailFormatErrors: 0,
+          duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
+          citizenshipErrors: 0,
+          alreadyInApp: 0,
+          alreadyInSalesforce: 0,
+          validRows: 0,
+        },
+      };
+    }
+
+    let learners: CorporateStaffLearnerDto[] = [];
+    let requiredColumnsOk = true;
+    try {
+      learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
+    } catch (err: unknown) {
+      requiredColumnsOk = false;
+      let messages: string[] = ['Invalid CSV headers or content.'];
+      if (err instanceof BadRequestException) {
+        const res = err.getResponse();
+        if (typeof res === 'string') {
+          messages = [res];
+        } else if (res && typeof res === 'object' && 'message' in res) {
+          const m = (res as { message?: string | string[] }).message;
+          messages = Array.isArray(m) ? m.map(String) : [String(m || err.message)];
+        } else {
+          messages = [err.message];
+        }
+      } else if (err instanceof Error) {
+        messages = [err.message];
+      }
+      for (const msg of messages) {
+        errors.push({ type: 'header', message: String(msg) });
+      }
+      return {
+        valid: false,
+        fileName: String(file.originalname || ''),
+        rowCount: 0,
+        errors,
+        rows: [],
+        summary: {
+          requiredColumnsOk: false,
+          emailFormatErrors: 0,
+          duplicateEmails: 0,
+          nricFormatErrors: 0,
+          duplicateNrics: 0,
+          citizenshipErrors: 0,
+          alreadyInApp: 0,
+          alreadyInSalesforce: 0,
+          validRows: 0,
+        },
+      };
+    }
+
+    let companyCode = '';
+    try {
+      companyCode = await this.resolveEnrolCompanyCode({
+        actorUserId: params.actorUserId,
+        companyCode: params.companyCode,
+      });
+    } catch (err: unknown) {
+      errors.push({
+        type: 'file',
+        field: 'companyCode',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Company code is missing. Please sign in again via corporate SSO.',
+      });
+    }
+    if (!String(companyCode || '').trim()) {
+      if (!errors.some((e) => e.field === 'companyCode')) {
+        errors.push({
+          type: 'file',
+          field: 'companyCode',
+          message: 'Company code is required for bulk enrolment.',
+        });
+      }
+    }
+
+    const seenEmails = new Set<string>();
+    const seenNrics = new Set<string>();
+    let emailFormatErrors = 0;
+    let duplicateEmails = 0;
+    let nricFormatErrors = 0;
+    let duplicateNrics = 0;
+    let citizenshipErrors = 0;
+    let alreadyInApp = 0;
+    let alreadyInSalesforce = 0;
+    let validRows = 0;
+    const rows: Array<{
+      row: number;
+      email: string;
+      status: 'ok' | 'error';
+      statusLabel: string;
+      messages: string[];
+    }> = [];
+
+    for (let i = 0; i < learners.length; i += 1) {
+      const row = learners[i];
+      const csvRow = i + 2; // header is row 1
+      const email = String(row.email || '').trim().toLowerCase();
+      const rowMessages: string[] = [];
+      let rowHasError = false;
+
+      const pushRowError = (field: string, message: string) => {
+        rowHasError = true;
+        rowMessages.push(message);
+        errors.push({
+          type: 'row',
+          row: csvRow,
+          email: email || undefined,
+          field,
+          message,
+        });
+      };
+
+      if (!email) {
+        emailFormatErrors += 1;
+        pushRowError('email', 'Email is required.');
+      } else {
+        const emailVerification = await verifyEmailAddress(email);
+        if (!emailVerification.isValid) {
+          emailFormatErrors += 1;
+          pushRowError(
+            'email',
+            emailVerification.reason || 'Email format is invalid.',
+          );
+        } else if (seenEmails.has(email)) {
+          duplicateEmails += 1;
+          pushRowError('email', 'Duplicate email within the CSV.');
+        } else {
+          seenEmails.add(email);
+        }
+      }
+
+      const firstName = String(row.first_name || '').trim();
+      const lastName = String(row.last_name || '').trim();
+      if (!firstName) {
+        pushRowError('first_name', 'First name is required.');
+      }
+      if (!lastName) {
+        pushRowError('last_name', 'Last name is required.');
+      }
+
+      // Optional fields — validate only when present; blank is OK.
+      // id_type, id_number, countryOfResidence, phoneNumber, organisationType,
+      // jobFunction, iscaMemberStatus, department, years, membershipNumber.
+
+      const eligibility = String(row.eligibility || '').trim();
+      if (!eligibility) {
+        citizenshipErrors += 1;
+        pushRowError(
+          'eligibility',
+          'Citizenship is required. Allowed: Singapore Citizen, Singapore PR.',
+        );
+      } else {
+        const resolved = this.resolveStaffEligibility(eligibility);
+        if (!resolved.value) {
+          citizenshipErrors += 1;
+          pushRowError(
+            'eligibility',
+            resolved.reason || 'Invalid citizenship value.',
+          );
+        }
+      }
+
+      const iscaMemberStatus = String(row.iscaMemberStatus || '').trim();
+      const isNonIscaMember =
+        Boolean(iscaMemberStatus) && /non[\s-]*member/i.test(iscaMemberStatus);
+      const otherAccountingBodies = String(row.otherAccountingBodies || '').trim();
+      if (isNonIscaMember && !otherAccountingBodies) {
+        pushRowError(
+          'otherAccountingBodies',
+          'Membership of other accounting bodies is required for Non-member.',
+        );
+      }
+
+      const organisationName = String(row.company || '').trim();
+      if (!organisationName) {
+        pushRowError('company', 'Organisation name is required.');
+      }
+
+      const learnerAsAnAccounting = String(row.learnerAsAnAccounting || '').trim();
+      if (!learnerAsAnAccounting) {
+        pushRowError(
+          'learnerAsAnAccounting',
+          'Is the job function accounting related? is required.',
+        );
+      }
+
+      // NRIC/FIN present → same validity + uniqueness checks as registration.
+      const idNumberRaw = String(row.id_number || '').trim();
+      const idTypeRaw = String(row.id_type || '').trim();
+      let normalizedNricForLookup = '';
+      if (idNumberRaw) {
+        const idCheck = this.validateStaffIdNumberFormat({
+          idNumber: idNumberRaw,
+          idType: idTypeRaw,
+        });
+        if (!idCheck.ok) {
+          nricFormatErrors += 1;
+          pushRowError('id_number', idCheck.message);
+        } else if (idCheck.isNricFin && idCheck.value) {
+          normalizedNricForLookup = idCheck.value;
+          if (seenNrics.has(normalizedNricForLookup)) {
+            duplicateNrics += 1;
+            pushRowError('id_number', 'Duplicate NRIC/FIN within the upload file.');
+          } else {
+            seenNrics.add(normalizedNricForLookup);
+          }
+        }
+      }
+
+      if (!rowHasError && email) {
+        const localExisting = await this.userRepository.findOne({ where: { email } });
+        if (localExisting) {
+          alreadyInApp += 1;
+          pushRowError('email', 'Already registered in the app.');
+        } else {
+          try {
+            const byEmail = await this.oauthAuthService.checkSalesforceUserByEmail(email);
+            if (Boolean(byEmail?.found)) {
+              alreadyInSalesforce += 1;
+              pushRowError('email', 'Already exists in Salesforce.');
+            }
+          } catch {
+            pushRowError('email', 'Could not verify email in Salesforce.');
+          }
+        }
+      }
+
+      if (!rowHasError && normalizedNricForLookup) {
+        const nricExists = await this.checkStaffNricAlreadyExists(normalizedNricForLookup);
+        if (!nricExists.ok) {
+          if (nricExists.where === 'app') alreadyInApp += 1;
+          else if (nricExists.where === 'salesforce') alreadyInSalesforce += 1;
+          pushRowError('id_number', nricExists.message);
+        }
+      }
+
+      if (!rowHasError) validRows += 1;
+
+      rows.push({
+        row: csvRow,
+        email: email || '(missing)',
+        status: rowHasError ? 'error' : 'ok',
+        statusLabel: rowHasError ? rowMessages[0] || 'Failed' : 'Ready',
+        messages: rowMessages,
       });
     }
 
-    if (!learners.length) {
-      throw new BadRequestException('No valid learner rows found in the CSV file.');
-    }
-    if (learners.length > BULK_ENROLMENT_CSV_MAX_ROWS) {
-      throw new BadRequestException(
-        `CSV supports a maximum of ${BULK_ENROLMENT_CSV_MAX_ROWS} learner rows.`,
-      );
-    }
-    return learners;
+    const valid = errors.length === 0 && validRows > 0;
+
+    return {
+      valid,
+      fileName: String(file.originalname || ''),
+      rowCount: learners.length,
+      companyCode: companyCode || null,
+      errors,
+      rows,
+      summary: {
+        requiredColumnsOk,
+        emailFormatErrors,
+        duplicateEmails,
+        nricFormatErrors,
+        duplicateNrics,
+        citizenshipErrors,
+        alreadyInApp,
+        alreadyInSalesforce,
+        validRows,
+      },
+    };
   }
 
   async enrolStaffBulkFromCsv(params: {
     actorUserId?: string;
     companyCode?: string;
     file?: Express.Multer.File;
+    excludeRows?: string | number[] | null;
   }) {
     const file = params.file;
     if (!file?.buffer?.length) {
-      throw new BadRequestException('CSV file is required.');
+      throw new BadRequestException('CSV or Excel file is required.');
     }
     if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
-      throw new BadRequestException('CSV file must be 5MB or smaller.');
+      throw new BadRequestException('Upload file must be 1GB or smaller.');
     }
     const original = String(file.originalname || '').toLowerCase();
-    if (!original.endsWith('.csv')) {
-      throw new BadRequestException('Only .csv files are allowed for bulk staff enrolment.');
+    if (!this.isStaffEnrolmentSpreadsheetFile(original)) {
+      throw new BadRequestException(
+        'Only .csv, .xlsx or .xls files are allowed for bulk learner enrolment.',
+      );
     }
 
-    const learners = this.parseStaffEnrolmentCsv(file.buffer);
+    let learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
+    const exclude = this.parseExcludeRowNumbers(params.excludeRows);
+    if (exclude.size) {
+      learners = learners.filter((_row, index) => !exclude.has(index + 2));
+    }
+    if (!learners.length) {
+      throw new BadRequestException('No learner rows left to enrol after skipping errors.');
+    }
+
     return this.enrolStaffBulk({
       actorUserId: params.actorUserId,
       companyCode: params.companyCode,
       learners,
       isAuthorisedSubmit: true,
-      source: 'csv',
+      source: this.isStaffEnrolmentExcelFile(original) ? 'excel' : 'csv',
       fileName: String(file.originalname || '').trim() || undefined,
     });
   }
@@ -1188,6 +2523,100 @@ export class CorporateService {
     if (trimmed) return trimmed;
 
     return String(process.env.CORPORATE_PUBLIC_COMPANY_CODE || '').trim();
+  }
+
+  /**
+   * Corporate HR profile — prefer live Salesforce userinfoforcorporate when SSO token
+   * is still available; otherwise return last synced salesforceUserInfoRaw.corporate.
+   */
+  async getHrProfile(actorUserId?: string) {
+    const userId = String(actorUserId || '').trim();
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== UserRole.Corporate && user.role !== UserRole.Admin) {
+      throw new ForbiddenException('Corporate profile is only available for Corporate HR accounts.');
+    }
+
+    let corporateInfo: Record<string, unknown> | null = null;
+    let source: 'salesforce' | 'cached' = 'cached';
+
+    const socialToken = String(user.socialAccessToken || '').trim();
+    if (socialToken) {
+      try {
+        const fresh = await this.oauthAuthService.fetchSalesforceCorporateUserInfo(socialToken);
+        if (this.oauthAuthService.isCorporateSalesforceUserInfo(fresh)) {
+          corporateInfo = fresh;
+          source = 'salesforce';
+          user.salesforceUserInfoRaw = {
+            ...(user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+              ? user.salesforceUserInfoRaw
+              : {}),
+            corporate: fresh,
+          };
+          const companyCode = this.oauthAuthService.resolveCorporateCompanyCode(fresh);
+          const accountId = String((fresh as { accountId?: string }).accountId || '').trim();
+          if (companyCode) user.companyCode = companyCode;
+          if (accountId) user.salesforceAccountId = accountId;
+          user.salesforceSyncedAt = new Date();
+          await this.userRepository.save(user);
+        }
+      } catch (err) {
+        console.warn('[CorporateProfile] Live Salesforce userinfo refresh failed:', err);
+      }
+    }
+
+    if (!corporateInfo) {
+      const raw = user.salesforceUserInfoRaw;
+      if (raw && typeof raw === 'object') {
+        const nested =
+          (raw as Record<string, unknown>).corporate
+          && typeof (raw as Record<string, unknown>).corporate === 'object'
+            ? ((raw as Record<string, unknown>).corporate as Record<string, unknown>)
+            : null;
+        corporateInfo = nested || (raw as Record<string, unknown>);
+      }
+    }
+
+    const info = corporateInfo && typeof corporateInfo === 'object' ? corporateInfo : {};
+
+    return {
+      source,
+      syncedAt: user.salesforceSyncedAt || null,
+      local: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        role: user.role,
+        companyCode: user.companyCode || null,
+        salesforceAccountId: user.salesforceAccountId || null,
+        salesforceUsername: user.salesforceUsername || null,
+      },
+      salesforce: {
+        success: info.success ?? null,
+        role: info.role ?? null,
+        isCorporateMember:
+          info.isCoporateMember ?? info.isCorporateMember ?? null,
+        companyCode: info.companyCode ?? user.companyCode ?? null,
+        uenNumber: info.uenNumber ?? null,
+        organisationType: info.organisationType ?? null,
+        billingCountry: info.billingCountry ?? null,
+        billingCity: info.billingCity ?? null,
+        accountName: info.accountName ?? null,
+        accountId: info.accountId ?? user.salesforceAccountId ?? null,
+        username: info.username ?? user.salesforceUsername ?? null,
+        contactId: info.contactId ?? null,
+        contactFirstName: info.contactFirstName ?? user.firstname ?? null,
+        contactLastName: info.contactLastName ?? user.lastname ?? null,
+        contactEmail: info.contactEmail ?? user.email ?? null,
+        contactMobile: info.contactMobile ?? null,
+        contactPhone: info.contactPhone ?? null,
+        contactDesignation: info.contactDesignation ?? null,
+      },
+    };
   }
 
   async getOverview(companyCodeRaw?: string) {
@@ -2319,14 +3748,24 @@ export class CorporateService {
     const pending = this.buildPendingMessage({ hasCert, p1, p2, isInactive });
     const lastActiveLabel = this.formatLastActive(lastActiveAt);
 
+    const snap =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? (user.eligibilitySnapshot as Record<string, unknown>)
+        : null;
+    const snapshotRole = String(
+      snap?.jobFunction || snap?.role || snap?.staff_role || '',
+    ).trim();
+    const snapshotDept = String(snap?.department || '').trim();
+    const snapshotAccounting = String(snap?.learnerAsAnAccounting || '').trim();
+
     return {
       userId: user.id,
       name: `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username || 'Learner',
       email: user.email || '',
-      department: '—',
-      role: user.financeRole || user.persona || '—',
+      department: snapshotDept || '—',
+      role: snapshotRole || user.financeRole || user.persona || '—',
       eligibility: this.formatEligibility(user),
-      profession: user.financeRole ? 'Yes' : '—',
+      profession: snapshotAccounting || (user.financeRole ? 'Yes' : '—'),
       status,
       lastActive: lastActiveLabel,
       lastActiveAt: lastActiveAt ? lastActiveAt.toISOString() : null,
@@ -2533,9 +3972,32 @@ export class CorporateService {
   }
 
   private formatEligibility(user: UserEntity): string {
-    if (user.eligibilityIsSingaporePr === true) return 'Singaporean/PR';
+    const snap =
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? (user.eligibilitySnapshot as Record<string, unknown>)
+        : null;
+    const fromSnap = String(snap?.eligibility || '').trim();
+    if (fromSnap) {
+      const lower = fromSnap.toLowerCase();
+      if (lower === 'singapore citizen') return 'Singapore Citizen';
+      if (lower === 'singapore pr') return 'Singapore PR';
+      // Legacy CSV Foreigner → display as Singapore PR
+      if (lower === 'foreigner' || lower === 'foreign') return 'Singapore PR';
+      if (lower === 'isca member') return 'ISCA Member';
+      return fromSnap;
+    }
+
+    if (user.eligibilityType) {
+      const type = String(user.eligibilityType).trim();
+      const lower = type.toLowerCase();
+      if (lower === 'singapore citizen') return 'Singapore Citizen';
+      if (lower === 'singapore pr') return 'Singapore PR';
+      if (lower === 'foreigner' || lower === 'foreign') return 'Singapore PR';
+      return type;
+    }
+
+    if (user.eligibilityIsSingaporePr === true) return 'Singapore PR';
     if (user.eligibilityIsIscaMember === true) return 'ISCA Member';
-    if (user.eligibilityType) return String(user.eligibilityType);
     return '—';
   }
 

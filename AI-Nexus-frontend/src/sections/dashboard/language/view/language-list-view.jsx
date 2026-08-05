@@ -40,6 +40,8 @@ import {
   TableLoadingOverlay,
 } from 'src/components/table';
 
+import { resolveLanguageAdminPaths } from '../language-admin-paths';
+
 import { fetchLanguages, deleteLanguage } from 'src/store/slices/languageSlice';
 import { LanguageTableRow } from '../language-table-row';
 import { LanguageTableToolbar } from '../language-table-toolbar';
@@ -87,6 +89,9 @@ export function LanguageListView() {
   const router = useRouter();
   const confirm = useBoolean();
   const filters = useSetState({ name: '', status: 'all' });
+  const languagePaths = resolveLanguageAdminPaths(
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  );
 
   useEffect(() => {
     dispatch(fetchLanguages());
@@ -136,7 +141,10 @@ export function LanguageListView() {
     }
   }, [dataFiltered.length, dataInPage.length, dispatch, table]);
 
-  const handleEditRow = useCallback((id) => router.push(paths.admin.language.edit(id)), [router]);
+  const handleEditRow = useCallback(
+    (id) => router.push(languagePaths.edit(id)),
+    [router, languagePaths]
+  );
 
   return (
     <>
@@ -145,13 +153,13 @@ export function LanguageListView() {
           heading="List"
           links={[
             { name: 'Dashboard', href: paths.dashboard.root },
-            { name: 'Language', href: paths.admin.language.list },
-            { name: 'List' },
+            { name: languagePaths.sectionName, href: languagePaths.list },
+            { name: 'Languages' },
           ]}
           action={
             <Button
               component={RouterLink}
-              href={paths.admin.language.new}
+              href={languagePaths.new}
               variant="contained"
               startIcon={<Iconify icon="mingcute:add-line" />}
             >

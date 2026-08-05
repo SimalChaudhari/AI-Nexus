@@ -430,6 +430,16 @@ function transformFooterContent(source) {
   };
 }
 
+function transformLearningAdvertiseTabContent(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+  return {
+    name: source.name != null ? String(source.name) : '',
+    link: source.link != null ? String(source.link) : '',
+  };
+}
+
 function transformMembershipPaymentSettings(source) {
   if (!source || typeof source !== 'object') return null;
   return {
@@ -572,6 +582,9 @@ function transformSettings(settings) {
     homeCeoLaunchContent: transformCeoLaunchContent(settings?.homeCeoLaunchContent),
     partnerWithIscaContent: transformPartnerWithIscaContent(settings?.partnerWithIscaContent),
     footerContent: transformFooterContent(settings?.footerContent),
+    learningAdvertiseTabContent: transformLearningAdvertiseTabContent(
+      settings?.learningAdvertiseTabContent
+    ),
     membershipPaymentSettings: transformMembershipPaymentSettings(
       settings?.membershipPaymentSettings
     ),
@@ -1070,6 +1083,12 @@ export const appSettingsService = {
 
   async updateFooterContent(payload) {
     const response = await axios.put('/app-settings/footer-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateLearningAdvertiseTabContent(payload) {
+    const response = await axios.put('/app-settings/learning-advertise-tab-content', payload || {});
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

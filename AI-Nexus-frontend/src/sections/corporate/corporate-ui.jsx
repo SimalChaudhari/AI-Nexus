@@ -14,6 +14,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
+import { RouterLink } from 'src/routes/components';
 
 import { useAuthContext } from 'src/auth/hooks';
 import { signOut } from 'src/auth/context/jwt';
@@ -22,6 +23,7 @@ import {
   nudgeCorporateLearner,
 } from 'src/services/corporate.service';
 import { toast } from 'src/components/snackbar';
+import { Iconify } from 'src/components/iconify';
 
 import { CORP, STATUS_PILL_SX, statusTone } from './corporate-theme';
 
@@ -348,20 +350,46 @@ export function CorpAdminChip({ compact = false }) {
             size="small"
             variant="outlined"
             color="inherit"
+            component={RouterLink}
+            href={paths.corporate.profile}
+            onClick={() => setAnchorEl(null)}
+            startIcon={<Iconify icon="solar:user-rounded-bold" width={16} />}
+            sx={{
+              mb: 1,
+              borderRadius: '12px',
+              fontWeight: 700,
+              borderColor: CORP.line,
+              color: CORP.navy,
+              justifyContent: 'flex-start',
+              '&:hover': { borderColor: CORP.blue, bgcolor: '#eef5ff' },
+            }}
+          >
+            Profile
+          </Button>
+          <Button
+            fullWidth
+            size="small"
+            variant="outlined"
+            color="inherit"
             disabled={loggingOut}
             onClick={handleLogout}
             startIcon={
-              loggingOut ? <CircularProgress size={14} color="inherit" /> : null
+              loggingOut ? (
+                <CircularProgress size={14} color="inherit" />
+              ) : (
+                <Iconify icon="solar:logout-2-outline" width={16} />
+              )
             }
             sx={{
               borderRadius: '12px',
               fontWeight: 700,
               borderColor: CORP.line,
               color: CORP.blue,
+              justifyContent: 'flex-start',
               '&:hover': { borderColor: CORP.blue, bgcolor: '#eef5ff' },
             }}
           >
-            {loggingOut ? 'Signing out…' : 'Sign out'}
+            {loggingOut ? 'Signing out…' : 'Logout'}
           </Button>
         </Paper>
       </Popper>

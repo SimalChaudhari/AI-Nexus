@@ -13,9 +13,15 @@ import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
 import { Iconify } from 'src/components/iconify';
 
+import { resolveLanguageAdminPaths } from '../language-admin-paths';
+
 // ----------------------------------------------------------------------
 
 export function LanguageDetailsView({ language, loading, error }) {
+  const languagePaths = resolveLanguageAdminPaths(
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  );
+
   if (loading) {
     return <LoadingScreen />;
   }
@@ -29,7 +35,7 @@ export function LanguageDetailsView({ language, loading, error }) {
           action={
             <Button
               component={RouterLink}
-              href={paths.admin.language.list}
+              href={languagePaths.list}
               startIcon={<Iconify width={16} icon="eva:arrow-ios-back-fill" />}
               sx={{ mt: 3 }}
             >
@@ -48,13 +54,13 @@ export function LanguageDetailsView({ language, loading, error }) {
         heading="Language Details"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
-          { name: 'Language', href: paths.admin.language.list },
+          { name: languagePaths.sectionName, href: languagePaths.list },
           { name: language?.title ?? 'Language' },
         ]}
         action={
           <Button
             component={RouterLink}
-            href={paths.admin.language.edit(language?.id)}
+            href={languagePaths.edit(language?.id)}
             variant="contained"
             startIcon={<Iconify icon="solar:pen-bold" />}
           >
@@ -81,44 +87,18 @@ export function LanguageDetailsView({ language, loading, error }) {
               }}
             >
               <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
                   Title
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {language.title ?? '-'}
-                </Typography>
+                <Typography variant="body1">{language.title}</Typography>
               </Box>
 
               <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
                   Status
                 </Typography>
-                <Typography variant="body2" sx={{ color: language.deleted ? 'error.main' : 'text.secondary' }}>
-                  {language.deleted ? 'Deleted' : 'Active'}
-                </Typography>
+                <Typography variant="body1">{language.deleted ? 'Deleted' : 'Active'}</Typography>
               </Box>
-
-              {language.createdAt && (
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Created At
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {new Date(language.createdAt).toLocaleString()}
-                  </Typography>
-                </Box>
-              )}
-
-              {language.updatedAt && (
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Updated At
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {new Date(language.updatedAt).toLocaleString()}
-                  </Typography>
-                </Box>
-              )}
             </Box>
           </Card>
         </Grid>

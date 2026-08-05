@@ -1,35 +1,41 @@
 import { z as zod } from 'zod';
 
+import { emailSchema } from './user.validation';
+
 // ----------------------------------------------------------------------
 
 export const corporateEnrolDefaultValues = {
-  salutation: 'Mr',
+  salutation: '',
   firstName: '',
   lastName: '',
   nameAsPerId: '',
   email: '',
+  idType: '',
+  idNumber: '',
   company: '',
   department: '',
-  staffRole: '',
+  jobFunction: '',
+  countryOfResidence: '',
   yearsOfExperience: '',
   corporateAccountId: '',
   learnerAsAnAccounting: 'Yes',
+  membershipNumber: '',
   eligibility: 'Singapore Citizen',
 };
 
 export const CorporateEnrolSchema = zod.object({
-  salutation: zod.string().trim().min(1, 'Salutation is required'),
+  salutation: zod.string().trim().optional(),
   firstName: zod.string().trim().min(1, 'First name is required'),
   lastName: zod.string().trim().min(1, 'Last name is required'),
   nameAsPerId: zod.string().trim().min(1, 'Name as per ID is required'),
-  email: zod
-    .string()
-    .trim()
-    .min(1, 'Work email is required')
-    .email('Enter a valid work email address'),
+  // Same rules as registration form (format + disposable domain block).
+  email: emailSchema,
+  idType: zod.string().trim().optional(),
+  idNumber: zod.string().trim().optional(),
   company: zod.string().trim().min(1, 'Company is required'),
-  department: zod.string().trim().min(1, 'Department is required'),
-  staffRole: zod.string().trim().min(1, 'Staff role is required'),
+  department: zod.string().trim().optional(),
+  jobFunction: zod.string().trim().min(1, 'Job function is required'),
+  countryOfResidence: zod.string().trim().optional(),
   yearsOfExperience: zod.preprocess(
     (val) => (val === undefined || val === null ? '' : String(val)),
     zod
@@ -46,5 +52,6 @@ export const CorporateEnrolSchema = zod.object({
     required_error: 'Please select Yes or No',
     invalid_type_error: 'Please select Yes or No',
   }),
+  membershipNumber: zod.string().trim().optional(),
   eligibility: zod.string().trim().min(1, 'Eligibility is required'),
 });
