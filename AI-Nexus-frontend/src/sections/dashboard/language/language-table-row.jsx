@@ -28,16 +28,19 @@ import { ConfirmDialog } from 'src/components/custom-dialog';
 import { usePopover, CustomPopover } from 'src/components/custom-popover';
 
 import { useRouter } from 'src/routes/hooks';
-import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { updateLanguage } from 'src/store/slices/languageSlice';
+import { resolveLanguageAdminPaths } from './language-admin-paths';
 
 // ----------------------------------------------------------------------
 
 export function LanguageTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRow }) {
   const router = useRouter();
   const dispatch = useDispatch();
+  const languagePaths = resolveLanguageAdminPaths(
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  );
   const confirm = useBoolean();
   const popover = usePopover();
   const statusModal = useBoolean();
@@ -79,7 +82,7 @@ export function LanguageTableRow({ row, selected, onEditRow, onSelectRow, onDele
           <Stack sx={{ typography: 'body2', flex: '1 1 auto', alignItems: 'flex-start' }}>
             <Link
               component={RouterLink}
-              href={paths.admin.language.details(row.id)}
+              href={languagePaths.details(row.id)}
               color="inherit"
               sx={{ cursor: 'pointer' }}
             >
@@ -126,7 +129,7 @@ export function LanguageTableRow({ row, selected, onEditRow, onSelectRow, onDele
         <MenuList>
           <MenuItem
             onClick={() => {
-              router.push(paths.admin.language.details(row.id));
+              router.push(languagePaths.details(row.id));
               popover.onClose();
             }}
           >

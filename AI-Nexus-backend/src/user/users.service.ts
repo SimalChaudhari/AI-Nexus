@@ -113,16 +113,23 @@ export class UserService {
         }
 
         if (normalized.hasSearch) {
+            const searchPattern = `%${normalized.search}%`;
             query.andWhere(
                 new Brackets((qb) => {
-                    qb.where('user.firstname ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.lastname ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.username ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.email ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.contactNumber ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere('user.companyCode ILIKE :search', { search: `%${normalized.search}%` })
-                        .orWhere(`user."salesforceUserInfoRaw"::text ILIKE :search`, {
-                            search: `%${normalized.search}%`,
+                    // Match full display name ("First Last") as well as individual fields.
+                    qb.where(
+                        `CONCAT(COALESCE(user.firstname, ''), ' ', COALESCE(user.lastname, '')) ILIKE :search`,
+                        { search: searchPattern },
+                    )
+                        .orWhere('user.firstname ILIKE :search', { search: searchPattern })
+                        .orWhere('user.lastname ILIKE :search', { search: searchPattern })
+                        .orWhere('user.username ILIKE :search', { search: searchPattern })
+                        .orWhere('user.email ILIKE :search', { search: searchPattern })
+                        .orWhere('user.contactNumber ILIKE :search', { search: searchPattern })
+                        .orWhere('user.companyCode ILIKE :search', { search: searchPattern })
+                        // CAST avoids TypeORM treating Postgres `::text` as a `:text` bind param.
+                        .orWhere('CAST(user.salesforceUserInfoRaw AS text) ILIKE :search', {
+                            search: searchPattern,
                         });
                 }),
             );

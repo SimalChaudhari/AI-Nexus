@@ -124,13 +124,13 @@ const LanguageCreatePage = lazy(() => import('src/pages/dashboard/language/new')
 const LanguageEditPage = lazy(() => import('src/pages/dashboard/language/edit'));
 const LanguageDetailsPage = lazy(() => import('src/pages/dashboard/language/details'));
 
-// International pathway management (Admin only) — temporarily hidden
-// const IntlPathwayModulesListPage = lazy(() => import('src/pages/dashboard/international/modules/list'));
-// const IntlPathwayModulesCreatePage = lazy(() => import('src/pages/dashboard/international/modules/new'));
-// const IntlPathwayModulesEditPage = lazy(() => import('src/pages/dashboard/international/modules/edit'));
-// const IntlPathwayRolesListPage = lazy(() => import('src/pages/dashboard/international/roles/list'));
-// const IntlPathwayRolesCreatePage = lazy(() => import('src/pages/dashboard/international/roles/new'));
-// const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/international/roles/edit'));
+// International pathway management (Admin only)
+const IntlPathwayModulesListPage = lazy(() => import('src/pages/dashboard/international/modules/list'));
+const IntlPathwayModulesCreatePage = lazy(() => import('src/pages/dashboard/international/modules/new'));
+const IntlPathwayModulesEditPage = lazy(() => import('src/pages/dashboard/international/modules/edit'));
+const IntlPathwayRolesListPage = lazy(() => import('src/pages/dashboard/international/roles/list'));
+const IntlPathwayRolesCreatePage = lazy(() => import('src/pages/dashboard/international/roles/new'));
+const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/international/roles/edit'));
 
 // Blog
 const BlogPostsPage = lazy(() => import('src/pages/dashboard/post/list'));
@@ -344,7 +344,6 @@ export const adminRoutes = [
           { path: ':id/edit', element: <LanguageEditPage /> },
         ],
       },
-      /* International pathway — temporarily hidden
       {
         path: 'international',
         children: [
@@ -369,7 +368,6 @@ export const adminRoutes = [
           },
         ],
       },
-      */
       {
         path: 'product',
         children: [

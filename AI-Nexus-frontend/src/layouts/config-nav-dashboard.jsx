@@ -170,29 +170,29 @@ export const navData = [
           { title: 'Add language', path: paths.admin.language.new },
         ],
       },
-      // {
-      //   title: 'International',
-      //   path: paths.admin.international.root,
-      //   icon: <Iconify icon="solar:map-point-wave-bold-duotone" width={24} />,
-      //   children: [
-      //     {
-      //       title: 'Pathway modules',
-      //       path: paths.admin.international.modules.root,
-      //       deepMatch: true,
-      //       href: paths.admin.international.modules.list,
-      //       activeExcludePaths: [paths.admin.international.modules.new],
-      //     },
-      //     { title: 'Add module', path: paths.admin.international.modules.new },
-      //     {
-      //       title: 'Pathway roles',
-      //       path: paths.admin.international.roles.root,
-      //       deepMatch: true,
-      //       href: paths.admin.international.roles.list,
-      //       activeExcludePaths: [paths.admin.international.roles.new],
-      //     },
-      //     { title: 'Add role', path: paths.admin.international.roles.new },
-      //   ],
-      // },
+      {
+        title: 'International',
+        path: paths.admin.international.root,
+        icon: <Iconify icon="solar:map-point-wave-bold-duotone" width={24} />,
+        children: [
+          {
+            title: 'Pathway modules',
+            path: paths.admin.international.modules.root,
+            deepMatch: true,
+            href: paths.admin.international.modules.list,
+            activeExcludePaths: [paths.admin.international.modules.new],
+          },
+          { title: 'Add module', path: paths.admin.international.modules.new },
+          {
+            title: 'Pathway roles',
+            path: paths.admin.international.roles.root,
+            deepMatch: true,
+            href: paths.admin.international.roles.list,
+            activeExcludePaths: [paths.admin.international.roles.new],
+          },
+          { title: 'Add role', path: paths.admin.international.roles.new },
+        ],
+      },
       {
         title: 'Orders',
         path: paths.admin.order.root,

@@ -56,7 +56,7 @@ import {
 
 export function UserListView() {
   const dispatch = useDispatch();
-  const { users: tableData, loading, hasFetched, pagination } = useSelector((state) => state.users);
+  const { users: tableData, loading, pagination } = useSelector((state) => state.users);
   const { table, filters, query } = useAdminTableQueryState({
     defaultPage: USER_LIST_DEFAULTS.page,
     defaultRowsPerPage: USER_LIST_DEFAULTS.rowsPerPage,
@@ -81,7 +81,7 @@ export function UserListView() {
       page: usersQuery.page,
       limit: usersQuery.limit,
       status: usersQuery.status,
-      search: debouncedSearch,
+      search: typeof debouncedSearch === 'string' ? debouncedSearch.trim() || undefined : undefined,
     }),
     [debouncedSearch, usersQuery.limit, usersQuery.page, usersQuery.status]
   );

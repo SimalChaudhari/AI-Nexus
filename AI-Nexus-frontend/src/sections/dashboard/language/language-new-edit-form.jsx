@@ -20,6 +20,8 @@ import { toast } from 'src/components/snackbar';
 import { Form, Field } from 'src/components/hook-form';
 import { createLanguage, updateLanguage } from 'src/store/slices/languageSlice';
 
+import { resolveLanguageAdminPaths } from './language-admin-paths';
+
 // ----------------------------------------------------------------------
 
 export const NewLanguageSchema = zod.object({
@@ -32,6 +34,9 @@ export const NewLanguageSchema = zod.object({
 export function LanguageNewEditForm({ currentLanguage }) {
   const dispatch = useDispatch();
   const router = useRouter();
+  const languagePaths = resolveLanguageAdminPaths(
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  );
 
   const defaultValues = useMemo(
     () => ({
@@ -68,7 +73,7 @@ export function LanguageNewEditForm({ currentLanguage }) {
         await dispatch(createLanguage(payload)).unwrap();
         toast.success('Language created successfully!');
       }
-      router.push(paths.admin.language.list);
+      router.push(languagePaths.list);
     } catch (error) {
       toast.error(error || 'Failed to save language');
     }
