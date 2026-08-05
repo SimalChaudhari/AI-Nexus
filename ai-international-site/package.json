@@ -1,0 +1,28 @@
+{
+  "name": "ai-international-site",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@emotion/cache": "^11.11.0",
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@iconify/react": "^6.0.2",
+    "@mui/material": "^5.15.20",
+    "axios": "^1.19.0",
+    "framer-motion": "^11.18.2",
+    "next": "^15.5.22",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.22"
+  }
+}

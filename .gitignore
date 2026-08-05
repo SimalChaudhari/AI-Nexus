@@ -3,7 +3,6 @@ node_modules
 
 # SSL certificates (local/dev — do not commit private keys)
 AI-Nexus-frontend/ssl/
-ai-international-site
 nexus.bat
 
 /database/
@@ -24,9 +23,25 @@ AI-Nexus-backend/.env.*
 AI-Nexus-frontend/.env
 AI-Nexus-frontend/.env.*
 !AI-Nexus-frontend/.env.example
+# ai-international-site (Next.js) — do not push build/deps/secrets to UAT/git
+ai-international-site/node_modules/
+ai-international-site/.next/
+ai-international-site/out/
+ai-international-site/build/
+ai-international-site/coverage/
+ai-international-site/.vercel/
 ai-international-site/.env
 ai-international-site/.env.*
 !ai-international-site/.env.local.example
+ai-international-site/*.pem
+ai-international-site/*.tsbuildinfo
+ai-international-site/next-env.d.ts
+ai-international-site/npm-debug.log*
+ai-international-site/yarn-debug.log*
+ai-international-site/yarn-error.log*
+ai-international-site/.pnpm-debug.log*
+ai-international-site/.DS_Store
+
 AI-Nexus-flowise/packages/server/.env
 AI-Nexus-flowise/packages/server/.env.production
 AI-Nexus-flowise/packages/ui/.env
