@@ -472,6 +472,14 @@ export const ProfileSchema = zod.object({
   contactNumber: optionalPhoneSchema,
 });
 
+/** Admin own profile edit — no strict username pattern (local admin account). */
+export const AdminProfileSchema = ProfileSchema.extend({
+  username: zod
+    .string()
+    .min(1, { message: 'Username is required!' })
+    .max(50, { message: 'Username must be less than 50 characters!' }),
+});
+
 /** Site profile edit — only avatar and company code are editable. */
 export const SiteProfileSchema = zod.object({
   avatar: avatarFieldSchema,

@@ -202,6 +202,78 @@ export class UpdateUserDto {
     status?: UserStatus;
 }
 
+/** Admin own-profile update — username is not bound to letters+numbers pattern. */
+export class AdminUpdateProfileDto {
+    @IsOptional()
+    @IsString()
+    @MaxLength(50)
+    username?: string;
+
+    @IsOptional()
+    @IsString()
+    firstname?: string;
+
+    @IsOptional()
+    @IsString()
+    lastname?: string;
+
+    @IsOptional()
+    @IsEmail()
+    email?: string;
+
+    @IsOptional()
+    @IsString()
+    persona?: string;
+
+    @IsOptional()
+    @IsString()
+    aiExperienceLevel?: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiLearningGoals?: string[];
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiUseAreas?: string[];
+
+    @IsOptional()
+    @IsString()
+    financeRole?: string;
+
+    @IsOptional()
+    @IsString()
+    avatarUrl?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(48)
+    contactNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(64)
+    companyCode?: string;
+
+    @IsOptional()
+    @IsString()
+    password?: string;
+
+    @IsOptional()
+    @IsEnum(UserRole)
+    role?: UserRole;
+
+    @IsOptional()
+    @IsBoolean()
+    isVerified?: boolean;
+
+    @IsOptional()
+    @IsEnum(UserStatus)
+    status?: UserStatus;
+}
+
 // For forgot password - only email required
 export class ForgotPasswordDto {
     @IsEmail()

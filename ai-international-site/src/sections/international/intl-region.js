@@ -3,16 +3,16 @@
 export const INTL_REGION_STORAGE_KEY = 'ainexus_intl_region';
 
 /**
- * Fallback landing options when the third-party languages API is unavailable.
+ * Default landing languages (fixed set — no third-party languages API).
  */
 export const INTL_REGIONS = [
   {
     id: 'zh-Hans',
     code: 'zh-Hans',
-    label: 'Chinese Simplified',
-    nativeLabel: '中文 (简体)',
+    label: 'Chinese',
+    nativeLabel: '中文',
     locale: 'zh-Hans',
-    language: 'Chinese Simplified',
+    language: 'Chinese',
     flagCode: 'cn',
     icon: 'solar:buildings-bold-duotone',
   },
@@ -51,6 +51,8 @@ export const INTL_REGIONS = [
 function normalizeStored(value) {
   if (!value) return null;
   if (typeof value === 'object' && value.id) {
+    const matched = INTL_REGIONS.find((r) => r.id === value.id || r.code === value.code);
+    if (matched) return matched;
     return {
       id: value.id,
       code: value.code || value.id,
@@ -76,18 +78,9 @@ function normalizeStored(value) {
   );
 }
 
-/** Load languages from Next proxy → Microsoft Translator languages API. */
+/** Always the four default languages. */
 export async function fetchIntlRegions() {
-  try {
-    const response = await fetch('/api/intl-languages', { cache: 'no-store' });
-    if (!response.ok) return INTL_REGIONS;
-    const payload = await response.json();
-    const list = Array.isArray(payload?.data) ? payload.data : [];
-    if (!list.length) return INTL_REGIONS;
-    return list;
-  } catch {
-    return INTL_REGIONS;
-  }
+  return INTL_REGIONS;
 }
 
 export function getStoredIntlRegion() {
@@ -109,7 +102,12 @@ export function getStoredIntlRegion() {
 export function setStoredIntlRegion(regionOrId) {
   if (typeof window === 'undefined') return;
   try {
-    const payload =
+    const matched =
+      typeof regionOrId === 'string'
+        ? INTL_REGIONS.find((r) => r.id === regionOrId || r.code === regionOrId)
+        : INTL_REGIONS.find((r) => r.id === regionOrId?.id || r.code === regionOrId?.code);
+
+    const payload = matched || (
       typeof regionOrId === 'string'
         ? { id: regionOrId, code: regionOrId }
         : {
@@ -122,7 +120,8 @@ export function setStoredIntlRegion(regionOrId) {
             language: regionOrId.language,
             flagCode: regionOrId.flagCode ?? null,
             icon: regionOrId.icon,
-          };
+          }
+    );
     localStorage.setItem(INTL_REGION_STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // ignore

@@ -13,8 +13,16 @@ export enum InternationalAuthProvider {
 }
 
 export enum InternationalUserStatus {
+  PendingPayment = 'pending_payment',
   Active = 'active',
   Banned = 'banned',
+}
+
+export enum InternationalUserPaymentStatus {
+  Unpaid = 'unpaid',
+  Pending = 'pending',
+  Paid = 'paid',
+  Failed = 'failed',
 }
 
 @Entity('international_users')
@@ -80,8 +88,23 @@ export class InternationalUserEntity {
   @Column({ type: 'varchar', length: 120, nullable: true })
   countryOfResidence!: string | null;
 
+  /** ISO country code derived from countryOfResidence (e.g. IN, SG, US). */
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  countryCode!: string | null;
+
+  /** Billing currency for membership (e.g. INR, SGD, USD). */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  currency!: string | null;
+
   @Column({ type: 'varchar', length: 64, nullable: true })
   promoCode!: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 16,
+    default: InternationalUserPaymentStatus.Unpaid,
+  })
+  paymentStatus!: InternationalUserPaymentStatus;
 
   @Column({ type: 'boolean', default: true })
   isVerified!: boolean;
@@ -89,7 +112,7 @@ export class InternationalUserEntity {
   @Column({
     type: 'varchar',
     length: 16,
-    default: InternationalUserStatus.Active,
+    default: InternationalUserStatus.PendingPayment,
   })
   status!: InternationalUserStatus;
 

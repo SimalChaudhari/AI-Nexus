@@ -8,8 +8,8 @@ Standalone **Next.js + React** site for the AI Nexus International pages.
 
 | Route | Description |
 |-------|-------------|
-| `/` | Landing (hero + regions, global, trust, footer) |
-| `/ai-fluency` | AI Fluency pathway planner |
+| `/` | Landing (hero + languages) |
+| `/dashboard` | Step 7.2 — sections: Student (Pillar 1) · Role planner · Users (all pillars) |
 
 ## Setup
 
@@ -20,7 +20,7 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Open the URL printed by Next.js (often http://localhost:3000 or :3001).
+Open **http://localhost:3003** (fixed port — avoids 3000 / 3001 / 3002 used by other apps).
 
 ### Env (API host / port — not hardcoded in source)
 

@@ -7,11 +7,11 @@ export const CATALOG_COURSES = [
     id: 'ai-fluency',
     title: 'AI Fluency',
     blurb: 'Build AI fluency for accountancy and finance.',
-    accent: '#1C4270',
+    accent: '#002060',
     icon: 'solar:atom-bold-duotone',
     ctaLabel: 'Explore',
     enabled: true,
-    path: paths.internationalAiFluency,
+    path: paths.dashboard,
   },
   {
     id: 'ffaq',

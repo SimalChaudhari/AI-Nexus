@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
 import { paths } from 'src/routes/paths';
+import { isIntlAuthenticated } from 'src/auth/intl-session';
 import { resolveAssetUrl } from 'src/utils/asset-url';
 import { getYouTubeVideoId } from 'src/utils/youtube';
 import { buildSpotlightrEmbedUrl, parseSpotlightrUrl } from 'src/utils/spotlightr';
@@ -46,7 +47,7 @@ const tokens = {
   ink: '#0f1a2e',
   inkSoft: '#3d4f6f',
   inkFaint: '#7a8aa3',
-  paper: '#f4f6fa',
+  paper: '#f4f7fb',
   card: '#ffffff',
   line: '#d8dee8',
   pine: NAVY,
@@ -55,7 +56,7 @@ const tokens = {
   green: GREEN,
   greenLight: GREEN_LIGHT,
   gold: '#a45a12',
-  sky: '#eef2f8',
+  sky: '#eef3f9',
   shadow: '0 1px 2px rgba(0,32,96,.06), 0 8px 24px rgba(0,32,96,.08)',
 };
 
@@ -85,7 +86,7 @@ const LockIcon = (
 
 // ----------------------------------------------------------------------
 
-export function PathwayPlannerView() {
+export function PathwayPlannerView({ embedded = false }) {
   const [region, setRegion] = useState(null);
   const { videoUrlsByCode, minutesByCode, modulesByCode, roles: apiRoles } = usePathwayModuleVideos();
   const roles = apiRoles?.length
@@ -186,161 +187,155 @@ export function PathwayPlannerView() {
     setOpenCodes(new Set());
   };
 
-  return (
-    <Box
-      sx={{
-        width: '100%',
-        maxWidth: '100%',
-        overflowX: 'hidden',
-        bgcolor: tokens.paper,
-        color: tokens.ink,
-        minHeight: '100%',
-        pb: 10,
-        '--layout-dashboard-content-px': {
-          xs: '16px',
-          sm: '24px',
-          md: '32px',
-          lg: '48px',
-          xl: '64px',
-        },
-        [`& .${layoutClasses.content}`]: frontendContentSx,
-      }}
-    >
-      <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: { xs: 4, md: 5 }, pb: 0 }}>
-        <Box sx={{ mb: 2 }}>
-          <Button
-            component={Link}
-            href={paths.international}
-            startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={18} />}
-            sx={{
-              textTransform: 'none',
-              color: tokens.inkSoft,
-              px: 0,
-              minWidth: 0,
-              gap: 0.25,
-              '& .MuiButton-startIcon': { mr: 0.5 },
-              '&:hover': { bgcolor: 'transparent', color: tokens.pine },
-            }}
-          >
-            Back
-          </Button>
-        </Box>
+  const plannerBody = (
+    <>
+      {!embedded ? (
+        <>
+          <Box sx={{ mb: 2 }}>
+            <Button
+              component={Link}
+              href={paths.dashboard}
+              startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={18} />}
+              sx={{
+                textTransform: 'none',
+                color: tokens.inkSoft,
+                px: 0,
+                minWidth: 0,
+                gap: 0.25,
+                '& .MuiButton-startIcon': { mr: 0.5 },
+                '&:hover': { bgcolor: 'transparent', color: tokens.pine },
+              }}
+            >
+              Dashboard
+            </Button>
+          </Box>
 
-        <Box sx={{ pb: 3.25, borderBottom: `1px solid ${tokens.line}` }}>
-          <Typography
-            sx={{
-              fontFamily: '"IBM Plex Mono", monospace',
-              fontSize: 11.5,
-              letterSpacing: '0.18em',
-              textTransform: 'uppercase',
-              color: tokens.accent,
-              fontWeight: 500,
-            }}
-          >
-            ISCA AI Fluency Series · Pathway Planner
-            {region?.label ? ` · ${region.label}` : ''}
-          </Typography>
-          <Typography
-            component="h1"
-            sx={{
-              fontFamily: '"Newsreader", "Georgia", serif',
-              fontWeight: 500,
-              fontSize: { xs: 30, md: 46 },
-              lineHeight: 1.04,
-              mt: 1.5,
-              mb: 1.25,
-              letterSpacing: '-0.01em',
-            }}
-          >
-            Build your{' '}
-            <Box component="em" sx={{ fontStyle: 'italic', color: tokens.pineDeep }}>
-              10-hour
-            </Box>{' '}
-            route to AI fluency
-          </Typography>
-          <Typography sx={{ maxWidth: 620, color: tokens.inkSoft, fontSize: 16 }}>
-            Choose your role, and we add the modules that matter most for your work, fit to a ten-hour
-            learning budget you can fine-tune.
-          </Typography>
-        </Box>
+          <Box sx={{ pb: 3.25, borderBottom: `1px solid ${tokens.line}` }}>
+            <Typography
+              sx={{
+                fontFamily: '"IBM Plex Mono", monospace',
+                fontSize: 11.5,
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                color: tokens.accent,
+                fontWeight: 500,
+              }}
+            >
+              ISCA AI Fluency Series · Pathway Planner
+              {region?.label ? ` · ${region.label}` : ''}
+            </Typography>
+            <Typography
+              component="h1"
+              sx={{
+                fontFamily: '"Newsreader", "Georgia", serif',
+                fontWeight: 500,
+                fontSize: { xs: 30, md: 46 },
+                lineHeight: 1.04,
+                mt: 1.5,
+                mb: 1.25,
+                letterSpacing: '-0.01em',
+              }}
+            >
+              Build your{' '}
+              <Box component="em" sx={{ fontStyle: 'italic', color: tokens.pineDeep }}>
+                10-hour
+              </Box>{' '}
+              route to AI fluency
+            </Typography>
+            <Typography sx={{ maxWidth: 620, color: tokens.inkSoft, fontSize: 16 }}>
+              Choose your role, and we add the modules that matter most for your work, fit to a ten-hour
+              learning budget you can fine-tune.
+            </Typography>
+          </Box>
+        </>
+      ) : null}
 
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: '320px 1fr' },
-            gap: { xs: 3, md: 4.75 },
-            mt: 4,
-            alignItems: 'start',
-          }}
-        >
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '320px 1fr' },
+          gap: { xs: 3, md: 4.75 },
+          mt: embedded ? 0 : 4,
+          alignItems: 'start',
+        }}
+      >
+          {/* Outer column stretches with the path so sticky has room to pin */}
           <Box
             sx={{
-              position: { md: 'sticky' },
-              top: { md: 20 },
-              zIndex: { md: 2 },
-              alignSelf: 'start',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2.75,
-              maxHeight: { md: 'calc(100vh - 40px)' },
-              overflowY: { md: 'auto' },
-              pr: { md: 0.5 },
+              alignSelf: { md: 'stretch' },
+              minHeight: 0,
             }}
           >
-            <Box>
-              <PanelLabel>Select your role</PanelLabel>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.875 }}>
-                {roles.map((role, i) => (
-                  <Box
-                    key={role.name}
-                    component="button"
-                    type="button"
-                    onClick={() => pickRole(i)}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.5,
-                      width: '100%',
-                      textAlign: 'left',
-                      bgcolor: i === roleIdx ? tokens.pine : tokens.card,
-                      border: `1px solid ${i === roleIdx ? tokens.pine : tokens.line}`,
-                      borderRadius: '11px',
-                      px: 1.875,
-                      py: 1.625,
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      color: i === roleIdx ? '#fff' : tokens.ink,
-                      boxShadow: i === roleIdx ? tokens.shadow : 'none',
-                      transition: '.16s ease',
-                      '&:hover': {
-                        borderColor: tokens.pine,
-                        transform: 'translateY(-1px)',
-                      },
-                    }}
-                  >
+            <Box
+              sx={{
+                position: { md: 'sticky' },
+                top: { md: 24 },
+                zIndex: { md: 2 },
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2.75,
+                maxHeight: { md: 'calc(100vh - 48px)' },
+                overflowY: { md: 'auto' },
+                overscrollBehavior: 'contain',
+                pr: { md: 0.5 },
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
+              <Box>
+                <PanelLabel>Select your role</PanelLabel>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.875 }}>
+                  {roles.map((role, i) => (
                     <Box
+                      key={role.name}
+                      component="button"
+                      type="button"
+                      onClick={() => pickRole(i)}
                       sx={{
-                        fontFamily: '"IBM Plex Mono", monospace',
-                        fontSize: 12,
-                        color: i === roleIdx ? 'rgba(255,255,255,.65)' : tokens.inkFaint,
-                        fontWeight: 500,
-                        minWidth: 22,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        width: '100%',
+                        textAlign: 'left',
+                        bgcolor: i === roleIdx ? tokens.pine : tokens.card,
+                        border: `1px solid ${i === roleIdx ? tokens.pine : tokens.line}`,
+                        borderRadius: '11px',
+                        px: 1.875,
+                        py: 1.625,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        color: i === roleIdx ? '#fff' : tokens.ink,
+                        boxShadow: i === roleIdx ? tokens.shadow : 'none',
+                        transition: '.16s ease',
+                        '&:hover': {
+                          borderColor: tokens.pine,
+                          transform: 'translateY(-1px)',
+                        },
                       }}
                     >
-                      {String(i + 1).padStart(2, '0')}
+                      <Box
+                        sx={{
+                          fontFamily: '"IBM Plex Mono", monospace',
+                          fontSize: 12,
+                          color: i === roleIdx ? 'rgba(255,255,255,.65)' : tokens.inkFaint,
+                          fontWeight: 500,
+                          minWidth: 22,
+                        }}
+                      >
+                        {String(i + 1).padStart(2, '0')}
+                      </Box>
+                      <Box sx={{ fontWeight: 600, fontSize: 14.5 }}>{role.name}</Box>
                     </Box>
-                    <Box sx={{ fontWeight: 600, fontSize: 14.5 }}>{role.name}</Box>
-                  </Box>
-                ))}
+                  ))}
+                </Box>
               </Box>
-            </Box>
 
-            <BudgetMeter
-              totalMinutes={totalMinutes}
-              selectedCount={selected.size}
-              showReset={roleIdx !== null}
-              onReset={resetPath}
-            />
+              <BudgetMeter
+                totalMinutes={totalMinutes}
+                selectedCount={selected.size}
+                showReset={roleIdx !== null}
+                onReset={resetPath}
+              />
+            </Box>
           </Box>
 
           <Box>
@@ -407,6 +402,39 @@ export function PathwayPlannerView() {
           <strong>Recommended</strong> strengthens it · <strong>Optional</strong> extends it. Toggle any
           module to reshape your plan.
         </Typography>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <Box sx={{ width: '100%', color: tokens.ink, bgcolor: 'transparent' }}>
+        {plannerBody}
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'clip',
+        bgcolor: tokens.paper,
+        color: tokens.ink,
+        minHeight: '100%',
+        pb: 10,
+        '--layout-dashboard-content-px': {
+          xs: '16px',
+          sm: '24px',
+          md: '32px',
+          lg: '48px',
+          xl: '64px',
+        },
+        [`& .${layoutClasses.content}`]: frontendContentSx,
+      }}
+    >
+      <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: { xs: 4, md: 5 }, pb: 0 }}>
+        {plannerBody}
       </DashboardContent>
     </Box>
   );
@@ -769,6 +797,11 @@ function ModuleCard({
   moduleMeta,
   onToggle,
   onToggleOpen,
+  browse = false,
+  requireAuth = false,
+  canPlayVideo = true,
+  signupHref = paths.auth.signUp,
+  signInHref = paths.auth.signIn,
 }) {
   const m = moduleMeta || MODULES_BY_CODE[code] || { code, title: code, pillar: '01', minutes: 0 };
   const minutes = Number(minutesProp) > 0 ? Number(minutesProp) : Number(m.minutes) || 0;
@@ -777,46 +810,57 @@ function ModuleCard({
     2: { color: '#b91c1c', bg: '#fbe7e7', border: '#f3c9c9' },
     3: { color: '#15803d', bg: '#e4f3ea', border: '#c3e5cf' },
   };
-  const pillar = pillarColors[+m.pillar];
+  const pillar = pillarColors[+m.pillar] || pillarColors[1];
+  const showAuthGate = browse && requireAuth && !canPlayVideo;
+
+  const handleRowClick = () => {
+    if (browse) {
+      onToggleOpen(code);
+      return;
+    }
+    onToggle?.(code);
+  };
 
   return (
     <Box
       sx={{
-        bgcolor: locked ? '#f2f5fa' : tokens.card,
-        border: `1px solid ${selected ? tokens.pine : tokens.line}`,
+        bgcolor: !browse && locked ? '#eef3f9' : tokens.card,
+        border: `1px solid ${!browse && selected ? tokens.pine : tokens.line}`,
         borderRadius: '12px',
         overflow: 'hidden',
-        boxShadow: selected ? tokens.shadow : 'none',
+        boxShadow: !browse && selected ? tokens.shadow : 'none',
         transition: '.16s ease',
       }}
     >
       <Box
-        onClick={() => onToggle(code)}
+        onClick={handleRowClick}
         sx={{
           display: 'flex',
           alignItems: 'center',
           gap: 1.75,
           px: 2,
           py: 1.75,
-          cursor: locked ? 'default' : 'pointer',
+          cursor: browse ? 'pointer' : locked ? 'default' : 'pointer',
         }}
       >
-        <Box
-          sx={{
-            width: 22,
-            height: 22,
-            borderRadius: '6px',
-            border: `1.5px solid ${selected || locked ? tokens.ink : tokens.line}`,
-            flex: 'none',
-            display: 'grid',
-            placeItems: 'center',
-            bgcolor: selected || locked ? (locked ? tokens.ink : tokens.pine) : '#fff',
-            borderColor: selected || locked ? (locked ? tokens.ink : tokens.pine) : tokens.line,
-            '& svg': { opacity: selected || locked ? 1 : 0 },
-          }}
-        >
-          {locked ? LockIcon : CheckIcon}
-        </Box>
+        {!browse ? (
+          <Box
+            sx={{
+              width: 22,
+              height: 22,
+              borderRadius: '6px',
+              border: `1.5px solid ${selected || locked ? tokens.ink : tokens.line}`,
+              flex: 'none',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: selected || locked ? (locked ? tokens.ink : tokens.pine) : '#fff',
+              borderColor: selected || locked ? (locked ? tokens.ink : tokens.pine) : tokens.line,
+              '& svg': { opacity: selected || locked ? 1 : 0 },
+            }}
+          >
+            {locked ? LockIcon : CheckIcon}
+          </Box>
+        ) : null}
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
@@ -851,7 +895,7 @@ function ModuleCard({
             >
               Pillar {+m.pillar}
             </Box>
-            {locked && (
+            {!browse && locked && (
               <Box
                 component="span"
                 sx={{
@@ -934,10 +978,186 @@ function ModuleCard({
           borderTop: open ? `1px solid ${tokens.line}` : '1px solid transparent',
         }}
       >
-        <Box sx={{ px: 2, pt: 1.5, pb: 2, pl: { xs: 2, sm: 6.5 } }}>
-          {open && <ModuleVideoPanel title={m.title} videoUrl={videoUrl} />}
+        <Box sx={{ px: 2, pt: 1.5, pb: 2, pl: { xs: 2, sm: browse ? 2 : 6.5 } }}>
+          {open &&
+            (showAuthGate ? (
+              <VideoSignupGate signupHref={signupHref} signInHref={signInHref} />
+            ) : (
+              <ModuleVideoPanel title={m.title} videoUrl={videoUrl} />
+            ))}
         </Box>
       </Box>
+    </Box>
+  );
+}
+
+function VideoSignupGate({ signupHref, signInHref }) {
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        borderRadius: '10px',
+        border: `1px solid ${tokens.line}`,
+        bgcolor: tokens.sky,
+        aspectRatio: { xs: 'auto', sm: '16 / 9' },
+        minHeight: { xs: 180, sm: 0 },
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        gap: 1.5,
+        px: 3,
+        py: 4,
+      }}
+    >
+      <Iconify icon="solar:lock-keyhole-bold-duotone" width={36} sx={{ color: tokens.pine }} />
+      <Typography sx={{ fontWeight: 700, fontSize: 16, color: tokens.ink, maxWidth: 360 }}>
+        Sign up to watch this video
+      </Typography>
+      <Typography sx={{ fontSize: 13.5, color: tokens.inkSoft, maxWidth: 380, lineHeight: 1.5 }}>
+        Create a free account to unlock module videos in Student and Users sections.
+      </Typography>
+      <Button
+        component={Link}
+        href={signupHref}
+        variant="contained"
+        sx={{
+          mt: 0.5,
+          textTransform: 'none',
+          fontWeight: 700,
+          bgcolor: tokens.accent,
+          color: '#fff',
+          px: 2.5,
+          py: 1,
+          borderRadius: '10px',
+          boxShadow: 'none',
+          '&:hover': { bgcolor: '#a00000', boxShadow: 'none' },
+        }}
+      >
+        Sign up
+      </Button>
+      <Typography sx={{ fontSize: 13, color: tokens.inkSoft }}>
+        Already have an account?{' '}
+        <Box
+          component={Link}
+          href={signInHref}
+          sx={{ color: tokens.pine, fontWeight: 700, textDecoration: 'none' }}
+        >
+          Sign in
+        </Box>
+      </Typography>
+    </Box>
+  );
+}
+
+/**
+ * Same module cards + video expand as the Role planner,
+ * without the role sidebar or “Your plan” meter.
+ */
+export function PathwayBrowseList({
+  heading,
+  blurb,
+  sections = [],
+  videoUrlsByCode,
+  minutesByCode,
+  modulesLookup,
+  requireAuth = false,
+  returnTo = paths.dashboard,
+}) {
+  const [openCodes, setOpenCodes] = useState(() => new Set());
+  const [canPlayVideo, setCanPlayVideo] = useState(false);
+
+  useEffect(() => {
+    setCanPlayVideo(isIntlAuthenticated());
+  }, []);
+
+  const toggleOpen = (code) => {
+    setOpenCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  const mappedCount = sections.reduce((n, s) => n + (s.codes?.length || 0), 0);
+  const signupHref = `${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`;
+  const signInHref = `${paths.auth.signIn}?returnTo=${encodeURIComponent(returnTo)}`;
+
+  return (
+    <Box sx={{ color: tokens.ink }}>
+      {(heading || blurb) && (
+        <Box sx={{ mb: 2.75 }}>
+          {heading ? (
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-end',
+                flexWrap: 'wrap',
+                gap: 1.5,
+                mb: 0.75,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontFamily: '"Newsreader", "Georgia", serif',
+                  fontWeight: 500,
+                  fontSize: 26,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {heading}
+              </Typography>
+              <Typography
+                sx={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, color: tokens.inkFaint }}
+              >
+                {mappedCount} modules
+              </Typography>
+            </Box>
+          ) : null}
+          {blurb ? (
+            <Typography sx={{ color: tokens.inkSoft, fontSize: 14.5, maxWidth: 640 }}>
+              {blurb}
+            </Typography>
+          ) : null}
+        </Box>
+      )}
+
+      {sections.map((section) => {
+        const codes = Array.isArray(section.codes) ? section.codes : [];
+        if (!codes.length) return null;
+        const mins = sumSelectedMinutes(codes, minutesByCode, modulesLookup);
+        return (
+          <TierSection
+            key={section.key || section.name}
+            tierKey={section.tierKey || 'tf'}
+            name={section.name}
+            countLabel={section.countLabel || `${codes.length} modules · ${fmtMinutes(mins)}`}
+            note={section.note}
+          >
+            {codes.map((code) => (
+              <ModuleCard
+                key={code}
+                code={code}
+                browse
+                locked={false}
+                selected={false}
+                open={openCodes.has(code)}
+                videoUrl={videoUrlsByCode?.[code] || ''}
+                minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
+                moduleMeta={modulesLookup?.[code]}
+                onToggleOpen={toggleOpen}
+                requireAuth={requireAuth}
+                canPlayVideo={canPlayVideo}
+                signupHref={signupHref}
+                signInHref={signInHref}
+              />
+            ))}
+          </TierSection>
+        );
+      })}
     </Box>
   );
 }

@@ -5,11 +5,13 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
+import { INTL_NAVY, INTL_SOFT_BG } from 'src/theme/intl-brand';
+
 export default function NotFound() {
   return (
     <Box
       sx={{
-        minHeight: '60vh',
+        minHeight: '100dvh',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -17,9 +19,10 @@ export default function NotFound() {
         gap: 2,
         px: 2,
         textAlign: 'center',
+        bgcolor: INTL_SOFT_BG,
       }}
     >
-      <Typography variant="h4" sx={{ fontWeight: 800, color: '#002060' }}>
+      <Typography variant="h4" sx={{ fontWeight: 800, color: INTL_NAVY }}>
         Page not found
       </Typography>
       <Typography sx={{ color: '#3d4f6f' }}>

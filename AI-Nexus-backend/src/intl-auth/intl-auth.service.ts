@@ -8,14 +8,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 
+import { resolveCountryCode, resolveCurrencyForCountry } from '../intl-payment/intl-currency';
 import { IntlLoginDto, IntlRegisterDto } from './intl-auth.dto';
 import {
   InternationalAuthProvider,
   InternationalUserEntity,
+  InternationalUserPaymentStatus,
   InternationalUserStatus,
 } from './international-user.entity';
 
 const INTL_JWT_TYP = 'intl';
+const INTL_DRAFT_JWT_TYP = 'intl_draft';
 const ACCESS_TOKEN_EXPIRES = '7d';
 
 @Injectable()
@@ -27,6 +30,10 @@ export class IntlAuthService {
   ) {}
 
   async register(dto: IntlRegisterDto) {
+    if (!dto.paymentConsent) {
+      throw new BadRequestException('Please confirm the payable amount to continue.');
+    }
+
     const email = String(dto.email || '').trim().toLowerCase();
     if (!email) {
       throw new BadRequestException('Email is required');
@@ -34,20 +41,59 @@ export class IntlAuthService {
 
     const existing = await this.userRepository.findOne({ where: { email } });
     if (existing) {
+      if (
+        existing.status === InternationalUserStatus.PendingPayment
+        && existing.paymentStatus !== InternationalUserPaymentStatus.Paid
+      ) {
+        const hashedPassword = await bcrypt.hash(dto.password, 10);
+        const countryOfResidence = String(dto.countryOfResidence || '').trim() || null;
+        const countryCode = resolveCountryCode(countryOfResidence || '');
+        existing.salutation = String(dto.salutation || '').trim() || null;
+        existing.firstname = String(dto.firstName || '').trim();
+        existing.lastname = String(dto.lastName || '').trim();
+        existing.password = hashedPassword;
+        existing.contactNumber = String(dto.contactNumber || '').trim() || null;
+        existing.companyCode = String(dto.companyCode || '').trim() || null;
+        existing.company = String(dto.company || '').trim() || null;
+        existing.jobFunction = String(dto.jobFunction || '').trim() || null;
+        existing.jobFunctionOther =
+          dto.jobFunction === 'others' ? String(dto.jobFunctionOther || '').trim() || null : null;
+        existing.countryOfResidence = countryOfResidence;
+        existing.countryCode = countryCode || null;
+        existing.currency = resolveCurrencyForCountry(countryOfResidence || '');
+        existing.promoCode = String(dto.promoCode || '').trim() || null;
+        existing.paymentStatus = InternationalUserPaymentStatus.Unpaid;
+        const saved = await this.userRepository.save(existing);
+        return {
+          message: 'Registration draft updated. Continue to payment.',
+          draftUserId: saved.id,
+          signupAccessToken: this.signDraftAccessToken(saved.id),
+          user: this.toPublicUser(saved),
+          requiresPayment: true,
+        };
+      }
       throw new BadRequestException('An account with this email already exists');
     }
 
-    if (dto.jobFunction === 'others' && !String(dto.jobFunctionOther || '').trim()) {
+    if (
+      String(dto.jobFunction || '').trim() === 'others'
+      && !String(dto.jobFunctionOther || '').trim()
+    ) {
       throw new BadRequestException('Please specify your job function');
     }
 
-    const years = Number(dto.yearsOfExperience);
-    if (!Number.isInteger(years) || years < 0 || years > 80) {
-      throw new BadRequestException('Enter a valid number of years between 0 and 80');
+    let years: number | null = null;
+    if (dto.yearsOfExperience != null && String(dto.yearsOfExperience).trim() !== '') {
+      years = Number(dto.yearsOfExperience);
+      if (!Number.isInteger(years) || years < 0 || years > 80) {
+        throw new BadRequestException('Enter a valid number of years between 0 and 80');
+      }
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const username = await this.buildUniqueUsername(email);
+    const countryOfResidence = String(dto.countryOfResidence || '').trim() || null;
+    const countryCode = resolveCountryCode(countryOfResidence || '');
 
     const user = this.userRepository.create({
       email,
@@ -64,19 +110,23 @@ export class IntlAuthService {
       jobFunctionOther:
         dto.jobFunction === 'others' ? String(dto.jobFunctionOther || '').trim() || null : null,
       yearsOfExperience: years,
-      countryOfResidence: String(dto.countryOfResidence || '').trim() || null,
+      countryOfResidence,
+      countryCode: countryCode || null,
+      currency: resolveCurrencyForCountry(countryOfResidence || ''),
       promoCode: String(dto.promoCode || '').trim() || null,
-      isVerified: true,
-      status: InternationalUserStatus.Active,
+      isVerified: false,
+      paymentStatus: InternationalUserPaymentStatus.Unpaid,
+      status: InternationalUserStatus.PendingPayment,
     });
 
     const saved = await this.userRepository.save(user);
-    const accessToken = this.signAccessToken(saved);
 
     return {
-      message: 'Account created successfully',
-      accessToken,
+      message: 'Registration draft saved. Continue to payment.',
+      draftUserId: saved.id,
+      signupAccessToken: this.signDraftAccessToken(saved.id),
       user: this.toPublicUser(saved),
+      requiresPayment: true,
     };
   }
 
@@ -91,7 +141,17 @@ export class IntlAuthService {
       .where('LOWER(u.email) = :identifier OR LOWER(u.username) = :identifier', { identifier })
       .getOne();
 
-    if (!user || user.status !== InternationalUserStatus.Active) {
+    if (!user || user.status === InternationalUserStatus.Banned) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (user.status === InternationalUserStatus.PendingPayment) {
+      throw new UnauthorizedException(
+        'Payment is required before you can sign in. Please complete registration payment.',
+      );
+    }
+
+    if (user.status !== InternationalUserStatus.Active) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -106,11 +166,7 @@ export class IntlAuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return {
-      message: 'Signed in successfully',
-      accessToken: this.signAccessToken(user),
-      user: this.toPublicUser(user),
-    };
+    return this.issueSessionForUser(user, 'Signed in successfully');
   }
 
   async me(userId: string) {
@@ -119,6 +175,21 @@ export class IntlAuthService {
       throw new UnauthorizedException('Unauthorized');
     }
     return this.toPublicUser(user);
+  }
+
+  issueSessionForUser(user: InternationalUserEntity, message = 'Account ready') {
+    return {
+      message,
+      accessToken: this.signAccessToken(user),
+      user: this.toPublicUser(user),
+    };
+  }
+
+  signDraftAccessToken(userId: string) {
+    return this.jwtService.sign(
+      { sub: userId, typ: INTL_DRAFT_JWT_TYP },
+      { expiresIn: '2h' },
+    );
   }
 
   verifyAccessToken(token: string): { id: string } {
@@ -176,7 +247,10 @@ export class IntlAuthService {
       jobFunctionOther: user.jobFunctionOther,
       yearsOfExperience: user.yearsOfExperience,
       countryOfResidence: user.countryOfResidence,
+      countryCode: user.countryCode,
+      currency: user.currency,
       promoCode: user.promoCode,
+      paymentStatus: user.paymentStatus,
       authProvider: user.authProvider,
       avatarUrl: user.avatarUrl,
       isVerified: user.isVerified,

@@ -39,3 +39,7 @@ export function clearIntlSession() {
     // ignore
   }
 }
+
+export function isIntlAuthenticated() {
+  return Boolean(getIntlAccessToken());
+}

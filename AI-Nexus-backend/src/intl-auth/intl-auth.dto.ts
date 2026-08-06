@@ -1,11 +1,11 @@
 import {
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
-  Matches,
 } from 'class-validator';
 
 export class IntlRegisterDto {
@@ -44,25 +44,24 @@ export class IntlRegisterDto {
   @MaxLength(64)
   companyCode?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(200)
-  company!: string;
+  company?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(80)
-  jobFunction!: string;
+  jobFunction?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
   jobFunctionOther?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  @Matches(/^\d+$/, { message: 'Years of experience must be a whole number' })
-  yearsOfExperience!: string;
+  yearsOfExperience?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -73,6 +72,9 @@ export class IntlRegisterDto {
   @IsString()
   @MaxLength(64)
   promoCode?: string;
+
+  @IsBoolean()
+  paymentConsent!: boolean;
 }
 
 export class IntlLoginDto {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -17,16 +17,26 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
-import { AnimateLogo2 } from 'src/components/animate';
+import { Logo } from 'src/components/logo';
 import { Iconify } from 'src/components/iconify';
+import { AuthCenteredLayout } from 'src/layouts/auth-centered';
 import { paths } from 'src/routes/paths';
 import { intlLogin } from 'src/services/intl-auth.service';
 import { IntlSignInSchema } from 'src/validations/intl-auth.validation';
 
+const NAVY = '#002060';
+
 // ----------------------------------------------------------------------
+
+function textFieldProps(field) {
+  const { ref, ...rest } = field;
+  return { ...rest, inputRef: ref };
+}
 
 export function IntlSignInView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get('returnTo') || paths.dashboard;
   const [errorMsg, setErrorMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -43,7 +53,7 @@ export function IntlSignInView() {
     setErrorMsg('');
     try {
       await intlLogin(data);
-      router.push(paths.internationalAiFluency);
+      router.push(returnTo.startsWith('/') ? returnTo : paths.dashboard);
     } catch (error) {
       const message =
         error?.response?.data?.message ||
@@ -54,136 +64,154 @@ export function IntlSignInView() {
   });
 
   return (
-    <Box
-      sx={{
-        minHeight: '100dvh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        px: 2,
-        py: { xs: 4, md: 6 },
-        bgcolor: '#f4f6f8',
-        backgroundImage: 'linear-gradient(180deg, #f4f6f8 0%, #eceef1 48%, #f4f6f8 100%)',
-      }}
-    >
-      <Box sx={{ width: 1, maxWidth: 420 }}>
-        <AnimateLogo2 sx={{ mb: 1.5, mx: 'auto', transform: 'scale(0.88)' }} />
+    <AuthCenteredLayout>
+      <Stack alignItems="center" spacing={1.25} sx={{ mb: 3 }}>
+        <Logo disableLink sx={{ width: 104, maxWidth: 120, height: 46, maxHeight: 52 }} />
 
-        <Stack alignItems="center" spacing={1} sx={{ mb: 3 }}>
-          <Typography variant="h5" sx={{ textAlign: 'center' }}>
-            Sign in
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
-            Local email and password sign-in for AI Nexus International.
-          </Typography>
-          <Stack direction="row" spacing={0.5}>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              New here?
-            </Typography>
-            <Typography
-              component={Link}
-              href={paths.auth.signUp}
-              variant="subtitle2"
-              sx={{ color: 'primary.main', textDecoration: 'none' }}
-            >
-              Create an account
-            </Typography>
-          </Stack>
-        </Stack>
-
-        <Box
-          sx={(theme) => ({
-            p: { xs: 2.5, md: 3 },
-            borderRadius: 2,
-            bgcolor: 'background.paper',
-            border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
-            boxShadow: `0 8px 24px ${alpha(theme.palette.grey[500], 0.08)}`,
-          })}
+        <Typography
+          sx={{
+            mt: 0.5,
+            px: 1.25,
+            py: 0.35,
+            borderRadius: 1,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+            color: NAVY,
+            bgcolor: alpha(NAVY, 0.08),
+          }}
         >
-          <Stack spacing={2} component="form" onSubmit={onSubmit} noValidate>
-            {errorMsg ? <Alert severity="error">{errorMsg}</Alert> : null}
+          International
+        </Typography>
 
-            <Controller
-              name="identifier"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  required
-                  label="Email or username"
-                  error={Boolean(errors.identifier?.message)}
-                  helperText={errors.identifier?.message || ''}
-                  InputLabelProps={{ shrink: true }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Iconify icon="solar:user-circle-bold-duotone" width={18} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              )}
-            />
+        <Typography
+          variant="h4"
+          sx={{
+            textAlign: 'center',
+            fontWeight: 700,
+            color: NAVY,
+            fontSize: { xs: 22, sm: 26 },
+            letterSpacing: -0.3,
+          }}
+        >
+          Sign in
+        </Typography>
 
-            <Controller
-              name="password"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  required
-                  label="Password"
-                  type={showPassword ? 'text' : 'password'}
-                  error={Boolean(errors.password?.message)}
-                  helperText={errors.password?.message || ''}
-                  InputLabelProps={{ shrink: true }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Iconify icon="solar:lock-password-bold-duotone" width={18} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowPassword((v) => !v)} edge="end">
-                          <Iconify
-                            icon={showPassword ? 'solar:eye-bold' : 'solar:eye-closed-bold'}
-                          />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              )}
-            />
+        <Typography
+          variant="body2"
+          sx={{ color: 'text.secondary', textAlign: 'center', maxWidth: 320, lineHeight: 1.55 }}
+        >
+          Access AI Fluency modules and pathway tools for accountancy professionals worldwide.
+        </Typography>
+      </Stack>
 
-            <Button
+      {errorMsg ? (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {errorMsg}
+        </Alert>
+      ) : null}
+
+      <Stack spacing={2} component="form" onSubmit={onSubmit} noValidate>
+        <Controller
+          name="identifier"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              {...textFieldProps(field)}
               fullWidth
-              color="inherit"
-              size="large"
-              type="submit"
-              variant="contained"
-              disabled={isSubmitting}
-              sx={{ height: 44, fontWeight: 700 }}
-            >
-              {isSubmitting ? <CircularProgress size={22} color="inherit" /> : 'Sign in'}
-            </Button>
-          </Stack>
-        </Box>
+              required
+              label="Email or username"
+              placeholder="Enter your email or username"
+              error={Boolean(errors.identifier?.message)}
+              helperText={errors.identifier?.message || ''}
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Iconify icon="solar:user-circle-bold-duotone" width={18} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
+        />
 
-        <Stack alignItems="center" sx={{ mt: 2 }}>
+        <Controller
+          name="password"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              {...textFieldProps(field)}
+              fullWidth
+              required
+              label="Password"
+              placeholder="6+ characters"
+              type={showPassword ? 'text' : 'password'}
+              error={Boolean(errors.password?.message)}
+              helperText={errors.password?.message || ''}
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Iconify icon="solar:lock-password-bold-duotone" width={18} />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowPassword((v) => !v)} edge="end">
+                      <Iconify icon={showPassword ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
+        />
+
+        <Button
+          fullWidth
+          color="primary"
+          size="large"
+          type="submit"
+          variant="contained"
+          disabled={isSubmitting}
+          sx={{
+            height: 48,
+            fontWeight: 700,
+            textTransform: 'none',
+            boxShadow: 'none',
+            '&:hover': { boxShadow: 'none' },
+          }}
+        >
+          {isSubmitting ? <CircularProgress size={22} color="inherit" /> : 'Sign in'}
+        </Button>
+      </Stack>
+
+      <Stack alignItems="center" spacing={1.25} sx={{ mt: 2.75 }}>
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="center" useFlexGap>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            New here?
+          </Typography>
           <Typography
             component={Link}
-            href={paths.home}
-            variant="body2"
-            sx={{ color: 'text.secondary', textDecoration: 'none' }}
+            href={`${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`}
+            variant="subtitle2"
+            sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 700 }}
           >
-            ← Back to home
+            Create an account
           </Typography>
         </Stack>
-      </Box>
-    </Box>
+
+        <Typography
+          component={Link}
+          href={paths.home}
+          variant="body2"
+          sx={{ color: alpha(NAVY, 0.65), textDecoration: 'none', fontWeight: 500 }}
+        >
+          ← Back to home
+        </Typography>
+      </Stack>
+    </AuthCenteredLayout>
   );
 }

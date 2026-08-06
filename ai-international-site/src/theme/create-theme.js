@@ -2,19 +2,21 @@
 
 import { createTheme } from '@mui/material/styles';
 
+import { INTL_NAVY, INTL_NAVY_DEEP, INTL_RED, INTL_SOFT_BG } from './intl-brand';
+
 export function createAppTheme() {
   return createTheme({
     palette: {
       mode: 'light',
       primary: {
-        main: '#C00000',
+        main: INTL_RED,
         dark: '#9a0000',
         light: '#d63333',
         contrastText: '#ffffff',
       },
       secondary: {
-        main: '#002060',
-        dark: '#001545',
+        main: INTL_NAVY,
+        dark: INTL_NAVY_DEEP,
         light: '#1a3a7a',
         contrastText: '#ffffff',
       },
@@ -23,7 +25,7 @@ export function createAppTheme() {
         secondary: '#3d4f6f',
       },
       background: {
-        default: '#ffffff',
+        default: INTL_SOFT_BG,
         paper: '#ffffff',
       },
       divider: '#d8dee8',

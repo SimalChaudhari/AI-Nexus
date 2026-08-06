@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import Typography from '@mui/material/Typography';
@@ -27,7 +26,7 @@ import {
 import heroEarthImage from 'src/assets/international/hero-earth.png';
 import globalLearningImage from 'src/assets/international/global-learning.png';
 
-import { INTL_REGIONS, fetchIntlRegions, setStoredIntlRegion } from '../intl-region';
+import { INTL_REGIONS, setStoredIntlRegion } from '../intl-region';
 
 // Next.js static imports are `{ src, width, height }` — use the string path for <img>.
 const heroEarthSrc = typeof heroEarthImage === 'string' ? heroEarthImage : heroEarthImage?.src;
@@ -38,7 +37,7 @@ const globalLearningSrc =
 
 const NAVY = '#002060';
 const RED = '#C00000';
-const HERO_IMAGE_WIDTH = '58%';
+const HERO_PAGE_BG = '#f4f7fb';
 
 const TRUST_ITEMS = [
   {
@@ -74,27 +73,11 @@ const GLOBAL_POINTS = [
 
 export function InternationalLandingView() {
   const router = useRouter();
-  const [regions, setRegions] = useState(INTL_REGIONS);
-  const [loadingRegions, setLoadingRegions] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoadingRegions(true);
-      const next = await fetchIntlRegions();
-      if (active) {
-        setRegions(next);
-        setLoadingRegions(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const regions = INTL_REGIONS;
 
   const handleSelectRegion = (next) => {
     setStoredIntlRegion(next);
-    router.push(paths.internationalAiFluency);
+    router.push(paths.dashboard);
   };
 
   return (
@@ -105,7 +88,7 @@ export function InternationalLandingView() {
         overflowX: 'hidden',
         overflowY: 'visible',
         flex: '0 0 auto',
-        bgcolor: '#ffffff',
+        bgcolor: '#f4f7fb',
         color: NAVY,
         lineHeight: 1.6,
         '--layout-dashboard-content-px': {
@@ -120,7 +103,6 @@ export function InternationalLandingView() {
     >
       <HeroSection
         regions={regions}
-        loadingRegions={loadingRegions}
         onSelectRegion={handleSelectRegion}
       />
       <GlobalSection />
@@ -177,7 +159,28 @@ function HeroMobileImage({ imageSrc }) {
   );
 }
 
-/** Desktop: hero image right; left white fades into image (same as Home / Partner). */
+const HERO_STARS = [
+  { top: '12%', right: '18%', size: 2, delay: '0s', duration: '2.8s' },
+  { top: '18%', right: '8%', size: 3, delay: '0.4s', duration: '3.4s' },
+  { top: '28%', right: '24%', size: 2, delay: '1.1s', duration: '2.6s' },
+  { top: '34%', right: '6%', size: 2, delay: '0.7s', duration: '3.1s' },
+  { top: '42%', right: '16%', size: 3, delay: '1.6s', duration: '2.9s' },
+  { top: '48%', right: '28%', size: 2, delay: '0.2s', duration: '3.6s' },
+  { top: '56%', right: '10%', size: 2, delay: '1.9s', duration: '2.4s' },
+  { top: '62%', right: '22%', size: 3, delay: '0.9s', duration: '3.2s' },
+  { top: '70%', right: '14%', size: 2, delay: '1.3s', duration: '2.7s' },
+  { top: '22%', right: '32%', size: 2, delay: '2.1s', duration: '3.5s' },
+  { top: '75%', right: '26%', size: 2, delay: '0.5s', duration: '2.5s' },
+  { top: '38%', right: '36%', size: 2, delay: '1.4s', duration: '3s' },
+  { top: '15%', right: '42%', size: 2, delay: '2.4s', duration: '2.8s' },
+  { top: '66%', right: '4%', size: 3, delay: '0.3s', duration: '3.3s' },
+  { top: '80%', right: '18%', size: 2, delay: '1.7s', duration: '2.9s' },
+];
+
+/**
+ * Full hero image on the right (no white strip). Soft page wash only under left copy.
+ * Earth drifts slowly; stars twinkle over the image.
+ */
 function HeroFullWidthBackdrop({ imageSrc }) {
   if (!imageSrc) return null;
 
@@ -189,110 +192,146 @@ function HeroFullWidthBackdrop({ imageSrc }) {
         position: 'absolute',
         inset: 0,
         zIndex: 0,
-        width: '100%',
         overflow: 'hidden',
         pointerEvents: 'none',
-        bgcolor: '#ffffff',
+        bgcolor: HERO_PAGE_BG,
       }}
     >
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          bottom: 0,
-          width: { xs: '100%', md: '50%' },
-          background: {
-            xs: '#ffffff',
-            md: `
-              linear-gradient(
-                90deg,
-                #ffffff 0%,
-                #ffffff 78%,
-                rgba(255, 255, 255, 0.92) 88%,
-                rgba(255, 255, 255, 0.55) 96%,
-                rgba(255, 255, 255, 0) 100%
-              )
-            `,
-          },
-        }}
-      />
-
+      {/* Dark underlay so the right never flashes white if the image crops */}
       <Box
         sx={{
           position: 'absolute',
           top: 0,
           right: 0,
-          bottom: { md: 24 },
-          width: HERO_IMAGE_WIDTH,
-          overflow: 'hidden',
+          bottom: 0,
+          width: { md: '72%', lg: '68%' },
+          bgcolor: '#000b1e',
         }}
-      >
-        <Box
-          component="img"
-          src={imageSrc}
-          alt=""
-          loading="eager"
-          decoding="async"
-          sx={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            objectPosition: { xs: 'center', md: '62% 45%' },
-            display: 'block',
-          }}
-        />
+      />
 
+      {/* Slow spinning ring around the globe */}
+      <Box
+        className="intl-hero-earth-img"
+        sx={{
+          position: 'absolute',
+          top: '10%',
+          right: '2%',
+          width: { md: 420, lg: 500 },
+          height: { md: 420, lg: 500 },
+          borderRadius: '50%',
+          border: '1px solid rgba(125, 211, 252, 0.22)',
+          boxShadow: `
+            0 0 0 1px rgba(56, 189, 248, 0.08),
+            inset 0 0 40px rgba(14, 165, 233, 0.12)
+          `,
+          animation: 'intl-hero-earth-spin 48s linear infinite',
+          '&::before': {
+            content: "''",
+            position: 'absolute',
+            inset: 18,
+            borderRadius: '50%',
+            border: '1px dashed rgba(186, 230, 253, 0.28)',
+            animation: 'intl-hero-earth-spin 72s linear infinite reverse',
+          },
+          '&::after': {
+            content: "''",
+            position: 'absolute',
+            top: '8%',
+            left: '50%',
+            width: 8,
+            height: 8,
+            ml: '-4px',
+            borderRadius: '50%',
+            bgcolor: '#7dd3fc',
+            boxShadow: '0 0 12px 3px rgba(125, 211, 252, 0.85)',
+          },
+        }}
+      />
+
+      <Box
+        className="intl-hero-earth-img"
+        component="img"
+        src={imageSrc}
+        alt=""
+        loading="eager"
+        decoding="async"
+        sx={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: { md: '78%', lg: '72%' },
+          height: '100%',
+          objectFit: 'cover',
+          objectPosition: 'right center',
+          display: 'block',
+          willChange: 'transform',
+          transformOrigin: '72% 48%',
+          animation: 'intl-hero-earth-drift 18s ease-in-out infinite',
+        }}
+      />
+
+      {/* Soft cyan glow pulse over the globe */}
+      <Box
+        className="intl-hero-earth-glow"
+        sx={{
+          position: 'absolute',
+          top: '14%',
+          right: '4%',
+          width: { md: 320, lg: 380 },
+          height: { md: 320, lg: 380 },
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, rgba(56,189,248,0.3) 0%, rgba(14,165,233,0.12) 42%, transparent 70%)',
+          filter: 'blur(2px)',
+          animation: 'intl-hero-earth-glow 5.5s ease-in-out infinite',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Twinkling stars */}
+      {HERO_STARS.map((star, index) => (
         <Box
+          key={`hero-star-${index}`}
+          className="intl-hero-star"
           sx={{
             position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background: `
-              linear-gradient(
-                180deg,
-                #ffffff 0%,
-                rgba(255, 255, 255, 0.9) 5%,
-                rgba(255, 255, 255, 0.45) 12%,
-                transparent 24%
-              ),
-              linear-gradient(
-                90deg,
-                #ffffff 0%,
-                rgba(255, 255, 255, 0.98) 6%,
-                rgba(255, 255, 255, 0.82) 14%,
-                rgba(255, 255, 255, 0.45) 24%,
-                rgba(255, 255, 255, 0.12) 34%,
-                transparent 46%
-              ),
-              linear-gradient(
-                0deg,
-                rgba(255, 255, 255, 0.7) 0%,
-                rgba(255, 255, 255, 0.22) 10%,
-                transparent 18%
-              )
-            `,
+            top: star.top,
+            right: star.right,
+            width: star.size,
+            height: star.size,
+            borderRadius: '50%',
+            bgcolor: '#ffffff',
+            boxShadow: `0 0 ${star.size * 2}px rgba(125, 211, 252, 0.9)`,
+            animation: `intl-hero-star-twinkle ${star.duration} ease-in-out ${star.delay} infinite`,
           }}
         />
+      ))}
 
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            boxShadow: `
-              inset 0 32px 40px -14px rgba(255, 255, 255, 0.95),
-              inset 48px 0 56px -20px rgba(255, 255, 255, 0.9),
-              inset 0 -18px 24px -10px rgba(255, 255, 255, 0.5)
-            `,
-          }}
-        />
-      </Box>
+      {/* Left-only veil for readable text — right side stays fully on the image */}
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background: `
+            linear-gradient(
+              90deg,
+              ${HERO_PAGE_BG} 0%,
+              ${HERO_PAGE_BG} 30%,
+              rgba(244, 247, 251, 0.92) 40%,
+              rgba(244, 247, 251, 0.45) 50%,
+              rgba(244, 247, 251, 0.1) 56%,
+              transparent 62%,
+              transparent 100%
+            )
+          `,
+        }}
+      />
     </Box>
   );
 }
 
-function HeroSection({ regions = INTL_REGIONS, loadingRegions = false, onSelectRegion }) {
+function HeroSection({ regions = INTL_REGIONS, onSelectRegion }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 4;
   const totalPages = Math.max(1, Math.ceil((regions?.length || 0) / PAGE_SIZE));
@@ -318,22 +357,23 @@ function HeroSection({ regions = INTL_REGIONS, loadingRegions = false, onSelectR
         position: 'relative',
         width: '100%',
         maxWidth: '100%',
-        overflowX: 'hidden',
-        overflowY: 'visible',
-        bgcolor: '#ffffff',
-        minHeight: { xs: 'auto', md: 560 },
+        overflow: 'hidden',
+        bgcolor: HERO_PAGE_BG,
+        minHeight: { xs: 'auto', md: 620 },
         background: {
-          xs: `linear-gradient(180deg, ${alpha(NAVY, 0.04)} 0%, #ffffff 28%)`,
-          md: '#ffffff',
+          xs: `linear-gradient(180deg, ${alpha(NAVY, 0.04)} 0%, ${HERO_PAGE_BG} 28%)`,
+          md: HERO_PAGE_BG,
         },
       }}
     >
+      <HeroFullWidthBackdrop imageSrc={heroEarthSrc} />
+
       <DashboardContent
         variant="fullWidth"
         sx={{
           position: 'relative',
           zIndex: 1,
-          minHeight: { xs: 'auto', md: 560 },
+          minHeight: { xs: 'auto', md: 620 },
           display: 'flex',
           flexDirection: 'column',
           width: '100%',
@@ -346,8 +386,6 @@ function HeroSection({ regions = INTL_REGIONS, loadingRegions = false, onSelectR
           pb: { xs: 3, md: 4 },
         }}
       >
-        <HeroFullWidthBackdrop imageSrc={heroEarthSrc} />
-
         <Box
           sx={{
             position: 'relative',
@@ -360,7 +398,7 @@ function HeroSection({ regions = INTL_REGIONS, loadingRegions = false, onSelectR
             pb: { xs: 1, md: 2 },
           }}
         >
-          <Box sx={{ width: { xs: '100%', md: '48%', lg: '42%' }, minWidth: 0, pr: { md: 2 } }}>
+          <Box sx={{ width: { xs: '100%', md: '46%', lg: '40%' }, minWidth: 0, pr: { md: 1 } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -454,18 +492,6 @@ function HeroSection({ regions = INTL_REGIONS, loadingRegions = false, onSelectR
                     boxSizing: 'border-box',
                   }}
                 >
-                  {loadingRegions && !regions.length ? (
-                    <Box
-                      sx={{
-                        gridColumn: '1 / -1',
-                        display: 'grid',
-                        placeItems: 'center',
-                        minHeight: 120,
-                      }}
-                    >
-                      <CircularProgress size={28} sx={{ color: NAVY }} />
-                    </Box>
-                  ) : null}
                   {visibleRegions.map((r) => (
                     <Box
                       key={r.id}
@@ -602,7 +628,7 @@ function GlobalSection() {
         sx={{
           border: `1px solid ${alpha(NAVY, 0.12)}`,
           borderRadius: '14px',
-          bgcolor: '#f8fafc',
+          bgcolor: '#f4f7fb',
           p: { xs: 2.5, md: 3.5 },
           display: 'grid',
           gridTemplateColumns: { xs: '1fr', md: '1.1fr 0.8fr 1fr' },
@@ -774,7 +800,7 @@ function IntlFooter({ regions = INTL_REGIONS }) {
     {
       title: 'Platform',
       links: [
-        { label: 'AI Fluency', href: paths.internationalAiFluency },
+        { label: 'AI Fluency', href: paths.dashboard },
         { label: 'Register', href: paths.auth.signUp },
         { label: 'Sign in', href: paths.auth.signIn },
         { label: 'FFAQ', href: null },

@@ -8,23 +8,21 @@ import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { FLUID_FONT_SIZES } from 'src/theme/fluid-typography';
-import {
-  HOME_SECTION_UNDERLINE_SX,
-} from 'src/sections/home/home-section-styles';
+import { INTL_NAVY, INTL_PAGE_SHELL_BG } from 'src/theme/intl-brand';
+import { HOME_SECTION_UNDERLINE_SX } from 'src/sections/home/home-section-styles';
 
 // ----------------------------------------------------------------------
 
-export const NAVY = '#1C4270';
+export const NAVY = INTL_NAVY;
 
-export const HOME_SECTION_BG =
-  'linear-gradient(180deg, #f4f6f8 0%, #eceef1 48%, #f4f6f8 100%)';
+export const HOME_SECTION_BG = INTL_PAGE_SHELL_BG;
 
 export const INTL_PAGE_SHELL_SX = {
   minHeight: {
     xs: 'calc(100dvh - var(--layout-header-mobile-height))',
     md: 'calc(100dvh - var(--layout-header-desktop-height))',
   },
-  bgcolor: '#fff',
+  bgcolor: '#ffffff',
   backgroundImage: HOME_SECTION_BG,
   py: { xs: 4, md: 6 },
 };
@@ -55,7 +53,7 @@ export function IntlPageHeader({
         <Typography
           sx={{
             mb: 1,
-            color: '#000',
+            color: alpha(NAVY, 0.72),
             fontWeight: 600,
             fontSize: 13,
             letterSpacing: '0.04em',

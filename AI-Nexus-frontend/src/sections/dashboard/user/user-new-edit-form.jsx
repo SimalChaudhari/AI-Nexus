@@ -24,7 +24,7 @@ import { toast } from 'src/components/snackbar';
 import { Form, Field } from 'src/components/hook-form';
 import { createUser, updateUser } from 'src/store/slices/userSlice';
 import { userService } from 'src/services/user.service';
-import { NewUserSchema, SiteProfileSchema } from 'src/validations/user.validation';
+import { NewUserSchema, AdminProfileSchema, SiteProfileSchema } from 'src/validations/user.validation';
 import { fData } from 'src/utils/format-number';
 
 // ----------------------------------------------------------------------
@@ -51,6 +51,8 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   const { creating, updating } = useSelector((state) => state.users || { creating: false, updating: false });
 
   const isCreate = !currentUser && !isProfileEdit;
+  /** Admin editing own profile can change local account fields (not SSO-bound). */
+  const isAdminOwnProfileEdit = isProfileEdit && isAdminProfile;
 
   const defaultValues = useMemo(() => {
     const base = {
@@ -72,11 +74,13 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
     };
   }, [currentUser, isProfileEdit]);
 
-  const validationSchema = isProfileEdit
-    ? SiteProfileSchema
-    : currentUser
-      ? NewUserSchema.omit({ password: true })
-      : NewUserSchema;
+  const validationSchema = isAdminOwnProfileEdit
+    ? AdminProfileSchema
+    : isProfileEdit
+      ? SiteProfileSchema
+      : currentUser
+        ? NewUserSchema.omit({ password: true })
+        : NewUserSchema;
 
   const methods = useForm({
     mode: 'onTouched',
@@ -113,15 +117,8 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   const onSubmit = handleSubmit(
     async (data) => {
       try {
-        const backendData = isProfileEdit
+        const backendData = isAdminOwnProfileEdit
           ? {
-              companyCode:
-                typeof data.companyCode === 'string' && data.companyCode.trim()
-                  ? data.companyCode.trim()
-                  : null,
-              avatar: data.avatar,
-            }
-          : {
               username: data.username?.trim(),
               firstname: data.firstname?.trim(),
               lastname: data.lastname?.trim(),
@@ -135,7 +132,30 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                   ? data.contactNumber.trim()
                   : null,
               avatar: data.avatar,
-            };
+            }
+          : isProfileEdit
+            ? {
+                companyCode:
+                  typeof data.companyCode === 'string' && data.companyCode.trim()
+                    ? data.companyCode.trim()
+                    : null,
+                avatar: data.avatar,
+              }
+            : {
+                username: data.username?.trim(),
+                firstname: data.firstname?.trim(),
+                lastname: data.lastname?.trim(),
+                email: data.email?.trim().toLowerCase(),
+                companyCode:
+                  typeof data.companyCode === 'string' && data.companyCode.trim()
+                    ? data.companyCode.trim()
+                    : null,
+                contactNumber:
+                  typeof data.contactNumber === 'string' && data.contactNumber.trim()
+                    ? data.contactNumber.trim()
+                    : null,
+                avatar: data.avatar,
+              };
 
         if (!isProfileEdit) {
           const normalizedStatus = normalizeStatus(data.status || 'Active');
@@ -220,7 +240,11 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
         <Card sx={{ ...cardSx, p: { xs: 2.5, md: 4 } }}>
           <CardHeader
             title="Profile details"
-            subheader="You can update your profile image and company code. Other details are view-only."
+            subheader={
+              isAdminOwnProfileEdit
+                ? 'Update your admin account details stored in the local database.'
+                : 'You can update your profile image and company code. Other details are view-only.'
+            }
             sx={{ p: 0, mb: 3 }}
           />
           <Divider sx={{ mb: 4 }} />
@@ -251,7 +275,9 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                     Editable
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Profile image and company code
+                    {isAdminOwnProfileEdit
+                      ? 'Profile image, personal details, and company code'
+                      : 'Profile image and company code'}
                   </Typography>
                 </Box>
                 <Box
@@ -335,8 +361,12 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               sx={{
                 p: { xs: 2, md: 2.5 },
                 borderRadius: 2.5,
-                border: `1px solid ${alpha(theme.palette.grey[500], 0.18)}`,
-                bgcolor: alpha(theme.palette.grey[500], theme.palette.mode === 'dark' ? 0.08 : 0.04),
+                border: isAdminOwnProfileEdit
+                  ? `1.5px solid ${alpha(theme.palette.primary.main, 0.35)}`
+                  : `1px solid ${alpha(theme.palette.grey[500], 0.18)}`,
+                bgcolor: isAdminOwnProfileEdit
+                  ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.05)
+                  : alpha(theme.palette.grey[500], theme.palette.mode === 'dark' ? 0.08 : 0.04),
               }}
             >
               <Stack
@@ -351,12 +381,18 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                 <Box>
                   <Typography
                     variant="overline"
-                    sx={{ fontWeight: 800, letterSpacing: 1, color: 'text.secondary' }}
+                    sx={{
+                      fontWeight: 800,
+                      letterSpacing: 1,
+                      color: isAdminOwnProfileEdit ? 'primary.main' : 'text.secondary',
+                    }}
                   >
                     Personal details
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    These fields are view-only and cannot be changed here.
+                    {isAdminOwnProfileEdit
+                      ? 'You can update these fields on your admin account.'
+                      : 'These fields are view-only and cannot be changed here.'}
                   </Typography>
                 </Box>
                 <Box
@@ -364,13 +400,15 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                     px: 1,
                     py: 0.35,
                     borderRadius: 1,
-                    bgcolor: alpha(theme.palette.grey[500], 0.14),
-                    color: 'text.secondary',
+                    bgcolor: isAdminOwnProfileEdit
+                      ? alpha(theme.palette.primary.main, 0.12)
+                      : alpha(theme.palette.grey[500], 0.14),
+                    color: isAdminOwnProfileEdit ? 'primary.dark' : 'text.secondary',
                     typography: 'caption',
                     fontWeight: 700,
                   }}
                 >
-                  View only
+                  {isAdminOwnProfileEdit ? 'Can edit' : 'View only'}
                 </Box>
               </Stack>
 
@@ -385,15 +423,15 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                   },
                 }}
               >
-                <Field.Text name="firstname" label="First name" disabled />
-                <Field.Text name="lastname" label="Last name" disabled />
-                <Field.Text name="username" label="Username" disabled />
-                <Field.Text name="email" label="Email" type="email" disabled />
+                <Field.Text name="firstname" label="First name" disabled={!isAdminOwnProfileEdit} />
+                <Field.Text name="lastname" label="Last name" disabled={!isAdminOwnProfileEdit} />
+                <Field.Text name="username" label="Username" disabled={!isAdminOwnProfileEdit} />
+                <Field.Text name="email" label="Email" type="email" disabled={!isAdminOwnProfileEdit} />
                 <Box sx={{ gridColumn: { xs: 'auto', sm: 'span 1', md: 'span 2' } }}>
                   <Field.Phone
                     name="contactNumber"
                     label="Contact number"
-                    disabled
+                    disabled={!isAdminOwnProfileEdit}
                     autoDetectCountry
                   />
                 </Box>

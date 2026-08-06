@@ -2,7 +2,7 @@ import { alpha } from '@mui/material/styles';
 
 import { FLUID_FONT_SIZES } from 'src/theme/fluid-typography';
 
-export const HOME_SECTION_RED = '#E32B24';
+export const HOME_SECTION_RED = '#C00000';
 
 export const HOME_DASHBOARD_CONTENT_SX = {
   width: 1,
