@@ -527,14 +527,6 @@ export class AuthService {
     if (!normalizedUsername) {
       throw new BadRequestException('Username is required');
     }
-    const isEmailUsername =
-      /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(normalizedUsername);
-    const isAlphanumericUsername = /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername);
-    if (!isEmailUsername && !isAlphanumericUsername) {
-      throw new BadRequestException(
-        'Username must contain both letters and numbers, and no special characters.'
-      );
-    }
     if (!userDto.firstname) {
       throw new BadRequestException('Firstname is required');
     }
@@ -4435,7 +4427,7 @@ export class AuthService {
     return safe;
   }
 
-  /** SSO-aware logout: clear Salesforce session, revoke IdP token, clear social token. */
+  /** SSO-aware logout: clear app social token; browser IdP cookies via logout.jsp on next SSO. */
   async logout(
     userId: string,
     options?: { supplementalSocialToken?: string },
@@ -4445,28 +4437,17 @@ export class AuthService {
       return { message: 'Logged out successfully' };
     }
 
-    const socialToken =
-      String(user.socialAccessToken || '').trim()
-      || String(options?.supplementalSocialToken || '').trim();
+    const hadSocialToken =
+      Boolean(String(user.socialAccessToken || '').trim())
+      || Boolean(String(options?.supplementalSocialToken || '').trim());
 
-    if (socialToken) {
-      try {
-        await this.oauthAuthService.clearSalesforceMobileSession(socialToken);
-      } catch (err) {
-        console.warn('Salesforce clearSession during logout (non-fatal):', err);
-      }
-      try {
-        await this.oauthAuthService.revokeIdpToken(socialToken);
-      } catch (err) {
-        console.warn('IdP revoke during logout (non-fatal):', err);
-      }
-    }
-
+    // Do not call Salesforce clearSession/revoke here — they race with a just-completed SSO
+    // login and revoke fails for web session tokens (unsupported_token_type).
     user.socialAccessToken = null;
     await this.userRepository.save(user);
 
     const shouldEndIdpBrowserSession =
-      user.authProvider === AuthProvider.OAUTH || Boolean(socialToken);
+      user.authProvider === AuthProvider.OAUTH || hadSocialToken;
     const browserLogoutUrl = shouldEndIdpBrowserSession
       ? this.oauthAuthService.buildBrowserLogoutUrl()
       : null;

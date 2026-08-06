@@ -28,6 +28,7 @@ const NAVY = '#002060';
 
 // ----------------------------------------------------------------------
 
+/** React 19: never spread RHF `ref` onto JSX; map it to MUI `inputRef`. */
 function textFieldProps(field) {
   const { ref, ...rest } = field;
   return { ...rest, inputRef: ref };

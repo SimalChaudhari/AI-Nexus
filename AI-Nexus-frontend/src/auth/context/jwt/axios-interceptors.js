@@ -13,9 +13,34 @@ const AUTH_EXEMPT_PATH =
 let refreshPromise = null;
 let lastUnauthorizedRedirectAt = 0;
 
+/** Suppress forceLogout briefly after SSO establish-session (avoids wiping a just-created session). */
+const SSO_SESSION_GRACE_KEY = 'ssoSessionGraceUntil';
+const SSO_SESSION_GRACE_MS = 15000;
+
+export function markSsoSessionGracePeriod(ms = SSO_SESSION_GRACE_MS) {
+  try {
+    sessionStorage.setItem(SSO_SESSION_GRACE_KEY, String(Date.now() + ms));
+  } catch {
+    // ignore
+  }
+}
+
+function isSsoSessionGraceActive() {
+  try {
+    const until = Number(sessionStorage.getItem(SSO_SESSION_GRACE_KEY) || 0);
+    return Number.isFinite(until) && until > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 function isAuthRoute(pathname) {
   if (typeof pathname !== 'string') return false;
   return pathname.startsWith('/auth');
+}
+
+function isAuthMeRequest(url) {
+  return typeof url === 'string' && /\/auth\/me(?:\?|$)/.test(url);
 }
 
 async function refreshAuthSession(axiosInstance) {
@@ -101,14 +126,27 @@ export function attachAuthAxiosInterceptors(axiosInstance) {
       if (error.response?.status === 401 && typeof window !== 'undefined') {
         const requestUrl = originalConfig?.url || error.config?.url || '';
         const isAuthRequest = AUTH_EXEMPT_PATH.test(requestUrl);
-        const hadSession = Boolean(readCachedUser());
+        const isMeRequest = isAuthMeRequest(requestUrl);
+        const pathname = window.location.pathname || '';
+        // OAuth callback/start: never wipe a just-issued SSO session via forceLogout.
+        const isOAuthBootstrap =
+          pathname.includes('/auth/oauth/callback') || pathname.includes('/auth/oauth/start');
+        const inSsoGrace = isSsoSessionGraceActive();
+        // /auth/me bootstrap must never call POST /auth/logout — that raced with SSO login.
+        const allowForceLogout =
+          Boolean(readCachedUser())
+          && !isOAuthBootstrap
+          && !isMeRequest
+          && !inSsoGrace;
 
         const shouldTryRefresh =
           originalConfig &&
           !originalConfig._authRetry &&
           !originalConfig.skipAuthRefresh &&
           !isRefreshRequest &&
-          !isAuthRequest;
+          !isAuthRequest &&
+          !isOAuthBootstrap &&
+          !isMeRequest;
 
         if (shouldTryRefresh) {
           originalConfig._authRetry = true;
@@ -116,7 +154,7 @@ export function attachAuthAxiosInterceptors(axiosInstance) {
             await refreshAuthSession(axiosInstance);
             return axiosInstance(originalConfig);
           } catch {
-            if (hadSession) {
+            if (allowForceLogout) {
               const now = Date.now();
               if (now - lastUnauthorizedRedirectAt >= 1500) {
                 lastUnauthorizedRedirectAt = now;
@@ -128,7 +166,7 @@ export function attachAuthAxiosInterceptors(axiosInstance) {
         }
 
         const shouldForceLogout =
-          hadSession &&
+          allowForceLogout &&
           !isAuthRequest &&
           (isRefreshRequest || originalConfig?._authRetry);
 

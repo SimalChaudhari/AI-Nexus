@@ -46,6 +46,7 @@ import {
 // ----------------------------------------------------------------------
 
 const NAVY = '#002060';
+const RED = '#C00000';
 
 const FORM_GRID_SX = {
   display: 'grid',
@@ -62,7 +63,7 @@ function fieldError(errors, name) {
   return errors?.[name]?.message || '';
 }
 
-/** React 19: RHF `ref` must go to MUI `inputRef`, not element.ref. */
+/** React 19: never spread RHF `ref` onto JSX; map it to MUI `inputRef`. */
 function textFieldProps(field) {
   const { ref, ...rest } = field;
   return { ...rest, inputRef: ref };
@@ -548,43 +549,66 @@ export function IntlSignUpView() {
               </Box>
             </Box>
 
-            <Stack spacing={1.5} sx={{ width: 1 }}>
+            <Stack spacing={1.75} sx={{ width: 1 }}>
               <Box
                 sx={{
                   width: 1,
-                  p: { xs: 0, md: 2 },
-                  borderRadius: 1.5,
-                  border: {
-                    xs: 'none',
-                    md: `1px solid ${promoApplied ? alpha('#0f766e', 0.35) : alpha(NAVY, 0.12)}`,
-                  },
-                  bgcolor: {
-                    xs: 'transparent',
-                    md: promoApplied ? alpha('#0f766e', 0.04) : alpha(NAVY, 0.02),
-                  },
+                  p: { xs: 1.75, md: 2 },
+                  borderRadius: 2,
+                  border: `1px solid ${promoApplied ? alpha('#0f766e', 0.4) : alpha(RED, 0.28)}`,
+                  background: promoApplied
+                    ? `linear-gradient(145deg, ${alpha('#0f766e', 0.1)} 0%, ${alpha('#14b8a6', 0.06)} 100%)`
+                    : `linear-gradient(145deg, ${alpha(RED, 0.08)} 0%, ${alpha('#fff7f5', 1)} 55%, ${alpha(NAVY, 0.04)} 100%)`,
+                  boxShadow: `0 8px 24px ${alpha(promoApplied ? '#0f766e' : RED, 0.08)}`,
                 }}
               >
                 <Stack spacing={1.25}>
                   <Stack spacing={0.25}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <Iconify
-                        icon="solar:ticket-bold-duotone"
-                        width={18}
-                        sx={{ color: 'text.secondary' }}
-                      />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      <Box
+                        sx={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: 1,
+                          display: 'grid',
+                          placeItems: 'center',
+                          bgcolor: promoApplied ? alpha('#0f766e', 0.14) : alpha(RED, 0.12),
+                          color: promoApplied ? '#0f766e' : RED,
+                        }}
+                      >
+                        <Iconify icon="solar:ticket-bold-duotone" width={18} />
+                      </Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: NAVY }}>
                         Voucher / Referral code
                       </Typography>
                       {promoApplied ? (
                         <Chip
                           size="small"
-                          color="success"
                           label="Verified"
-                          sx={{ height: 22, fontWeight: 600 }}
+                          sx={{
+                            height: 22,
+                            fontWeight: 700,
+                            bgcolor: alpha('#0f766e', 0.14),
+                            color: '#0f766e',
+                          }}
                         />
-                      ) : null}
+                      ) : (
+                        <Chip
+                          size="small"
+                          label="Optional"
+                          sx={{
+                            height: 22,
+                            fontWeight: 700,
+                            bgcolor: alpha(RED, 0.1),
+                            color: RED,
+                          }}
+                        />
+                      )}
                     </Stack>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', pl: 3.5 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: alpha(NAVY, 0.62), pl: { xs: 0, sm: 4.75 } }}
+                    >
                       Enter a valid code. The payable amount updates after verification.
                     </Typography>
                   </Stack>
@@ -611,7 +635,11 @@ export function IntlSignUpView() {
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Iconify icon="solar:tag-price-bold-duotone" width={18} />
+                              <Iconify
+                                icon="solar:tag-price-bold-duotone"
+                                width={18}
+                                sx={{ color: RED }}
+                              />
                             </InputAdornment>
                           ),
                           endAdornment: (
@@ -619,7 +647,6 @@ export function IntlSignUpView() {
                               <Button
                                 size="small"
                                 variant="contained"
-                                color="inherit"
                                 disabled={!String(promoCodeValue || '').trim()}
                                 onClick={applyPromoCode}
                                 sx={{
@@ -629,12 +656,12 @@ export function IntlSignUpView() {
                                   textTransform: 'none',
                                   fontWeight: 700,
                                   boxShadow: 'none',
-                                  bgcolor: 'grey.800',
-                                  color: 'common.white',
-                                  '&:hover': { bgcolor: 'grey.900', boxShadow: 'none' },
+                                  bgcolor: RED,
+                                  color: '#fff',
+                                  '&:hover': { bgcolor: '#a00000', boxShadow: 'none' },
                                   '&.Mui-disabled': {
-                                    bgcolor: 'grey.400',
-                                    color: 'common.white',
+                                    bgcolor: alpha(RED, 0.35),
+                                    color: '#fff',
                                   },
                                 }}
                               >
@@ -656,12 +683,15 @@ export function IntlSignUpView() {
                   {promoMessage ? (
                     <Typography
                       variant="caption"
-                      sx={{ color: promoApplied ? 'success.main' : 'text.secondary' }}
+                      sx={{
+                        color: promoApplied ? '#0f766e' : alpha(NAVY, 0.65),
+                        fontWeight: promoApplied ? 600 : 400,
+                      }}
                     >
                       {promoMessage}
                     </Typography>
                   ) : (
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    <Typography variant="caption" sx={{ color: alpha(NAVY, 0.55) }}>
                       Optional. Leave blank to continue with the standard membership fee.
                     </Typography>
                   )}
@@ -673,41 +703,70 @@ export function IntlSignUpView() {
                   width: 1,
                   p: { xs: 2, md: 2.25 },
                   borderRadius: 2,
-                  border: `1px solid ${alpha(NAVY, 0.14)}`,
-                  bgcolor: alpha(NAVY, 0.035),
+                  border: `1px solid ${alpha(NAVY, 0.2)}`,
+                  background: `
+                    linear-gradient(165deg, ${NAVY} 0%, #003087 48%, #001a4d 100%)
+                  `,
+                  boxShadow: `0 14px 36px ${alpha(NAVY, 0.28)}`,
+                  color: '#fff',
                 }}
               >
               <Stack spacing={1.25}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    Payment summary
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Box
+                      sx={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 1,
+                        display: 'grid',
+                        placeItems: 'center',
+                        bgcolor: alpha('#fff', 0.14),
+                        color: '#fff',
+                      }}
+                    >
+                      <Iconify icon="solar:card-bold-duotone" width={18} />
+                    </Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#fff' }}>
+                      Payment summary
+                    </Typography>
+                  </Stack>
                   <Chip
                     size="small"
-                    color="default"
-                    variant="outlined"
                     label={pricingLoading ? '…' : currencyLabel}
+                    sx={{
+                      height: 24,
+                      fontWeight: 800,
+                      letterSpacing: '0.04em',
+                      bgcolor: alpha('#fff', 0.16),
+                      color: '#fff',
+                      border: `1px solid ${alpha('#fff', 0.28)}`,
+                    }}
                   />
                 </Stack>
-                <Divider sx={{ borderStyle: 'dashed' }} />
+                <Divider sx={{ borderStyle: 'dashed', borderColor: alpha('#fff', 0.22) }} />
 
                 {promoApplied ? (
                   <>
                     <Typography
                       variant="body2"
-                      sx={{ display: 'flex', justifyContent: 'space-between' }}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        color: alpha('#fff', 0.78),
+                      }}
                     >
                       <span>Original price</span>
-                      <strong>
+                      <Box component="strong" sx={{ color: alpha('#fff', 0.9) }}>
                         {currencyLabel} {standardTotal.toFixed(2)}
-                      </strong>
+                      </Box>
                     </Typography>
                     <Typography
                       variant="body2"
                       sx={{
                         display: 'flex',
                         justifyContent: 'space-between',
-                        color: 'success.main',
+                        color: '#7dffa8',
                       }}
                     >
                       <span>Promotional rate</span>
@@ -719,30 +778,54 @@ export function IntlSignUpView() {
                 ) : (
                   <Typography
                     variant="body2"
-                    sx={{ display: 'flex', justifyContent: 'space-between' }}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      color: alpha('#fff', 0.82),
+                    }}
                   >
                     <span>Membership fee</span>
-                    <strong>
+                    <Box component="strong" sx={{ color: '#fff' }}>
                       {currencyLabel} {Number(membershipBaseAmount).toFixed(2)}
-                    </strong>
+                    </Box>
                   </Typography>
                 )}
 
                 {currencyLabel !== 'SGD' && !promoApplied ? (
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{ color: alpha('#fff', 0.62) }}>
                     Converted from SGD {Number(pricing.baseAmountSgd || 365).toFixed(2)}
                   </Typography>
                 ) : null}
 
-                <Typography
-                  variant="subtitle2"
-                  sx={{ display: 'flex', justifyContent: 'space-between' }}
+                <Box
+                  sx={{
+                    mt: 0.25,
+                    px: 1.5,
+                    py: 1.25,
+                    borderRadius: 1.5,
+                    bgcolor: alpha('#fff', 0.1),
+                    border: `1px solid ${alpha('#fff', 0.16)}`,
+                  }}
                 >
-                  <span>Total payable</span>
-                  <strong>
-                    {currencyLabel} {Number(totalAmount).toFixed(2)}
-                  </strong>
-                </Typography>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      color: '#fff',
+                      gap: 1,
+                    }}
+                  >
+                    <span>Total payable</span>
+                    <Box
+                      component="strong"
+                      sx={{ fontSize: 18, letterSpacing: '-0.02em', color: '#fff' }}
+                    >
+                      {currencyLabel} {Number(totalAmount).toFixed(2)}
+                    </Box>
+                  </Typography>
+                </Box>
 
                 <Controller
                   name="paymentConsent"
@@ -757,6 +840,8 @@ export function IntlSignUpView() {
                         '& .MuiCheckbox-root': {
                           p: 0,
                           alignSelf: 'center',
+                          color: alpha('#fff', 0.7),
+                          '&.Mui-checked': { color: '#fff' },
                         },
                         '& .MuiFormControlLabel-label': {
                           pt: 0,
@@ -771,7 +856,10 @@ export function IntlSignUpView() {
                         />
                       }
                       label={
-                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: alpha('#fff', 0.78), display: 'block' }}
+                        >
                           I confirm this payable amount and want to continue to payment.
                         </Typography>
                       }
@@ -779,7 +867,7 @@ export function IntlSignUpView() {
                   )}
                 />
                 {fieldError(errors, 'paymentConsent') ? (
-                  <Typography variant="caption" color="error">
+                  <Typography variant="caption" sx={{ color: '#ffb4b4' }}>
                     {fieldError(errors, 'paymentConsent')}
                   </Typography>
                 ) : null}
@@ -787,17 +875,22 @@ export function IntlSignUpView() {
                 <Button
                   size="large"
                   variant="contained"
-                  color="primary"
                   fullWidth
                   type="submit"
                   disabled={!paymentConsent || isSubmitting}
                   sx={{
                     height: 48,
-                    fontWeight: 700,
+                    fontWeight: 800,
                     mt: 0.5,
                     textTransform: 'none',
                     boxShadow: 'none',
-                    '&:hover': { boxShadow: 'none' },
+                    bgcolor: RED,
+                    color: '#fff',
+                    '&:hover': { bgcolor: '#a00000', boxShadow: 'none' },
+                    '&.Mui-disabled': {
+                      bgcolor: alpha('#fff', 0.22),
+                      color: alpha('#fff', 0.55),
+                    },
                   }}
                 >
                   {isSubmitting ? (
@@ -814,26 +907,36 @@ export function IntlSignUpView() {
           <Box
             sx={{
               width: 1,
-              px: { xs: 0, md: 1.5 },
-              py: { xs: 0.5, md: 1.25 },
-              borderRadius: { xs: 0, md: 1.5 },
-              border: {
-                xs: 'none',
-                md: `1px solid ${alpha(NAVY, 0.12)}`,
-              },
-              bgcolor: {
-                xs: 'transparent',
-                md: alpha(NAVY, 0.03),
-              },
+              px: { xs: 1.75, md: 2 },
+              py: { xs: 1.5, md: 1.75 },
+              borderRadius: 2,
+              border: `1px solid ${alpha(NAVY, 0.22)}`,
+              background: `
+                linear-gradient(135deg, ${alpha(NAVY, 0.1)} 0%, ${alpha('#1d4ed8', 0.08)} 45%, ${alpha(RED, 0.06)} 100%)
+              `,
+              boxShadow: `0 8px 22px ${alpha(NAVY, 0.08)}`,
             }}
           >
-            <Stack direction="row" spacing={1} alignItems="flex-start">
-              <Iconify icon="solar:shield-check-bold" width={18} />
-              <Stack spacing={0.25}>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            <Stack direction="row" spacing={1.25} alignItems="flex-start">
+              <Box
+                sx={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 1.25,
+                  flexShrink: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: alpha(NAVY, 0.12),
+                  color: NAVY,
+                }}
+              >
+                <Iconify icon="solar:shield-check-bold" width={20} />
+              </Box>
+              <Stack spacing={0.35}>
+                <Typography variant="body2" sx={{ fontWeight: 800, color: NAVY }}>
                   No separate create account step
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                <Typography variant="caption" sx={{ color: alpha(NAVY, 0.7), lineHeight: 1.55 }}>
                   We save these details as a draft first. Your account is created automatically only
                   after payment succeeds.
                 </Typography>

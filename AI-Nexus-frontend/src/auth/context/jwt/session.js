@@ -2,7 +2,7 @@ import axios from 'src/utils/axios';
 import { CONFIG } from 'src/config-global';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
 import { clearClientSalesforceSessions } from './logout-payload';
-import { postLogoutWithIdpBrowserClear, triggerIdpBrowserLogoutPopup } from './idp-browser-logout';
+import { postLogoutWithIdpBrowserClear, finishLogoutWithIdpBrowserClear } from './idp-browser-logout';
 
 const USER_SESSION_KEY = 'user';
 
@@ -34,7 +34,12 @@ export function clearCachedUser() {
 /** Fetch current user from API (HttpOnly access cookie is sent automatically). */
 export async function fetchCurrentUser() {
   try {
-    const res = await axios.get('/auth/me', { skipApiLoading: true });
+    // skipAuthRefresh: a 401 here means "not logged in", not "force logout".
+    // Refresh+forceLogout on /auth/me was calling POST /auth/logout right after SSO.
+    const res = await axios.get('/auth/me', {
+      skipApiLoading: true,
+      skipAuthRefresh: true,
+    });
     const user = res.data?.user;
     if (user) {
       return writeCachedUser(user);
@@ -63,9 +68,8 @@ export async function forceLogout({ redirect = true } = {}) {
 
   logoutInFlight = (async () => {
     const cachedUser = readCachedUser();
-    let browserLogoutUrl = null;
     try {
-      ({ browserLogoutUrl } = await postLogoutWithIdpBrowserClear(cachedUser));
+      await postLogoutWithIdpBrowserClear(cachedUser);
     } catch {
       // Still clear client state if cookies are already invalid.
     }
@@ -84,15 +88,10 @@ export async function forceLogout({ redirect = true } = {}) {
       if (!currentPath.startsWith('/auth')) {
         const returnTo = encodeURIComponent(currentPath + window.location.search);
         const base = (CONFIG.site.basePath || '').replace(/\/$/, '');
-        const signInUrl = `${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`;
+        const signInUrl = `${window.location.origin}${base}${CONFIG.auth.redirectPath}?returnTo=${returnTo}`;
 
-        if (browserLogoutUrl) {
-          triggerIdpBrowserLogoutPopup(browserLogoutUrl);
-          window.location.replace(`${window.location.origin}${signInUrl}`);
-          return;
-        }
-
-        window.location.replace(`${window.location.origin}${signInUrl}`);
+        // Never open Salesforce on logout — next SSO clears IdP cookies.
+        await finishLogoutWithIdpBrowserClear(null, signInUrl);
       }
     }
   })().finally(() => {

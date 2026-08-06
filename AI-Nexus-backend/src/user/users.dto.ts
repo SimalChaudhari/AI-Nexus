@@ -17,13 +17,7 @@ import { UserRole, UserStatus } from './users.entity';
 export class UserDto {
     @IsString()
     @IsNotEmpty()
-    @Matches(
-        /^(?:(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/,
-        {
-            message:
-                'Username must contain both letters and numbers with no special characters, or be a valid email address',
-        },
-    )
+    @MaxLength(50)
     username!: string;
 
     @IsString()
@@ -132,9 +126,7 @@ export class UserDto {
 export class UpdateUserDto {
     @IsOptional()
     @IsString()
-    @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-        message: 'Username must contain both letters and numbers, and no special characters',
-    })
+    @MaxLength(50)
     username?: string;
 
     @IsOptional()

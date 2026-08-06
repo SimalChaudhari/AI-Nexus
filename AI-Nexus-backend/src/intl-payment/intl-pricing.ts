@@ -17,6 +17,7 @@ export type IntlMembershipPricing = {
   totalAmountCents: number;
   voucherDiscountAmount: number;
   itemName: string;
+  itemDescription: string;
 };
 
 export async function resolveIntlMembershipPricing(
@@ -50,5 +51,8 @@ export async function resolveIntlMembershipPricing(
     itemName: promoApplied
       ? 'AI Nexus International membership (promo)'
       : 'AI Nexus International membership',
+    itemDescription: promoApplied
+      ? 'International AI Fluency membership with promotional rate. Full catalogue access after payment.'
+      : 'International AI Fluency membership. Full catalogue access after payment succeeds.',
   };
 }

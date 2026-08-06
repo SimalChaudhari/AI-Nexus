@@ -32,8 +32,11 @@ export function GuestGuard({ children }) {
       const returnTo = searchParams.get('returnTo');
       const userRole = (user?.role || 'user').toLowerCase();
 
-      // Let the OAuth callback page finish merging session + redirect (avoids racing to /home).
-      if (pathname?.includes('/auth/oauth/callback')) {
+      // Let OAuth start/callback finish without GuestGuard racing to /home or corporate.
+      if (
+        pathname?.includes('/auth/oauth/callback')
+        || pathname?.includes('/auth/oauth/start')
+      ) {
         setIsChecking(false);
         return;
       }

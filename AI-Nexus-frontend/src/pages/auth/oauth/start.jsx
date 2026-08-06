@@ -8,7 +8,14 @@ import Typography from '@mui/material/Typography';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
+import axios from 'src/utils/axios';
+
 import { getOAuthAuthUrl } from 'src/auth/context/jwt';
+import {
+  buildIdpLogoutThenAuthorizeUrl,
+  isForceIdpLogin,
+  clearForceIdpLogin,
+} from 'src/auth/context/jwt/idp-browser-logout';
 import { POST_OAUTH_RETURN_TO_KEY, setScaqSsoVerificationPending, SCAQ_SSO_VERIFICATION_PENDING_KEY, MEMBERSHIP_ELIGIBILITY_FLOW_KEY } from 'src/utils/membership-eligibility-sso';
 import {
   MEMBERSHIP_APPLICATION_OUTCOME,
@@ -28,12 +35,18 @@ import {
 export default function OAuthStartPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [statusText, setStatusText] = useState('Redirecting to SSO...');
 
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       try {
+        const forceIdpLogin = isForceIdpLogin();
+        if (forceIdpLogin) {
+          setStatusText('Preparing secure sign-in…');
+        }
+
         const params = new URLSearchParams(window.location.search);
         if (params.get('membershipOutcome') === 'scaq-sso-verify') {
           setScaqSsoVerificationPending();
@@ -107,6 +120,9 @@ export default function OAuthStartPage() {
           || decodedReturnTo.includes('/corporate');
 
         const scaqVerify = params.get('membershipOutcome') === 'scaq-sso-verify';
+        if (forceIdpLogin && !cancelled) {
+          setStatusText('Preparing secure sign-in…');
+        }
         const { authUrl } = await getOAuthAuthUrl({
           scaqVerify,
           deferredAuth: isDeferredMembershipApplication,
@@ -114,7 +130,26 @@ export default function OAuthStartPage() {
         });
         if (cancelled) return;
         if (authUrl && (authUrl.startsWith('http://') || authUrl.startsWith('https://'))) {
-          window.location.href = authUrl;
+          // After logout (localhost): clear Salesforce cookies then authorize (same tab, no popup).
+          // Normal login goes straight to authorize — no extra step.
+          let target = authUrl;
+          if (forceIdpLogin) {
+            try {
+              const logoutRes = await axios.get('/auth/oauth/browser-logout-url', {
+                skipAuthRefresh: true,
+                skipApiLoading: true,
+              });
+              const chained = buildIdpLogoutThenAuthorizeUrl(
+                logoutRes.data?.browserLogoutUrl,
+                authUrl,
+              );
+              if (chained) target = chained;
+            } catch {
+              // Fall back to authorize URL.
+            }
+            clearForceIdpLogin();
+          }
+          window.location.replace(target);
           return;
         }
         setError('SSO is not configured or invalid. Please try sign in with email.');
@@ -133,9 +168,19 @@ export default function OAuthStartPage() {
 
   if (loading && !error) {
     return (
-      <Stack alignItems="center" justifyContent="center" sx={{ minHeight: '60vh', p: 3 }}>
+      <Stack
+        alignItems="center"
+        justifyContent="center"
+        sx={{
+          position: 'fixed',
+          inset: 0,
+          bgcolor: 'background.default',
+          zIndex: 9999,
+          p: 3,
+        }}
+      >
         <Typography variant="body2" color="text.secondary">
-          Redirecting to SSO...
+          {statusText}
         </Typography>
       </Stack>
     );

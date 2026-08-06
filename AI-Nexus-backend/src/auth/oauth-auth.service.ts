@@ -1169,6 +1169,10 @@ export class OAuthAuthService {
       response_type: 'code',
       redirect_uri: redirectUri,
       state,
+      // Prefer re-auth; Experience Cloud may ignore this if site cookies remain.
+      prompt: 'login',
+      // OpenID-style hint: treat session as expired (best-effort on Salesforce).
+      max_age: '0',
     });
     const authUrl = `${base}${path}?${params.toString()}`;
     return { authUrl, state };
@@ -2645,12 +2649,23 @@ export class OAuthAuthService {
       return res.data || null;
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        console.error('[SSO Login] Corporate user info fetch failed:', {
-          status: err.response?.status,
-          data: err.response?.data,
-          message: err.message,
-          url,
-        });
+        const status = err.response?.status;
+        const data = err.response?.data;
+        // Individual IdP users often lack corporate Apex access — expected.
+        if (status === 403 || status === 401) {
+          console.warn('[SSO Login] Corporate user info unavailable (expected for some profiles):', {
+            status,
+            message: Array.isArray(data) ? data[0]?.message : err.message,
+            url,
+          });
+        } else {
+          console.error('[SSO Login] Corporate user info fetch failed:', {
+            status,
+            data,
+            message: err.message,
+            url,
+          });
+        }
       } else {
         console.error('[SSO Login] Corporate user info fetch failed (unknown error):', err);
       }
@@ -3980,6 +3995,19 @@ export class OAuthAuthService {
       return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
     }
 
+    // Non member + Blue/Pink NRIC + isAINexusUser (and CA/Member NRIC paths) — same as paid:
+    // issue cookies now. Deferring forced a frontend nric-login hop that often raced with the
+    // paid-signup reject path (user briefly entered the app, then was logged out).
+    if (nexusInfo) {
+      const nricEligibility = this.evaluateNricNumberPlatformLoginEligibility(nexusInfo);
+      if (nricEligibility.allowed) {
+        console.log(
+          '[SSO Login] NRIC platform-eligible — granting direct platform login, skipping deferral.',
+        );
+        return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
+      }
+    }
+
     const needsPaidSignup = this.requiresPaidSignupAfterSso(user);
     const citizenshipGap = this.requiresCitizenshipGapBeforePlatformLogin(nexusInfo);
     const useDeferredAuth = deferredAuthFromState || needsPaidSignup || citizenshipGap;
@@ -4300,12 +4328,23 @@ export class OAuthAuthService {
       return res.data || null;
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        console.error('[SSO Login] Nexus user info fetch failed:', {
-          status: err.response?.status,
-          data: err.response?.data,
-          message: err.message,
-          url,
-        });
+        const status = err.response?.status;
+        const data = err.response?.data;
+        // Corporate / non-member profiles often lack UserInfoNexusCtrl — expected, not an outage.
+        if (status === 403 || status === 401) {
+          console.warn('[SSO Login] Nexus user info unavailable (expected for some profiles):', {
+            status,
+            message: Array.isArray(data) ? data[0]?.message : err.message,
+            url,
+          });
+        } else {
+          console.error('[SSO Login] Nexus user info fetch failed:', {
+            status,
+            data,
+            message: err.message,
+            url,
+          });
+        }
       } else {
         console.error('[SSO Login] Nexus user info fetch failed (unknown error):', err);
       }
@@ -4461,8 +4500,25 @@ export class OAuthAuthService {
     const firstName = idpUserInfo.given_name || idpUserInfo.first_name || idpUserInfo.name || '';
     const lastName = idpUserInfo.family_name || idpUserInfo.last_name || '';
 
-    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
-    const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+    const loginAsCorporate = Boolean(options?.loginAsCorporate);
+
+    // Corporate portal: use userinfoforcorporate only. Corporate IdP users typically
+    // have no access to UserInfoNexusCtrl (403) — skip that call to avoid noisy failures.
+    // Individual SSO: prefer userinfonexus; still probe corporate for dual-role accounts.
+    let nexusInfo: SalesforceNexusUserInfo | null = null;
+    let corporateInfo: Record<string, unknown> | null = null;
+
+    if (loginAsCorporate) {
+      corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+      if (!this.isCorporateSalesforceUserInfo(corporateInfo)) {
+        // Not a corporate SF profile — try nexus for staff-learner / individual fallback.
+        nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      }
+    } else {
+      nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+    }
+
     const hasCorporateInfo = this.isCorporateSalesforceUserInfo(corporateInfo);
 
     const nexusUsername = String(
@@ -4480,7 +4536,7 @@ export class OAuthAuthService {
     // - Corporate userinfo exists and there is no individual nexus username
     // Local DB always stores UserRole.Corporate ("Corporate").
     const preferCorporateLogin =
-      Boolean(options?.loginAsCorporate)
+      loginAsCorporate
       || sfSaysCorporateRole
       || (hasCorporateInfo && !nexusUsername);
 
@@ -4502,11 +4558,38 @@ export class OAuthAuthService {
       }
     }
 
+    // Corporate portal SSO sets loginAsCorporate, but Salesforce IdP also allows choosing an
+    // Individual / ISCA account. If corporate profile is missing, fall back to Individual.
+    if (targetRole === UserRole.Corporate && !corporateUsername) {
+      if (!nexusInfo) {
+        nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      }
+      const nexusUsernameAfter =
+        String((nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.username : '') || '').trim()
+        || nexusUsername;
+      const canFallbackToIndividual =
+        Boolean(nexusUsernameAfter) || (nexusInfo && typeof nexusInfo === 'object');
+      if (canFallbackToIndividual) {
+        console.log(
+          '[SSO Login] Org Portal SSO with Individual/ISCA account — using Individual login path',
+          {
+            loginAsCorporate: Boolean(options?.loginAsCorporate),
+            hasNexusUsername: Boolean(nexusUsernameAfter),
+          },
+        );
+        targetRole = UserRole.User;
+      }
+    }
+
     // Corporate → userinfoforcorporate.username only ; Individual → userinfonexus.username
     const salesforceUsername =
       targetRole === UserRole.Corporate
         ? (corporateUsername || email)
-        : (nexusUsername || email);
+        : (
+            String((nexusInfo && typeof nexusInfo === 'object' ? nexusInfo.username : '') || '').trim()
+            || nexusUsername
+            || email
+          );
 
     const salesforceAccountId = String(
       targetRole === UserRole.Corporate
@@ -4679,7 +4762,7 @@ export class OAuthAuthService {
     }
 
     // Corporate HR: update Corporate row only — never promote Individual → Corporate.
-    if (hasCorporateInfo && user.role === UserRole.Corporate) {
+    if (hasCorporateInfo && corporateInfo && user.role === UserRole.Corporate) {
       const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
       const accountId = String((corporateInfo as { accountId?: string }).accountId || '').trim();
       const contactEmail = normalizeEmail(
@@ -4739,7 +4822,7 @@ export class OAuthAuthService {
           console.error('[SSO Login] Failed to auto-create company QR invite (non-fatal):', inviteErr);
         }
       }
-    } else if (hasCorporateInfo && this.isStaffLearnerAccount(user)) {
+    } else if (hasCorporateInfo && corporateInfo && this.isStaffLearnerAccount(user)) {
       const companyCode = this.resolveCorporateCompanyCode(corporateInfo);
       const existingCompanyCode = String(user.companyCode || '').trim();
       if (!existingCompanyCode && companyCode) {
@@ -4940,7 +5023,13 @@ export class OAuthAuthService {
       });
       console.log('[Salesforce] clearSession succeeded:', { url });
     } catch (err) {
-      console.warn('Salesforce clearSession failed (non-fatal):', err);
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const data = axios.isAxiosError(err) ? err.response?.data : undefined;
+      console.warn('[Salesforce] clearSession failed (non-fatal):', {
+        status,
+        message: Array.isArray(data) ? data[0]?.message : (err as Error)?.message,
+        url,
+      });
     }
   }
 
@@ -4957,7 +5046,14 @@ export class OAuthAuthService {
         },
       );
     } catch (err) {
-      console.warn('IdP token revoke failed (non-fatal):', err);
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const data = axios.isAxiosError(err) ? err.response?.data : undefined;
+      // Salesforce often returns unsupported_token_type for session tokens — non-fatal.
+      console.warn('[Salesforce] IdP token revoke failed (non-fatal):', {
+        status,
+        data: typeof data === 'string' ? data : data,
+        url,
+      });
     }
   }
 

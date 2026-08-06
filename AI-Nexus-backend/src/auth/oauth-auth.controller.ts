@@ -185,7 +185,7 @@ export class OAuthAuthController {
           syncedAt: user.salesforceSyncedAt,
         },
       },
-      ...(useDeferredAuth ? { accessToken: platformAccessToken } : {}),
+      ...(platformAccessToken ? { accessToken: platformAccessToken } : {}),
       ...(user.socialAccessToken ? { socialAccessToken: user.socialAccessToken } : {}),
       requiresPaidSignup: needsPaidSignup,
       requiresCitizenshipGap: citizenshipGap,
@@ -283,7 +283,9 @@ export class OAuthAuthController {
           : {}),
       };
 
-      if (useDeferredAuth) {
+      // Always pass platform JWT so the SPA can establish-session if redirect cookies
+      // are missed or wiped by a stale-cache forceLogout during callback.
+      if (platformAccessToken) {
         redirectParams.pendingPlatformAccessToken = platformAccessToken;
       }
 

@@ -27,6 +27,14 @@ import { IntlFxService } from './intl-fx.service';
 
 const INTL_DRAFT_JWT_TYP = 'intl_draft';
 
+/** WooshPay checkout methods for international membership (Step 4). */
+const INTL_CHECKOUT_PAYMENT_METHODS = [
+  'card', // Credit Card
+  'applepay', // Apple Pay
+  'googlepay', // Google Pay
+  'alipay', // Alipay
+] as const;
+
 function generateShortId(): string {
   return crypto.randomBytes(12).toString('base64url');
 }
@@ -136,9 +144,8 @@ export class IntlPaymentService {
     const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${clientReferenceId}`;
     const finalCancelUrl = `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}payment=canceled&ref=${clientReferenceId}`;
 
-    const customerName = [user.firstname, user.lastname].filter(Boolean).join(' ') || undefined;
-
     try {
+      // Step 4: amount + currency + product name/description; methods via WooshPay.
       const session = await this.wooshPayService.createCheckoutSession({
         line_items: [
           {
@@ -147,7 +154,7 @@ export class IntlPaymentService {
               unit_amount: pricing.totalAmountCents,
               product_data: {
                 name: pricing.itemName,
-                description: 'International membership',
+                description: pricing.itemDescription,
               },
             },
             quantity: 1,
@@ -156,16 +163,8 @@ export class IntlPaymentService {
         success_url: finalSuccessUrl,
         cancel_url: finalCancelUrl,
         client_reference_id: clientReferenceId,
+        payment_method_types: [...INTL_CHECKOUT_PAYMENT_METHODS],
         ...(user.email && { customer_email: user.email }),
-        ...((customerName || user.email) && {
-          payment_intent_data: {
-            billing_details: {
-              ...(customerName && { name: customerName }),
-              ...(user.email && { email: user.email }),
-            },
-          },
-        }),
-        payment_method_types: ['card'],
       });
 
       payment.wooshpaySessionId = session.id;
@@ -178,6 +177,7 @@ export class IntlPaymentService {
         currency: pricing.currency,
         amount: pricing.totalAmount,
         countryCode: pricing.countryCode,
+        paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
       };
     } catch (error: any) {
       payment.status = InternationalPaymentStatus.Failed;

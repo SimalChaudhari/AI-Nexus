@@ -147,9 +147,7 @@ export const AuthSignUpSchema = zod.object({
     .string()
     .min(1, { message: 'Username is required!' })
     .min(3, { message: 'Username must be at least 3 characters!' })
-    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-      message: 'Username must contain both letters and numbers, and no special characters!',
-    }),
+    .max(50, { message: 'Username must be less than 50 characters!' }),
   firstName: zod.string().min(1, { message: 'First name is required!' }),
   lastName: zod.string().min(1, { message: 'Last name is required!' }),
   email: emailSchema,
@@ -346,10 +344,7 @@ export const NewUserSchema = zod.object({
     .string()
     .min(1, { message: 'Username is required!' })
     .min(3, { message: 'Username must be at least 3 characters!' })
-    .max(50, { message: 'Username must be less than 50 characters!' })
-    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-      message: 'Username must contain both letters and numbers, and no special characters!',
-    }),
+    .max(50, { message: 'Username must be less than 50 characters!' }),
 
   firstname: zod
     .string()
@@ -400,9 +395,6 @@ export const UpdateUserSchema = zod.object({
     .string()
     .min(3, { message: 'Username must be at least 3 characters!' })
     .max(50, { message: 'Username must be less than 50 characters!' })
-    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-      message: 'Username must contain both letters and numbers, and no special characters!',
-    })
     .optional(),
 
   firstname: zod
@@ -444,10 +436,7 @@ export const ProfileSchema = zod.object({
     .string()
     .min(1, { message: 'Username is required!' })
     .min(3, { message: 'Username must be at least 3 characters!' })
-    .max(50, { message: 'Username must be less than 50 characters!' })
-    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-      message: 'Username must contain both letters and numbers, and no special characters!',
-    }),
+    .max(50, { message: 'Username must be less than 50 characters!' }),
 
   firstname: zod
     .string()
@@ -472,13 +461,8 @@ export const ProfileSchema = zod.object({
   contactNumber: optionalPhoneSchema,
 });
 
-/** Admin own profile edit — no strict username pattern (local admin account). */
-export const AdminProfileSchema = ProfileSchema.extend({
-  username: zod
-    .string()
-    .min(1, { message: 'Username is required!' })
-    .max(50, { message: 'Username must be less than 50 characters!' }),
-});
+/** Admin own profile edit — same username rules as ProfileSchema (uniqueness checked on backend). */
+export const AdminProfileSchema = ProfileSchema;
 
 /** Site profile edit — only avatar and company code are editable. */
 export const SiteProfileSchema = zod.object({

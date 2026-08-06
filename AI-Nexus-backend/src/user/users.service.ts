@@ -188,11 +188,6 @@ export class UserService {
         if (!normalizedUsername) {
             throw new BadRequestException('Username is required');
         }
-        if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
-            throw new BadRequestException(
-                'Username must contain both letters and numbers, and no special characters.',
-            );
-        }
         const createEmailVerification = await verifyEmailAddress(normalizedEmail);
         if (!createEmailVerification.isValid) {
             throw new BadRequestException(
@@ -290,14 +285,8 @@ export class UserService {
         // Check if username is being updated and if it already exists
         if (updateUserDto.username && updateUserDto.username !== user.username) {
             const normalizedUsername = this.normalizeUsername(updateUserDto.username);
-            // Strict letters+numbers pattern applies to non-admin accounts only
-            if (
-                user.role !== UserRole.Admin &&
-                !/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)
-            ) {
-                throw new BadRequestException(
-                    'Username must contain both letters and numbers, and no special characters.',
-                );
+            if (!normalizedUsername) {
+                throw new BadRequestException('Username is required');
             }
 
             const existingUser = await this.userRepository

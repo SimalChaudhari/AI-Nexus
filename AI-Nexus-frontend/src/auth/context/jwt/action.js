@@ -3,6 +3,7 @@ import { CONFIG } from 'src/config-global';
 import { resolveFlowisePublicBaseUrl, resolveFlowiseApiBaseUrl } from 'src/utils/flowise-public-url';
 import { clearAuthSession } from './utils';
 import { fetchCurrentUser, writeCachedUser } from './session';
+import { markSsoSessionGracePeriod } from './axios-interceptors';
 import { clearClientSalesforceSessions } from './logout-payload';
 import { postLogoutWithIdpBrowserClear, finishLogoutWithIdpBrowserClear, getAppSignInUrl } from './idp-browser-logout';
 import { normalizeUserForSession } from 'src/auth/utils/normalize-user-session';
@@ -700,14 +701,29 @@ export const establishPlatformSessionFromToken = async (token) => {
   if (!trimmed) return false;
 
   try {
-    const res = await axios.post('/auth/establish-session', { token: trimmed }, { skipAuthRefresh: true });
+    const res = await axios.post(
+      '/auth/establish-session',
+      { token: trimmed },
+      { skipAuthRefresh: true, skipApiLoading: true }
+    );
     const user = res.data?.user;
     if (user) {
       writeCachedUser(user);
-    } else {
-      await fetchCurrentUser();
     }
-    return true;
+
+    // Block interceptor forceLogout → POST /auth/logout while cookies settle.
+    markSsoSessionGracePeriod();
+
+    // Confirm HttpOnly cookies are readable before treating login as success.
+    const verified = await fetchCurrentUser();
+    if (verified) {
+      return true;
+    }
+
+    // Retry once — first /auth/me can race the Set-Cookie response.
+    await new Promise((r) => setTimeout(r, 150));
+    const verifiedRetry = await fetchCurrentUser();
+    return Boolean(verifiedRetry);
   } catch {
     return false;
   }
@@ -923,15 +939,16 @@ export const promoteSalesforceAssociateMember = async () => {
   }
 };
 
-/** **************************************
- * Sign out (SSO-aware: calls backend logout to revoke IdP token if SSO user)
- *************************************** */
-export const signOut = async () => {
+/**
+ * Sign out — revoke server session, wipe local storage, go to app sign-in.
+ * No popup. Next SSO clears Salesforce cookies then asks for email/password.
+ * @param {{ redirectTo?: string }} [options]
+ */
+export const signOut = async (options = {}) => {
   const triggerFlowiseLogout = async () => {
     const flowiseApiBase = resolveFlowiseApiBaseUrl();
     if (!flowiseApiBase) return;
 
-    // Use hidden iframe + POST form to avoid CORS issues while still sending HttpOnly cookies.
     await new Promise((resolve) => {
       const iframe = document.createElement('iframe');
       const targetName = `flowise-logout-${Date.now()}`;
@@ -957,17 +974,16 @@ export const signOut = async () => {
   };
 
   try {
-    const { browserLogoutUrl } = await postLogoutWithIdpBrowserClear();
+    await postLogoutWithIdpBrowserClear();
     await triggerFlowiseLogout();
-    clearClientSalesforceSessions();
-    await clearAuthSession();
-
-    if (browserLogoutUrl) {
-      finishLogoutWithIdpBrowserClear(browserLogoutUrl, getAppSignInUrl());
-      return;
-    }
   } catch (error) {
-    console.error('Error during sign out:', error);
-    throw error;
+    console.error('Error during sign out (continuing local clear):', error);
   }
+
+  clearClientSalesforceSessions();
+  await clearAuthSession();
+
+  // Never open Salesforce on logout — stay on our app sign-in.
+  const redirectTo = String(options.redirectTo || getAppSignInUrl() || '').trim();
+  await finishLogoutWithIdpBrowserClear(null, redirectTo);
 };

@@ -181,7 +181,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Logout the current user session' })
   async logout(
@@ -195,6 +195,7 @@ export class AuthController {
     if (userId) {
       await this.authTokenService.revokeAllUserRefreshTokens(userId);
     }
+    // Always clear cookies — even if the access token already expired.
     this.authTokenService.clearAuthCookies(res);
     if (!userId) {
       return { message: 'Logged out successfully' };

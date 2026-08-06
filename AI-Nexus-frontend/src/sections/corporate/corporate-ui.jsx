@@ -18,6 +18,7 @@ import { RouterLink } from 'src/routes/components';
 
 import { useAuthContext } from 'src/auth/hooks';
 import { signOut } from 'src/auth/context/jwt';
+import { getAppSignInUrl } from 'src/auth/context/jwt/idp-browser-logout';
 import {
   downloadCorporateCertificateFile,
   nudgeCorporateLearner,
@@ -174,7 +175,7 @@ export function CorpPillarLessonMeta({ pillar, compact = false, fullText = false
 
 export function CorpAdminChip({ compact = false }) {
   const router = useRouter();
-  const { user, checkUserSession } = useAuthContext();
+  const { user } = useAuthContext();
   
   const [loggingOut, setLoggingOut] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -208,16 +209,21 @@ export function CorpAdminChip({ compact = false }) {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      await signOut();
-      await checkUserSession?.();
-      router.replace(
-        `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.corporate.overview)}`
-      );
+      const returnTo = encodeURIComponent(paths.corporate.overview);
+      // signOut hard-redirects to sign-in; do not race with router.replace afterward.
+      await signOut({ redirectTo: getAppSignInUrl(`returnTo=${returnTo}`) });
     } catch (err) {
       console.error('Corporate logout failed:', err);
+      try {
+        router.replace(
+          `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(paths.corporate.overview)}`
+        );
+      } catch {
+        // ignore
+      }
       setLoggingOut(false);
     }
-  }, [checkUserSession, loggingOut, router]);
+  }, [loggingOut]);
 
   const open = Boolean(anchorEl);
 
