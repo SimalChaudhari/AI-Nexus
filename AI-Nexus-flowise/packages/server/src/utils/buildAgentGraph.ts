@@ -28,7 +28,10 @@ import logger from './logger'
 import { Variable } from '../database/entities/Variable'
 import { getWorkspaceSearchOptions } from '../enterprise/utils/ControllerServiceUtils'
 import { DataSource } from 'typeorm'
+import { setMaxListeners } from 'events'
 import { CachePool } from '../CachePool'
+
+const ABORT_SIGNAL_MAX_LISTENERS = 100
 
 /**
  * Build Agent Graph
@@ -83,6 +86,9 @@ export const buildAgentGraph = async ({
         const analytic = agentflow.analytic
         const uploads = incomingInput.uploads
 
+        const abortController = signal ?? new AbortController()
+        setMaxListeners(ABORT_SIGNAL_MAX_LISTENERS, abortController.signal)
+
         const options = {
             orgId,
             workspaceId,
@@ -97,7 +103,7 @@ export const buildAgentGraph = async ({
             cachePool,
             uploads,
             baseURL,
-            signal: signal ?? new AbortController()
+            signal: abortController
         }
 
         let streamResults
