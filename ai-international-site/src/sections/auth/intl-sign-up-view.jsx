@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
@@ -113,6 +113,7 @@ export function IntlSignUpView() {
     exchangeRate: 1,
   });
   const [pricingLoading, setPricingLoading] = useState(false);
+  const payInFlightRef = useRef(false);
 
   const {
     control,
@@ -211,6 +212,10 @@ export function IntlSignUpView() {
   };
 
   const onSubmit = handleSubmit(async (data) => {
+    if (payInFlightRef.current || isSubmitting) {
+      return;
+    }
+    payInFlightRef.current = true;
     setErrorMsg('');
     try {
       const registered = await intlRegister({
@@ -253,6 +258,8 @@ export function IntlSignUpView() {
         error?.message ||
         'Could not start payment. Please try again.';
       setErrorMsg(Array.isArray(message) ? message.join(', ') : String(message));
+    } finally {
+      payInFlightRef.current = false;
     }
   });
 

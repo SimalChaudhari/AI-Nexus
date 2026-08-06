@@ -262,6 +262,7 @@ export function SimpleSignUpView() {
   const appliedPromoInputRef = useRef('');
   const freeSignupPrefillRestoredRef = useRef(false);
   const qrSubmitInFlightRef = useRef(false);
+  const membershipPayInFlightRef = useRef(false);
   const membershipOutcome = searchParams.get('membershipOutcome');
   const returnTo = searchParams.get('returnTo') || '';
   const paymentState = searchParams.get('payment') || '';
@@ -1209,13 +1210,14 @@ export function SimpleSignUpView() {
           paidAmount: response?.paidAmount,
         });
 
+        // Read form before SF sync try/catch — success UI also needs name/email after sync.
+        const formValues = getValues();
         let salesforceSyncWarning = '';
         try {
           console.info('[MembershipPayment] Salesforce sync START', {
             refId: trimPaymentLogValue(normalizedPaymentRef),
             paidAmount: verifiedAmount,
           });
-          const formValues = getValues();
           const sessionSfPassword =
             typeof window !== 'undefined'
               ? String(sessionStorage.getItem(MEMBERSHIP_SF_PASSWORD_KEY) || '').trim()
@@ -1815,6 +1817,10 @@ export function SimpleSignUpView() {
   });
 
   const handleMembershipPayment = handleSubmit(async (data) => {
+    if (membershipPayInFlightRef.current || paymentActionLoading) {
+      return;
+    }
+    membershipPayInFlightRef.current = true;
     try {
       setErrorMsg('');
       setPaymentNotice(null);
@@ -1976,6 +1982,7 @@ export function SimpleSignUpView() {
         setErrorMsg('');
       }
     } finally {
+      membershipPayInFlightRef.current = false;
       setPaymentActionLoading(false);
     }
   });
@@ -2731,7 +2738,7 @@ export function SimpleSignUpView() {
               variant="contained"
               fullWidth
               loading={paymentActionLoading}
-              disabled={!paymentConsentChecked || verifiedSignupLoading}
+              disabled={!paymentConsentChecked || verifiedSignupLoading || paymentActionLoading}
               onClick={handleMembershipPayment}
             >
               {`Pay ${currencyLabel} ${Number(totalAmount).toFixed(2)}`}

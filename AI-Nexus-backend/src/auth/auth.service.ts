@@ -1114,30 +1114,53 @@ export class AuthService {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    draftUser.role = draftUser.role || UserRole.User;
-    draftUser.status = draftUser.status || UserStatus.Active;
-    draftUser.isVerified = false;
-    draftUser.isDraft = false;
-    draftUser.authProvider = AuthProvider.OAUTH;
-    // Paid membership signs in via Salesforce SSO — never keep a local password.
-    draftUser.password = null;
-    draftUser.verificationToken = verificationToken;
-    draftUser.verificationTokenExpires = verificationTokenExpires;
-    draftUser.signupAccessTokenHash = null;
-    draftUser.signupAccessTokenExpiresAt = null;
+    // Atomic claim: only one concurrent fulfill can flip isDraft → false.
+    const claimResult = await this.userRepository
+      .createQueryBuilder()
+      .update(UserEntity)
+      .set({
+        role: draftUser.role || UserRole.User,
+        status: draftUser.status || UserStatus.Active,
+        isVerified: false,
+        isDraft: false,
+        authProvider: AuthProvider.OAUTH,
+        password: null,
+        verificationToken,
+        verificationTokenExpires,
+        signupAccessTokenHash: null,
+        signupAccessTokenExpiresAt: null,
+      })
+      .where('id = :id', { id: userId })
+      .andWhere('"isDraft" = true')
+      .execute();
 
-    await this.userRepository.save(draftUser);
+    if (!claimResult.affected) {
+      const alreadyFinalized = await this.userRepository.findOne({ where: { id: userId } });
+      if (!alreadyFinalized) {
+        throw new NotFoundException('Membership signup draft was not found.');
+      }
+      return {
+        message: 'Membership signup has already been completed.',
+        user: alreadyFinalized,
+        alreadyCompleted: true,
+      };
+    }
 
-    const userName = `${draftUser.firstname} ${draftUser.lastname}`.trim();
+    const finalizedUser = await this.userRepository.findOne({ where: { id: userId } });
+    if (!finalizedUser) {
+      throw new NotFoundException('Membership signup draft was not found.');
+    }
+
+    const userName = `${finalizedUser.firstname} ${finalizedUser.lastname}`.trim();
     try {
-      await this.emailService.sendVerificationEmail(draftUser.email, verificationToken, userName);
+      await this.emailService.sendVerificationEmail(finalizedUser.email!, verificationToken, userName);
     } catch (emailError) {
       console.error('Failed to send verification email after payment:', emailError);
     }
 
     return {
       message: 'Membership payment confirmed. Account finalized after successful payment.',
-      user: draftUser,
+      user: finalizedUser,
       alreadyCompleted: false,
     };
   }

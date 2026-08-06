@@ -201,6 +201,7 @@ export class WooshPayService {
 
   async getSession(sessionId: string): Promise<{
     id: string;
+    url?: string;
     client_reference_id?: string;
     payment_status?: string;
     status?: string;

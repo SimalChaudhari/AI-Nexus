@@ -35,8 +35,28 @@ const INTL_CHECKOUT_PAYMENT_METHODS = [
   'alipay', // Alipay
 ] as const;
 
+/** Prevent parallel create-checkout for the same draft user (2x session race). */
+const intlCheckoutInFlight = new Set<string>();
+
 function generateShortId(): string {
   return crypto.randomBytes(12).toString('base64url');
+}
+
+function isGatewayPaid(paymentStatus?: string, status?: string): boolean {
+  const ps = String(paymentStatus || '').toLowerCase();
+  const st = String(status || '').toLowerCase();
+  return ps === 'paid' || ps === 'complete' || st === 'complete' || st === 'paid';
+}
+
+function isGatewayFailedOrClosed(paymentStatus?: string, status?: string): boolean {
+  const ps = String(paymentStatus || '').toLowerCase();
+  const st = String(status || '').toLowerCase();
+  return (
+    ps === 'failed'
+    || ps === 'canceled'
+    || st === 'expired'
+    || st === 'canceled'
+  );
 }
 
 @Injectable()
@@ -95,99 +115,184 @@ export class IntlPaymentService {
 
     this.assertDraftToken(user.id, dto.signupAccessToken);
 
-    const promoCode = String(dto.promoCode || user.promoCode || '').trim().toUpperCase() || null;
-    const promoApplied = Boolean(promoCode && promoCode.length >= 4);
-
-    const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
-      countryOfResidence: user.countryOfResidence || '',
-      promoApplied,
+    // Block second charge if a paid payment already exists for this draft.
+    const existingPaid = await this.paymentRepository.findOne({
+      where: { userId: user.id, status: InternationalPaymentStatus.Paid },
+      order: { paidAt: 'DESC', createdAt: 'DESC' },
     });
-
-    if (!pricing.countryCode) {
-      throw new BadRequestException('A valid country of residence is required for payment.');
+    if (existingPaid) {
+      throw new ConflictException(
+        'Membership payment was already completed for this signup. Please sign in.',
+      );
     }
 
-    user.countryCode = pricing.countryCode;
-    user.currency = pricing.currency;
-    user.promoCode = promoCode;
-    user.paymentStatus = InternationalUserPaymentStatus.Pending;
-    user.status = InternationalUserStatus.PendingPayment;
-    await this.userRepository.save(user);
-
-    const clientReferenceId = generateShortId();
-    const payment = this.paymentRepository.create({
-      userId: user.id,
-      clientReferenceId,
-      status: InternationalPaymentStatus.Pending,
-      amount: pricing.totalAmount,
-      currency: pricing.currency,
-      countryCode: pricing.countryCode,
-      countryOfResidence: pricing.countryOfResidence || user.countryOfResidence,
-      promoCode,
-      promoApplied,
-      applyGst: false,
-      gstAmount: 0,
-      items: [
-        {
-          id: 'intl-membership',
-          name: pricing.itemName,
-          price: pricing.totalAmount,
-          quantity: 1,
-        },
-      ],
-      eventType: 'intl-membership-signup',
+    // Reuse or close an open pending checkout so a second WooshPay session cannot be created.
+    const pendingPayment = await this.paymentRepository.findOne({
+      where: { userId: user.id, status: InternationalPaymentStatus.Pending },
+      order: { createdAt: 'DESC' },
     });
-    await this.paymentRepository.save(payment);
+    if (pendingPayment) {
+      if (!pendingPayment.wooshpaySessionId) {
+        const ageMs = Date.now() - new Date(pendingPayment.createdAt).getTime();
+        if (Number.isFinite(ageMs) && ageMs < 2 * 60 * 1000) {
+          throw new ConflictException(
+            'Membership payment is already starting. Please wait a moment and try again.',
+          );
+        }
+        pendingPayment.status = InternationalPaymentStatus.Canceled;
+        pendingPayment.failureReason = 'replaced_by_new_intl_checkout';
+        await this.paymentRepository.save(pendingPayment);
+      } else {
+        try {
+          const existingSession = await this.wooshPayService.getSession(pendingPayment.wooshpaySessionId);
+          if (isGatewayPaid(existingSession?.payment_status, existingSession?.status)) {
+            throw new ConflictException(
+              'Membership payment was already completed. Please wait while we finish activating your account.',
+            );
+          }
 
-    const successUrl = String(dto.successUrl).trim();
-    const cancelUrl = String(dto.cancelUrl).trim();
-    const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${clientReferenceId}`;
-    const finalCancelUrl = `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}payment=canceled&ref=${clientReferenceId}`;
+          const sessionOpen =
+            !isGatewayFailedOrClosed(existingSession?.payment_status, existingSession?.status)
+            && String(existingSession?.status || '').toLowerCase() !== 'complete'
+            && Boolean(existingSession?.url);
+
+          if (sessionOpen && existingSession?.url) {
+            return {
+              url: existingSession.url,
+              sessionId: existingSession.id || pendingPayment.wooshpaySessionId,
+              refId: pendingPayment.clientReferenceId,
+              currency: pendingPayment.currency,
+              amount: Number(pendingPayment.amount),
+              countryCode: pendingPayment.countryCode,
+              paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
+              reused: true,
+            };
+          }
+
+          try {
+            await this.wooshPayService.expireCheckoutSession(pendingPayment.wooshpaySessionId);
+          } catch {
+            // Session may already be expired/closed — continue with a new checkout.
+          }
+          pendingPayment.status = InternationalPaymentStatus.Canceled;
+          pendingPayment.failureReason = 'replaced_by_new_intl_checkout';
+          await this.paymentRepository.save(pendingPayment);
+        } catch (error) {
+          if (error instanceof ConflictException || error instanceof BadRequestException) {
+            throw error;
+          }
+          pendingPayment.status = InternationalPaymentStatus.Canceled;
+          pendingPayment.failureReason = 'replaced_by_new_intl_checkout';
+          await this.paymentRepository.save(pendingPayment);
+        }
+      }
+    }
+
+    if (intlCheckoutInFlight.has(user.id)) {
+      throw new ConflictException(
+        'Membership payment is already starting. Please wait a moment and try again.',
+      );
+    }
+    intlCheckoutInFlight.add(user.id);
 
     try {
-      // Step 4: amount + currency + product name/description; methods via WooshPay.
-      const session = await this.wooshPayService.createCheckoutSession({
-        line_items: [
+      const promoCode = String(dto.promoCode || user.promoCode || '').trim().toUpperCase() || null;
+      const promoApplied = Boolean(promoCode && promoCode.length >= 4);
+
+      const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
+        countryOfResidence: user.countryOfResidence || '',
+        promoApplied,
+      });
+
+      if (!pricing.countryCode) {
+        throw new BadRequestException('A valid country of residence is required for payment.');
+      }
+
+      user.countryCode = pricing.countryCode;
+      user.currency = pricing.currency;
+      user.promoCode = promoCode;
+      user.paymentStatus = InternationalUserPaymentStatus.Pending;
+      user.status = InternationalUserStatus.PendingPayment;
+      await this.userRepository.save(user);
+
+      const clientReferenceId = generateShortId();
+      const payment = this.paymentRepository.create({
+        userId: user.id,
+        clientReferenceId,
+        status: InternationalPaymentStatus.Pending,
+        amount: pricing.totalAmount,
+        currency: pricing.currency,
+        countryCode: pricing.countryCode,
+        countryOfResidence: pricing.countryOfResidence || user.countryOfResidence,
+        promoCode,
+        promoApplied,
+        applyGst: false,
+        gstAmount: 0,
+        items: [
           {
-            price_data: {
-              currency: pricing.currency,
-              unit_amount: pricing.totalAmountCents,
-              product_data: {
-                name: pricing.itemName,
-                description: pricing.itemDescription,
-              },
-            },
+            id: 'intl-membership',
+            name: pricing.itemName,
+            price: pricing.totalAmount,
             quantity: 1,
           },
         ],
-        success_url: finalSuccessUrl,
-        cancel_url: finalCancelUrl,
-        client_reference_id: clientReferenceId,
-        payment_method_types: [...INTL_CHECKOUT_PAYMENT_METHODS],
-        ...(user.email && { customer_email: user.email }),
+        eventType: 'intl-membership-signup',
       });
-
-      payment.wooshpaySessionId = session.id;
+      // Save pending row before WooshPay so concurrent requests see the lock.
       await this.paymentRepository.save(payment);
 
-      return {
-        url: session.url,
-        sessionId: session.id,
-        refId: clientReferenceId,
-        currency: pricing.currency,
-        amount: pricing.totalAmount,
-        countryCode: pricing.countryCode,
-        paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
-      };
-    } catch (error: any) {
-      payment.status = InternationalPaymentStatus.Failed;
-      payment.failureReason = String(error?.message || 'Checkout failed').slice(0, 500);
-      await this.paymentRepository.save(payment);
-      user.paymentStatus = InternationalUserPaymentStatus.Failed;
-      await this.userRepository.save(user);
-      throw new BadRequestException(
-        error?.message || 'Could not start WooshPay checkout. Please try again.',
-      );
+      const successUrl = String(dto.successUrl).trim();
+      const cancelUrl = String(dto.cancelUrl).trim();
+      const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${clientReferenceId}`;
+      const finalCancelUrl = `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}payment=canceled&ref=${clientReferenceId}`;
+
+      try {
+        // Step 4: amount + currency + product name/description; methods via WooshPay.
+        const session = await this.wooshPayService.createCheckoutSession({
+          line_items: [
+            {
+              price_data: {
+                currency: pricing.currency,
+                unit_amount: pricing.totalAmountCents,
+                product_data: {
+                  name: pricing.itemName,
+                  description: pricing.itemDescription,
+                },
+              },
+              quantity: 1,
+            },
+          ],
+          success_url: finalSuccessUrl,
+          cancel_url: finalCancelUrl,
+          client_reference_id: clientReferenceId,
+          payment_method_types: [...INTL_CHECKOUT_PAYMENT_METHODS],
+          ...(user.email && { customer_email: user.email }),
+        });
+
+        payment.wooshpaySessionId = session.id;
+        await this.paymentRepository.save(payment);
+
+        return {
+          url: session.url,
+          sessionId: session.id,
+          refId: clientReferenceId,
+          currency: pricing.currency,
+          amount: pricing.totalAmount,
+          countryCode: pricing.countryCode,
+          paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
+        };
+      } catch (error: any) {
+        payment.status = InternationalPaymentStatus.Failed;
+        payment.failureReason = String(error?.message || 'Checkout failed').slice(0, 500);
+        await this.paymentRepository.save(payment);
+        user.paymentStatus = InternationalUserPaymentStatus.Failed;
+        await this.userRepository.save(user);
+        throw new BadRequestException(
+          error?.message || 'Could not start WooshPay checkout. Please try again.',
+        );
+      }
+    } finally {
+      intlCheckoutInFlight.delete(user.id);
     }
   }
 
@@ -216,15 +321,10 @@ export class IntlPaymentService {
     }
 
     const session = await this.wooshPayService.getSession(sessionLookupId);
-    const paymentStatus = String(session?.payment_status || '').toLowerCase();
-    const sessionStatus = String(session?.status || '').toLowerCase();
-    const paid =
-      paymentStatus === 'paid'
-      || paymentStatus === 'complete'
-      || sessionStatus === 'complete'
-      || sessionStatus === 'paid';
+    const paid = isGatewayPaid(session?.payment_status, session?.status);
     const failed =
-      paymentStatus === 'unpaid' && (sessionStatus === 'expired' || sessionStatus === 'canceled');
+      String(session?.payment_status || '').toLowerCase() === 'unpaid'
+      && isGatewayFailedOrClosed(session?.payment_status, session?.status);
 
     if (failed) {
       payment.status = InternationalPaymentStatus.Failed;
@@ -235,6 +335,25 @@ export class IntlPaymentService {
 
     if (!paid) {
       throw new ConflictException('Payment is still being processed. Please wait a moment and try again.');
+    }
+
+    // Another paid payment for this user = duplicate charge (record for refund, do not activate twice).
+    const otherPaid = await this.paymentRepository.findOne({
+      where: { userId: payment.userId, status: InternationalPaymentStatus.Paid },
+      order: { paidAt: 'DESC', createdAt: 'DESC' },
+    });
+    if (otherPaid && otherPaid.id !== payment.id) {
+      payment.status = InternationalPaymentStatus.Paid;
+      payment.wooshpaySessionId = session.id || payment.wooshpaySessionId;
+      payment.wooshpayPaymentIntentId =
+        (typeof session.payment_intent === 'string' ? session.payment_intent : null)
+        || payment.wooshpayPaymentIntentId;
+      payment.paidAt = new Date();
+      payment.failureReason = 'duplicate_membership_payment_needs_refund';
+      await this.paymentRepository.save(payment);
+      throw new ConflictException(
+        'A membership payment was already completed for this account. If you were charged twice, contact support for a refund.',
+      );
     }
 
     const user = await this.userRepository.findOne({ where: { id: payment.userId } });
@@ -251,13 +370,33 @@ export class IntlPaymentService {
     payment.failureReason = null;
     await this.paymentRepository.save(payment);
 
-    user.status = InternationalUserStatus.Active;
-    user.paymentStatus = InternationalUserPaymentStatus.Paid;
-    user.currency = payment.currency;
-    user.countryCode = payment.countryCode;
-    await this.userRepository.save(user);
+    // Atomic activate: only one concurrent confirm can flip the account to Paid/Active.
+    const claimResult = await this.userRepository
+      .createQueryBuilder()
+      .update(InternationalUserEntity)
+      .set({
+        status: InternationalUserStatus.Active,
+        paymentStatus: InternationalUserPaymentStatus.Paid,
+        currency: payment.currency,
+        countryCode: payment.countryCode,
+      })
+      .where('id = :id', { id: user.id })
+      .andWhere('"paymentStatus" != :paid', { paid: InternationalUserPaymentStatus.Paid })
+      .execute();
 
-    return this.buildConfirmResponse(user, payment);
+    const finalizedUser = await this.userRepository.findOne({ where: { id: user.id } });
+    if (!finalizedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!claimResult.affected) {
+      // Lost the race — another confirm already activated. Keep this row paid for refund audit.
+      payment.failureReason = 'duplicate_membership_payment_needs_refund';
+      await this.paymentRepository.save(payment);
+      return this.buildConfirmResponse(finalizedUser, payment);
+    }
+
+    return this.buildConfirmResponse(finalizedUser, payment);
   }
 
   signDraftAccessToken(userId: string) {

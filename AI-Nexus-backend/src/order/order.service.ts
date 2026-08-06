@@ -75,6 +75,22 @@ export class OrderService {
     });
   }
 
+  /** Completed membership signup order for this user (blocks duplicate paid membership). */
+  async findCompletedMembershipOrderByUserId(userId: string): Promise<OrderEntity | null> {
+    const id = String(userId || '').trim();
+    if (!id) return null;
+    return this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.userId = :userId', { userId: id })
+      .andWhere('order.status = :status', { status: OrderStatus.Completed })
+      .andWhere(
+        `(order.eventType ILIKE :membershipPrefix OR order.courseIds ILIKE :membershipPrefix)`,
+        { membershipPrefix: 'membership-%' },
+      )
+      .orderBy('order.createdAt', 'DESC')
+      .getOne();
+  }
+
   /** Create a failed order (cancel/abandon or webhook verification failed). Idempotent: skips if order already exists. */
   async createFailedFromReference(
     clientReferenceId: string,

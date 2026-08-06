@@ -26,6 +26,9 @@ import { PaginationService } from '../common/pagination/pagination.service';
 /** Signed proof that membership payment was verified server-side (amount must not come from the browser). */
 export const MEMBERSHIP_PAYMENT_PROOF_PURPOSE = 'membership-payment-proof';
 
+/** In-process lock so concurrent create-membership-checkout calls for the same draft cannot both open WooshPay. */
+const membershipCheckoutInFlight = new Set<string>();
+
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentController {
@@ -624,6 +627,165 @@ export class PaymentController {
       });
     }
 
+    // Prevent double membership charges: one paid/completed membership per draft user.
+    const existingMembershipOrder = await this.orderService.findCompletedMembershipOrderByUserId(user.id);
+    if (existingMembershipOrder) {
+      console.warn(
+        '[Payments] Membership checkout BLOCKED | already paid, draftUserId=',
+        this.trimPaymentLogValue(user.id),
+        'orderId=',
+        this.trimPaymentLogValue(existingMembershipOrder.id),
+      );
+      return res.status(HttpStatus.CONFLICT).json({
+        message: 'Membership payment was already completed for this signup. Please sign in.',
+      });
+    }
+
+    const existingPaidMembership = await this.paymentService.findLatestMembershipPaymentForUser(
+      user.id,
+      [PaymentStatus.Paid],
+    );
+    if (existingPaidMembership) {
+      console.warn(
+        '[Payments] Membership checkout BLOCKED | paid payment exists, draftUserId=',
+        this.trimPaymentLogValue(user.id),
+        'refId=',
+        this.trimPaymentLogValue(existingPaidMembership.clientReferenceId),
+      );
+      return res.status(HttpStatus.CONFLICT).json({
+        message: 'Membership payment was already completed for this signup. Please sign in.',
+      });
+    }
+
+    // Reuse or close an open pending checkout so a second WooshPay session cannot be created.
+    const pendingMembership = await this.paymentService.findLatestMembershipPaymentForUser(
+      user.id,
+      [PaymentStatus.Pending],
+    );
+    if (pendingMembership) {
+      if (!pendingMembership.wooshpaySessionId) {
+        const ageMs = Date.now() - new Date(pendingMembership.createdAt).getTime();
+        if (Number.isFinite(ageMs) && ageMs < 2 * 60 * 1000) {
+          console.warn(
+            '[Payments] Membership checkout BLOCKED | checkout already starting, draftUserId=',
+            this.trimPaymentLogValue(user.id),
+            'refId=',
+            this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+          );
+          return res.status(HttpStatus.CONFLICT).json({
+            message: 'Membership payment is already starting. Please wait a moment and try again.',
+          });
+        }
+        await this.paymentService.recordFailed({
+          userId: user.id,
+          clientReferenceId: pendingMembership.clientReferenceId,
+          status: PaymentStatus.Canceled,
+          courseIds: pendingMembership.courseIds?.split(',').filter(Boolean) || ['membership-paid-signup'],
+          items: pendingMembership.items,
+          amount: Number(pendingMembership.amount) || undefined,
+          currency: pendingMembership.currency,
+          eventType: pendingMembership.eventType,
+          failureReason: 'replaced_by_new_membership_checkout',
+          source: PaymentSource.Checkout,
+        });
+      } else {
+        try {
+          const existingSession = await this.wooshPayService.getSession(pendingMembership.wooshpaySessionId);
+          if (this.isPaymentMarkedAsPaid(existingSession?.payment_status, existingSession?.status)) {
+            console.warn(
+              '[Payments] Membership checkout BLOCKED | pending session already paid, draftUserId=',
+              this.trimPaymentLogValue(user.id),
+              'refId=',
+              this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+            );
+            return res.status(HttpStatus.CONFLICT).json({
+              message: 'Membership payment was already completed. Please wait while we finish creating your account.',
+            });
+          }
+
+          const sessionOpen =
+            !this.isPaymentMarkedAsFailed(existingSession?.payment_status, existingSession?.status)
+            && String(existingSession?.status || '').toLowerCase() !== 'expired'
+            && String(existingSession?.status || '').toLowerCase() !== 'canceled'
+            && String(existingSession?.status || '').toLowerCase() !== 'complete';
+
+          if (sessionOpen && existingSession?.url) {
+            console.info(
+              '[Payments] Membership checkout REUSE | draftUserId=',
+              this.trimPaymentLogValue(user.id),
+              'refId=',
+              this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+              'sessionId=',
+              this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
+            );
+            return res.status(HttpStatus.OK).json({
+              url: existingSession.url,
+              sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
+              refId: pendingMembership.clientReferenceId,
+              draftUserId: user.id,
+              reused: true,
+            });
+          }
+
+          try {
+            await this.wooshPayService.expireCheckoutSession(pendingMembership.wooshpaySessionId);
+          } catch (expireError: any) {
+            console.warn(
+              '[Payments] Membership checkout expire previous session skipped | refId=',
+              this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+              'error=',
+              expireError?.message,
+            );
+          }
+          await this.paymentService.recordFailed({
+            userId: user.id,
+            clientReferenceId: pendingMembership.clientReferenceId,
+            status: PaymentStatus.Canceled,
+            courseIds: pendingMembership.courseIds?.split(',').filter(Boolean) || ['membership-paid-signup'],
+            items: pendingMembership.items,
+            amount: Number(pendingMembership.amount) || undefined,
+            currency: pendingMembership.currency,
+            wooshpaySessionId: pendingMembership.wooshpaySessionId,
+            eventType: pendingMembership.eventType,
+            failureReason: 'replaced_by_new_membership_checkout',
+            source: PaymentSource.Checkout,
+          });
+        } catch (sessionError: any) {
+          console.warn(
+            '[Payments] Membership checkout pending session check failed | refId=',
+            this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+            'error=',
+            sessionError?.message,
+          );
+          await this.paymentService.recordFailed({
+            userId: user.id,
+            clientReferenceId: pendingMembership.clientReferenceId,
+            status: PaymentStatus.Canceled,
+            courseIds: pendingMembership.courseIds?.split(',').filter(Boolean) || ['membership-paid-signup'],
+            items: pendingMembership.items,
+            amount: Number(pendingMembership.amount) || undefined,
+            currency: pendingMembership.currency,
+            wooshpaySessionId: pendingMembership.wooshpaySessionId,
+            eventType: pendingMembership.eventType,
+            failureReason: 'replaced_by_new_membership_checkout',
+            source: PaymentSource.Checkout,
+          });
+        }
+      }
+    }
+
+    if (membershipCheckoutInFlight.has(user.id)) {
+      console.warn(
+        '[Payments] Membership checkout BLOCKED | in-flight lock, draftUserId=',
+        this.trimPaymentLogValue(user.id),
+      );
+      return res.status(HttpStatus.CONFLICT).json({
+        message: 'Membership payment is already starting. Please wait a moment and try again.',
+      });
+    }
+    membershipCheckoutInFlight.add(user.id);
+
+    try {
     let saleId: string | null = null;
     let promoApplied = false;
     if (codeInput || affiliateCodeInput || voucherCodeInput) {
@@ -700,6 +862,25 @@ export class PaymentController {
       await this.affiliateService.attachPaymentRef(saleId, refId);
     }
 
+    // Record pending before calling WooshPay so a concurrent request sees the lock row.
+    await this.paymentService.recordPending({
+      userId: user.id,
+      clientReferenceId: refId,
+      courseIds: [membershipSource],
+      items: [
+        {
+          id: membershipSource,
+          name: itemName,
+          price: totalAmount,
+          quantity: 1,
+        },
+      ],
+      amount: totalAmount,
+      currency,
+      wooshpaySessionId: null,
+      eventType: membershipSource,
+    });
+
     const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${refId}`;
     const finalCancelUrl =
       `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}payment=canceled&ref=${refId}`;
@@ -770,6 +951,25 @@ export class PaymentController {
         draftUserId: user.id,
       });
     } catch (err: any) {
+      await this.paymentService.recordFailed({
+        userId: user.id,
+        clientReferenceId: refId,
+        status: PaymentStatus.Failed,
+        courseIds: [membershipSource],
+        items: [
+          {
+            id: membershipSource,
+            name: itemName,
+            price: totalAmount,
+            quantity: 1,
+          },
+        ],
+        amount: totalAmount,
+        currency,
+        eventType: membershipSource,
+        failureReason: String(err?.message || 'checkout_failed').slice(0, 500),
+        source: PaymentSource.Checkout,
+      });
       const userMessage = this.getFriendlyPaymentErrorMessage(
         err,
         'Could not start membership payment.',
@@ -785,6 +985,9 @@ export class PaymentController {
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         message: userMessage,
       });
+    }
+    } finally {
+      membershipCheckoutInFlight.delete(user.id);
     }
   }
 
@@ -1809,10 +2012,77 @@ export class PaymentController {
         return { alreadyProcessed: true, orderId: existingOrder?.id };
       }
 
+      // Another completed membership order for this user = duplicate charge path.
+      const existingMembershipOrder = await this.orderService.findCompletedMembershipOrderByUserId(userId);
+      if (existingMembershipOrder) {
+        let amountInUnits = 0;
+        const amountTotal = obj?.amount_total ?? obj?.amount_subtotal ?? 0;
+        if (typeof amountTotal === 'number' && amountTotal > 0) {
+          amountInUnits = amountTotal / 100;
+        } else if (itemsSnapshot?.length) {
+          amountInUnits = itemsSnapshot.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+        }
+        await this.paymentService.recordPaid({
+          userId,
+          clientReferenceId: clientRef,
+          orderId: existingMembershipOrder.id,
+          amount: amountInUnits || Number(existingMembershipOrder.totalAmount) || undefined,
+          currency: (obj?.currency ?? existingMembershipOrder.currency ?? 'SGD').toUpperCase(),
+          courseIds,
+          items: itemsSnapshot,
+          wooshpaySessionId: obj?.id ?? null,
+          wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+          eventType: membershipPurpose,
+          source,
+          failureReason: 'duplicate_membership_payment_needs_refund',
+        });
+        console.warn(
+          '[Payments] Membership fulfill DUPLICATE CHARGE | refId=',
+          this.trimPaymentLogValue(clientRef),
+          'userId=',
+          this.trimPaymentLogValue(userId),
+          'keptOrderId=',
+          this.trimPaymentLogValue(existingMembershipOrder.id),
+        );
+        await this.completeLinkedAffiliateSale(clientRef);
+        return { alreadyProcessed: true, orderId: existingMembershipOrder.id };
+      }
+
       const finalized = await this.authService.completeMembershipSignupAfterPayment(userId);
       if (finalized.alreadyCompleted) {
+        // Race: another fulfill claimed the draft first — do not create a second completed order.
+        const primaryOrder = await this.orderService.findCompletedMembershipOrderByUserId(userId);
+        let amountInUnits = 0;
+        const amountTotal = obj?.amount_total ?? obj?.amount_subtotal ?? 0;
+        if (typeof amountTotal === 'number' && amountTotal > 0) {
+          amountInUnits = amountTotal / 100;
+        } else if (itemsSnapshot?.length) {
+          amountInUnits = itemsSnapshot.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+        }
+        await this.paymentService.recordPaid({
+          userId,
+          clientReferenceId: clientRef,
+          orderId: primaryOrder?.id ?? null,
+          amount: amountInUnits || (primaryOrder ? Number(primaryOrder.totalAmount) : undefined),
+          currency: (obj?.currency ?? primaryOrder?.currency ?? 'SGD').toUpperCase(),
+          courseIds,
+          items: itemsSnapshot,
+          wooshpaySessionId: obj?.id ?? null,
+          wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+          eventType: membershipPurpose,
+          source,
+          failureReason: 'duplicate_membership_payment_needs_refund',
+        });
+        console.warn(
+          '[Payments] Membership fulfill DUPLICATE (draft already claimed) | refId=',
+          this.trimPaymentLogValue(clientRef),
+          'userId=',
+          this.trimPaymentLogValue(userId),
+          'keptOrderId=',
+          this.trimPaymentLogValue(primaryOrder?.id),
+        );
         await this.completeLinkedAffiliateSale(clientRef);
-        return { alreadyProcessed: true };
+        return { alreadyProcessed: true, orderId: primaryOrder?.id };
       }
 
       let amountInUnits = 0;
