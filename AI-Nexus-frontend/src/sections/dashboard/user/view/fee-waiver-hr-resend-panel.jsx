@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
+import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -88,16 +89,23 @@ export function FeeWaiverHrResendPanel({
   return (
     <Stack spacing={1.5}>
       {!compact ? (
-        <Typography variant="subtitle2">
-          {variant === 'admin' ? 'Send HR verification email' : 'HR email verification'}
-        </Typography>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <Iconify
+            icon={isRejected ? 'solar:danger-triangle-bold' : 'solar:letter-bold'}
+            width={18}
+            sx={{ color: isRejected ? 'warning.main' : 'primary.main' }}
+          />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            {variant === 'admin' ? 'Send HR verification email' : 'HR email verification'}
+          </Typography>
+        </Stack>
       ) : null}
 
-      <Alert severity={isRejected ? 'warning' : 'info'} variant="outlined">
-        {isRejected
-          ? 'Job role verification was rejected. Enter the HR email below and send a new verification request.'
-          : 'Enter your HR contact email below. A verification link will be sent so your employer can confirm your job role.'}
-      </Alert>
+      {isRejected && !compact ? (
+        <Alert severity="warning" variant="outlined">
+          Job role verification was rejected. Enter the HR email below and send a new verification request.
+        </Alert>
+      ) : null}
 
       {audit?.rejectionReason && !compact ? (
         <Alert severity="error" variant="outlined">
@@ -125,6 +133,13 @@ export function FeeWaiverHrResendPanel({
             : 'Enter the HR or employer email address. It cannot be the same as your registration email.'
         }
         InputLabelProps={{ shrink: true }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Iconify icon="solar:letter-bold" width={18} sx={{ color: 'text.secondary' }} />
+            </InputAdornment>
+          ),
+        }}
       />
 
       <LoadingButton

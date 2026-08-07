@@ -1,4 +1,3 @@
-import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -27,25 +26,6 @@ export function canShowFeeWaiverHrStatus(user) {
       : null;
 
   return Boolean(audit);
-}
-
-function statusMessage(statusMeta, audit) {
-  if (statusMeta.label === 'Verified') {
-    return 'Your employer / HR has confirmed your accounting and finance job role.';
-  }
-  if (statusMeta.label === 'Pending HR verification') {
-    const hrEmail = String(audit?.hrEmail || '').trim();
-    return hrEmail
-      ? `Waiting for your HR contact (${hrEmail}) to open the verification email and confirm your job role.`
-      : 'Waiting for your HR contact to open the verification email and confirm your job role.';
-  }
-  if (statusMeta.label === 'Rejected') {
-    return 'Job role verification was rejected. You can send a new HR verification request below.';
-  }
-  if (statusMeta.label === 'Certificate under review') {
-    return 'Your certificate is under review. HR email verification is paused until that review finishes.';
-  }
-  return 'Send an HR verification email so your employer can confirm your job role for the fee waiver.';
 }
 
 function MetaTag({ icon, label, value, color = 'default' }) {
@@ -98,12 +78,6 @@ export function FeeWaiverHrUserStatusPanel({ user, onRefresh }) {
   const statusMeta = getJobRoleAuditStatus(user);
   const showResend = canShowFeeWaiverHrTrigger(user);
   const isVerified = statusMeta.label === 'Verified';
-  const alertSeverity =
-    isVerified
-      ? 'success'
-      : statusMeta.label === 'Rejected'
-        ? 'warning'
-        : 'info';
 
   const hrEmail = String(audit?.hrEmail || '').trim();
   const submittedAt = audit?.submittedAt ? fDateTime(audit.submittedAt) : '';
@@ -112,9 +86,28 @@ export function FeeWaiverHrUserStatusPanel({ user, onRefresh }) {
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-          Current status
-        </Typography>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <Iconify
+            icon={
+              isVerified
+                ? 'solar:shield-check-bold'
+                : statusMeta.label === 'Rejected'
+                  ? 'solar:danger-triangle-bold'
+                  : 'solar:info-circle-bold'
+            }
+            width={18}
+            sx={{
+              color: isVerified
+                ? 'success.main'
+                : statusMeta.label === 'Rejected'
+                  ? 'warning.main'
+                  : 'info.main',
+            }}
+          />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Current status
+          </Typography>
+        </Stack>
         <Label
           color={statusMeta.color}
           variant="soft"
@@ -128,10 +121,6 @@ export function FeeWaiverHrUserStatusPanel({ user, onRefresh }) {
           {statusMeta.label}
         </Label>
       </Stack>
-
-      <Alert severity={alertSeverity} variant="outlined">
-        {statusMessage(statusMeta, audit)}
-      </Alert>
 
       {(hrEmail || submittedAt || verifiedAt || audit?.rejectionReason) ? (
         <Box
