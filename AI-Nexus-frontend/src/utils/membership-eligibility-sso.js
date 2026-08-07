@@ -920,7 +920,22 @@ export function isQuestionnaireEservicesMemberFallback(flow = {}) {
 }
 
 export function buildResumeMembershipSignupReturnUrl(path = '') {
-  const base = String(path || paths.home).trim() || paths.home;
+  let base = String(path || paths.home).trim() || paths.home;
+  try {
+    const pathname = base.startsWith('http')
+      ? new URL(base).pathname
+      : base.split('?')[0];
+    // Unauthenticated eligibility modal must not open under guarded routes.
+    if (
+      pathname.startsWith('/corporate')
+      || pathname.startsWith('/auth')
+      || pathname.startsWith('/admin')
+    ) {
+      base = paths.home;
+    }
+  } catch {
+    base = paths.home;
+  }
   if (typeof window !== 'undefined') {
     try {
       const url = new URL(base, window.location.origin);
@@ -1545,7 +1560,24 @@ export function ensureCitizenshipGapFlowAfterEservicesFailure(
 
 export function redirectToCitizenshipGapMembershipModal(router, redirectTo = paths.home) {
   clearIscaMemberSsoCheckPending();
-  router.replace(buildResumeMembershipSignupReturnUrl(redirectTo));
+  // Always resume on a public learner page. /corporate/* is auth-guarded and bounces
+  // unauthenticated users to /auth/sign-in?returnTo=...membershipNotEligible=1.
+  let target = String(redirectTo || paths.home).trim() || paths.home;
+  try {
+    const pathname = target.startsWith('http')
+      ? new URL(target).pathname
+      : target.split('?')[0];
+    if (
+      pathname.startsWith('/corporate')
+      || pathname.startsWith('/auth')
+      || pathname.startsWith('/admin')
+    ) {
+      target = paths.home;
+    }
+  } catch {
+    target = paths.home;
+  }
+  router.replace(buildResumeMembershipSignupReturnUrl(target));
 }
 
 /** Always resume No/Yes/Yes NRIC modal after eServices ISCA-member check fails. */

@@ -1,5 +1,5 @@
 //users.service.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { UserEntity, UserRole, UserStatus, AuthProvider } from './users.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
@@ -14,6 +14,7 @@ import {
 } from '../common/pagination/pagination.service';
 import { verifyEmailAddress } from '../utils/email-verification.util';
 import { AuthService } from '../auth/auth.service';
+import { OAuthAuthService } from '../auth/oauth-auth.service';
 import { normalizeEmail } from '../utils/auth.utils';
 import { assertEmailAvailableForRole } from './user-email-availability.util';
 
@@ -40,12 +41,15 @@ export type UserPaginatedListResult = PaginatedResultWithMeta<UserEntity, { stat
 
 @Injectable()
 export class UserService {
+    private readonly logger = new Logger(UserService.name);
+
     constructor(
         @InjectRepository(UserEntity)
         private userRepository: Repository<UserEntity>,
         private readonly emailService: EmailService,
         private readonly paginationService: PaginationService,
         private readonly authService: AuthService,
+        private readonly oauthAuthService: OAuthAuthService,
     ) { }
 
     private normalizeUsername(username: string): string {
@@ -80,6 +84,100 @@ export class UserService {
         const companyName = this.resolveCorporateCompanyName(user) || null;
         // Frontend transformUser already maps `company` as the display name.
         return Object.assign(user, { companyName, company: companyName });
+    }
+
+    /**
+     * Build one-account Salesforce update payload from local user.
+     * Only allowed updatebulkuserfornexus fields; keyed by salesforceAccountId.
+     */
+    private buildSalesforceSingleAccountUpdateFromUser(user: UserEntity): {
+        accountId: string;
+        salutation?: string;
+        first_name?: string;
+        last_name?: string;
+        name_as_per_id?: string;
+        email?: string;
+        jobFunction?: string;
+        mobile?: string;
+        countryOfResidence?: string;
+        company?: string;
+        department?: string;
+    } | null {
+        const accountId = String(user.salesforceAccountId || '').trim();
+        if (!accountId) return null;
+
+        const snapshot =
+            user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+                ? (user.eligibilitySnapshot as Record<string, unknown>)
+                : {};
+        const rawRoot =
+            user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+                ? (user.salesforceUserInfoRaw as Record<string, unknown>)
+                : {};
+        const nested =
+            rawRoot.nexus && typeof rawRoot.nexus === 'object'
+                ? (rawRoot.nexus as Record<string, unknown>)
+                : null;
+        const raw = nested || rawRoot;
+
+        const read = (...keys: string[]) => {
+            for (const key of keys) {
+                const fromSnapshot = snapshot[key];
+                if (fromSnapshot !== undefined && fromSnapshot !== null && String(fromSnapshot).trim()) {
+                    return String(fromSnapshot).trim();
+                }
+                const fromRaw = raw[key];
+                if (fromRaw !== undefined && fromRaw !== null && String(fromRaw).trim()) {
+                    return String(fromRaw).trim();
+                }
+            }
+            return '';
+        };
+
+        const firstName = String(user.firstname || '').trim();
+        const lastName = String(user.lastname || '').trim();
+        const email = normalizeEmail(user.email || '');
+        const mobile = String(user.contactNumber || '').trim();
+        const nameAsPerId =
+            read('nameAsPerId', 'name_as_per_id')
+            || [firstName, lastName].filter(Boolean).join(' ').trim();
+        const company =
+            read('companyName', 'company')
+            || this.resolveCorporateCompanyName(user);
+        const jobFunction = read('jobFunctionLabel', 'jobFunction');
+        const countryOfResidence = read('countryOfResidence');
+        const department = read('department');
+        const salutation = read('salutation');
+
+        return {
+            accountId,
+            ...(salutation ? { salutation } : {}),
+            ...(firstName ? { first_name: firstName } : {}),
+            ...(lastName ? { last_name: lastName } : {}),
+            ...(nameAsPerId ? { name_as_per_id: nameAsPerId } : {}),
+            ...(email ? { email } : {}),
+            ...(jobFunction ? { jobFunction } : {}),
+            ...(mobile ? { mobile } : {}),
+            ...(countryOfResidence ? { countryOfResidence } : {}),
+            ...(company ? { company } : {}),
+            ...(department ? { department } : {}),
+        };
+    }
+
+    /** After local DB update, sync this one user to Salesforce by accountId. */
+    private async syncSalesforceProfileAfterLocalUpdate(user: UserEntity): Promise<void> {
+        const row = this.buildSalesforceSingleAccountUpdateFromUser(user);
+        if (!row) {
+            this.logger.log(
+                `[UserUpdate] Skipping Salesforce sync — no salesforceAccountId for user ${user.id}`,
+            );
+            return;
+        }
+
+        await this.oauthAuthService.updateSalesforceNexusUserByAccountId(row);
+        this.logger.log(
+            `[UserUpdate] Salesforce profile synced for accountId=${row.accountId}`,
+        );
     }
 
     async getAll(queryOptions?: UserListQueryOptions): Promise<UserEntity[] | UserPaginatedListResult> {
@@ -188,11 +286,6 @@ export class UserService {
         if (!normalizedUsername) {
             throw new BadRequestException('Username is required');
         }
-        if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
-            throw new BadRequestException(
-                'Username must contain both letters and numbers, and no special characters.',
-            );
-        }
         const createEmailVerification = await verifyEmailAddress(normalizedEmail);
         if (!createEmailVerification.isValid) {
             throw new BadRequestException(
@@ -290,10 +383,8 @@ export class UserService {
         // Check if username is being updated and if it already exists
         if (updateUserDto.username && updateUserDto.username !== user.username) {
             const normalizedUsername = this.normalizeUsername(updateUserDto.username);
-            if (!/^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername)) {
-                throw new BadRequestException(
-                    'Username must contain both letters and numbers, and no special characters.',
-                );
+            if (!normalizedUsername) {
+                throw new BadRequestException('Username is required');
             }
 
             const existingUser = await this.userRepository
@@ -340,6 +431,45 @@ export class UserService {
             const trimmed = updateUserDto.companyCode?.trim();
             user.companyCode = trimmed ? trimmed : null;
         }
+
+        // Merge Salesforce-syncable profile fields into eligibilitySnapshot (source for updatebulkuserfornexus).
+        const snapshotPatch: Record<string, unknown> = {};
+        const trimOrEmpty = (value?: string) => String(value ?? '').trim();
+        if (updateUserDto.salutation !== undefined) {
+            snapshotPatch.salutation = trimOrEmpty(updateUserDto.salutation);
+        }
+        if (updateUserDto.nameAsPerId !== undefined) {
+            const nameAsPerId = trimOrEmpty(updateUserDto.nameAsPerId);
+            snapshotPatch.nameAsPerId = nameAsPerId;
+            snapshotPatch.name_as_per_id = nameAsPerId;
+        }
+        if (updateUserDto.company !== undefined) {
+            const company = trimOrEmpty(updateUserDto.company);
+            snapshotPatch.company = company;
+            snapshotPatch.companyName = company;
+        }
+        if (updateUserDto.department !== undefined) {
+            snapshotPatch.department = trimOrEmpty(updateUserDto.department);
+        }
+        if (updateUserDto.jobFunction !== undefined) {
+            const jobFunction = trimOrEmpty(updateUserDto.jobFunction);
+            snapshotPatch.jobFunction = jobFunction;
+            snapshotPatch.jobFunctionLabel = jobFunction;
+        }
+        if (updateUserDto.countryOfResidence !== undefined) {
+            snapshotPatch.countryOfResidence = trimOrEmpty(updateUserDto.countryOfResidence);
+        }
+        if (Object.keys(snapshotPatch).length > 0) {
+            const existingSnapshot =
+                user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+                    ? (user.eligibilitySnapshot as Record<string, unknown>)
+                    : {};
+            user.eligibilitySnapshot = {
+                ...existingSnapshot,
+                ...snapshotPatch,
+            };
+        }
+
         if (updateUserDto.password) {
             // Hash new password
             user.password = await bcrypt.hash(updateUserDto.password, 10);
@@ -363,6 +493,21 @@ export class UserService {
         }
 
         await this.userRepository.save(user);
+
+        // One user only — sync this accountId to Salesforce after local DB save.
+        try {
+            await this.syncSalesforceProfileAfterLocalUpdate(user);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Failed to update Salesforce eServices profile.';
+            this.logger.error(
+                `[UserUpdate] Local DB saved but Salesforce sync failed for user ${user.id}: ${message}`,
+            );
+            throw new BadRequestException(
+                `Profile saved locally, but Salesforce update failed: ${message}`,
+            );
+        }
+
         return {
             message: 'User updated successfully',
             user: user,

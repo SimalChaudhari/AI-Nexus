@@ -22,10 +22,15 @@ import { useRouter } from 'src/routes/hooks';
 import { Iconify } from 'src/components/iconify';
 import { toast } from 'src/components/snackbar';
 import { Form, Field } from 'src/components/hook-form';
+import { resolveSalesforceNexusProfile } from 'src/components/user-salesforce-profile-fields';
 import { createUser, updateUser } from 'src/store/slices/userSlice';
 import { userService } from 'src/services/user.service';
-import { NewUserSchema, SiteProfileSchema } from 'src/validations/user.validation';
+import { NewUserSchema, AdminProfileSchema, SiteProfileSchema } from 'src/validations/user.validation';
 import { fData } from 'src/utils/format-number';
+import {
+  INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS,
+  resolveIndividualSignupJobFunctionLabel,
+} from 'src/utils/individual-signup-form';
 
 // ----------------------------------------------------------------------
 
@@ -35,11 +40,60 @@ const STATUS_OPTIONS = [
 ];
 const AVATAR_MAX_MB = 10;
 const AVATAR_MAX_BYTES = AVATAR_MAX_MB * 1024 * 1024;
+const SALUTATION_OPTIONS = ['Mr', 'Mrs', 'Ms', 'Dr', 'Prof'];
 
 const normalizeStatus = (status) => {
   if (!status) return 'Active';
   const statusStr = String(status);
   return statusStr.charAt(0).toUpperCase() + statusStr.slice(1).toLowerCase();
+};
+
+const normalizeCompanyDisplay = (value) => {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return '';
+  return text;
+};
+
+const resolveJobFunctionFormValue = (raw = '') => {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const matched = INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.find(
+    (option) => option.value === value || option.label === value
+  );
+  return matched ? matched.value : value;
+};
+
+const buildSalesforceProfilePayload = (data = {}) => {
+  const jobFunctionValue = String(data.jobFunction || '').trim();
+  const jobFunctionLabel = resolveIndividualSignupJobFunctionLabel(
+    jobFunctionValue,
+    data.jobFunctionOther
+  );
+  const resolvedJob =
+    jobFunctionLabel ||
+    (jobFunctionValue === 'others' ? String(data.jobFunctionOther || '').trim() : jobFunctionValue);
+
+  return {
+    firstname: data.firstname?.trim(),
+    lastname: data.lastname?.trim(),
+    email: data.email?.trim().toLowerCase(),
+    companyCode:
+      typeof data.companyCode === 'string' && data.companyCode.trim()
+        ? data.companyCode.trim()
+        : null,
+    contactNumber:
+      typeof data.contactNumber === 'string' && data.contactNumber.trim()
+        ? data.contactNumber.trim()
+        : null,
+    salutation: typeof data.salutation === 'string' ? data.salutation.trim() : '',
+    nameAsPerId: typeof data.nameAsPerId === 'string' ? data.nameAsPerId.trim() : '',
+    company: typeof data.company === 'string' ? data.company.trim() : '',
+    department: typeof data.department === 'string' ? data.department.trim() : '',
+    jobFunction: resolvedJob,
+    countryOfResidence:
+      typeof data.countryOfResidence === 'string' ? data.countryOfResidence.trim() : '',
+    avatar: data.avatar,
+  };
 };
 
 // ----------------------------------------------------------------------
@@ -51,16 +105,57 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   const { creating, updating } = useSelector((state) => state.users || { creating: false, updating: false });
 
   const isCreate = !currentUser && !isProfileEdit;
+  /** Admin editing own profile can change local account fields (not SSO-bound). */
+  const isAdminOwnProfileEdit = isProfileEdit && isAdminProfile;
 
   const defaultValues = useMemo(() => {
+    const sf = resolveSalesforceNexusProfile(currentUser);
+    const snapshot =
+      currentUser?.eligibilitySnapshot && typeof currentUser.eligibilitySnapshot === 'object'
+        ? currentUser.eligibilitySnapshot
+        : {};
+    const readSnap = (...keys) => {
+      for (const key of keys) {
+        if (snapshot[key] !== undefined && snapshot[key] !== null && String(snapshot[key]).trim()) {
+          return String(snapshot[key]).trim();
+        }
+      }
+      return '';
+    };
+
+    const jobRaw =
+      readSnap('jobFunction', 'jobFunctionLabel') || sf.jobFunction || '';
+    const jobFunction = resolveJobFunctionFormValue(jobRaw);
+    const matchedJob = INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.find(
+      (option) => option.value === jobFunction
+    );
+    const jobFunctionOther =
+      jobFunction === 'others'
+        ? readSnap('jobFunctionOther') ||
+          (matchedJob ? '' : String(jobRaw || '').trim())
+        : '';
+
     const base = {
       username: currentUser?.username || '',
-      firstname: currentUser?.firstname || '',
-      lastname: currentUser?.lastname || '',
-      email: currentUser?.email || '',
+      firstname: currentUser?.firstname || sf.firstName || '',
+      lastname: currentUser?.lastname || sf.lastName || '',
+      email: currentUser?.email || sf.email || '',
       companyCode: currentUser?.companyCode || '',
-      contactNumber: currentUser?.contactNumber || currentUser?.phoneNumber || '',
+      contactNumber:
+        currentUser?.contactNumber || currentUser?.phoneNumber || sf.phone || '',
       avatar: currentUser?.avatarUrl || null,
+      salutation: readSnap('salutation') || sf.salutation || '',
+      nameAsPerId: readSnap('nameAsPerId', 'name_as_per_id') || sf.nameAsPerId || '',
+      company:
+        normalizeCompanyDisplay(readSnap('companyName', 'company')) ||
+        normalizeCompanyDisplay(sf.company) ||
+        normalizeCompanyDisplay(currentUser?.companyName) ||
+        normalizeCompanyDisplay(currentUser?.company) ||
+        '',
+      department: readSnap('department') || sf.department || '',
+      jobFunction,
+      jobFunctionOther,
+      countryOfResidence: readSnap('countryOfResidence') || sf.countryOfResidence || '',
     };
     if (isProfileEdit) {
       return base;
@@ -72,11 +167,13 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
     };
   }, [currentUser, isProfileEdit]);
 
-  const validationSchema = isProfileEdit
-    ? SiteProfileSchema
-    : currentUser
-      ? NewUserSchema.omit({ password: true })
-      : NewUserSchema;
+  const validationSchema = isAdminOwnProfileEdit
+    ? AdminProfileSchema
+    : isProfileEdit
+      ? SiteProfileSchema
+      : currentUser
+        ? NewUserSchema.omit({ password: true })
+        : NewUserSchema;
 
   const methods = useForm({
     mode: 'onTouched',
@@ -88,9 +185,12 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
 
   const {
     reset,
+    watch,
     handleSubmit,
     formState: { isSubmitting: isFormSubmitting },
   } = methods;
+
+  const jobFunctionValue = watch('jobFunction');
 
   useEffect(() => {
     reset(defaultValues);
@@ -113,29 +213,33 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
   const onSubmit = handleSubmit(
     async (data) => {
       try {
-        const backendData = isProfileEdit
+        const backendData = isAdminOwnProfileEdit
           ? {
-              companyCode:
-                typeof data.companyCode === 'string' && data.companyCode.trim()
-                  ? data.companyCode.trim()
-                  : null,
-              avatar: data.avatar,
-            }
-          : {
               username: data.username?.trim(),
-              firstname: data.firstname?.trim(),
-              lastname: data.lastname?.trim(),
-              email: data.email?.trim().toLowerCase(),
-              companyCode:
-                typeof data.companyCode === 'string' && data.companyCode.trim()
-                  ? data.companyCode.trim()
-                  : null,
-              contactNumber:
-                typeof data.contactNumber === 'string' && data.contactNumber.trim()
-                  ? data.contactNumber.trim()
-                  : null,
-              avatar: data.avatar,
-            };
+              ...buildSalesforceProfilePayload(data),
+            }
+          : isProfileEdit
+            ? buildSalesforceProfilePayload(data)
+            : currentUser
+              ? {
+                  username: data.username?.trim(),
+                  ...buildSalesforceProfilePayload(data),
+                }
+              : {
+                  username: data.username?.trim(),
+                  firstname: data.firstname?.trim(),
+                  lastname: data.lastname?.trim(),
+                  email: data.email?.trim().toLowerCase(),
+                  companyCode:
+                    typeof data.companyCode === 'string' && data.companyCode.trim()
+                      ? data.companyCode.trim()
+                      : null,
+                  contactNumber:
+                    typeof data.contactNumber === 'string' && data.contactNumber.trim()
+                      ? data.contactNumber.trim()
+                      : null,
+                  avatar: data.avatar,
+                };
 
         if (!isProfileEdit) {
           const normalizedStatus = normalizeStatus(data.status || 'Active');
@@ -179,6 +283,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           const emailSent = result?.temporaryPasswordEmailSent;
           const apiMessage = result?.message;
 
+
           if (emailSent) {
             toast.success(apiMessage || 'User created. Temporary password sent by email.');
           } else if (apiMessage) {
@@ -220,7 +325,11 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
         <Card sx={{ ...cardSx, p: { xs: 2.5, md: 4 } }}>
           <CardHeader
             title="Profile details"
-            subheader="You can update your profile image and company code. Other details are view-only."
+            subheader={
+              isAdminOwnProfileEdit
+                ? 'Update your admin account details stored in the local database.'
+                : 'You can update your profile image and company code. Other details are view-only.'
+            }
             sx={{ p: 0, mb: 3 }}
           />
           <Divider sx={{ mb: 4 }} />
@@ -251,7 +360,9 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                     Editable
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Profile image and company code
+                    {isAdminOwnProfileEdit
+                      ? 'Profile image, personal details, and company code'
+                      : 'Profile image and company code'}
                   </Typography>
                 </Box>
                 <Box
@@ -335,8 +446,8 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
               sx={{
                 p: { xs: 2, md: 2.5 },
                 borderRadius: 2.5,
-                border: `1px solid ${alpha(theme.palette.grey[500], 0.18)}`,
-                bgcolor: alpha(theme.palette.grey[500], theme.palette.mode === 'dark' ? 0.08 : 0.04),
+                border: `1.5px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.05),
               }}
             >
               <Stack
@@ -351,12 +462,18 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                 <Box>
                   <Typography
                     variant="overline"
-                    sx={{ fontWeight: 800, letterSpacing: 1, color: 'text.secondary' }}
+                    sx={{
+                      fontWeight: 800,
+                      letterSpacing: 1,
+                      color: 'primary.main',
+                    }}
                   >
                     Personal details
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    These fields are view-only and cannot be changed here.
+                    {isAdminOwnProfileEdit
+                      ? 'Update your admin account and syncable profile fields.'
+                      : 'These fields save locally and sync to Salesforce when your eServices account is linked.'}
                   </Typography>
                 </Box>
                 <Box
@@ -364,13 +481,13 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                     px: 1,
                     py: 0.35,
                     borderRadius: 1,
-                    bgcolor: alpha(theme.palette.grey[500], 0.14),
-                    color: 'text.secondary',
+                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    color: 'primary.dark',
                     typography: 'caption',
                     fontWeight: 700,
                   }}
                 >
-                  View only
+                  Can edit
                 </Box>
               </Stack>
 
@@ -385,18 +502,60 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                   },
                 }}
               >
-                <Field.Text name="firstname" label="First name" disabled />
-                <Field.Text name="lastname" label="Last name" disabled />
-                <Field.Text name="username" label="Username" disabled />
-                <Field.Text name="email" label="Email" type="email" disabled />
-                <Box sx={{ gridColumn: { xs: 'auto', sm: 'span 1', md: 'span 2' } }}>
-                  <Field.Phone
-                    name="contactNumber"
-                    label="Contact number"
-                    disabled
-                    autoDetectCountry
-                  />
+                <Field.Select name="salutation" label="Salutation" InputLabelProps={{ shrink: true }}>
+                  <MenuItem value="">
+                    <em>Optional</em>
+                  </MenuItem>
+                  {SALUTATION_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </Field.Select>
+                <Field.Text name="firstname" label="First name" />
+                <Field.Text name="lastname" label="Last name" />
+                <Box sx={{ gridColumn: { xs: 'auto', sm: 'span 2', md: 'span 2' } }}>
+                  <Field.Text name="nameAsPerId" label="Name as per ID" />
                 </Box>
+                <Field.Text
+                  name="username"
+                  label="Username"
+                  disabled={!isAdminOwnProfileEdit}
+                  helperText={isAdminOwnProfileEdit ? undefined : 'Username cannot be changed here.'}
+                />
+                <Field.Text name="email" label="Email" type="email" />
+                <Box sx={{ gridColumn: { xs: 'auto', sm: 'span 1', md: 'span 2' } }}>
+                  <Field.Phone name="contactNumber" label="Contact number" autoDetectCountry />
+                </Box>
+                <Field.Text name="company" label="Company" />
+                <Field.Text name="department" label="Department" />
+                <Field.Select name="jobFunction" label="Job function" InputLabelProps={{ shrink: true }}>
+                  <MenuItem value="">
+                    <em>Optional</em>
+                  </MenuItem>
+                  {INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                  {jobFunctionValue &&
+                  !INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.some(
+                    (option) => option.value === jobFunctionValue
+                  ) ? (
+                    <MenuItem value={jobFunctionValue}>{jobFunctionValue}</MenuItem>
+                  ) : null}
+                </Field.Select>
+                {jobFunctionValue === 'others' ? (
+                  <Box sx={{ gridColumn: { xs: 'auto', sm: 'span 2', md: 'span 2' } }}>
+                    <Field.Text name="jobFunctionOther" label="Please specify your job function" />
+                  </Box>
+                ) : null}
+                <Field.CountrySelect
+                  name="countryOfResidence"
+                  label="Country of residence"
+                  placeholder="Search country"
+                  getValue="label"
+                />
               </Box>
             </Box>
           </Stack>
@@ -559,7 +718,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
           <Card sx={cardSx}>
             <CardHeader
               title="User details"
-              subheader="Update identity and contact information."
+              subheader="Update local account fields and Salesforce eServices profile (synced when accountId is linked)."
               sx={{ px: 3, pt: 3, pb: 0, alignItems: 'flex-start' }}
               action={
                 <Box
@@ -590,14 +749,56 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                   md: 'repeat(3, 1fr)',
                 }}
               >
-                <Field.Text name="username" label="Username" />
+                <Field.Select name="salutation" label="Salutation" InputLabelProps={{ shrink: true }}>
+                  <MenuItem value="">
+                    <em>Optional</em>
+                  </MenuItem>
+                  {SALUTATION_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </Field.Select>
                 <Field.Text name="firstname" label="First name" />
                 <Field.Text name="lastname" label="Last name" />
-              </Box>
-              <Stack spacing={3}>
+                <Field.Text name="username" label="Username" />
+                <Box sx={{ gridColumn: { xs: 'auto', md: 'span 2' } }}>
+                  <Field.Text name="nameAsPerId" label="Name as per ID" />
+                </Box>
                 <Field.Text name="email" label="Email address" type="email" />
+                <Box sx={{ gridColumn: { xs: 'auto', md: 'span 2' } }}>
+                  <Field.Phone name="contactNumber" label="Contact number" autoDetectCountry />
+                </Box>
+                <Field.Text name="company" label="Company" />
+                <Field.Text name="department" label="Department" />
                 <Field.Text name="companyCode" label="Company’s Code (optional)" />
-                <Field.Phone name="contactNumber" label="Contact number" />
+                <Field.Select name="jobFunction" label="Job function" InputLabelProps={{ shrink: true }}>
+                  <MenuItem value="">
+                    <em>Optional</em>
+                  </MenuItem>
+                  {INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                  {jobFunctionValue &&
+                  !INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS.some(
+                    (option) => option.value === jobFunctionValue
+                  ) ? (
+                    <MenuItem value={jobFunctionValue}>{jobFunctionValue}</MenuItem>
+                  ) : null}
+                </Field.Select>
+                {jobFunctionValue === 'others' ? (
+                  <Box sx={{ gridColumn: { xs: 'auto', md: 'span 2' } }}>
+                    <Field.Text name="jobFunctionOther" label="Please specify your job function" />
+                  </Box>
+                ) : null}
+                <Field.CountrySelect
+                  name="countryOfResidence"
+                  label="Country of residence"
+                  placeholder="Search country"
+                  getValue="label"
+                />
                 <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
                   {STATUS_OPTIONS.map((opt) => (
                     <MenuItem key={opt.value} value={opt.value}>
@@ -605,7 +806,17 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                     </MenuItem>
                   ))}
                 </Field.Select>
-              </Stack>
+              </Box>
+              {currentUser?.salesforceAccountId ? (
+                <Alert severity="info" icon={<Iconify icon="solar:cloud-bold" width={22} />}>
+                  Linked Salesforce account — saving will update eServices via{' '}
+                  <strong>updatebulkuserfornexus</strong>.
+                </Alert>
+              ) : (
+                <Alert severity="warning" icon={<Iconify icon="solar:danger-triangle-bold" width={22} />}>
+                  No Salesforce accountId on this user — changes save locally only (no eServices sync).
+                </Alert>
+              )}
             </Stack>
           </Card>
         </Grid>

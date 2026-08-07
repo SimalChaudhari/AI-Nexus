@@ -42,9 +42,7 @@ const AffiliateSignUpSchema = zod.object({
   username: zod
     .string()
     .min(1, { message: 'Username is required' })
-    .regex(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-      message: 'Username must contain letters and numbers only',
-    }),
+    .max(50, { message: 'Username must be less than 50 characters' }),
   email: zod
     .string()
     .min(1, { message: 'Email is required' })

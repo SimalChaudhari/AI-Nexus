@@ -19,6 +19,7 @@ test('buildSalesforceNexusUserPayloadFromSignup includes the new profile fields'
     jobFunction: 'Software Engineer I',
     countryOfResidence: 'Singapore',
     yearsOfExperience: 10,
+    mobile: '+6591234567',
   });
 
   assert.equal(payload.company, 'xyz Corporation Pte Ltd');
@@ -27,6 +28,7 @@ test('buildSalesforceNexusUserPayloadFromSignup includes the new profile fields'
   assert.equal(payload.noOfYearOfRelevantWorkExperience, 10);
   assert.equal(payload.id_type, 'NRIC number');
   assert.equal(payload.id_number, 'S45678967A');
+  assert.equal(payload.mobile, '+6591234567');
 });
 
 test('buildSalesforceSignupForNexusPayloadFromSignup includes companyCode for QR enrollment', () => {
@@ -50,4 +52,23 @@ test('buildSalesforceSignupForNexusPayloadFromSignup includes companyCode for QR
   assert.equal(payload.noOfYearOfRelevantWorkExperience, 5.5);
   assert.equal(payload.id_type, undefined);
   assert.equal(payload.Is_paid, undefined);
+});
+
+test('buildSalesforceSignupForNexusPayloadFromSignup includes NRIC when provided', () => {
+  const payload = buildSalesforceSignupForNexusPayloadFromSignup({
+    salutation: 'Ms',
+    firstName: 'Jane',
+    lastName: 'Doe',
+    email: 'jane.doe@example.com',
+    company: 'Acme Corporation',
+    jobFunction: 'Accountant',
+    countryOfResidence: 'Singapore',
+    companyCode: 'ACME001',
+    yearsOfExperience: 3,
+    idNumber: 's1234567a',
+    idType: 'NRIC number',
+  });
+
+  assert.equal(payload.id_number, 'S1234567A');
+  assert.equal(payload.id_type, 'NRIC number');
 });

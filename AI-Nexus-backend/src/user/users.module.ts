@@ -11,12 +11,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { EmailService } from '../service/email.service';
 import { PaginationService } from '../common/pagination/pagination.service';
 import { AuthModule } from '../auth/auth.module';
+import { SsoModule } from '../auth/sso.module';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([UserEntity]),
         LocalStorageModule,
         AuthModule,
+        SsoModule,
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},

@@ -437,7 +437,7 @@ export function SimpleSignInView() {
         variant="outlined"
         color="inherit"
         component={RouterLink}
-        href={`${paths.auth.oauth.start}?returnTo=${encodeURIComponent(paths.corporate.overview)}`}
+        href={`${paths.auth.oauth.start}?loginAsCorporate=1&returnTo=${encodeURIComponent(paths.corporate.overview)}`}
         startIcon={<Iconify icon="solar:login-3-bold-duotone" width={18} />}
         sx={{ height: 44, fontWeight: 700 }}
       >

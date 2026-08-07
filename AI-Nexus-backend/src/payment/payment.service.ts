@@ -93,6 +93,28 @@ export class PaymentService {
   }
 
   /**
+   * Latest membership checkout/payment for a user in the given statuses.
+   * Used to prevent opening a second WooshPay session for the same signup.
+   */
+  async findLatestMembershipPaymentForUser(
+    userId: string,
+    statuses: PaymentStatus[],
+  ): Promise<PaymentEntity | null> {
+    const id = String(userId || '').trim();
+    if (!id || !statuses.length) return null;
+    return this.paymentRepository
+      .createQueryBuilder('payment')
+      .where('payment.userId = :userId', { userId: id })
+      .andWhere('payment.status IN (:...statuses)', { statuses })
+      .andWhere(
+        `(payment.eventType ILIKE :membershipPrefix OR payment.courseIds ILIKE :membershipPrefix)`,
+        { membershipPrefix: 'membership-%' },
+      )
+      .orderBy('payment.createdAt', 'DESC')
+      .getOne();
+  }
+
+  /**
    * Create or update a payment row for a client reference.
    * Never downgrades a paid/refunded payment to a weaker status.
    */
@@ -143,12 +165,12 @@ export class PaymentService {
       if (params.orderId !== undefined) {
         existing.orderId = params.orderId;
       }
-      existing.failureReason =
-        nextStatus === PaymentStatus.Paid
-          ? null
-          : params.failureReason !== undefined
-            ? params.failureReason
-            : existing.failureReason;
+      // Paid normally clears failureReason; explicit value is kept for duplicate-charge audit notes.
+      if (params.failureReason !== undefined) {
+        existing.failureReason = params.failureReason;
+      } else if (nextStatus === PaymentStatus.Paid) {
+        existing.failureReason = null;
+      }
       existing.paidAt = paidAt;
       return this.paymentRepository.save(existing);
     }
@@ -165,7 +187,7 @@ export class PaymentService {
       wooshpayPaymentIntentId: params.wooshpayPaymentIntentId ?? null,
       eventType: params.eventType ?? null,
       source: params.source ?? null,
-      failureReason: nextStatus === PaymentStatus.Paid ? null : params.failureReason ?? null,
+      failureReason: params.failureReason ?? null,
       orderId: params.orderId ?? null,
       paidAt,
     });
@@ -208,12 +230,14 @@ export class PaymentService {
     wooshpayPaymentIntentId?: string | null;
     eventType?: string | null;
     source?: PaymentSource | string;
+    /** Optional audit note (e.g. duplicate charge needing refund). */
+    failureReason?: string | null;
   }): Promise<PaymentEntity> {
     return this.upsertByClientReferenceId({
       ...params,
       status: PaymentStatus.Paid,
       source: params.source ?? PaymentSource.ConfirmPayment,
-      failureReason: null,
+      failureReason: params.failureReason ?? null,
       paidAt: new Date(),
     });
   }

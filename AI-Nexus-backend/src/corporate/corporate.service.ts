@@ -479,7 +479,7 @@ export class CorporateService {
     if (membershipNumber) payload.membershipNumber = membershipNumber;
 
     // Sheet column "Phone Number" (DTO.phoneNumber) → Salesforce body field `phone` only.
-    const phone = String(row.phoneNumber || '').trim();
+    const phone = String(row.phoneNumber || (row as { mobile?: string }).mobile || '').trim();
     if (phone) payload.phone = phone;
 
     const organisationType = String(row.organisationType || '').trim();

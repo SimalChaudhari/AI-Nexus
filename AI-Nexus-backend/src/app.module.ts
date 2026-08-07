@@ -15,6 +15,8 @@ import { AiForumModule } from './ai-forum/ai-forum.module';
 import { SpeakerModule } from './speaker/speaker.module';
 import { LanguageModule } from './language/language.module';
 import { IntlPathwayModule } from './intl-pathway/intl-pathway.module';
+import { IntlAuthModule } from './intl-auth/intl-auth.module';
+import { IntlPaymentModule } from './intl-payment/intl-payment.module';
 import { ReviewModule } from './review/review.module';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -116,6 +118,8 @@ const resolveTypeOrmPoolMax = (): number => {
     SpeakerModule,
     LanguageModule,
     IntlPathwayModule,
+    IntlAuthModule,
+    IntlPaymentModule,
     ReviewModule,
     PaymentModule,
     AffiliateModule,

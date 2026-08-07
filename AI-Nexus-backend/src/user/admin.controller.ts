@@ -18,7 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from './users.entity';
 import { Response, Request } from 'express';
 import { UserService } from './users.service';
-import { UpdateUserDto } from './users.dto';
+import { UpdateUserDto, AdminUpdateProfileDto } from './users.dto';
 import { JwtAuthGuard } from './../jwt/jwt-auth.guard';
 import { RolesGuard } from './../jwt/roles.guard';
 import { Roles } from './../jwt/roles.decorator';
@@ -61,7 +61,7 @@ export class AdminController {
     @Put('profile')
     @Roles(UserRole.Admin)
     @ApiOperation({ summary: 'Update current admin profile' })
-    @ApiBody({ type: UpdateUserDto })
+    @ApiBody({ type: AdminUpdateProfileDto })
     @UseInterceptors(
         FileInterceptor('avatar', {
             storage: memoryStorage(),
@@ -70,7 +70,7 @@ export class AdminController {
     )
     async updateAdminProfile(
         @Req() request: Request,
-        @Body() updateUserDto: UpdateUserDto,
+        @Body() updateUserDto: AdminUpdateProfileDto,
         @Res() response: Response,
         @UploadedFile(
             new ParseFilePipe({

@@ -527,14 +527,6 @@ export class AuthService {
     if (!normalizedUsername) {
       throw new BadRequestException('Username is required');
     }
-    const isEmailUsername =
-      /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(normalizedUsername);
-    const isAlphanumericUsername = /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/i.test(normalizedUsername);
-    if (!isEmailUsername && !isAlphanumericUsername) {
-      throw new BadRequestException(
-        'Username must contain both letters and numbers, and no special characters.'
-      );
-    }
     if (!userDto.firstname) {
       throw new BadRequestException('Firstname is required');
     }
@@ -1122,30 +1114,53 @@ export class AuthService {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    draftUser.role = draftUser.role || UserRole.User;
-    draftUser.status = draftUser.status || UserStatus.Active;
-    draftUser.isVerified = false;
-    draftUser.isDraft = false;
-    draftUser.authProvider = AuthProvider.OAUTH;
-    // Paid membership signs in via Salesforce SSO — never keep a local password.
-    draftUser.password = null;
-    draftUser.verificationToken = verificationToken;
-    draftUser.verificationTokenExpires = verificationTokenExpires;
-    draftUser.signupAccessTokenHash = null;
-    draftUser.signupAccessTokenExpiresAt = null;
+    // Atomic claim: only one concurrent fulfill can flip isDraft → false.
+    const claimResult = await this.userRepository
+      .createQueryBuilder()
+      .update(UserEntity)
+      .set({
+        role: draftUser.role || UserRole.User,
+        status: draftUser.status || UserStatus.Active,
+        isVerified: false,
+        isDraft: false,
+        authProvider: AuthProvider.OAUTH,
+        password: null,
+        verificationToken,
+        verificationTokenExpires,
+        signupAccessTokenHash: null,
+        signupAccessTokenExpiresAt: null,
+      })
+      .where('id = :id', { id: userId })
+      .andWhere('"isDraft" = true')
+      .execute();
 
-    await this.userRepository.save(draftUser);
+    if (!claimResult.affected) {
+      const alreadyFinalized = await this.userRepository.findOne({ where: { id: userId } });
+      if (!alreadyFinalized) {
+        throw new NotFoundException('Membership signup draft was not found.');
+      }
+      return {
+        message: 'Membership signup has already been completed.',
+        user: alreadyFinalized,
+        alreadyCompleted: true,
+      };
+    }
 
-    const userName = `${draftUser.firstname} ${draftUser.lastname}`.trim();
+    const finalizedUser = await this.userRepository.findOne({ where: { id: userId } });
+    if (!finalizedUser) {
+      throw new NotFoundException('Membership signup draft was not found.');
+    }
+
+    const userName = `${finalizedUser.firstname} ${finalizedUser.lastname}`.trim();
     try {
-      await this.emailService.sendVerificationEmail(draftUser.email, verificationToken, userName);
+      await this.emailService.sendVerificationEmail(finalizedUser.email!, verificationToken, userName);
     } catch (emailError) {
       console.error('Failed to send verification email after payment:', emailError);
     }
 
     return {
       message: 'Membership payment confirmed. Account finalized after successful payment.',
-      user: draftUser,
+      user: finalizedUser,
       alreadyCompleted: false,
     };
   }
@@ -4435,7 +4450,7 @@ export class AuthService {
     return safe;
   }
 
-  /** SSO-aware logout: clear Salesforce session, revoke IdP token, clear social token. */
+  /** SSO-aware logout: clear app social token; browser IdP cookies via logout.jsp on next SSO. */
   async logout(
     userId: string,
     options?: { supplementalSocialToken?: string },
@@ -4445,28 +4460,17 @@ export class AuthService {
       return { message: 'Logged out successfully' };
     }
 
-    const socialToken =
-      String(user.socialAccessToken || '').trim()
-      || String(options?.supplementalSocialToken || '').trim();
+    const hadSocialToken =
+      Boolean(String(user.socialAccessToken || '').trim())
+      || Boolean(String(options?.supplementalSocialToken || '').trim());
 
-    if (socialToken) {
-      try {
-        await this.oauthAuthService.clearSalesforceMobileSession(socialToken);
-      } catch (err) {
-        console.warn('Salesforce clearSession during logout (non-fatal):', err);
-      }
-      try {
-        await this.oauthAuthService.revokeIdpToken(socialToken);
-      } catch (err) {
-        console.warn('IdP revoke during logout (non-fatal):', err);
-      }
-    }
-
+    // Do not call Salesforce clearSession/revoke here — they race with a just-completed SSO
+    // login and revoke fails for web session tokens (unsupported_token_type).
     user.socialAccessToken = null;
     await this.userRepository.save(user);
 
     const shouldEndIdpBrowserSession =
-      user.authProvider === AuthProvider.OAUTH || Boolean(socialToken);
+      user.authProvider === AuthProvider.OAUTH || hadSocialToken;
     const browserLogoutUrl = shouldEndIdpBrowserSession
       ? this.oauthAuthService.buildBrowserLogoutUrl()
       : null;

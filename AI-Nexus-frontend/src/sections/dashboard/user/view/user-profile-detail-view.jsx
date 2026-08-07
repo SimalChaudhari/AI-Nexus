@@ -206,6 +206,16 @@ export function UserProfileDetailView({ isOwnProfile = false }) {
               {user.companyCode || '—'}
             </Typography>
           </Grid>
+          {String(user?.eligibilitySnapshot?.matriculationId || '').trim() ? (
+            <Grid xs={12} sm={6}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Matriculation ID
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                {String(user.eligibilitySnapshot.matriculationId).trim()}
+              </Typography>
+            </Grid>
+          ) : null}
           <Grid xs={12} sm={6}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Account Created

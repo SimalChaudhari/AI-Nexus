@@ -71,6 +71,10 @@ const transformUser = (user) => {
     salesforceMemberClass: user.salesforceMemberClass || '',
     salesforceUsername: user.salesforceUsername || '',
     salesforceSyncedAt: user.salesforceSyncedAt || null,
+    salesforceUserInfoRaw:
+      user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+        ? user.salesforceUserInfoRaw
+        : null,
     feeWaiverJobVerified: user.feeWaiverJobVerified ?? null,
     eligibilitySnapshot: user.eligibilitySnapshot || null,
   };

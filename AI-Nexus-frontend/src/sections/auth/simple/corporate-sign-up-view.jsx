@@ -215,7 +215,7 @@ export function CorporateSignUpView() {
           firstName: data.firstName.trim(),
           lastName: data.lastName.trim(),
           email,
-          mobilePhone: String(data.mobilePhone || '').trim(),
+          mobilePhone: String(data.mobilePhone || data.mobile || '').trim(),
           phone: String(data.phone || '').trim(),
           designation: String(data.designation || '').trim(),
           website: String(data.website || '').trim(),

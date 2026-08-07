@@ -207,6 +207,8 @@ export function buildSalesforceNexusUserPayloadFromSignup({
   jobFunction = '',
   countryOfResidence = '',
   yearsOfExperience = '',
+  mobile = '',
+  contactNumber = '',
   isPaid = false,
   paidAmount = '',
   paidDate = '',
@@ -242,6 +244,11 @@ export function buildSalesforceNexusUserPayloadFromSignup({
     payload.countryOfResidence = resolvedCountryOfResidence;
   }
 
+  const resolvedMobile = String(mobile || contactNumber || '').trim();
+  if (resolvedMobile) {
+    payload.mobile = resolvedMobile;
+  }
+
   const resolvedYearsOfExperience = yearsOfExperience === 0 || yearsOfExperience
     ? Number(yearsOfExperience)
     : '';
@@ -275,7 +282,8 @@ export function buildSalesforceNexusUserPayloadFromSignup({
 
 /**
  * Payload for POST /services/apexrest/signupfornexus (company QR / pre-paid enrollment).
- * Exact Postman contract — all 9 fields always present; password via setpasswordfornexus after.
+ * Core Postman fields always present; optional NRIC/FIN via id_number + id_type.
+ * Password via setpasswordfornexus after.
  */
 export function buildSalesforceSignupForNexusPayloadFromSignup({
   salutation = 'Mr',
@@ -287,6 +295,10 @@ export function buildSalesforceSignupForNexusPayloadFromSignup({
   countryOfResidence = '',
   companyCode = '',
   yearsOfExperience = '',
+  mobile = '',
+  contactNumber = '',
+  idType = '',
+  idNumber = '',
 } = {}) {
   const payload = {
     salutation: String(salutation || 'Mr').trim(),
@@ -304,6 +316,17 @@ export function buildSalesforceSignupForNexusPayloadFromSignup({
     : '';
   if (resolvedYearsOfExperience !== '' && !Number.isNaN(resolvedYearsOfExperience)) {
     payload.noOfYearOfRelevantWorkExperience = resolvedYearsOfExperience;
+  }
+
+  const resolvedMobile = String(mobile || contactNumber || '').trim();
+  if (resolvedMobile) {
+    payload.mobile = resolvedMobile;
+  }
+
+  const resolvedIdNumber = String(idNumber || '').trim().toUpperCase();
+  if (resolvedIdNumber) {
+    payload.id_number = resolvedIdNumber;
+    payload.id_type = String(idType || 'NRIC number').trim() || 'NRIC number';
   }
 
   return payload;

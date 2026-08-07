@@ -6,7 +6,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
@@ -115,9 +114,7 @@ export class TrackAffiliateClickDto {
 export class AffiliateSignupCheckoutDto {
   @IsString()
   @IsNotEmpty()
-  @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-    message: 'Username must contain both letters and numbers, and no special characters',
-  })
+  @MaxLength(50)
   username!: string;
 
   @IsEmail()

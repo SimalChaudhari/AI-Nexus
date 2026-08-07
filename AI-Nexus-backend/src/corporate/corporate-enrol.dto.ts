@@ -56,7 +56,6 @@ export class CorporateStaffLearnerDto {
   countryOfResidence?: string;
 
   @IsNumber()
-  @IsOptional()
   @Type(() => Number)
   noOfYearOfRelevantWorkExperience?: number;
 

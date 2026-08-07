@@ -162,7 +162,10 @@ export function CommonProfileView() {
                 Edit profile
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-                Update your profile image and company code. Email, username, and contact details are view-only.
+                {isAdmin
+                  ? 'Update your admin account details stored in the local database.'
+                  : 'Update your ISCA eServices profile details. Changes sync to Salesforce when your account is linked.'}
+
               </Typography>
             </Box>
             <Button variant="outlined" color="inherit" onClick={() => setIsEditMode(false)} startIcon={<Iconify icon="solar:close-circle-bold" width={20} />}>

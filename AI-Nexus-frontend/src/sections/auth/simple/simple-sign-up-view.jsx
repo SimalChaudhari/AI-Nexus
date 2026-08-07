@@ -43,6 +43,7 @@ import { validateCompanyEnrollment } from 'src/services/company-enrollment.servi
 import {
   buildSalesforceNexusUserPayloadFromSignup,
   buildSalesforceSignupForNexusPayloadFromSignup,
+  isSingaporeNricIdType,
   resolveVerifiedNricSalesforceFields,
   resolveSalesforceNexusUsernameFromCreateResponse,
 } from 'src/utils/nric-id-type';
@@ -245,6 +246,9 @@ export function SimpleSignUpView() {
   const [qrSubmitting, setQrSubmitting] = useState(false);
   const [emailSfChecking, setEmailSfChecking] = useState(false);
   const [nricVerifiedReadOnly, setNricVerifiedReadOnly] = useState(false);
+  const [nricNumberValid, setNricNumberValid] = useState(false);
+  const [nricNumberValidating, setNricNumberValidating] = useState(false);
+  const [nricNumberError, setNricNumberError] = useState('');
   const [affiliatePricing, setAffiliatePricing] = useState(null);
   const [affiliateValidating, setAffiliateValidating] = useState(false);
   const [membershipFeeConfig, setMembershipFeeConfig] = useState({
@@ -262,6 +266,7 @@ export function SimpleSignUpView() {
   const appliedPromoInputRef = useRef('');
   const freeSignupPrefillRestoredRef = useRef(false);
   const qrSubmitInFlightRef = useRef(false);
+  const membershipPayInFlightRef = useRef(false);
   const membershipOutcome = searchParams.get('membershipOutcome');
   const returnTo = searchParams.get('returnTo') || '';
   const paymentState = searchParams.get('payment') || '';
@@ -455,6 +460,8 @@ export function SimpleSignUpView() {
   const citizenshipValue = watch('citizenship');
   const companyCodeValue = watch('companyCode');
   const promoCodeValue = watch('promoCode');
+  const nricFinValue = watch('nricFin');
+  const idTypeValue = watch('idType');
   const prevCompanyCodeRef = useRef(companyCodeValue);
   const suppressCompanyCodeClearRef = useRef(false);
 
@@ -607,6 +614,76 @@ export function SimpleSignUpView() {
     setValue('company', '');
     setCompanyPrefilled(false);
   }, [companyCodeValue, isCompanyCodeLockedFromQr, setValue]);
+
+  // Live NRIC/FIN checksum validation for company QR enrollment (same API as eligibility flow).
+  useEffect(() => {
+    if (!isCompanyQrEnrollmentFlow) {
+      setNricNumberValid(false);
+      setNricNumberValidating(false);
+      setNricNumberError('');
+      return undefined;
+    }
+
+    const normalized = String(nricFinValue || '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    const selectedIdType = String(idTypeValue || '').trim();
+
+    if (!normalized) {
+      setNricNumberValid(false);
+      setNricNumberValidating(false);
+      setNricNumberError('');
+      return undefined;
+    }
+
+    // Passport: no Singapore checksum — treat non-empty as entered (no verify icon until format rules exist).
+    if (selectedIdType && !isSingaporeNricIdType(selectedIdType)) {
+      setNricNumberValid(false);
+      setNricNumberValidating(false);
+      setNricNumberError('');
+      return undefined;
+    }
+
+    // Incomplete / wrong length — show format error (do not wait silently for 9 chars).
+    if (normalized.length !== 9) {
+      setNricNumberValid(false);
+      setNricNumberValidating(false);
+      const timer = window.setTimeout(() => {
+        setNricNumberError(
+          'NRIC/FIN must be 9 characters (e.g. S1234567A).'
+        );
+      }, 400);
+      return () => window.clearTimeout(timer);
+    }
+
+    setNricNumberValidating(true);
+    setNricNumberValid(false);
+    setNricNumberError('');
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await validateNricIdentifier({ identifier: normalized });
+        setNricNumberValid(Boolean(result?.valid));
+        setNricNumberError(result?.valid ? '' : (result?.message || 'Invalid NRIC number.'));
+      } catch (error) {
+        setNricNumberValid(false);
+        setNricNumberError(
+          String(error?.message || '').trim() || 'Invalid NRIC number.'
+        );
+      } finally {
+        setNricNumberValidating(false);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [isCompanyQrEnrollmentFlow, nricFinValue, idTypeValue]);
+
+  // Clear matriculation ID when job function is not Student.
+  useEffect(() => {
+    if (jobFunctionValue === 'student') return;
+    if (!String(getValues('matriculationId') || '').trim()) return;
+    setValue('matriculationId', '');
+  }, [jobFunctionValue, getValues, setValue]);
 
   // Company QR / deep-link: validate invite (expiry / seat limit), then prefill company code.
   useEffect(() => {
@@ -864,6 +941,7 @@ export function SimpleSignUpView() {
         companyCode: prefill.companyCode || current.companyCode,
         jobFunction: prefill.jobFunction || current.jobFunction,
         jobFunctionOther: prefill.jobFunctionOther || current.jobFunctionOther,
+        matriculationId: prefill.matriculationId || current.matriculationId,
         yearsOfExperience: prefill.yearsOfExperience || current.yearsOfExperience,
         countryOfResidence: prefill.countryOfResidence || current.countryOfResidence,
         nricFin: prefill.nricFin || current.nricFin,
@@ -987,6 +1065,8 @@ export function SimpleSignUpView() {
         companyCode: restoredCompanyCode,
         jobFunction: profilePrefill.jobFunction || parsed.values.jobFunction || '',
         jobFunctionOther: profilePrefill.jobFunctionOther || parsed.values.jobFunctionOther || '',
+        matriculationId:
+          profilePrefill.matriculationId || parsed.values.matriculationId || '',
         yearsOfExperience:
           profilePrefill.yearsOfExperience || parsed.values.yearsOfExperience || '',
         countryOfResidence:
@@ -1209,13 +1289,14 @@ export function SimpleSignUpView() {
           paidAmount: response?.paidAmount,
         });
 
+        // Read form before SF sync try/catch — success UI also needs name/email after sync.
+        const formValues = getValues();
         let salesforceSyncWarning = '';
         try {
           console.info('[MembershipPayment] Salesforce sync START', {
             refId: trimPaymentLogValue(normalizedPaymentRef),
             paidAmount: verifiedAmount,
           });
-          const formValues = getValues();
           const sessionSfPassword =
             typeof window !== 'undefined'
               ? String(sessionStorage.getItem(MEMBERSHIP_SF_PASSWORD_KEY) || '').trim()
@@ -1513,9 +1594,13 @@ export function SimpleSignUpView() {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem(salesforceUsernameKey);
       }
+      const nricFin = String(data?.nricFin || storedValues?.nricFin || '').trim().toUpperCase();
+      const idType = String(data?.idType || storedValues?.idType || '').trim();
       console.info('[CompanyQrEnrollment] Creating Salesforce account via signupfornexus', {
         email: formValues.email,
         companyCode: resolveSignupCompanyCode(),
+        hasNric: Boolean(nricFin),
+        idType: idType || null,
       });
 
       const createResult = await signupSalesforceForNexus(
@@ -1529,6 +1614,9 @@ export function SimpleSignUpView() {
           countryOfResidence: formValues.countryOfResidence,
           companyCode: resolveSignupCompanyCode() || companyCodeFromUrl,
           yearsOfExperience: formValues.yearsOfExperience,
+          mobile: formValues.contactNumber,
+          idNumber: nricFin || '',
+          idType: nricFin && idType ? idType : '',
         })
       );
 
@@ -1582,6 +1670,7 @@ export function SimpleSignUpView() {
         jobFunction: formValues.jobFunction,
         countryOfResidence: formValues.countryOfResidence,
         yearsOfExperience: formValues.yearsOfExperience,
+        mobile: formValues.contactNumber,
         isPaid: paymentMeta.isPaid === true,
         paidAmount: paymentMeta.paidAmount,
         paidDate: paymentMeta.paidDate,
@@ -1768,6 +1857,40 @@ export function SimpleSignUpView() {
         return;
       }
 
+      const nricFin = String(data.nricFin || '').trim();
+      const selectedIdType = String(data.idType || '').trim();
+      // id_type / id_number are optional — validate checksum only when NRIC/FIN is entered.
+      if (nricFin && isSingaporeNricIdType(selectedIdType || 'NRIC')) {
+        if (nricNumberValidating) {
+          setErrorMsg('Please wait while we validate your NRIC number.');
+          return;
+        }
+        if (!nricNumberValid) {
+          try {
+            const nricCheck = await validateNricIdentifier({ identifier: nricFin });
+            if (nricCheck?.valid !== true) {
+              setNricNumberValid(false);
+              setNricNumberError(
+                nricCheck?.message || 'The NRIC number is not valid. Please check and try again.'
+              );
+              setErrorMsg(
+                nricCheck?.message || 'The NRIC number is not valid. Please check and try again.'
+              );
+              return;
+            }
+            setNricNumberValid(true);
+            setNricNumberError('');
+          } catch (nricErr) {
+            const message =
+              nricErr?.message || 'The NRIC number is not valid. Please check and try again.';
+            setNricNumberValid(false);
+            setNricNumberError(message);
+            setErrorMsg(message);
+            return;
+          }
+        }
+      }
+
       const salesforceUsername = await ensureSalesforceNexusUserForMembershipSignup(data);
       if (!salesforceUsername) {
         throw new Error('Salesforce account was created but username was missing. Please try again or contact support.');
@@ -1793,6 +1916,9 @@ export function SimpleSignUpView() {
           companyEnrollmentViaQr: true,
           companyVerifiedName: companyVerifiedName || data.company || '',
           companyCode: resolveSignupCompanyCode() || companyCodeFromUrl,
+          nricFin: String(data.nricFin || eligibility?.snapshot?.nricFin || '').trim(),
+          idType: String(data.idType || eligibility?.snapshot?.idType || '').trim(),
+          verifiedNricIdType: String(data.idType || eligibility?.snapshot?.idType || '').trim(),
         },
       });
 
@@ -1815,6 +1941,10 @@ export function SimpleSignUpView() {
   });
 
   const handleMembershipPayment = handleSubmit(async (data) => {
+    if (membershipPayInFlightRef.current || paymentActionLoading) {
+      return;
+    }
+    membershipPayInFlightRef.current = true;
     try {
       setErrorMsg('');
       setPaymentNotice(null);
@@ -1976,6 +2106,7 @@ export function SimpleSignUpView() {
         setErrorMsg('');
       }
     } finally {
+      membershipPayInFlightRef.current = false;
       setPaymentActionLoading(false);
     }
   });
@@ -2337,24 +2468,94 @@ export function SimpleSignUpView() {
         </Box>
       ) : null}
 
+      {jobFunctionValue === 'student' ? (
+        <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+          <Field.Text
+            name="matriculationId"
+            label="Matriculation ID"
+            required
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ maxLength: 20 }}
+            helperText="Maximum 20 characters."
+          />
+        </Box>
+      ) : null}
+
+      {isCompanyQrEnrollmentFlow ? (
+        <Box
+          sx={{
+            ...SIGNUP_FORM_GRID_FULL_WIDTH_SX,
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+            gap: 2,
+          }}
+        >
+          <Field.Select
+            name="idType"
+            label="ID type (optional)"
+            InputLabelProps={{ shrink: true }}
+          >
+            <MenuItem value="">
+              <em>Optional</em>
+            </MenuItem>
+            <MenuItem value="NRIC">NRIC</MenuItem>
+            <MenuItem value="Blue NRIC">Blue NRIC</MenuItem>
+            <MenuItem value="Pink NRIC">Pink NRIC</MenuItem>
+            <MenuItem value="FIN">FIN</MenuItem>
+            <MenuItem value="Passport">Passport</MenuItem>
+          </Field.Select>
+          <Field.Text
+            name="nricFin"
+            label="NRIC number (optional)"
+            InputLabelProps={{ shrink: true }}
+            error={Boolean(nricNumberError)}
+            helperText={
+              nricNumberError
+              || (nricNumberValid
+                ? 'NRIC number validated successfully.'
+                : 'Optional. Enter your NRIC/FIN number if available.')
+            }
+            inputProps={{ style: { textTransform: 'uppercase' } }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  {nricNumberValidating ? (
+                    <CircularProgress size={18} />
+                  ) : nricNumberValid ? (
+                    <Iconify
+                      icon="solar:verified-check-bold"
+                      width={20}
+                      sx={{ color: 'success.main' }}
+                    />
+                  ) : null}
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
+      ) : null}
+
+      {isFreeIndividualSignup ? (
+        <Box sx={SIGNUP_FORM_GRID_FULL_WIDTH_SX}>
+          <Field.Text
+            name="nricFin"
+            label="NRIC/FIN number"
+            required
+            InputLabelProps={{ shrink: true }}
+            InputProps={{
+              readOnly: nricVerifiedReadOnly,
+            }}
+            helperText={
+              nricVerifiedReadOnly
+                ? 'Auto-filled from your verified NRIC upload.'
+                : 'Enter your NRIC/FIN number.'
+            }
+          />
+        </Box>
+      ) : null}
+
       {isFreeIndividualSignup ? (
         <>
-          <Box>
-            <Field.Text
-              name="nricFin"
-              label="NRIC/FIN number"
-              required
-              InputLabelProps={{ shrink: true }}
-              InputProps={{
-                readOnly: nricVerifiedReadOnly,
-              }}
-              helperText={
-                nricVerifiedReadOnly
-                  ? 'Auto-filled from your verified NRIC upload.'
-                  : 'Enter your NRIC/FIN number.'
-              }
-            />
-          </Box>
           <Box>
             <Field.Select
               name="citizenship"
@@ -2731,7 +2932,7 @@ export function SimpleSignUpView() {
               variant="contained"
               fullWidth
               loading={paymentActionLoading}
-              disabled={!paymentConsentChecked || verifiedSignupLoading}
+              disabled={!paymentConsentChecked || verifiedSignupLoading || paymentActionLoading}
               onClick={handleMembershipPayment}
             >
               {`Pay ${currencyLabel} ${Number(totalAmount).toFixed(2)}`}

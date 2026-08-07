@@ -17,13 +17,7 @@ import { UserRole, UserStatus } from './users.entity';
 export class UserDto {
     @IsString()
     @IsNotEmpty()
-    @Matches(
-        /^(?:(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/,
-        {
-            message:
-                'Username must contain both letters and numbers with no special characters, or be a valid email address',
-        },
-    )
+    @MaxLength(50)
     username!: string;
 
     @IsString()
@@ -132,9 +126,7 @@ export class UserDto {
 export class UpdateUserDto {
     @IsOptional()
     @IsString()
-    @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9]+$/, {
-        message: 'Username must contain both letters and numbers, and no special characters',
-    })
+    @MaxLength(50)
     username?: string;
 
     @IsOptional()
@@ -184,6 +176,139 @@ export class UpdateUserDto {
     @IsString()
     @MaxLength(64)
     companyCode?: string;
+
+    /** Salesforce updatebulkuserfornexus fields (merged into eligibilitySnapshot). */
+    @IsOptional()
+    @IsString()
+    @MaxLength(32)
+    salutation?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    nameAsPerId?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    company?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    department?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    jobFunction?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(120)
+    countryOfResidence?: string;
+
+    @IsOptional()
+    @IsString()
+    password?: string;
+
+    @IsOptional()
+    @IsEnum(UserRole)
+    role?: UserRole;
+
+    @IsOptional()
+    @IsBoolean()
+    isVerified?: boolean;
+
+    @IsOptional()
+    @IsEnum(UserStatus)
+    status?: UserStatus;
+}
+
+/** Admin own-profile update — username is not bound to letters+numbers pattern. */
+export class AdminUpdateProfileDto {
+    @IsOptional()
+    @IsString()
+    @MaxLength(50)
+    username?: string;
+
+    @IsOptional()
+    @IsString()
+    firstname?: string;
+
+    @IsOptional()
+    @IsString()
+    lastname?: string;
+
+    @IsOptional()
+    @IsEmail()
+    email?: string;
+
+    @IsOptional()
+    @IsString()
+    persona?: string;
+
+    @IsOptional()
+    @IsString()
+    aiExperienceLevel?: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiLearningGoals?: string[];
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    aiUseAreas?: string[];
+
+    @IsOptional()
+    @IsString()
+    financeRole?: string;
+
+    @IsOptional()
+    @IsString()
+    avatarUrl?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(48)
+    contactNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(64)
+    companyCode?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(32)
+    salutation?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    nameAsPerId?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    company?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    department?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    jobFunction?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(120)
+    countryOfResidence?: string;
 
     @IsOptional()
     @IsString()
