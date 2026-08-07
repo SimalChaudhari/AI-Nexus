@@ -97,6 +97,7 @@ export function UserDetailsView({
       .join('') || '?';
 
   const snapshot = user?.eligibilitySnapshot || {};
+  const matriculationId = String(snapshot.matriculationId || '').trim();
   const jobRoleStatus = getJobRoleAuditStatus(user);
 
   const headerChips = [
@@ -120,6 +121,9 @@ export function UserDetailsView({
       label: 'Job function',
       value: snapshot.jobFunctionLabel || snapshot.jobFunction || '—',
     },
+    ...(matriculationId
+      ? [{ label: 'Matriculation ID', value: matriculationId }]
+      : []),
     { label: 'Country of residence', value: snapshot.countryOfResidence || '—' },
   ];
 

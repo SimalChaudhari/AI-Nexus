@@ -27,18 +27,18 @@ function isNonMemberValue(value) {
 }
 
 /**
- * Member class display (based only on salesforceMemberClass):
+ * Member class display (based only on salesforceMemberClass / nexus memberClass):
  * - Non-member (e.g. "Non member") → "AI Fluency Learner".
  * - Otherwise → show the member class as-is (e.g. CA).
  */
-function resolveMemberClassDisplay(user) {
-  const memberClass = String(user?.salesforceMemberClass || '').trim();
+function resolveMemberClassDisplay(memberClass) {
+  const value = String(memberClass || '').trim();
 
-  if (!memberClass || isNonMemberValue(memberClass)) {
+  if (!value || isNonMemberValue(value)) {
     return { text: 'AI Fluency Learner', color: 'info' };
   }
 
-  return { text: memberClass, color: memberClassLabelColor(memberClass) };
+  return { text: value, color: memberClassLabelColor(value) };
 }
 
 function booleanLabelColor(value) {
@@ -48,7 +48,6 @@ function booleanLabelColor(value) {
 }
 
 function BooleanValue({ value }) {
-  const theme = useTheme();
   const text = formatNullableBoolean(value);
   const isYes = value === true;
   const isNo = value === false;
@@ -75,108 +74,278 @@ function BooleanValue({ value }) {
   );
 }
 
-function InlineField({ label, children, index, total }) {
-  const theme = useTheme();
-  const line = `1px solid ${alpha(theme.palette.divider, 0.8)}`;
-  const isLast = index === total - 1;
+function readRawField(raw, keys = []) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  for (const key of keys) {
+    if (raw[key] !== undefined && raw[key] !== null && String(raw[key]).trim() !== '') {
+      return raw[key];
+    }
+  }
+  return undefined;
+}
 
-  return (
-    <Box
-      sx={{
-        flex: { md: '1 1 0' },
-        minWidth: 0,
-        px: { xs: 2, md: 2.5 },
-        py: { xs: 1.5, md: 2 },
-        display: { xs: 'flex', md: 'block' },
-        flexWrap: { xs: 'wrap', md: 'nowrap' },
-        alignItems: { xs: 'center', md: 'stretch' },
-        justifyContent: { xs: 'space-between', md: 'flex-start' },
-        gap: { xs: 0.75, md: 0 },
-        borderRight: {
-          xs: 'none',
-          md: isLast ? 'none' : line,
-        },
-        borderBottom: {
-          xs: isLast ? 'none' : line,
-          md: 'none',
-        },
-      }}
-    >
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ fontWeight: 700, display: 'block', mb: { xs: 0, md: 0.75 }, flexShrink: 0 }}
-      >
-        {label}
-      </Typography>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 0.5,
-          minWidth: 0,
-          justifyContent: { xs: 'flex-end', md: 'flex-start' },
-        }}
-      >
-        {children}
-      </Box>
-    </Box>
-  );
+function toDisplayText(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'boolean') return formatNullableBoolean(value);
+  return String(value).trim();
+}
+
+/**
+ * Merge dedicated Salesforce columns with `/services/apexrest/userinfonexus` raw payload.
+ * Corporate sync may nest nexus under `salesforceUserInfoRaw.nexus`.
+ */
+export function resolveSalesforceNexusProfile(user) {
+  if (!user || typeof user !== 'object') {
+    return {};
+  }
+
+  const rawRoot =
+    user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+      ? user.salesforceUserInfoRaw
+      : null;
+  const nested =
+    rawRoot?.nexus && typeof rawRoot.nexus === 'object'
+      ? rawRoot.nexus
+      : null;
+  const raw = nested || rawRoot || {};
+  const snapshot =
+    user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+      ? user.eligibilitySnapshot
+      : {};
+
+  const pick = (...keys) => {
+    for (const key of keys) {
+      const columnValue = user[key];
+      if (columnValue !== undefined && columnValue !== null && String(columnValue).trim() !== '') {
+        return columnValue;
+      }
+    }
+    const fromSnapshot = readRawField(snapshot, keys);
+    if (fromSnapshot !== undefined) return fromSnapshot;
+    return readRawField(raw, keys);
+  };
+
+  const firstName = String(
+    pick('firstname', 'firstName') || readRawField(raw, ['firstName', 'firstname']) || ''
+  ).trim();
+  const lastName = String(
+    pick('lastname', 'lastName') || readRawField(raw, ['lastName', 'lastname']) || ''
+  ).trim();
+
+  return {
+    username: String(
+      pick('salesforceUsername', 'username') || readRawField(raw, ['username']) || ''
+    ).trim(),
+    email: String(pick('email') || readRawField(raw, ['email']) || '').trim(),
+    firstName,
+    lastName,
+    salutation: String(pick('salutation') || '').trim(),
+    nameAsPerId: String(pick('nameAsPerId', 'name_as_per_id') || '').trim(),
+    department: String(pick('department') || '').trim(),
+    phone: String(
+      pick('contactNumber', 'phoneNumber', 'mobile', 'phone') ||
+        readRawField(raw, ['mobile', 'Mobile', 'phone', 'Phone', 'mobilePhone']) ||
+        ''
+    ).trim(),
+    nricNumber: String(
+      pick('nricFin', 'nricNumber') ||
+        readRawField(raw, ['NRIC_Number', 'nric_Number', 'nricNumber', 'nricFin']) ||
+        ''
+    ).trim(),
+    idType: String(pick('idType', 'id_type') || readRawField(raw, ['idType', 'id_type', 'IDType']) || '').trim(),
+    jobFunction: String(
+      pick('jobFunctionLabel', 'jobFunction') || readRawField(raw, ['jobFunction', 'job_function']) || ''
+    ).trim(),
+    company: String(
+      pick('companyName', 'company') || readRawField(raw, ['company', 'companyName']) || ''
+    ).trim(),
+    countryOfResidence: String(
+      pick('countryOfResidence') ||
+        readRawField(raw, ['countryOfResidence', 'country_of_residence']) ||
+        ''
+    ).trim(),
+    yearsOfExperience: (() => {
+      const value = readRawField(raw, [
+        'noOfYearOfRelevantWorkExperience',
+        'yearsOfRelevantWorkExperience',
+        'yearsOfExperience',
+      ]);
+      if (value === undefined || value === null || value === '') return '';
+      return String(value);
+    })(),
+    memberClass: String(
+      pick('salesforceMemberClass') || readRawField(raw, ['memberClass']) || ''
+    ).trim(),
+    accountType: String(
+      pick('salesforceAccountType') || readRawField(raw, ['accountType']) || ''
+    ).trim(),
+    accountId: String(
+      pick('salesforceAccountId') || readRawField(raw, ['accountID', 'accountId']) || ''
+    ).trim(),
+    isSCAQCandidate:
+      typeof user.isSCAQCandidate === 'boolean'
+        ? user.isSCAQCandidate
+        : typeof raw.isSCAQCandidate === 'boolean'
+          ? raw.isSCAQCandidate
+          : null,
+    isAssociateMember:
+      typeof user.isAssociateMember === 'boolean'
+        ? user.isAssociateMember
+        : typeof raw.isAssociateMember === 'boolean'
+          ? raw.isAssociateMember
+          : null,
+    isAINexusUser:
+      typeof raw.isAINexusUser === 'boolean'
+        ? raw.isAINexusUser
+        : typeof raw.isAiNexusUser === 'boolean'
+          ? raw.isAiNexusUser
+          : null,
+    isAuthorisedSubmit:
+      typeof raw.isAuthorisedSubmit === 'boolean' ? raw.isAuthorisedSubmit : null,
+    isPaid:
+      typeof raw.Is_paid === 'boolean'
+        ? raw.Is_paid
+        : typeof raw.isPaid === 'boolean'
+          ? raw.isPaid
+          : null,
+    syncedAt: user.salesforceSyncedAt || null,
+  };
 }
 
 export function hasSalesforceProfileData(user) {
   if (!user || typeof user !== 'object') return false;
+  const profile = resolveSalesforceNexusProfile(user);
 
   return Boolean(
-    user.salesforceAccountId
-    || user.salesforceAccountType
-    || user.salesforceMemberClass
-    || user.isSCAQCandidate === true
-    || user.isSCAQCandidate === false
-    || user.isAssociateMember === true
-    || user.isAssociateMember === false
+    profile.accountId
+    || profile.accountType
+    || profile.memberClass
+    || profile.username
+    || profile.nricNumber
+    || profile.jobFunction
+    || profile.company
+    || profile.isSCAQCandidate === true
+    || profile.isSCAQCandidate === false
+    || profile.isAssociateMember === true
+    || profile.isAssociateMember === false
+    || profile.isAINexusUser === true
+    || profile.isAINexusUser === false
+    || profile.isPaid === true
+    || profile.isPaid === false
+  );
+}
+
+function ProfileField({ label, children }) {
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}
+      >
+        {label}
+      </Typography>
+      <Box sx={{ minWidth: 0 }}>{children}</Box>
+    </Box>
+  );
+}
+
+function TextValue({ value, monospace = false }) {
+  const text = toDisplayText(value) || '—';
+  return (
+    <Typography
+      variant="body2"
+      sx={{
+        fontWeight: 600,
+        wordBreak: 'break-word',
+        ...(monospace
+          ? { fontFamily: 'monospace', fontSize: '0.8125rem', letterSpacing: 0.2 }
+          : {}),
+      }}
+    >
+      {text}
+    </Typography>
   );
 }
 
 function MembershipDetailsTable({ user }) {
   const theme = useTheme();
-
-  const memberClassDisplay = resolveMemberClassDisplay(user);
+  const profile = resolveSalesforceNexusProfile(user);
+  const memberClassDisplay = resolveMemberClassDisplay(profile.memberClass);
 
   const rows = [
+    { key: 'username', label: 'eServices username', value: <TextValue value={profile.username} /> },
+    { key: 'email', label: 'eServices email', value: <TextValue value={profile.email} /> },
+    { key: 'salutation', label: 'Salutation', value: <TextValue value={profile.salutation} /> },
+    { key: 'firstName', label: 'First name', value: <TextValue value={profile.firstName} /> },
+    { key: 'lastName', label: 'Last name', value: <TextValue value={profile.lastName} /> },
+    {
+      key: 'nameAsPerId',
+      label: 'Name as per ID',
+      value: <TextValue value={profile.nameAsPerId} />,
+    },
+    {
+      key: 'nric',
+      label: 'NRIC number',
+      value: <TextValue value={profile.nricNumber} monospace />,
+    },
+    { key: 'idType', label: 'ID type', value: <TextValue value={profile.idType} /> },
+    { key: 'company', label: 'Company', value: <TextValue value={profile.company} /> },
+    { key: 'department', label: 'Department', value: <TextValue value={profile.department} /> },
+    { key: 'jobFunction', label: 'Job function', value: <TextValue value={profile.jobFunction} /> },
+    {
+      key: 'years',
+      label: 'Years of experience',
+      value: <TextValue value={profile.yearsOfExperience} />,
+    },
+    {
+      key: 'country',
+      label: 'Country of residence',
+      value: <TextValue value={profile.countryOfResidence} />,
+    },
     {
       key: 'memberClass',
       label: 'Member class',
       value: (
-        <Label
-          color={memberClassDisplay.color}
-          variant="soft"
-          sx={{
-            fontWeight: 800,
-            fontSize: '0.8125rem',
-            py: 0.75,
-            px: 1.25,
-            height: 'auto',
-            maxWidth: '100%',
-            whiteSpace: 'normal',
-            textAlign: { xs: 'right', md: 'left' },
-            lineHeight: 1.3,
-          }}
-        >
+        <Label color={memberClassDisplay.color} variant="soft" sx={{ fontWeight: 800 }}>
           {memberClassDisplay.text}
         </Label>
       ),
     },
     {
+      key: 'accountType',
+      label: 'Account type',
+      value: <TextValue value={profile.accountType} />,
+    },
+    {
+      key: 'accountId',
+      label: 'Salesforce account ID',
+      value: <TextValue value={profile.accountId} monospace />,
+    },
+    {
+      key: 'isPaid',
+      label: 'Paid (Is_paid)',
+      value: <BooleanValue value={profile.isPaid} />,
+    },
+    {
+      key: 'isAINexusUser',
+      label: 'AI Nexus user',
+      value: <BooleanValue value={profile.isAINexusUser} />,
+    },
+    {
       key: 'scaq',
       label: 'SCAQ candidate',
-      value: <BooleanValue value={user.isSCAQCandidate} />,
+      value: <BooleanValue value={profile.isSCAQCandidate} />,
     },
     {
       key: 'associate',
       label: 'Associate member',
-      value: <BooleanValue value={user.isAssociateMember} />,
+      value: <BooleanValue value={profile.isAssociateMember} />,
+    },
+    {
+      key: 'authorised',
+      label: 'Authorised submit',
+      value: <BooleanValue value={profile.isAuthorisedSubmit} />,
     },
   ];
 
@@ -189,20 +358,21 @@ function MembershipDetailsTable({ user }) {
         border: `1px solid ${alpha(theme.palette.divider, 0.72)}`,
         boxShadow: (t) =>
           t.palette.mode === 'dark' ? 'none' : `0 1px 3px ${alpha(theme.palette.grey[500], 0.1)}`,
+        p: { xs: 2, sm: 2.5 },
+        display: 'grid',
+        gridTemplateColumns: {
+          xs: '1fr',
+          sm: 'repeat(2, minmax(0, 1fr))',
+          md: 'repeat(3, minmax(0, 1fr))',
+        },
+        gap: { xs: 2, sm: 2.25 },
       }}
     >
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
-        }}
-      >
-        {rows.map((row, index) => (
-          <InlineField key={row.key} label={row.label} index={index} total={rows.length}>
-            {row.value}
-          </InlineField>
-        ))}
-      </Box>
+      {rows.map((row) => (
+        <ProfileField key={row.key} label={row.label}>
+          {row.value}
+        </ProfileField>
+      ))}
     </Box>
   );
 }
@@ -242,6 +412,7 @@ function SalesforceAccountIdHeader({ accountId }) {
 function IscaEservicesPanel({ user }) {
   const theme = useTheme();
   const hasData = hasSalesforceProfileData(user);
+  const profile = resolveSalesforceNexusProfile(user);
 
   return (
     <Box
@@ -284,10 +455,16 @@ function IscaEservicesPanel({ user }) {
             <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.25, mt: 0.25 }}>
               Membership status
             </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Synced from userinfonexus
+              {profile.syncedAt
+                ? ` · ${new Date(profile.syncedAt).toLocaleString('en-GB')}`
+                : ''}
+            </Typography>
           </Box>
         </Stack>
 
-        <SalesforceAccountIdHeader accountId={user.salesforceAccountId} />
+        <SalesforceAccountIdHeader accountId={profile.accountId} />
       </Stack>
 
       {!hasData ? (
@@ -344,9 +521,32 @@ export function buildSalesforceProfileDetailRows(user) {
     return [{ label: 'Status', value: 'No eServices data synced' }];
   }
 
-  const memberClassDisplay = resolveMemberClassDisplay(user);
+  const profile = resolveSalesforceNexusProfile(user);
+  const memberClassDisplay = resolveMemberClassDisplay(profile.memberClass);
 
   return [
+    { label: 'eServices username', value: profile.username || '—' },
+    { label: 'eServices email', value: profile.email || '—' },
+    { label: 'Salutation', value: profile.salutation || '—' },
+    { label: 'First name', value: profile.firstName || '—' },
+    { label: 'Last name', value: profile.lastName || '—' },
+    { label: 'Name as per ID', value: profile.nameAsPerId || '—' },
+    {
+      label: 'NRIC number',
+      value: profile.nricNumber ? (
+        <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+          {profile.nricNumber}
+        </Typography>
+      ) : (
+        '—'
+      ),
+    },
+    { label: 'ID type', value: profile.idType || '—' },
+    { label: 'Company', value: profile.company || '—' },
+    { label: 'Department', value: profile.department || '—' },
+    { label: 'Job function', value: profile.jobFunction || '—' },
+    { label: 'Years of experience', value: profile.yearsOfExperience || '—' },
+    { label: 'Country of residence', value: profile.countryOfResidence || '—' },
     {
       label: 'Member class',
       value: (
@@ -355,17 +555,10 @@ export function buildSalesforceProfileDetailRows(user) {
         </Label>
       ),
     },
-    {
-      label: 'SCAQ candidate',
-      value: <BooleanValue value={user.isSCAQCandidate} />,
-    },
-    {
-      label: 'Associate member',
-      value: <BooleanValue value={user.isAssociateMember} />,
-    },
+    { label: 'Account type', value: profile.accountType || '—' },
     {
       label: 'Salesforce account ID',
-      value: user.salesforceAccountId ? (
+      value: profile.accountId ? (
         <Typography
           variant="body2"
           component="span"
@@ -376,11 +569,16 @@ export function buildSalesforceProfileDetailRows(user) {
             letterSpacing: 0.2,
           }}
         >
-          {user.salesforceAccountId}
+          {profile.accountId}
         </Typography>
       ) : (
         '—'
       ),
     },
+    { label: 'Paid (Is_paid)', value: <BooleanValue value={profile.isPaid} /> },
+    { label: 'AI Nexus user', value: <BooleanValue value={profile.isAINexusUser} /> },
+    { label: 'SCAQ candidate', value: <BooleanValue value={profile.isSCAQCandidate} /> },
+    { label: 'Associate member', value: <BooleanValue value={profile.isAssociateMember} /> },
+    { label: 'Authorised submit', value: <BooleanValue value={profile.isAuthorisedSubmit} /> },
   ];
 }

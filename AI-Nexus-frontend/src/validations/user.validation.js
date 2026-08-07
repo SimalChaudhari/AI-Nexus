@@ -162,6 +162,7 @@ export const AuthSignUpSchema = zod.object({
 const individualSignupJobFunctionValues = [
   'accounting-finance-related',
   'unemployed-accounting-finance-qualification',
+  'student',
   'others',
 ];
 
@@ -177,6 +178,7 @@ const individualSignupSharedFields = {
       message: 'Please select a valid job function.',
     }),
   jobFunctionOther: zod.string().optional(),
+  matriculationId: zod.string().optional(),
   yearsOfExperience: zod
     .string()
     .min(1, { message: 'Years of relevant work experience is required!' })
@@ -198,6 +200,23 @@ function refineIndividualSignupProfile(data, ctx) {
       message: 'Please specify your job function.',
       path: ['jobFunctionOther'],
     });
+  }
+
+  if (data.jobFunction === 'student') {
+    const matriculationId = String(data.matriculationId || '').trim();
+    if (!matriculationId) {
+      ctx.addIssue({
+        code: zod.ZodIssueCode.custom,
+        message: 'Matriculation ID is required for students.',
+        path: ['matriculationId'],
+      });
+    } else if (matriculationId.length > 20) {
+      ctx.addIssue({
+        code: zod.ZodIssueCode.custom,
+        message: 'Matriculation ID must be at most 20 characters.',
+        path: ['matriculationId'],
+      });
+    }
   }
 }
 
@@ -242,14 +261,40 @@ function refineFreeIndividualSignupProfile(data, ctx) {
 /** Individual sign-up (paid membership flows). */
 export function buildPaidIndividualSignUpSchema() {
   return AuthSignUpSchema.extend({
-    // Username not collected on form — local draft uses email until Salesforce SSO sync.
+    // Username not collected on form � local draft uses email until Salesforce SSO sync.
     username: zod.string().optional(),
     ...individualSignupSharedFields,
   }).superRefine(refineIndividualSignupProfile);
 }
 
+const companyQrIdTypeValues = ['NRIC', 'Blue NRIC', 'Pink NRIC', 'FIN', 'Passport'];
+
+function refineCompanyQrEnrollmentSignupProfile(data, ctx) {
+  refineIndividualSignupProfile(data, ctx);
+
+  const idType = String(data.idType || '').trim();
+  const nricFin = String(data.nricFin || '').trim();
+
+  // ID type + NRIC number are optional for company QR � validate only when filled.
+  if (idType && !companyQrIdTypeValues.includes(idType)) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'Please select a valid ID type.',
+      path: ['idType'],
+    });
+  }
+
+  if (nricFin && !idType) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      message: 'Please select an ID type when entering an NRIC number.',
+      path: ['idType'],
+    });
+  }
+}
+
 /**
- * Company QR enrollment — signupfornexus then setpasswordfornexus (Salesforce OAuth).
+ * Company QR enrollment � signupfornexus then setpasswordfornexus (Salesforce OAuth).
  */
 export function buildCompanyQrEnrollmentSignUpSchema() {
   return zod
@@ -264,15 +309,17 @@ export function buildCompanyQrEnrollmentSignUpSchema() {
         .string()
         .min(1, { message: 'Password is required!' })
         .min(8, { message: 'Password must be at least 8 characters!' }),
+      nricFin: zod.string().optional(),
+      idType: zod.string().optional(),
     })
     .extend(individualSignupSharedFields)
-    .superRefine(refineIndividualSignupProfile);
+    .superRefine(refineCompanyQrEnrollmentSignupProfile);
 }
 
 /** Individual free sign-up (fee waiver / programme registration). */
 export function buildFreeIndividualSignUpSchema() {
   return AuthSignUpSchema.extend({
-    // Username comes from Salesforce create-nexus-user response — do not collect on form.
+    // Username comes from Salesforce create-nexus-user response � do not collect on form.
     username: zod.string().optional(),
     ...individualSignupSharedFields,
     nricFin: zod.string().optional(),
@@ -368,6 +415,14 @@ export const NewUserSchema = zod.object({
 
   contactNumber: optionalPhoneSchema,
 
+  salutation: zod.string().optional(),
+  nameAsPerId: zod.string().max(200).optional(),
+  company: zod.string().max(200).optional(),
+  department: zod.string().max(200).optional(),
+  jobFunction: zod.string().max(200).optional(),
+  jobFunctionOther: zod.string().max(200).optional(),
+  countryOfResidence: zod.string().max(120).optional(),
+
   status: zod
     .string()
     .min(1, { message: 'Status is required!' })
@@ -419,6 +474,14 @@ export const UpdateUserSchema = zod.object({
 
   contactNumber: optionalPhoneSchema,
 
+  salutation: zod.string().optional(),
+  nameAsPerId: zod.string().max(200).optional(),
+  company: zod.string().max(200).optional(),
+  department: zod.string().max(200).optional(),
+  jobFunction: zod.string().max(200).optional(),
+  jobFunctionOther: zod.string().max(200).optional(),
+  countryOfResidence: zod.string().max(120).optional(),
+
   status: zod
     .string()
     .refine(
@@ -459,15 +522,40 @@ export const ProfileSchema = zod.object({
   companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
 
   contactNumber: optionalPhoneSchema,
+
+  salutation: zod.string().optional(),
+  nameAsPerId: zod.string().max(200).optional(),
+  company: zod.string().max(200).optional(),
+  department: zod.string().max(200).optional(),
+  jobFunction: zod.string().max(200).optional(),
+  jobFunctionOther: zod.string().max(200).optional(),
+  countryOfResidence: zod.string().max(120).optional(),
 });
 
-/** Admin own profile edit — same username rules as ProfileSchema (uniqueness checked on backend). */
+/** Admin own profile edit � same rules as ProfileSchema. */
 export const AdminProfileSchema = ProfileSchema;
 
-/** Site profile edit — only avatar and company code are editable. */
+/** Site profile edit � local + Salesforce sync fields (updatebulkuserfornexus). */
 export const SiteProfileSchema = zod.object({
   avatar: avatarFieldSchema,
   companyCode: zod.string().max(64, { message: 'Company code must be less than 64 characters!' }).optional(),
+  firstname: zod
+    .string()
+    .min(1, { message: 'First name is required!' })
+    .max(50, { message: 'First name must be less than 50 characters!' }),
+  lastname: zod
+    .string()
+    .min(1, { message: 'Last name is required!' })
+    .max(50, { message: 'Last name must be less than 50 characters!' }),
+  email: emailSchema,
+  contactNumber: optionalPhoneSchema,
+  salutation: zod.string().optional(),
+  nameAsPerId: zod.string().max(200).optional(),
+  company: zod.string().max(200).optional(),
+  department: zod.string().max(200).optional(),
+  jobFunction: zod.string().max(200).optional(),
+  jobFunctionOther: zod.string().max(200).optional(),
+  countryOfResidence: zod.string().max(120).optional(),
 });
 
 // ----------------------------------------------------------------------

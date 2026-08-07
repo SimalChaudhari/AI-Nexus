@@ -330,6 +330,7 @@ export class OAuthAuthController {
       jobFunction: dto.jobFunction,
       countryOfResidence: dto.countryOfResidence,
       noOfYearOfRelevantWorkExperience: dto.noOfYearOfRelevantWorkExperience,
+      mobile: dto.mobile || dto.phone,
       Is_paid: dto.Is_paid,
       paid_amount: dto.paid_amount,
       Paid_date: dto.Paid_date,
@@ -359,6 +360,9 @@ export class OAuthAuthController {
       countryOfResidence: dto.countryOfResidence,
       companyCode: dto.companyCode,
       noOfYearOfRelevantWorkExperience: dto.noOfYearOfRelevantWorkExperience,
+      mobile: dto.mobile || dto.phone,
+      id_type: dto.id_type,
+      id_number: dto.id_number,
     });
     return {
       success: true,

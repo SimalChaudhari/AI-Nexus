@@ -709,6 +709,152 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.userUpdateNexusPath}`;
   }
 
+  /** Apex REST path for profile update (updatebulkuserfornexus — we always send 1 accountId). */
+  private get updateBulkNexusUsersPath(): string {
+    const p =
+      process.env.OAUTH_UPDATE_BULK_USER_PATH || '/services/apexrest/updatebulkuserfornexus';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get updateBulkNexusUsersUrl(): string {
+    const fullUrl = process.env.OAUTH_UPDATE_BULK_USER_URL?.trim();
+    if (fullUrl) return fullUrl.split('?')[0].replace(/\/$/, '');
+
+    const createUserUrl = process.env.OAUTH_CREATE_USER_URL?.trim();
+    if (createUserUrl) {
+      try {
+        const parsed = new URL(createUserUrl);
+        return `${parsed.origin}${this.updateBulkNexusUsersPath}`;
+      } catch {
+        // fall through
+      }
+    }
+
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.updateBulkNexusUsersPath}`;
+    return `${this.integrationApiBaseUrl}${this.updateBulkNexusUsersPath}`;
+  }
+
+  /**
+   * Update ONE Salesforce eServices user by accountId.
+   * Apex endpoint is bulk-shaped, so body is always a 1-item array for that account only.
+   * Only these fields are sent (when present): accountId, salutation, first_name, last_name,
+   * name_as_per_id, email, jobFunction, mobile, countryOfResidence, company, department.
+   */
+  async updateSalesforceNexusUserByAccountId(input: {
+    accountId: string;
+    salutation?: string;
+    first_name?: string;
+    last_name?: string;
+    name_as_per_id?: string;
+    email?: string;
+    jobFunction?: string;
+    /** Salesforce field name is always `mobile` (aliases: phone). */
+    mobile?: string;
+    phone?: string;
+    countryOfResidence?: string;
+    company?: string;
+    department?: string;
+  }): Promise<Record<string, unknown>> {
+    const accountId = String(input.accountId || '').trim();
+    if (!accountId) {
+      throw new BadRequestException('Salesforce accountId is required for eServices profile update.');
+    }
+
+    const row: Record<string, string> = { accountId };
+    const assign = (key: string, value: unknown) => {
+      const trimmed = String(value || '').trim();
+      if (trimmed) row[key] = trimmed;
+    };
+
+    assign('salutation', input.salutation);
+    assign('first_name', input.first_name);
+    assign('last_name', input.last_name);
+    assign('name_as_per_id', input.name_as_per_id);
+    const email = normalizeEmail(String(input.email || ''));
+    if (email) row.email = email;
+    assign('jobFunction', input.jobFunction);
+    assign('mobile', input.mobile || input.phone);
+    assign('countryOfResidence', input.countryOfResidence);
+    assign('company', input.company);
+    assign('department', input.department);
+
+    // Bulk Apex contract — always exactly one account for profile edit.
+    const body = [row];
+    const accessToken = await this.getIntegrationAccessToken();
+    const url = this.updateBulkNexusUsersUrl;
+
+    console.log('[Salesforce] Updating one Nexus user via updatebulkuserfornexus:', {
+      url,
+      accountId,
+      payload: row,
+    });
+
+    const postOrPut = async (method: 'put' | 'post') => {
+      const res = await axios.request<Record<string, unknown> | unknown[]>({
+        method,
+        url,
+        data: body,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 60000,
+      });
+      console.log(`[Salesforce] updatebulkuserfornexus ${method.toUpperCase()} status:`, res.status);
+      console.log('[Salesforce] updatebulkuserfornexus response body:', res.data);
+
+      const resData = res.data;
+      if (resData && typeof resData === 'object' && !Array.isArray(resData)) {
+        const record = resData as Record<string, unknown>;
+        const { isError, errorMsg } = this.isSalesforceApiErrorPayload(record);
+        if (isError) {
+          throw new BadRequestException(
+            errorMsg || 'Failed to update Salesforce eServices profile.',
+          );
+        }
+        return record;
+      }
+      return { success: true, data: resData };
+    };
+
+    try {
+      return await postOrPut('put');
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) throw err;
+      if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 405)) {
+        try {
+          return await postOrPut('post');
+        } catch (retryErr: unknown) {
+          if (retryErr instanceof BadRequestException) throw retryErr;
+          if (axios.isAxiosError(retryErr)) {
+            const desc = this.extractSalesforceErrorDescription(
+              retryErr.response?.data,
+              retryErr.message,
+            );
+            throw new BadRequestException(
+              desc || 'Failed to update Salesforce eServices profile.',
+            );
+          }
+          throw retryErr;
+        }
+      }
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] updatebulkuserfornexus failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+        });
+        const desc = this.extractSalesforceErrorDescription(err.response?.data, err.message);
+        throw new BadRequestException(
+          desc || 'Failed to update Salesforce eServices profile.',
+        );
+      }
+      throw err;
+    }
+  }
+
   /** PUT userupdateapinexus — update existing eServices account with NRIC/citizenship details. */
   async updateSalesforceNexusUser(payload: {
     accountId: string;
@@ -1418,6 +1564,8 @@ export class OAuthAuthService {
     jobFunction?: string;
     countryOfResidence?: string;
     noOfYearOfRelevantWorkExperience?: string | number;
+    mobile?: string;
+    phone?: string;
     Is_paid?: boolean;
     paid_amount?: string | number;
     Paid_date?: string;
@@ -1495,6 +1643,11 @@ export class OAuthAuthService {
     const countryOfResidence = payload.countryOfResidence?.trim();
     if (countryOfResidence) {
       body.countryOfResidence = countryOfResidence;
+    }
+
+    const mobile = String(payload.mobile || payload.phone || '').trim();
+    if (mobile) {
+      body.mobile = mobile;
     }
 
     const yearsOfExperienceRaw = payload.noOfYearOfRelevantWorkExperience;
@@ -1620,7 +1773,7 @@ export class OAuthAuthService {
    * Create a Salesforce user via Apex REST signupfornexus
    * (company QR / corporate pre-paid enrollment — no payment proof).
    * Password is set afterwards via setpasswordfornexus (same as paid membership).
-   * Body matches Postman contract exactly (all 9 fields always present).
+   * Core Postman fields always present; optional id_number / id_type for NRIC/FIN.
    */
   async signupSalesforceForNexus(payload: {
     salutation: string;
@@ -1632,16 +1785,61 @@ export class OAuthAuthService {
     countryOfResidence?: string;
     companyCode?: string;
     noOfYearOfRelevantWorkExperience?: string | number;
+    mobile?: string;
+    phone?: string;
+    id_type?: string;
+    id_number?: string;
   }): Promise<Record<string, unknown>> {
     const email = normalizeEmail(payload.email);
     if (!email) {
       throw new BadRequestException('A valid email address is required.');
     }
 
+    const idType = String(payload.id_type || '').trim();
+    const rawIdNumber = String(payload.id_number || '').trim();
+    const normalizedNricFin = normalizeSingaporeNricFin(rawIdNumber);
+    const singaporeIdTypes = new Set(['Blue NRIC', 'Pink NRIC', 'NRIC number', 'NRIC', 'FIN']);
+    const allowedIdTypes = new Set([
+      'Blue NRIC',
+      'Pink NRIC',
+      'NRIC number',
+      'NRIC',
+      'FIN',
+      'Passport',
+      '',
+    ]);
+    const isSingaporeIdType = !idType || singaporeIdTypes.has(idType);
+    const idNumber = isSingaporeIdType
+      ? (normalizedNricFin || rawIdNumber.toUpperCase().replace(/\s+/g, ''))
+      : rawIdNumber.toUpperCase().replace(/\s+/g, '');
+
+    if (idType || rawIdNumber) {
+      if (!idNumber) {
+        throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.missingIdDetails);
+      }
+      if (idType && !allowedIdTypes.has(idType)) {
+        throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidIdType);
+      }
+
+      if (isSingaporeIdType) {
+        let validation;
+        try {
+          validation = validateSingaporeNricFin(idNumber);
+        } catch {
+          throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidFormat);
+        }
+        if (!validation.isValid) {
+          throw new BadRequestException(SINGAPORE_NRIC_FIN_USER_MESSAGES.invalidChecksum);
+        }
+
+        await assertNricFinAvailableForAccountCreation(this.userRepository, idNumber);
+      }
+    }
+
     const accessToken = await this.getIntegrationAccessToken();
     const url = this.signupForNexusUrl;
 
-    // Exact Postman shape — always send these keys (even if empty string).
+    // Core Postman shape — always send these keys (even if empty string).
     const body: Record<string, string | number> = {
       salutation: String(payload.salutation || 'Mr').trim(),
       first_name: String(payload.first_name || '').trim(),
@@ -1661,6 +1859,16 @@ export class OAuthAuthService {
       if (!Number.isNaN(normalizedYears)) {
         body.noOfYearOfRelevantWorkExperience = normalizedYears;
       }
+    }
+
+    if (idNumber) {
+      body.id_number = idNumber;
+      body.id_type = idType || 'NRIC number';
+    }
+
+    const mobile = String(payload.mobile || payload.phone || '').trim();
+    if (mobile) {
+      body.mobile = mobile;
     }
 
     console.log('[Salesforce] Creating Nexus user via signupfornexus:', {
@@ -1877,6 +2085,7 @@ export class OAuthAuthService {
       countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       accountType?: string;
+      mobile?: string;
       phone?: string;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
@@ -1956,7 +2165,7 @@ export class OAuthAuthService {
       const accountType = String(row.accountType || '').trim();
       if (accountType) item.accountType = accountType;
 
-      const phone = String(row.phone || '').trim();
+      const phone = String(row.phone || row.mobile || '').trim();
       if (phone) item.phone = phone;
 
       const corporateAccountId = String(row.corporateAccountId || '').trim();
@@ -2084,6 +2293,7 @@ export class OAuthAuthService {
       countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       accountType?: string;
+      mobile?: string;
       phone?: string;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
@@ -2186,6 +2396,7 @@ export class OAuthAuthService {
       countryOfResidence?: string;
       noOfYearOfRelevantWorkExperience?: string | number;
       accountType?: string;
+      mobile?: string;
       phone?: string;
       corporateAccountId?: string;
       learnerAsAnAccounting?: string;
@@ -2441,7 +2652,11 @@ export class OAuthAuthService {
         lastName,
         firstName,
         email,
-        mobilePhone: String(payload.contact.mobilePhone || '').trim(),
+        mobilePhone: String(
+          (payload.contact as { mobile?: string }).mobile
+            || payload.contact.mobilePhone
+            || '',
+        ).trim(),
         phone: String(payload.contact.phone || '').trim(),
         designation: String(payload.contact.designation || '').trim(),
         website: String(payload.contact.website || '').trim(),

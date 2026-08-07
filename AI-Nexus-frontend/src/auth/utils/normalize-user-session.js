@@ -39,6 +39,14 @@ export function normalizeUserForSession(user) {
     salesforceMemberClass: user.salesforceMemberClass ?? null,
     salesforceUsername: user.salesforceUsername ?? null,
     salesforceSyncedAt: user.salesforceSyncedAt ?? null,
+    salesforceUserInfoRaw:
+      user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+        ? user.salesforceUserInfoRaw
+        : null,
+    eligibilitySnapshot:
+      user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+        ? user.eligibilitySnapshot
+        : null,
   };
 }
 

@@ -95,6 +95,12 @@ export function UserTableRow({ row, selected, onEditRow, onSelectRow, onDeleteRo
               </Link>
               <MetaLine label="Username" value={row.username} />
               <MetaLine label="Email" value={row.email} />
+              {String(row?.eligibilitySnapshot?.matriculationId || '').trim() ? (
+                <MetaLine
+                  label="Matriculation ID"
+                  value={String(row.eligibilitySnapshot.matriculationId).trim()}
+                />
+              ) : null}
             </Stack>
           </Stack>
         </TableCell>

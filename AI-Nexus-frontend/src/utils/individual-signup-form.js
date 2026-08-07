@@ -8,6 +8,7 @@ export const INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS = [
     value: 'unemployed-accounting-finance-qualification',
     label: 'Unemployed but has accounting and finance qualification',
   },
+  { value: 'student', label: 'Student' },
   { value: 'others', label: 'Others' },
 ];
 
@@ -19,7 +20,7 @@ export const INDIVIDUAL_SIGNUP_CITIZENSHIP_OPTIONS = [
 
 export function requiresFreeSignupJobAudit(jobFunction = '') {
   const normalized = String(jobFunction || '').trim();
-  return Boolean(normalized) && normalized !== 'others';
+  return Boolean(normalized) && normalized !== 'others' && normalized !== 'student';
 }
 
 /** Human-readable job function for Salesforce Apex payloads. */
@@ -39,6 +40,7 @@ export const INDIVIDUAL_SIGNUP_DEFAULT_VALUES = {
   companyCode: '',
   jobFunction: '',
   jobFunctionOther: '',
+  matriculationId: '',
   yearsOfExperience: '',
   countryOfResidence: '',
   nricFin: '',
@@ -77,6 +79,7 @@ export function buildIndividualSignupPrefillFromEligibility(flow = {}, storedVal
     companyCode: String(storedValues.companyCode || companyCodeFromFlow).trim(),
     jobFunction: String(storedValues.jobFunction || '').trim(),
     jobFunctionOther: String(storedValues.jobFunctionOther || '').trim(),
+    matriculationId: String(storedValues.matriculationId || '').trim(),
     yearsOfExperience:
       storedValues.yearsOfExperience === 0 || storedValues.yearsOfExperience
         ? String(storedValues.yearsOfExperience)
@@ -111,6 +114,7 @@ export function buildIndividualSignupProfileSnapshot(formData = {}, isFreeSignup
     INDIVIDUAL_SIGNUP_CITIZENSHIP_OPTIONS.find((option) => option.value === formData.citizenship)
       ?.label || formData.citizenship;
 
+  const nricFin = String(formData.nricFin || '').trim();
   const snapshot = {
     companyName: String(formData.company || '').trim(),
     companyCode: String(formData.companyCode || '').trim(),
@@ -122,10 +126,25 @@ export function buildIndividualSignupProfileSnapshot(formData = {}, isFreeSignup
     countryOfResidence: String(formData.countryOfResidence || '').trim(),
   };
 
+  // Local DB / admin / frontend only — never sent to Salesforce Apex payloads.
+  if (String(formData.jobFunction || '').trim() === 'student') {
+    const matriculationId = String(formData.matriculationId || '').trim();
+    if (matriculationId) {
+      snapshot.matriculationId = matriculationId;
+    }
+  }
+
+  if (nricFin) {
+    snapshot.nricFin = nricFin;
+  }
+
+  const idType = String(formData.idType || '').trim();
+  if (idType) {
+    snapshot.idType = idType;
+    snapshot.verifiedNricIdType = idType;
+  }
+
   if (isFreeSignup) {
-    snapshot.nricFin = String(formData.nricFin || '').trim();
-    snapshot.idType = String(formData.idType || '').trim();
-    snapshot.verifiedNricIdType = String(formData.idType || '').trim();
     snapshot.citizenship = String(formData.citizenship || '').trim();
     snapshot.citizenshipLabel =
       formData.citizenship === 'others'

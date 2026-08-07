@@ -177,6 +177,37 @@ export class UpdateUserDto {
     @MaxLength(64)
     companyCode?: string;
 
+    /** Salesforce updatebulkuserfornexus fields (merged into eligibilitySnapshot). */
+    @IsOptional()
+    @IsString()
+    @MaxLength(32)
+    salutation?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    nameAsPerId?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    company?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    department?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    jobFunction?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(120)
+    countryOfResidence?: string;
+
     @IsOptional()
     @IsString()
     password?: string;
@@ -248,6 +279,36 @@ export class AdminUpdateProfileDto {
     @IsString()
     @MaxLength(64)
     companyCode?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(32)
+    salutation?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    nameAsPerId?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    company?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    department?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    jobFunction?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(120)
+    countryOfResidence?: string;
 
     @IsOptional()
     @IsString()

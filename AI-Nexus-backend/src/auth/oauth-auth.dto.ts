@@ -54,6 +54,15 @@ export class CreateSalesforceNexusUserDto {
   @IsOptional()
   countryOfResidence?: string;
 
+  @IsString()
+  @IsOptional()
+  mobile?: string;
+
+  /** @deprecated Prefer `mobile` — accepted as alias for Salesforce `mobile`. */
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
   @IsNumber()
   @IsOptional()
   noOfYearOfRelevantWorkExperience?: number;
@@ -109,9 +118,26 @@ export class SignupSalesforceForNexusDto {
   @IsOptional()
   companyCode?: string;
 
+  @IsString()
+  @IsOptional()
+  mobile?: string;
+
+  /** @deprecated Prefer `mobile` — accepted as alias for Salesforce `mobile`. */
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
   @IsNumber()
   @IsOptional()
   noOfYearOfRelevantWorkExperience?: number;
+
+  @IsString()
+  @IsOptional()
+  id_type?: string;
+
+  @IsString()
+  @IsOptional()
+  id_number?: string;
 }
 
 export class SetSalesforceNexusPasswordDto {
