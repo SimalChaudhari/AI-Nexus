@@ -226,11 +226,24 @@ export class OAuthAuthService {
 
   /**
    * URL to load in the browser on app logout so the next SSO login is not silent.
-   * Override with OAUTH_BROWSER_LOGOUT_URL (e.g. Experience Cloud site logout).
+   * Prefer Experience Cloud site (OAUTH_INSTANCE_URL). Cross-host logout.jsp → retUrl
+   * is blocked by Salesforce ("Invalid Page Redirection").
    */
   buildBrowserLogoutUrl(retUrl?: string): string | null {
     const explicit = process.env.OAUTH_BROWSER_LOGOUT_URL?.trim();
-    const base = explicit || (this.baseUrl ? `${this.baseUrl}${this.browserLogoutPath}` : '');
+    const siteLogout =
+      this.baseUrl ? `${this.baseUrl}${this.browserLogoutPath}` : '';
+
+    let base = siteLogout || explicit || '';
+    if (explicit && siteLogout) {
+      try {
+        const explicitHost = new URL(explicit).host.toLowerCase();
+        const siteHost = new URL(siteLogout).host.toLowerCase();
+        base = explicitHost === siteHost ? explicit : siteLogout;
+      } catch {
+        base = siteLogout;
+      }
+    }
     if (!base) return null;
 
     const returnTarget =
@@ -239,6 +252,14 @@ export class OAuthAuthService {
 
     try {
       const url = new URL(base);
+      try {
+        const retHost = new URL(returnTarget).host.toLowerCase();
+        if (retHost && retHost !== url.host.toLowerCase()) {
+          return base;
+        }
+      } catch {
+        // relative retUrl — ok
+      }
       url.searchParams.set('retUrl', returnTarget);
       return url.toString();
     } catch {

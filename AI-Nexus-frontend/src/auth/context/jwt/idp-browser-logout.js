@@ -141,9 +141,29 @@ export async function finishLogoutWithIdpBrowserClear(_browserLogoutUrl, redirec
 
 /** Same-domain: logout.jsp?retUrl=<authorizeUrl> — clears cookies then shows login form. */
 export function buildIdpLogoutThenAuthorizeUrl(browserLogoutUrl, authUrl) {
-  const logoutBase = stripIdpLogoutRetUrl(browserLogoutUrl);
   const authorize = String(authUrl || '').trim();
-  if (!logoutBase || !authorize || !/^https?:\/\//i.test(authorize)) return '';
+  if (!authorize || !/^https?:\/\//i.test(authorize)) return '';
+
+  // Salesforce blocks logout.jsp retUrl to a different host ("Invalid Page Redirection").
+  // Always run logout.jsp on the same origin as authorize (e.g. eservices.isca.org.sg).
+  let logoutBase = '';
+  try {
+    const auth = new URL(authorize);
+    const configured = stripIdpLogoutRetUrl(browserLogoutUrl);
+    let logoutPath = '/secur/logout.jsp';
+    if (configured && /^https?:\/\//i.test(configured)) {
+      try {
+        logoutPath = new URL(configured).pathname || logoutPath;
+      } catch {
+        // keep default
+      }
+    }
+    logoutBase = `${auth.origin}${logoutPath.startsWith('/') ? logoutPath : `/${logoutPath}`}`;
+  } catch {
+    logoutBase = stripIdpLogoutRetUrl(browserLogoutUrl);
+  }
+
+  if (!logoutBase) return '';
   return buildIdpLogoutRedirectUrl(logoutBase, authorize);
 }
 
