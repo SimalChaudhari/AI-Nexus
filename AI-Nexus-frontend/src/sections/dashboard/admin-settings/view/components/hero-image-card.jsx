@@ -15,6 +15,11 @@ export function HeroImageCard({
   title = 'Home hero background',
   description = 'Upload a custom background image for the public home hero.',
   saveLabel = 'Save hero image',
+  helperText = 'Accepted formats: JPG, PNG, GIF, WEBP, SVG. Files are stored at original size.',
+  accept = {
+    'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
+  },
+  maxSize = 5 * 1024 * 1024,
   heroFile,
   heroUrl,
   heroLoading,
@@ -46,12 +51,10 @@ export function HeroImageCard({
               p: 2.5,
             },
           }}
-          accept={{
-            'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
-          }}
-          maxSize={5 * 1024 * 1024}
+          accept={accept}
+          maxSize={maxSize}
           disabled={heroLoading || heroSubmitting}
-          helperText="Accepted formats: JPG, PNG, GIF, WEBP, SVG. Files are stored at original size."
+          helperText={helperText}
         />
 
         <Stack direction="row" spacing={1.5}>

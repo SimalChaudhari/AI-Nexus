@@ -2,19 +2,33 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpStatus,
+  Param,
   Post,
   Query,
   Res,
+  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 
+import { IntlAuthService } from '../intl-auth/intl-auth.service';
+import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
+import { Roles } from '../jwt/roles.decorator';
+import { RolesGuard } from '../jwt/roles.guard';
+import { SessionGuard } from '../jwt/session.guard';
+import { UserRole } from '../user/users.entity';
 import { IntlConfirmPaymentDto, IntlCreateCheckoutDto } from './intl-payment.dto';
 import { IntlPaymentService } from './intl-payment.service';
 
 @Controller('intl-payments')
 export class IntlPaymentController {
-  constructor(private readonly intlPaymentService: IntlPaymentService) {}
+  constructor(
+    private readonly intlPaymentService: IntlPaymentService,
+    private readonly intlAuthService: IntlAuthService,
+  ) {}
 
   /** Full country list for registration (code, label, phone, currency). */
   @Get('countries')
@@ -22,6 +36,29 @@ export class IntlPaymentController {
     return res.status(HttpStatus.OK).json({
       countries: this.intlPaymentService.listCountries(),
     });
+  }
+
+  /** Signed-in user's membership payment details (for profile). */
+  @Get('me')
+  async me(@Res() res: Response, @Headers('authorization') authorization?: string) {
+    const token = this.extractBearer(authorization);
+    if (!token) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const { id } = this.intlAuthService.verifyAccessToken(token);
+    const result = await this.intlPaymentService.getMyPayments(id);
+    return res.status(HttpStatus.OK).json(result);
+  }
+
+  /** Admin: payments for one international user. */
+  @Get('users/:userId')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: list payments for an international user' })
+  async userPayments(@Res() res: Response, @Param('userId') userId: string) {
+    const result = await this.intlPaymentService.getMyPayments(userId, 50);
+    return res.status(HttpStatus.OK).json(result);
   }
 
   /** Dynamic pricing + currency for a country of residence (SGD 365 converted). */
@@ -74,5 +111,11 @@ export class IntlPaymentController {
         message: error?.message || 'Could not confirm payment',
       });
     }
+  }
+
+  private extractBearer(authorization?: string) {
+    const value = String(authorization || '').trim();
+    if (!value.toLowerCase().startsWith('bearer ')) return '';
+    return value.slice(7).trim();
   }
 }

@@ -8,7 +8,7 @@ import { paths } from 'src/routes/paths';
 export default function AiFluencyStudentPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace(`${paths.dashboard}#student`);
+    router.replace(`${paths.dashboard}?view=student`);
   }, [router]);
   return null;
 }

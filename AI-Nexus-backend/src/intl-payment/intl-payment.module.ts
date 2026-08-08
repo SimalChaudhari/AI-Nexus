@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { IntlAuthModule } from '../intl-auth/intl-auth.module';
 import { InternationalUserEntity } from '../intl-auth/international-user.entity';
+import { UserEntity } from '../user/users.entity';
 import { PaymentModule } from '../payment/payment.module';
 import { IntlPaymentController } from './intl-payment.controller';
 import { IntlPaymentInitService } from './intl-payment-init.service';
@@ -13,7 +14,7 @@ import { InternationalPaymentEntity } from './international-payment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InternationalPaymentEntity, InternationalUserEntity]),
+    TypeOrmModule.forFeature([InternationalPaymentEntity, InternationalUserEntity, UserEntity]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {},

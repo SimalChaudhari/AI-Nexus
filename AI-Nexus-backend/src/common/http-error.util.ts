@@ -26,6 +26,10 @@ export function getMaxImageUploadMb(): number {
   return parsePositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50);
 }
 
+export function getMaxIntlLandingImageUploadMb(): number {
+  return parsePositiveNumber(process.env.UPLOAD_INTL_LANDING_IMAGE_MAX_MB, 500);
+}
+
 function isUploadPath(path: string): boolean {
   return /\/upload/i.test(path);
 }
@@ -43,9 +47,11 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
   const multer = exception as { code?: string; field?: string };
   if (multer?.code === 'LIMIT_FILE_SIZE') {
     const maxMb =
-      upload && /ceo-launch-video|upload-video/i.test(path)
-        ? getMaxVideoUploadMb()
-        : getMaxImageUploadMb();
+      upload && /international-landing-(hero|global-image)/i.test(path)
+        ? getMaxIntlLandingImageUploadMb()
+        : upload && /ceo-launch-video|upload-video/i.test(path)
+          ? getMaxVideoUploadMb()
+          : getMaxImageUploadMb();
     return {
       statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       error: 'Payload Too Large',
@@ -84,11 +90,13 @@ export function resolveApiErrorBody(exception: unknown, request: Request): ApiEr
   if (exception instanceof Error) {
     const msg = exception.message || '';
     if (/unsupported media|file type|mimetype|Validation failed/i.test(msg)) {
+      const imageUpload = /international-landing-(hero|global-image)|logo|hero|image/i.test(path);
       return {
         statusCode: HttpStatus.BAD_REQUEST,
         error: 'Bad Request',
-        message:
-          'This file type is not supported. Please use MP4, WebM, MOV, or another allowed format.',
+        message: imageUpload
+          ? 'This file type is not supported. Please use JPG, PNG, GIF, WEBP, or SVG.'
+          : 'This file type is not supported. Please use MP4, WebM, MOV, or another allowed format.',
         code: 'UPLOAD_INVALID_FILE_TYPE',
         path,
         timestamp,

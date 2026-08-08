@@ -334,6 +334,48 @@ export type LearningAdvertiseTabContent = {
   link?: string;
 };
 
+/** AI Nexus International marketing landing (hero, global learning, trust, footer). */
+export type InternationalLandingContent = {
+  hero?: {
+    eyebrow?: string;
+    titleLine1?: string;
+    titleLine2?: string;
+    body?: string;
+    heroImageUrl?: string | null;
+  };
+  globalLearning?: {
+    title?: string;
+    points?: string[];
+    imageUrl?: string | null;
+    sideCard?: {
+      icon?: string;
+      title?: string;
+      body?: string;
+    };
+  };
+  trustItems?: Array<{
+    icon?: string;
+    line1?: string;
+    line2?: string;
+    accent?: string;
+  }>;
+  footer?: {
+    tagline?: string;
+    copyrightText?: string;
+    social?: Array<{
+      icon?: string;
+      href?: string;
+    }>;
+    columns?: Array<{
+      title?: string;
+      links?: Array<{
+        label?: string;
+        href?: string;
+      }>;
+    }>;
+  };
+};
+
 export type MembershipPaymentSettings = {
   currency?: string;
   baseAmount?: number;
@@ -460,6 +502,10 @@ export class AppSettingsEntity {
   /** Learning page fixed vertical advertise / promo tab (name + link). */
   @Column({ type: 'jsonb', nullable: true })
   learningAdvertiseTabContent?: LearningAdvertiseTabContent | null;
+
+  /** International site landing page — hero, global learning, trust bar, footer. */
+  @Column({ type: 'jsonb', nullable: true })
+  internationalLandingContent?: InternationalLandingContent | null;
 
   /** Persona -> recommended course IDs mapping, configurable by admin. */
   @Column({ type: 'jsonb', nullable: true, default: () => "'[]'::jsonb" })

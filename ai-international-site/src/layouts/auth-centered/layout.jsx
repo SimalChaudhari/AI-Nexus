@@ -21,7 +21,10 @@ export function AuthCenteredLayout({ children, wide = false, sx }) {
         display: 'flex',
         flexDirection: 'column',
         bgcolor: '#f4f7fb',
-        overflow: 'hidden',
+        // Allow vertical scroll; overflow:hidden + MUI Select scroll-lock made the page jump/"flip".
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        scrollbarGutter: 'stable',
         '&::before': {
           content: "''",
           position: 'fixed',

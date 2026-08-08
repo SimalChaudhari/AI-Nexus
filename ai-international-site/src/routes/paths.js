@@ -7,6 +7,7 @@ export const paths = {
   internationalAiFluencyRoles: '/ai-fluency/roles',
   internationalAiFluencyStudent: '/ai-fluency/student',
   internationalAiFluencyPillars: '/ai-fluency/pillars',
+  profile: '/profile',
   auth: {
     signIn: '/auth/sign-in',
     signUp: '/auth/sign-up',

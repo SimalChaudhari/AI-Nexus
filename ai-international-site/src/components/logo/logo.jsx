@@ -9,10 +9,12 @@ import { paths } from 'src/routes/paths';
 import { logoClasses } from './classes';
 
 const PUBLIC_LOGO_SX = {
-  width: { xs: 88, md: 100 },
-  maxWidth: 100,
-  height: { xs: 40, md: 44 },
-  maxHeight: 48,
+  width: 'auto',
+  maxWidth: { xs: 88, md: 100 },
+  height: { xs: 32, md: 36 },
+  maxHeight: 40,
+  objectFit: 'contain',
+  objectPosition: 'left center',
   overflow: 'hidden',
   flexShrink: 0,
 };

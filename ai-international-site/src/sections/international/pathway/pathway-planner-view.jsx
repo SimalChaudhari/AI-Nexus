@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -11,6 +12,7 @@ import { Iconify } from 'src/components/iconify';
 import { paths } from 'src/routes/paths';
 import { isIntlAuthenticated } from 'src/auth/intl-session';
 import { resolveAssetUrl } from 'src/utils/asset-url';
+import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
 import { getYouTubeVideoId } from 'src/utils/youtube';
 import { buildSpotlightrEmbedUrl, parseSpotlightrUrl } from 'src/utils/spotlightr';
 
@@ -992,6 +994,7 @@ function ModuleCard({
 }
 
 function VideoSignupGate({ signupHref, signInHref }) {
+  const router = useRouter();
   return (
     <Box
       sx={{
@@ -1019,8 +1022,13 @@ function VideoSignupGate({ signupHref, signInHref }) {
         Create a free account to unlock module videos in Student and Users sections.
       </Typography>
       <Button
-        component={Link}
+        component="a"
         href={signupHref}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          navigateToAuthPath(router, signupHref);
+        }}
         variant="contained"
         sx={{
           mt: 0.5,
@@ -1040,9 +1048,14 @@ function VideoSignupGate({ signupHref, signInHref }) {
       <Typography sx={{ fontSize: 13, color: tokens.inkSoft }}>
         Already have an account?{' '}
         <Box
-          component={Link}
+          component="a"
           href={signInHref}
-          sx={{ color: tokens.pine, fontWeight: 700, textDecoration: 'none' }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigateToAuthPath(router, signInHref);
+          }}
+          sx={{ color: tokens.pine, fontWeight: 700, textDecoration: 'none', cursor: 'pointer' }}
         >
           Sign in
         </Box>

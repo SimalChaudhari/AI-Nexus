@@ -176,6 +176,17 @@ export const navData = [
         icon: <Iconify icon="solar:map-point-wave-bold-duotone" width={24} />,
         children: [
           {
+            title: 'Landing page',
+            path: paths.admin.international.landing,
+            deepMatch: true,
+          },
+          {
+            title: 'Users',
+            path: paths.admin.international.users.root,
+            deepMatch: true,
+            href: paths.admin.international.users.list,
+          },
+          {
             title: 'Pathway modules',
             path: paths.admin.international.modules.root,
             deepMatch: true,

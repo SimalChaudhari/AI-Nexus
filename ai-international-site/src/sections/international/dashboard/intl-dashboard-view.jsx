@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -10,20 +9,20 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
-import { Logo } from 'src/components/logo';
 import { paths } from 'src/routes/paths';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
 import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles';
 import { INTL_NAVY, INTL_NAVY_DEEP, INTL_RED, INTL_SOFT_BG } from 'src/theme/intl-brand';
-import { getStoredIntlRegion } from '../intl-region';
 import { usePathwayModuleVideos } from '../pathway/use-pathway-module-videos';
 import { DEFAULT_FOUNDATION_NOTE } from '../pathway/pathway-constants';
 import {
   PathwayBrowseList,
   PathwayPlannerView,
 } from '../pathway/pathway-planner-view';
+import { IntlFooter } from '../intl-footer';
+import { INTL_REGIONS } from '../intl-region';
 
 // ----------------------------------------------------------------------
 
@@ -94,16 +93,18 @@ function useDbModulesCatalog() {
   };
 }
 
-function SectionBlock({ id, eyebrow, title, subtitle, children, sx }) {
+function SectionBlock({ eyebrow, title, subtitle, children, sx, hidden }) {
   return (
     <Box
-      id={id}
       component="section"
-      sx={{
-        scrollMarginTop: 96,
-        py: { xs: 4, md: 5.5 },
-        ...sx,
-      }}
+      aria-hidden={hidden || undefined}
+      sx={[
+        {
+          py: { xs: 4, md: 5.5 },
+        },
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+        hidden ? { display: 'none' } : null,
+      ]}
     >
       <Stack spacing={0.75} sx={{ mb: subtitle ? 1.25 : 2.5 }}>
         <Typography
@@ -158,34 +159,51 @@ function SectionBlock({ id, eyebrow, title, subtitle, children, sx }) {
   );
 }
 
-function scrollToSection(id) {
-  if (typeof document === 'undefined') return;
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  if (typeof window !== 'undefined') {
-    window.history.replaceState(null, '', `#${id}`);
-  }
+const SECTION_IDS = new Set(SECTION_LINKS.map((item) => item.id));
+
+function readInitialSection() {
+  if (typeof window === 'undefined') return 'student';
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get('view');
+  if (SECTION_IDS.has(fromQuery)) return fromQuery;
+  const hash = window.location.hash?.replace('#', '');
+  if (SECTION_IDS.has(hash)) return hash;
+  return 'student';
+}
+
+function setSectionInUrl(id) {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('view', id);
+  url.hash = '';
+  window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
 
 // ----------------------------------------------------------------------
 
 export function IntlDashboardView() {
-  const [region, setRegion] = useState(null);
+  const [activeSection, setActiveSection] = useState('student');
   const { dbModules, modulesLookup, minutesByCode, videoUrlsByCode, loading } =
     useDbModulesCatalog();
 
   useEffect(() => {
-    setRegion(getStoredIntlRegion());
+    // Prefer ?view= / legacy #hash. Do not rewrite URL on mount (avoids route flicker).
+    const initial = readInitialSection();
+    setActiveSection(initial);
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const url = new URL(window.location.href);
+      url.hash = '';
+      if (!url.searchParams.get('view') && SECTION_IDS.has(initial)) {
+        url.searchParams.set('view', initial);
+      }
+      window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const hash = window.location.hash?.replace('#', '');
-    if (!hash) return undefined;
-    const timer = window.setTimeout(() => {
-      document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const selectSection = (id) => {
+    setActiveSection(id);
+    setSectionInUrl(id);
+  };
 
   const studentSections = useMemo(() => {
     const codes = dbModules.filter((m) => m.pillar === '01').map((m) => m.code);
@@ -232,12 +250,11 @@ export function IntlDashboardView() {
       sx={{
         width: '100%',
         maxWidth: '100%',
-        // clip avoids horizontal bleed without breaking position:sticky (hidden does)
-        overflowX: 'clip',
+        overflowX: 'hidden',
         bgcolor: INTL_SOFT_BG,
         color: NAVY,
         minHeight: '100%',
-        pb: 8,
+        pb: 0,
         '--layout-dashboard-content-px': {
           xs: '16px',
           sm: '24px',
@@ -261,118 +278,53 @@ export function IntlDashboardView() {
         }}
       >
         <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: { xs: 2.5, md: 3.5 }, pb: { xs: 3, md: 4 } }}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            alignItems={{ xs: 'flex-start', sm: 'center' }}
-            justifyContent="space-between"
-            spacing={1.5}
-            sx={{ mb: { xs: 2.5, md: 3 } }}
-          >
-            <Button
-              component={Link}
-              href={paths.international}
-              startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={18} />}
+          <Box sx={{ maxWidth: 640 }}>
+            <Typography
               sx={{
-                textTransform: 'none',
-                color: alpha(NAVY, 0.65),
-                px: 0,
-                minWidth: 0,
-                fontWeight: 600,
-                '&:hover': { bgcolor: 'transparent', color: NAVY },
+                mb: 1.25,
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 1.25,
+                py: 0.4,
+                borderRadius: 1,
+                bgcolor: alpha(NAVY, 0.06),
+                color: NAVY,
+                fontWeight: 700,
+                fontSize: 11,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
               }}
             >
-              Back to languages
-            </Button>
+              Learning dashboard
+            </Typography>
 
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Logo disableLink sx={{ width: 88, maxWidth: 96, height: 36, maxHeight: 40 }} />
-            </Stack>
-          </Stack>
+            <Typography
+              component="h1"
+              sx={{
+                m: 0,
+                fontWeight: 800,
+                fontSize: { xs: 30, sm: 36, md: 42 },
+                lineHeight: 1.1,
+                letterSpacing: '-0.03em',
+                color: NAVY,
+              }}
+            >
+              AI Fluency
+            </Typography>
 
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            alignItems={{ xs: 'flex-start', md: 'flex-end' }}
-            justifyContent="space-between"
-            spacing={2.5}
-          >
-            <Box sx={{ maxWidth: 640 }}>
-              <Typography
-                sx={{
-                  mb: 1.25,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  px: 1.25,
-                  py: 0.4,
-                  borderRadius: 1,
-                  bgcolor: alpha(NAVY, 0.06),
-                  color: NAVY,
-                  fontWeight: 700,
-                  fontSize: 11,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Learning dashboard
-              </Typography>
-
-              <Typography
-                component="h1"
-                sx={{
-                  m: 0,
-                  fontWeight: 800,
-                  fontSize: { xs: 30, sm: 36, md: 42 },
-                  lineHeight: 1.1,
-                  letterSpacing: '-0.03em',
-                  color: NAVY,
-                }}
-              >
-                AI Fluency
-              </Typography>
-
-              <Typography
-                sx={{
-                  mt: 1.5,
-                  m: 0,
-                  color: alpha(NAVY, 0.72),
-                  fontSize: { xs: 15, md: 16 },
-                  lineHeight: 1.6,
-                }}
-              >
-                Practical AI learning for accountancy professionals — browse by student path, role, or
-                pillar.
-              </Typography>
-            </Box>
-
-            {region?.label ? (
-              <Stack
-                direction="row"
-                spacing={1.25}
-                alignItems="center"
-                sx={{
-                  height: 44,
-                  px: 1.5,
-                  borderRadius: 999,
-                  bgcolor: '#fff',
-                  border: `1px solid ${alpha(NAVY, 0.14)}`,
-                  boxShadow: `0 4px 14px ${alpha(NAVY, 0.06)}`,
-                }}
-              >
-                {region.flagCode ? (
-                  <Box
-                    component="img"
-                    src={`https://flagcdn.com/w80/${region.flagCode}.png`}
-                    alt=""
-                    sx={{ width: 22, height: 16, objectFit: 'cover', borderRadius: '2px' }}
-                  />
-                ) : (
-                  <Iconify icon="solar:global-bold-duotone" width={18} sx={{ color: NAVY }} />
-                )}
-                <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: NAVY }}>
-                  {region.nativeLabel || region.label}
-                </Typography>
-              </Stack>
-            ) : null}
-          </Stack>
+            <Typography
+              sx={{
+                mt: 1.5,
+                m: 0,
+                color: alpha(NAVY, 0.72),
+                fontSize: { xs: 15, md: 16 },
+                lineHeight: 1.6,
+              }}
+            >
+              Practical AI learning for accountancy professionals — browse by student path, role, or
+              pillar.
+            </Typography>
+          </Box>
 
           <Stack
             direction="row"
@@ -381,39 +333,44 @@ export function IntlDashboardView() {
             flexWrap="wrap"
             sx={{ mt: { xs: 2.5, md: 3 } }}
           >
-            {SECTION_LINKS.map((item) => (
-              <Button
-                key={item.id}
-                variant="outlined"
-                size="small"
-                startIcon={<Iconify icon={item.icon} width={16} />}
-                onClick={() => scrollToSection(item.id)}
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  borderRadius: 999,
-                  px: 1.75,
-                  py: 0.75,
-                  color: NAVY,
-                  borderColor: alpha(NAVY, 0.18),
-                  bgcolor: alpha('#fff', 0.8),
-                  '&:hover': {
-                    borderColor: INTL_RED,
-                    bgcolor: '#fff',
-                    color: INTL_NAVY_DEEP,
-                  },
-                }}
-              >
-                {item.label}
-              </Button>
-            ))}
+            {SECTION_LINKS.map((item) => {
+              const active = activeSection === item.id;
+              return (
+                <Button
+                  key={item.id}
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Iconify icon={item.icon} width={16} />}
+                  onClick={() => selectSection(item.id)}
+                  aria-pressed={active}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    borderRadius: 999,
+                    px: 1.75,
+                    py: 0.75,
+                    color: active ? INTL_NAVY_DEEP : NAVY,
+                    borderColor: active ? INTL_RED : alpha(NAVY, 0.18),
+                    bgcolor: active ? '#fff' : alpha('#fff', 0.8),
+                    boxShadow: active ? `0 0 0 1px ${alpha(INTL_RED, 0.25)}` : 'none',
+                    '&:hover': {
+                      borderColor: INTL_RED,
+                      bgcolor: '#fff',
+                      color: INTL_NAVY_DEEP,
+                    },
+                  }}
+                >
+                  {item.label}
+                </Button>
+              );
+            })}
           </Stack>
         </DashboardContent>
       </Box>
 
       <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: 0, pb: 0 }}>
         <SectionBlock
-          id="student"
+          hidden={activeSection !== 'student'}
           eyebrow="01 · Foundations"
           title="Student"
           subtitle="Pillar 1 modules from the database — open any card to watch its video."
@@ -440,13 +397,13 @@ export function IntlDashboardView() {
               minutesByCode={minutesByCode}
               modulesLookup={modulesLookup}
               requireAuth
-              returnTo={`${paths.dashboard}#student`}
+              returnTo={`${paths.dashboard}?view=student`}
             />
           )}
         </SectionBlock>
 
         <SectionBlock
-          id="roles"
+          hidden={activeSection !== 'roles'}
           eyebrow="02 · Recommended path"
           title="AI Fluency by role"
           subtitle="Choose your role and build a recommended pathway for your practice."
@@ -463,7 +420,7 @@ export function IntlDashboardView() {
         </SectionBlock>
 
         <SectionBlock
-          id="users"
+          hidden={activeSection !== 'users'}
           eyebrow="03 · Full catalogue"
           title="Users (Pillars)"
           subtitle="All pillars and modules from the database — whatever is saved is what you see."
@@ -490,11 +447,13 @@ export function IntlDashboardView() {
               minutesByCode={minutesByCode}
               modulesLookup={modulesLookup}
               requireAuth
-              returnTo={`${paths.dashboard}#users`}
+              returnTo={`${paths.dashboard}?view=users`}
             />
           )}
         </SectionBlock>
       </DashboardContent>
+
+      <IntlFooter regions={INTL_REGIONS} />
     </Box>
   );
 }

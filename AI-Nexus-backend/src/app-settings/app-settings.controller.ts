@@ -18,7 +18,10 @@ import {
   FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
+import { mkdirSync } from 'fs';
+import { tmpdir } from 'os';
+import { extname, join } from 'path';
 import { Request, Response } from 'express';
 import {
   ApiBearerAuth,
@@ -42,8 +45,23 @@ const parseEnvPositiveNumber = (value: string | undefined, fallback: number): nu
 
 const LOGO_LIMIT = parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const LOGO_TYPE = /^(image\/)(jpeg|png|gif|webp|svg\+xml)$/;
+/** International landing hero/global images (incl. animated GIF) — default 500 MB. */
+const INTL_LANDING_IMAGE_LIMIT =
+  parseEnvPositiveNumber(process.env.UPLOAD_INTL_LANDING_IMAGE_MAX_MB, 500) * 1024 * 1024;
 const CEO_VIDEO_LIMIT = parseEnvPositiveNumber(process.env.UPLOAD_VIDEO_MAX_MB, 100) * 1024 * 1024;
 const CEO_VIDEO_TYPE = /^(video\/)(mp4|webm|quicktime|x-msvideo|x-matroska)$/;
+
+const intlLandingDiskStorage = diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = join(tmpdir(), 'ai-nexus-intl-landing');
+    mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const safeExt = extname(file.originalname || '').toLowerCase() || '.bin';
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${safeExt}`);
+  },
+});
 
 @ApiTags('App Settings')
 @Controller('app-settings')
@@ -1282,6 +1300,117 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Update Learning page advertise tab (name + link)' })
   async updateLearningAdvertiseTabContent(@Res() response: Response, @Body() payload: any) {
     const result = await this.appSettingsService.updateLearningAdvertiseTabContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Put('international-landing-content')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update International site landing page content' })
+  async updateInternationalLandingContent(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateInternationalLandingContent(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('international-landing-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload hero image for International landing page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hero: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('hero', {
+      storage: intlLandingDiskStorage,
+      limits: { fileSize: INTL_LANDING_IMAGE_LIMIT },
+    })
+  )
+  async uploadInternationalLandingHero(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: INTL_LANDING_IMAGE_LIMIT }),
+          new FileTypeValidator({
+            fileType: LOGO_TYPE,
+            // Disk storage has no in-memory buffer; validate MIME only.
+            skipMagicNumbersValidation: true,
+          }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadInternationalLandingHeroImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('international-landing-hero')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove hero image for International landing page' })
+  async removeInternationalLandingHero(@Res() response: Response) {
+    const result = await this.appSettingsService.removeInternationalLandingHeroImage();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('international-landing-global-image')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload Global Learning image for International landing page' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: intlLandingDiskStorage,
+      limits: { fileSize: INTL_LANDING_IMAGE_LIMIT },
+    })
+  )
+  async uploadInternationalLandingGlobalImage(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: INTL_LANDING_IMAGE_LIMIT }),
+          new FileTypeValidator({
+            fileType: LOGO_TYPE,
+            skipMagicNumbersValidation: true,
+          }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const result = await this.appSettingsService.uploadInternationalLandingGlobalImage(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('international-landing-global-image')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove Global Learning image for International landing page' })
+  async removeInternationalLandingGlobalImage(@Res() response: Response) {
+    const result = await this.appSettingsService.removeInternationalLandingGlobalImage();
     return response.status(HttpStatus.OK).json(result);
   }
 

@@ -432,6 +432,54 @@ type FooterContentPayload = {
   }>;
 };
 
+type InternationalLandingContentPayload = {
+  hero?: {
+    eyebrow?: string;
+    titleLine1?: string;
+    titleLine2?: string;
+    body?: string;
+    heroImageUrl?: string | null;
+  };
+  globalLearning?: {
+    title?: string;
+    points?: string[];
+    imageUrl?: string | null;
+    sideCard?: {
+      icon?: string;
+      title?: string;
+      body?: string;
+    };
+  };
+  trustItems?: Array<{
+    icon?: string;
+    line1?: string;
+    line2?: string;
+    accent?: string;
+  }>;
+  footer?: {
+    tagline?: string;
+    copyrightText?: string;
+    social?: Array<{
+      icon?: string;
+      href?: string;
+    }>;
+    columns?: Array<{
+      title?: string;
+      links?: Array<{
+        label?: string;
+        href?: string;
+      }>;
+    }>;
+  };
+};
+
+const INTL_LANDING_TRUST_MAX = 8;
+const INTL_LANDING_TRUST_MIN = 1;
+const INTL_LANDING_POINTS_MAX = 8;
+const INTL_LANDING_FOOTER_COLS_MAX = 4;
+const INTL_LANDING_FOOTER_LINKS_MAX = 10;
+const INTL_LANDING_SOCIAL_MAX = 6;
+
 @Injectable()
 export class AppSettingsService {
   private homeCardsColumnChecked = false;
@@ -452,6 +500,7 @@ export class AppSettingsService {
   private partnerWithIscaColumnChecked = false;
   private footerColumnChecked = false;
   private learningAdvertiseTabColumnChecked = false;
+  private internationalLandingColumnChecked = false;
   private membershipPaymentSettingsColumnChecked = false;
 
   constructor(
@@ -617,6 +666,14 @@ export class AppSettingsService {
     this.learningAdvertiseTabColumnChecked = true;
   }
 
+  private async ensureInternationalLandingColumn(): Promise<void> {
+    if (this.internationalLandingColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "internationalLandingContent" jsonb'
+    );
+    this.internationalLandingColumnChecked = true;
+  }
+
   private async ensureMembershipPaymentSettingsColumn(): Promise<void> {
     if (this.membershipPaymentSettingsColumnChecked) return;
     await this.appSettingsRepository.query(
@@ -644,6 +701,7 @@ export class AppSettingsService {
     await this.ensurePartnerWithIscaColumn();
     await this.ensureFooterColumn();
     await this.ensureLearningAdvertiseTabColumn();
+    await this.ensureInternationalLandingColumn();
     await this.ensureMembershipPaymentSettingsColumn();
 
     const settings = await this.appSettingsRepository.find({
@@ -1846,6 +1904,222 @@ export class AppSettingsService {
     };
   }
 
+  private defaultInternationalLandingContent(): InternationalLandingContentPayload {
+    return {
+      hero: {
+        eyebrow: 'AI Nexus International',
+        titleLine1: 'AI Fluency.',
+        titleLine2: 'Global Impact.',
+        body:
+          'Future-ready AI learning for accountancy and finance professionals — practical skills, recognized credentials, and career growth no matter where you practice.',
+        heroImageUrl: null,
+      },
+      globalLearning: {
+        title: 'A Global Learning Experience',
+        points: [
+          'Localized content in your language',
+          'Relevant to your market and regulations',
+          'Recognized credentials that travel with you',
+          "Built by ISCA — Asia's trusted accountancy body",
+        ],
+        imageUrl: null,
+        sideCard: {
+          icon: 'solar:users-group-rounded-bold-duotone',
+          title: 'For Professionals. By Professionals.',
+          body: 'Join a global community of accountancy and finance professionals building AI fluency for real-world impact.',
+        },
+      },
+      trustItems: [
+        {
+          icon: 'solar:diploma-linear',
+          line1: 'Industry-Recognized',
+          line2: 'Certificates',
+          accent: '#002060',
+        },
+        {
+          icon: 'solar:shield-check-linear',
+          line1: 'Verifiable Digital',
+          line2: 'Credentials',
+          accent: '#C00000',
+        },
+        {
+          icon: 'solar:clock-circle-linear',
+          line1: 'Flexible Learning',
+          line2: 'Anytime, Anywhere',
+          accent: '#0f766e',
+        },
+        {
+          icon: 'solar:medal-ribbons-star-linear',
+          line1: 'CPE Hours',
+          line2: 'Eligible',
+          accent: '#185FA5',
+        },
+      ],
+      footer: {
+        tagline: 'Practical AI learning for accountancy and finance professionals worldwide.',
+        copyrightText: '© {year} ISCA · AI Nexus International. All rights reserved.',
+        social: [
+          { icon: 'mdi:linkedin', href: '' },
+          { icon: 'mdi:youtube', href: '' },
+          { icon: 'solar:letter-bold', href: '' },
+        ],
+        columns: [
+          {
+            title: 'Platform',
+            links: [
+              { label: 'AI Fluency', href: '/dashboard' },
+              { label: 'Register', href: '/auth/sign-up' },
+              { label: 'Sign in', href: '/auth/sign-in' },
+              { label: 'FAQ', href: '' },
+              { label: 'Sustainability Qualifications', href: '' },
+              { label: 'Accountify', href: '' },
+              { label: 'Boardflix', href: '' },
+            ],
+          },
+          {
+            title: 'Resources',
+            links: [
+              { label: 'About', href: '' },
+              { label: 'FAQs', href: '' },
+              { label: 'Help Centre', href: '' },
+              { label: 'Contact Us', href: '' },
+            ],
+          },
+          {
+            title: 'Legal',
+            links: [
+              { label: 'Terms of Use', href: '' },
+              { label: 'Privacy Policy', href: '' },
+              { label: 'Cookie Policy', href: '' },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  private sanitizeInternationalLandingContent(
+    input: unknown
+  ): InternationalLandingContentPayload {
+    const defaults = this.defaultInternationalLandingContent();
+    const source = input && typeof input === 'object' ? (input as any) : {};
+    const heroSrc = source.hero && typeof source.hero === 'object' ? source.hero : {};
+    const globalSrc =
+      source.globalLearning && typeof source.globalLearning === 'object'
+        ? source.globalLearning
+        : {};
+    const sideSrc =
+      globalSrc.sideCard && typeof globalSrc.sideCard === 'object' ? globalSrc.sideCard : {};
+    const footerSrc = source.footer && typeof source.footer === 'object' ? source.footer : {};
+    const rawPoints = Array.isArray(globalSrc.points)
+      ? globalSrc.points
+      : defaults.globalLearning?.points || [];
+    const rawTrust = Array.isArray(source.trustItems)
+      ? source.trustItems
+      : defaults.trustItems || [];
+    const rawSocial = Array.isArray(footerSrc.social)
+      ? footerSrc.social
+      : defaults.footer?.social || [];
+    const rawColumns = Array.isArray(footerSrc.columns)
+      ? footerSrc.columns
+      : defaults.footer?.columns || [];
+
+    return {
+      hero: {
+        eyebrow:
+          this.cleanText(heroSrc.eyebrow, 80) ||
+          this.cleanText(defaults.hero?.eyebrow, 80),
+        titleLine1:
+          this.cleanText(heroSrc.titleLine1, 80) ||
+          this.cleanText(defaults.hero?.titleLine1, 80),
+        titleLine2:
+          this.cleanText(heroSrc.titleLine2, 80) ||
+          this.cleanText(defaults.hero?.titleLine2, 80),
+        body:
+          this.cleanText(heroSrc.body, 500) || this.cleanText(defaults.hero?.body, 500),
+        heroImageUrl: this.cleanText(heroSrc.heroImageUrl, 500) || null,
+      },
+      globalLearning: {
+        title:
+          this.cleanText(globalSrc.title, 120) ||
+          this.cleanText(defaults.globalLearning?.title, 120),
+        points: (rawPoints.length ? rawPoints : defaults.globalLearning?.points || [])
+          .slice(0, INTL_LANDING_POINTS_MAX)
+          .map((p: unknown) => this.cleanText(p, 200))
+          .filter(Boolean),
+        imageUrl: this.cleanText(globalSrc.imageUrl, 500) || null,
+        sideCard: {
+          icon:
+            this.cleanText(sideSrc.icon, 120) ||
+            this.cleanText(defaults.globalLearning?.sideCard?.icon, 120),
+          title:
+            this.cleanText(sideSrc.title, 120) ||
+            this.cleanText(defaults.globalLearning?.sideCard?.title, 120),
+          body:
+            this.cleanText(sideSrc.body, 400) ||
+            this.cleanText(defaults.globalLearning?.sideCard?.body, 400),
+        },
+      },
+      trustItems: (() => {
+        const rows = (rawTrust.length ? rawTrust : defaults.trustItems || [])
+          .slice(0, INTL_LANDING_TRUST_MAX)
+          .map((item: any, index: number) => {
+            const row = item && typeof item === 'object' ? item : {};
+            const fallback =
+              defaults.trustItems?.[index] || defaults.trustItems?.[0] || {};
+            return {
+              icon: this.cleanText(row?.icon, 120) || this.cleanText(fallback?.icon, 120),
+              line1: this.cleanText(row?.line1, 80) || this.cleanText(fallback?.line1, 80),
+              line2: this.cleanText(row?.line2, 80) || this.cleanText(fallback?.line2, 80),
+              accent:
+                this.sanitizeHexColor(row?.accent) ||
+                this.sanitizeHexColor(fallback?.accent) ||
+                '#002060',
+            };
+          })
+          .filter((row: { line1: string; line2: string; icon: string }) =>
+            Boolean(row.icon || row.line1 || row.line2)
+          );
+        return rows.length >= INTL_LANDING_TRUST_MIN
+          ? rows
+          : (defaults.trustItems || []).slice(0, INTL_LANDING_TRUST_MAX);
+      })(),
+      footer: {
+        tagline:
+          this.cleanText(footerSrc.tagline, 240) ||
+          this.cleanText(defaults.footer?.tagline, 240),
+        copyrightText:
+          this.cleanText(footerSrc.copyrightText, 200) ||
+          this.cleanText(defaults.footer?.copyrightText, 200),
+        social: (rawSocial.length ? rawSocial : defaults.footer?.social || [])
+          .slice(0, INTL_LANDING_SOCIAL_MAX)
+          .map((item: any) => ({
+            icon: this.cleanText(item?.icon, 120),
+            href: this.cleanText(item?.href, 500),
+          }))
+          .filter((item: { icon: string }) => Boolean(item.icon)),
+        columns: (rawColumns.length ? rawColumns : defaults.footer?.columns || [])
+          .slice(0, INTL_LANDING_FOOTER_COLS_MAX)
+          .map((col: any, colIndex: number) => {
+            const fallbackCol = defaults.footer?.columns?.[colIndex] || { title: '', links: [] };
+            const links = Array.isArray(col?.links) ? col.links : fallbackCol.links || [];
+            return {
+              title:
+                this.cleanText(col?.title, 60) || this.cleanText(fallbackCol.title, 60),
+              links: links
+                .slice(0, INTL_LANDING_FOOTER_LINKS_MAX)
+                .map((link: any) => ({
+                  label: this.cleanText(link?.label, 80),
+                  href: this.cleanText(link?.href, 500),
+                }))
+                .filter((link: { label: string }) => Boolean(link.label)),
+            };
+          })
+          .filter((col: { title: string }) => Boolean(col.title)),
+      },
+    };
+  }
+
   private sanitizeFooterContent(input: unknown): FooterContentPayload {
     const defaults = this.defaultFooterContent();
     const source = input && typeof input === 'object' ? (input as any) : {};
@@ -2516,6 +2790,118 @@ export class AppSettingsService {
     };
   }
 
+  async updateInternationalLandingContent(
+    payload: InternationalLandingContentPayload
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    settings.internationalLandingContent = this.sanitizeInternationalLandingContent(payload);
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'International landing content updated successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadInternationalLandingHeroImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('international-landing-hero');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'international-landing-hero', {
+      fileName: 'hero',
+    });
+    const existing = this.sanitizeInternationalLandingContent(
+      settings.internationalLandingContent || {}
+    );
+    settings.internationalLandingContent = this.sanitizeInternationalLandingContent({
+      ...existing,
+      hero: {
+        ...existing.hero,
+        heroImageUrl: relativeUrl,
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'International landing hero image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeInternationalLandingHeroImage(): Promise<{
+    message: string;
+    settings: AppSettingsEntity;
+  }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('international-landing-hero');
+    const existing = this.sanitizeInternationalLandingContent(
+      settings.internationalLandingContent || {}
+    );
+    settings.internationalLandingContent = this.sanitizeInternationalLandingContent({
+      ...existing,
+      hero: {
+        ...existing.hero,
+        heroImageUrl: '',
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'International landing hero image removed successfully',
+      settings: saved,
+    };
+  }
+
+  async uploadInternationalLandingGlobalImage(
+    file: Express.Multer.File
+  ): Promise<{ message: string; settings: AppSettingsEntity }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('international-landing-global');
+    const relativeUrl = await this.localStorageService.saveFile(
+      file,
+      'international-landing-global',
+      {
+        fileName: 'global-learning',
+      }
+    );
+    const existing = this.sanitizeInternationalLandingContent(
+      settings.internationalLandingContent || {}
+    );
+    settings.internationalLandingContent = this.sanitizeInternationalLandingContent({
+      ...existing,
+      globalLearning: {
+        ...existing.globalLearning,
+        imageUrl: relativeUrl,
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'International global learning image uploaded successfully',
+      settings: saved,
+    };
+  }
+
+  async removeInternationalLandingGlobalImage(): Promise<{
+    message: string;
+    settings: AppSettingsEntity;
+  }> {
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('international-landing-global');
+    const existing = this.sanitizeInternationalLandingContent(
+      settings.internationalLandingContent || {}
+    );
+    settings.internationalLandingContent = this.sanitizeInternationalLandingContent({
+      ...existing,
+      globalLearning: {
+        ...existing.globalLearning,
+        imageUrl: '',
+      },
+    });
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'International global learning image removed successfully',
+      settings: saved,
+    };
+  }
+
   async uploadPartnerWithIscaHeroImage(
     file: Express.Multer.File
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
@@ -2923,6 +3309,7 @@ export class AppSettingsService {
     partnerWithIscaContent: PartnerWithIscaContentPayload | null;
     footerContent: FooterContentPayload | null;
     learningAdvertiseTabContent: LearningAdvertiseTabContentPayload | null;
+    internationalLandingContent: InternationalLandingContentPayload | null;
     membershipPaymentSettings: MembershipPaymentSettingsPayload;
     /** Active learner accounts on the platform (non-draft, non-admin). */
     totalCourseEnrollments: number;
@@ -2998,6 +3385,9 @@ export class AppSettingsService {
       learningAdvertiseTabContent: settings.learningAdvertiseTabContent
         ? this.sanitizeLearningAdvertiseTabContent(settings.learningAdvertiseTabContent)
         : null,
+      internationalLandingContent: this.sanitizeInternationalLandingContent(
+        settings.internationalLandingContent || null
+      ),
       membershipPaymentSettings: settings.membershipPaymentSettings
         ? this.sanitizeMembershipPaymentSettings(
             settings.membershipPaymentSettings,

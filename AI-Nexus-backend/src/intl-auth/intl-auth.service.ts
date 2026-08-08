@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -183,6 +184,69 @@ export class IntlAuthService {
       accessToken: this.signAccessToken(user),
       user: this.toPublicUser(user),
     };
+  }
+
+  async listUsers(options: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    paymentStatus?: string;
+  } = {}) {
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
+    const search = String(options.search || '').trim();
+    const status = String(options.status || '').trim();
+    const paymentStatus = String(options.paymentStatus || '').trim();
+
+    const qb = this.userRepository.createQueryBuilder('u').orderBy('u.createdAt', 'DESC');
+
+    if (search) {
+      qb.andWhere(
+        `(u.email ILIKE :q OR u.username ILIKE :q OR u.firstname ILIKE :q OR u.lastname ILIKE :q OR COALESCE(u.company, '') ILIKE :q)`,
+        { q: `%${search}%` }
+      );
+    }
+    if (status) {
+      qb.andWhere('u.status = :status', { status });
+    }
+    if (paymentStatus) {
+      qb.andWhere('u.paymentStatus = :paymentStatus', { paymentStatus });
+    }
+
+    const [rows, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data: rows.map((row) => this.toPublicUser(row)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  /** Admin: fetch one international user by id. */
+  async getUserById(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('International user not found');
+    }
+    return this.toPublicUser(user);
+  }
+
+  /** Admin: permanently delete an international user (payments cascade). */
+  async deleteUser(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('International user not found');
+    }
+    await this.userRepository.remove(user);
+    return { message: 'International user deleted', id: userId };
   }
 
   signDraftAccessToken(userId: string) {

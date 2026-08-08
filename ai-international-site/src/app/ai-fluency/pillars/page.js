@@ -8,7 +8,7 @@ import { paths } from 'src/routes/paths';
 export default function AiFluencyPillarsPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace(`${paths.dashboard}#users`);
+    router.replace(`${paths.dashboard}?view=users`);
   }, [router]);
   return null;
 }

@@ -1,16 +1,25 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpStatus,
+  Param,
   Post,
+  Query,
   Res,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 
+import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
+import { Roles } from '../jwt/roles.decorator';
+import { RolesGuard } from '../jwt/roles.guard';
+import { SessionGuard } from '../jwt/session.guard';
+import { UserRole } from '../user/users.entity';
 import { IntlLoginDto, IntlRegisterDto } from './intl-auth.dto';
 import { IntlAuthService } from './intl-auth.service';
 
@@ -46,6 +55,53 @@ export class IntlAuthController {
     const { id } = this.intlAuthService.verifyAccessToken(token);
     const user = await this.intlAuthService.me(id);
     return response.status(HttpStatus.OK).json({ user });
+  }
+
+  @Get('users')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: list international site users' })
+  async listUsers(
+    @Res() response: Response,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string
+  ) {
+    const result = await this.intlAuthService.listUsers({
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+      search,
+      status,
+      paymentStatus,
+    });
+    return response.status(HttpStatus.OK).json({
+      length: result.data.length,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  }
+
+  @Get('users/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: get one international user' })
+  async getUser(@Res() response: Response, @Param('id') id: string) {
+    const user = await this.intlAuthService.getUserById(id);
+    return response.status(HttpStatus.OK).json({ user });
+  }
+
+  @Delete('users/:id')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: delete an international user' })
+  async deleteUser(@Res() response: Response, @Param('id') id: string) {
+    const result = await this.intlAuthService.deleteUser(id);
+    return response.status(HttpStatus.OK).json(result);
   }
 
   private extractBearer(authorization?: string) {

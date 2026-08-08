@@ -131,6 +131,9 @@ const IntlPathwayModulesEditPage = lazy(() => import('src/pages/dashboard/intern
 const IntlPathwayRolesListPage = lazy(() => import('src/pages/dashboard/international/roles/list'));
 const IntlPathwayRolesCreatePage = lazy(() => import('src/pages/dashboard/international/roles/new'));
 const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/international/roles/edit'));
+const IntlLandingContentPage = lazy(() => import('src/pages/dashboard/international/landing'));
+const IntlUsersListPage = lazy(() => import('src/pages/dashboard/international/users/list'));
+const IntlUsersDetailsPage = lazy(() => import('src/pages/dashboard/international/users/details'));
 
 // Blog
 const BlogPostsPage = lazy(() => import('src/pages/dashboard/post/list'));
@@ -348,6 +351,15 @@ export const adminRoutes = [
         path: 'international',
         children: [
           { element: <IntlPathwayModulesListPage />, index: true },
+          { path: 'landing', element: <IntlLandingContentPage /> },
+          {
+            path: 'users',
+            children: [
+              { element: <IntlUsersListPage />, index: true },
+              { path: 'list', element: <IntlUsersListPage /> },
+              { path: ':id', element: <IntlUsersDetailsPage /> },
+            ],
+          },
           {
             path: 'modules',
             children: [

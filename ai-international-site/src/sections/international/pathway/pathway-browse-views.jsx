@@ -1,15 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
-import { Iconify } from 'src/components/iconify';
-import { paths } from 'src/routes/paths';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
@@ -147,24 +143,7 @@ function ViewShell({ title, subtitle, children }) {
         [`& .${layoutClasses.content}`]: frontendContentSx,
       }}
     >
-      <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: { xs: 4, md: 5 }, pb: 0 }}>
-        <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-          <Button
-            component={Link}
-            href={paths.dashboard}
-            startIcon={<Iconify icon="eva:arrow-ios-back-fill" width={18} />}
-            sx={{
-              textTransform: 'none',
-              color: alpha(NAVY, 0.65),
-              px: 0,
-              minWidth: 0,
-              '&:hover': { bgcolor: 'transparent', color: NAVY },
-            }}
-          >
-            Dashboard
-          </Button>
-        </Box>
-
+      <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: { xs: 3, md: 4 }, pb: 0 }}>
         <Box sx={{ pb: 3, borderBottom: `1px solid ${alpha(NAVY, 0.12)}`, mb: 3.5 }}>
           <Typography
             sx={{

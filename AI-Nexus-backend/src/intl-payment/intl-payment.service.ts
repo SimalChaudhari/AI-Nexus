@@ -27,12 +27,12 @@ import { IntlFxService } from './intl-fx.service';
 
 const INTL_DRAFT_JWT_TYP = 'intl_draft';
 
-/** WooshPay checkout methods for international membership (Step 4). */
+/** WooshPay checkout methods for international membership (test + live). */
 const INTL_CHECKOUT_PAYMENT_METHODS = [
-  'card', // Credit Card
-  'applepay', // Apple Pay
-  'googlepay', // Google Pay
-  'alipay', // Alipay
+  'card',
+  'applepay',
+  'googlepay',
+  'alipay',
 ] as const;
 
 /** Prevent parallel create-checkout for the same draft user (2x session race). */
@@ -46,6 +46,15 @@ function isGatewayPaid(paymentStatus?: string, status?: string): boolean {
   const ps = String(paymentStatus || '').toLowerCase();
   const st = String(status || '').toLowerCase();
   return ps === 'paid' || ps === 'complete' || st === 'complete' || st === 'paid';
+}
+
+/** WooshPay session ids look like cs_… / cs_test_…. Reject placeholders / junk. */
+function sanitizeWooshpaySessionId(value?: string | null): string {
+  const id = String(value || '').trim();
+  if (!id) return '';
+  if (id.includes('{') || id.includes('}') || /CHECKOUT_SESSION_ID/i.test(id)) return '';
+  if (!/^cs_[A-Za-z0-9_]+$/.test(id)) return '';
+  return id;
 }
 
 function isGatewayFailedOrClosed(paymentStatus?: string, status?: string): boolean {
@@ -91,6 +100,40 @@ export class IntlPaymentService {
       promoApplied: pricing.promoApplied,
       totalAmount: pricing.totalAmount,
       voucherDiscountAmount: pricing.voucherDiscountAmount,
+    };
+  }
+
+  /** Latest + recent payments for a user (profile / admin). */
+  async getMyPayments(userId: string, take = 10) {
+    const limit = Math.min(50, Math.max(1, Number(take) || 10));
+    const rows = await this.paymentRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    const payments = rows.map((payment) => this.toPublicPayment(payment));
+    const latest =
+      payments.find((p) => p.status === InternationalPaymentStatus.Paid) || payments[0] || null;
+    return { latest, payments };
+  }
+
+  private toPublicPayment(payment: InternationalPaymentEntity) {
+    return {
+      id: payment.id,
+      refId: payment.clientReferenceId,
+      status: payment.status,
+      amount: Number(payment.amount),
+      currency: payment.currency,
+      countryCode: payment.countryCode,
+      countryOfResidence: payment.countryOfResidence,
+      promoCode: payment.promoCode,
+      promoApplied: Boolean(payment.promoApplied),
+      applyGst: Boolean(payment.applyGst),
+      gstAmount: Number(payment.gstAmount || 0),
+      items: Array.isArray(payment.items) ? payment.items : [],
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+      eventType: payment.eventType,
     };
   }
 
@@ -144,7 +187,13 @@ export class IntlPaymentService {
         await this.paymentRepository.save(pendingPayment);
       } else {
         try {
-          const existingSession = await this.wooshPayService.getSession(pendingPayment.wooshpaySessionId);
+          const pendingSessionId = sanitizeWooshpaySessionId(pendingPayment.wooshpaySessionId);
+          if (!pendingSessionId) {
+            pendingPayment.status = InternationalPaymentStatus.Canceled;
+            pendingPayment.failureReason = 'replaced_by_new_intl_checkout';
+            await this.paymentRepository.save(pendingPayment);
+          } else {
+          const existingSession = await this.wooshPayService.getSession(pendingSessionId);
           if (isGatewayPaid(existingSession?.payment_status, existingSession?.status)) {
             throw new ConflictException(
               'Membership payment was already completed. Please wait while we finish activating your account.',
@@ -159,24 +208,26 @@ export class IntlPaymentService {
           if (sessionOpen && existingSession?.url) {
             return {
               url: existingSession.url,
-              sessionId: existingSession.id || pendingPayment.wooshpaySessionId,
+              sessionId: existingSession.id || pendingSessionId,
               refId: pendingPayment.clientReferenceId,
               currency: pendingPayment.currency,
               amount: Number(pendingPayment.amount),
               countryCode: pendingPayment.countryCode,
               paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
               reused: true,
+              testMode: Boolean(this.wooshPayService.getConfig()?.testMode),
             };
           }
 
           try {
-            await this.wooshPayService.expireCheckoutSession(pendingPayment.wooshpaySessionId);
+            await this.wooshPayService.expireCheckoutSession(pendingSessionId);
           } catch {
             // Session may already be expired/closed — continue with a new checkout.
           }
           pendingPayment.status = InternationalPaymentStatus.Canceled;
           pendingPayment.failureReason = 'replaced_by_new_intl_checkout';
           await this.paymentRepository.save(pendingPayment);
+          }
         } catch (error) {
           if (error instanceof ConflictException || error instanceof BadRequestException) {
             throw error;
@@ -243,16 +294,21 @@ export class IntlPaymentService {
 
       const successUrl = String(dto.successUrl).trim();
       const cancelUrl = String(dto.cancelUrl).trim();
+      // Use ref only — WooshPay may not substitute {CHECKOUT_SESSION_ID} (causes "id is invalid").
+      // Confirm looks up session from DB via ref → wooshpaySessionId.
       const finalSuccessUrl = `${successUrl}${successUrl.includes('?') ? '&' : '?'}ref=${clientReferenceId}`;
       const finalCancelUrl = `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}payment=canceled&ref=${clientReferenceId}`;
 
       try {
-        // Step 4: amount + currency + product name/description; methods via WooshPay.
+        const isTest = Boolean(this.wooshPayService.getConfig()?.testMode);
+        const paymentMethodTypes = [...INTL_CHECKOUT_PAYMENT_METHODS];
+        const unitCurrency = String(pricing.currency || 'sgd').toLowerCase();
+
         const session = await this.wooshPayService.createCheckoutSession({
           line_items: [
             {
               price_data: {
-                currency: pricing.currency,
+                currency: unitCurrency,
                 unit_amount: pricing.totalAmountCents,
                 product_data: {
                   name: pricing.itemName,
@@ -265,7 +321,7 @@ export class IntlPaymentService {
           success_url: finalSuccessUrl,
           cancel_url: finalCancelUrl,
           client_reference_id: clientReferenceId,
-          payment_method_types: [...INTL_CHECKOUT_PAYMENT_METHODS],
+          payment_method_types: paymentMethodTypes,
           ...(user.email && { customer_email: user.email }),
         });
 
@@ -276,10 +332,11 @@ export class IntlPaymentService {
           url: session.url,
           sessionId: session.id,
           refId: clientReferenceId,
-          currency: pricing.currency,
-          amount: pricing.totalAmount,
+          currency: payment.currency,
+          amount: Number(payment.amount),
           countryCode: pricing.countryCode,
-          paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
+          paymentMethodTypes,
+          testMode: isTest,
         };
       } catch (error: any) {
         payment.status = InternationalPaymentStatus.Failed;
@@ -315,9 +372,13 @@ export class IntlPaymentService {
       return this.buildConfirmResponse(user, payment);
     }
 
-    const sessionLookupId = String(dto.sessionId || payment.wooshpaySessionId || '').trim();
+    const sessionLookupId = sanitizeWooshpaySessionId(
+      dto.sessionId || payment.wooshpaySessionId || '',
+    );
     if (!sessionLookupId) {
-      throw new BadRequestException('Payment session id is required.');
+      throw new BadRequestException(
+        'Payment session id is missing. Please return from checkout again, or start a new payment.',
+      );
     }
 
     const session = await this.wooshPayService.getSession(sessionLookupId);

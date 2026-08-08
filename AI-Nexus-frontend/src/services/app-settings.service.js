@@ -1,5 +1,6 @@
 import axios from 'src/utils/axios';
 import { normalizePartnerWithIscaContent } from 'src/sections/partner-with-isca/partner-with-isca-defaults';
+import { normalizeIntlLandingContent } from 'src/sections/international/intl-landing-defaults';
 import { CONFIG } from 'src/config-global';
 
 const ASSET_BASE_URL = CONFIG.site.serverUrl.replace(/\/api\/?$/, '');
@@ -440,6 +441,21 @@ function transformLearningAdvertiseTabContent(source) {
   };
 }
 
+function transformInternationalLandingContent(source) {
+  const normalized = normalizeIntlLandingContent(source);
+  return {
+    ...normalized,
+    hero: {
+      ...normalized.hero,
+      heroImageUrl: normalizeAssetUrl(normalized.hero?.heroImageUrl || '') || null,
+    },
+    globalLearning: {
+      ...normalized.globalLearning,
+      imageUrl: normalizeAssetUrl(normalized.globalLearning?.imageUrl || '') || null,
+    },
+  };
+}
+
 function transformMembershipPaymentSettings(source) {
   if (!source || typeof source !== 'object') return null;
   return {
@@ -584,6 +600,9 @@ function transformSettings(settings) {
     footerContent: transformFooterContent(settings?.footerContent),
     learningAdvertiseTabContent: transformLearningAdvertiseTabContent(
       settings?.learningAdvertiseTabContent
+    ),
+    internationalLandingContent: transformInternationalLandingContent(
+      settings?.internationalLandingContent
     ),
     membershipPaymentSettings: transformMembershipPaymentSettings(
       settings?.membershipPaymentSettings
@@ -1089,6 +1108,50 @@ export const appSettingsService = {
 
   async updateLearningAdvertiseTabContent(payload) {
     const response = await axios.put('/app-settings/learning-advertise-tab-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async updateInternationalLandingContent(payload) {
+    const response = await axios.put('/app-settings/international-landing-content', payload || {});
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadInternationalLandingHero(file) {
+    const formData = new FormData();
+    formData.append('hero', file);
+    const response = await axios.post('/app-settings/international-landing-hero', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 15 * 60 * 1000, // large GIF / image uploads
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeInternationalLandingHero() {
+    const response = await axios.delete('/app-settings/international-landing-hero');
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async uploadInternationalLandingGlobalImage(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await axios.post('/app-settings/international-landing-global-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 15 * 60 * 1000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+    const data = response.data?.settings || response.data?.data || response.data || {};
+    return transformSettings(data);
+  },
+
+  async removeInternationalLandingGlobalImage() {
+    const response = await axios.delete('/app-settings/international-landing-global-image');
     const data = response.data?.settings || response.data?.data || response.data || {};
     return transformSettings(data);
   },

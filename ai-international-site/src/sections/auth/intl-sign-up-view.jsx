@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import Alert from '@mui/material/Alert';
+import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
@@ -31,6 +31,7 @@ import {
   createIntlCheckoutSession,
   getIntlMembershipPricing,
 } from 'src/services/intl-payment.service';
+import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
 import {
   COUNTRIES,
   getCountryFlagUrl,
@@ -58,6 +59,22 @@ const FORM_GRID_SX = {
 };
 
 const FULL = { gridColumn: '1 / -1' };
+
+/** ~10 compact rows visible before scroll. */
+const COUNTRY_LISTBOX_SX = {
+  maxHeight: 360,
+  py: 0.5,
+  '& .MuiAutocomplete-option': {
+    minHeight: 36,
+    py: 0.75,
+    px: 1.5,
+    fontSize: 14,
+  },
+};
+
+const filterCountries = createFilterOptions({
+  stringify: (option) => `${option.label} ${option.code} ${option.phone}`,
+});
 
 function fieldError(errors, name) {
   return errors?.[name]?.message || '';
@@ -90,9 +107,41 @@ function CountryFlag({ code, size = 18 }) {
   );
 }
 
+/** Soft tinted field icon for a more polished form look. */
+function FieldIcon({ icon, color }) {
+  return (
+    <Box
+      sx={{
+        width: 28,
+        height: 28,
+        borderRadius: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        bgcolor: alpha(color, 0.12),
+        color,
+      }}
+    >
+      <Iconify icon={icon} width={16} />
+    </Box>
+  );
+}
+
+const FIELD_ICON = {
+  salutation: { icon: 'solar:user-speak-rounded-bold-duotone', color: '#7C3AED' },
+  firstName: { icon: 'solar:user-bold-duotone', color: '#2563EB' },
+  lastName: { icon: 'solar:user-id-bold-duotone', color: '#0D9488' },
+  email: { icon: 'solar:letter-bold-duotone', color: '#EA580C' },
+  password: { icon: 'solar:lock-password-bold-duotone', color: '#C00000' },
+  phone: { icon: 'solar:phone-bold-duotone', color: '#059669' },
+  country: { icon: 'solar:global-bold-duotone', color: '#002060' },
+};
+
 // ----------------------------------------------------------------------
 
 export function IntlSignUpView() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get('returnTo') || paths.dashboard;
   const paymentCanceled = searchParams.get('payment') === 'canceled';
@@ -303,10 +352,17 @@ export function IntlSignUpView() {
             Already have an account?
           </Typography>
           <Typography
-            component={Link}
+            component="a"
             href={`${paths.auth.signIn}?returnTo=${encodeURIComponent(returnTo)}`}
+            onClick={(e) => {
+              e.preventDefault();
+              navigateToAuthPath(
+                router,
+                `${paths.auth.signIn}?returnTo=${encodeURIComponent(returnTo)}`,
+              );
+            }}
             variant="subtitle2"
-            sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 700 }}
+            sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 700, cursor: 'pointer' }}
           >
             Sign in
           </Typography>
@@ -350,6 +406,21 @@ export function IntlSignUpView() {
                       error={Boolean(fieldError(errors, 'salutation'))}
                       helperText={fieldError(errors, 'salutation')}
                       InputLabelProps={{ shrink: true }}
+                      SelectProps={{
+                        MenuProps: {
+                          disableScrollLock: true,
+                          disablePortal: false,
+                          anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                          transformOrigin: { vertical: 'top', horizontal: 'left' },
+                        },
+                      }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <FieldIcon {...FIELD_ICON.salutation} />
+                          </InputAdornment>
+                        ),
+                      }}
                     >
                       {['Mr', 'Mrs', 'Ms', 'Dr', 'Prof'].map((s) => (
                         <MenuItem key={s} value={s}>
@@ -376,7 +447,7 @@ export function IntlSignUpView() {
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <Iconify icon="solar:user-id-bold-duotone" width={18} />
+                          <FieldIcon {...FIELD_ICON.firstName} />
                         </InputAdornment>
                       ),
                     }}
@@ -399,7 +470,7 @@ export function IntlSignUpView() {
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <Iconify icon="solar:user-id-bold-duotone" width={18} />
+                          <FieldIcon {...FIELD_ICON.lastName} />
                         </InputAdornment>
                       ),
                     }}
@@ -424,7 +495,7 @@ export function IntlSignUpView() {
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
-                            <Iconify icon="solar:letter-bold-duotone" width={18} />
+                            <FieldIcon {...FIELD_ICON.email} />
                           </InputAdornment>
                         ),
                       }}
@@ -451,7 +522,7 @@ export function IntlSignUpView() {
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
-                            <Iconify icon="solar:lock-password-bold-duotone" width={18} />
+                            <FieldIcon {...FIELD_ICON.password} />
                           </InputAdornment>
                         ),
                         endAdornment: (
@@ -459,6 +530,7 @@ export function IntlSignUpView() {
                             <IconButton onClick={() => setShowPassword((v) => !v)} edge="end">
                               <Iconify
                                 icon={showPassword ? 'solar:eye-bold' : 'solar:eye-closed-bold'}
+                                sx={{ color: '#64748B' }}
                               />
                             </IconButton>
                           </InputAdornment>
@@ -482,21 +554,22 @@ export function IntlSignUpView() {
                       helperText={fieldError(errors, 'contactNumber')}
                       InputLabelProps={{ shrink: true }}
                       InputProps={{
-                        startAdornment: selectedCountry ? (
-                          <InputAdornment position="start">
-                            <Stack direction="row" spacing={0.75} alignItems="center">
-                              <CountryFlag code={selectedCountry.code} />
-                              <Typography
-                                variant="caption"
-                                sx={{ color: 'text.secondary', fontWeight: 600 }}
-                              >
-                                +{selectedCountry.phone}
-                              </Typography>
+                        startAdornment: (
+                          <InputAdornment position="start" sx={{ minWidth: 72, mr: 0.5 }}>
+                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 64 }}>
+                              <FieldIcon {...FIELD_ICON.phone} />
+                              {selectedCountry ? (
+                                <>
+                                  <CountryFlag code={selectedCountry.code} />
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ color: 'text.secondary', fontWeight: 600, minWidth: 28 }}
+                                  >
+                                    +{selectedCountry.phone}
+                                  </Typography>
+                                </>
+                              ) : null}
                             </Stack>
-                          </InputAdornment>
-                        ) : (
-                          <InputAdornment position="start">
-                            <Iconify icon="solar:phone-bold-duotone" width={18} />
                           </InputAdornment>
                         ),
                       }}
@@ -509,49 +582,133 @@ export function IntlSignUpView() {
                 <Controller
                   name="countryOfResidence"
                   control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...textFieldProps(field)}
-                      select
-                      fullWidth
-                      required
-                      label="Country of residence"
-                      error={Boolean(fieldError(errors, 'countryOfResidence'))}
-                      helperText={
-                        fieldError(errors, 'countryOfResidence') ||
-                        (detectingCountry
-                          ? 'Detecting your country…'
-                          : 'Auto-detected from your location')
-                      }
-                      InputLabelProps={{ shrink: true }}
-                      SelectProps={{
-                        renderValue: (value) => {
-                          const country = resolveCountryByLabel(value);
+                  render={({ field }) => {
+                    const { ref, onChange, value, ...restField } = field;
+                    const selected = resolveCountryByLabel(value) || null;
+
+                    return (
+                      <Autocomplete
+                        name={restField.name}
+                        onBlur={restField.onBlur}
+                        options={COUNTRIES}
+                        value={selected}
+                        loading={detectingCountry}
+                        autoHighlight
+                        openOnFocus
+                        disableListWrap
+                        disableClearable={Boolean(selected)}
+                        filterOptions={filterCountries}
+                        getOptionLabel={(option) => option?.label || ''}
+                        isOptionEqualToValue={(option, val) => option.code === val?.code}
+                        onChange={(_, next) => onChange(next?.label || '')}
+                        componentsProps={{
+                          popper: {
+                            placement: 'bottom-start',
+                            modifiers: [
+                              { name: 'flip', enabled: false },
+                              {
+                                name: 'preventOverflow',
+                                options: { altAxis: false, tether: false },
+                              },
+                            ],
+                          },
+                          paper: {
+                            elevation: 8,
+                            sx: {
+                              mt: 0.5,
+                              borderRadius: 1.5,
+                              border: `1px solid ${alpha(NAVY, 0.1)}`,
+                              boxShadow: `0 12px 32px ${alpha(NAVY, 0.14)}`,
+                              overflow: 'hidden',
+                            },
+                          },
+                        }}
+                        ListboxProps={{ sx: COUNTRY_LISTBOX_SX }}
+                        renderOption={(props, option) => {
+                          const { key, ...optionProps } = props;
                           return (
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              {detectingCountry ? (
-                                <CircularProgress size={14} />
-                              ) : country ? (
-                                <CountryFlag code={country.code} />
-                              ) : (
-                                <Iconify icon="solar:global-bold-duotone" width={18} />
-                              )}
-                              <span>{value}</span>
-                            </Stack>
+                            <Box
+                              component="li"
+                              key={option.code || key}
+                              {...optionProps}
+                              sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}
+                            >
+                              <CountryFlag code={option.code} size={16} />
+                              <Typography component="span" variant="body2" sx={{ flex: 1, minWidth: 0 }}>
+                                {option.label}
+                              </Typography>
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                sx={{ color: 'text.disabled', fontWeight: 600, flexShrink: 0 }}
+                              >
+                                +{option.phone}
+                              </Typography>
+                            </Box>
                           );
-                        },
-                      }}
-                    >
-                      {COUNTRIES.map((country) => (
-                        <MenuItem key={country.code} value={country.label}>
-                          <Stack direction="row" spacing={1.25} alignItems="center">
-                            <CountryFlag code={country.code} />
-                            <span>{country.label}</span>
-                          </Stack>
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  )}
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            inputRef={ref}
+                            fullWidth
+                            required
+                            label="Country of residence"
+                            placeholder="Search country…"
+                            error={Boolean(fieldError(errors, 'countryOfResidence'))}
+                            helperText={
+                              fieldError(errors, 'countryOfResidence') ||
+                              (detectingCountry
+                                ? 'Detecting your country…'
+                                : 'Type to search, or pick from the list')
+                            }
+                            InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
+                            InputProps={{
+                              ...params.InputProps,
+                              startAdornment: (
+                                <>
+                                  <InputAdornment position="start" sx={{ ml: 0.5, mr: 0 }}>
+                                    {detectingCountry ? (
+                                      <Box
+                                        sx={{
+                                          width: 28,
+                                          height: 28,
+                                          borderRadius: 1,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          bgcolor: alpha(FIELD_ICON.country.color, 0.12),
+                                        }}
+                                      >
+                                        <CircularProgress size={14} sx={{ color: FIELD_ICON.country.color }} />
+                                      </Box>
+                                    ) : selected ? (
+                                      <Box
+                                        sx={{
+                                          width: 28,
+                                          height: 28,
+                                          borderRadius: 1,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          bgcolor: alpha(FIELD_ICON.country.color, 0.12),
+                                        }}
+                                      >
+                                        <CountryFlag code={selected.code} size={16} />
+                                      </Box>
+                                    ) : (
+                                      <FieldIcon {...FIELD_ICON.country} />
+                                    )}
+                                  </InputAdornment>
+                                  {params.InputProps.startAdornment}
+                                </>
+                              ),
+                            }}
+                          />
+                        )}
+                      />
+                    );
+                  }}
                 />
               </Box>
             </Box>

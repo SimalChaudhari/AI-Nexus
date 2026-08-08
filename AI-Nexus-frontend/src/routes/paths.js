@@ -286,6 +286,12 @@ export const paths = {
     },
     international: {
       root: `${ROOTS.ADMIN}/international`,
+      landing: `${ROOTS.ADMIN}/international/landing`,
+      users: {
+        root: `${ROOTS.ADMIN}/international/users`,
+        list: `${ROOTS.ADMIN}/international/users/list`,
+        details: (id) => `${ROOTS.ADMIN}/international/users/${id}`,
+      },
       modules: {
         root: `${ROOTS.ADMIN}/international/modules`,
         list: `${ROOTS.ADMIN}/international/modules/list`,

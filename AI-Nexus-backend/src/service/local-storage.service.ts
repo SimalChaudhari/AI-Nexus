@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { existsSync } from 'fs';
-import { mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises';
+import { copyFile, mkdir, readFile, readdir, rename, unlink, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
 import mime from 'mime-types';
 
@@ -27,7 +27,21 @@ export class LocalStorageService {
       ? `${this.sanitizeFileName(options.fileName)}${extension}`
       : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`;
 
-    await writeFile(join(targetDir, fileName), file.buffer);
+    const destPath = join(targetDir, fileName);
+
+    // Prefer streaming from disk (large GIF / image uploads) over buffering into RAM.
+    if (file.path) {
+      try {
+        await rename(file.path, destPath);
+      } catch {
+        await copyFile(file.path, destPath);
+        await unlink(file.path).catch(() => undefined);
+      }
+    } else if (file.buffer?.length) {
+      await writeFile(destPath, file.buffer);
+    } else {
+      throw new BadRequestException('Empty upload');
+    }
 
     return `/uploads/${normalizedFolder}/${fileName}`;
   }

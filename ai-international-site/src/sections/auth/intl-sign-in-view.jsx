@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,7 +20,10 @@ import { Logo } from 'src/components/logo';
 import { Iconify } from 'src/components/iconify';
 import { AuthCenteredLayout } from 'src/layouts/auth-centered';
 import { paths } from 'src/routes/paths';
+import { useIntlAuth } from 'src/auth/intl-auth-context';
+import { setIntlFlashToast } from 'src/auth/intl-session';
 import { intlLogin } from 'src/services/intl-auth.service';
+import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
 import { IntlSignInSchema } from 'src/validations/intl-auth.validation';
 
 const NAVY = '#002060';
@@ -37,6 +39,7 @@ function textFieldProps(field) {
 export function IntlSignInView() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { applySession } = useIntlAuth();
   const returnTo = searchParams.get('returnTo') || paths.dashboard;
   const [errorMsg, setErrorMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -53,8 +56,16 @@ export function IntlSignInView() {
   const onSubmit = handleSubmit(async (data) => {
     setErrorMsg('');
     try {
-      await intlLogin(data);
-      router.push(returnTo.startsWith('/') ? returnTo : paths.dashboard);
+      const result = await intlLogin(data);
+      if (result?.accessToken && result?.user) {
+        applySession({ accessToken: result.accessToken, user: result.user });
+      }
+      setIntlFlashToast({
+        message: 'Signed in successfully.',
+        severity: 'success',
+      });
+      const dest = returnTo.startsWith('/') ? returnTo : paths.dashboard;
+      router.push(dest);
     } catch (error) {
       const message =
         error?.response?.data?.message ||
@@ -63,6 +74,19 @@ export function IntlSignInView() {
       setErrorMsg(Array.isArray(message) ? message.join(', ') : String(message));
     }
   });
+
+  const goSignUp = (e) => {
+    e.preventDefault();
+    navigateToAuthPath(
+      router,
+      `${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`,
+    );
+  };
+
+  const goHome = (e) => {
+    e.preventDefault();
+    navigateToAuthPath(router, paths.home);
+  };
 
   return (
     <AuthCenteredLayout>
@@ -195,20 +219,22 @@ export function IntlSignInView() {
             New here?
           </Typography>
           <Typography
-            component={Link}
+            component="a"
             href={`${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`}
+            onClick={goSignUp}
             variant="subtitle2"
-            sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 700 }}
+            sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 700, cursor: 'pointer' }}
           >
             Create an account
           </Typography>
         </Stack>
 
         <Typography
-          component={Link}
+          component="a"
           href={paths.home}
+          onClick={goHome}
           variant="body2"
-          sx={{ color: alpha(NAVY, 0.65), textDecoration: 'none', fontWeight: 500 }}
+          sx={{ color: alpha(NAVY, 0.65), textDecoration: 'none', fontWeight: 500, cursor: 'pointer' }}
         >
           ← Back to home
         </Typography>

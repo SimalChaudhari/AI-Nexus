@@ -1,10 +1,23 @@
 import axios from 'src/utils/axios';
 
-import { setIntlSession } from 'src/auth/intl-session';
+import { getIntlAccessToken, setIntlSession } from 'src/auth/intl-session';
 
 export async function getIntlCountries() {
   const res = await axios.get('/intl-payments/countries');
   return res.data?.countries || [];
+}
+
+/** Latest + recent membership payments for the signed-in international user. */
+export async function getIntlMyPayments() {
+  const token = getIntlAccessToken();
+  if (!token) return { latest: null, payments: [] };
+  const res = await axios.get('/intl-payments/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return {
+    latest: res.data?.latest || null,
+    payments: Array.isArray(res.data?.payments) ? res.data.payments : [],
+  };
 }
 
 export async function getIntlMembershipPricing({ countryOfResidence, promoApplied = false }) {
