@@ -336,13 +336,25 @@ function UserProfileCard({ user, onLogout }) {
   );
 }
 
-function PaymentMethodCard({ payment, user }) {
+function PaymentMethodCard({ payment, user, loading = false }) {
   const paid = String(payment?.status || user.paymentStatus || '').toLowerCase() === 'paid';
   const amountLabel = payment
     ? formatMoney(payment.amount, payment.currency)
-    : user.currency
-      ? `${user.currency}`
-      : '—';
+    : loading
+      ? 'Loading…'
+      : user.currency
+        ? `${user.currency} —`
+        : '—';
+  const planRaw = String(
+    payment?.membershipType ||
+      payment?.items?.[0]?.membershipType ||
+      user.membershipType ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const planLabel =
+    planRaw === 'student' ? 'Student' : planRaw === 'full' ? 'Full / Role' : loading ? '…' : '—';
 
   return (
     <Box
@@ -410,13 +422,20 @@ function PaymentMethodCard({ payment, user }) {
         }}
       >
         <MetaPair label="Currency" value={payment?.currency || user.currency} />
+        <MetaPair label="Membership plan" value={planLabel} />
         <MetaPair
           label="Reference"
-          value={payment?.refId ? String(payment.refId).slice(0, 14) : '—'}
+          value={payment?.refId ? String(payment.refId) : loading ? '…' : '—'}
         />
         <MetaPair
           label={paid ? 'Paid at' : 'Created'}
-          value={formatDate(payment?.paidAt || payment?.createdAt, false)}
+          value={
+            payment?.paidAt || payment?.createdAt
+              ? formatDate(payment?.paidAt || payment?.createdAt, false)
+              : loading
+                ? '…'
+                : '—'
+          }
         />
         <MetaPair
           label="Billing country"
@@ -429,7 +448,9 @@ function PaymentMethodCard({ payment, user }) {
               ? formatMoney(payment.gstAmount, payment.currency)
               : payment
                 ? 'Not applied'
-                : '—'
+                : loading
+                  ? '…'
+                  : '—'
           }
         />
         <MetaPair
@@ -437,8 +458,16 @@ function PaymentMethodCard({ payment, user }) {
           value={
             payment?.promoApplied
               ? payment.promoCode || 'Applied'
-              : payment?.promoCode || user.promoCode || 'None'
+              : payment?.promoCode || user.promoCode || (payment ? 'None' : loading ? '…' : '—')
           }
+        />
+        <MetaPair
+          label="WooshPay session"
+          value={payment?.wooshpaySessionId || (loading ? '…' : '—')}
+        />
+        <MetaPair
+          label="WooshPay intent"
+          value={payment?.wooshpayPaymentIntentId || (loading ? '…' : '—')}
         />
       </Box>
     </Box>
@@ -509,6 +538,7 @@ export function IntlProfileView() {
   const [payment, setPayment] = useState(null);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [paymentLoading, setPaymentLoading] = useState(true);
 
   useLayoutEffect(() => {
     if (!authReady) return;
@@ -529,25 +559,33 @@ export function IntlProfileView() {
       if (!authReady) return;
       if (!isIntlAuthenticated()) return;
       const cached = authUser || getIntlUser();
+      setPaymentLoading(true);
       try {
-        const [fresh, pay] = await Promise.all([
-          intlMe(),
-          getIntlMyPayments().catch(() => ({ latest: null, payments: [] })),
-        ]);
+        // Load payments first (heals plan), then refresh profile user.
+        const pay = await getIntlMyPayments();
         if (!active) return;
-        if (fresh) setUser(fresh);
         setPayment(pay?.latest || null);
         setPayments(Array.isArray(pay?.payments) ? pay.payments : []);
+
+        const fresh = await intlMe().catch(() => null);
+        if (!active) return;
+        if (fresh) setUser(fresh);
       } catch {
-        if (active && !cached) router.replace(paths.auth.signIn);
+        if (!active) return;
+        // Keep cached user; surface empty billing only if fetch failed.
+        if (!cached) router.replace(paths.auth.signIn);
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setPaymentLoading(false);
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [authReady, authUser, router]);
+    // Only re-fetch when auth readiness / user identity changes (not every user object refresh).
+  }, [authReady, authUser?.id, router]);
 
   const handleLogout = () => {
     notifyNavigationStart();
@@ -724,7 +762,7 @@ export function IntlProfileView() {
             </Stack>
 
             <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
-              <PaymentMethodCard payment={payment} user={user} />
+              <PaymentMethodCard payment={payment} user={user} loading={paymentLoading} />
 
               <Box
                 id="history"
@@ -789,6 +827,29 @@ export function IntlProfileView() {
                             <Typography sx={{ fontSize: 12.5, color: alpha(NAVY, 0.55), mt: 0.2 }}>
                               {item.refId || 'Membership'} · {formatDate(item.paidAt || item.createdAt)}
                             </Typography>
+                            {item.wooshpaySessionId ? (
+                              <Typography
+                                sx={{
+                                  fontSize: 11.5,
+                                  color: alpha(NAVY, 0.45),
+                                  mt: 0.35,
+                                  wordBreak: 'break-all',
+                                }}
+                              >
+                                Session: {item.wooshpaySessionId}
+                              </Typography>
+                            ) : null}
+                            {item.wooshpayPaymentIntentId ? (
+                              <Typography
+                                sx={{
+                                  fontSize: 11.5,
+                                  color: alpha(NAVY, 0.45),
+                                  wordBreak: 'break-all',
+                                }}
+                              >
+                                Intent: {item.wooshpayPaymentIntentId}
+                              </Typography>
+                            ) : null}
                           </Box>
                         </Stack>
                         <StatusPill status={item.status} />

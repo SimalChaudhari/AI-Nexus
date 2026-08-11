@@ -15,9 +15,13 @@ export class IntlMembershipSettingsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  /** Standard membership fee in SGD before FX conversion. */
+  /** Standard membership fee in SGD before FX conversion (Full / Role plan). */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 365 })
   baseAmountSgd!: number;
+
+  /** Student membership fee in SGD before FX conversion. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 150 })
+  studentAmountSgd!: number;
 
   /** Promo / voucher payable amount in SGD before FX conversion. */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 100 })

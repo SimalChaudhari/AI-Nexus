@@ -13,6 +13,7 @@ import { resolveCountryCode, resolveCurrencyForCountry } from '../intl-payment/i
 import { IntlLoginDto, IntlRegisterDto } from './intl-auth.dto';
 import {
   InternationalAuthProvider,
+  InternationalMembershipType,
   InternationalUserEntity,
   InternationalUserPaymentStatus,
   InternationalUserStatus,
@@ -21,6 +22,14 @@ import {
 const INTL_JWT_TYP = 'intl';
 const INTL_DRAFT_JWT_TYP = 'intl_draft';
 const ACCESS_TOKEN_EXPIRES = '7d';
+
+function normalizeMembershipType(value: unknown): InternationalMembershipType {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === InternationalMembershipType.Student) {
+    return InternationalMembershipType.Student;
+  }
+  return InternationalMembershipType.Full;
+}
 
 @Injectable()
 export class IntlAuthService {
@@ -63,6 +72,7 @@ export class IntlAuthService {
         existing.countryCode = countryCode || null;
         existing.currency = resolveCurrencyForCountry(countryOfResidence || '');
         existing.promoCode = String(dto.promoCode || '').trim() || null;
+        existing.membershipType = normalizeMembershipType(dto.membershipType);
         existing.paymentStatus = InternationalUserPaymentStatus.Unpaid;
         const saved = await this.userRepository.save(existing);
         return {
@@ -115,6 +125,7 @@ export class IntlAuthService {
       countryCode: countryCode || null,
       currency: resolveCurrencyForCountry(countryOfResidence || ''),
       promoCode: String(dto.promoCode || '').trim() || null,
+      membershipType: normalizeMembershipType(dto.membershipType),
       isVerified: false,
       paymentStatus: InternationalUserPaymentStatus.Unpaid,
       status: InternationalUserStatus.PendingPayment,
@@ -314,6 +325,7 @@ export class IntlAuthService {
       countryCode: user.countryCode,
       currency: user.currency,
       promoCode: user.promoCode,
+      membershipType: normalizeMembershipType(user.membershipType),
       paymentStatus: user.paymentStatus,
       authProvider: user.authProvider,
       avatarUrl: user.avatarUrl,

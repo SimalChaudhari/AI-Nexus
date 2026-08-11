@@ -3,12 +3,16 @@ import type { IntlFxService } from './intl-fx.service';
 
 /** Fallback membership fee in SGD when DB settings are missing. */
 export const INTL_MEMBERSHIP_BASE_SGD = 365;
+export const INTL_MEMBERSHIP_STUDENT_SGD = 150;
 export const INTL_MEMBERSHIP_VOUCHER_SGD = 100;
+
+export type IntlMembershipPlan = 'student' | 'full';
 
 export type IntlMembershipPricing = {
   countryCode: string;
   countryOfResidence: string;
   currency: string;
+  membershipType: IntlMembershipPlan;
   baseAmountSgd: number;
   baseAmount: number;
   exchangeRate: number;
@@ -20,12 +24,19 @@ export type IntlMembershipPricing = {
   itemDescription: string;
 };
 
+export function normalizeIntlMembershipType(value: unknown): IntlMembershipPlan {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === 'student' ? 'student' : 'full';
+}
+
 export async function resolveIntlMembershipPricing(
   fx: IntlFxService,
   options: {
     countryOfResidence: string;
     promoApplied?: boolean;
+    membershipType?: string;
     baseAmountSgd?: number;
+    studentAmountSgd?: number;
     voucherDiscountAmountSgd?: number;
   },
 ): Promise<IntlMembershipPricing> {
@@ -33,26 +44,36 @@ export async function resolveIntlMembershipPricing(
   const countryCode = resolveCountryCode(countryOfResidence);
   const currency = resolveCurrencyForCountry(countryOfResidence);
   const promoApplied = Boolean(options.promoApplied);
+  const membershipType = normalizeIntlMembershipType(options.membershipType);
 
   const baseSgdRaw = Number(options.baseAmountSgd);
+  const studentSgdRaw = Number(options.studentAmountSgd);
   const voucherSgdRaw = Number(options.voucherDiscountAmountSgd);
-  const baseAmountSgd =
+  const fullAmountSgd =
     Number.isFinite(baseSgdRaw) && baseSgdRaw > 0 ? baseSgdRaw : INTL_MEMBERSHIP_BASE_SGD;
+  const studentAmountSgd =
+    Number.isFinite(studentSgdRaw) && studentSgdRaw > 0
+      ? studentSgdRaw
+      : INTL_MEMBERSHIP_STUDENT_SGD;
   const voucherAmountSgd =
     Number.isFinite(voucherSgdRaw) && voucherSgdRaw > 0
       ? voucherSgdRaw
       : INTL_MEMBERSHIP_VOUCHER_SGD;
 
-  const convertedBase = await fx.convertFromSgd(baseAmountSgd, currency);
+  const planAmountSgd = membershipType === 'student' ? studentAmountSgd : fullAmountSgd;
+
+  const convertedBase = await fx.convertFromSgd(planAmountSgd, currency);
   const convertedVoucher = await fx.convertFromSgd(voucherAmountSgd, currency);
 
   const total = promoApplied ? convertedVoucher : convertedBase;
+  const planLabel = membershipType === 'student' ? 'Student' : 'Full / Role';
 
   return {
     countryCode,
     countryOfResidence,
     currency: total.currency,
-    baseAmountSgd,
+    membershipType,
+    baseAmountSgd: planAmountSgd,
     baseAmount: convertedBase.amount,
     exchangeRate: convertedBase.rate,
     promoApplied,
@@ -60,10 +81,10 @@ export async function resolveIntlMembershipPricing(
     totalAmountCents: total.amountCents,
     voucherDiscountAmount: convertedVoucher.amount,
     itemName: promoApplied
-      ? 'AI Nexus International membership (promo)'
-      : 'AI Nexus International membership',
+      ? `AI Nexus International membership — ${planLabel} (promo)`
+      : `AI Nexus International membership — ${planLabel}`,
     itemDescription: promoApplied
-      ? 'International AI Fluency membership with promotional rate. Full catalogue access after payment.'
-      : 'International AI Fluency membership. Full catalogue access after payment succeeds.',
+      ? `${planLabel} international AI Fluency membership with promotional rate.`
+      : `${planLabel} international AI Fluency membership. Access unlocks after payment succeeds.`,
   };
 }

@@ -10,6 +10,7 @@ import * as crypto from 'crypto';
 import { Repository } from 'typeorm';
 
 import {
+  InternationalMembershipType,
   InternationalUserEntity,
   InternationalUserPaymentStatus,
   InternationalUserStatus,
@@ -30,7 +31,9 @@ import {
 import { IntlMembershipSettingsEntity } from './intl-membership-settings.entity';
 import {
   INTL_MEMBERSHIP_BASE_SGD,
+  INTL_MEMBERSHIP_STUDENT_SGD,
   INTL_MEMBERSHIP_VOUCHER_SGD,
+  normalizeIntlMembershipType,
   resolveIntlMembershipPricing,
 } from './intl-pricing';
 import { listIntlCountries } from './intl-currency';
@@ -79,6 +82,22 @@ function isGatewayFailedOrClosed(paymentStatus?: string, status?: string): boole
   );
 }
 
+/** Plan stored on payment line items at checkout — source of truth after pay. */
+function membershipTypeFromPayment(
+  payment: Pick<InternationalPaymentEntity, 'items' | 'eventType'> | null | undefined,
+): InternationalMembershipType | null {
+  const raw = payment?.items?.[0]?.membershipType;
+  if (raw != null && String(raw).trim() !== '') {
+    return normalizeIntlMembershipType(raw) === 'student'
+      ? InternationalMembershipType.Student
+      : InternationalMembershipType.Full;
+  }
+  const eventType = String(payment?.eventType || '').toLowerCase();
+  if (eventType.includes('student')) return InternationalMembershipType.Student;
+  if (eventType.includes('full')) return InternationalMembershipType.Full;
+  return null;
+}
+
 @Injectable()
 export class IntlPaymentService {
   constructor(
@@ -106,6 +125,7 @@ export class IntlPaymentService {
 
   private serializeSettings(row: IntlMembershipSettingsEntity) {
     const baseAmountSgd = this.toNumber(row.baseAmountSgd, INTL_MEMBERSHIP_BASE_SGD);
+    const studentAmountSgd = this.toNumber(row.studentAmountSgd, INTL_MEMBERSHIP_STUDENT_SGD);
     const voucherDiscountAmountSgd = this.toNumber(
       row.voucherDiscountAmountSgd,
       INTL_MEMBERSHIP_VOUCHER_SGD,
@@ -124,6 +144,7 @@ export class IntlPaymentService {
       id: row.id,
       currency: 'SGD',
       baseAmountSgd,
+      studentAmountSgd,
       voucherDiscountAmountSgd,
       referralCode: referralCode || '',
       referralLinkPath,
@@ -144,15 +165,32 @@ export class IntlPaymentService {
   }
 
   private async ensureSettingsRow(): Promise<IntlMembershipSettingsEntity> {
-    const existing = await this.settingsRepository.find({
-      order: { createdAt: 'ASC' },
-      take: 1,
-    });
-    if (existing[0]) return existing[0];
+    try {
+      const existing = await this.settingsRepository.find({
+        order: { createdAt: 'ASC' },
+        take: 1,
+      });
+      if (existing[0]) return existing[0];
+    } catch (error: any) {
+      const message = String(error?.message || error || '');
+      if (message.includes('studentAmountSgd') && message.includes('does not exist')) {
+        await this.settingsRepository.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "studentAmountSgd" decimal(12,2) NOT NULL DEFAULT 150`,
+        );
+        const existing = await this.settingsRepository.find({
+          order: { createdAt: 'ASC' },
+          take: 1,
+        });
+        if (existing[0]) return existing[0];
+      } else {
+        throw error;
+      }
+    }
 
     return this.settingsRepository.save(
       this.settingsRepository.create({
         baseAmountSgd: INTL_MEMBERSHIP_BASE_SGD,
+        studentAmountSgd: INTL_MEMBERSHIP_STUDENT_SGD,
         voucherDiscountAmountSgd: INTL_MEMBERSHIP_VOUCHER_SGD,
         referralCode: null,
         referralLinkPath: '/auth/sign-up?ref=',
@@ -172,9 +210,17 @@ export class IntlPaymentService {
     if (source.baseAmountSgd != null) {
       const next = Number(source.baseAmountSgd);
       if (!Number.isFinite(next) || next <= 0) {
-        throw new BadRequestException('Standard amount (SGD) must be greater than 0');
+        throw new BadRequestException('Full / Role amount (SGD) must be greater than 0');
       }
       row.baseAmountSgd = Number(next.toFixed(2));
+    }
+
+    if (source.studentAmountSgd != null) {
+      const next = Number(source.studentAmountSgd);
+      if (!Number.isFinite(next) || next <= 0) {
+        throw new BadRequestException('Student amount (SGD) must be greater than 0');
+      }
+      row.studentAmountSgd = Number(next.toFixed(2));
     }
 
     if (source.voucherDiscountAmountSgd != null) {
@@ -203,22 +249,31 @@ export class IntlPaymentService {
     const settings = await this.getMembershipSettings();
     return {
       baseAmountSgd: settings.baseAmountSgd,
+      studentAmountSgd: settings.studentAmountSgd,
       voucherDiscountAmountSgd: settings.voucherDiscountAmountSgd,
     };
   }
 
-  async getPricing(countryOfResidence: string, promoApplied = false) {
+  async getPricing(
+    countryOfResidence: string,
+    promoApplied = false,
+    membershipType: string = 'full',
+  ) {
     const amounts = await this.getPricingAmounts();
+    const plan = normalizeIntlMembershipType(membershipType);
     const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
       countryOfResidence,
       promoApplied,
+      membershipType: plan,
       baseAmountSgd: amounts.baseAmountSgd,
+      studentAmountSgd: amounts.studentAmountSgd,
       voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
     });
     return {
       countryCode: pricing.countryCode,
       countryOfResidence: pricing.countryOfResidence,
       currency: pricing.currency,
+      membershipType: pricing.membershipType,
       baseAmountSgd: pricing.baseAmountSgd,
       baseAmount: pricing.baseAmount,
       exchangeRate: pricing.exchangeRate,
@@ -236,6 +291,23 @@ export class IntlPaymentService {
       order: { createdAt: 'DESC' },
       take: limit,
     });
+
+    // Heal membershipType from the paid checkout (fixes older rows / pending-reuse bugs).
+    try {
+      const paid =
+        rows.find((row) => row.status === InternationalPaymentStatus.Paid) || null;
+      const planFromPayment = membershipTypeFromPayment(paid);
+      if (planFromPayment) {
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+        if (user && user.membershipType !== planFromPayment) {
+          user.membershipType = planFromPayment;
+          await this.userRepository.save(user);
+        }
+      }
+    } catch {
+      // Never block payment history if heal fails.
+    }
+
     const payments = rows.map((payment) => this.toPublicPayment(payment));
     const latest =
       payments.find((p) => p.status === InternationalPaymentStatus.Paid) || payments[0] || null;
@@ -243,6 +315,7 @@ export class IntlPaymentService {
   }
 
   private toPublicPayment(payment: InternationalPaymentEntity) {
+    const membershipType = membershipTypeFromPayment(payment);
     return {
       id: payment.id,
       refId: payment.clientReferenceId,
@@ -256,6 +329,9 @@ export class IntlPaymentService {
       applyGst: Boolean(payment.applyGst),
       gstAmount: Number(payment.gstAmount || 0),
       items: Array.isArray(payment.items) ? payment.items : [],
+      membershipType: membershipType || null,
+      wooshpaySessionId: payment.wooshpaySessionId || null,
+      wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
       eventType: payment.eventType,
@@ -279,7 +355,12 @@ export class IntlPaymentService {
       site: 'international',
     });
     const discountApplied = Boolean(affiliatePricing?.discountApplied || affiliatePricing?.valid);
-    const pricing = await this.getPricing(countryOfResidence || 'Singapore', discountApplied);
+    const membershipType = normalizeIntlMembershipType(dto?.membershipType);
+    const pricing = await this.getPricing(
+      countryOfResidence || 'Singapore',
+      discountApplied,
+      membershipType,
+    );
 
     const message = discountApplied
       ? 'Promo code applied. Discounted international rate applied below.'
@@ -301,6 +382,7 @@ export class IntlPaymentService {
       affiliateMessage: affiliatePricing?.affiliateMessage || null,
       voucherMessage: affiliatePricing?.voucherMessage || null,
       message,
+      membershipType: pricing.membershipType,
       currency: pricing.currency,
       originalAmount: pricing.baseAmount,
       payableAmount: pricing.totalAmount,
@@ -381,17 +463,39 @@ export class IntlPaymentService {
             && Boolean(existingSession?.url);
 
           if (sessionOpen && existingSession?.url) {
-            return {
-              url: existingSession.url,
-              sessionId: existingSession.id || pendingSessionId,
-              refId: pendingPayment.clientReferenceId,
-              currency: pendingPayment.currency,
-              amount: Number(pendingPayment.amount),
-              countryCode: pendingPayment.countryCode,
-              paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
-              reused: true,
-              testMode: Boolean(this.wooshPayService.getConfig()?.testMode),
-            };
+            const requestedPlan = normalizeIntlMembershipType(
+              dto.membershipType || user.membershipType,
+            );
+            const pendingPlan = membershipTypeFromPayment(pendingPayment);
+            // Unknown/mismatched plan on pending session → create a fresh checkout.
+            if (pendingPlan !== requestedPlan) {
+              try {
+                await this.wooshPayService.expireCheckoutSession(pendingSessionId);
+              } catch {
+                // continue
+              }
+              pendingPayment.status = InternationalPaymentStatus.Canceled;
+              pendingPayment.failureReason = 'replaced_by_new_intl_checkout_plan_change';
+              await this.paymentRepository.save(pendingPayment);
+            } else {
+              user.membershipType =
+                requestedPlan === 'student'
+                  ? InternationalMembershipType.Student
+                  : InternationalMembershipType.Full;
+              await this.userRepository.save(user);
+
+              return {
+                url: existingSession.url,
+                sessionId: existingSession.id || pendingSessionId,
+                refId: pendingPayment.clientReferenceId,
+                currency: pendingPayment.currency,
+                amount: Number(pendingPayment.amount),
+                countryCode: pendingPayment.countryCode,
+                paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
+                reused: true,
+                testMode: Boolean(this.wooshPayService.getConfig()?.testMode),
+              };
+            }
           }
 
           try {
@@ -438,11 +542,16 @@ export class IntlPaymentService {
       }
 
       const amounts = await this.getPricingAmounts();
+      const membershipType = normalizeIntlMembershipType(
+        dto.membershipType || user.membershipType,
+      );
 
       const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
         countryOfResidence: user.countryOfResidence || '',
         promoApplied,
+        membershipType,
         baseAmountSgd: amounts.baseAmountSgd,
+        studentAmountSgd: amounts.studentAmountSgd,
         voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
       });
 
@@ -453,6 +562,10 @@ export class IntlPaymentService {
       user.countryCode = pricing.countryCode;
       user.currency = pricing.currency;
       user.promoCode = promoCode;
+      user.membershipType =
+        membershipType === 'student'
+          ? InternationalMembershipType.Student
+          : InternationalMembershipType.Full;
       user.paymentStatus = InternationalUserPaymentStatus.Pending;
       user.status = InternationalUserStatus.PendingPayment;
       await this.userRepository.save(user);
@@ -472,13 +585,14 @@ export class IntlPaymentService {
         gstAmount: 0,
         items: [
           {
-            id: 'intl-membership',
+            id: `intl-membership-${membershipType}`,
             name: pricing.itemName,
             price: pricing.totalAmount,
             quantity: 1,
+            membershipType,
           },
         ],
-        eventType: 'intl-membership-signup',
+        eventType: `intl-membership-signup-${membershipType}`,
       });
       // Save pending row before WooshPay so concurrent requests see the lock.
       await this.paymentRepository.save(payment);
@@ -623,6 +737,12 @@ export class IntlPaymentService {
     await this.paymentRepository.save(payment);
 
     // Atomic activate: only one concurrent confirm can flip the account to Paid/Active.
+    const planFromPayment =
+      membershipTypeFromPayment(payment)
+      || (normalizeIntlMembershipType(user.membershipType) === 'student'
+        ? InternationalMembershipType.Student
+        : InternationalMembershipType.Full);
+
     const claimResult = await this.userRepository
       .createQueryBuilder()
       .update(InternationalUserEntity)
@@ -631,10 +751,21 @@ export class IntlPaymentService {
         paymentStatus: InternationalUserPaymentStatus.Paid,
         currency: payment.currency,
         countryCode: payment.countryCode,
+        membershipType: planFromPayment,
       })
       .where('id = :id', { id: user.id })
       .andWhere('"paymentStatus" != :paid', { paid: InternationalUserPaymentStatus.Paid })
       .execute();
+
+    // Already paid earlier — still heal plan from this / prior payment items.
+    if (!claimResult.affected && planFromPayment) {
+      await this.userRepository
+        .createQueryBuilder()
+        .update(InternationalUserEntity)
+        .set({ membershipType: planFromPayment })
+        .where('id = :id', { id: user.id })
+        .execute();
+    }
 
     const finalizedUser = await this.userRepository.findOne({ where: { id: user.id } });
     if (!finalizedUser) {
@@ -683,6 +814,8 @@ export class IntlPaymentService {
         currency: payment.currency,
         status: payment.status,
         countryCode: payment.countryCode,
+        wooshpaySessionId: payment.wooshpaySessionId || null,
+        wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
       },
     };
   }

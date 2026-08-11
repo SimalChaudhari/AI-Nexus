@@ -61,8 +61,10 @@ const STATUS_OPTIONS = [
 
 const TABLE_HEAD = [
   { id: 'name', label: 'Name' },
-  { id: 'authProvider', label: 'Auth', width: 120 },
-  { id: 'paymentStatus', label: 'Payment', width: 130 },
+  { id: 'authProvider', label: 'Auth', width: 110 },
+  { id: 'membershipType', label: 'Plan', width: 120 },
+  { id: 'promoCode', label: 'Promo', width: 120 },
+  { id: 'paymentStatus', label: 'Payment', width: 120 },
   { id: 'status', label: 'Status', width: 140 },
   { id: 'createdAt', label: 'Joined', width: 180 },
   { id: '', width: 72 },
@@ -411,6 +413,9 @@ function IntlUserTableRow({ row, selected, onSelectRow, onViewRow, onDeleteRow }
 
   const paymentStatus = String(row.paymentStatus || '').toLowerCase();
   const accountStatus = String(row.status || '').toLowerCase();
+  const membershipType = String(row.membershipType || '').toLowerCase() === 'student' ? 'student' : 'full';
+  const planLabel = membershipType === 'student' ? 'Student' : 'Full / Role';
+  const promoCode = String(row.promoCode || '').trim();
 
   return (
     <>
@@ -461,6 +466,27 @@ function IntlUserTableRow({ row, selected, onSelectRow, onViewRow, onDeleteRow }
             />
             {isOAuth ? 'OAuth' : 'Local'}
           </Label>
+        </TableCell>
+
+        <TableCell>
+          <Label
+            variant="soft"
+            color={membershipType === 'student' ? 'info' : 'secondary'}
+          >
+            {planLabel}
+          </Label>
+        </TableCell>
+
+        <TableCell>
+          {promoCode ? (
+            <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+              {promoCode}
+            </Typography>
+          ) : (
+            <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+              —
+            </Typography>
+          )}
         </TableCell>
 
         <TableCell>

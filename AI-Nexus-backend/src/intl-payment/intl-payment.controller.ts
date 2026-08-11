@@ -134,6 +134,7 @@ export class IntlPaymentController {
   async pricing(
     @Query('countryOfResidence') countryOfResidence: string,
     @Query('promoApplied') promoApplied: string,
+    @Query('membershipType') membershipType: string,
     @Res() res: Response,
   ) {
     const country = String(countryOfResidence || '').trim();
@@ -143,7 +144,7 @@ export class IntlPaymentController {
       });
     }
     const promo = String(promoApplied || '').toLowerCase() === 'true' || promoApplied === '1';
-    const pricing = await this.intlPaymentService.getPricing(country, promo);
+    const pricing = await this.intlPaymentService.getPricing(country, promo, membershipType);
     return res.status(HttpStatus.OK).json(pricing);
   }
 

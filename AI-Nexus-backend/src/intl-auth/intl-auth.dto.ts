@@ -1,9 +1,11 @@
 import {
   IsBoolean,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -31,7 +33,10 @@ export class IntlRegisterDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(48)
+  @MaxLength(20)
+  @Matches(/^\+?[0-9\s()-]*$/, {
+    message: 'Contact number must contain digits only',
+  })
   contactNumber?: string;
 
   @IsString()
@@ -72,6 +77,12 @@ export class IntlRegisterDto {
   @IsString()
   @MaxLength(64)
   promoCode?: string;
+
+  /** student | full — required for checkout access filtering. */
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['student', 'full'])
+  membershipType!: string;
 
   @IsBoolean()
   paymentConsent!: boolean;

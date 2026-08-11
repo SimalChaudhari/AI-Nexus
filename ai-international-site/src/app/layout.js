@@ -33,8 +33,11 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body className={`${publicSans.className} ${publicSans.variable} ${newsreader.variable} ${ibmPlexMono.variable}`}>
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${publicSans.className} ${publicSans.variable} ${newsreader.variable} ${ibmPlexMono.variable}`}
+        suppressHydrationWarning
+      >
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

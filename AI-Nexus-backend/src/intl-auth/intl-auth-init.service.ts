@@ -47,6 +47,7 @@ export class IntlAuthInitService implements OnModuleInit {
             "countryCode" varchar(8),
             "currency" varchar(10),
             "promoCode" varchar(64),
+            "membershipType" varchar(16) NOT NULL DEFAULT 'full',
             "paymentStatus" varchar(16) NOT NULL DEFAULT 'unpaid',
             "isVerified" boolean NOT NULL DEFAULT false,
             "status" varchar(16) NOT NULL DEFAULT 'pending_payment',
@@ -67,6 +68,9 @@ export class IntlAuthInitService implements OnModuleInit {
         );
         await queryRunner.query(
           `ALTER TABLE "international_users" ADD COLUMN IF NOT EXISTS "paymentStatus" varchar(16) NOT NULL DEFAULT 'unpaid'`,
+        );
+        await queryRunner.query(
+          `ALTER TABLE "international_users" ADD COLUMN IF NOT EXISTS "membershipType" varchar(16) NOT NULL DEFAULT 'full'`,
         );
       }
     } finally {

@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -14,6 +15,11 @@ export class UpdateIntlMembershipSettingsDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   baseAmountSgd?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  studentAmountSgd?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -41,6 +47,11 @@ export class IntlValidatePromoDto {
   @IsString()
   @MaxLength(120)
   countryOfResidence?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['student', 'full'])
+  membershipType?: string;
 }
 
 export class IntlCreateCheckoutDto {
@@ -66,6 +77,11 @@ export class IntlCreateCheckoutDto {
   @IsString()
   @MaxLength(64)
   promoCode?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['student', 'full'])
+  membershipType!: string;
 
   @IsOptional()
   @IsBoolean()

@@ -20,6 +20,7 @@ function normalizeSettings(cfg) {
   if (!cfg || typeof cfg !== 'object') {
     return {
       baseAmountSgd: 365,
+      studentAmountSgd: 150,
       voucherDiscountAmountSgd: 100,
       referralCode: '',
       referralLinkPath: INTL_REFERRAL_PATH,
@@ -31,6 +32,7 @@ function normalizeSettings(cfg) {
 
   return {
     baseAmountSgd: cfg.baseAmountSgd ?? 365,
+    studentAmountSgd: cfg.studentAmountSgd ?? 150,
     voucherDiscountAmountSgd: cfg.voucherDiscountAmountSgd ?? 100,
     referralCode: cfg.referralCode || '',
     referralLinkPath: cfg.referralLinkPath || INTL_REFERRAL_PATH,
@@ -68,9 +70,14 @@ export function IntlPromoPricingView() {
       setSubmitting(true);
       const payload = {
         baseAmountSgd: Number(source.baseAmountSgd),
+        studentAmountSgd: Number(source.studentAmountSgd),
         voucherDiscountAmountSgd: Number(source.voucherDiscountAmountSgd),
         referralLinkPath: INTL_REFERRAL_PATH,
       };
+      if (!Number(payload.studentAmountSgd) || Number(payload.studentAmountSgd) <= 0) {
+        toast.error('Student amount is required and must be greater than 0');
+        return;
+      }
       if (!Number(payload.voucherDiscountAmountSgd) || Number(payload.voucherDiscountAmountSgd) <= 0) {
         toast.error('Promo payable amount is required and must be greater than 0');
         return;

@@ -51,13 +51,15 @@ export function IntlMembershipPaymentSettingsCard({
   const currency = 'SGD';
 
   const preview = useMemo(() => {
-    const base = Number(values.baseAmountSgd) || 0;
+    const full = Number(values.baseAmountSgd) || 0;
+    const student = Number(values.studentAmountSgd) || 0;
     const promo = Number(values.voucherDiscountAmountSgd) || 0;
     return {
-      base: Number(base.toFixed(2)),
+      full: Number(full.toFixed(2)),
+      student: Number(student.toFixed(2)),
       promo: Number(promo.toFixed(2)),
     };
-  }, [values.baseAmountSgd, values.voucherDiscountAmountSgd]);
+  }, [values.baseAmountSgd, values.studentAmountSgd, values.voucherDiscountAmountSgd]);
 
   const updateField = (field, value) => {
     setPaymentSettings((prev) => ({
@@ -67,10 +69,15 @@ export function IntlMembershipPaymentSettingsCard({
   };
 
   const handleSave = async () => {
-    const base = Number(values.baseAmountSgd);
+    const full = Number(values.baseAmountSgd);
+    const student = Number(values.studentAmountSgd);
     const promo = Number(values.voucherDiscountAmountSgd);
-    if (!Number.isFinite(base) || base <= 0) {
-      toast.error('Standard amount (SGD) is required and must be greater than 0');
+    if (!Number.isFinite(full) || full <= 0) {
+      toast.error('Full / Role amount (SGD) is required and must be greater than 0');
+      return;
+    }
+    if (!Number.isFinite(student) || student <= 0) {
+      toast.error('Student amount (SGD) is required and must be greater than 0');
       return;
     }
     if (!Number.isFinite(promo) || promo <= 0) {
@@ -78,7 +85,8 @@ export function IntlMembershipPaymentSettingsCard({
       return;
     }
     await onSave?.({
-      baseAmountSgd: base,
+      baseAmountSgd: full,
+      studentAmountSgd: student,
       voucherDiscountAmountSgd: promo,
     });
   };
@@ -89,14 +97,14 @@ export function IntlMembershipPaymentSettingsCard({
         <Box>
           <Typography variant="h6">International membership pricing</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Amounts are stored in SGD and converted to the member&apos;s country currency at signup
-            checkout.
+            Set separate Student and Full / Role fees in SGD. Amounts are converted to the
+            member&apos;s country currency at signup checkout.
           </Typography>
         </Box>
 
         <SectionCard
           title="Payment amounts (SGD)"
-          description="Standard fee and promo payable amount used when a valid promo code is applied."
+          description="Student unlocks Student tab only. Full / Role unlocks By role + Pillars."
         >
           <Grid container spacing={1.5}>
             <Grid item xs={12} sm={6} md={4}>
@@ -104,14 +112,29 @@ export function IntlMembershipPaymentSettingsCard({
                 fullWidth
                 size="small"
                 type="number"
-                label="Standard amount"
+                label="Student amount"
+                value={values.studentAmountSgd ?? ''}
+                onChange={(event) => updateField('studentAmountSgd', event.target.value)}
+                inputProps={{ min: 0.01, step: '0.01' }}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">{currency}</InputAdornment>,
+                }}
+                helperText="Student plan fee"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                type="number"
+                label="Full / Role amount"
                 value={values.baseAmountSgd ?? ''}
                 onChange={(event) => updateField('baseAmountSgd', event.target.value)}
                 inputProps={{ min: 0.01, step: '0.01' }}
                 InputProps={{
                   startAdornment: <InputAdornment position="start">{currency}</InputAdornment>,
                 }}
-                helperText="Converted by FX at checkout"
+                helperText="Full / Role plan fee"
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
@@ -146,10 +169,23 @@ export function IntlMembershipPaymentSettingsCard({
           >
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Without promo
+                Student
               </Typography>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {currency} {preview.base.toFixed(2)}
+                {currency} {preview.student.toFixed(2)}
+              </Typography>
+            </Box>
+            <Divider
+              flexItem
+              orientation="vertical"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            />
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Full / Role
+              </Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                {currency} {preview.full.toFixed(2)}
               </Typography>
             </Box>
             <Divider

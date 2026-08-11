@@ -9,12 +9,14 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
+import { useIntlAuth } from 'src/auth/intl-auth-context';
 import { paths } from 'src/routes/paths';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { layoutClasses } from 'src/layouts/classes';
 import { frontendContentSx } from 'src/layouts/main/frontend-content-layout';
 import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles';
 import { INTL_NAVY, INTL_NAVY_DEEP, INTL_RED, INTL_SOFT_BG } from 'src/theme/intl-brand';
+import { getIntlMyPayments } from 'src/services/intl-payment.service';
 import { usePathwayModuleVideos } from '../pathway/use-pathway-module-videos';
 import { DEFAULT_FOUNDATION_NOTE } from '../pathway/pathway-constants';
 import {
@@ -33,6 +35,13 @@ const SECTION_LINKS = [
   { id: 'roles', label: 'By role', icon: 'solar:users-group-rounded-bold-duotone' },
   { id: 'users', label: 'Pillars', icon: 'solar:widget-bold-duotone' },
 ];
+
+/** student purchase → Student only; full → By role + Pillars. */
+function allowedSectionsForMembership(membershipType) {
+  const plan = String(membershipType || '').trim().toLowerCase();
+  if (plan === 'student') return ['student'];
+  return ['roles', 'users'];
+}
 
 const PILLAR_META = {
   '01': {
@@ -159,16 +168,16 @@ function SectionBlock({ eyebrow, title, subtitle, children, sx, hidden }) {
   );
 }
 
-const SECTION_IDS = new Set(SECTION_LINKS.map((item) => item.id));
-
-function readInitialSection() {
-  if (typeof window === 'undefined') return 'student';
+function readInitialSection(allowedIds) {
+  const allowed = Array.isArray(allowedIds) && allowedIds.length ? allowedIds : ['roles'];
+  const fallback = allowed[0];
+  if (typeof window === 'undefined') return fallback;
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get('view');
-  if (SECTION_IDS.has(fromQuery)) return fromQuery;
+  if (allowed.includes(fromQuery)) return fromQuery;
   const hash = window.location.hash?.replace('#', '');
-  if (SECTION_IDS.has(hash)) return hash;
-  return 'student';
+  if (allowed.includes(hash)) return hash;
+  return fallback;
 }
 
 function setSectionInUrl(id) {
@@ -182,25 +191,70 @@ function setSectionInUrl(id) {
 // ----------------------------------------------------------------------
 
 export function IntlDashboardView() {
-  const [activeSection, setActiveSection] = useState('student');
+  const { user, refresh } = useIntlAuth();
+  const [planFromPayment, setPlanFromPayment] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { latest } = await getIntlMyPayments();
+        const fromPay = String(
+          latest?.membershipType || latest?.items?.[0]?.membershipType || '',
+        )
+          .trim()
+          .toLowerCase();
+        if (!active) return;
+        if (fromPay === 'student' || fromPay === 'full') {
+          setPlanFromPayment(fromPay);
+          if (String(user?.membershipType || '').toLowerCase() !== fromPay) {
+            await refresh();
+          }
+        }
+      } catch {
+        // keep session user plan
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user?.id, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const membershipType =
+    planFromPayment ||
+    (String(user?.membershipType || '').trim().toLowerCase() === 'student' ? 'student' : 'full');
+
+  const allowedSectionIds = useMemo(
+    () => allowedSectionsForMembership(membershipType),
+    [membershipType],
+  );
+  const visibleSectionLinks = useMemo(
+    () => SECTION_LINKS.filter((item) => allowedSectionIds.includes(item.id)),
+    [allowedSectionIds],
+  );
+
+  const [activeSection, setActiveSection] = useState(() =>
+    allowedSectionsForMembership(membershipType)[0],
+  );
   const { dbModules, modulesLookup, minutesByCode, videoUrlsByCode, loading } =
     useDbModulesCatalog();
 
   useEffect(() => {
-    // Prefer ?view= / legacy #hash. Do not rewrite URL on mount (avoids route flicker).
-    const initial = readInitialSection();
+    const initial = readInitialSection(allowedSectionIds);
     setActiveSection(initial);
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const url = new URL(window.location.href);
+    if (typeof window === 'undefined') return;
+
+    const url = new URL(window.location.href);
+    const currentView = url.searchParams.get('view');
+    if (window.location.hash || !allowedSectionIds.includes(currentView)) {
       url.hash = '';
-      if (!url.searchParams.get('view') && SECTION_IDS.has(initial)) {
-        url.searchParams.set('view', initial);
-      }
+      url.searchParams.set('view', initial);
       window.history.replaceState(null, '', `${url.pathname}${url.search}`);
     }
-  }, []);
+  }, [allowedSectionIds]);
 
   const selectSection = (id) => {
+    if (!allowedSectionIds.includes(id)) return;
     setActiveSection(id);
     setSectionInUrl(id);
   };
@@ -244,6 +298,7 @@ export function IntlDashboardView() {
   }, [dbModules]);
 
   const emptyDbNote = !loading && dbModules.length === 0;
+  const isStudentPlan = membershipType === 'student';
 
   return (
     <Box
@@ -265,7 +320,6 @@ export function IntlDashboardView() {
         [`& .${layoutClasses.content}`]: frontendContentSx,
       }}
     >
-      {/* Page hero header */}
       <Box
         sx={{
           position: 'relative',
@@ -284,6 +338,7 @@ export function IntlDashboardView() {
                 mb: 1.25,
                 display: 'inline-flex',
                 alignItems: 'center',
+                gap: 1,
                 px: 1.25,
                 py: 0.4,
                 borderRadius: 1,
@@ -296,6 +351,20 @@ export function IntlDashboardView() {
               }}
             >
               Learning dashboard
+              <Box
+                component="span"
+                sx={{
+                  px: 0.85,
+                  py: 0.15,
+                  borderRadius: 0.75,
+                  bgcolor: isStudentPlan ? alpha(INTL_RED, 0.12) : alpha(NAVY, 0.1),
+                  color: isStudentPlan ? INTL_RED : NAVY,
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {isStudentPlan ? 'Student plan' : 'Full / Role plan'}
+              </Box>
             </Typography>
 
             <Typography
@@ -321,136 +390,145 @@ export function IntlDashboardView() {
                 lineHeight: 1.6,
               }}
             >
-              Practical AI learning for accountancy professionals — browse by student path, role, or
-              pillar.
+              {isStudentPlan
+                ? 'Your Student membership includes the Pillar 1 foundations path.'
+                : 'Your Full / Role membership includes role pathways and all pillars.'}
             </Typography>
           </Box>
 
-          <Stack
-            direction="row"
-            spacing={1}
-            useFlexGap
-            flexWrap="wrap"
-            sx={{ mt: { xs: 2.5, md: 3 } }}
-          >
-            {SECTION_LINKS.map((item) => {
-              const active = activeSection === item.id;
-              return (
-                <Button
-                  key={item.id}
-                  variant="outlined"
-                  size="small"
-                  startIcon={<Iconify icon={item.icon} width={16} />}
-                  onClick={() => selectSection(item.id)}
-                  aria-pressed={active}
-                  sx={{
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    borderRadius: 999,
-                    px: 1.75,
-                    py: 0.75,
-                    color: active ? INTL_NAVY_DEEP : NAVY,
-                    borderColor: active ? INTL_RED : alpha(NAVY, 0.18),
-                    bgcolor: active ? '#fff' : alpha('#fff', 0.8),
-                    boxShadow: active ? `0 0 0 1px ${alpha(INTL_RED, 0.25)}` : 'none',
-                    '&:hover': {
-                      borderColor: INTL_RED,
-                      bgcolor: '#fff',
-                      color: INTL_NAVY_DEEP,
-                    },
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
+          {visibleSectionLinks.length > 1 ? (
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              flexWrap="wrap"
+              sx={{ mt: { xs: 2.5, md: 3 } }}
+            >
+              {visibleSectionLinks.map((item) => {
+                const active = activeSection === item.id;
+                return (
+                  <Button
+                    key={item.id}
+                    variant="outlined"
+                    size="small"
+                    startIcon={<Iconify icon={item.icon} width={16} />}
+                    onClick={() => selectSection(item.id)}
+                    aria-pressed={active}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      px: 1.75,
+                      py: 0.75,
+                      color: active ? INTL_NAVY_DEEP : NAVY,
+                      borderColor: active ? INTL_RED : alpha(NAVY, 0.18),
+                      bgcolor: active ? '#fff' : alpha('#fff', 0.8),
+                      boxShadow: active ? `0 0 0 1px ${alpha(INTL_RED, 0.25)}` : 'none',
+                      '&:hover': {
+                        borderColor: INTL_RED,
+                        bgcolor: '#fff',
+                        color: INTL_NAVY_DEEP,
+                      },
+                    }}
+                  >
+                    {item.label}
+                  </Button>
+                );
+              })}
+            </Stack>
+          ) : null}
         </DashboardContent>
       </Box>
 
       <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: 0, pb: 0 }}>
-        <SectionBlock
-          hidden={activeSection !== 'student'}
-          eyebrow="01 · Foundations"
-          title="Student"
-          subtitle="Pillar 1 modules from the database — open any card to watch its video."
-        >
-          {loading ? (
-            <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
-          ) : emptyDbNote || !studentSections[0]?.codes?.length ? (
-            <Typography sx={{ color: alpha(NAVY, 0.65) }}>
-              No Pillar 1 modules found in the database yet.
-            </Typography>
-          ) : (
-            <PathwayBrowseList
-              heading={
-                <>
-                  Path for the{' '}
-                  <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
-                    Student
-                  </Box>
-                </>
-              }
-              blurb="Only Pillar 1 modules saved in the database are shown here. Sign up to watch videos."
-              sections={studentSections}
-              videoUrlsByCode={videoUrlsByCode}
-              minutesByCode={minutesByCode}
-              modulesLookup={modulesLookup}
-              requireAuth
-              returnTo={`${paths.dashboard}?view=student`}
-            />
-          )}
-        </SectionBlock>
+        {allowedSectionIds.includes('student') ? (
+          <SectionBlock
+            hidden={activeSection !== 'student'}
+            eyebrow="01 · Foundations"
+            title="Student"
+            subtitle="Pillar 1 modules from the database — open any card to watch its video."
+          >
+            {loading ? (
+              <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
+            ) : emptyDbNote || !studentSections[0]?.codes?.length ? (
+              <Typography sx={{ color: alpha(NAVY, 0.65) }}>
+                No Pillar 1 modules found in the database yet.
+              </Typography>
+            ) : (
+              <PathwayBrowseList
+                heading={
+                  <>
+                    Path for the{' '}
+                    <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
+                      Student
+                    </Box>
+                  </>
+                }
+                blurb="Only Pillar 1 modules saved in the database are shown here."
+                sections={studentSections}
+                videoUrlsByCode={videoUrlsByCode}
+                minutesByCode={minutesByCode}
+                modulesLookup={modulesLookup}
+                requireAuth
+                returnTo={`${paths.dashboard}?view=student`}
+              />
+            )}
+          </SectionBlock>
+        ) : null}
 
-        <SectionBlock
-          hidden={activeSection !== 'roles'}
-          eyebrow="02 · Recommended path"
-          title="AI Fluency by role"
-          subtitle="Choose your role and build a recommended pathway for your practice."
-          sx={{
-            bgcolor: alpha(NAVY, 0.03),
-            mx: { xs: -1.25, sm: -2, md: -3, lg: -4 },
-            px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
-            borderRadius: { md: 2 },
-            borderTop: `1px solid ${alpha(NAVY, 0.06)}`,
-            borderBottom: `1px solid ${alpha(NAVY, 0.06)}`,
-          }}
-        >
-          <PathwayPlannerView embedded />
-        </SectionBlock>
+        {allowedSectionIds.includes('roles') ? (
+          <SectionBlock
+            hidden={activeSection !== 'roles'}
+            eyebrow="02 · Recommended path"
+            title="AI Fluency by role"
+            subtitle="Choose your role and build a recommended pathway for your practice."
+            sx={{
+              bgcolor: alpha(NAVY, 0.03),
+              mx: { xs: -1.25, sm: -2, md: -3, lg: -4 },
+              px: { xs: 1.25, sm: 2, md: 3, lg: 4 },
+              borderRadius: { md: 2 },
+              borderTop: `1px solid ${alpha(NAVY, 0.06)}`,
+              borderBottom: `1px solid ${alpha(NAVY, 0.06)}`,
+            }}
+          >
+            <PathwayPlannerView embedded />
+          </SectionBlock>
+        ) : null}
 
-        <SectionBlock
-          hidden={activeSection !== 'users'}
-          eyebrow="03 · Full catalogue"
-          title="Users (Pillars)"
-          subtitle="All pillars and modules from the database — whatever is saved is what you see."
-        >
-          {loading ? (
-            <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
-          ) : emptyDbNote ? (
-            <Typography sx={{ color: alpha(NAVY, 0.65) }}>
-              No pathway modules found in the database yet.
-            </Typography>
-          ) : (
-            <PathwayBrowseList
-              heading={
-                <>
-                  Browse by{' '}
-                  <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
-                    Pillar
-                  </Box>
-                </>
-              }
-              blurb="Every module from the database, grouped by its pillar. Sign up to watch videos."
-              sections={usersSections}
-              videoUrlsByCode={videoUrlsByCode}
-              minutesByCode={minutesByCode}
-              modulesLookup={modulesLookup}
-              requireAuth
-              returnTo={`${paths.dashboard}?view=users`}
-            />
-          )}
-        </SectionBlock>
+        {allowedSectionIds.includes('users') ? (
+          <SectionBlock
+            hidden={activeSection !== 'users'}
+            eyebrow="03 · Full catalogue"
+            title="Pillars"
+            subtitle="All pillars and modules from the database — whatever is saved is what you see."
+          >
+            {loading ? (
+              <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
+            ) : emptyDbNote ? (
+              <Typography sx={{ color: alpha(NAVY, 0.65) }}>
+                No pathway modules found in the database yet.
+              </Typography>
+            ) : (
+              <PathwayBrowseList
+                heading={
+                  <>
+                    Browse by{' '}
+                    <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
+                      Pillar
+                    </Box>
+                  </>
+                }
+                blurb="Every module from the database, grouped by its pillar."
+                sections={usersSections}
+                videoUrlsByCode={videoUrlsByCode}
+                minutesByCode={minutesByCode}
+                modulesLookup={modulesLookup}
+                requireAuth
+                returnTo={`${paths.dashboard}?view=users`}
+              />
+            )}
+          </SectionBlock>
+        ) : null}
       </DashboardContent>
 
       <IntlFooter regions={INTL_REGIONS} />

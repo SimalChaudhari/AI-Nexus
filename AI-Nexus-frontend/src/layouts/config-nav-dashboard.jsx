@@ -185,6 +185,8 @@ export const navData = [
             path: paths.admin.international.users.root,
             deepMatch: true,
             href: paths.admin.international.users.list,
+          },
+          {
             title: 'Promo & Pricing',
             path: paths.admin.international.promoPricing,
           },

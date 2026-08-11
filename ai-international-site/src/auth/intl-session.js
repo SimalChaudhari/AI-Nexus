@@ -33,12 +33,27 @@ export function getIntlUser() {
 
 export function setIntlSession({ accessToken, user }) {
   if (typeof window === 'undefined') return;
+  let changed = false;
   try {
-    if (accessToken) sessionStorage.setItem(TOKEN_KEY, accessToken);
-    if (user) sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (accessToken) {
+      const prevToken = sessionStorage.getItem(TOKEN_KEY) || '';
+      if (prevToken !== accessToken) {
+        sessionStorage.setItem(TOKEN_KEY, accessToken);
+        changed = true;
+      }
+    }
+    if (user) {
+      const nextRaw = JSON.stringify(user);
+      const prevRaw = sessionStorage.getItem(USER_KEY) || '';
+      if (prevRaw !== nextRaw) {
+        sessionStorage.setItem(USER_KEY, nextRaw);
+        changed = true;
+      }
+    }
   } catch {
     // ignore storage errors
   }
+  if (!changed) return;
   emitAuthChanged({
     accessToken: accessToken || getIntlAccessToken(),
     user: user || getIntlUser(),

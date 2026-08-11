@@ -30,6 +30,7 @@ export class IntlPaymentInitService implements OnModuleInit {
           CREATE TABLE IF NOT EXISTS "intl_membership_settings" (
             "id" uuid NOT NULL DEFAULT gen_random_uuid(),
             "baseAmountSgd" decimal(12,2) NOT NULL DEFAULT 365,
+            "studentAmountSgd" decimal(12,2) NOT NULL DEFAULT 150,
             "voucherDiscountAmountSgd" decimal(12,2) NOT NULL DEFAULT 100,
             "referralCode" varchar(64),
             "referralLinkPath" varchar(200) NOT NULL DEFAULT '/auth/sign-up?ref=',
@@ -39,6 +40,11 @@ export class IntlPaymentInitService implements OnModuleInit {
           )
         `);
         console.log('✅ intl_membership_settings created');
+      } else {
+        await queryRunner.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "studentAmountSgd" decimal(12,2) NOT NULL DEFAULT 150`,
+        );
+        console.log('✅ Ensured intl_membership_settings.studentAmountSgd column');
       }
 
       const rows = await queryRunner.query(
@@ -47,8 +53,8 @@ export class IntlPaymentInitService implements OnModuleInit {
       if (!Array.isArray(rows) || rows.length === 0) {
         await queryRunner.query(`
           INSERT INTO "intl_membership_settings"
-            ("baseAmountSgd", "voucherDiscountAmountSgd", "referralLinkPath")
-          VALUES (365, 100, '/auth/sign-up?ref=')
+            ("baseAmountSgd", "studentAmountSgd", "voucherDiscountAmountSgd", "referralLinkPath")
+          VALUES (365, 150, 100, '/auth/sign-up?ref=')
         `);
         console.log('✅ intl_membership_settings seeded with defaults');
       }
@@ -129,6 +135,10 @@ export class IntlPaymentInitService implements OnModuleInit {
         {
           name: 'paymentStatus',
           sql: `ALTER TABLE "international_users" ADD COLUMN IF NOT EXISTS "paymentStatus" varchar(16) NOT NULL DEFAULT 'unpaid'`,
+        },
+        {
+          name: 'membershipType',
+          sql: `ALTER TABLE "international_users" ADD COLUMN IF NOT EXISTS "membershipType" varchar(16) NOT NULL DEFAULT 'full'`,
         },
       ];
 

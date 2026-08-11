@@ -11,30 +11,53 @@ export async function getIntlCountries() {
 export async function getIntlMyPayments() {
   const token = getIntlAccessToken();
   if (!token) return { latest: null, payments: [] };
-  const res = await axios.get('/intl-payments/me', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return {
-    latest: res.data?.latest || null,
-    payments: Array.isArray(res.data?.payments) ? res.data.payments : [],
-  };
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await axios.get('/intl-payments/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return {
+        latest: res.data?.latest || null,
+        payments: Array.isArray(res.data?.payments) ? res.data.payments : [],
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      }
+    }
+  }
+  if (lastError) throw lastError;
+  return { latest: null, payments: [] };
 }
 
-export async function getIntlMembershipPricing({ countryOfResidence, promoApplied = false }) {
+export async function getIntlMembershipPricing({
+  countryOfResidence,
+  promoApplied = false,
+  membershipType = 'full',
+}) {
   const res = await axios.get('/intl-payments/pricing', {
     params: {
       countryOfResidence,
       promoApplied: promoApplied ? 'true' : 'false',
+      membershipType: membershipType === 'student' ? 'student' : 'full',
     },
   });
   return res.data;
 }
 
 /** Validate affiliate/voucher code and get international FX pricing (same idea as /affiliate/validate). */
-export async function validateIntlPromoCode({ code, countryOfResidence } = {}) {
+export async function validateIntlPromoCode({
+  code,
+  countryOfResidence,
+  membershipType = 'full',
+} = {}) {
   const res = await axios.post('/intl-payments/validate-promo', {
     code: code || undefined,
     countryOfResidence: countryOfResidence || undefined,
+    membershipType: membershipType === 'student' ? 'student' : 'full',
   });
   return res.data;
 }
@@ -53,6 +76,7 @@ export async function createIntlCheckoutSession({
   successUrl,
   cancelUrl,
   promoCode,
+  membershipType,
   paymentConsent,
 }) {
   const res = await axios.post('/intl-payments/create-checkout', {
@@ -61,6 +85,7 @@ export async function createIntlCheckoutSession({
     successUrl,
     cancelUrl,
     promoCode: promoCode || undefined,
+    membershipType: membershipType === 'student' ? 'student' : 'full',
     paymentConsent,
   });
   return res.data;

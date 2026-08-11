@@ -198,6 +198,13 @@ export function IntlUsersDetailsView({ user, loading, error, paymentLatest = nul
           ),
         },
         { label: 'Currency', value: user.currency || '—' },
+        {
+          label: 'Membership plan',
+          value:
+            String(user.membershipType || '').toLowerCase() === 'student'
+              ? 'Student'
+              : 'Full / Role',
+        },
         { label: 'Promo code', value: user.promoCode || '—' },
         { label: 'Auth provider', value: user.authProvider || '—' },
         { label: 'Joined', value: formatDateTime(user.createdAt) },
@@ -237,6 +244,14 @@ export function IntlUsersDetailsView({ user, loading, error, paymentLatest = nul
             { label: 'Billing country', value: payment.countryOfResidence || '—' },
             { label: 'Country code', value: payment.countryCode || '—' },
             { label: 'Reference ID', value: payment.refId || '—' },
+            {
+              label: 'WooshPay session ID',
+              value: payment.wooshpaySessionId || '—',
+            },
+            {
+              label: 'WooshPay payment intent',
+              value: payment.wooshpayPaymentIntentId || '—',
+            },
             {
               label: 'Item',
               value:
@@ -320,9 +335,34 @@ export function IntlUsersDetailsView({ user, loading, error, paymentLatest = nul
                       <Typography variant="subtitle2">
                         {formatMoney(item.amount, item.currency)}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
                         {item.refId || 'Membership'} · {formatDateTime(item.paidAt || item.createdAt)}
                       </Typography>
+                      {item.wooshpaySessionId ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: 'text.disabled',
+                            display: 'block',
+                            wordBreak: 'break-all',
+                            mt: 0.25,
+                          }}
+                        >
+                          Session: {item.wooshpaySessionId}
+                        </Typography>
+                      ) : null}
+                      {item.wooshpayPaymentIntentId ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: 'text.disabled',
+                            display: 'block',
+                            wordBreak: 'break-all',
+                          }}
+                        >
+                          Intent: {item.wooshpayPaymentIntentId}
+                        </Typography>
+                      ) : null}
                     </Box>
                   </Stack>
                   <Label variant="soft" color={paymentColor(item.status)}>

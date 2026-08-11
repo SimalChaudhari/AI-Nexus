@@ -18,6 +18,8 @@ function transformIntlUser(row = {}) {
     countryCode: row.countryCode || '',
     currency: row.currency || '',
     promoCode: row.promoCode || '',
+    membershipType:
+      String(row.membershipType || '').toLowerCase() === 'student' ? 'student' : 'full',
     paymentStatus: row.paymentStatus || '',
     authProvider: row.authProvider || '',
     avatarUrl: row.avatarUrl || '',

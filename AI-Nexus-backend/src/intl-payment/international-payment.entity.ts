@@ -65,7 +65,13 @@ export class InternationalPaymentEntity {
   gstAmount!: number;
 
   @Column({ type: 'jsonb', nullable: true })
-  items!: { id: string; name: string; price: number; quantity: number }[] | null;
+  items!: {
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    membershipType?: string;
+  }[] | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   wooshpaySessionId!: string | null;

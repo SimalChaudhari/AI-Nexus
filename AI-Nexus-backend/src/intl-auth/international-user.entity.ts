@@ -25,6 +25,12 @@ export enum InternationalUserPaymentStatus {
   Failed = 'failed',
 }
 
+/** Access plan purchased at signup — drives dashboard section visibility. */
+export enum InternationalMembershipType {
+  Student = 'student',
+  Full = 'full',
+}
+
 @Entity('international_users')
 export class InternationalUserEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -98,6 +104,17 @@ export class InternationalUserEntity {
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   promoCode!: string | null;
+
+  /**
+   * student → Student dashboard only
+   * full → By role + Pillars
+   */
+  @Column({
+    type: 'varchar',
+    length: 16,
+    default: InternationalMembershipType.Full,
+  })
+  membershipType!: InternationalMembershipType;
 
   @Column({
     type: 'varchar',
