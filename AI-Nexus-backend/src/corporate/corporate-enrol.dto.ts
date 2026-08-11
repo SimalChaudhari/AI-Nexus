@@ -72,7 +72,7 @@ export class CorporateStaffLearnerDto {
   @IsOptional()
   membershipNumber?: string;
 
-  /** Citizenship — Singapore Citizen / Singapore PR */
+  /** Citizenship — Singapore Citizen / Singapore PR / Foreigner */
   @IsString()
   @IsOptional()
   eligibility?: string;

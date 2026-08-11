@@ -38,6 +38,7 @@ export class AffiliateInitService implements OnModuleInit {
           CREATE TABLE "voucher_codes" (
             "id" uuid NOT NULL DEFAULT gen_random_uuid(),
             "code" varchar(64) NOT NULL,
+            "site" varchar(32) NOT NULL DEFAULT 'payment',
             "label" varchar(255),
             "isActive" boolean NOT NULL DEFAULT true,
             "expiresAt" TIMESTAMP,
@@ -46,10 +47,32 @@ export class AffiliateInitService implements OnModuleInit {
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
             "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
             CONSTRAINT "PK_voucher_codes" PRIMARY KEY ("id"),
-            CONSTRAINT "UQ_voucher_codes_code" UNIQUE ("code")
+            CONSTRAINT "UQ_voucher_codes_code_site" UNIQUE ("code", "site")
           )
         `);
         console.log('✅ voucher_codes table created');
+      } else {
+        await queryRunner.query(
+          `ALTER TABLE "voucher_codes" ADD COLUMN IF NOT EXISTS "site" varchar(32) NOT NULL DEFAULT 'payment'`,
+        );
+        await queryRunner.query(
+          `UPDATE "voucher_codes" SET "site" = 'payment' WHERE "site" IS NULL OR TRIM("site") = ''`,
+        );
+        // Replace legacy global unique(code) with unique(code, site) so each menu has its own list.
+        await queryRunner.query(`ALTER TABLE "voucher_codes" DROP CONSTRAINT IF EXISTS "UQ_voucher_codes_code"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "UQ_voucher_codes_code"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "IDX_voucher_codes_code"`);
+        await queryRunner.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'UQ_voucher_codes_code_site'
+            ) THEN
+              ALTER TABLE "voucher_codes"
+                ADD CONSTRAINT "UQ_voucher_codes_code_site" UNIQUE ("code", "site");
+            END IF;
+          END $$;
+        `);
       }
 
       if (!(await queryRunner.hasTable('affiliate_clicks'))) {

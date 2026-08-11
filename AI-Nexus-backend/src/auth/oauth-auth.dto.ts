@@ -160,7 +160,7 @@ export class SalesforceUserCheckEmailDto {
   email!: string;
 }
 
-/** PUT /services/apexrest/v1/nexus-payment/update */
+/** PUT /services/apexrest/v1/nexus-payment/update (legacy) */
 export class UpdateSalesforceNexusPaymentDto {
   @IsString()
   @IsNotEmpty()
@@ -176,6 +176,28 @@ export class UpdateSalesforceNexusPaymentDto {
   @IsString()
   @IsOptional()
   Paid_Date?: string;
+}
+
+/** POST /services/apexrest/createbillingforuser */
+export class CreateSalesforceBillingForUserDto {
+  @IsString()
+  @IsNotEmpty()
+  accountId!: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  wooshPayReferenceNo!: string;
+
+  @IsNumber()
+  billingAmount!: number;
+
+  @IsBoolean()
+  @IsOptional()
+  withGst?: boolean;
 }
 
 export class UpdateSalesforceNexusUserDto {

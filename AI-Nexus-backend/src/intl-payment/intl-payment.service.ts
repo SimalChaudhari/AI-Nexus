@@ -15,13 +15,24 @@ import {
   InternationalUserStatus,
 } from '../intl-auth/international-user.entity';
 import { IntlAuthService } from '../intl-auth/intl-auth.service';
+import { AffiliateService } from '../affiliate/affiliate.service';
 import { WooshPayService } from '../payment/wooshpay.service';
-import { IntlConfirmPaymentDto, IntlCreateCheckoutDto } from './intl-payment.dto';
+import {
+  IntlConfirmPaymentDto,
+  IntlCreateCheckoutDto,
+  IntlValidatePromoDto,
+  UpdateIntlMembershipSettingsDto,
+} from './intl-payment.dto';
 import {
   InternationalPaymentEntity,
   InternationalPaymentStatus,
 } from './international-payment.entity';
-import { resolveIntlMembershipPricing } from './intl-pricing';
+import { IntlMembershipSettingsEntity } from './intl-membership-settings.entity';
+import {
+  INTL_MEMBERSHIP_BASE_SGD,
+  INTL_MEMBERSHIP_VOUCHER_SGD,
+  resolveIntlMembershipPricing,
+} from './intl-pricing';
 import { listIntlCountries } from './intl-currency';
 import { IntlFxService } from './intl-fx.service';
 
@@ -66,20 +77,134 @@ export class IntlPaymentService {
     private readonly paymentRepository: Repository<InternationalPaymentEntity>,
     @InjectRepository(InternationalUserEntity)
     private readonly userRepository: Repository<InternationalUserEntity>,
+    @InjectRepository(IntlMembershipSettingsEntity)
+    private readonly settingsRepository: Repository<IntlMembershipSettingsEntity>,
     private readonly wooshPayService: WooshPayService,
     private readonly intlAuthService: IntlAuthService,
     private readonly jwtService: JwtService,
     private readonly intlFxService: IntlFxService,
+    private readonly affiliateService: AffiliateService,
   ) {}
 
   listCountries() {
     return listIntlCountries();
   }
 
+  private toNumber(value: unknown, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private serializeSettings(row: IntlMembershipSettingsEntity) {
+    const baseAmountSgd = this.toNumber(row.baseAmountSgd, INTL_MEMBERSHIP_BASE_SGD);
+    const voucherDiscountAmountSgd = this.toNumber(
+      row.voucherDiscountAmountSgd,
+      INTL_MEMBERSHIP_VOUCHER_SGD,
+    );
+    const referralCode = String(row.referralCode || '').trim().toUpperCase() || null;
+    const referralLinkPath =
+      String(row.referralLinkPath || '').trim() || '/auth/sign-up?ref=';
+    const websiteBaseUrl = this.getIntlWebsiteBaseUrl();
+    const fullReferralLink = referralCode
+      ? `${websiteBaseUrl}${referralLinkPath}${referralCode}`
+      : '';
+    const exampleReferralLink =
+      fullReferralLink || `${websiteBaseUrl}${referralLinkPath}INTL100`;
+
+    return {
+      id: row.id,
+      currency: 'SGD',
+      baseAmountSgd,
+      voucherDiscountAmountSgd,
+      referralCode: referralCode || '',
+      referralLinkPath,
+      websiteBaseUrl,
+      exampleReferralLink,
+      fullReferralLink,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private getIntlWebsiteBaseUrl(): string {
+    const raw = String(
+      process.env.INTL_FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:3003',
+    )
+      .trim()
+      .replace(/\/$/, '');
+    return raw || 'http://localhost:3003';
+  }
+
+  private async ensureSettingsRow(): Promise<IntlMembershipSettingsEntity> {
+    const existing = await this.settingsRepository.find({
+      order: { createdAt: 'ASC' },
+      take: 1,
+    });
+    if (existing[0]) return existing[0];
+
+    return this.settingsRepository.save(
+      this.settingsRepository.create({
+        baseAmountSgd: INTL_MEMBERSHIP_BASE_SGD,
+        voucherDiscountAmountSgd: INTL_MEMBERSHIP_VOUCHER_SGD,
+        referralCode: null,
+        referralLinkPath: '/auth/sign-up?ref=',
+      }),
+    );
+  }
+
+  async getMembershipSettings() {
+    const row = await this.ensureSettingsRow();
+    return this.serializeSettings(row);
+  }
+
+  async updateMembershipSettings(payload: UpdateIntlMembershipSettingsDto) {
+    const row = await this.ensureSettingsRow();
+    const source = payload && typeof payload === 'object' ? payload : {};
+
+    if (source.baseAmountSgd != null) {
+      const next = Number(source.baseAmountSgd);
+      if (!Number.isFinite(next) || next <= 0) {
+        throw new BadRequestException('Standard amount (SGD) must be greater than 0');
+      }
+      row.baseAmountSgd = Number(next.toFixed(2));
+    }
+
+    if (source.voucherDiscountAmountSgd != null) {
+      const next = Number(source.voucherDiscountAmountSgd);
+      if (!Number.isFinite(next) || next <= 0) {
+        throw new BadRequestException('Promo payable amount (SGD) must be greater than 0');
+      }
+      row.voucherDiscountAmountSgd = Number(next.toFixed(2));
+    }
+
+    if (source.referralCode !== undefined) {
+      const code = String(source.referralCode || '').trim().toUpperCase();
+      row.referralCode = /^[A-Z0-9_-]{2,64}$/.test(code) ? code : null;
+    }
+
+    if (source.referralLinkPath !== undefined) {
+      const pathRaw = String(source.referralLinkPath || '').trim() || '/auth/sign-up?ref=';
+      row.referralLinkPath = pathRaw.startsWith('/') ? pathRaw : `/${pathRaw}`;
+    }
+
+    const saved = await this.settingsRepository.save(row);
+    return this.serializeSettings(saved);
+  }
+
+  private async getPricingAmounts() {
+    const settings = await this.getMembershipSettings();
+    return {
+      baseAmountSgd: settings.baseAmountSgd,
+      voucherDiscountAmountSgd: settings.voucherDiscountAmountSgd,
+    };
+  }
+
   async getPricing(countryOfResidence: string, promoApplied = false) {
+    const amounts = await this.getPricingAmounts();
     const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
       countryOfResidence,
       promoApplied,
+      baseAmountSgd: amounts.baseAmountSgd,
+      voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
     });
     return {
       countryCode: pricing.countryCode,
@@ -91,6 +216,56 @@ export class IntlPaymentService {
       promoApplied: pricing.promoApplied,
       totalAmount: pricing.totalAmount,
       voucherDiscountAmount: pricing.voucherDiscountAmount,
+    };
+  }
+
+  /**
+   * Same as Payment → /affiliate/validate, but payable amounts come from
+   * intl_membership_settings + FX for the selected country.
+   */
+  async validatePromoCode(dto: IntlValidatePromoDto) {
+    const code = String(dto?.code || '').trim().toUpperCase();
+    const countryOfResidence = String(dto?.countryOfResidence || '').trim();
+
+    if (!code) {
+      throw new BadRequestException('Enter a code to apply.');
+    }
+
+    const affiliatePricing = await this.affiliateService.calculatePricing({
+      code,
+      site: 'international',
+    });
+    const discountApplied = Boolean(affiliatePricing?.discountApplied || affiliatePricing?.valid);
+    const pricing = await this.getPricing(countryOfResidence || 'Singapore', discountApplied);
+
+    const message = discountApplied
+      ? 'Promo code applied. Discounted international rate applied below.'
+      : affiliatePricing?.affiliateMessage ||
+        affiliatePricing?.voucherMessage ||
+        'This code is invalid or expired. The standard fee applies.';
+
+    return {
+      valid: discountApplied,
+      discountApplied,
+      appliedCode: discountApplied
+        ? String(affiliatePricing?.appliedCode || code).trim().toUpperCase()
+        : null,
+      codeType: affiliatePricing?.codeType || null,
+      affiliateCode: affiliatePricing?.affiliateCode || null,
+      voucherCode: affiliatePricing?.voucherCode || null,
+      affiliateValid: Boolean(affiliatePricing?.affiliateValid),
+      voucherValid: Boolean(affiliatePricing?.voucherValid),
+      affiliateMessage: affiliatePricing?.affiliateMessage || null,
+      voucherMessage: affiliatePricing?.voucherMessage || null,
+      message,
+      currency: pricing.currency,
+      originalAmount: pricing.baseAmount,
+      payableAmount: pricing.totalAmount,
+      baseAmountSgd: pricing.baseAmountSgd,
+      voucherDiscountAmount: pricing.voucherDiscountAmount,
+      exchangeRate: pricing.exchangeRate,
+      countryCode: pricing.countryCode,
+      countryOfResidence: pricing.countryOfResidence || countryOfResidence,
     };
   }
 
@@ -196,12 +371,28 @@ export class IntlPaymentService {
     intlCheckoutInFlight.add(user.id);
 
     try {
-      const promoCode = String(dto.promoCode || user.promoCode || '').trim().toUpperCase() || null;
-      const promoApplied = Boolean(promoCode && promoCode.length >= 4);
+      const promoCodeRaw = String(dto.promoCode || user.promoCode || '').trim().toUpperCase() || null;
+      let promoCode: string | null = null;
+      let promoApplied = false;
+
+      if (promoCodeRaw) {
+        const validated = await this.affiliateService.calculatePricing({
+          code: promoCodeRaw,
+          site: 'international',
+        });
+        promoApplied = Boolean(validated?.discountApplied || validated?.valid);
+        promoCode = promoApplied
+          ? String(validated?.appliedCode || promoCodeRaw).trim().toUpperCase()
+          : null;
+      }
+
+      const amounts = await this.getPricingAmounts();
 
       const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
         countryOfResidence: user.countryOfResidence || '',
         promoApplied,
+        baseAmountSgd: amounts.baseAmountSgd,
+        voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
       });
 
       if (!pricing.countryCode) {

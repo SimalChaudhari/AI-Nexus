@@ -30,6 +30,12 @@ export class ValidateAffiliateCodeDto {
   @IsString()
   @MaxLength(64)
   voucherCode?: string;
+
+  /** Which voucher list to check: payment (SG) or international. Default payment. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  site?: string;
 }
 
 export class EnsureVoucherCodeDto {
@@ -37,6 +43,11 @@ export class EnsureVoucherCodeDto {
   @IsNotEmpty()
   @MaxLength(64)
   code!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  site?: string;
 }
 
 export class UpsertVoucherCodeDto {
@@ -49,6 +60,12 @@ export class UpsertVoucherCodeDto {
   @IsString()
   @MaxLength(255)
   label?: string;
+
+  /** payment | international — which admin menu owns this code. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  site?: string;
 
   @IsOptional()
   @IsBoolean()

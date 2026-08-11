@@ -5,13 +5,17 @@ export async function validateAffiliateCodes({ code, affiliateCode, voucherCode 
     code: code || undefined,
     affiliateCode: affiliateCode || undefined,
     voucherCode: voucherCode || undefined,
+    site: 'payment',
   });
   return response.data;
 }
 
 /** Validate a single code field (tried as affiliate code first, then voucher code by the backend). */
 export async function validateCode(code) {
-  const response = await axios.post('/affiliate/validate', { code: code || undefined });
+  const response = await axios.post('/affiliate/validate', {
+    code: code || undefined,
+    site: 'payment',
+  });
   return response.data;
 }
 
@@ -19,17 +23,23 @@ export async function validateCode(code) {
 export async function ensureVoucherCode(code) {
   const response = await axios.post('/affiliate/ensure-voucher', {
     code: String(code || '').trim().toUpperCase(),
+    site: 'payment',
   });
   return response.data;
 }
 
-export async function listVoucherCodes() {
-  const response = await axios.get('/affiliate/vouchers');
+export async function listVoucherCodes(site = 'payment') {
+  const response = await axios.get('/affiliate/vouchers', {
+    params: { site },
+  });
   return response.data?.data || response.data || [];
 }
 
 export async function createVoucherCode(payload) {
-  const response = await axios.post('/affiliate/vouchers', payload || {});
+  const response = await axios.post('/affiliate/vouchers', {
+    ...(payload || {}),
+    site: payload?.site || 'payment',
+  });
   return response.data?.data || response.data;
 }
 

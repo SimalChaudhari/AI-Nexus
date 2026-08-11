@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
@@ -30,6 +30,8 @@ import { intlRegister } from 'src/services/intl-auth.service';
 import {
   createIntlCheckoutSession,
   getIntlMembershipPricing,
+  trackAffiliateClick,
+  validateIntlPromoCode,
 } from 'src/services/intl-payment.service';
 import {
   COUNTRIES,
@@ -47,6 +49,7 @@ import {
 
 const NAVY = '#002060';
 const RED = '#C00000';
+const AFFILIATE_REF_STORAGE_KEY = 'intlAffiliateSignupRef';
 
 const FORM_GRID_SX = {
   display: 'grid',
@@ -96,12 +99,17 @@ export function IntlSignUpView() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get('returnTo') || paths.dashboard;
   const paymentCanceled = searchParams.get('payment') === 'canceled';
+  const paymentRef = String(searchParams.get('ref') || '').trim().toUpperCase();
+  const lockedReferralCode = paymentRef;
+  const isPromoLockedFromReferral = Boolean(lockedReferralCode);
+
   const [errorMsg, setErrorMsg] = useState(
     paymentCanceled ? 'Payment was canceled. You can try again when ready.' : '',
   );
   const [showPassword, setShowPassword] = useState(false);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
+  const [promoValidating, setPromoValidating] = useState(false);
   const [detectingCountry, setDetectingCountry] = useState(true);
   const [pricing, setPricing] = useState({
     currency: INTL_MEMBERSHIP_FEE.currency,
@@ -114,6 +122,8 @@ export function IntlSignUpView() {
   });
   const [pricingLoading, setPricingLoading] = useState(false);
   const payInFlightRef = useRef(false);
+  const appliedPromoInputRef = useRef('');
+  const affiliateTrackedRef = useRef('');
 
   const {
     control,
@@ -124,7 +134,10 @@ export function IntlSignUpView() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(IntlPaidSignUpSchema),
-    defaultValues: INTL_PAID_SIGNUP_DEFAULTS,
+    defaultValues: {
+      ...INTL_PAID_SIGNUP_DEFAULTS,
+      promoCode: lockedReferralCode || INTL_PAID_SIGNUP_DEFAULTS.promoCode || '',
+    },
   });
 
   const countryOfResidence = watch('countryOfResidence');
@@ -194,22 +207,102 @@ export function IntlSignUpView() {
     ? Number(pricing.voucherDiscountAmount || INTL_MEMBERSHIP_FEE.voucherDiscountAmount)
     : Number(pricing.totalAmount) || standardTotal;
 
-  const applyPromoCode = () => {
-    const code = String(getValues('promoCode') || '').trim().toUpperCase();
-    if (!code) {
+  const applyPromoCode = useCallback(
+    async (codeOverride) => {
+      const code = String(codeOverride ?? getValues('promoCode') ?? '').trim().toUpperCase();
+      if (!code) {
+        setPromoApplied(false);
+        setPromoMessage('Enter a code to apply.');
+        appliedPromoInputRef.current = '';
+        return;
+      }
+
+      setPromoValidating(true);
+      try {
+        const result = await validateIntlPromoCode({
+          code,
+          countryOfResidence: String(getValues('countryOfResidence') || '').trim() || undefined,
+        });
+
+        if (result?.valid || result?.discountApplied) {
+          const exactCode = String(result?.appliedCode || code).trim().toUpperCase();
+          appliedPromoInputRef.current = exactCode;
+          setValue('promoCode', exactCode);
+          setPromoApplied(true);
+          setPromoMessage(
+            result?.message || `Code verified: ${exactCode}. Promotional rate applied below.`,
+          );
+          if (result?.currency || result?.payableAmount != null) {
+            setPricing((prev) => ({
+              ...prev,
+              currency: result.currency || prev.currency,
+              baseAmount: Number(result.originalAmount) || prev.baseAmount,
+              baseAmountSgd: Number(result.baseAmountSgd) || prev.baseAmountSgd,
+              totalAmount: Number(result.payableAmount) || prev.totalAmount,
+              voucherDiscountAmount:
+                Number(result.voucherDiscountAmount ?? result.payableAmount) ||
+                prev.voucherDiscountAmount,
+              exchangeRate: Number(result.exchangeRate) || prev.exchangeRate,
+              promoApplied: true,
+            }));
+          }
+        } else {
+          appliedPromoInputRef.current = '';
+          setPromoApplied(false);
+          setPromoMessage(
+            result?.message ||
+              result?.affiliateMessage ||
+              result?.voucherMessage ||
+              'This code is invalid or expired. The standard fee applies.',
+          );
+        }
+      } catch (error) {
+        appliedPromoInputRef.current = '';
+        setPromoApplied(false);
+        setPromoMessage(
+          error?.response?.data?.message ||
+            error?.message ||
+            'Could not validate this code. Please try again.',
+        );
+      } finally {
+        setPromoValidating(false);
+      }
+    },
+    [getValues, setValue],
+  );
+
+  useEffect(() => {
+    const normalized = String(promoCodeValue || '').trim().toUpperCase();
+    if (appliedPromoInputRef.current && normalized !== appliedPromoInputRef.current) {
+      appliedPromoInputRef.current = '';
       setPromoApplied(false);
-      setPromoMessage('Enter a code to apply.');
-      return;
+      setPromoMessage('');
     }
-    setValue('promoCode', code);
-    if (code.length >= 4) {
-      setPromoApplied(true);
-      setPromoMessage(`Code verified: ${code}`);
-    } else {
-      setPromoApplied(false);
-      setPromoMessage('This code is invalid. The standard fee applies.');
+  }, [promoCodeValue]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (paymentCanceled) return;
+
+    const refCode = lockedReferralCode;
+    if (!refCode) return;
+
+    try {
+      sessionStorage.setItem(AFFILIATE_REF_STORAGE_KEY, refCode);
+    } catch {
+      // ignore storage errors
     }
-  };
+    setValue('promoCode', refCode);
+
+    if (affiliateTrackedRef.current === refCode) return;
+    affiliateTrackedRef.current = refCode;
+
+    trackAffiliateClick({
+      affiliateCode: refCode,
+      landingPath: window.location.pathname,
+    }).catch(() => {});
+    applyPromoCode(refCode);
+  }, [applyPromoCode, lockedReferralCode, paymentCanceled, setValue]);
 
   const onSubmit = handleSubmit(async (data) => {
     if (payInFlightRef.current || isSubmitting) {
@@ -226,7 +319,10 @@ export function IntlSignUpView() {
         contactNumber: data.contactNumber || undefined,
         password: data.password,
         countryOfResidence: data.countryOfResidence,
-        promoCode: data.promoCode || undefined,
+        promoCode: promoApplied
+          ? String(data.promoCode || appliedPromoInputRef.current || '').trim().toUpperCase() ||
+            undefined
+          : undefined,
         paymentConsent: data.paymentConsent,
       });
 
@@ -243,7 +339,10 @@ export function IntlSignUpView() {
         signupAccessToken: registered.signupAccessToken,
         successUrl,
         cancelUrl,
-        promoCode: data.promoCode || undefined,
+        promoCode: promoApplied
+          ? String(data.promoCode || appliedPromoInputRef.current || '').trim().toUpperCase() ||
+            undefined
+          : undefined,
         paymentConsent: data.paymentConsent,
       });
 
@@ -629,8 +728,10 @@ export function IntlSignUpView() {
                         fullWidth
                         label="Code"
                         placeholder="e.g. PROMO2026"
+                        disabled={isPromoLockedFromReferral}
                         InputLabelProps={{ shrink: true }}
                         inputProps={{
+                          readOnly: isPromoLockedFromReferral,
                           style: {
                             textTransform: 'uppercase',
                             letterSpacing: '0.04em',
@@ -654,8 +755,17 @@ export function IntlSignUpView() {
                               <Button
                                 size="small"
                                 variant="contained"
-                                disabled={!String(promoCodeValue || '').trim()}
-                                onClick={applyPromoCode}
+                                disabled={
+                                  promoValidating ||
+                                  isPromoLockedFromReferral ||
+                                  !String(promoCodeValue || '').trim()
+                                }
+                                onClick={() => applyPromoCode()}
+                                startIcon={
+                                  promoValidating ? (
+                                    <CircularProgress size={14} color="inherit" />
+                                  ) : null
+                                }
                                 sx={{
                                   minWidth: 76,
                                   px: 1.5,
@@ -672,7 +782,7 @@ export function IntlSignUpView() {
                                   },
                                 }}
                               >
-                                Apply
+                                {isPromoLockedFromReferral && promoApplied ? 'Applied' : 'Apply'}
                               </Button>
                             </InputAdornment>
                           ),
@@ -680,6 +790,7 @@ export function IntlSignUpView() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') {
                             event.preventDefault();
+                            if (isPromoLockedFromReferral) return;
                             applyPromoCode();
                           }
                         }}
@@ -687,7 +798,14 @@ export function IntlSignUpView() {
                     )}
                   />
 
-                  {promoMessage ? (
+                  {promoValidating ? (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CircularProgress size={14} />
+                      <Typography variant="caption" sx={{ color: alpha(NAVY, 0.65) }}>
+                        Verifying code…
+                      </Typography>
+                    </Stack>
+                  ) : promoMessage ? (
                     <Typography
                       variant="caption"
                       sx={{

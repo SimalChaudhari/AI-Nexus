@@ -176,6 +176,10 @@ export const navData = [
         icon: <Iconify icon="solar:map-point-wave-bold-duotone" width={24} />,
         children: [
           {
+            title: 'Promo & Pricing',
+            path: paths.admin.international.promoPricing,
+          },
+          {
             title: 'Pathway modules',
             path: paths.admin.international.modules.root,
             deepMatch: true,

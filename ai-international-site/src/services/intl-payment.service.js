@@ -17,6 +17,23 @@ export async function getIntlMembershipPricing({ countryOfResidence, promoApplie
   return res.data;
 }
 
+/** Validate affiliate/voucher code and get international FX pricing (same idea as /affiliate/validate). */
+export async function validateIntlPromoCode({ code, countryOfResidence } = {}) {
+  const res = await axios.post('/intl-payments/validate-promo', {
+    code: code || undefined,
+    countryOfResidence: countryOfResidence || undefined,
+  });
+  return res.data;
+}
+
+export async function trackAffiliateClick({ affiliateCode, landingPath }) {
+  const res = await axios.post('/affiliate/track-click', {
+    affiliateCode,
+    landingPath,
+  });
+  return res.data;
+}
+
 export async function createIntlCheckoutSession({
   draftUserId,
   signupAccessToken,

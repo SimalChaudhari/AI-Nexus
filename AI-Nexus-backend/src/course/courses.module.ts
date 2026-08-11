@@ -56,6 +56,7 @@ import { CourseOptionInitService } from './course-option-init.service';
 import { ReviewEntity } from '../review/review.entity';
 import { InternationalAiFluencyPathwayService } from './international-ai-fluency-pathway.service';
 import { IntlPathwayModule } from '../intl-pathway/intl-pathway.module';
+import { SsoModule } from '../auth/sso.module';
 @Module({
     imports: [
         SpeakerModule,
@@ -64,6 +65,7 @@ import { IntlPathwayModule } from '../intl-pathway/intl-pathway.module';
         AppSettingsModule,
         AssessmentEvaluationModule,
         IntlPathwayModule,
+        SsoModule,
         TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseQuestionAssignmentSubmissionEntity, CourseCertificateEntity, CategoryEntity, ProgramEntity, CourseOptionEntity, ReviewEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,

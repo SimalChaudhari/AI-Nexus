@@ -400,6 +400,22 @@ export const CORPORATE_STAFF_CSV_TEMPLATE_SAMPLE_ROWS = [
     'Analyst',
     'Yes',
   ],
+  [
+    'Wei',
+    'Chen',
+    'Passport',
+    'E12345678',
+    'Foreigner',
+    'Chinese',
+    'Non-member',
+    'CPA Australia',
+    '91239876',
+    'wei.chen@example.com',
+    'Example Consulting Pte Ltd',
+    'Corporate',
+    'Consultant',
+    'Yes',
+  ],
 ];
 
 function escapeCsvCell(value) {

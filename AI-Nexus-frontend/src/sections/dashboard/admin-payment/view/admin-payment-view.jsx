@@ -117,7 +117,7 @@ export function AdminPaymentView() {
             submitting={submitting}
             onSave={handleSave}
           />
-          <VoucherCodesSettingsCard websiteBaseUrl={paymentSettings.websiteBaseUrl || ''} />
+          <VoucherCodesSettingsCard websiteBaseUrl={paymentSettings.websiteBaseUrl || ''} site="payment" />
         </Stack>
       )}
     </DashboardContent>

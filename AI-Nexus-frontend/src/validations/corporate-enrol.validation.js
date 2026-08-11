@@ -53,5 +53,8 @@ export const CorporateEnrolSchema = zod.object({
     invalid_type_error: 'Please select Yes or No',
   }),
   membershipNumber: zod.string().trim().optional(),
-  eligibility: zod.string().trim().min(1, 'Eligibility is required'),
+  eligibility: zod.enum(['Singapore Citizen', 'Singapore PR', 'Foreigner'], {
+    required_error: 'Eligibility is required',
+    invalid_type_error: 'Select Singapore Citizen, Singapore PR, or Foreigner',
+  }),
 });

@@ -352,6 +352,7 @@ export class PaymentController {
     paidAmount: number;
     paidDate: string;
     currency: string;
+    withGst: boolean;
   }): string {
     return this.jwtService.sign(
       {
@@ -361,6 +362,7 @@ export class PaymentController {
         paidAmount: payload.paidAmount,
         paidDate: payload.paidDate,
         currency: payload.currency,
+        withGst: payload.withGst === true,
       },
       { expiresIn: '45m' },
     );
@@ -443,12 +445,14 @@ export class PaymentController {
 
       const paidDate = new Date().toISOString().slice(0, 10);
       const resolvedSessionId = String(session?.id || sessionLookupId).trim();
+      const withGst = !ref.courseIds.includes('no-gst');
       const paymentProofToken = this.signMembershipPaymentProof({
         refId,
         sessionId: resolvedSessionId,
         paidAmount: charged.paidAmount,
         paidDate,
         currency: charged.currency,
+        withGst,
       });
 
       console.info(
@@ -460,6 +464,8 @@ export class PaymentController {
         charged.paidAmount.toFixed(2),
         'currency=',
         charged.currency,
+        'withGst=',
+        withGst,
       );
 
       return res.status(HttpStatus.OK).json({
@@ -470,6 +476,7 @@ export class PaymentController {
         paidAmountCents: charged.paidAmountCents,
         currency: charged.currency,
         paidDate,
+        withGst,
         paymentProofToken,
       });
     } catch (err: any) {

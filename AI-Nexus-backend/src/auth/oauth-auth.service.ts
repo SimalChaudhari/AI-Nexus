@@ -32,6 +32,7 @@ import {
 import { assertNricFinAvailableForAccountCreation } from './utils/nric-registration-guard.util';
 import { CompanyEnrollmentService } from '../company-enrollment/company-enrollment.service';
 import { assertEmailAvailableForRole } from '../user/user-email-availability.util';
+import { EmailService } from '../service/email.service';
 
 const ACCESS_TOKEN_EXPIRY = '10d';
 
@@ -116,6 +117,7 @@ export class OAuthAuthService {
     private readonly userRepository: Repository<UserEntity>,
     private readonly jwtService: JwtService,
     private readonly companyEnrollmentService: CompanyEnrollmentService,
+    private readonly emailService: EmailService,
   ) {}
 
   private get baseUrl(): string {
@@ -381,7 +383,7 @@ export class OAuthAuthService {
     return `${this.integrationApiBaseUrl}${this.aiNexusUserAccountUpdatePath}`;
   }
 
-  /** PUT nexus-payment/update — mark paid membership payment on Salesforce account. */
+  /** PUT nexus-payment/update — legacy paid sync (kept for backward compatibility). */
   private get nexusPaymentUpdatePath(): string {
     const p =
       process.env.OAUTH_NEXUS_PAYMENT_UPDATE_PATH
@@ -395,6 +397,22 @@ export class OAuthAuthService {
     const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
     if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.nexusPaymentUpdatePath}`;
     return `${this.integrationApiBaseUrl}${this.nexusPaymentUpdatePath}`;
+  }
+
+  /** POST createbillingforuser — preferred paid membership billing sync. */
+  private get createBillingForUserPath(): string {
+    const p =
+      process.env.OAUTH_CREATE_BILLING_FOR_USER_PATH
+      || '/services/apexrest/createbillingforuser';
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+
+  get createBillingForUserUrl(): string {
+    const fullUrl = process.env.OAUTH_CREATE_BILLING_FOR_USER_URL?.trim();
+    if (fullUrl) return fullUrl.split('?')[0].replace(/\/$/, '');
+    const siteBase = process.env.OAUTH_INSTANCE_URL?.trim();
+    if (siteBase) return `${siteBase.replace(/\/$/, '')}${this.createBillingForUserPath}`;
+    return `${this.integrationApiBaseUrl}${this.createBillingForUserPath}`;
   }
 
   private extractSalesforceAccountId(data: Record<string, unknown> | null | undefined): string {
@@ -533,6 +551,133 @@ export class OAuthAuthService {
         if (required) {
           throw new BadRequestException(
             'Failed to update payment in Salesforce. Local signup was not completed.',
+          );
+        }
+      }
+      return null;
+    }
+  }
+
+  /**
+   * POST createbillingforuser — sync paid membership billing after successful payment.
+   * Body: accountId, paymentMethod, wooshPayReferenceNo, billingAmount, withGst.
+   * When required=true (paid signup), failure blocks local finalize.
+   */
+  async createSalesforceBillingForUser(payload: {
+    accountId?: string | null;
+    paymentMethod?: string | null;
+    wooshPayReferenceNo?: string | null;
+    billingAmount?: number | string;
+    withGst?: boolean;
+    required?: boolean;
+  }): Promise<Record<string, unknown> | null> {
+    const required = payload.required === true;
+    const accountId = String(payload.accountId || '').trim();
+    const wooshPayReferenceNo = String(payload.wooshPayReferenceNo || '').trim();
+    const paymentMethod =
+      String(payload.paymentMethod || process.env.OAUTH_BILLING_PAYMENT_METHOD || 'WooShpay').trim()
+      || 'WooShpay';
+
+    if (!accountId) {
+      const message = 'Salesforce accountId is required to create billing.';
+      console.warn('[Salesforce] Skipping createbillingforuser — missing accountId');
+      if (required) throw new BadRequestException(message);
+      return null;
+    }
+    if (!wooshPayReferenceNo) {
+      const message = 'WooshPay reference number is required to create billing.';
+      console.warn('[Salesforce] Skipping createbillingforuser — missing wooshPayReferenceNo', {
+        accountId,
+      });
+      if (required) throw new BadRequestException(message);
+      return null;
+    }
+
+    const amountRaw = payload.billingAmount;
+    const billingAmount =
+      typeof amountRaw === 'number' ? amountRaw : Number(String(amountRaw ?? '').trim());
+    if (!Number.isFinite(billingAmount) || billingAmount < 0) {
+      const message = 'A valid billingAmount is required to create Salesforce billing.';
+      console.warn('[Salesforce] Skipping createbillingforuser — invalid billingAmount', {
+        accountId,
+        billingAmount: amountRaw,
+      });
+      if (required) throw new BadRequestException(message);
+      return null;
+    }
+
+    const body = {
+      accountId,
+      paymentMethod,
+      wooshPayReferenceNo,
+      billingAmount: Number(billingAmount.toFixed(2)),
+      withGst: payload.withGst === true,
+    };
+
+    const url = this.createBillingForUserUrl;
+    console.log('[Salesforce] POST createbillingforuser:', {
+      url,
+      accountId: body.accountId,
+      paymentMethod: body.paymentMethod,
+      wooshPayReferenceNo: body.wooshPayReferenceNo,
+      billingAmount: body.billingAmount,
+      withGst: body.withGst,
+      required,
+    });
+
+    try {
+      const accessToken = await this.getIntegrationAccessToken();
+      const res = await axios.post<Record<string, unknown>>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 30000,
+      });
+
+      const resData = (res.data || {}) as Record<string, unknown>;
+      const { isError, errorMsg } = this.isSalesforceApiErrorPayload(resData);
+      if (isError) {
+        console.error('[Salesforce] createbillingforuser API returned error:', errorMsg);
+        if (required) {
+          throw new BadRequestException(
+            errorMsg || 'Failed to create billing in Salesforce. Local signup was not completed.',
+          );
+        }
+        return null;
+      }
+
+      console.log('[Salesforce] createbillingforuser success:', {
+        status: res.status,
+        accountId: body.accountId,
+        billingAmount: body.billingAmount,
+      });
+      return resData || { success: true };
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) throw err;
+      if (axios.isAxiosError(err)) {
+        console.error('[Salesforce] createbillingforuser failed:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message,
+          accountId: body.accountId,
+          required,
+        });
+        if (required) {
+          const desc = this.extractSalesforceErrorDescription(
+            err.response?.data,
+            err.message,
+          );
+          throw new BadRequestException(
+            desc || 'Failed to create billing in Salesforce. Local signup was not completed.',
+          );
+        }
+      } else {
+        console.error('[Salesforce] createbillingforuser failed:', err);
+        if (required) {
+          throw new BadRequestException(
+            'Failed to create billing in Salesforce. Local signup was not completed.',
           );
         }
       }
@@ -1749,16 +1894,21 @@ export class OAuthAuthService {
           || this.extractSalesforceAccountId(nestedData);
         if (!accountId) {
           throw new BadRequestException(
-            'Salesforce account was created but accountId was missing, so payment could not be synced. Local signup was not completed.',
+            'Salesforce account was created but accountId was missing, so billing could not be synced. Local signup was not completed.',
           );
         }
-        await this.updateSalesforceNexusPayment({
-          accountId,
-          Is_Paid: true,
-          Paid_Amount: typeof body.paid_amount === 'number' || typeof body.paid_amount === 'string'
+        const wooshPayReferenceNo =
+          String(paymentProof?.sessionId || paymentProof?.refId || '').trim();
+        const billingAmount =
+          typeof body.paid_amount === 'number' || typeof body.paid_amount === 'string'
             ? body.paid_amount
-            : resolvedPaidAmount,
-          Paid_Date: paidDate,
+            : resolvedPaidAmount;
+        await this.createSalesforceBillingForUser({
+          accountId,
+          paymentMethod: 'WooShpay',
+          wooshPayReferenceNo,
+          billingAmount,
+          withGst: paymentProof?.withGst === true,
           required: true,
         });
       }
@@ -1948,6 +2098,7 @@ export class OAuthAuthService {
     paidAmount: number;
     paidDate: string;
     currency: string;
+    withGst: boolean;
   } | null {
     const raw = String(token || '').trim();
     if (!raw) return null;
@@ -1959,6 +2110,7 @@ export class OAuthAuthService {
         paidAmount?: number;
         paidDate?: string;
         currency?: string;
+        withGst?: boolean;
       }>(raw);
       if (payload?.purpose !== 'membership-payment-proof') {
         throw new BadRequestException('Invalid membership payment proof.');
@@ -1975,6 +2127,7 @@ export class OAuthAuthService {
         paidAmount: Number(paidAmount.toFixed(2)),
         paidDate,
         currency: String(payload.currency || 'SGD').trim().toUpperCase() || 'SGD',
+        withGst: payload.withGst === true,
       };
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
@@ -2712,6 +2865,22 @@ export class OAuthAuthService {
       if (isError) {
         throw new BadRequestException(errorMsg || 'Failed to create corporate Salesforce account.');
       }
+
+      // Welcome email is best-effort — do not fail registration if SMTP fails.
+      try {
+        await this.emailService.sendCorporateRegistrationWelcomeEmail({
+          email,
+          firstName,
+          lastName,
+          companyName: accountName,
+        });
+      } catch (emailErr) {
+        console.error(
+          '[Corporate] Welcome email failed after successful Salesforce registration:',
+          emailErr,
+        );
+      }
+
       return resData;
     } catch (err: unknown) {
       if (err instanceof BadRequestException) throw err;

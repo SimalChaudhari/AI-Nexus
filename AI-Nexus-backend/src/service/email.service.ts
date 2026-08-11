@@ -5,12 +5,14 @@ import {
     buildBrandTemplate,
     buildCorporateNudgeBodyHtml,
     buildCorporateNudgeProgressSentence,
+    buildCorporateRegistrationWelcomeBodyHtml,
     buildCredentialsBodyHtml,
     buildFeeWaiverHrVerificationBodyHtml,
     buildForumReplyBodyHtml,
     buildOrderReceiptBodyHtml,
     buildStudentAcademicVerificationEmailHtml,
     buildStudentVerificationPinBodyHtml,
+    buildUserRegistrationWelcomeBodyHtml,
 } from './email-template.util';
 
 @Injectable()
@@ -19,19 +21,19 @@ export class EmailService {
     private fromEmail: string;
 
     constructor() {
-       // const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
+       const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
-        // if (isDevelopment) {
-        //     this.transporter = nodemailer.createTransport({
-        //         service: 'gmail',
-        //         auth: {
-        //             user: process.env.SMTP_USER,
-        //             // pass: process.env.SMTP_PASS,
-        //         },
-        //     });
-        //     return;
-        // }
+        if (isDevelopment) {
+            this.transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS,
+                },
+            });
+            return;
+        }
         
         const host = process.env.SMTP_HOST || '127.0.0.1';
         const port = Number(process.env.SMTP_PORT || 25);
@@ -219,6 +221,128 @@ export class EmailService {
         } catch (error) {
             console.error('Error sending student academic verification email:', error);
             throw new Error('Failed to send student academic verification email');
+        }
+    }
+
+    /**
+     * Welcome email after an individual learner successfully registers on AI Nexus.
+     */
+    async sendUserRegistrationWelcomeEmail(params: {
+        email: string;
+        firstName: string;
+        lastName?: string;
+    }): Promise<void> {
+        const email = String(params.email || '').trim();
+        const firstName = String(params.firstName || '').trim();
+        const lastName = String(params.lastName || '').trim();
+        const greetingName =
+            [firstName, lastName].filter(Boolean).join(' ').trim() || firstName || 'there';
+
+        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
+        const normalizedSignInPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
+        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedSignInPath}`;
+        const learningPath = String(process.env.EMAIL_COURSE_PATH || '/learning').trim();
+        const normalizedLearningPath = learningPath.startsWith('/') ? learningPath : `/${learningPath}`;
+        const learningUrl = `${this.resolveFrontendBaseUrl()}${normalizedLearningPath}`;
+
+        const bodyHtml = buildUserRegistrationWelcomeBodyHtml({ email });
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'Welcome to AI Nexus',
+            greetingName,
+            intro:
+                'Thank you for joining AI Nexus. Your account has been created successfully and is ready to use.',
+            bodyHtml,
+            ctaLabel: 'Sign In to AI Nexus',
+            ctaUrl: loginUrl,
+            note: 'Need help getting started? Reply to this email or contact AI Nexus support.',
+            footer: 'AI Nexus learner welcome',
+        });
+
+        const mailOptions = {
+            from: this.fromEmail,
+            to: email,
+            subject: 'Welcome to AI Nexus — your account is ready',
+            text:
+                `Hello ${greetingName},\n\n` +
+                `Welcome to AI Nexus. Your learner account is ready — you can sign in now.\n\n` +
+                `Sign-in email: ${email}\n` +
+                `Sign in: ${loginUrl}\n` +
+                `Start learning: ${learningUrl}\n`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`User registration welcome email sent to ${email}`);
+        } catch (error) {
+            console.error('Error sending user registration welcome email:', error);
+            throw new Error('Failed to send user registration welcome email');
+        }
+    }
+
+    /**
+     * Welcome email after HR successfully registers a corporate account on AI Nexus.
+     */
+    async sendCorporateRegistrationWelcomeEmail(params: {
+        email: string;
+        firstName: string;
+        lastName?: string;
+        companyName: string;
+    }): Promise<void> {
+        const email = String(params.email || '').trim();
+        const firstName = String(params.firstName || '').trim();
+        const lastName = String(params.lastName || '').trim();
+        const companyName = String(params.companyName || '').trim();
+        const greetingName =
+            [firstName, lastName].filter(Boolean).join(' ').trim() || firstName || 'there';
+
+        const corporatePath = String(
+            process.env.EMAIL_CORPORATE_PORTAL_PATH || '/corporate/overview',
+        ).trim();
+        const normalizedCorporatePath = corporatePath.startsWith('/')
+            ? corporatePath
+            : `/${corporatePath}`;
+        const portalUrl = `${this.resolveFrontendBaseUrl()}${normalizedCorporatePath}`;
+        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
+        const normalizedSignInPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
+        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedSignInPath}?returnTo=${encodeURIComponent(normalizedCorporatePath)}`;
+
+        const bodyHtml = buildCorporateRegistrationWelcomeBodyHtml({
+            companyName,
+            email,
+        });
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'Welcome to AI Nexus Corporate',
+            greetingName,
+            intro:
+                `Thank you for registering ${companyName || 'your organisation'} on AI Nexus. ` +
+                'Your corporate account is ready. Sign in to open the corporate portal and start enrolling your staff.',
+            bodyHtml,
+            ctaLabel: 'Open Corporate Portal',
+            ctaUrl: loginUrl,
+            note: 'Need help? Contact AI Nexus support and we will assist your HR team.',
+            footer: 'AI Nexus corporate welcome',
+        });
+
+        const mailOptions = {
+            from: this.fromEmail,
+            to: email,
+            subject: 'Welcome to AI Nexus Corporate — your account is ready',
+            text:
+                `Hello ${greetingName},\n\n` +
+                `Welcome to AI Nexus Corporate. Your organisation account for ${companyName || 'your company'} is ready.\n\n` +
+                `Sign-in email: ${email}\n` +
+                `Corporate portal: ${portalUrl}\n` +
+                `Sign in: ${loginUrl}\n`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            console.log(`Corporate registration welcome email sent to ${email}`);
+        } catch (error) {
+            console.error('Error sending corporate registration welcome email:', error);
+            throw new Error('Failed to send corporate registration welcome email');
         }
     }
 
