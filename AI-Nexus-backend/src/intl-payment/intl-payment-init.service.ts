@@ -8,12 +8,52 @@ export class IntlPaymentInitService implements OnModuleInit {
   async onModuleInit() {
     try {
       await this.ensureTables();
+      await this.ensureMembershipSettingsTable();
       await this.ensureUserPaymentColumns();
     } catch (error) {
       console.error(
         '❌ Error initializing international payment tables:',
         error instanceof Error ? error.message : error,
       );
+    }
+  }
+
+  private async ensureMembershipSettingsTable() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const hasTable = await queryRunner.hasTable('intl_membership_settings');
+      if (!hasTable) {
+        console.log('📋 Creating intl_membership_settings table...');
+        await queryRunner.query(`
+          CREATE TABLE IF NOT EXISTS "intl_membership_settings" (
+            "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+            "baseAmountSgd" decimal(12,2) NOT NULL DEFAULT 365,
+            "voucherDiscountAmountSgd" decimal(12,2) NOT NULL DEFAULT 100,
+            "referralCode" varchar(64),
+            "referralLinkPath" varchar(200) NOT NULL DEFAULT '/auth/sign-up?ref=',
+            "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+            "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+            CONSTRAINT "PK_intl_membership_settings" PRIMARY KEY ("id")
+          )
+        `);
+        console.log('✅ intl_membership_settings created');
+      }
+
+      const rows = await queryRunner.query(
+        `SELECT "id" FROM "intl_membership_settings" ORDER BY "createdAt" ASC LIMIT 1`,
+      );
+      if (!Array.isArray(rows) || rows.length === 0) {
+        await queryRunner.query(`
+          INSERT INTO "intl_membership_settings"
+            ("baseAmountSgd", "voucherDiscountAmountSgd", "referralLinkPath")
+          VALUES (365, 100, '/auth/sign-up?ref=')
+        `);
+        console.log('✅ intl_membership_settings seeded with defaults');
+      }
+    } finally {
+      await queryRunner.release();
     }
   }
 

@@ -122,6 +122,7 @@ export function CourseCertificatesView() {
   const table = useTable({ defaultCurrentPage: 0, defaultRowsPerPage: 10 });
   const filters = useSetState({ search: '', userName: '', courseTitle: '' });
   const confirm = useBoolean();
+  const sfBackfillConfirm = useBoolean();
 
   const [loading, setLoading] = useState(true);
   const [tableData, setTableData] = useState([]);
@@ -136,6 +137,8 @@ export function CourseCertificatesView() {
   const [hideAllBadges, setHideAllBadges] = useState(false);
   const [visibilityLoading, setVisibilityLoading] = useState(true);
   const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const [sfBackfillLoading, setSfBackfillLoading] = useState(false);
+  const [sfBackfillSummary, setSfBackfillSummary] = useState(null);
   const debouncedSearch = useDebounce(filters.state.search, 500);
 
   const loadVisibility = useCallback(async () => {
@@ -193,6 +196,28 @@ export function CourseCertificatesView() {
     },
     [hideAllBadges, hideAllCertificates]
   );
+
+  const handleSalesforceBackfill = useCallback(async ({ dryRun = false } = {}) => {
+    setSfBackfillLoading(true);
+    try {
+      const data = await courseService.backfillSalesforceBadges({ dryRun });
+      setSfBackfillSummary(data || null);
+      if (dryRun) {
+        toast.success(
+          `Dry run: ${Number(data?.eligible) || 0} learner(s) eligible for Salesforce badge sync`
+        );
+      } else {
+        toast.success(
+          `Salesforce sync done — created: ${Number(data?.created) || 0}, already exists: ${Number(data?.alreadyExists) || 0}, failed: ${Number(data?.failed) || 0}`
+        );
+      }
+      sfBackfillConfirm.onFalse();
+    } catch (error) {
+      toast.error(error?.message || 'Failed to sync Salesforce badges');
+    } finally {
+      setSfBackfillLoading(false);
+    }
+  }, [sfBackfillConfirm]);
 
   const loadData = useCallback(async () => {
     try {
@@ -436,6 +461,62 @@ export function CourseCertificatesView() {
           </Stack>
         </Card>
 
+        <Card sx={{ p: 2.5, mb: 2.5 }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'stretch', md: 'center' }}
+            justifyContent="space-between"
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Salesforce badge sync
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                One-time backfill for learners who already have a local badge. Creates the badge in
+                Salesforce via createbadgeforainexus.
+              </Typography>
+              {sfBackfillSummary ? (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Last run{sfBackfillSummary.dryRun ? ' (dry run)' : ''}: eligible{' '}
+                  {Number(sfBackfillSummary.eligible) || 0}, created{' '}
+                  {Number(sfBackfillSummary.created) || 0}, already exists{' '}
+                  {Number(sfBackfillSummary.alreadyExists) || 0}, failed{' '}
+                  {Number(sfBackfillSummary.failed) || 0}, no accountId{' '}
+                  {Number(sfBackfillSummary.skippedNoAccountId) || 0}
+                </Typography>
+              ) : null}
+            </Box>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="stretch">
+              <Button
+                variant="outlined"
+                color="inherit"
+                disabled={sfBackfillLoading}
+                onClick={() => handleSalesforceBackfill({ dryRun: true })}
+                startIcon={
+                  sfBackfillLoading ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <Iconify icon="solar:eye-bold" />
+                  )
+                }
+              >
+                Dry run
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                disabled={sfBackfillLoading}
+                onClick={sfBackfillConfirm.onTrue}
+                startIcon={<Iconify icon="solar:cloud-upload-bold" />}
+              >
+                Sync to Salesforce
+              </Button>
+            </Stack>
+          </Stack>
+        </Card>
+
         <Card>
           <CourseCertificatesTableToolbar
             filters={filters}
@@ -617,6 +698,38 @@ export function CourseCertificatesView() {
             }
           >
             {isUnblock ? 'Confirm unblock' : 'Confirm block'}
+          </Button>
+        }
+      />
+
+      <ConfirmDialog
+        open={sfBackfillConfirm.value}
+        onClose={() => {
+          if (sfBackfillLoading) return;
+          sfBackfillConfirm.onFalse();
+        }}
+        title="Sync badges to Salesforce"
+        content={
+          <Typography variant="body2">
+            This will create Salesforce badges for learners who already have an active local badge
+            and a Salesforce account ID. Existing Salesforce badges are skipped. Continue?
+          </Typography>
+        }
+        action={
+          <Button
+            variant="contained"
+            color="primary"
+            disabled={sfBackfillLoading}
+            onClick={() => handleSalesforceBackfill({ dryRun: false })}
+            startIcon={
+              sfBackfillLoading ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <Iconify icon="solar:cloud-upload-bold" />
+              )
+            }
+          >
+            Sync now
           </Button>
         }
       />

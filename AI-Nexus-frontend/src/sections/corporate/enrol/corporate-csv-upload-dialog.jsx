@@ -599,7 +599,7 @@ export function CorporateCsvUploadDialog({
             <Typography sx={{ fontSize: 11.5, color: CORP.muted, mt: 1 }}>
               * Required. Optional fields are sent to Salesforce only when filled.
               † Required only when ISCA member/ Non-member is Non-member.
-              Citizenship must be Singapore Citizen or Singapore PR.
+              Citizenship must be Singapore Citizen, Singapore PR, or Foreigner.
             </Typography>
           </Box>
         ) : null}

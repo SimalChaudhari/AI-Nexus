@@ -17,6 +17,8 @@ import {
 import { UpdateCourseModuleSectionDto } from './course-module-section.dto';
 import { LocalStorageService } from '../service/local-storage.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
+import { SalesforceBadgeService } from '../auth/salesforce-badge.service';
+import { UserEntity } from '../user/users.entity';
 import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
 
 /** LinkedIn share text cannot use HTML/markdown — approximate bold with Mathematical Bold Unicode. */
@@ -86,6 +88,8 @@ export class CourseCertificateService {
     private readonly courseModuleRepository: Repository<CourseModuleEntity>,
     @InjectRepository(CourseModuleSectionEntity)
     private readonly courseModuleSectionRepository: Repository<CourseModuleSectionEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
     private readonly courseSectionWatchProgressService: CourseSectionWatchProgressService,
     @Inject(forwardRef(() => CourseService))
     private readonly courseService: CourseService,
@@ -93,6 +97,7 @@ export class CourseCertificateService {
     private readonly quizAssessmentProgressService: CourseQuizAssessmentProgressService,
     private readonly localStorageService: LocalStorageService,
     private readonly appSettingsService: AppSettingsService,
+    private readonly salesforceBadgeService: SalesforceBadgeService,
   ) {}
 
   private async buildCertificateNo(completedAt: Date = new Date()): Promise<string> {
@@ -543,6 +548,15 @@ export class CourseCertificateService {
       }
     }
     if (result.action === 'issued' || result.action === 'reissued') {
+      // Sync digital badge to Salesforce (createbadgeforainexus) — non-fatal.
+      try {
+        await this.salesforceBadgeService.createBadgeForUser(userId);
+      } catch (error) {
+        console.error(
+          `[Salesforce Badge] createbadgeforainexus after cert ${result.action} failed for user=${userId}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
       return { issued: true, certificate: result.certificate, reason: result.action };
     }
     if (result.action === 'revoked') {
@@ -585,6 +599,169 @@ export class CourseCertificateService {
     }
 
     return { issued: false, certificate: null, reason: 'not_completed' as const };
+  }
+
+  /**
+   * One-time / admin backfill: push Salesforce badges for learners who already have
+   * an active local certificate/badge but were never synced via createbadgeforainexus.
+   * Dedupes by salesforceAccountId (SF stores one badge per Account).
+   */
+  async backfillSalesforceBadgesForExistingLearners(options?: {
+    dryRun?: boolean;
+    limit?: number;
+    delayMs?: number;
+  }) {
+    const dryRun = Boolean(options?.dryRun);
+    const limitRaw = Number(options?.limit);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
+    const delayRaw = Number(options?.delayMs);
+    const delayMs =
+      Number.isFinite(delayRaw) && delayRaw >= 0 ? Math.floor(delayRaw) : 250;
+
+    const activeUserRows = await this.certificateRepository
+      .createQueryBuilder('cert')
+      .select('DISTINCT cert.userId', 'userId')
+      .where('cert.status = :status', { status: CourseCertificateStatus.Active })
+      .andWhere('cert.badgeBlocked = :badgeBlocked', { badgeBlocked: false })
+      .getRawMany<{ userId: string }>();
+
+    const userIds = activeUserRows
+      .map((row) => String(row.userId || '').trim())
+      .filter(Boolean);
+
+    if (!userIds.length) {
+      return {
+        dryRun,
+        totalActiveBadgeUsers: 0,
+        eligible: 0,
+        processed: 0,
+        created: 0,
+        alreadyExists: 0,
+        failed: 0,
+        skippedNoAccountId: 0,
+        results: [] as Array<Record<string, unknown>>,
+      };
+    }
+
+    const users = await this.userRepository.find({
+      where: { id: In(userIds) },
+      select: ['id', 'email', 'salesforceAccountId'],
+    });
+
+    const byAccountId = new Map<
+      string,
+      { userId: string; email: string | null; salesforceAccountId: string }
+    >();
+    let skippedNoAccountId = 0;
+
+    for (const user of users) {
+      const accountId = String(user.salesforceAccountId || '').trim();
+      if (!accountId) {
+        skippedNoAccountId += 1;
+        continue;
+      }
+      if (!byAccountId.has(accountId)) {
+        byAccountId.set(accountId, {
+          userId: user.id,
+          email: user.email ?? null,
+          salesforceAccountId: accountId,
+        });
+      }
+    }
+
+    let candidates = Array.from(byAccountId.values());
+    if (limit > 0) {
+      candidates = candidates.slice(0, limit);
+    }
+
+    const results: Array<Record<string, unknown>> = [];
+    let created = 0;
+    let alreadyExists = 0;
+    let failed = 0;
+
+    console.log('[Salesforce Badge] Backfill start:', {
+      dryRun,
+      totalActiveBadgeUsers: userIds.length,
+      eligible: candidates.length,
+      skippedNoAccountId,
+      limit: limit || null,
+      delayMs,
+    });
+
+    for (let i = 0; i < candidates.length; i += 1) {
+      const row = candidates[i];
+      if (dryRun) {
+        results.push({
+          userId: row.userId,
+          email: row.email,
+          salesforceAccountId: row.salesforceAccountId,
+          status: 'dry_run',
+        });
+        continue;
+      }
+
+      const outcome = await this.salesforceBadgeService.createBadgeForAccount(
+        row.salesforceAccountId,
+      );
+
+      if (outcome.success && outcome.alreadyExists) {
+        alreadyExists += 1;
+        results.push({
+          userId: row.userId,
+          email: row.email,
+          salesforceAccountId: row.salesforceAccountId,
+          status: 'already_exists',
+          message: outcome.message,
+        });
+      } else if (outcome.success) {
+        created += 1;
+        results.push({
+          userId: row.userId,
+          email: row.email,
+          salesforceAccountId: row.salesforceAccountId,
+          status: 'created',
+          message: outcome.message,
+        });
+      } else {
+        failed += 1;
+        results.push({
+          userId: row.userId,
+          email: row.email,
+          salesforceAccountId: row.salesforceAccountId,
+          status: outcome.skipped ? 'skipped' : 'failed',
+          message: outcome.message,
+        });
+      }
+
+      if (delayMs > 0 && i < candidates.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    const summary = {
+      dryRun,
+      totalActiveBadgeUsers: userIds.length,
+      eligible: candidates.length,
+      processed: dryRun ? 0 : results.length,
+      created,
+      alreadyExists,
+      failed,
+      skippedNoAccountId,
+      results,
+    };
+
+    console.log('[Salesforce Badge] Backfill complete:', {
+      dryRun: summary.dryRun,
+      totalActiveBadgeUsers: summary.totalActiveBadgeUsers,
+      eligible: summary.eligible,
+      processed: summary.processed,
+      created: summary.created,
+      alreadyExists: summary.alreadyExists,
+      failed: summary.failed,
+      skippedNoAccountId: summary.skippedNoAccountId,
+    });
+
+    return summary;
   }
 
   private async buildCourseTranscript(

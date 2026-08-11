@@ -832,6 +832,19 @@ export const courseService = {
     }
   },
 
+  async backfillSalesforceBadges(payload = {}) {
+    try {
+      const response = await axios.post(
+        '/courses/certificates/admin/salesforce-badge-backfill',
+        payload
+      );
+      return response.data?.data ?? response.data ?? null;
+    } catch (error) {
+      console.error('Error backfilling Salesforce badges:', error);
+      throw error;
+    }
+  },
+
   // Keepalive + queue + best-effort refresh/PUT for unload/refresh/logout transitions.
   updateSectionProgressOnUnload(courseId, sectionId, payload = {}) {
     if (!isUuid(sectionId)) return;

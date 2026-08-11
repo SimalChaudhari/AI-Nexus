@@ -18,6 +18,7 @@ import {
   SignupSalesforceForNexusDto,
   CreateCorporateSalesforceAccountAndContactDto,
   CheckCorporateSalesforceAccountDto,
+  CreateSalesforceBillingForUserDto,
   EndEservicesSessionDto,
   OAuthExchangeDto,
   SalesforceUserCheckEmailDto,
@@ -388,7 +389,7 @@ export class OAuthAuthController {
 
   @Post('update-nexus-payment')
   @ApiOperation({
-    summary: 'PUT Salesforce nexus-payment/update (Is_Paid / Paid_Amount / Paid_Date)',
+    summary: 'Legacy PUT Salesforce nexus-payment/update (prefer create-billing-for-user)',
   })
   @ApiBody({ type: UpdateSalesforceNexusPaymentDto })
   async updateNexusPayment(@Body() dto: UpdateSalesforceNexusPaymentDto) {
@@ -402,6 +403,27 @@ export class OAuthAuthController {
     return {
       success: true,
       message: 'Salesforce payment updated successfully.',
+      salesforce,
+    };
+  }
+
+  @Post('create-billing-for-user')
+  @ApiOperation({
+    summary: 'POST Salesforce createbillingforuser after successful paid membership payment',
+  })
+  @ApiBody({ type: CreateSalesforceBillingForUserDto })
+  async createBillingForUser(@Body() dto: CreateSalesforceBillingForUserDto) {
+    const salesforce = await this.oauthAuthService.createSalesforceBillingForUser({
+      accountId: dto.accountId,
+      paymentMethod: dto.paymentMethod || 'WooShpay',
+      wooshPayReferenceNo: dto.wooshPayReferenceNo,
+      billingAmount: dto.billingAmount,
+      withGst: dto.withGst === true,
+      required: true,
+    });
+    return {
+      success: true,
+      message: 'Salesforce billing created successfully.',
       salesforce,
     };
   }

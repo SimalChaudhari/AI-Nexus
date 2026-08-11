@@ -1592,6 +1592,34 @@ export class CourseController {
         return response.status(HttpStatus.OK).send(buffer);
     }
 
+    @Post('certificates/admin/salesforce-badge-backfill')
+    @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.Admin)
+    @ApiBearerAuth('bearer')
+    @ApiOperation({
+        summary:
+            'Admin: one-time backfill — create Salesforce badges for learners who already have local badges',
+    })
+    async backfillSalesforceBadges(
+        @Body()
+        body:
+            | {
+                  dryRun?: boolean;
+                  limit?: number;
+                  delayMs?: number;
+              }
+            | undefined,
+        @Res() response: Response,
+    ) {
+        const result =
+            await this.courseCertificateService.backfillSalesforceBadgesForExistingLearners({
+                dryRun: body?.dryRun,
+                limit: body?.limit,
+                delayMs: body?.delayMs,
+            });
+        return response.status(HttpStatus.OK).json({ data: result });
+    }
+
     @Delete('certificates/admin/:id')
     @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
     @Roles(UserRole.Admin)

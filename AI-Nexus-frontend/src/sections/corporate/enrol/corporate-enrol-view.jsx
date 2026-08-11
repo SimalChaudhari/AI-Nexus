@@ -396,7 +396,7 @@ export function CorporateEnrolView() {
       <CorpPageHeader
         eyebrow="Staff Enrolment"
         title="Enrol learners individually or in bulk"
-        subtitle="Fee-waiver enrolment for Singapore Citizen and Singapore PR learners. Staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
+        subtitle="Enrol Singapore Citizen, Singapore PR, or Foreigner learners. Staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
         titleSx={{ fontSize: { xs: 22, sm: 26, md: 30 } }}
         titleActions={
           <>
@@ -509,7 +509,7 @@ export function CorporateEnrolView() {
                 fontSize: { xs: 13, sm: 14 },
               }}
             >
-              For Singapore Citizen and Singapore PR learners only. All
+              For Singapore Citizen, Singapore PR, and Foreigner learners. All
               createblukuserfornexus fields are collected below (company and corporate account ID
               are pre-filled from your login when available). Fields marked{' '}
               <Box component="span" sx={{ color: '#d32f2f' }}>
@@ -653,6 +653,7 @@ export function CorporateEnrolView() {
                 <Field.Select name="eligibility" size="small" sx={fieldSx}>
                   <MenuItem value="Singapore Citizen">Singapore Citizen</MenuItem>
                   <MenuItem value="Singapore PR">Singapore PR</MenuItem>
+                  <MenuItem value="Foreigner">Foreigner</MenuItem>
                 </Field.Select>
               </FieldLabel>
               <FieldLabel label="Learner as an accounting professional" required>
@@ -718,8 +719,8 @@ export function CorporateEnrolView() {
               fontSize: { xs: 13, sm: 14 },
             }}
           >
-            Bulk enrolment is available only for Singaporean/Permanent Resident learners and ISCA
-            Members. Use Upload CSV for createblukuserfornexus fields.
+            Bulk enrolment supports Singapore Citizen, Singapore PR, and Foreigner learners. Use
+            Upload CSV for createblukuserfornexus fields.
           </Typography>
 
           <Box
@@ -733,7 +734,7 @@ export function CorporateEnrolView() {
             }}
           >
             <Typography sx={{ fontWeight: 700, color: CORP.navy, fontSize: { xs: 14, sm: 16 } }}>
-              Foreign non-member quotation
+              Foreign learner options
             </Typography>
             <Typography
               sx={{
@@ -744,9 +745,8 @@ export function CorporateEnrolView() {
                 wordBreak: 'break-word',
               }}
             >
-              Fee-waiver enrolment is for <strong>Singapore Citizen</strong> and{' '}
-              <strong>Singapore PR</strong> only. For foreign
-              non-member learners, use the quotation form below or email{' '}
+              Select <strong>Foreigner</strong> under Eligibility to enrol foreign learners
+              directly. For a custom quotation instead, use the form below or email{' '}
               <Link
                 href="mailto:hello@ainexus.isca.org.sg"
                 sx={{ color: CORP.blue, wordBreak: 'break-all' }}

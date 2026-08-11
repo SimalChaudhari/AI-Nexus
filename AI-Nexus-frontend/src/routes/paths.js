@@ -292,6 +292,7 @@ export const paths = {
         list: `${ROOTS.ADMIN}/international/users/list`,
         details: (id) => `${ROOTS.ADMIN}/international/users/${id}`,
       },
+      promoPricing: `${ROOTS.ADMIN}/international/promo-pricing`,
       modules: {
         root: `${ROOTS.ADMIN}/international/modules`,
         list: `${ROOTS.ADMIN}/international/modules/list`,

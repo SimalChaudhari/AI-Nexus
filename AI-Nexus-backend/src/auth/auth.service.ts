@@ -1111,22 +1111,20 @@ export class AuthService {
       throw new BadRequestException('Membership signup draft is incomplete. Please return to the signup page and try again.');
     }
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
     // Atomic claim: only one concurrent fulfill can flip isDraft → false.
+    // Email is auto-verified on successful paid registration — no verification email.
     const claimResult = await this.userRepository
       .createQueryBuilder()
       .update(UserEntity)
       .set({
         role: draftUser.role || UserRole.User,
         status: draftUser.status || UserStatus.Active,
-        isVerified: false,
+        isVerified: true,
         isDraft: false,
         authProvider: AuthProvider.OAUTH,
         password: null,
-        verificationToken,
-        verificationTokenExpires,
+        verificationToken: null,
+        verificationTokenExpires: null,
         signupAccessTokenHash: null,
         signupAccessTokenExpiresAt: null,
       })
@@ -1151,11 +1149,14 @@ export class AuthService {
       throw new NotFoundException('Membership signup draft was not found.');
     }
 
-    const userName = `${finalizedUser.firstname} ${finalizedUser.lastname}`.trim();
     try {
-      await this.emailService.sendVerificationEmail(finalizedUser.email!, verificationToken, userName);
-    } catch (emailError) {
-      console.error('Failed to send verification email after payment:', emailError);
+      await this.emailService.sendUserRegistrationWelcomeEmail({
+        email: finalizedUser.email!,
+        firstName: finalizedUser.firstname || '',
+        lastName: finalizedUser.lastname || '',
+      });
+    } catch (welcomeError) {
+      console.error('Failed to send user registration welcome email after payment:', welcomeError);
     }
 
     return {
@@ -4003,10 +4004,7 @@ export class AuthService {
       // Reserve seat before creating the account so concurrent signups cannot overbook.
       await this.consumeCompanyEnrollmentSeatIfNeeded(userDto, resolvedCompanyCode);
 
-      // Generate verification token
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-      const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
-
+      // Successful registration auto-verifies email — no verification email required.
       let newUser: UserEntity;
 
       if (verifiedSignupUser) {
@@ -4021,10 +4019,10 @@ export class AuthService {
         verifiedSignupUser.authProvider = AuthProvider.LOCAL;
         verifiedSignupUser.role = userDto.role || verifiedSignupUser.role || UserRole.User;
         verifiedSignupUser.status = userDto.status || UserStatus.Active;
-        verifiedSignupUser.isVerified = false;
+        verifiedSignupUser.isVerified = true;
         verifiedSignupUser.isDraft = false;
-        verifiedSignupUser.verificationToken = verificationToken;
-        verifiedSignupUser.verificationTokenExpires = verificationTokenExpires;
+        verifiedSignupUser.verificationToken = null;
+        verifiedSignupUser.verificationTokenExpires = null;
         verifiedSignupUser.signupAccessTokenHash = null;
         verifiedSignupUser.signupAccessTokenExpiresAt = null;
         if (String(userDto.salesforceUsername || '').trim()) {
@@ -4046,9 +4044,9 @@ export class AuthService {
           authProvider: AuthProvider.LOCAL,
           role: userDto.role || UserRole.User,
           status: userDto.status || UserStatus.Active,
-          isVerified: false,
-          verificationToken: verificationToken,
-          verificationTokenExpires: verificationTokenExpires,
+          isVerified: true,
+          verificationToken: null,
+          verificationTokenExpires: null,
           salesforceUsername: String(userDto.salesforceUsername || '').trim() || null,
         });
         this.applyEligibilityTracking(newUser, userDto);
@@ -4056,17 +4054,19 @@ export class AuthService {
 
       await this.userRepository.save(newUser); // Save the new user
 
-      // Send verification email
-      const userName = `${newUser.firstname} ${newUser.lastname}`;
+      // Welcome email is best-effort — do not fail registration if SMTP fails.
       try {
-        await this.emailService.sendVerificationEmail(newUser.email!, verificationToken, userName);
-      } catch (emailError) {
-        // Log error but don't fail registration if email fails
-        console.error('Failed to send verification email:', emailError);
+        await this.emailService.sendUserRegistrationWelcomeEmail({
+          email: newUser.email!,
+          firstName: newUser.firstname || '',
+          lastName: newUser.lastname || '',
+        });
+      } catch (welcomeError) {
+        console.error('Failed to send user registration welcome email:', welcomeError);
       }
 
       return {
-        message: 'User registered successfully. Please check your email to verify your account.',
+        message: 'User registered successfully. You can sign in now.',
         user: newUser,
       };
 

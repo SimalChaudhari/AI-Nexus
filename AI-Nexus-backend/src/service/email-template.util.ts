@@ -162,6 +162,75 @@ export const buildBrandTemplate = (
         footer,
     });
 
+export const buildUserRegistrationWelcomeBodyHtml = (params: {
+    email: string;
+}): string => {
+    const safeEmail = escapeHtml(String(params.email || '').trim());
+
+    return `
+                            <p style="margin:0 0 14px; color:#334155; font-size:15px; line-height:1.65;">
+                                Your AI Nexus learner account is ready. You can sign in straight away and begin the AI Fluency Programme.
+                            </p>
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:8px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Account details
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0; background-color:#ffffff;">
+                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Sign-in email</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeEmail}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5; background-color:#ffffff;">
+                                        Use this email with the password you created during signup, or continue with your ISCA eServices login where applicable.
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
+export const buildCorporateRegistrationWelcomeBodyHtml = (params: {
+    companyName: string;
+    email: string;
+}): string => {
+    const safeCompany = escapeHtml(String(params.companyName || '').trim() || 'your organisation');
+    const safeEmail = escapeHtml(String(params.email || '').trim());
+
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
+                                <tr>
+                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                                        Corporate account details
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0; background-color:#ffffff;">
+                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Company</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeCompany}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Sign-in email</td>
+                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeEmail}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5; background-color:#ffffff;">
+                                        Use your eServices credentials to sign in to the AI Nexus corporate portal and start enrolling your staff.
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
 export const buildCredentialsBodyHtml = (username: string, plainPassword: string): string => {
     const safeUsername = escapeHtml(username);
     const safePassword = escapeHtml(plainPassword);

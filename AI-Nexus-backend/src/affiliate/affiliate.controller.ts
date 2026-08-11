@@ -117,7 +117,7 @@ export class AffiliateController {
   @ApiOperation({ summary: 'Create or reactivate any promo voucher code (admin)' })
   @ApiBody({ type: EnsureVoucherCodeDto })
   async ensureVoucher(@Body() body: EnsureVoucherCodeDto, @Res() res: Response) {
-    const result = await this.affiliateService.ensureVoucherCode(body?.code);
+    const result = await this.affiliateService.ensureVoucherCode(body?.code, body?.site);
     return res.status(HttpStatus.OK).json({
       message: result.created
         ? 'Promo code created. It will use the configured promo payable amount on signup.'
@@ -132,9 +132,9 @@ export class AffiliateController {
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'List all promo voucher codes (admin)' })
-  async listVouchers(@Res() res: Response) {
-    const data = await this.affiliateService.listVoucherCodes();
+  @ApiOperation({ summary: 'List promo voucher codes for a site (payment | international)' })
+  async listVouchers(@Query('site') site: string, @Res() res: Response) {
+    const data = await this.affiliateService.listVoucherCodes(site);
     return res.status(HttpStatus.OK).json({ data });
   }
 

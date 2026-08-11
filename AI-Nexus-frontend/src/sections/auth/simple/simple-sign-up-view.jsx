@@ -1703,9 +1703,11 @@ export function SimpleSignUpView() {
     }
   };
 
-  const redirectToEmailVerify = (email) => {
-    const verifySearch = new URLSearchParams({ email }).toString();
-    router.push(`${paths.auth.simple.verify}?${verifySearch}`);
+  const redirectToSignIn = (email) => {
+    const params = new URLSearchParams();
+    if (email) params.set('email', String(email).trim());
+    const query = params.toString();
+    router.push(query ? `${paths.auth.simple.signIn}?${query}` : paths.auth.simple.signIn);
   };
 
   const handleCreateAccount = handleSubmit(async (data) => {
@@ -1728,7 +1730,7 @@ export function SimpleSignUpView() {
       // Fee-waiver free eligibility:
       // 1) validate email (+ NRIC if present)
       // 2) Salesforce create + set password
-      // 3) local DB register (email as username) + email verify — no direct SSO
+      // 3) local DB register (email auto-verified) → sign in
       if (isFreeIndividualSignup) {
         setEmailSfChecking(true);
         let emailCheck;
@@ -1800,7 +1802,8 @@ export function SimpleSignUpView() {
         }
 
         // HR / employer verification already done in eligibility — skip additional audit dialog.
-        redirectToEmailVerify(data.email);
+        // Email is auto-verified on successful register; send user to sign-in.
+        redirectToSignIn(data.email);
         return;
       }
 

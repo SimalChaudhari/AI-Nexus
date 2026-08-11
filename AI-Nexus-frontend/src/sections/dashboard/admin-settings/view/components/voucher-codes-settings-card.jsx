@@ -75,15 +75,21 @@ function resolveWebsiteBaseUrl(configured) {
   return '';
 }
 
-function buildFullReferralLink(websiteBaseUrl, code) {
-  const base = resolveWebsiteBaseUrl(websiteBaseUrl);
+function buildFullReferralLink(websiteBaseUrl, code, referralLinkPath = FIXED_REFERRAL_PATH) {
+    const base = resolveWebsiteBaseUrl(websiteBaseUrl);
+  const path = String(referralLinkPath || FIXED_REFERRAL_PATH).trim() || FIXED_REFERRAL_PATH;
   const normalizedCode = String(code || '').trim().toUpperCase();
   if (!normalizedCode) return '';
-  if (!base) return `${FIXED_REFERRAL_PATH}${normalizedCode}`;
-  return `${base}${FIXED_REFERRAL_PATH}${normalizedCode}`;
+  if (!base) return `${path}${normalizedCode}`;
+  return `${base}${path}${normalizedCode}`;
 }
 
-export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
+export function VoucherCodesSettingsCard({
+  websiteBaseUrl = '',
+  referralLinkPath = FIXED_REFERRAL_PATH,
+  site = 'payment',
+}) {
+  const voucherSite = site === 'international' ? 'international' : 'payment';
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -96,7 +102,7 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
   const loadRows = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listVoucherCodes();
+      const data = await listVoucherCodes(voucherSite);
       setRows(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error(error?.message || 'Could not load promo codes');
@@ -104,7 +110,7 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [voucherSite]);
 
   useEffect(() => {
     loadRows();
@@ -187,6 +193,7 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
       const payload = {
         code,
         label: String(form.label || '').trim() || undefined,
+        site: voucherSite,
         isActive: form.isActive !== false,
         maxRedemptions,
         expiresAt,
@@ -225,7 +232,7 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
   };
 
   const handleCopyLink = async (code) => {
-    const link = buildFullReferralLink(websiteBaseUrl, code);
+    const link = buildFullReferralLink(websiteBaseUrl, code, referralLinkPath);
     if (!link) return;
     try {
       await navigator.clipboard.writeText(link);
@@ -245,10 +252,21 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
           justifyContent="space-between"
         >
           <Box>
-            <Typography variant="h6">Promo voucher codes</Typography>
+            <Typography variant="h6">
+              {voucherSite === 'international'
+                ? 'International promo codes'
+                : 'Promo voucher codes'}
+            </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Managed in the <strong>voucher_codes</strong> table. Create, edit, or delete codes here.
-              Each row includes the paid membership signup link.
+              Codes for{' '}
+              <strong>
+                {voucherSite === 'international' ? 'International' : 'Payment'}
+              </strong>{' '}
+              only — they do not appear in the other menu. Each row includes the{' '}
+              {voucherSite === 'international'
+                ? 'international signup referral link'
+                : 'paid membership signup link'}
+              .
             </Typography>
           </Box>
           <Button
@@ -306,7 +324,7 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
               </TableHead>
               <TableBody>
                 {sortedRows.map((row) => {
-                  const link = buildFullReferralLink(websiteBaseUrl, row.code);
+                  const link = buildFullReferralLink(websiteBaseUrl, row.code, referralLinkPath);
                   const expired = isExpiredRow(row);
                   const limitReached =
                     row.maxRedemptions != null
@@ -484,7 +502,7 @@ export function VoucherCodesSettingsCard({ websiteBaseUrl = '' }) {
                 fullWidth
                 size="small"
                 label="Signup link preview"
-                value={buildFullReferralLink(websiteBaseUrl, form.code)}
+                value={buildFullReferralLink(websiteBaseUrl, form.code, referralLinkPath)}
                 InputProps={{
                   readOnly: true,
                   endAdornment: (

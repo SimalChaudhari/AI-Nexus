@@ -134,6 +134,7 @@ const IntlPathwayRolesEditPage = lazy(() => import('src/pages/dashboard/internat
 const IntlLandingContentPage = lazy(() => import('src/pages/dashboard/international/landing'));
 const IntlUsersListPage = lazy(() => import('src/pages/dashboard/international/users/list'));
 const IntlUsersDetailsPage = lazy(() => import('src/pages/dashboard/international/users/details'));
+const IntlPromoPricingPage = lazy(() => import('src/pages/dashboard/international/promo-pricing'));
 
 // Blog
 const BlogPostsPage = lazy(() => import('src/pages/dashboard/post/list'));
@@ -360,6 +361,7 @@ export const adminRoutes = [
               { path: ':id', element: <IntlUsersDetailsPage /> },
             ],
           },
+          { path: 'promo-pricing', element: <IntlPromoPricingPage /> },
           {
             path: 'modules',
             children: [

@@ -8,9 +8,11 @@ import { OAuthAuthController } from './oauth-auth.controller';
 import { MembershipApplicationController } from './membership-application.controller';
 import { StudentMembershipApplicationController } from './student-membership-application.controller';
 import { SsoSyncService } from './sso-sync.service';
+import { SalesforceBadgeService } from './salesforce-badge.service';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
 import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
+import { EmailService } from '../service/email.service';
 
 @Module({
   imports: [
@@ -21,12 +23,18 @@ import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollmen
     }),
     CompanyEnrollmentModule,
   ],
-  providers: [OAuthAuthService, SsoSyncService, AuthTokenService],
+  providers: [
+    OAuthAuthService,
+    SsoSyncService,
+    AuthTokenService,
+    SalesforceBadgeService,
+    EmailService,
+  ],
   controllers: [
     OAuthAuthController,
     MembershipApplicationController,
     StudentMembershipApplicationController,
   ],
-  exports: [OAuthAuthService],
+  exports: [OAuthAuthService, SalesforceBadgeService],
 })
 export class SsoModule {}

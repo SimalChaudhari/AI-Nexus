@@ -12,7 +12,7 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
 import { AffiliateCodeEntity } from './affiliate-code.entity';
 import { AffiliateClickEntity } from './affiliate-click.entity';
 import { AffiliateSaleEntity, AffiliateSaleStatus } from './affiliate-sale.entity';
-import { VoucherCodeEntity } from './voucher-code.entity';
+import { VoucherCodeEntity, VoucherCodeSite } from './voucher-code.entity';
 import { AffiliateSignupCheckoutDto, ValidateAffiliateCodeDto } from './affiliate.dto';
 
 export type AffiliateCodeType = 'affiliate' | 'voucher' | null;
@@ -71,16 +71,26 @@ export class AffiliateService {
     return String(value || '').trim().toUpperCase();
   }
 
+  normalizeVoucherSite(value?: string | null): VoucherCodeSite {
+    const raw = String(value || '').trim().toLowerCase();
+    return raw === 'international' ? 'international' : 'payment';
+  }
+
   /**
    * Create or reactivate a voucher code so any admin-entered code works on signup.
    * Promo payable amount always comes from membership payment settings.
    */
-  async ensureVoucherCode(codeInput?: string | null): Promise<{
+  async ensureVoucherCode(
+    codeInput?: string | null,
+    siteInput?: string | null,
+  ): Promise<{
     code: string;
+    site: VoucherCodeSite;
     created: boolean;
     reactivated: boolean;
   }> {
     const code = this.normalizeCode(codeInput);
+    const site = this.normalizeVoucherSite(siteInput);
     if (!code) {
       throw new BadRequestException('Promo code is required.');
     }
@@ -93,6 +103,7 @@ export class AffiliateService {
     const existing = await this.voucherCodeRepo
       .createQueryBuilder('v')
       .where('UPPER(v.code) = :code', { code })
+      .andWhere('v.site = :site', { site })
       .getOne();
 
     if (existing) {
@@ -102,14 +113,16 @@ export class AffiliateService {
         reactivated = true;
       }
       existing.code = code;
+      existing.site = site;
       existing.label = existing.label || `Admin promo ${code}`;
       await this.voucherCodeRepo.save(existing);
-      return { code, created: false, reactivated };
+      return { code, site, created: false, reactivated };
     }
 
     await this.voucherCodeRepo.save(
       this.voucherCodeRepo.create({
         code,
+        site,
         label: `Admin promo ${code}`,
         isActive: true,
         expiresAt: null,
@@ -117,13 +130,14 @@ export class AffiliateService {
         redemptionCount: 0,
       }),
     );
-    return { code, created: true, reactivated: false };
+    return { code, site, created: true, reactivated: false };
   }
 
   private serializeVoucher(row: VoucherCodeEntity) {
     return {
       id: row.id,
       code: row.code,
+      site: this.normalizeVoucherSite(row.site),
       label: row.label,
       isActive: row.isActive,
       expiresAt: row.expiresAt,
@@ -134,8 +148,10 @@ export class AffiliateService {
     };
   }
 
-  async listVoucherCodes() {
+  async listVoucherCodes(siteInput?: string | null) {
+    const site = this.normalizeVoucherSite(siteInput);
     const rows = await this.voucherCodeRepo.find({
+      where: { site },
       order: { updatedAt: 'DESC', createdAt: 'DESC' },
     });
     return rows.map((row) => this.serializeVoucher(row));
@@ -144,11 +160,13 @@ export class AffiliateService {
   async createVoucherCode(input: {
     code?: string | null;
     label?: string | null;
+    site?: string | null;
     isActive?: boolean;
     maxRedemptions?: number | null;
     expiresAt?: string | Date | null;
   }) {
     const code = this.normalizeCode(input.code);
+    const site = this.normalizeVoucherSite(input.site);
     if (!code) {
       throw new BadRequestException('Promo code is required.');
     }
@@ -161,15 +179,19 @@ export class AffiliateService {
     const existing = await this.voucherCodeRepo
       .createQueryBuilder('v')
       .where('UPPER(v.code) = :code', { code })
+      .andWhere('v.site = :site', { site })
       .getOne();
     if (existing) {
-      throw new BadRequestException(`Promo code ${code} already exists.`);
+      throw new BadRequestException(
+        `Promo code ${code} already exists for ${site === 'international' ? 'International' : 'Payment'}.`,
+      );
     }
 
     const label = String(input.label || '').trim() || `Admin promo ${code}`;
     const saved = await this.voucherCodeRepo.save(
       this.voucherCodeRepo.create({
         code,
+        site,
         label,
         isActive: input.isActive !== false,
         expiresAt: this.parseExpiresAt(input.expiresAt),
@@ -194,6 +216,7 @@ export class AffiliateService {
     if (!row) {
       throw new BadRequestException('Promo code not found.');
     }
+    const site = this.normalizeVoucherSite(row.site);
 
     if (input.code != null) {
       const nextCode = this.normalizeCode(input.code);
@@ -208,10 +231,13 @@ export class AffiliateService {
       const conflict = await this.voucherCodeRepo
         .createQueryBuilder('v')
         .where('UPPER(v.code) = :code', { code: nextCode })
+        .andWhere('v.site = :site', { site })
         .andWhere('v.id != :id', { id })
         .getOne();
       if (conflict) {
-        throw new BadRequestException(`Promo code ${nextCode} already exists.`);
+        throw new BadRequestException(
+          `Promo code ${nextCode} already exists for ${site === 'international' ? 'International' : 'Payment'}.`,
+        );
       }
       row.code = nextCode;
     }
@@ -230,6 +256,7 @@ export class AffiliateService {
       row.expiresAt = this.parseExpiresAt(input.expiresAt);
     }
 
+    row.site = site;
     const saved = await this.voucherCodeRepo.save(row);
     return this.serializeVoucher(saved);
   }
@@ -294,12 +321,16 @@ export class AffiliateService {
     return { valid: true, code: normalized, message: 'Affiliate code is valid.' };
   }
 
-  async validateVoucherCode(code?: string | null): Promise<{
+  async validateVoucherCode(
+    code?: string | null,
+    siteInput?: string | null,
+  ): Promise<{
     valid: boolean;
     code: string | null;
     message: string | null;
   }> {
     const normalized = this.normalizeCode(code);
+    const site = this.normalizeVoucherSite(siteInput);
     if (!normalized) {
       return { valid: false, code: null, message: null };
     }
@@ -307,6 +338,7 @@ export class AffiliateService {
     const row = await this.voucherCodeRepo
       .createQueryBuilder('v')
       .where('UPPER(v.code) = :code', { code: normalized })
+      .andWhere('v.site = :site', { site })
       .getOne();
 
     if (!row) {
@@ -329,14 +361,16 @@ export class AffiliateService {
   }
 
   async calculatePricing(dto: ValidateAffiliateCodeDto): Promise<AffiliatePricingResult> {
+    const voucherSite = this.normalizeVoucherSite(dto.site);
+    const isInternational = voucherSite === 'international';
+
     const [originalAmount, discountedAmount, currency] = await Promise.all([
       this.getOriginalAmount(),
       this.getDiscountedAmount(),
       this.getCurrency(),
     ]);
 
-    // Single `code` field: try affiliate first, then voucher, when explicit
-    // affiliateCode/voucherCode are not provided.
+    // Single `code` field: try affiliate first (payment only), then voucher for the site.
     const singleCode = this.normalizeCode(dto.code);
     let affiliateCodeInput = dto.affiliateCode;
     let voucherCodeInput = dto.voucherCode;
@@ -344,26 +378,34 @@ export class AffiliateService {
     let codeType: AffiliateCodeType = null;
 
     if (singleCode && !dto.affiliateCode && !dto.voucherCode) {
-      const affiliateAttempt = await this.validateAffiliateCode(singleCode);
-      if (affiliateAttempt.valid) {
-        affiliateCodeInput = singleCode;
-        appliedCode = affiliateAttempt.code;
-        codeType = 'affiliate';
-      } else {
-        const voucherAttempt = await this.validateVoucherCode(singleCode);
+      if (!isInternational) {
+        const affiliateAttempt = await this.validateAffiliateCode(singleCode);
+        if (affiliateAttempt.valid) {
+          affiliateCodeInput = singleCode;
+          appliedCode = affiliateAttempt.code;
+          codeType = 'affiliate';
+        }
+      }
+
+      if (!appliedCode) {
+        const voucherAttempt = await this.validateVoucherCode(singleCode, voucherSite);
         if (voucherAttempt.valid) {
           voucherCodeInput = singleCode;
           appliedCode = voucherAttempt.code;
           codeType = 'voucher';
-        } else {
+        } else if (!isInternational) {
           // Neither valid: surface the affiliate code so the caller sees an error message.
           affiliateCodeInput = singleCode;
+        } else {
+          voucherCodeInput = singleCode;
         }
       }
     }
 
-    const affiliate = await this.validateAffiliateCode(affiliateCodeInput);
-    const voucher = await this.validateVoucherCode(voucherCodeInput);
+    const affiliate = isInternational
+      ? { valid: false, code: null as string | null, message: null as string | null }
+      : await this.validateAffiliateCode(affiliateCodeInput);
+    const voucher = await this.validateVoucherCode(voucherCodeInput, voucherSite);
     const discountApplied = affiliate.valid || voucher.valid;
 
     if (!appliedCode && discountApplied) {
@@ -459,6 +501,7 @@ export class AffiliateService {
       code: dto.code,
       affiliateCode: dto.affiliateCode,
       voucherCode: dto.voucherCode,
+      site: 'payment',
     });
 
     const { existingUsername, existingEmail } = await this.assertUsernameEmailAvailable(username, email);
@@ -553,6 +596,7 @@ export class AffiliateService {
       code: input.code,
       affiliateCode: input.affiliateCode,
       voucherCode: input.voucherCode,
+      site: 'payment',
     });
 
     let sale = await this.saleRepo.findOne({
@@ -636,6 +680,7 @@ export class AffiliateService {
         .update(VoucherCodeEntity)
         .set({ redemptionCount: () => '"redemptionCount" + 1' })
         .where('UPPER(code) = :code', { code: this.normalizeCode(sale.voucherCode) })
+        .andWhere('site = :site', { site: 'payment' })
         .execute();
     }
 

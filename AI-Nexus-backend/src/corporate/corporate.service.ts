@@ -533,12 +533,20 @@ export class CorporateService {
     const idNumber = String(params.idNumber || '').trim().toUpperCase();
     const eligibility = String(params.eligibility || '').trim().toLowerCase();
 
+    const isForeignerEligibility =
+      eligibility.includes('foreign') || eligibility === 'foreigner';
+
     if (lower === 'passport' || lower.includes('passport')) return 'Passport';
     if (lower.includes('pink')) return 'Pink NRIC';
     if (lower.includes('blue')) return 'Blue NRIC';
     if (lower === 'nric number' || lower === 'nric' || lower === 'fin' || lower.includes('nric')) {
       if (eligibility.includes('pr') || eligibility.includes('permanent')) return 'Pink NRIC';
-      if (eligibility.includes('citizen')) return 'Blue NRIC';
+      if (eligibility.includes('citizen') && !isForeignerEligibility) return 'Blue NRIC';
+      // Foreigner must not fall through to Pink NRIC via nationality helper.
+      if (isForeignerEligibility) {
+        if (/^M\d{7}[A-Z]$/.test(idNumber) || lower === 'fin') return 'FIN';
+        return 'Passport';
+      }
       return resolveSalesforceIdTypeByCardColorOrNationality({
         nationality: params.countryOfResidence || params.eligibility,
       });
@@ -550,12 +558,15 @@ export class CorporateService {
     if (idNumber) {
       if (/^[STFG]\d{7}[A-Z]$/.test(idNumber)) {
         if (eligibility.includes('pr') || eligibility.includes('permanent')) return 'Pink NRIC';
-        if (eligibility.includes('citizen')) return 'Blue NRIC';
+        if (eligibility.includes('citizen') && !isForeignerEligibility) return 'Blue NRIC';
+        if (isForeignerEligibility) return 'Passport';
         return resolveSalesforceIdTypeByCardColorOrNationality({
           nationality: params.countryOfResidence || params.eligibility,
         });
       }
-      if (/^M\d{7}[A-Z]$/.test(idNumber)) return 'Pink NRIC';
+      if (/^M\d{7}[A-Z]$/.test(idNumber)) {
+        return isForeignerEligibility ? 'FIN' : 'Pink NRIC';
+      }
       return 'Passport';
     }
 
@@ -671,13 +682,12 @@ export class CorporateService {
   }
 
   /**
-   * Corporate fee-waiver enrol — Salesforce Citizenship__c restricted picklist.
-   * Allowed: Singapore Citizen, Singapore PR only.
-   * Legacy CSV values Foreigner/foreign still map to Singapore PR.
+   * Corporate enrol — Salesforce Citizenship__c picklist.
+   * Allowed: Singapore Citizen, Singapore PR, Foreigner.
    */
   private resolveStaffEligibility(raw: string): { value: string | null; reason?: string } {
     const trimmed = String(raw || '').trim();
-    const allowedLabel = 'Singapore Citizen, Singapore PR';
+    const allowedLabel = 'Singapore Citizen, Singapore PR, Foreigner';
     if (!trimmed) {
       return {
         value: null,
@@ -695,17 +705,16 @@ export class CorporateService {
       'permanent resident': 'Singapore PR',
       'sg pr': 'Singapore PR',
       pr: 'Singapore PR',
-      // Legacy CSV values — treat as Singapore PR (no Foreigner option in UI).
-      foreigner: 'Singapore PR',
-      foreign: 'Singapore PR',
-      'non citizen': 'Singapore PR',
-      'non-citizen': 'Singapore PR',
+      foreigner: 'Foreigner',
+      foreign: 'Foreigner',
+      'non citizen': 'Foreigner',
+      'non-citizen': 'Foreigner',
     };
 
     const key = trimmed.toLowerCase().replace(/\s+/g, ' ');
     if (aliases[key]) return { value: aliases[key] };
 
-    const allowed = ['Singapore Citizen', 'Singapore PR'] as const;
+    const allowed = ['Singapore Citizen', 'Singapore PR', 'Foreigner'] as const;
     const exact = allowed.find((item) => item.toLowerCase() === key);
     if (exact) return { value: exact };
 
@@ -714,7 +723,7 @@ export class CorporateService {
       reason:
         `Invalid citizenship "${trimmed}". `
         + `Allowed: ${allowedLabel}. `
-        + 'ISCA Member is not a Citizenship value — use Singapore Citizen or Singapore PR. '
+        + 'ISCA Member is not a Citizenship value — use Singapore Citizen, Singapore PR, or Foreigner. '
         + 'Do not put a country name (e.g. Malaysia).',
     };
   }
@@ -727,14 +736,17 @@ export class CorporateService {
     const eligibility = String(eligibilityRaw || '').trim();
     const lower = eligibility.toLowerCase();
     const isCitizen = lower === 'singapore citizen';
-    const isPr =
-      lower === 'singapore pr'
-      || lower === 'foreigner'; // legacy input; treated as PR
+    const isPr = lower === 'singapore pr';
+    const isForeigner = lower === 'foreigner' || lower === 'foreign';
 
     user.eligibilityType = eligibility || null;
     user.eligibilityIsIscaMember = false;
-    // True for Singapore PR (and legacy Foreigner). Citizen keeps type but not the PR flag.
-    user.eligibilityIsSingaporePr = isPr ? true : isCitizen ? false : null;
+    // PR only for Singapore PR. Citizen / Foreigner keep type but not the PR flag.
+    user.eligibilityIsSingaporePr = isPr
+      ? true
+      : isCitizen || isForeigner
+        ? false
+        : null;
   }
 
   private async generateStaffUsername(
@@ -1101,7 +1113,7 @@ export class CorporateService {
           email,
           step: 'precheck',
           reason:
-            'Citizenship is required. Allowed: Singapore Citizen, Singapore PR.',
+            'Citizenship is required. Allowed: Singapore Citizen, Singapore PR, Foreigner.',
         });
         continue;
       }
@@ -2478,7 +2490,7 @@ export class CorporateService {
         citizenshipErrors += 1;
         pushRowError(
           'eligibility',
-          'Citizenship is required. Allowed: Singapore Citizen, Singapore PR.',
+          'Citizenship is required. Allowed: Singapore Citizen, Singapore PR, Foreigner.',
         );
       } else {
         const resolved = this.resolveStaffEligibility(eligibility);
@@ -4339,8 +4351,7 @@ export class CorporateService {
       const lower = fromSnap.toLowerCase();
       if (lower === 'singapore citizen') return 'Singapore Citizen';
       if (lower === 'singapore pr') return 'Singapore PR';
-      // Legacy CSV Foreigner → display as Singapore PR
-      if (lower === 'foreigner' || lower === 'foreign') return 'Singapore PR';
+      if (lower === 'foreigner' || lower === 'foreign') return 'Foreigner';
       if (lower === 'isca member') return 'ISCA Member';
       return fromSnap;
     }
@@ -4350,7 +4361,7 @@ export class CorporateService {
       const lower = type.toLowerCase();
       if (lower === 'singapore citizen') return 'Singapore Citizen';
       if (lower === 'singapore pr') return 'Singapore PR';
-      if (lower === 'foreigner' || lower === 'foreign') return 'Singapore PR';
+      if (lower === 'foreigner' || lower === 'foreign') return 'Foreigner';
       return type;
     }
 
