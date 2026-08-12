@@ -316,11 +316,21 @@ export class IntlPaymentService {
       const paid =
         rows.find((row) => row.status === InternationalPaymentStatus.Paid) || null;
       const planFromPayment = membershipTypeFromPayment(paid);
-      if (planFromPayment) {
+      if (paid || planFromPayment) {
         const user = await this.userRepository.findOne({ where: { id: userId } });
-        if (user && user.membershipType !== planFromPayment) {
-          user.membershipType = planFromPayment;
-          await this.userRepository.save(user);
+        if (user) {
+          let dirty = false;
+          if (paid && !user.isVerified) {
+            user.isVerified = true;
+            dirty = true;
+          }
+          if (planFromPayment && user.membershipType !== planFromPayment) {
+            user.membershipType = planFromPayment;
+            dirty = true;
+          }
+          if (dirty) {
+            await this.userRepository.save(user);
+          }
         }
       }
 
@@ -511,6 +521,7 @@ export class IntlPaymentService {
       .set({
         status: InternationalUserStatus.Active,
         paymentStatus: InternationalUserPaymentStatus.Paid,
+        isVerified: true,
         currency: payment.currency,
         countryCode: payment.countryCode,
         membershipType: planFromPayment,
@@ -519,11 +530,15 @@ export class IntlPaymentService {
       .andWhere('"paymentStatus" != :paid', { paid: InternationalUserPaymentStatus.Paid })
       .execute();
 
-    if (!claimResult.affected && planFromPayment) {
+    // Already paid earlier — still heal plan + mark email verified after successful pay.
+    if (!claimResult.affected) {
       await this.userRepository
         .createQueryBuilder()
         .update(InternationalUserEntity)
-        .set({ membershipType: planFromPayment })
+        .set({
+          isVerified: true,
+          ...(planFromPayment ? { membershipType: planFromPayment } : {}),
+        })
         .where('id = :id', { id: user.id })
         .execute();
     }
