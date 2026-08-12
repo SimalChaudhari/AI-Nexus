@@ -507,18 +507,21 @@ export class PaymentController {
     return this.handleCreateCheckout(req, res, dto, false);
   }
 
-  /** Card-only checkout: WooshPay will show only card payment option. */
+  /**
+   * Legacy alias for create-checkout.
+   * Kept for older clients — uses all WooshPay modes enabled on the account (not card-only).
+   */
   @Post('create-checkout-cards')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Create card-only checkout session' })
+  @ApiOperation({ summary: 'Create checkout session (all available WooshPay payment modes)' })
   @ApiBody({ type: CreateCheckoutDto })
   async createCheckoutCards(
     @Body() dto: CreateCheckoutDto,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    return this.handleCreateCheckout(req, res, dto, true);
+    return this.handleCreateCheckout(req, res, dto, false);
   }
 
   @Post('create-membership-checkout')
@@ -717,21 +720,33 @@ export class PaymentController {
             && String(existingSession?.status || '').toLowerCase() !== 'complete';
 
           if (sessionOpen && existingSession?.url) {
-            console.info(
-              '[Payments] Membership checkout REUSE | draftUserId=',
-              this.trimPaymentLogValue(user.id),
-              'refId=',
-              this.trimPaymentLogValue(pendingMembership.clientReferenceId),
-              'sessionId=',
-              this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
-            );
-            return res.status(HttpStatus.OK).json({
-              url: existingSession.url,
-              sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
-              refId: pendingMembership.clientReferenceId,
-              draftUserId: user.id,
-              reused: true,
-            });
+            // Never reuse sessions that still offer card (old checkouts / account defaults).
+            if (this.wooshPayService.sessionAllowsCard(existingSession)) {
+              console.info(
+                '[Payments] Membership checkout REPLACE | pending session still allows card, draftUserId=',
+                this.trimPaymentLogValue(user.id),
+                'refId=',
+                this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+                'sessionId=',
+                this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
+              );
+            } else {
+              console.info(
+                '[Payments] Membership checkout REUSE | draftUserId=',
+                this.trimPaymentLogValue(user.id),
+                'refId=',
+                this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+                'sessionId=',
+                this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
+              );
+              return res.status(HttpStatus.OK).json({
+                url: existingSession.url,
+                sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
+                refId: pendingMembership.clientReferenceId,
+                draftUserId: user.id,
+                reused: true,
+              });
+            }
           }
 
           try {
@@ -921,7 +936,7 @@ export class PaymentController {
             },
           },
         }),
-        payment_method_types: ['card'],
+        payment_method_types: this.wooshPayService.getCheckoutPaymentMethodTypes(),
       });
 
       await this.paymentReferenceService.setSessionId(refId, session.id);
@@ -1145,7 +1160,7 @@ export class PaymentController {
             },
           },
         }),
-        payment_method_types: ['card'],
+        payment_method_types: this.wooshPayService.getCheckoutPaymentMethodTypes(),
       });
 
       await this.paymentReferenceService.setSessionId(refId, session.id);
@@ -1448,7 +1463,7 @@ export class PaymentController {
     req: Request,
     res: Response,
     dto: CreateCheckoutDto,
-    cardsOnly: boolean,
+    _cardsOnly: boolean,
   ) {
     const userId = (req as any).user?.id;
     if (!userId) {
@@ -1543,7 +1558,8 @@ export class PaymentController {
             },
           },
         }),
-        ...(cardsOnly && { payment_method_types: ['card'] }),
+        // Non-card modes only (card excluded).
+        payment_method_types: this.wooshPayService.getCheckoutPaymentMethodTypes(),
       });
 
       console.log('[Payments] Create checkout SUCCESS | userId=', userId, 'refId=', refId, 'sessionId=', session.id, 'success_url=', finalSuccessUrl?.split('?')[0], 'cancel_url=', finalCancelUrl?.split('?')[0], 'checkout_link=', session.url ? `${session.url.slice(0, 50)}...` : '(none)');

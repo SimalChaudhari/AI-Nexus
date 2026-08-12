@@ -264,7 +264,7 @@ export class AffiliateController {
         cancel_url: finalCancelUrl,
         client_reference_id: refId,
         ...(draftUser.email && { customer_email: draftUser.email }),
-        payment_method_types: ['card'],
+        payment_method_types: this.wooshPayService.getCheckoutPaymentMethodTypes(),
       });
 
       await this.paymentReferenceService.setSessionId(refId, session.id);

@@ -40,8 +40,59 @@ export interface WooshPayCheckoutSession {
   client_secret?: string;
 }
 
+/**
+ * Non-card WooshPay checkout methods.
+ * Card is intentionally excluded. WooshPay only shows methods also enabled on the merchant account.
+ * Optional override: PAYMENT_METHOD_TYPES=paynow,gcash,googlepay,... (comma-separated; `card` is always dropped).
+ *
+ * Keep this list to methods known to work on the merchant account. Extra unknown types can make
+ * live checkout fail — override via env in production if needed.
+ */
+export function getWooshPayCheckoutPaymentMethods(): string[] {
+  const fromEnv = String(process.env.PAYMENT_METHOD_TYPES || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value && value !== 'card');
+  if (fromEnv.length) return [...new Set(fromEnv)];
+
+  return [
+    'googlepay',
+    'applepay',
+    'alipay',
+    'alipay_hk',
+    'dana',
+    'boost',
+    'gcash',
+    'paynow',
+    'bpi',
+    'unionpay',
+  ];
+}
+
+/** True when a WooshPay session still allows card (must recreate for no-card checkout). */
+export function wooshPaySessionAllowsCard(session?: {
+  payment_method_types?: string[] | null;
+} | null): boolean {
+  const types = Array.isArray(session?.payment_method_types)
+    ? session!.payment_method_types!.map((t) => String(t || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  // Empty / missing list often means account defaults (includes card) — treat as unsafe to reuse.
+  if (!types.length) return true;
+  return types.includes('card');
+}
+
 @Injectable()
 export class WooshPayService {
+  /** Checkout methods for AINEXUS + international (never includes card). */
+  getCheckoutPaymentMethodTypes(): string[] {
+    return getWooshPayCheckoutPaymentMethods();
+  }
+
+  /** Whether an existing session still offers card (should not be reused). */
+  sessionAllowsCard(session?: { payment_method_types?: string[] | null } | null): boolean {
+    return wooshPaySessionAllowsCard(session);
+  }
+
   /**
    * Get WooshPay config from env. One env var per setting (see .env).
    */
@@ -165,18 +216,29 @@ export class WooshPayService {
   }
 
   async createCheckoutSession(params: CreateCheckoutParams): Promise<WooshPayCheckoutSession> {
+    const paymentMethodTypes = Array.isArray(params.payment_method_types)
+      ? [...new Set(
+          params.payment_method_types
+            .map((value) => String(value || '').trim().toLowerCase())
+            .filter((value) => value && value !== 'card'),
+        )]
+      : this.getCheckoutPaymentMethodTypes();
+
     const body: Record<string, unknown> = {
       mode: params.mode || 'payment',
       success_url: params.success_url,
       cancel_url: params.cancel_url,
       line_items: params.line_items,
       ...(params.client_reference_id && { client_reference_id: params.client_reference_id }),
-      ...(params.payment_method_types?.length && { payment_method_types: params.payment_method_types }),
+      ...(paymentMethodTypes.length && { payment_method_types: paymentMethodTypes }),
       ...(params.expires_at != null && { expires_at: params.expires_at }),
       ...(params.customer_email && { customer_email: params.customer_email }),
       ...(params.payment_intent_data && { payment_intent_data: params.payment_intent_data }),
     };
-    console.log('[WooshPay] API call: create checkout session');
+    console.log(
+      '[WooshPay] API call: create checkout session | methods=',
+      paymentMethodTypes.join(',') || '(none)',
+    );
     const data = await this.makeApiRequest<WooshPayCheckoutSession & { url?: string }>(
       'POST',
       '/v1/checkout/sessions',
@@ -209,6 +271,7 @@ export class WooshPayService {
     amount_subtotal?: number;
     currency?: string;
     payment_intent?: string;
+    payment_method_types?: string[];
   }> {
     return this.makeApiRequest<any>('GET', `/v1/checkout/sessions/${sessionId}`);
   }

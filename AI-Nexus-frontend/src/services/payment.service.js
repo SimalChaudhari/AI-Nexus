@@ -8,11 +8,12 @@ const trimPaymentLogValue = (value, keep = 18) => {
 };
 
 /**
- * Create a WooshPay checkout session (card-only). Returns URL to redirect the user to pay.
+ * Create a WooshPay checkout session. Returns URL to redirect the user to pay.
  * Backend uses PAYMENT_SECRET_KEY; this call is authenticated as the current user.
+ * All WooshPay payment modes enabled on the account are available (not card-only).
  */
 export async function createCheckoutSession({ items, successUrl, cancelUrl, currency = 'sgd' }) {
-  const response = await axios.post('/payments/create-checkout-cards', {
+  const response = await axios.post('/payments/create-checkout', {
     items: items.map((item) => ({
       id: item.id,
       name: item.name || 'Course',

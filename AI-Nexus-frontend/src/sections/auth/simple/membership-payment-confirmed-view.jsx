@@ -27,7 +27,7 @@ export function MembershipPaymentConfirmedView({
   currency = 'SGD',
   itemName = 'ISCA membership',
   paymentRef = '',
-  paymentMethodLabel = 'Card payment',
+  paymentMethodLabel = 'Online payment',
   redirectCountdown = 15,
   onSignIn,
 }) {

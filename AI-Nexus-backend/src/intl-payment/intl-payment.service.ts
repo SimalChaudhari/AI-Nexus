@@ -41,14 +41,6 @@ import { IntlFxService } from './intl-fx.service';
 
 const INTL_DRAFT_JWT_TYP = 'intl_draft';
 
-/** WooshPay checkout methods for international membership (test + live). */
-const INTL_CHECKOUT_PAYMENT_METHODS = [
-  'card',
-  'applepay',
-  'googlepay',
-  'alipay',
-] as const;
-
 /** Prevent parallel create-checkout for the same draft user (2x session race). */
 const intlCheckoutInFlight = new Set<string>();
 
@@ -467,15 +459,18 @@ export class IntlPaymentService {
               dto.membershipType || user.membershipType,
             );
             const pendingPlan = membershipTypeFromPayment(pendingPayment);
-            // Unknown/mismatched plan on pending session → create a fresh checkout.
-            if (pendingPlan !== requestedPlan) {
+            const allowsCard = this.wooshPayService.sessionAllowsCard(existingSession);
+            // Unknown/mismatched plan, or old session still offering card → fresh checkout.
+            if ((pendingPlan && pendingPlan !== requestedPlan) || allowsCard || !pendingPlan) {
               try {
                 await this.wooshPayService.expireCheckoutSession(pendingSessionId);
               } catch {
                 // continue
               }
               pendingPayment.status = InternationalPaymentStatus.Canceled;
-              pendingPayment.failureReason = 'replaced_by_new_intl_checkout_plan_change';
+              pendingPayment.failureReason = allowsCard
+                ? 'replaced_by_new_intl_checkout_no_card'
+                : 'replaced_by_new_intl_checkout_plan_change';
               await this.paymentRepository.save(pendingPayment);
             } else {
               user.membershipType =
@@ -491,7 +486,7 @@ export class IntlPaymentService {
                 currency: pendingPayment.currency,
                 amount: Number(pendingPayment.amount),
                 countryCode: pendingPayment.countryCode,
-                paymentMethodTypes: [...INTL_CHECKOUT_PAYMENT_METHODS],
+                paymentMethodTypes: this.wooshPayService.getCheckoutPaymentMethodTypes(),
                 reused: true,
                 testMode: Boolean(this.wooshPayService.getConfig()?.testMode),
               };
@@ -606,7 +601,7 @@ export class IntlPaymentService {
 
       try {
         const isTest = Boolean(this.wooshPayService.getConfig()?.testMode);
-        const paymentMethodTypes = [...INTL_CHECKOUT_PAYMENT_METHODS];
+        const paymentMethodTypes = this.wooshPayService.getCheckoutPaymentMethodTypes();
         const unitCurrency = String(pricing.currency || 'sgd').toLowerCase();
 
         const session = await this.wooshPayService.createCheckoutSession({
