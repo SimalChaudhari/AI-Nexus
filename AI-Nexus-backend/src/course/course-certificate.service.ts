@@ -223,6 +223,21 @@ export class CourseCertificateService {
     return true;
   }
 
+  async checkCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
+    return this.isCourseFullyCompleted(userId, courseId);
+  }
+
+  async checkProgramCertificateRequirementsMet(
+    userId: string,
+    programId: string,
+  ): Promise<boolean> {
+    return this.isProgramCertificateRequirementsMet(userId, programId);
+  }
+
+  async getProgramPillarsPublic(programId: string) {
+    return this.getProgramPillarCourses(programId);
+  }
+
   private async isCourseFullyCompleted(userId: string, courseId: string): Promise<boolean> {
     const course = await this.courseService.getById(courseId);
 

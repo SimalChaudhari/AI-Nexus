@@ -245,6 +245,62 @@ export const userService = {
     }
   },
 
+  async exportUsersCsv(params = {}) {
+    try {
+      const queryParams = buildPaginationParams({
+        search: params.search,
+        status: params.status,
+        progressFilter: params.progressFilter,
+        fields: params.fields,
+        role: params.role,
+      });
+      const response = await axios.get('/users/export', {
+        params: queryParams,
+        responseType: 'blob',
+        skipApiLoading: true,
+        deduplicate: false,
+      });
+
+      const raw = response.data;
+      const contentType = String(response.headers?.['content-type'] || raw?.type || '');
+      if (contentType.includes('application/json')) {
+        const text = await raw.text();
+        let message = 'CSV export failed';
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed?.message || parsed?.error || message;
+        } catch {
+          // keep default
+        }
+        throw new Error(message);
+      }
+
+      const disposition = String(response.headers?.['content-disposition'] || '');
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const fileName = match?.[1] || 'admin-users-export.csv';
+      const blob =
+        raw?.type && String(raw.type).includes('csv')
+          ? raw
+          : new Blob([raw], { type: 'text/csv;charset=utf-8;' });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return true;
+    } catch (error) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to export users CSV';
+      throw new Error(errorMessage);
+    }
+  },
+
   // Profile methods for User role
   async getUserProfile() {
     try {

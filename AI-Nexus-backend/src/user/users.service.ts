@@ -2,7 +2,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { UserEntity, UserRole, UserStatus, AuthProvider } from './users.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository, Brackets, In } from 'typeorm';
 import { UpdateUserDto, UserDto } from './users.dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -17,6 +17,15 @@ import { AuthService } from '../auth/auth.service';
 import { OAuthAuthService } from '../auth/oauth-auth.service';
 import { normalizeEmail } from '../utils/auth.utils';
 import { assertEmailAvailableForRole } from './user-email-availability.util';
+import {
+    AdminUserProgressFilter,
+    AdminUserProgressService,
+} from '../course/admin-user-progress.service';
+import {
+    adminUserExportNeedsProgress,
+    buildAdminUsersCsv,
+    parseAdminUserExportFields,
+} from './admin-user-export.util';
 
 function generateTemporaryPassword(length = 14): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
@@ -35,9 +44,19 @@ export type UserListQueryOptions = PaginatedQueryOptions & {
     status?: UserStatus;
     role?: UserRole;
     usePagination?: boolean;
+    progressFilter?: AdminUserProgressFilter;
 };
 
-export type UserPaginatedListResult = PaginatedResultWithMeta<UserEntity, { status: UserStatus | null }>;
+export type UserPaginatedListResult = PaginatedResultWithMeta<
+    UserEntity,
+    { status: UserStatus | null; progressFilter: AdminUserProgressFilter | null }
+>;
+
+const PROGRESS_FILTERS = new Set<AdminUserProgressFilter>([
+    'pillars_current',
+    'badge_certificate',
+    'pillars_100',
+]);
 
 @Injectable()
 export class UserService {
@@ -50,7 +69,13 @@ export class UserService {
         private readonly paginationService: PaginationService,
         private readonly authService: AuthService,
         private readonly oauthAuthService: OAuthAuthService,
+        private readonly adminUserProgressService: AdminUserProgressService,
     ) { }
+
+    parseProgressFilter(raw?: string): AdminUserProgressFilter | undefined {
+        const value = String(raw || '').trim() as AdminUserProgressFilter;
+        return PROGRESS_FILTERS.has(value) ? value : undefined;
+    }
 
     private normalizeUsername(username: string): string {
         return username.trim().toLowerCase();
@@ -84,6 +109,76 @@ export class UserService {
         const companyName = this.resolveCorporateCompanyName(user) || null;
         // Frontend transformUser already maps `company` as the display name.
         return Object.assign(user, { companyName, company: companyName });
+    }
+
+    private buildListQuery(queryOptions?: {
+        search?: string;
+        status?: UserStatus;
+        role?: UserRole;
+        page?: number;
+        limit?: number;
+    }) {
+        const normalized = this.paginationService.normalizePaginatedQuery(
+            {
+                page: queryOptions?.page,
+                limit: queryOptions?.limit,
+                search: queryOptions?.search,
+            },
+            10,
+            100,
+        );
+        const status = queryOptions?.status;
+        const role = queryOptions?.role;
+
+        const query = this.userRepository
+            .createQueryBuilder('user')
+            .where('user.role != :adminRole', { adminRole: UserRole.Admin })
+            .andWhere('user.isDraft = :isDraft', { isDraft: false });
+
+        if (role) {
+            query.andWhere('user.role = :role', { role });
+        } else {
+            // Default Users list excludes Corporate accounts (shown under Corporate Members).
+            query.andWhere('user.role != :corporateRole', { corporateRole: UserRole.Corporate });
+        }
+
+        if (status) {
+            query.andWhere('user.status = :status', { status });
+        }
+
+        if (normalized.hasSearch) {
+            const searchPattern = `%${normalized.search}%`;
+            query.andWhere(
+                new Brackets((qb) => {
+                    // Match full display name ("First Last") as well as individual fields.
+                    qb.where(
+                        `CONCAT(COALESCE(user.firstname, ''), ' ', COALESCE(user.lastname, '')) ILIKE :search`,
+                        { search: searchPattern },
+                    )
+                        .orWhere('user.firstname ILIKE :search', { search: searchPattern })
+                        .orWhere('user.lastname ILIKE :search', { search: searchPattern })
+                        .orWhere('user.username ILIKE :search', { search: searchPattern })
+                        .orWhere('user.email ILIKE :search', { search: searchPattern })
+                        .orWhere('user.contactNumber ILIKE :search', { search: searchPattern })
+                        .orWhere('user.companyCode ILIKE :search', { search: searchPattern })
+                        // CAST avoids TypeORM treating Postgres `::text` as a `:text` bind param.
+                        .orWhere('CAST(user.salesforceUserInfoRaw AS text) ILIKE :search', {
+                            search: searchPattern,
+                        });
+                }),
+            );
+        }
+
+        query.orderBy('user.createdAt', 'DESC');
+        return { query, normalized, status, role };
+    }
+
+    private async applyProgressFilterToIds(
+        userIds: string[],
+        progressFilter?: AdminUserProgressFilter,
+    ): Promise<string[]> {
+        if (!progressFilter || !userIds.length) return userIds;
+        return this.adminUserProgressService.filterUserIds(userIds, progressFilter);
     }
 
     /**
@@ -182,78 +277,105 @@ export class UserService {
 
     async getAll(queryOptions?: UserListQueryOptions): Promise<UserEntity[] | UserPaginatedListResult> {
         const usePagination = Boolean(queryOptions?.usePagination);
-        const normalized = this.paginationService.normalizePaginatedQuery(
-            {
-                page: queryOptions?.page,
-                limit: queryOptions?.limit,
-                search: queryOptions?.search,
-            },
-            10,
-            100,
+        const progressFilter = queryOptions?.progressFilter;
+        const { query, normalized, status } = this.buildListQuery(queryOptions);
+
+        if (!progressFilter) {
+            if (!usePagination) {
+                const rows = await query.getMany();
+                return rows.map((row) => this.withCompanyName(row));
+            }
+
+            const paginated = await this.paginationService.paginateQueryBuilder({
+                queryBuilder: query,
+                page: normalized.page,
+                limit: normalized.limit,
+                search: normalized.hasSearch ? normalized.search : null,
+            });
+
+            return {
+                data: paginated.data.map((row) => this.withCompanyName(row)),
+                pagination: {
+                    ...paginated.pagination,
+                    status: status ?? null,
+                    progressFilter: null,
+                },
+            };
+        }
+
+        const idRows = await query.select(['user.id', 'user.createdAt']).getMany();
+        const orderedIds = await this.applyProgressFilterToIds(
+            idRows.map((row) => row.id),
+            progressFilter,
         );
-        const status = queryOptions?.status;
-        const role = queryOptions?.role;
 
-        const query = this.userRepository
-            .createQueryBuilder('user')
-            .where('user.role != :adminRole', { adminRole: UserRole.Admin })
-            .andWhere('user.isDraft = :isDraft', { isDraft: false });
-
-        if (role) {
-            query.andWhere('user.role = :role', { role });
-        } else {
-            // Default Users list excludes Corporate accounts (shown under Corporate Members).
-            query.andWhere('user.role != :corporateRole', { corporateRole: UserRole.Corporate });
+        if (!usePagination) {
+            if (!orderedIds.length) return [];
+            const users = await this.userRepository.find({ where: { id: In(orderedIds) } });
+            const byId = new Map(users.map((user) => [user.id, user]));
+            return orderedIds
+                .map((id) => byId.get(id))
+                .filter((user): user is UserEntity => Boolean(user))
+                .map((row) => this.withCompanyName(row));
         }
 
-        if (status) {
-            query.andWhere('user.status = :status', { status });
-        }
+        const page = normalized.page;
+        const limit = normalized.limit;
+        const totalItems = orderedIds.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / limit) || 1);
+        const safePage = Math.min(page, totalPages);
+        const start = (safePage - 1) * limit;
+        const pageIds = orderedIds.slice(start, start + limit);
+        const pageUsers = pageIds.length
+            ? await this.userRepository.find({ where: { id: In(pageIds) } })
+            : [];
+        const byId = new Map(pageUsers.map((user) => [user.id, user]));
+        const data = pageIds
+            .map((id) => byId.get(id))
+            .filter((user): user is UserEntity => Boolean(user))
+            .map((row) => this.withCompanyName(row));
 
-        if (normalized.hasSearch) {
-            const searchPattern = `%${normalized.search}%`;
-            query.andWhere(
-                new Brackets((qb) => {
-                    // Match full display name ("First Last") as well as individual fields.
-                    qb.where(
-                        `CONCAT(COALESCE(user.firstname, ''), ' ', COALESCE(user.lastname, '')) ILIKE :search`,
-                        { search: searchPattern },
-                    )
-                        .orWhere('user.firstname ILIKE :search', { search: searchPattern })
-                        .orWhere('user.lastname ILIKE :search', { search: searchPattern })
-                        .orWhere('user.username ILIKE :search', { search: searchPattern })
-                        .orWhere('user.email ILIKE :search', { search: searchPattern })
-                        .orWhere('user.contactNumber ILIKE :search', { search: searchPattern })
-                        .orWhere('user.companyCode ILIKE :search', { search: searchPattern })
-                        // CAST avoids TypeORM treating Postgres `::text` as a `:text` bind param.
-                        .orWhere('CAST(user.salesforceUserInfoRaw AS text) ILIKE :search', {
-                            search: searchPattern,
-                        });
-                }),
+        return {
+            data,
+            pagination: {
+                page: safePage,
+                limit,
+                totalItems,
+                totalPages,
+                hasNextPage: safePage < totalPages,
+                hasPreviousPage: safePage > 1,
+                search: normalized.hasSearch ? normalized.search : null,
+                isPinned: null,
+                status: status ?? null,
+                progressFilter: progressFilter ?? null,
+            },
+        };
+    }
+
+    async exportUsersCsv(params: {
+        search?: string;
+        status?: UserStatus;
+        role?: UserRole;
+        progressFilter?: AdminUserProgressFilter;
+        fields?: string | string[];
+    }): Promise<{ filename: string; csv: string }> {
+        const fields = parseAdminUserExportFields(params.fields);
+        const users = (await this.getAll({
+            usePagination: false,
+            search: params.search,
+            status: params.status,
+            role: params.role,
+            progressFilter: params.progressFilter,
+        })) as Array<UserEntity & { companyName?: string | null; company?: string | null }>;
+
+        let progressByUser;
+        if (adminUserExportNeedsProgress(fields) && users.length) {
+            progressByUser = await this.adminUserProgressService.buildProgressFlags(
+                users.map((user) => user.id),
             );
         }
 
-        query.orderBy('user.createdAt', 'DESC');
-
-        if (!usePagination) {
-            const rows = await query.getMany();
-            return rows.map((row) => this.withCompanyName(row));
-        }
-
-        const paginated = await this.paginationService.paginateQueryBuilder({
-            queryBuilder: query,
-            page: normalized.page,
-            limit: normalized.limit,
-            search: normalized.hasSearch ? normalized.search : null,
-        });
-
-        return {
-            data: paginated.data.map((row) => this.withCompanyName(row)),
-            pagination: {
-                ...paginated.pagination,
-                status: status ?? null,
-            },
-        };
+        return buildAdminUsersCsv({ users, fields, progressByUser });
     }
 
     async findAllUsers(): Promise<UserEntity[]> {

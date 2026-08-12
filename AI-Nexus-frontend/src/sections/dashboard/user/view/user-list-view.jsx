@@ -43,6 +43,7 @@ import {
 import { fetchUsers, deleteUser } from 'src/store/slices/userSlice';
 import { UserTableRow } from '../user-table-row';
 import { UserTableToolbar } from '../user-table-toolbar';
+import { UserExportDialog } from '../user-export-dialog';
 import { UserTableFiltersResult } from '../user-table-filters-result';
 import {
   USER_LIST_DEFAULTS,
@@ -65,6 +66,7 @@ export function UserListView() {
   });
   const router = useRouter();
   const confirm = useBoolean();
+  const exportDialog = useBoolean();
 
   const usersQuery = useMemo(
     () => ({
@@ -84,6 +86,14 @@ export function UserListView() {
       search: typeof debouncedSearch === 'string' ? debouncedSearch.trim() || undefined : undefined,
     }),
     [debouncedSearch, usersQuery.limit, usersQuery.page, usersQuery.status]
+  );
+
+  const exportQuery = useMemo(
+    () => ({
+      search: usersQueryForFetch.search,
+      status: usersQueryForFetch.status,
+    }),
+    [usersQueryForFetch.search, usersQueryForFetch.status]
   );
 
   // Fetch users from backend with pagination/filter/search
@@ -210,6 +220,7 @@ export function UserListView() {
           <UserTableToolbar
             filters={filters}
             onResetPage={table.onResetPage}
+            onOpenExport={exportDialog.onTrue}
           />
 
           {canReset && (
@@ -260,15 +271,15 @@ export function UserListView() {
 
                 <TableBody>
                   {dataSorted.map((row) => (
-                      <UserTableRow
-                        key={row.id}
-                        row={row}
-                        selected={table.selected.includes(row.id)}
-                        onSelectRow={() => table.onSelectRow(row.id)}
-                        onDeleteRow={() => handleDeleteRow(row.id)}
-                        onEditRow={() => handleEditRow(row.id)}
-                      />
-                    ))}
+                    <UserTableRow
+                      key={row.id}
+                      row={row}
+                      selected={table.selected.includes(row.id)}
+                      onSelectRow={() => table.onSelectRow(row.id)}
+                      onDeleteRow={() => handleDeleteRow(row.id)}
+                      onEditRow={() => handleEditRow(row.id)}
+                    />
+                  ))}
 
                   <TableEmptyRows
                     height={table.dense ? 56 : 56 + 20}
@@ -279,9 +290,7 @@ export function UserListView() {
                 </TableBody>
               </Table>
             </Scrollbar>
-            {showTableLoader && (
-              <TableLoadingOverlay minHeight={220} />
-            )}
+            {showTableLoader && <TableLoadingOverlay minHeight={220} />}
           </Box>
 
           <TablePaginationCustom
@@ -296,6 +305,12 @@ export function UserListView() {
           />
         </Card>
       </DashboardContent>
+
+      <UserExportDialog
+        open={exportDialog.value}
+        onClose={exportDialog.onFalse}
+        exportQuery={exportQuery}
+      />
 
       <ConfirmDialog
         open={confirm.value}

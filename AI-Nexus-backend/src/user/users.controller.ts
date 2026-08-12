@@ -56,12 +56,21 @@ export class UserController {
         @Query('search') search?: string,
         @Query('status') status?: string,
         @Query('role') role?: string,
+        @Query('progressFilter') progressFilter?: string,
         @Res() response?: Response,
     ) {
         const normalizedStatus = this.paginationService.parseEnumQuery(status, UserStatus);
         const normalizedRole = this.paginationService.parseEnumQuery(role, UserRole);
+        const normalizedProgressFilter = this.userService.parseProgressFilter(progressFilter);
 
-        const hasFilters = Boolean(page || limit || search || normalizedStatus || normalizedRole);
+        const hasFilters = Boolean(
+            page ||
+                limit ||
+                search ||
+                normalizedStatus ||
+                normalizedRole ||
+                normalizedProgressFilter,
+        );
         if (hasFilters) {
             const result = await this.userService.getAll({
                 usePagination: true,
@@ -70,6 +79,7 @@ export class UserController {
                 search: search?.trim() || undefined,
                 status: normalizedStatus,
                 role: normalizedRole,
+                progressFilter: normalizedProgressFilter,
             });
 
             const paginated = result as UserPaginatedListResult;
@@ -86,6 +96,33 @@ export class UserController {
             length: users.length,
             data: users,
         });
+    }
+
+    @Get('export')
+    @Roles(UserRole.Admin)
+    @ApiOperation({ summary: 'Export users CSV with selected fields and optional progress filters' })
+    async exportUsers(
+        @Query('search') search?: string,
+        @Query('status') status?: string,
+        @Query('role') role?: string,
+        @Query('progressFilter') progressFilter?: string,
+        @Query('fields') fields?: string,
+        @Res() response?: Response,
+    ) {
+        const normalizedStatus = this.paginationService.parseEnumQuery(status, UserStatus);
+        const normalizedRole = this.paginationService.parseEnumQuery(role, UserRole);
+        const normalizedProgressFilter = this.userService.parseProgressFilter(progressFilter);
+        const { filename, csv } = await this.userService.exportUsersCsv({
+            search: search?.trim() || undefined,
+            status: normalizedStatus,
+            role: normalizedRole,
+            progressFilter: normalizedProgressFilter,
+            fields,
+        });
+
+        response!.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        response!.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return response!.status(HttpStatus.OK).send(csv);
     }
 
     @Get('profile')
