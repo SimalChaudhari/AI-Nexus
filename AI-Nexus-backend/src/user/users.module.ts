@@ -13,6 +13,7 @@ import { PaginationService } from '../common/pagination/pagination.service';
 import { AuthModule } from '../auth/auth.module';
 import { SsoModule } from '../auth/sso.module';
 import { CourseModule } from '../course/courses.module';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { CourseModule } from '../course/courses.module';
         AuthModule,
         SsoModule,
         forwardRef(() => CourseModule),
+        AppSettingsModule,
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},

@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import {
   AppSettingsEntity,
   MembershipPaymentSettings,
+  WelcomeEmailContent,
   WorkflowTemplatesPitchContent,
 } from './app-settings.entity';
 import { LocalStorageService } from '../service/local-storage.service';
@@ -479,6 +480,44 @@ const INTL_LANDING_POINTS_MAX = 8;
 const INTL_LANDING_FOOTER_COLS_MAX = 4;
 const INTL_LANDING_FOOTER_LINKS_MAX = 10;
 const INTL_LANDING_SOCIAL_MAX = 6;
+
+export const DEFAULT_USER_WELCOME_EMAIL_CONTENT: Required<WelcomeEmailContent> = {
+  subject: 'Welcome to AI Nexus — your account is ready',
+  heading: 'Welcome to AI Nexus',
+  intro:
+    '<p>Thank you for joining AI Nexus. Your account has been created successfully and is ready to use.</p>',
+  bodyText: '',
+  showAccountDetails: false,
+  accountDetailsTitle: 'Account details',
+  accountDetailsHtml:
+    '<p><strong>Sign-in email</strong><br>{{email}}</p><p>Use this email with the password you created during signup, or continue with your ISCA eServices login where applicable.</p>',
+  detailsNote: '',
+  showCta: false,
+  ctaLabel: 'Sign In to AI Nexus',
+  ctaUrl: '/auth/sign-in',
+  ctaAlign: 'center',
+  note: '<p>Need help getting started? Reply to this email or contact AI Nexus support.</p>',
+  footer: 'AI Nexus learner welcome',
+};
+
+export const DEFAULT_CORPORATE_WELCOME_EMAIL_CONTENT: Required<WelcomeEmailContent> = {
+  subject: 'Welcome to AI Nexus Corporate — your account is ready',
+  heading: 'Welcome to AI Nexus Corporate',
+  intro:
+    '<p>Thank you for registering {{companyName}} on AI Nexus. Your corporate account is ready. Sign in to open the corporate portal and start enrolling your staff.</p>',
+  bodyText: '',
+  showAccountDetails: false,
+  accountDetailsTitle: 'Corporate account details',
+  accountDetailsHtml:
+    '<p><strong>Company</strong><br>{{companyName}}</p><p><strong>Sign-in email</strong><br>{{email}}</p><p>Use your eServices credentials to sign in to the AI Nexus corporate portal and start enrolling your staff.</p>',
+  detailsNote: '',
+  showCta: false,
+  ctaLabel: 'Open Corporate Portal',
+  ctaUrl: '/corporate/overview',
+  ctaAlign: 'center',
+  note: '<p>Need help? Contact AI Nexus support and we will assist your HR team.</p>',
+  footer: 'AI Nexus corporate welcome',
+};
 
 @Injectable()
 export class AppSettingsService {
@@ -998,6 +1037,264 @@ export class AppSettingsService {
     return {
       hideAllCertificates: Boolean(settings.hideAllCertificates),
       hideAllBadges: Boolean(settings.hideAllBadges),
+    };
+  }
+
+  async updateWelcomeEmailSettings(payload: {
+    userWelcomeEmailEnabled?: unknown;
+    corporateWelcomeEmailEnabled?: unknown;
+    userWelcomeEmailContent?: unknown;
+    corporateWelcomeEmailContent?: unknown;
+  }): Promise<{
+    message: string;
+    data: {
+      userWelcomeEmailEnabled: boolean;
+      corporateWelcomeEmailEnabled: boolean;
+      userWelcomeEmailContent: WelcomeEmailContent;
+      corporateWelcomeEmailContent: WelcomeEmailContent;
+    };
+  }> {
+    const settings = await this.getSettings();
+    if (payload?.userWelcomeEmailEnabled !== undefined) {
+      settings.userWelcomeEmailEnabled = Boolean(payload.userWelcomeEmailEnabled);
+    }
+    if (payload?.corporateWelcomeEmailEnabled !== undefined) {
+      settings.corporateWelcomeEmailEnabled = Boolean(payload.corporateWelcomeEmailEnabled);
+    }
+    if (payload?.userWelcomeEmailContent !== undefined) {
+      settings.userWelcomeEmailContent = this.sanitizeWelcomeEmailContent(
+        payload.userWelcomeEmailContent,
+        DEFAULT_USER_WELCOME_EMAIL_CONTENT,
+      );
+    }
+    if (payload?.corporateWelcomeEmailContent !== undefined) {
+      settings.corporateWelcomeEmailContent = this.sanitizeWelcomeEmailContent(
+        payload.corporateWelcomeEmailContent,
+        DEFAULT_CORPORATE_WELCOME_EMAIL_CONTENT,
+      );
+    }
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Welcome email settings updated successfully',
+      data: {
+        userWelcomeEmailEnabled: saved.userWelcomeEmailEnabled !== false,
+        corporateWelcomeEmailEnabled: saved.corporateWelcomeEmailEnabled !== false,
+        userWelcomeEmailContent: this.resolveWelcomeEmailContent(
+          saved.userWelcomeEmailContent,
+          DEFAULT_USER_WELCOME_EMAIL_CONTENT,
+        ),
+        corporateWelcomeEmailContent: this.resolveWelcomeEmailContent(
+          saved.corporateWelcomeEmailContent,
+          DEFAULT_CORPORATE_WELCOME_EMAIL_CONTENT,
+        ),
+      },
+    };
+  }
+
+  async getWelcomeEmailSettings(): Promise<{
+    userWelcomeEmailEnabled: boolean;
+    corporateWelcomeEmailEnabled: boolean;
+    userWelcomeEmailContent: WelcomeEmailContent;
+    corporateWelcomeEmailContent: WelcomeEmailContent;
+    defaults: {
+      userWelcomeEmailContent: Required<WelcomeEmailContent>;
+      corporateWelcomeEmailContent: Required<WelcomeEmailContent>;
+    };
+  }> {
+    const settings = await this.getSettings();
+    return {
+      // Default ON when column is missing/null so existing behaviour is preserved.
+      userWelcomeEmailEnabled: settings.userWelcomeEmailEnabled !== false,
+      corporateWelcomeEmailEnabled: settings.corporateWelcomeEmailEnabled !== false,
+      userWelcomeEmailContent: this.resolveWelcomeEmailContent(
+        settings.userWelcomeEmailContent,
+        DEFAULT_USER_WELCOME_EMAIL_CONTENT,
+      ),
+      corporateWelcomeEmailContent: this.resolveWelcomeEmailContent(
+        settings.corporateWelcomeEmailContent,
+        DEFAULT_CORPORATE_WELCOME_EMAIL_CONTENT,
+      ),
+      defaults: {
+        userWelcomeEmailContent: { ...DEFAULT_USER_WELCOME_EMAIL_CONTENT },
+        corporateWelcomeEmailContent: { ...DEFAULT_CORPORATE_WELCOME_EMAIL_CONTENT },
+      },
+    };
+  }
+
+  async previewWelcomeEmail(payload: {
+    type?: unknown;
+    content?: unknown;
+  }): Promise<{ type: 'user' | 'corporate'; subject: string; html: string }> {
+    const type = String(payload?.type || 'user').toLowerCase() === 'corporate' ? 'corporate' : 'user';
+    const defaults =
+      type === 'corporate'
+        ? DEFAULT_CORPORATE_WELCOME_EMAIL_CONTENT
+        : DEFAULT_USER_WELCOME_EMAIL_CONTENT;
+    const saved = await this.getWelcomeEmailSettings();
+    const baseContent =
+      type === 'corporate'
+        ? saved.corporateWelcomeEmailContent
+        : saved.userWelcomeEmailContent;
+    const content = this.resolveWelcomeEmailContent(
+      payload?.content !== undefined ? payload.content : baseContent,
+      defaults,
+    );
+
+    const sampleName = 'Alex Tan';
+    const sampleEmail = type === 'corporate' ? 'hr@example.com' : 'learner@example.com';
+    const sampleCompany = 'Acme Pte Ltd';
+    const fill = (value: string) =>
+      String(value || '')
+        .replace(/\{\{\s*name\s*\}\}/gi, sampleName)
+        .replace(/\{\{\s*email\s*\}\}/gi, sampleEmail)
+        .replace(/\{\{\s*companyName\s*\}\}/gi, sampleCompany);
+
+    const frontendBase = String(process.env.FRONTEND_URL || 'http://localhost:3000')
+      .trim()
+      .replace(/^https:\/\/(localhost|127\.0\.0\.1)/, 'http://$1');
+    const resolveCtaUrl = (raw: string) => {
+      const url = String(raw || '').trim();
+      if (!url) return '';
+      if (/^(https?:|mailto:)/i.test(url)) return url;
+      return `${frontendBase}${url.startsWith('/') ? url : `/${url}`}`;
+    };
+    const ctaLabel = fill(content.ctaLabel || '').trim();
+    const ctaUrl = resolveCtaUrl(fill(content.ctaUrl || ''));
+    const showCta = Boolean(content.showCta) && Boolean(ctaLabel) && Boolean(ctaUrl);
+
+    const { buildBrandTemplate, buildCorporateRegistrationWelcomeBodyHtml, buildUserRegistrationWelcomeBodyHtml } =
+      await import('../service/email-template.util');
+
+    const bodyHtml =
+      type === 'corporate'
+        ? buildCorporateRegistrationWelcomeBodyHtml({
+            bodyText: fill(content.bodyText || ''),
+            showAccountDetails: Boolean(content.showAccountDetails),
+            accountDetailsTitle: fill(content.accountDetailsTitle || ''),
+            accountDetailsHtml: fill(content.accountDetailsHtml || ''),
+          })
+        : buildUserRegistrationWelcomeBodyHtml({
+            bodyText: fill(content.bodyText || ''),
+            showAccountDetails: Boolean(content.showAccountDetails),
+            accountDetailsTitle: fill(content.accountDetailsTitle || ''),
+            accountDetailsHtml: fill(content.accountDetailsHtml || ''),
+          });
+
+    const html = buildBrandTemplate(frontendBase, {
+      heading: fill(content.heading || ''),
+      greetingName: sampleName,
+      intro: fill(content.intro || ''),
+      bodyHtml,
+      ctaLabel: showCta ? ctaLabel : undefined,
+      ctaUrl: showCta ? ctaUrl : undefined,
+      ctaAlign: content.ctaAlign || 'center',
+      note: fill(content.note || ''),
+      footer: fill(content.footer || ''),
+    });
+
+    return {
+      type,
+      subject: fill(content.subject || ''),
+      html,
+    };
+  }
+
+  private sanitizeWelcomeEmailContent(
+    value: unknown,
+    defaults: Required<WelcomeEmailContent>,
+  ): WelcomeEmailContent {
+    const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    const plain = (raw: unknown, fallback: string, max: number): string => {
+      if (typeof raw === 'string') return this.cleanText(raw, max);
+      return fallback;
+    };
+    const html = (raw: unknown, fallback: string, max: number): string => {
+      if (typeof raw === 'string') return String(raw).trim().slice(0, max);
+      return fallback;
+    };
+
+    let accountDetailsHtml = defaults.accountDetailsHtml;
+    if (typeof source.accountDetailsHtml === 'string') {
+      accountDetailsHtml = String(source.accountDetailsHtml).trim().slice(0, 8000);
+    } else if (typeof source.detailsNote === 'string' && String(source.detailsNote).trim()) {
+      accountDetailsHtml = String(source.detailsNote).trim().slice(0, 8000);
+    }
+
+    return {
+      subject: plain(source.subject, defaults.subject, 200) || defaults.subject,
+      heading: plain(source.heading, defaults.heading, 160) || defaults.heading,
+      intro: html(source.intro, defaults.intro, 8000) || defaults.intro,
+      bodyText: html(source.bodyText, defaults.bodyText, 8000),
+      showAccountDetails:
+        source.showAccountDetails !== undefined
+          ? Boolean(source.showAccountDetails)
+          : Boolean(defaults.showAccountDetails),
+      accountDetailsTitle: plain(
+        source.accountDetailsTitle,
+        defaults.accountDetailsTitle,
+        120,
+      ),
+      accountDetailsHtml,
+      detailsNote: '',
+      showCta:
+        source.showCta !== undefined ? Boolean(source.showCta) : Boolean(defaults.showCta),
+      ctaLabel: plain(source.ctaLabel, defaults.ctaLabel, 80),
+      ctaUrl: plain(source.ctaUrl, defaults.ctaUrl, 500),
+      ctaAlign: this.normalizeCtaAlign(source.ctaAlign, defaults.ctaAlign),
+      note: html(source.note, defaults.note, 4000),
+      footer: plain(source.footer, defaults.footer, 200) || defaults.footer,
+    };
+  }
+
+  private normalizeCtaAlign(
+    value: unknown,
+    fallback: 'left' | 'center' | 'right' = 'center',
+  ): 'left' | 'center' | 'right' {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'left' || raw === 'center' || raw === 'right') return raw;
+    return fallback;
+  }
+
+  private resolveWelcomeEmailContent(
+    value: WelcomeEmailContent | null | undefined,
+    defaults: Required<WelcomeEmailContent>,
+  ): Required<WelcomeEmailContent> {
+    const htmlOrDefault = (raw: unknown, fallback: string, max: number) => {
+      if (raw === undefined || raw === null) return fallback;
+      return String(raw).trim().slice(0, max);
+    };
+    const accountDetailsHtml = (() => {
+      if (value?.accountDetailsHtml !== undefined && value?.accountDetailsHtml !== null) {
+        return String(value.accountDetailsHtml).trim().slice(0, 8000);
+      }
+      if (value?.detailsNote) {
+        return String(value.detailsNote).trim().slice(0, 8000);
+      }
+      return defaults.accountDetailsHtml;
+    })();
+    return {
+      subject: this.cleanText(value?.subject, 200) || defaults.subject,
+      heading: this.cleanText(value?.heading, 160) || defaults.heading,
+      intro: htmlOrDefault(value?.intro, defaults.intro, 8000) || defaults.intro,
+      bodyText: htmlOrDefault(value?.bodyText, defaults.bodyText, 8000),
+      showAccountDetails:
+        value?.showAccountDetails !== undefined
+          ? Boolean(value.showAccountDetails)
+          : Boolean(defaults.showAccountDetails),
+      accountDetailsTitle:
+        this.cleanText(value?.accountDetailsTitle, 120) || defaults.accountDetailsTitle,
+      accountDetailsHtml: accountDetailsHtml || defaults.accountDetailsHtml,
+      detailsNote: '',
+      showCta: value?.showCta !== undefined ? Boolean(value.showCta) : Boolean(defaults.showCta),
+      ctaLabel:
+        value?.ctaLabel !== undefined
+          ? this.cleanText(value.ctaLabel, 80)
+          : defaults.ctaLabel,
+      ctaUrl:
+        value?.ctaUrl !== undefined ? this.cleanText(value.ctaUrl, 500) : defaults.ctaUrl,
+      ctaAlign: this.normalizeCtaAlign(value?.ctaAlign, defaults.ctaAlign),
+      note: htmlOrDefault(value?.note, defaults.note, 4000),
+      footer: this.cleanText(value?.footer, 200) || defaults.footer,
     };
   }
 

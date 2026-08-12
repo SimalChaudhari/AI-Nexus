@@ -1,4 +1,3 @@
-// src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
@@ -13,6 +12,7 @@ import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
 import { AuthTokenInitService } from './auth-token-init.service';
 import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
   imports: [
@@ -25,6 +25,7 @@ import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollmen
     LlmModule,
     LocalStorageModule,
     CompanyEnrollmentModule,
+    AppSettingsModule,
   ],
   providers: [AuthService, EmailService, AuthTokenService, AuthTokenInitService],
   controllers: [AuthController],

@@ -19,6 +19,31 @@ function normalizeMaybeAssetIcon(value) {
   return raw;
 }
 
+function normalizeWelcomeEmailContent(source) {
+  const raw = source && typeof source === 'object' ? source : {};
+  const align = String(raw.ctaAlign || 'center').toLowerCase();
+  return {
+    subject: raw.subject != null ? String(raw.subject) : '',
+    heading: raw.heading != null ? String(raw.heading) : '',
+    intro: raw.intro != null ? String(raw.intro) : '',
+    bodyText: raw.bodyText != null ? String(raw.bodyText) : '',
+    showAccountDetails: Boolean(raw.showAccountDetails),
+    accountDetailsTitle: raw.accountDetailsTitle != null ? String(raw.accountDetailsTitle) : '',
+    accountDetailsHtml:
+      raw.accountDetailsHtml != null
+        ? String(raw.accountDetailsHtml)
+        : raw.detailsNote != null
+          ? String(raw.detailsNote)
+          : '',
+    showCta: Boolean(raw.showCta),
+    ctaLabel: raw.ctaLabel != null ? String(raw.ctaLabel) : '',
+    ctaUrl: raw.ctaUrl != null ? String(raw.ctaUrl) : '',
+    ctaAlign: align === 'left' || align === 'right' ? align : 'center',
+    note: raw.note != null ? String(raw.note) : '',
+    footer: raw.footer != null ? String(raw.footer) : '',
+  };
+}
+
 function transformProgrammeFeesContent(source) {
   if (!source || typeof source !== 'object') return null;
   const rawTiers = Array.isArray(source.tiers) ? source.tiers : [];
@@ -728,6 +753,46 @@ export const appSettingsService = {
     return {
       hideAllCertificates: Boolean(data.hideAllCertificates),
       hideAllBadges: Boolean(data.hideAllBadges),
+    };
+  },
+
+  async getWelcomeEmailSettings() {
+    const response = await axios.get('/app-settings/welcome-email-settings');
+    const data = response.data?.data || response.data || {};
+    return {
+      userWelcomeEmailEnabled: data.userWelcomeEmailEnabled !== false,
+      corporateWelcomeEmailEnabled: data.corporateWelcomeEmailEnabled !== false,
+      userWelcomeEmailContent: normalizeWelcomeEmailContent(data.userWelcomeEmailContent),
+      corporateWelcomeEmailContent: normalizeWelcomeEmailContent(data.corporateWelcomeEmailContent),
+      defaults: {
+        userWelcomeEmailContent: normalizeWelcomeEmailContent(
+          data.defaults?.userWelcomeEmailContent
+        ),
+        corporateWelcomeEmailContent: normalizeWelcomeEmailContent(
+          data.defaults?.corporateWelcomeEmailContent
+        ),
+      },
+    };
+  },
+
+  async updateWelcomeEmailSettings(payload = {}) {
+    const response = await axios.put('/app-settings/welcome-email-settings', payload);
+    const data = response.data?.data || response.data || {};
+    return {
+      userWelcomeEmailEnabled: data.userWelcomeEmailEnabled !== false,
+      corporateWelcomeEmailEnabled: data.corporateWelcomeEmailEnabled !== false,
+      userWelcomeEmailContent: normalizeWelcomeEmailContent(data.userWelcomeEmailContent),
+      corporateWelcomeEmailContent: normalizeWelcomeEmailContent(data.corporateWelcomeEmailContent),
+    };
+  },
+
+  async previewWelcomeEmail(payload = {}) {
+    const response = await axios.post('/app-settings/welcome-email-preview', payload || {});
+    const data = response.data?.data || response.data || {};
+    return {
+      type: data.type === 'corporate' ? 'corporate' : 'user',
+      subject: data.subject != null ? String(data.subject) : '',
+      html: data.html != null ? String(data.html) : '',
     };
   },
 

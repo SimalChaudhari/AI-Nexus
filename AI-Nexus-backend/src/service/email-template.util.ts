@@ -12,6 +12,7 @@ export type BrandTemplateParams = {
     bodyHtml?: string;
     ctaLabel?: string;
     ctaUrl?: string;
+    ctaAlign?: 'left' | 'center' | 'right';
     note?: string;
     footer?: string;
 };
@@ -24,16 +25,94 @@ export const escapeHtml = (value: string): string =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 
+const EMAIL_ALLOWED_TAGS = new Set([
+    'p',
+    'br',
+    'strong',
+    'b',
+    'em',
+    'i',
+    'u',
+    'ul',
+    'ol',
+    'li',
+    'a',
+    'span',
+]);
+
+/** Lightweight markdown for plain-text email fields: **bold**, *italic*, _italic_, newlines. */
+const formatEmailMarkdown = (value: string): string => {
+    let text = escapeHtml(String(value ?? ''));
+    text = text.replace(/\r\n|\r|\n/g, '<br />');
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/(^|[^*])\*([^*]+?)\*(?!\*)/g, '$1<em>$2</em>');
+    text = text.replace(/(^|[^_])_([^_]+?)_(?!_)/g, '$1<em>$2</em>');
+    return text;
+};
+
+/**
+ * Prepare admin/editor content for email HTML.
+ * Accepts TipTap/CKEditor-style HTML (allowlisted tags) or plain markdown text.
+ */
+export const formatEmailRichText = (value: string): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+
+    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(raw);
+    if (!looksLikeHtml) {
+        return formatEmailMarkdown(raw);
+    }
+
+    let html = raw
+        .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+        .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+
+    html = html.replace(/<\/?([a-z0-9]+)(\s[^>]*)?>/gi, (match, tagName: string, attrs = '') => {
+        const tag = String(tagName || '').toLowerCase();
+        if (!EMAIL_ALLOWED_TAGS.has(tag)) return '';
+        if (tag === 'br') return '<br />';
+        if (match.startsWith('</')) return `</${tag}>`;
+        if (tag === 'a') {
+            const hrefMatch = String(attrs).match(
+                /href\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i,
+            );
+            const href = hrefMatch
+                ? String(hrefMatch[2] || hrefMatch[3] || hrefMatch[4] || '').trim()
+                : '';
+            const safeHref = /^(https?:|mailto:)/i.test(href) ? escapeHtml(href) : '#';
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="color:#1C4270; text-decoration:underline;">`;
+        }
+        return `<${tag}>`;
+    });
+
+    return html;
+};
+
+/** Wrap rich email content in a styled block (avoids double <p> when TipTap HTML is used). */
+export const wrapEmailRichBlock = (
+    html: string,
+    style = 'margin:0 0 14px; color:#334155; font-size:15px; line-height:1.65;',
+): string => {
+    const content = formatEmailRichText(html);
+    if (!content) return '';
+    return `<div style="${style}">${content}</div>`;
+};
+
 const buildEmailCtaButton = (
     label: string,
     url: string,
-    align: 'center' | 'left' = 'center',
+    align: 'left' | 'center' | 'right' = 'center',
 ): string => {
     const safeLabel = escapeHtml(label);
     const safeUrl = escapeHtml(url);
-    const cellAlign = align === 'left' ? 'left' : 'center';
-    const margin = align === 'left' ? '8px 0 16px' : '26px auto 10px';
-    // Full-width wrapper keeps next paragraphs below the button (align=left alone can float content beside it).
+    const cellAlign = align === 'left' || align === 'right' ? align : 'center';
+    const margin =
+        align === 'left'
+            ? '8px 0 16px'
+            : align === 'right'
+              ? '8px 0 16px auto'
+              : '26px auto 10px';
     return `
                             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin:${margin};">
                                 <tr>
@@ -51,7 +130,7 @@ const buildEmailCtaButton = (
 };
 
 const buildEmailNoteBox = (note: string): string => {
-    const safeNote = escapeHtml(note);
+    const safeNote = formatEmailRichText(note);
     if (!safeNote) return '';
     return `
                             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:16px; background-color:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:10px;">
@@ -72,6 +151,7 @@ export const buildInlineBrandEmailHtml = ({
     bodyHtml = '',
     ctaLabel,
     ctaUrl,
+    ctaAlign = 'center',
     note = '',
     footer = 'This is an automated email from AI Nexus.',
 }: {
@@ -84,6 +164,7 @@ export const buildInlineBrandEmailHtml = ({
     bodyHtml?: string;
     ctaLabel?: string;
     ctaUrl?: string;
+    ctaAlign?: 'left' | 'center' | 'right';
     note?: string;
     footer?: string;
 }): string => {
@@ -91,12 +172,12 @@ export const buildInlineBrandEmailHtml = ({
     const safeHeading = escapeHtml(heading);
     const safeGreetingName = escapeHtml(greetingName || 'there');
     const safeGreetingPrefix = escapeHtml(greetingPrefix);
-    const safeIntro = escapeHtml(intro);
-    const safeFooter = escapeHtml(footer).replace(/\n/g, '<br />');
-    const introBlock = safeIntro
-        ? `<p style="margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;">${safeIntro}</p>`
-        : '';
-    const ctaBlock = ctaLabel && ctaUrl ? buildEmailCtaButton(ctaLabel, ctaUrl) : '';
+    const introBlock = wrapEmailRichBlock(
+        intro,
+        'margin:0 0 18px; color:#334155; font-size:15px; line-height:1.65;',
+    );
+    const safeFooter = escapeHtml(String(footer || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    const ctaBlock = ctaLabel && ctaUrl ? buildEmailCtaButton(ctaLabel, ctaUrl, ctaAlign) : '';
     const noteBlock = buildEmailNoteBox(note);
 
     const greetingNameHtml = greetingBold
@@ -146,7 +227,19 @@ export const buildInlineBrandEmailHtml = ({
 
 export const buildBrandTemplate = (
     _frontendBaseUrl: string,
-    { heading, greetingName, greetingPrefix, greetingBold, intro, bodyHtml, ctaLabel, ctaUrl, note, footer }: BrandTemplateParams,
+    {
+        heading,
+        greetingName,
+        greetingPrefix,
+        greetingBold,
+        intro,
+        bodyHtml,
+        ctaLabel,
+        ctaUrl,
+        ctaAlign,
+        note,
+        footer,
+    }: BrandTemplateParams,
 ): string =>
     buildInlineBrandEmailHtml({
         title: heading,
@@ -158,78 +251,58 @@ export const buildBrandTemplate = (
         bodyHtml,
         ctaLabel,
         ctaUrl,
+        ctaAlign,
         note,
         footer,
     });
 
-export const buildUserRegistrationWelcomeBodyHtml = (params: {
-    email: string;
+/** Shared optional account-details card + body text for welcome emails. */
+export const buildWelcomeEmailBodyHtml = (params: {
+    bodyText?: string;
+    showAccountDetails?: boolean;
+    accountDetailsTitle?: string;
+    accountDetailsHtml?: string;
 }): string => {
-    const safeEmail = escapeHtml(String(params.email || '').trim());
+    const bodyParagraph = wrapEmailRichBlock(String(params.bodyText || '').trim());
+    if (!params.showAccountDetails) {
+        return bodyParagraph;
+    }
+
+    const title = escapeHtml(String(params.accountDetailsTitle || 'Account details').trim() || 'Account details');
+    const detailsHtml = formatEmailRichText(String(params.accountDetailsHtml || '').trim());
+    if (!detailsHtml) {
+        return bodyParagraph;
+    }
 
     return `
-                            <p style="margin:0 0 14px; color:#334155; font-size:15px; line-height:1.65;">
-                                Your AI Nexus learner account is ready. You can sign in straight away and begin the AI Fluency Programme.
-                            </p>
+                            ${bodyParagraph}
                             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:8px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
                                 <tr>
                                     <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                                        Account details
+                                        ${title}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td style="padding:0; background-color:#ffffff;">
-                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-                                            <tr>
-                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Sign-in email</td>
-                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeEmail}</td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5; background-color:#ffffff;">
-                                        Use this email with the password you created during signup, or continue with your ISCA eServices login where applicable.
+                                    <td style="padding:12px 14px 14px; color:#334155; font-size:14px; line-height:1.65; background-color:#ffffff; border-top:1px solid #e6edf7;">
+                                        ${detailsHtml}
                                     </td>
                                 </tr>
                             </table>`;
 };
+
+export const buildUserRegistrationWelcomeBodyHtml = (params: {
+    bodyText?: string;
+    showAccountDetails?: boolean;
+    accountDetailsTitle?: string;
+    accountDetailsHtml?: string;
+}): string => buildWelcomeEmailBodyHtml(params);
 
 export const buildCorporateRegistrationWelcomeBodyHtml = (params: {
-    companyName: string;
-    email: string;
-}): string => {
-    const safeCompany = escapeHtml(String(params.companyName || '').trim() || 'your organisation');
-    const safeEmail = escapeHtml(String(params.email || '').trim());
-
-    return `
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:18px; border:1px solid #d6e0ee; border-radius:12px; overflow:hidden; background-color:#ffffff;">
-                                <tr>
-                                    <td style="padding:10px 14px; background-color:${BRAND_SECONDARY_LIGHT}; color:${BRAND_SECONDARY}; font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                                        Corporate account details
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:0; background-color:#ffffff;">
-                                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-                                            <tr>
-                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Company</td>
-                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeCompany}</td>
-                                            </tr>
-                                            <tr>
-                                                <td style="padding:12px 14px; width:36%; color:${BRAND_SECONDARY}; font-size:13px; line-height:1.5; font-weight:700; border-top:1px solid #e6edf7;">Sign-in email</td>
-                                                <td style="padding:12px 14px; color:#0f172a; font-size:14px; line-height:1.5; border-top:1px solid #e6edf7;">${safeEmail}</td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:10px 14px 14px; color:#64748b; font-size:12px; line-height:1.5; background-color:#ffffff;">
-                                        Use your eServices credentials to sign in to the AI Nexus corporate portal and start enrolling your staff.
-                                    </td>
-                                </tr>
-                            </table>`;
-};
+    bodyText?: string;
+    showAccountDetails?: boolean;
+    accountDetailsTitle?: string;
+    accountDetailsHtml?: string;
+}): string => buildWelcomeEmailBodyHtml(params);
 
 export const buildCredentialsBodyHtml = (username: string, plainPassword: string): string => {
     const safeUsername = escapeHtml(username);

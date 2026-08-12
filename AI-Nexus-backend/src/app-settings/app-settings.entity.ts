@@ -334,6 +334,33 @@ export type LearningAdvertiseTabContent = {
   link?: string;
 };
 
+/** Editable copy for registration welcome emails (admin Settings). */
+export type WelcomeEmailContent = {
+  subject?: string;
+  heading?: string;
+  intro?: string;
+  /** Optional paragraph above account details / CTA. */
+  bodyText?: string;
+  /** When true, show the account-details card. */
+  showAccountDetails?: boolean;
+  /** Card header title, e.g. Account details. */
+  accountDetailsTitle?: string;
+  /** Fully editable rich HTML inside the account-details card. Supports {{email}}, {{companyName}}. */
+  accountDetailsHtml?: string;
+  /** @deprecated Prefer accountDetailsHtml. Kept for older saved settings. */
+  detailsNote?: string;
+  /** Explicitly show/hide the CTA button. */
+  showCta?: boolean;
+  /** CTA button label. */
+  ctaLabel?: string;
+  /** CTA button URL/path. */
+  ctaUrl?: string;
+  /** CTA horizontal alignment. */
+  ctaAlign?: 'left' | 'center' | 'right';
+  note?: string;
+  footer?: string;
+};
+
 /** AI Nexus International marketing landing (hero, global learning, trust, footer). */
 export type InternationalLandingContent = {
   hero?: {
@@ -438,6 +465,22 @@ export class AppSettingsEntity {
   /** When true, learners cannot view/share any digital badges platform-wide. */
   @Column({ type: 'boolean', default: false })
   hideAllBadges!: boolean;
+
+  /** When true, send welcome email after individual learner registration. */
+  @Column({ type: 'boolean', default: true })
+  userWelcomeEmailEnabled!: boolean;
+
+  /** When true, send welcome email after corporate/HR registration. */
+  @Column({ type: 'boolean', default: true })
+  corporateWelcomeEmailEnabled!: boolean;
+
+  /** Editable learner registration welcome email copy. */
+  @Column({ type: 'jsonb', nullable: true })
+  userWelcomeEmailContent?: WelcomeEmailContent | null;
+
+  /** Editable corporate registration welcome email copy. */
+  @Column({ type: 'jsonb', nullable: true })
+  corporateWelcomeEmailContent?: WelcomeEmailContent | null;
 
   /** Public contact hero text and map points managed from admin panel. */
   @Column({ type: 'jsonb', nullable: true })

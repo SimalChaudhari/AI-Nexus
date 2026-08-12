@@ -14,6 +14,7 @@ import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { PaginationService } from '../common/pagination/pagination.service';
 import { EmailService } from '../service/email.service';
 import { LocalStorageModule } from '../service/local-storage.module';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
     imports: [
@@ -23,6 +24,7 @@ import { LocalStorageModule } from '../service/local-storage.module';
             signOptions: {},
         }),
         LocalStorageModule,
+        AppSettingsModule,
     ],
     providers: [
         AiForumService,

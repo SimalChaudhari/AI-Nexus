@@ -1,6 +1,7 @@
 import * as nodemailer from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { Injectable } from '@nestjs/common';
+import { AppSettingsService } from '../app-settings/app-settings.service';
 import {
     buildBrandTemplate,
     buildCorporateNudgeBodyHtml,
@@ -20,7 +21,7 @@ export class EmailService {
     private transporter: nodemailer.Transporter;
     private fromEmail: string;
 
-    constructor() {
+    constructor(private readonly appSettingsService: AppSettingsService) {
        const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 
@@ -29,7 +30,7 @@ export class EmailService {
                 service: 'gmail',
                 auth: {
                     user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS,
+                    // pass: process.env.SMTP_PASS,
                 },
             });
             return;
@@ -224,6 +225,44 @@ export class EmailService {
         }
     }
 
+    private applyWelcomePlaceholders(
+        template: string,
+        vars: { name?: string; email?: string; companyName?: string },
+    ): string {
+        return String(template || '')
+            .replace(/\{\{\s*name\s*\}\}/gi, String(vars.name || 'there'))
+            .replace(/\{\{\s*email\s*\}\}/gi, String(vars.email || ''))
+            .replace(
+                /\{\{\s*companyName\s*\}\}/gi,
+                String(vars.companyName || 'your organisation'),
+            );
+    }
+
+    private toPlainEmailText(value: string): string {
+        return String(value || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&quot;/gi, '"')
+            .replace(/\s+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .replace(/[ \t]{2,}/g, ' ')
+            .trim();
+    }
+
+    /** Resolve optional CTA URL; empty means no button. Absolute or site-relative paths allowed. */
+    private resolveOptionalCtaUrl(raw: string): string {
+        const url = String(raw || '').trim();
+        if (!url) return '';
+        if (/^(https?:|mailto:)/i.test(url)) return url;
+        const base = this.resolveFrontendBaseUrl();
+        return `${base}${url.startsWith('/') ? url : `/${url}`}`;
+    }
+
     /**
      * Welcome email after an individual learner successfully registers on AI Nexus.
      */
@@ -232,42 +271,59 @@ export class EmailService {
         firstName: string;
         lastName?: string;
     }): Promise<void> {
+        const emailSettings = await this.appSettingsService.getWelcomeEmailSettings();
+        if (!emailSettings.userWelcomeEmailEnabled) {
+            console.log(
+                `User registration welcome email skipped (disabled in admin settings) for ${params.email}`,
+            );
+            return;
+        }
+
         const email = String(params.email || '').trim();
         const firstName = String(params.firstName || '').trim();
         const lastName = String(params.lastName || '').trim();
         const greetingName =
             [firstName, lastName].filter(Boolean).join(' ').trim() || firstName || 'there';
+        const content = emailSettings.userWelcomeEmailContent;
+        const fill = (value: string) =>
+            this.applyWelcomePlaceholders(value, { name: greetingName, email });
 
-        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
-        const normalizedSignInPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
-        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedSignInPath}`;
-        const learningPath = String(process.env.EMAIL_COURSE_PATH || '/learning').trim();
-        const normalizedLearningPath = learningPath.startsWith('/') ? learningPath : `/${learningPath}`;
-        const learningUrl = `${this.resolveFrontendBaseUrl()}${normalizedLearningPath}`;
+        const ctaLabel = fill(content.ctaLabel || '').trim();
+        const ctaUrl = this.resolveOptionalCtaUrl(fill(content.ctaUrl || ''));
+        const showCta = Boolean(content.showCta) && Boolean(ctaLabel) && Boolean(ctaUrl);
 
-        const bodyHtml = buildUserRegistrationWelcomeBodyHtml({ email });
+        const bodyHtml = buildUserRegistrationWelcomeBodyHtml({
+            bodyText: fill(content.bodyText || ''),
+            showAccountDetails: Boolean(content.showAccountDetails),
+            accountDetailsTitle: fill(content.accountDetailsTitle || ''),
+            accountDetailsHtml: fill(content.accountDetailsHtml || ''),
+        });
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
-            heading: 'Welcome to AI Nexus',
+            heading: fill(content.heading || ''),
             greetingName,
-            intro:
-                'Thank you for joining AI Nexus. Your account has been created successfully and is ready to use.',
+            intro: fill(content.intro || ''),
             bodyHtml,
-            ctaLabel: 'Sign In to AI Nexus',
-            ctaUrl: loginUrl,
-            note: 'Need help getting started? Reply to this email or contact AI Nexus support.',
-            footer: 'AI Nexus learner welcome',
+            ctaLabel: showCta ? ctaLabel : undefined,
+            ctaUrl: showCta ? ctaUrl : undefined,
+            ctaAlign: content.ctaAlign || 'center',
+            note: fill(content.note || ''),
+            footer: fill(content.footer || ''),
         });
 
         const mailOptions = {
             from: this.fromEmail,
             to: email,
-            subject: 'Welcome to AI Nexus — your account is ready',
+            subject: fill(content.subject || ''),
             text:
                 `Hello ${greetingName},\n\n` +
-                `Welcome to AI Nexus. Your learner account is ready — you can sign in now.\n\n` +
-                `Sign-in email: ${email}\n` +
-                `Sign in: ${loginUrl}\n` +
-                `Start learning: ${learningUrl}\n`,
+                `${this.toPlainEmailText(fill(content.intro || ''))}\n\n` +
+                (this.toPlainEmailText(fill(content.bodyText || ''))
+                    ? `${this.toPlainEmailText(fill(content.bodyText || ''))}\n\n`
+                    : '') +
+                (content.showAccountDetails
+                    ? `${this.toPlainEmailText(fill(content.accountDetailsHtml || ''))}\n\n`
+                    : '') +
+                (showCta ? `${ctaLabel}: ${ctaUrl}\n` : ''),
             html,
         };
 
@@ -289,51 +345,64 @@ export class EmailService {
         lastName?: string;
         companyName: string;
     }): Promise<void> {
+        const emailSettings = await this.appSettingsService.getWelcomeEmailSettings();
+        if (!emailSettings.corporateWelcomeEmailEnabled) {
+            console.log(
+                `Corporate registration welcome email skipped (disabled in admin settings) for ${params.email}`,
+            );
+            return;
+        }
+
         const email = String(params.email || '').trim();
         const firstName = String(params.firstName || '').trim();
         const lastName = String(params.lastName || '').trim();
         const companyName = String(params.companyName || '').trim();
         const greetingName =
             [firstName, lastName].filter(Boolean).join(' ').trim() || firstName || 'there';
+        const content = emailSettings.corporateWelcomeEmailContent;
+        const fill = (value: string) =>
+            this.applyWelcomePlaceholders(value, {
+                name: greetingName,
+                email,
+                companyName: companyName || 'your organisation',
+            });
 
-        const corporatePath = String(
-            process.env.EMAIL_CORPORATE_PORTAL_PATH || '/corporate/overview',
-        ).trim();
-        const normalizedCorporatePath = corporatePath.startsWith('/')
-            ? corporatePath
-            : `/${corporatePath}`;
-        const portalUrl = `${this.resolveFrontendBaseUrl()}${normalizedCorporatePath}`;
-        const signInPath = String(process.env.EMAIL_SIGNIN_PATH || '/auth/sign-in').trim();
-        const normalizedSignInPath = signInPath.startsWith('/') ? signInPath : `/${signInPath}`;
-        const loginUrl = `${this.resolveFrontendBaseUrl()}${normalizedSignInPath}?returnTo=${encodeURIComponent(normalizedCorporatePath)}`;
+        const ctaLabel = fill(content.ctaLabel || '').trim();
+        const ctaUrl = this.resolveOptionalCtaUrl(fill(content.ctaUrl || ''));
+        const showCta = Boolean(content.showCta) && Boolean(ctaLabel) && Boolean(ctaUrl);
 
         const bodyHtml = buildCorporateRegistrationWelcomeBodyHtml({
-            companyName,
-            email,
+            bodyText: fill(content.bodyText || ''),
+            showAccountDetails: Boolean(content.showAccountDetails),
+            accountDetailsTitle: fill(content.accountDetailsTitle || ''),
+            accountDetailsHtml: fill(content.accountDetailsHtml || ''),
         });
         const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
-            heading: 'Welcome to AI Nexus Corporate',
+            heading: fill(content.heading || ''),
             greetingName,
-            intro:
-                `Thank you for registering ${companyName || 'your organisation'} on AI Nexus. ` +
-                'Your corporate account is ready. Sign in to open the corporate portal and start enrolling your staff.',
+            intro: fill(content.intro || ''),
             bodyHtml,
-            ctaLabel: 'Open Corporate Portal',
-            ctaUrl: loginUrl,
-            note: 'Need help? Contact AI Nexus support and we will assist your HR team.',
-            footer: 'AI Nexus corporate welcome',
+            ctaLabel: showCta ? ctaLabel : undefined,
+            ctaUrl: showCta ? ctaUrl : undefined,
+            ctaAlign: content.ctaAlign || 'center',
+            note: fill(content.note || ''),
+            footer: fill(content.footer || ''),
         });
 
         const mailOptions = {
             from: this.fromEmail,
             to: email,
-            subject: 'Welcome to AI Nexus Corporate — your account is ready',
+            subject: fill(content.subject || ''),
             text:
                 `Hello ${greetingName},\n\n` +
-                `Welcome to AI Nexus Corporate. Your organisation account for ${companyName || 'your company'} is ready.\n\n` +
-                `Sign-in email: ${email}\n` +
-                `Corporate portal: ${portalUrl}\n` +
-                `Sign in: ${loginUrl}\n`,
+                `${this.toPlainEmailText(fill(content.intro || ''))}\n\n` +
+                (this.toPlainEmailText(fill(content.bodyText || ''))
+                    ? `${this.toPlainEmailText(fill(content.bodyText || ''))}\n\n`
+                    : '') +
+                (content.showAccountDetails
+                    ? `${this.toPlainEmailText(fill(content.accountDetailsHtml || ''))}\n\n`
+                    : '') +
+                (showCta ? `${ctaLabel}: ${ctaUrl}\n` : ''),
             html,
         };
 

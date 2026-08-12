@@ -60,6 +60,7 @@ import { FundingEligibilitySettingsCard } from './components/funding-eligibility
 import { EnrolOptionsSettingsCard } from './components/enrol-options-settings-card';
 import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
 import { CeoLaunchSettingsCard } from './components/ceo-launch-settings-card';
+import { WelcomeEmailSettingsCard } from './components/welcome-email-settings-card';
 import {
   normalizeProgrammeFeesContent,
 } from 'src/sections/home/programme-fees-defaults';
@@ -2300,6 +2301,14 @@ export function AdminSettingsView() {
       description: 'Fixed vertical promo tab on the Learning page — set tab name and link.',
     },
     {
+      key: 'welcome-emails',
+      badge: 'WE',
+      icon: 'solar:letter-bold',
+      iconColor: '#1565C0',
+      title: 'Welcome Emails',
+      description: 'Enable or disable learner and corporate registration welcome emails.',
+    },
+    {
       key: 'header-visibility',
       badge: 'V',
       iconSrc: settingsTabHeader,
@@ -2330,6 +2339,7 @@ export function AdminSettingsView() {
     'curriculum',
     'footer',
     'learning-advertise-tab',
+    'welcome-emails',
     'header-visibility',
   ];
 
@@ -3493,6 +3503,7 @@ export function AdminSettingsView() {
         {activeSection === 'curriculum' && renderCurriculumSettings}
         {activeSection === 'footer' && renderFooterSettings}
         {activeSection === 'learning-advertise-tab' && renderLearningAdvertiseTabSettings}
+        {activeSection === 'welcome-emails' && <WelcomeEmailSettingsCard />}
         {activeSection === 'header-visibility' && renderHeaderVisibility}
       </Stack>
     </DashboardContent>

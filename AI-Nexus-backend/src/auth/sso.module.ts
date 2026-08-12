@@ -13,6 +13,7 @@ import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthTokenService } from './auth-token.service';
 import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
 import { EmailService } from '../service/email.service';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { EmailService } from '../service/email.service';
       signOptions: {},
     }),
     CompanyEnrollmentModule,
+    AppSettingsModule,
   ],
   providers: [
     OAuthAuthService,

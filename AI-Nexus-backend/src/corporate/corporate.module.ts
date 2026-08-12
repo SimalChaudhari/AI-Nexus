@@ -22,12 +22,14 @@ import { CorporateBulkEnrolmentUploadEntity } from './corporate-bulk-enrolment-u
 import { CorporateStaffEnrolBatchEntity } from './corporate-staff-enrol-batch.entity';
 import { SsoModule } from '../auth/sso.module';
 import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
   imports: [
     CourseModule,
     SsoModule,
     CompanyEnrollmentModule,
+    AppSettingsModule,
     TypeOrmModule.forFeature([
       UserEntity,
       ProgramEntity,

@@ -63,6 +63,22 @@ export class AppSettingsInitService implements OnModuleInit {
         ALTER TABLE "app_settings"
         ADD COLUMN IF NOT EXISTS "hideAllBadges" boolean NOT NULL DEFAULT false
       `);
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "userWelcomeEmailEnabled" boolean NOT NULL DEFAULT true
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "corporateWelcomeEmailEnabled" boolean NOT NULL DEFAULT true
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "userWelcomeEmailContent" jsonb
+      `);
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "corporateWelcomeEmailContent" jsonb
+      `);
 
       const existingRows = await queryRunner.query(`SELECT "id" FROM "app_settings" LIMIT 1`);
 

@@ -454,6 +454,42 @@ export class AppSettingsController {
     });
   }
 
+  @Get('welcome-email-settings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: get welcome email toggles and editable copy' })
+  async getWelcomeEmailSettings(@Res() response: Response) {
+    const data = await this.appSettingsService.getWelcomeEmailSettings();
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('welcome-email-settings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary:
+      'Admin: enable/disable welcome emails and edit learner/corporate welcome email copy',
+  })
+  async updateWelcomeEmailSettings(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateWelcomeEmailSettings(payload || {});
+    return response.status(HttpStatus.OK).json({
+      message: result.message,
+      data: result.data,
+    });
+  }
+
+  @Post('welcome-email-preview')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: preview learner or corporate welcome email HTML' })
+  async previewWelcomeEmail(@Res() response: Response, @Body() payload: any) {
+    const data = await this.appSettingsService.previewWelcomeEmail(payload || {});
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
   @Put('home-hero-content')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
