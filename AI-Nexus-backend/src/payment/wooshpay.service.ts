@@ -276,6 +276,19 @@ export class WooshPayService {
     return this.makeApiRequest<any>('GET', `/v1/checkout/sessions/${sessionId}`);
   }
 
+  async getPaymentIntent(paymentIntentId: string): Promise<{
+    id: string;
+    status?: string;
+    amount?: number;
+    currency?: string;
+  }> {
+    const id = String(paymentIntentId || '').trim();
+    if (!id) {
+      throw new Error('paymentIntentId is required');
+    }
+    return this.makeApiRequest<any>('GET', `/v1/payment_intents/${id}`);
+  }
+
   async expireCheckoutSession(sessionId: string): Promise<any> {
     return this.makeApiRequest<any>('POST', `/v1/checkout/sessions/${sessionId}/expire`);
   }

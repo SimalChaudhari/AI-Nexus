@@ -22,6 +22,7 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
 import { AffiliateService } from '../affiliate/affiliate.service';
 import { AffiliateSaleStatus } from '../affiliate/affiliate-sale.entity';
 import { PaginationService } from '../common/pagination/pagination.service';
+import { IntlPaymentService } from '../intl-payment/intl-payment.service';
 
 /** Signed proof that membership payment was verified server-side (amount must not come from the browser). */
 export const MEMBERSHIP_PAYMENT_PROOF_PURPOSE = 'membership-payment-proof';
@@ -47,6 +48,8 @@ export class PaymentController {
     @Inject(forwardRef(() => AffiliateService))
     private readonly affiliateService: AffiliateService,
     private readonly paginationService: PaginationService,
+    @Inject(forwardRef(() => IntlPaymentService))
+    private readonly intlPaymentService: IntlPaymentService,
   ) {}
 
   @Get('membership-history')
@@ -1916,6 +1919,7 @@ export class PaymentController {
     const paid =
       eventType === 'payment_intent.succeeded' ||
       eventType === 'checkout.session.completed' ||
+      eventType === 'checkout.session.async_payment_succeeded' ||
       obj?.payment_status === 'paid' ||
       obj?.status === 'complete';
 
@@ -1929,8 +1933,23 @@ export class PaymentController {
         (obj as any).metadata?.checkout_id;
       if (clientRef) {
         try {
-          await this.fulfillPayment(clientRef, obj, PaymentSource.Webhook);
-          console.log('[Payments] Webhook PAYMENT SUCCESS | order created/enrolled, clientRef=', String(clientRef).slice(0, 30));
+          // International membership refs live in international_payments, not main payments.
+          const intlHandled = await this.intlPaymentService.fulfillFromWebhook(String(clientRef), {
+            id: obj?.id,
+            payment_status: obj?.payment_status,
+            status: obj?.status,
+            payment_intent: typeof obj?.payment_intent === 'string' ? obj.payment_intent : undefined,
+            client_reference_id: String(clientRef),
+          });
+          if (intlHandled) {
+            console.log(
+              '[Payments] Webhook INTERNATIONAL SUCCESS | clientRef=',
+              String(clientRef).slice(0, 30),
+            );
+          } else {
+            await this.fulfillPayment(clientRef, obj, PaymentSource.Webhook);
+            console.log('[Payments] Webhook PAYMENT SUCCESS | order created/enrolled, clientRef=', String(clientRef).slice(0, 30));
+          }
         } catch (e) {
           console.error('[Payments] Webhook PAYMENT SUCCESS but fulfill FAILED | clientRef=', String(clientRef).slice(0, 30), 'error=', (e as Error)?.message);
         }

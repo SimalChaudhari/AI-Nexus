@@ -48,10 +48,24 @@ function generateShortId(): string {
   return crypto.randomBytes(12).toString('base64url');
 }
 
-function isGatewayPaid(paymentStatus?: string, status?: string): boolean {
+function isGatewayPaid(paymentStatus?: string, status?: string, paymentIntentStatus?: string): boolean {
   const ps = String(paymentStatus || '').toLowerCase();
   const st = String(status || '').toLowerCase();
-  return ps === 'paid' || ps === 'complete' || st === 'complete' || st === 'paid';
+  const pi = String(paymentIntentStatus || '').toLowerCase();
+  // Prefer authoritative payment_status / PaymentIntent. Session status "complete"
+  // alone can still be unpaid for async methods — only accept it with paid PI.
+  if (ps === 'paid' || ps === 'complete') return true;
+  if (pi === 'succeeded' || pi === 'paid' || pi === 'complete') return true;
+  if (st === 'paid') return true;
+  if (st === 'complete' && (ps === 'paid' || !ps)) return true;
+  return false;
+}
+
+function paymentIntentIdFromSession(session: any): string {
+  const raw = session?.payment_intent;
+  if (typeof raw === 'string') return raw.trim();
+  if (raw && typeof raw === 'object' && typeof raw.id === 'string') return String(raw.id).trim();
+  return '';
 }
 
 /** WooshPay session ids look like cs_… / cs_test_…. Reject placeholders / junk. */
@@ -278,6 +292,19 @@ export class IntlPaymentService {
   /** Latest + recent payments for a user (profile / admin). */
   async getMyPayments(userId: string, take = 10) {
     const limit = Math.min(50, Math.max(1, Number(take) || 10));
+
+    // If WooshPay already collected money but return-page confirm never ran, heal here.
+    try {
+      await this.syncPendingPaymentsForUser(userId);
+    } catch (error) {
+      console.warn(
+        '[IntlPayment] syncPendingPaymentsForUser failed | userId=',
+        String(userId).slice(0, 12),
+        'error=',
+        (error as Error)?.message,
+      );
+    }
+
     const rows = await this.paymentRepository.find({
       where: { userId },
       order: { createdAt: 'DESC' },
@@ -296,14 +323,216 @@ export class IntlPaymentService {
           await this.userRepository.save(user);
         }
       }
+
+      // Hide leftover open checkouts after a successful membership pay.
+      if (paid) {
+        const stalePending = rows.filter(
+          (row) =>
+            row.id !== paid.id
+            && row.status === InternationalPaymentStatus.Pending,
+        );
+        for (const pending of stalePending) {
+          pending.status = InternationalPaymentStatus.Canceled;
+          pending.failureReason = pending.failureReason || 'superseded_by_paid_membership';
+          await this.paymentRepository.save(pending);
+        }
+      }
     } catch {
       // Never block payment history if heal fails.
     }
 
-    const payments = rows.map((payment) => this.toPublicPayment(payment));
+    const refreshed = await this.paymentRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+
+    const payments = refreshed.map((payment) => this.toPublicPayment(payment));
     const latest =
       payments.find((p) => p.status === InternationalPaymentStatus.Paid) || payments[0] || null;
     return { latest, payments };
+  }
+
+  /**
+   * Re-check WooshPay for pending intl rows and activate if gateway already paid.
+   * Fixes admin "pending" when money was taken but /confirm never completed.
+   */
+  async syncPendingPaymentsForUser(userId: string): Promise<number> {
+    const pendingRows = await this.paymentRepository.find({
+      where: { userId, status: InternationalPaymentStatus.Pending },
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+    if (!pendingRows.length) return 0;
+
+    let healed = 0;
+    for (const payment of pendingRows) {
+      const sessionId = sanitizeWooshpaySessionId(payment.wooshpaySessionId);
+      if (!sessionId) continue;
+      try {
+        const session = await this.wooshPayService.getSession(sessionId);
+        const paid = await this.isSessionPaid(session);
+        if (paid) {
+          await this.applyPaidAndActivate(payment, session);
+          healed += 1;
+          continue;
+        }
+        if (isGatewayFailedOrClosed(session?.payment_status, session?.status)) {
+          payment.status = InternationalPaymentStatus.Canceled;
+          payment.failureReason = 'Checkout was canceled or expired';
+          await this.paymentRepository.save(payment);
+        }
+      } catch (error) {
+        console.warn(
+          '[IntlPayment] sync session failed | ref=',
+          String(payment.clientReferenceId).slice(0, 20),
+          'error=',
+          (error as Error)?.message,
+        );
+      }
+    }
+    return healed;
+  }
+
+  /**
+   * Webhook / external fulfill path. Returns true when clientRef belongs to international_payments.
+   */
+  async fulfillFromWebhook(
+    clientReferenceId: string,
+    sessionLike?: {
+      id?: string;
+      payment_status?: string;
+      status?: string;
+      payment_intent?: string;
+      client_reference_id?: string;
+    },
+  ): Promise<boolean> {
+    const refId = String(clientReferenceId || '').trim();
+    if (!refId) return false;
+
+    const payment = await this.paymentRepository.findOne({
+      where: { clientReferenceId: refId },
+    });
+    if (!payment) return false;
+
+    if (payment.status === InternationalPaymentStatus.Paid) {
+      return true;
+    }
+
+    let session: any = sessionLike || null;
+    const sessionId = sanitizeWooshpaySessionId(
+      sessionLike?.id || payment.wooshpaySessionId || '',
+    );
+    if (sessionId) {
+      try {
+        session = await this.wooshPayService.getSession(sessionId);
+      } catch {
+        session = sessionLike || session;
+      }
+    }
+
+    const paid = await this.isSessionPaid(session);
+    if (!paid) {
+      console.log(
+        '[IntlPayment] Webhook skip (not paid yet) | ref=',
+        refId.slice(0, 24),
+        'payment_status=',
+        session?.payment_status,
+        'status=',
+        session?.status,
+      );
+      return true; // ref matched intl table; do not fall through to main fulfill
+    }
+
+    await this.applyPaidAndActivate(payment, session || {});
+    console.log('[IntlPayment] Webhook PAYMENT SUCCESS | ref=', refId.slice(0, 24));
+    return true;
+  }
+
+  private async isSessionPaid(session: any): Promise<boolean> {
+    if (!session) return false;
+    const piId = paymentIntentIdFromSession(session);
+    let piStatus = '';
+    if (piId) {
+      try {
+        const intent = await this.wooshPayService.getPaymentIntent(piId);
+        piStatus = String(intent?.status || '');
+      } catch {
+        // Session payment_status may still be enough.
+      }
+    }
+    return isGatewayPaid(session?.payment_status, session?.status, piStatus);
+  }
+
+  /** Mark payment Paid and activate international user (idempotent). */
+  private async applyPaidAndActivate(
+    payment: InternationalPaymentEntity,
+    session: {
+      id?: string;
+      payment_intent?: string | { id?: string };
+    },
+  ): Promise<InternationalUserEntity> {
+    if (payment.status !== InternationalPaymentStatus.Paid) {
+      payment.status = InternationalPaymentStatus.Paid;
+      payment.wooshpaySessionId =
+        sanitizeWooshpaySessionId(session?.id) || payment.wooshpaySessionId;
+      payment.wooshpayPaymentIntentId =
+        paymentIntentIdFromSession(session) || payment.wooshpayPaymentIntentId;
+      payment.paidAt = payment.paidAt || new Date();
+      if (payment.failureReason !== 'duplicate_membership_payment_needs_refund') {
+        payment.failureReason = null;
+      }
+      await this.paymentRepository.save(payment);
+    }
+
+    const otherPaid = await this.paymentRepository.findOne({
+      where: { userId: payment.userId, status: InternationalPaymentStatus.Paid },
+      order: { paidAt: 'DESC', createdAt: 'DESC' },
+    });
+    if (otherPaid && otherPaid.id !== payment.id) {
+      payment.failureReason = 'duplicate_membership_payment_needs_refund';
+      await this.paymentRepository.save(payment);
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: payment.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const planFromPayment =
+      membershipTypeFromPayment(payment)
+      || (normalizeIntlMembershipType(user.membershipType) === 'student'
+        ? InternationalMembershipType.Student
+        : InternationalMembershipType.Full);
+
+    const claimResult = await this.userRepository
+      .createQueryBuilder()
+      .update(InternationalUserEntity)
+      .set({
+        status: InternationalUserStatus.Active,
+        paymentStatus: InternationalUserPaymentStatus.Paid,
+        currency: payment.currency,
+        countryCode: payment.countryCode,
+        membershipType: planFromPayment,
+      })
+      .where('id = :id', { id: user.id })
+      .andWhere('"paymentStatus" != :paid', { paid: InternationalUserPaymentStatus.Paid })
+      .execute();
+
+    if (!claimResult.affected && planFromPayment) {
+      await this.userRepository
+        .createQueryBuilder()
+        .update(InternationalUserEntity)
+        .set({ membershipType: planFromPayment })
+        .where('id = :id', { id: user.id })
+        .execute();
+    }
+
+    const finalizedUser = await this.userRepository.findOne({ where: { id: user.id } });
+    if (!finalizedUser) {
+      throw new NotFoundException('User not found');
+    }
+    return finalizedUser;
   }
 
   private toPublicPayment(payment: InternationalPaymentEntity) {
@@ -682,7 +911,7 @@ export class IntlPaymentService {
     }
 
     const session = await this.wooshPayService.getSession(sessionLookupId);
-    const paid = isGatewayPaid(session?.payment_status, session?.status);
+    const paid = await this.isSessionPaid(session);
     const failed =
       String(session?.payment_status || '').toLowerCase() === 'unpaid'
       && isGatewayFailedOrClosed(session?.payment_status, session?.status);
@@ -707,8 +936,7 @@ export class IntlPaymentService {
       payment.status = InternationalPaymentStatus.Paid;
       payment.wooshpaySessionId = session.id || payment.wooshpaySessionId;
       payment.wooshpayPaymentIntentId =
-        (typeof session.payment_intent === 'string' ? session.payment_intent : null)
-        || payment.wooshpayPaymentIntentId;
+        paymentIntentIdFromSession(session) || payment.wooshpayPaymentIntentId;
       payment.paidAt = new Date();
       payment.failureReason = 'duplicate_membership_payment_needs_refund';
       await this.paymentRepository.save(payment);
@@ -717,63 +945,7 @@ export class IntlPaymentService {
       );
     }
 
-    const user = await this.userRepository.findOne({ where: { id: payment.userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    payment.status = InternationalPaymentStatus.Paid;
-    payment.wooshpaySessionId = session.id || payment.wooshpaySessionId;
-    payment.wooshpayPaymentIntentId =
-      (typeof session.payment_intent === 'string' ? session.payment_intent : null)
-      || payment.wooshpayPaymentIntentId;
-    payment.paidAt = new Date();
-    payment.failureReason = null;
-    await this.paymentRepository.save(payment);
-
-    // Atomic activate: only one concurrent confirm can flip the account to Paid/Active.
-    const planFromPayment =
-      membershipTypeFromPayment(payment)
-      || (normalizeIntlMembershipType(user.membershipType) === 'student'
-        ? InternationalMembershipType.Student
-        : InternationalMembershipType.Full);
-
-    const claimResult = await this.userRepository
-      .createQueryBuilder()
-      .update(InternationalUserEntity)
-      .set({
-        status: InternationalUserStatus.Active,
-        paymentStatus: InternationalUserPaymentStatus.Paid,
-        currency: payment.currency,
-        countryCode: payment.countryCode,
-        membershipType: planFromPayment,
-      })
-      .where('id = :id', { id: user.id })
-      .andWhere('"paymentStatus" != :paid', { paid: InternationalUserPaymentStatus.Paid })
-      .execute();
-
-    // Already paid earlier — still heal plan from this / prior payment items.
-    if (!claimResult.affected && planFromPayment) {
-      await this.userRepository
-        .createQueryBuilder()
-        .update(InternationalUserEntity)
-        .set({ membershipType: planFromPayment })
-        .where('id = :id', { id: user.id })
-        .execute();
-    }
-
-    const finalizedUser = await this.userRepository.findOne({ where: { id: user.id } });
-    if (!finalizedUser) {
-      throw new NotFoundException('User not found');
-    }
-
-    if (!claimResult.affected) {
-      // Lost the race — another confirm already activated. Keep this row paid for refund audit.
-      payment.failureReason = 'duplicate_membership_payment_needs_refund';
-      await this.paymentRepository.save(payment);
-      return this.buildConfirmResponse(finalizedUser, payment);
-    }
-
+    const finalizedUser = await this.applyPaidAndActivate(payment, session);
     return this.buildConfirmResponse(finalizedUser, payment);
   }
 

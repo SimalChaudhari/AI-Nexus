@@ -18,6 +18,7 @@ import { AffiliateSaleEntity } from '../affiliate/affiliate-sale.entity';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { PaginationService } from '../common/pagination/pagination.service';
 import { UserEntity } from '../user/users.entity';
+import { IntlPaymentModule } from '../intl-payment/intl-payment.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { UserEntity } from '../user/users.entity';
     OrderModule,
     AppSettingsModule,
     forwardRef(() => AffiliateModule),
+    forwardRef(() => IntlPaymentModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {},

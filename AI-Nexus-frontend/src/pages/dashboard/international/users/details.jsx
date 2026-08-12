@@ -28,10 +28,11 @@ export default function Page() {
     setLoading(true);
     setError(null);
     try {
-      const [data, pay] = await Promise.all([
-        intlUsersService.getUser(id),
-        intlUsersService.getUserPayments(id).catch(() => ({ latest: null, payments: [] })),
-      ]);
+      // Payments sync with WooshPay first (may flip pending → paid), then reload user.
+      const pay = await intlUsersService
+        .getUserPayments(id)
+        .catch(() => ({ latest: null, payments: [] }));
+      const data = await intlUsersService.getUser(id);
       setUser(data);
       setPaymentLatest(pay?.latest || null);
       setPayments(Array.isArray(pay?.payments) ? pay.payments : []);

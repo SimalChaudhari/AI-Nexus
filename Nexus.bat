@@ -19,7 +19,7 @@ echo.
 :: =====================================================
 :: Backend API
 :: =====================================================
-echo [1/4] Starting Backend...
+echo [1/5] Starting Backend...
 start "AI-Nexus Backend" cmd /k "cd /d %ROOT%\AI-Nexus-backend && npm run start:prod >> "%LOGS%\backend.log" 2>&1"
 
 timeout /t 2 >nul
@@ -27,15 +27,23 @@ timeout /t 2 >nul
 :: =====================================================
 :: Frontend
 :: =====================================================
-echo [2/4] Starting Frontend...
+echo [2/5] Starting Frontend...
 start "AI-Nexus Frontend" cmd /k "cd /d %ROOT%\AI-Nexus-frontend && npm run start >> "%LOGS%\frontend.log" 2>&1"
+
+timeout /t 2 >nul
+
+:: =====================================================
+:: International Site (Next.js :3003)
+:: =====================================================
+echo [3/5] Starting International Site...
+start "AI-Nexus International" cmd /k "cd /d %ROOT%\ai-international-site && npm run start >> "%LOGS%\international.log" 2>&1"
 
 timeout /t 2 >nul
 
 :: =====================================================
 :: Flowise UI
 :: =====================================================
-echo [3/4] Starting Flowise UI...
+echo [4/5] Starting Flowise UI...
 start "Flowise UI" cmd /k "cd /d %ROOT%\AI-Nexus-flowise && npm run start:ui:prod >> "%LOGS%\flowise-ui.log" 2>&1"
 
 timeout /t 2 >nul
@@ -43,7 +51,7 @@ timeout /t 2 >nul
 :: =====================================================
 :: Flowise Backend
 :: =====================================================
-echo [4/4] Starting Flowise Backend...
+echo [5/5] Starting Flowise Backend...
 start "Flowise Backend" cmd /k "cd /d %ROOT%\AI-Nexus-flowise && pnpm run start:prod >> "%LOGS%\flowise-backend.log" 2>&1"
 
 echo.

@@ -26,7 +26,7 @@ import { IntlMembershipSettingsEntity } from './intl-membership-settings.entity'
       secret: process.env.JWT_SECRET,
       signOptions: {},
     }),
-    PaymentModule,
+    forwardRef(() => PaymentModule),
     forwardRef(() => AffiliateModule),
     forwardRef(() => IntlAuthModule),
   ],
