@@ -2420,7 +2420,6 @@ export function SimpleSignUpView() {
         <Field.Text
           name="company"
           label="Company"
-          required
           InputLabelProps={{ shrink: true }}
           InputProps={{
             readOnly: companyPrefilled,
@@ -2428,7 +2427,7 @@ export function SimpleSignUpView() {
           helperText={
             companyPrefilled
               ? 'Company name is auto-filled from your eligibility check.'
-              : undefined
+              : 'Optional.'
           }
         />
         <Field.Select
@@ -2445,11 +2444,12 @@ export function SimpleSignUpView() {
         </Field.Select>
         <Field.Text
           name="yearsOfExperience"
-          label="No. of years of relevant work experience in accounting and finance"
+          label="Years of work experience"
           required
           placeholder="0"
           InputLabelProps={{ shrink: true }}
           inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+          helperText="Accounting and finance (whole number)."
         />
         <Field.CountrySelect
           name="countryOfResidence"
