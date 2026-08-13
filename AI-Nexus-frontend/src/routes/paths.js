@@ -352,6 +352,7 @@ export const paths = {
       root: `${ROOTS.ADMIN}/corporate-member`,
       list: `${ROOTS.ADMIN}/corporate-member/list`,
       details: (id) => `${ROOTS.ADMIN}/corporate-member/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/corporate-member/${id}/edit`,
     },
     payment: {
       root: `${ROOTS.ADMIN}/payment`,

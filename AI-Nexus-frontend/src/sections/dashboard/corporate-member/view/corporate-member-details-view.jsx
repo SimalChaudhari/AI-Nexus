@@ -258,15 +258,26 @@ export function CorporateMemberDetailsView({ user, loading, error }) {
           { name: fullName },
         ]}
         action={
-          <Button
-            component={RouterLink}
-            href={paths.admin.corporateMember.list}
-            variant="outlined"
-            size="small"
-            startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
-          >
-            Back
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              component={RouterLink}
+              href={paths.admin.corporateMember.edit(user.id)}
+              variant="contained"
+              size="small"
+              startIcon={<Iconify icon="solar:pen-bold" />}
+            >
+              Edit
+            </Button>
+            <Button
+              component={RouterLink}
+              href={paths.admin.corporateMember.list}
+              variant="outlined"
+              size="small"
+              startIcon={<Iconify icon="eva:arrow-ios-back-fill" />}
+            >
+              Back
+            </Button>
+          </Stack>
         }
         sx={{ mb: 2 }}
       />

@@ -723,33 +723,21 @@ export class PaymentController {
             && String(existingSession?.status || '').toLowerCase() !== 'complete';
 
           if (sessionOpen && existingSession?.url) {
-            // Never reuse sessions that still offer card (old checkouts / account defaults).
-            if (this.wooshPayService.sessionAllowsCard(existingSession)) {
-              console.info(
-                '[Payments] Membership checkout REPLACE | pending session still allows card, draftUserId=',
-                this.trimPaymentLogValue(user.id),
-                'refId=',
-                this.trimPaymentLogValue(pendingMembership.clientReferenceId),
-                'sessionId=',
-                this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
-              );
-            } else {
-              console.info(
-                '[Payments] Membership checkout REUSE | draftUserId=',
-                this.trimPaymentLogValue(user.id),
-                'refId=',
-                this.trimPaymentLogValue(pendingMembership.clientReferenceId),
-                'sessionId=',
-                this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
-              );
-              return res.status(HttpStatus.OK).json({
-                url: existingSession.url,
-                sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
-                refId: pendingMembership.clientReferenceId,
-                draftUserId: user.id,
-                reused: true,
-              });
-            }
+            console.info(
+              '[Payments] Membership checkout REUSE | draftUserId=',
+              this.trimPaymentLogValue(user.id),
+              'refId=',
+              this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+              'sessionId=',
+              this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
+            );
+            return res.status(HttpStatus.OK).json({
+              url: existingSession.url,
+              sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
+              refId: pendingMembership.clientReferenceId,
+              draftUserId: user.id,
+              reused: true,
+            });
           }
 
           try {
@@ -1561,7 +1549,6 @@ export class PaymentController {
             },
           },
         }),
-        // Non-card modes only (card excluded).
         payment_method_types: this.wooshPayService.getCheckoutPaymentMethodTypes(),
       });
 
