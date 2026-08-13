@@ -38,7 +38,7 @@ const TABLE_HEAD = [
   { id: 'companyCode', label: 'Company Code', width: 160 },
   { id: 'status', label: 'Status', width: 120 },
   { id: 'createdAt', label: 'Registered', width: 140 },
-  { id: '', label: 'Action', width: 88 },
+  { id: 'action', label: 'Action', width: 88 },
 ];
 
 // ----------------------------------------------------------------------
@@ -99,6 +99,26 @@ export function CorporateMemberListView() {
     [router]
   );
 
+  const handleEditRow = useCallback(
+    (id) => {
+      router.push(paths.admin.corporateMember.edit(id));
+    },
+    [router]
+  );
+
+  const handleDeleteRow = useCallback(
+    async (id) => {
+      try {
+        await userService.deleteUser(id);
+        toast.success('Delete success!');
+        await loadMembers();
+      } catch (err) {
+        toast.error(err?.response?.data?.message || err?.message || 'Failed to delete corporate member');
+      }
+    },
+    [loadMembers]
+  );
+
   return (
     <DashboardContent>
       <CustomBreadcrumbs
@@ -142,6 +162,8 @@ export function CorporateMemberListView() {
                     selected={table.selected.includes(row.id)}
                     onSelectRow={() => table.onSelectRow(row.id)}
                     onViewRow={() => handleViewRow(row.id)}
+                    onEditRow={() => handleEditRow(row.id)}
+                    onDeleteRow={() => handleDeleteRow(row.id)}
                   />
                 ))}
 

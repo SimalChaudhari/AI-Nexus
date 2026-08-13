@@ -703,18 +703,15 @@ export class IntlPaymentService {
               dto.membershipType || user.membershipType,
             );
             const pendingPlan = membershipTypeFromPayment(pendingPayment);
-            const allowsCard = this.wooshPayService.sessionAllowsCard(existingSession);
-            // Unknown/mismatched plan, or old session still offering card → fresh checkout.
-            if ((pendingPlan && pendingPlan !== requestedPlan) || allowsCard || !pendingPlan) {
+            // Unknown/mismatched plan → fresh checkout. Methods come from WooshPay merchant defaults.
+            if ((pendingPlan && pendingPlan !== requestedPlan) || !pendingPlan) {
               try {
                 await this.wooshPayService.expireCheckoutSession(pendingSessionId);
               } catch {
                 // continue
               }
               pendingPayment.status = InternationalPaymentStatus.Canceled;
-              pendingPayment.failureReason = allowsCard
-                ? 'replaced_by_new_intl_checkout_no_card'
-                : 'replaced_by_new_intl_checkout_plan_change';
+              pendingPayment.failureReason = 'replaced_by_new_intl_checkout_plan_change';
               await this.paymentRepository.save(pendingPayment);
             } else {
               user.membershipType =

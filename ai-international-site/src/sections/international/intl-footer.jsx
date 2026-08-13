@@ -58,11 +58,75 @@ function SectionWrap({ children, sx }) {
   );
 }
 
+const FOOTER_COL_ORDER = ['Resources', 'Legal', 'Platform'];
+
+function orderFooterColumns(columns) {
+  const list = Array.isArray(columns) ? [...columns] : [];
+  const rank = (title) => {
+    const index = FOOTER_COL_ORDER.findIndex(
+      (name) => name.toLowerCase() === String(title || '').trim().toLowerCase()
+    );
+    return index === -1 ? FOOTER_COL_ORDER.length : index;
+  };
+  return list.sort((a, b) => rank(a.title) - rank(b.title));
+}
+
+function LanguageBlock({ lang, onChangeLang, regions, fullWidth = false }) {
+  return (
+    <Box sx={{ minWidth: 0, width: fullWidth ? '100%' : 'auto', maxWidth: '100%' }}>
+      <Typography
+        sx={{
+          fontWeight: 800,
+          fontSize: 12,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: NAVY,
+          mb: 1.5,
+        }}
+      >
+        Language
+      </Typography>
+      <Select
+        size="small"
+        fullWidth={fullWidth}
+        value={lang}
+        onChange={(e) => onChangeLang(e.target.value)}
+        startAdornment={
+          <Iconify
+            icon="solar:global-bold-duotone"
+            width={16}
+            sx={{ mr: 1, color: NAVY, flexShrink: 0 }}
+          />
+        }
+        sx={{
+          minWidth: 0,
+          maxWidth: '100%',
+          bgcolor: '#fff',
+          '& .MuiSelect-select': {
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          },
+          '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(NAVY, 0.2) },
+        }}
+      >
+        {regions.map((r) => (
+          <MenuItem key={r.id} value={r.id}>
+            {r.nativeLabel && r.nativeLabel !== r.label
+              ? `${r.label} · ${r.nativeLabel}`
+              : r.label}
+          </MenuItem>
+        ))}
+      </Select>
+    </Box>
+  );
+}
+
 export function IntlFooter({ regions = INTL_REGIONS, footer }) {
   const router = useRouter();
   const [lang, setLang] = useState(regions[0]?.id || 'en');
   const footerCopy = footer || INTL_LANDING_DEFAULTS.footer;
-  const cols = Array.isArray(footerCopy.columns) ? footerCopy.columns : [];
+  const cols = orderFooterColumns(footerCopy.columns);
   const social = Array.isArray(footerCopy.social) ? footerCopy.social : [];
 
   useEffect(() => {
@@ -77,11 +141,12 @@ export function IntlFooter({ regions = INTL_REGIONS, footer }) {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: '1.3fr 1fr 1fr 1fr 1fr' },
-            gap: 3,
+            gridTemplateColumns: { xs: '1fr 1fr', sm: '1.3fr 1fr 1fr 1fr 1fr' },
+            columnGap: { xs: 2, sm: 3 },
+            rowGap: { xs: 3, sm: 3 },
           }}
         >
-          <Box sx={{ minWidth: 0 }}>
+          <Box sx={{ minWidth: 0, order: 0 }}>
             <Logo
               href={paths.international}
               sx={{
@@ -129,7 +194,7 @@ export function IntlFooter({ regions = INTL_REGIONS, footer }) {
           </Box>
 
           {cols.map((col) => (
-            <Box key={col.title}>
+            <Box key={col.title} sx={{ minWidth: 0, order: { xs: 2, sm: 0 } }}>
               <Typography
                 sx={{
                   fontWeight: 800,
@@ -166,6 +231,7 @@ export function IntlFooter({ regions = INTL_REGIONS, footer }) {
                         color: alpha(NAVY, 0.72),
                         textDecoration: 'none',
                         cursor: href ? 'pointer' : 'default',
+                        wordBreak: 'break-word',
                         '&:hover': href ? { color: RED } : undefined,
                       }}
                     >
@@ -177,40 +243,8 @@ export function IntlFooter({ regions = INTL_REGIONS, footer }) {
             </Box>
           ))}
 
-          <Box>
-            <Typography
-              sx={{
-                fontWeight: 800,
-                fontSize: 12,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: NAVY,
-                mb: 1.5,
-              }}
-            >
-              Language
-            </Typography>
-            <Select
-              size="small"
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-              startAdornment={
-                <Iconify icon="solar:global-bold-duotone" width={16} sx={{ mr: 1, color: NAVY }} />
-              }
-              sx={{
-                minWidth: 140,
-                bgcolor: '#fff',
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(NAVY, 0.2) },
-              }}
-            >
-              {regions.map((r) => (
-                <MenuItem key={r.id} value={r.id}>
-                  {r.nativeLabel && r.nativeLabel !== r.label
-                    ? `${r.label} · ${r.nativeLabel}`
-                    : r.label}
-                </MenuItem>
-              ))}
-            </Select>
+          <Box sx={{ minWidth: 0, order: { xs: 1, sm: 0 } }}>
+            <LanguageBlock lang={lang} onChangeLang={setLang} regions={regions} fullWidth />
           </Box>
         </Box>
       </SectionWrap>

@@ -59,18 +59,6 @@ export const INTL_LANDING_DEFAULTS = {
     ],
     columns: [
       {
-        title: 'Platform',
-        links: [
-          { label: 'AI Fluency', href: '/dashboard' },
-          { label: 'Register', href: '/auth/sign-up' },
-          { label: 'Sign in', href: '/auth/sign-in' },
-          { label: 'FAQ', href: '' },
-          { label: 'Sustainability Qualifications', href: '' },
-          { label: 'Accountify', href: '' },
-          { label: 'Boardflix', href: '' },
-        ],
-      },
-      {
         title: 'Resources',
         links: [
           { label: 'About', href: '' },
@@ -85,6 +73,18 @@ export const INTL_LANDING_DEFAULTS = {
           { label: 'Terms of Use', href: '' },
           { label: 'Privacy Policy', href: '' },
           { label: 'Cookie Policy', href: '' },
+        ],
+      },
+      {
+        title: 'Platform',
+        links: [
+          { label: 'AI Fluency', href: '/dashboard' },
+          { label: 'Register', href: '/auth/sign-up' },
+          { label: 'Sign in', href: '/auth/sign-in' },
+          { label: 'FAQ', href: '' },
+          { label: 'Sustainability Qualifications', href: '' },
+          { label: 'Accountify', href: '' },
+          { label: 'Boardflix', href: '' },
         ],
       },
     ],

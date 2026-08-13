@@ -1,0 +1,43 @@
+import { Helmet } from 'react-helmet-async';
+
+import { useParams } from 'src/routes/hooks';
+
+import { CONFIG } from 'src/config-global';
+import { useGetUser } from 'src/actions/user';
+import { LoadingScreen } from 'src/components/loading-screen';
+
+import { CorporateMemberEditView } from 'src/sections/dashboard/corporate-member/view/corporate-member-edit-view';
+
+// ----------------------------------------------------------------------
+
+const metadata = { title: `Edit corporate member | Dashboard - ${CONFIG.site.name}` };
+
+export default function Page() {
+  const { id = '' } = useParams();
+  const { user, userLoading, userError } = useGetUser(id);
+
+  if (userLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (userError || !user) {
+    return (
+      <>
+        <Helmet>
+          <title>{metadata.title}</title>
+        </Helmet>
+        <CorporateMemberEditView user={null} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Helmet>
+        <title>{metadata.title}</title>
+      </Helmet>
+
+      <CorporateMemberEditView user={user} />
+    </>
+  );
+}

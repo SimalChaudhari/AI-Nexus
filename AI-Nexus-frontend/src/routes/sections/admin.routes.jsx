@@ -34,6 +34,7 @@ const OrderDetailsPage = lazy(() => import('src/pages/dashboard/order/details'))
 // Corporate members
 const CorporateMemberListPage = lazy(() => import('src/pages/dashboard/corporate-member/list'));
 const CorporateMemberDetailsPage = lazy(() => import('src/pages/dashboard/corporate-member/details'));
+const CorporateMemberEditPage = lazy(() => import('src/pages/dashboard/corporate-member/edit'));
 
 // Payment (membership pricing + voucher codes + company QR + history)
 const AdminPaymentPage = lazy(() => import('src/pages/dashboard/payment'));
@@ -405,6 +406,7 @@ export const adminRoutes = [
         children: [
           { element: <CorporateMemberListPage />, index: true },
           { path: 'list', element: <CorporateMemberListPage /> },
+          { path: ':id/edit', element: <CorporateMemberEditPage /> },
           { path: ':id', element: <CorporateMemberDetailsPage /> },
         ],
       },
