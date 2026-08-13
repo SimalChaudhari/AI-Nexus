@@ -123,6 +123,7 @@ async function bootstrap() {
       .map((origin) => origin.trim())
       .filter(Boolean);
     const fallbackOrigin = process.env.FRONTEND_URL?.trim();
+    const intlOrigin = process.env.INTL_FRONTEND_URL?.trim().replace(/\/$/, '') || '';
     const prodDefaultOrigin = nodeEnv === 'production' ? 'https://ainexus.isca.org.sg' : '';
     const baseAllowedOrigins = configuredOrigins.length
       ? configuredOrigins
@@ -144,6 +145,8 @@ async function bootstrap() {
       'http://localhost:3001',
       'http://localhost:3002',
       'http://localhost:3003',
+      'https://localhost:3000',
+      'https://localhost:3003',
       'http://localhost:3030',
       'http://localhost:8080',
       'http://localhost:5173',
@@ -151,6 +154,8 @@ async function bootstrap() {
       'http://127.0.0.1:3001',
       'http://127.0.0.1:3002',
       'http://127.0.0.1:3003',
+      'https://127.0.0.1:3000',
+      'https://127.0.0.1:3003',
       'http://127.0.0.1:3030',
       'http://127.0.0.1:8080',
       'http://127.0.0.1:5173',
@@ -166,6 +171,7 @@ async function bootstrap() {
       new Set([
         ...baseAllowedOrigins,
         ...extraCorsOrigins,
+        ...(intlOrigin ? [intlOrigin] : []),
         ...originsFromFlowiseEnv,
         ...productionFlowiseOrigins,
         ...(nodeEnv === 'production' && prodDefaultOrigin ? [prodDefaultOrigin] : []),
