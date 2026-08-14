@@ -428,6 +428,20 @@ export class IntlPaymentService {
       take: limit,
     });
 
+    const latestPaid = refreshed.find((row) => row.status === InternationalPaymentStatus.Paid);
+    if (latestPaid && !String(latestPaid.paymentMethod || '').trim()) {
+      const sessionId = sanitizeWooshpaySessionId(latestPaid.wooshpaySessionId);
+      if (sessionId) {
+        try {
+          const session = await this.wooshPayService.getSession(sessionId);
+          await this.resolvePaymentMethodLabel(latestPaid, session);
+          await this.paymentRepository.save(latestPaid);
+        } catch {
+          // Keep history even if WooshPay method lookup fails.
+        }
+      }
+    }
+
     const payments = refreshed.map((payment) => this.toPublicPayment(payment));
     const latest =
       payments.find((p) => p.status === InternationalPaymentStatus.Paid) || payments[0] || null;
@@ -545,12 +559,27 @@ export class IntlPaymentService {
     return isGatewayPaid(session?.payment_status, session?.status, piStatus);
   }
 
+  private async resolvePaymentMethodLabel(
+    payment: InternationalPaymentEntity,
+    session?: Parameters<WooshPayService['resolveCheckoutPaymentMethodLabel']>[0],
+  ): Promise<string> {
+    const existing = String(payment.paymentMethod || '').trim();
+    if (existing) return existing;
+    const label = await this.wooshPayService.resolveCheckoutPaymentMethodLabel(session);
+    const next = String(label || '').trim() || 'Online payment';
+    payment.paymentMethod = next;
+    return next;
+  }
+
   /** Mark payment Paid and activate international user (idempotent). */
   private async applyPaidAndActivate(
     payment: InternationalPaymentEntity,
     session: {
       id?: string;
       payment_intent?: string | { id?: string };
+      payment_method?: string | Record<string, unknown>;
+      payment_method_types?: string[];
+      payment_method_details?: Record<string, unknown>;
     },
   ): Promise<InternationalUserEntity> {
     if (payment.status !== InternationalPaymentStatus.Paid) {
@@ -560,9 +589,13 @@ export class IntlPaymentService {
       payment.wooshpayPaymentIntentId =
         paymentIntentIdFromSession(session) || payment.wooshpayPaymentIntentId;
       payment.paidAt = payment.paidAt || new Date();
+      await this.resolvePaymentMethodLabel(payment, session);
       if (payment.failureReason !== 'duplicate_membership_payment_needs_refund') {
         payment.failureReason = null;
       }
+      await this.paymentRepository.save(payment);
+    } else if (!String(payment.paymentMethod || '').trim()) {
+      await this.resolvePaymentMethodLabel(payment, session);
       await this.paymentRepository.save(payment);
     }
 
@@ -639,6 +672,7 @@ export class IntlPaymentService {
       membershipType: membershipType || null,
       wooshpaySessionId: payment.wooshpaySessionId || null,
       wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
+      paymentMethod: payment.paymentMethod || null,
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
       eventType: payment.eventType,
@@ -1056,6 +1090,7 @@ export class IntlPaymentService {
         paymentIntentIdFromSession(session) || payment.wooshpayPaymentIntentId;
       payment.paidAt = new Date();
       payment.failureReason = 'duplicate_membership_payment_needs_refund';
+      await this.resolvePaymentMethodLabel(payment, session);
       await this.paymentRepository.save(payment);
       throw new ConflictException(
         'A membership payment was already completed for this account. If you were charged twice, contact support for a refund.',
@@ -1100,6 +1135,7 @@ export class IntlPaymentService {
         countryCode: payment.countryCode,
         wooshpaySessionId: payment.wooshpaySessionId || null,
         wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
+        paymentMethod: payment.paymentMethod || 'Online payment',
       },
     };
   }

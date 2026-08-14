@@ -424,6 +424,13 @@ function PaymentMethodCard({ payment, user, loading = false }) {
         <MetaPair label="Currency" value={payment?.currency || user.currency} />
         <MetaPair label="Membership plan" value={planLabel} />
         <MetaPair
+          label="Payment method"
+          value={
+            payment?.paymentMethod
+              || (paid ? 'Online payment' : loading ? '…' : '—')
+          }
+        />
+        <MetaPair
           label="Reference"
           value={payment?.refId ? String(payment.refId) : loading ? '…' : '—'}
         />
@@ -826,6 +833,7 @@ export function IntlProfileView() {
                             </Typography>
                             <Typography sx={{ fontSize: 12.5, color: alpha(NAVY, 0.55), mt: 0.2 }}>
                               {item.refId || 'Membership'} · {formatDate(item.paidAt || item.createdAt)}
+                              {item.paymentMethod ? ` · ${item.paymentMethod}` : ''}
                             </Typography>
                             {item.wooshpaySessionId ? (
                               <Typography
