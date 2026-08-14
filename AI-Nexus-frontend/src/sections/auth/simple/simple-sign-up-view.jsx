@@ -33,6 +33,7 @@ import {
   buildCompanyQrEnrollmentSignUpSchema,
   buildFreeIndividualSignUpSchema,
   buildPaidIndividualSignUpSchema,
+  PASSWORD_COMPLEXITY_HINT,
 } from 'src/validations/user.validation';
 
 import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, signupSalesforceForNexus, setSalesforceNexusPassword, saveSalesforceMembershipRecord, verifyCompanyReference, validateNricIdentifier } from 'src/auth/context/jwt';
@@ -2465,7 +2466,8 @@ export function SimpleSignUpView() {
           name="password"
           label="Password"
           required
-          placeholder={isCompanyQrEnrollmentFlow ? '8+ characters' : '6+ characters'}
+          placeholder="e.g. Welcome@1"
+          helperText={PASSWORD_COMPLEXITY_HINT}
           type={password.value ? 'text' : 'password'}
           InputLabelProps={{ shrink: true }}
           InputProps={{

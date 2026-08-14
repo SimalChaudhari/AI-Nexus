@@ -10,6 +10,8 @@ import {
     Matches,
     IsObject,
     MaxLength,
+    MinLength,
+    ValidateIf,
 } from 'class-validator';
 import { UserRole, UserStatus } from './users.entity';
 
@@ -74,6 +76,11 @@ export class UserDto {
     /** Optional for admin-created users — backend generates a temporary password and emails it if omitted. */
     @IsOptional()
     @IsString()
+    @ValidateIf((_, value) => typeof value === 'string' && value.trim().length > 0)
+    @MinLength(8, { message: 'Password must be at least 8 characters' })
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+        message: 'Password must include uppercase, lowercase, a number, and a special character.',
+    })
     password?: string;
 
     @IsOptional()
@@ -210,6 +217,11 @@ export class UpdateUserDto {
 
     @IsOptional()
     @IsString()
+    @ValidateIf((_, value) => typeof value === 'string' && value.trim().length > 0)
+    @MinLength(8, { message: 'Password must be at least 8 characters' })
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+        message: 'Password must include uppercase, lowercase, a number, and a special character.',
+    })
     password?: string;
 
     @IsOptional()
@@ -312,6 +324,11 @@ export class AdminUpdateProfileDto {
 
     @IsOptional()
     @IsString()
+    @ValidateIf((_, value) => typeof value === 'string' && value.trim().length > 0)
+    @MinLength(8, { message: 'Password must be at least 8 characters' })
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+        message: 'Password must include uppercase, lowercase, a number, and a special character.',
+    })
     password?: string;
 
     @IsOptional()
@@ -342,6 +359,10 @@ export class ResetPasswordDto {
 
     @IsString()
     @IsNotEmpty()
+    @MinLength(8, { message: 'Password must be at least 8 characters' })
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+        message: 'Password must include uppercase, lowercase, a number, and a special character.',
+    })
     password!: string;
 }
 

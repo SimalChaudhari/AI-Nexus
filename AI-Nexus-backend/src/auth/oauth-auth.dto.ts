@@ -1,5 +1,5 @@
 // src/auth/oauth-auth.dto.ts
-import { IsString, IsOptional, IsEmail, IsNotEmpty, IsNumber, IsBoolean, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsNotEmpty, IsNumber, IsBoolean, ValidateNested, MinLength, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class OAuthExchangeDto {
@@ -145,6 +145,10 @@ export class SetSalesforceNexusPasswordDto {
   username!: string;
 
   @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'Password must include uppercase, lowercase, a number, and a special character.',
+  })
   password!: string;
 }
 

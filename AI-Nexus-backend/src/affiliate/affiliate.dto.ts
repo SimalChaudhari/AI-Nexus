@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -151,6 +152,9 @@ export class AffiliateSignupCheckoutDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'Password must include uppercase, lowercase, a number, and a special character.',
+  })
   password!: string;
 
   /** Single code field: tried as affiliate code first, then voucher code. */

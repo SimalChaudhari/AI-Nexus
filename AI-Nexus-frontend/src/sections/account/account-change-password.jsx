@@ -13,6 +13,7 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { Form, Field } from 'src/components/hook-form';
+import { passwordSchema, PASSWORD_COMPLEXITY_HINT } from 'src/validations/user.validation';
 
 export const ChangePassWordSchema = zod
   .object({
@@ -20,7 +21,7 @@ export const ChangePassWordSchema = zod
       .string()
       .min(1, { message: 'Password is required!' })
       .min(6, { message: 'Password must be at least 6 characters!' }),
-    newPassword: zod.string().min(1, { message: 'New password is required!' }),
+    newPassword: passwordSchema,
     confirmNewPassword: zod.string().min(1, { message: 'Confirm password is required!' }),
   })
   .refine((data) => data.oldPassword !== data.newPassword, {
@@ -95,8 +96,7 @@ export function AccountChangePassword() {
           }}
           helperText={
             <Stack component="span" direction="row" alignItems="center">
-              <Iconify icon="eva:info-fill" width={16} sx={{ mr: 0.5 }} /> Password must be minimum
-              6+
+              <Iconify icon="eva:info-fill" width={16} sx={{ mr: 0.5 }} /> {PASSWORD_COMPLEXITY_HINT}
             </Stack>
           }
         />

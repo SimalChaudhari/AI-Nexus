@@ -134,6 +134,27 @@ export function getStudentSchoolEmailValidationMessage(schoolEmail) {
 
 const optionalEmailSchema = emailSchema.optional();
 
+export const PASSWORD_COMPLEXITY_HINT =
+  'Must include uppercase, lowercase, a number, and a special character.';
+
+export function getPasswordComplexityMessage(password) {
+  const value = String(password || '');
+  if (!value) return 'Password is required!';
+  if (value.length < 8) return 'Password must be at least 8 characters!';
+  if (!/[A-Z]/.test(value)) return 'Password must include an uppercase letter!';
+  if (!/[a-z]/.test(value)) return 'Password must include a lowercase letter!';
+  if (!/\d/.test(value)) return 'Password must include a number!';
+  if (!/[^A-Za-z0-9]/.test(value)) return 'Password must include a special character!';
+  return '';
+}
+
+export const passwordSchema = zod.string().superRefine((value, ctx) => {
+  const message = getPasswordComplexityMessage(value);
+  if (message) {
+    ctx.addIssue({ code: zod.ZodIssueCode.custom, message });
+  }
+});
+
 export const AuthSignInSchema = zod.object({
   identifier: zod.string().min(1, { message: 'Email or username is required!' }),
   password: zod
@@ -153,10 +174,7 @@ export const AuthSignUpSchema = zod.object({
   email: emailSchema,
   companyCode: zod.string().optional(),
   contactNumber: optionalPhoneSchema,
-  password: zod
-    .string()
-    .min(1, { message: 'Password is required!' })
-    .min(6, { message: 'Password must be at least 6 characters!' }),
+  password: passwordSchema,
 });
 
 const individualSignupJobFunctionValues = [
@@ -305,10 +323,7 @@ export function buildCompanyQrEnrollmentSignUpSchema() {
       email: emailSchema,
       companyCode: zod.string().optional(),
       contactNumber: optionalPhoneSchema,
-      password: zod
-        .string()
-        .min(1, { message: 'Password is required!' })
-        .min(8, { message: 'Password must be at least 8 characters!' }),
+      password: passwordSchema,
       nricFin: zod.string().optional(),
       idType: zod.string().optional(),
     })
@@ -378,9 +393,7 @@ export const CorporateSignUpSchema = zod.object({
   scaqNewsletterUpdates: zod.boolean().optional(),
   studentMemberNewsletterUpdates: zod.boolean().optional(),
   theISCABuzzCorporateMembersNewsletter: zod.boolean().optional(),
-  password: zod
-    .string()
-    .min(8, { message: 'Password must be at least 8 characters!' }),
+  password: passwordSchema,
 });
 
 /**
@@ -435,8 +448,8 @@ export const NewUserSchema = zod.object({
   password: zod
     .string()
     .optional()
-    .refine((val) => !val || val === '' || val.length >= 8, {
-      message: 'Password must be at least 8 characters, or leave blank to email a temporary password',
+    .refine((val) => !val || val === '' || !getPasswordComplexityMessage(val), {
+      message: `${PASSWORD_COMPLEXITY_HINT} Or leave blank to email a temporary password.`,
     }),
 });
 
