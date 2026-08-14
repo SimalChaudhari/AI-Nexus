@@ -420,6 +420,33 @@ export const buildCorporateNudgeBodyHtml = (params: {
                             </p>`;
 };
 
+export const buildAnnouncementBodyHtml = (title: string, descriptionHtml: string): string => {
+    const safeTitle = escapeHtml(title || 'New announcement');
+    const raw = String(descriptionHtml || '').trim();
+    const previewSource =
+        raw.length > 3000
+            ? `${raw
+                  .replace(/<[^>]+>/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .slice(0, 400)}${raw.length > 400 ? '...' : ''}`
+            : raw;
+    const body = wrapEmailRichBlock(
+        previewSource,
+        'margin:0; color:#475569; font-size:14px; line-height:1.6;',
+    );
+
+    return `
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; margin-top:14px; background-color:${BRAND_SECONDARY_LIGHT}; border:1px solid #c3d5ea; border-radius:12px;">
+                                <tr>
+                                    <td style="padding:14px;">
+                                        <p style="margin:0 0 8px; color:${BRAND_SECONDARY}; font-size:15px; line-height:1.5; font-weight:700;">${safeTitle}</p>
+                                        ${body || '<p style="margin:0; color:#475569; font-size:14px; line-height:1.6;">A new announcement was posted on AI Nexus.</p>'}
+                                    </td>
+                                </tr>
+                            </table>`;
+};
+
 export const buildForumReplyBodyHtml = (postTitle: string, replierName: string, replyPreview: string): string => {
     const safePostTitle = escapeHtml(postTitle);
     const safeReplier = escapeHtml(replierName || 'A user');

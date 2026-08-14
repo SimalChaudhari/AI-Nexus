@@ -80,11 +80,6 @@ export class PushService {
   async sendToUserIds(userIds: string[], payload: PushPayload): Promise<void> {
     if (!this.enabled || !userIds.length) return;
 
-    const subscriptions = await this.pushSubscriptionRepository.find({
-      where: { userId: In(userIds) },
-    });
-    if (!subscriptions.length) return;
-
     const body = JSON.stringify({
       title: payload.title,
       body: payload.body || '',
@@ -92,28 +87,40 @@ export class PushService {
       tag: payload.tag,
     });
 
-    await Promise.all(
-      subscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            },
-            body,
-          );
-        } catch (error: any) {
-          const statusCode = error?.statusCode;
-          // Gone / expired subscription
-          if (statusCode === 404 || statusCode === 410) {
-            await this.pushSubscriptionRepository.delete({ id: sub.id });
-            return;
-          }
-          this.logger.error(
-            `Failed to send push to ${sub.id}: ${error instanceof Error ? error.message : error}`,
-          );
-        }
-      }),
-    );
+    const idChunkSize = 200;
+    const sendChunkSize = 20;
+    for (let i = 0; i < userIds.length; i += idChunkSize) {
+      const chunkIds = userIds.slice(i, i + idChunkSize);
+      const subscriptions = await this.pushSubscriptionRepository.find({
+        where: { userId: In(chunkIds) },
+      });
+      if (!subscriptions.length) continue;
+
+      for (let j = 0; j < subscriptions.length; j += sendChunkSize) {
+        const batch = subscriptions.slice(j, j + sendChunkSize);
+        await Promise.all(
+          batch.map(async (sub) => {
+            try {
+              await webpush.sendNotification(
+                {
+                  endpoint: sub.endpoint,
+                  keys: { p256dh: sub.p256dh, auth: sub.auth },
+                },
+                body,
+              );
+            } catch (error: any) {
+              const statusCode = error?.statusCode;
+              if (statusCode === 404 || statusCode === 410) {
+                await this.pushSubscriptionRepository.delete({ id: sub.id });
+                return;
+              }
+              this.logger.error(
+                `Failed to send push to ${sub.id}: ${error instanceof Error ? error.message : error}`,
+              );
+            }
+          }),
+        );
+      }
+    }
   }
 }

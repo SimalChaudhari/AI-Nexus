@@ -1,18 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { NotificationEntity, NotificationType } from './notification.entity';
-import { UserEntity, UserStatus } from '../user/users.entity';
-import { PushService } from './push.service';
-import { NotificationGateway } from './notification.gateway';
-
-function stripHtml(value: string): string {
-  return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+import { MoreThan, Repository } from 'typeorm';
+import { NotificationEntity } from './notification.entity';
+import { UserEntity, UserRole, UserStatus } from '../user/users.entity';
+import { EmailService } from '../service/email.service';
 
 @Injectable()
 export class NotificationService {
@@ -21,8 +12,7 @@ export class NotificationService {
     private readonly notificationRepository: Repository<NotificationEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
-    private readonly pushService: PushService,
-    private readonly notificationGateway: NotificationGateway,
+    private readonly emailService: EmailService,
   ) {}
 
   async listForUser(
@@ -84,58 +74,59 @@ export class NotificationService {
   }
 
   /**
-   * Create in-app notifications for all active users and send Web Push.
-   * Runs after an announcement is created.
+   * Email learners when an announcement is created.
+   * In-app bell notifications and Web Push are disabled for now.
    */
   async notifyAnnouncementCreated(announcement: {
     id: string;
     title: string;
     description?: string;
   }): Promise<void> {
-    const users = await this.userRepository.find({
-      where: { status: UserStatus.Active },
-      select: ['id'],
-    });
-    if (!users.length) return;
-
     const title = String(announcement.title || 'New announcement').trim() || 'New announcement';
-    const plainBody = stripHtml(announcement.description || '');
-    const body =
-      plainBody.length > 180 ? `${plainBody.slice(0, 177)}...` : plainBody || 'A new announcement was posted.';
-    const link = '/announcements';
+    const pageSize = 500;
+    const emailRecipients: Array<{ toEmail: string; name: string }> = [];
+    const seenEmails = new Set<string>();
+    let lastId: string | undefined;
 
-    const rows = users.map((user) =>
-      this.notificationRepository.create({
-        userId: user.id,
-        type: NotificationType.Announcement,
-        title,
-        body,
-        link,
-        referenceId: announcement.id,
-        isRead: false,
-      }),
-    );
+    console.log(`[Announcement] Email fan-out started | id=${announcement.id} title=${title}`);
 
-    // Insert in chunks to avoid huge payloads.
-    const chunkSize = 200;
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      await this.notificationRepository.save(rows.slice(i, i + chunkSize));
+    while (true) {
+      const users = await this.userRepository.find({
+        where: lastId
+          ? { status: UserStatus.Active, isDraft: false, id: MoreThan(lastId) }
+          : { status: UserStatus.Active, isDraft: false },
+        select: ['id', 'email', 'firstname', 'lastname', 'role'],
+        order: { id: 'ASC' },
+        take: pageSize,
+      });
+      if (!users.length) break;
+
+      lastId = users[users.length - 1].id;
+      for (const user of users) {
+        if (user.role !== UserRole.User) continue;
+        const email = String(user.email || '').trim().toLowerCase();
+        if (!email || !email.includes('@') || seenEmails.has(email)) continue;
+        seenEmails.add(email);
+        emailRecipients.push({
+          toEmail: String(user.email).trim(),
+          name: `${user.firstname || ''} ${user.lastname || ''}`.trim() || 'there',
+        });
+      }
     }
 
-    this.notificationGateway.emitToAll('notification:created', {
-      type: NotificationType.Announcement,
-      title,
-      body,
-      link,
-      referenceId: announcement.id,
-    });
+    if (!emailRecipients.length) {
+      console.log('[Announcement] No email recipients | need active User accounts with a valid email');
+      return;
+    }
 
-    const userIds = users.map((user) => user.id);
-    await this.pushService.sendToUserIds(userIds, {
+    console.log(`[Announcement] Recipients ready | emails=${emailRecipients.length}`);
+
+    const result = await this.emailService.sendAnnouncementEmailsBulk(emailRecipients, {
       title,
-      body,
-      link,
-      tag: `announcement-${announcement.id}`,
+      description: announcement.description || '',
     });
+    console.log(
+      `[Announcement] Email fan-out complete | recipients=${emailRecipients.length} sent=${result.sent} failed=${result.failed}`,
+    );
   }
 }

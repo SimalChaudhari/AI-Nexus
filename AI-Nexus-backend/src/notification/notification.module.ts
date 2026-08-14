@@ -9,6 +9,8 @@ import { PushService } from './push.service';
 import { NotificationController } from './notification.controller';
 import { NotificationInitService } from './notification-init.service';
 import { NotificationGateway } from './notification.gateway';
+import { EmailService } from '../service/email.service';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 
 @Module({
   imports: [
@@ -17,8 +19,9 @@ import { NotificationGateway } from './notification.gateway';
       secret: process.env.JWT_SECRET,
       signOptions: {},
     }),
+    AppSettingsModule,
   ],
-  providers: [NotificationService, PushService, NotificationInitService, NotificationGateway],
+  providers: [NotificationService, PushService, NotificationInitService, NotificationGateway, EmailService],
   controllers: [NotificationController],
   exports: [NotificationService, PushService],
 })
