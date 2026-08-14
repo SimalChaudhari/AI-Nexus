@@ -3,6 +3,7 @@ import {
   IsIn,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -25,6 +26,21 @@ export class UpdateIntlMembershipSettingsDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   voucherDiscountAmountSgd?: number;
+
+  /** Exact promo payable amount keyed by ISO country code (e.g. { TH: 2006 }). */
+  @IsOptional()
+  @IsObject()
+  promoAmountsByCountry?: Record<string, number>;
+
+  /** Manual per-country base + discount pricing. */
+  @IsOptional()
+  @IsObject()
+  countryPricing?: Record<string, {
+    basePrice?: number | null;
+    discountPrice?: number | null;
+    active?: boolean;
+    promoCode?: string | null;
+  }>;
 
   @IsOptional()
   @IsString()

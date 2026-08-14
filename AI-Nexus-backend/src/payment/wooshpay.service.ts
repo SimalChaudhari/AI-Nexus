@@ -48,6 +48,66 @@ export function getWooshPayCheckoutPaymentMethods(): string[] {
   return [];
 }
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  google_pay: 'Google Pay',
+  googlepay: 'Google Pay',
+  apple_pay: 'Apple Pay',
+  applepay: 'Apple Pay',
+  link: 'Link',
+  alipay: 'Alipay',
+  wechat_pay: 'WeChat Pay',
+  wechatpay: 'WeChat Pay',
+  grabpay: 'GrabPay',
+  grab_pay: 'GrabPay',
+  paynow: 'PayNow',
+  fpx: 'FPX',
+  card: 'Card',
+};
+
+function pushPaymentMethodHint(hints: string[], value: unknown) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (raw) hints.push(raw);
+}
+
+function collectUsedPaymentMethodHints(source: unknown, walletHints: string[], typeHints: string[]) {
+  if (!source || typeof source !== 'object') return;
+  const row = source as Record<string, any>;
+  // Wallet actually used on the charge / payment method — never session payment_method_types.
+  pushPaymentMethodHint(walletHints, row?.charges?.data?.[0]?.payment_method_details?.card?.wallet?.type);
+  pushPaymentMethodHint(walletHints, row?.latest_charge?.payment_method_details?.card?.wallet?.type);
+  pushPaymentMethodHint(walletHints, row?.payment_method_details?.card?.wallet?.type);
+  pushPaymentMethodHint(walletHints, row?.payment_method_details?.wallet?.type);
+  pushPaymentMethodHint(walletHints, row?.card?.wallet?.type);
+  pushPaymentMethodHint(walletHints, row?.wallet?.type);
+
+  pushPaymentMethodHint(typeHints, row?.charges?.data?.[0]?.payment_method_details?.type);
+  pushPaymentMethodHint(typeHints, row?.latest_charge?.payment_method_details?.type);
+  pushPaymentMethodHint(typeHints, row?.payment_method_details?.type);
+  if (row?.object === 'payment_method' || row?.card) {
+    pushPaymentMethodHint(typeHints, row?.type);
+  }
+}
+
+/**
+ * Label for the method the customer actually paid with.
+ * Ignores checkout `payment_method_types` (those are enabled options, not the used wallet).
+ */
+export function formatWooshPayPaymentMethodLabel(...sources: unknown[]): string {
+  const walletHints: string[] = [];
+  const typeHints: string[] = [];
+  sources.forEach((source) => collectUsedPaymentMethodHints(source, walletHints, typeHints));
+  for (const hint of walletHints) {
+    if (PAYMENT_METHOD_LABELS[hint]) return PAYMENT_METHOD_LABELS[hint];
+  }
+  for (const hint of typeHints) {
+    if (PAYMENT_METHOD_LABELS[hint]) return PAYMENT_METHOD_LABELS[hint];
+  }
+  return 'Online payment';
+}
+
 @Injectable()
 export class WooshPayService {
   /** Empty = omit payment_method_types so WooshPay uses merchant-account defaults. */
@@ -60,9 +120,12 @@ export class WooshPayService {
    */
   getConfig(): WooshPayConfig {
     const secretKey = process.env.PAYMENT_SECRET_KEY?.trim() ?? '';
-    const testMode =
-      process.env.PAYMENT_TEST_MODE === 'true' ||
-      (!!secretKey && secretKey.startsWith('sk_test_'));
+    // Key prefix wins: sk_live_ always uses live API even if PAYMENT_TEST_MODE is still true.
+    const testMode = secretKey.startsWith('sk_live_')
+      ? false
+      : secretKey.startsWith('sk_test_')
+        ? true
+        : process.env.PAYMENT_TEST_MODE === 'true';
     const baseUrl = testMode
       ? (process.env.PAYMENT_API_TEST_URL?.trim() ?? 'https://apitest.wooshpay.com')
       : (process.env.PAYMENT_API_LIVE_URL?.trim() ?? 'https://api.wooshpay.com');
@@ -222,7 +285,7 @@ export class WooshPayService {
     amount_total?: number;
     amount_subtotal?: number;
     currency?: string;
-    payment_intent?: string;
+    payment_intent?: string | Record<string, unknown>;
     payment_method_types?: string[];
   }> {
     return this.makeApiRequest<any>('GET', `/v1/checkout/sessions/${sessionId}`);
@@ -233,12 +296,62 @@ export class WooshPayService {
     status?: string;
     amount?: number;
     currency?: string;
+    payment_method?: string | Record<string, unknown>;
+    payment_method_types?: string[];
+    charges?: { data?: Array<Record<string, unknown>> };
+    latest_charge?: Record<string, unknown> | string;
   }> {
     const id = String(paymentIntentId || '').trim();
     if (!id) {
       throw new Error('paymentIntentId is required');
     }
     return this.makeApiRequest<any>('GET', `/v1/payment_intents/${id}`);
+  }
+
+  /** Best-effort label such as Google Pay / Apple Pay / Card. Never throws. */
+  async resolveCheckoutPaymentMethodLabel(session?: {
+    payment_intent?: string | Record<string, unknown>;
+    payment_method?: string | Record<string, unknown>;
+    payment_method_types?: string[];
+    payment_method_details?: Record<string, unknown>;
+  } | null): Promise<string> {
+    try {
+      let paymentIntent =
+        session?.payment_intent && typeof session.payment_intent === 'object'
+          ? session.payment_intent
+          : null;
+      const paymentIntentId =
+        typeof session?.payment_intent === 'string'
+          ? session.payment_intent
+          : String((paymentIntent as { id?: string } | null)?.id || '').trim();
+      if (!paymentIntent && paymentIntentId) {
+        paymentIntent = await this.getPaymentIntent(paymentIntentId);
+      }
+
+      let paymentMethod =
+        paymentIntent && typeof (paymentIntent as { payment_method?: unknown }).payment_method === 'object'
+          ? ((paymentIntent as { payment_method?: Record<string, unknown> }).payment_method ?? null)
+          : session?.payment_method && typeof session.payment_method === 'object'
+            ? session.payment_method
+            : null;
+      const paymentMethodId =
+        typeof (paymentIntent as { payment_method?: unknown } | null)?.payment_method === 'string'
+          ? String((paymentIntent as { payment_method?: string }).payment_method)
+          : typeof session?.payment_method === 'string'
+            ? session.payment_method
+            : '';
+      if (!paymentMethod && paymentMethodId) {
+        try {
+          paymentMethod = await this.getPaymentMethod(paymentMethodId);
+        } catch {
+          paymentMethod = null;
+        }
+      }
+
+      return formatWooshPayPaymentMethodLabel(session, paymentIntent, paymentMethod);
+    } catch {
+      return formatWooshPayPaymentMethodLabel(session);
+    }
   }
 
   async expireCheckoutSession(sessionId: string): Promise<any> {

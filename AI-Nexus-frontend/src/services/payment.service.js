@@ -27,6 +27,22 @@ export async function createCheckoutSession({ items, successUrl, cancelUrl, curr
   return response.data;
 }
 
+/** Public: selected-country membership amount (exact admin price, or default SGD converted). */
+export async function getMembershipPricing({
+  countryOfResidence,
+  promoApplied = false,
+  source = 'membership-paid-signup',
+}) {
+  const response = await axios.get('/payments/membership-pricing', {
+    params: {
+      countryOfResidence,
+      promoApplied: promoApplied ? 'true' : 'false',
+      source,
+    },
+  });
+  return response.data;
+}
+
 export async function createMembershipCheckoutSession({
   draftUserId,
   signupAccessToken,
@@ -38,6 +54,7 @@ export async function createMembershipCheckoutSession({
   affiliateCode,
   voucherCode,
   billingCountryCode,
+  countryOfResidence,
   applyGst,
 }) {
   try {
@@ -47,6 +64,7 @@ export async function createMembershipCheckoutSession({
       currency: String(currency || 'sgd').toUpperCase(),
       code: trimPaymentLogValue(code || affiliateCode || voucherCode),
       billingCountryCode: String(billingCountryCode || '').trim().toUpperCase() || '(none)',
+      countryOfResidence: String(countryOfResidence || '').trim() || '(none)',
       applyGst: applyGst !== false,
     });
     const response = await axios.post('/payments/create-membership-checkout', {
@@ -60,6 +78,7 @@ export async function createMembershipCheckoutSession({
       affiliateCode: affiliateCode || undefined,
       voucherCode: voucherCode || undefined,
       billingCountryCode: billingCountryCode || undefined,
+      countryOfResidence: countryOfResidence || undefined,
       applyGst,
     });
     console.info('[MembershipPaymentService] Create checkout success', {

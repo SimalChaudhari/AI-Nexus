@@ -13,6 +13,7 @@ import { alpha } from '@mui/material/styles';
 
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
+import { CountryPromoAmountsCard } from 'src/sections/dashboard/admin-settings/view/components/country-promo-amounts-card';
 
 function SectionCard({ title, description, children }) {
   return (
@@ -88,6 +89,7 @@ export function IntlMembershipPaymentSettingsCard({
       baseAmountSgd: full,
       studentAmountSgd: student,
       voucherDiscountAmountSgd: promo,
+      promoAmountsByCountry: values.promoAmountsByCountry || {},
     });
   };
 
@@ -150,7 +152,7 @@ export function IntlMembershipPaymentSettingsCard({
                 InputProps={{
                   startAdornment: <InputAdornment position="start">{currency}</InputAdornment>,
                 }}
-                helperText="Charged when a promo code is applied"
+                helperText="Fallback when a country has no exact promo amount"
               />
             </Grid>
           </Grid>
@@ -203,6 +205,12 @@ export function IntlMembershipPaymentSettingsCard({
             </Box>
           </Stack>
         </SectionCard>
+
+        <CountryPromoAmountsCard
+          promoAmountsByCountry={values.promoAmountsByCountry}
+          promoCountries={values.promoCountries}
+          onChange={(next) => updateField('promoAmountsByCountry', next)}
+        />
 
         <Divider />
 

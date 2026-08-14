@@ -481,6 +481,47 @@ function transformInternationalLandingContent(source) {
   };
 }
 
+function toCountryPricingList(source) {
+  const fromList = Array.isArray(source?.countryPricingList) ? source.countryPricingList : [];
+  const map =
+    source?.countryPricing && typeof source.countryPricing === 'object' && !Array.isArray(source.countryPricing)
+      ? source.countryPricing
+      : {};
+  const byCode = new Map();
+  Object.entries(map).forEach(([code, row]) => {
+    byCode.set(String(code || '').toUpperCase(), row || {});
+  });
+  fromList.forEach((row) => {
+    const code = String(row?.code || '').toUpperCase();
+    if (!code) return;
+    byCode.set(code, { ...byCode.get(code), ...row });
+  });
+  return Array.from(byCode.entries()).map(([code, row]) => {
+    const catalog = {
+      SG: { name: 'Singapore', currency: 'SGD' },
+      TH: { name: 'Thailand', currency: 'THB' },
+      MY: { name: 'Malaysia', currency: 'MYR' },
+      ID: { name: 'Indonesia', currency: 'IDR' },
+      PH: { name: 'Philippines', currency: 'PHP' },
+      VN: { name: 'Vietnam', currency: 'VND' },
+      BN: { name: 'Brunei', currency: 'BND' },
+      KH: { name: 'Cambodia', currency: 'KHR' },
+      LA: { name: 'Laos', currency: 'LAK' },
+      MM: { name: 'Myanmar', currency: 'MMK' },
+      CN: { name: 'China', currency: 'CNY' },
+    }[code] || {};
+    return {
+      code,
+      name: row?.name || catalog.name || code,
+      currency: row?.currency || catalog.currency || 'SGD',
+      basePrice: row?.basePrice ?? null,
+      discountPrice: row?.discountPrice ?? null,
+      active: row?.active !== false,
+      promoCode: row?.promoCode || null,
+    };
+  });
+}
+
 function transformMembershipPaymentSettings(source) {
   if (!source || typeof source !== 'object') return null;
   return {
@@ -490,6 +531,16 @@ function transformMembershipPaymentSettings(source) {
     gstRatePercent: source.gstRatePercent != null ? Number(source.gstRatePercent) : 0,
     voucherDiscountAmount:
       source.voucherDiscountAmount != null ? Number(source.voucherDiscountAmount) : 0,
+    promoAmountsByCountry:
+      source.promoAmountsByCountry && typeof source.promoAmountsByCountry === 'object'
+        ? source.promoAmountsByCountry
+        : {},
+    countryPricing:
+      source.countryPricing && typeof source.countryPricing === 'object'
+        ? source.countryPricing
+        : {},
+    countryPricingList: toCountryPricingList(source),
+    promoCountries: Array.isArray(source.promoCountries) ? source.promoCountries : [],
     referralCode: source.referralCode != null ? String(source.referralCode).toUpperCase() : '',
     referralLinkPath:
       source.referralLinkPath != null

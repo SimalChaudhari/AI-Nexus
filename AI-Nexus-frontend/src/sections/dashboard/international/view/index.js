@@ -5,4 +5,4 @@ export { IntlPathwayRoleFormView } from './intl-pathway-role-form-view';
 export { IntlLandingContentView } from './intl-landing-content-view';
 export { IntlUsersListView } from './intl-users-list-view';
 export { IntlUsersDetailsView } from './intl-users-details-view';
-export { IntlPromoPricingView } from './intl-promo-pricing-view';
+export { IntlPromoPricingView, CountryPricingManagementPanel } from './intl-promo-pricing-view';

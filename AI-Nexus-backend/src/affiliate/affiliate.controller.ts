@@ -371,6 +371,11 @@ export class AffiliateController {
       const alreadyOrder = await this.orderService.existsByClientReferenceId(refId);
       let orderId: string | undefined;
 
+      const paymentIntentId =
+        typeof session?.payment_intent === 'string'
+          ? session.payment_intent
+          : String((session?.payment_intent as { id?: string } | undefined)?.id || '').trim() || undefined;
+
       if (!alreadyOrder) {
         const order = await this.orderService.create({
           userId: completed.user.id,
@@ -380,7 +385,7 @@ export class AffiliateController {
           currency: (session?.currency || sale.currency || 'SGD').toUpperCase(),
           paymentStatus: session?.payment_status ?? 'paid',
           wooshpaySessionId: session?.id ?? undefined,
-          wooshpayPaymentIntentId: session?.payment_intent ?? undefined,
+          wooshpayPaymentIntentId: paymentIntentId,
           clientReferenceId: refId,
           eventType: 'affiliate-signup',
         });
@@ -395,7 +400,7 @@ export class AffiliateController {
           courseIds: ['affiliate-signup'],
           items: ref.items,
           wooshpaySessionId: session?.id ?? null,
-          wooshpayPaymentIntentId: session?.payment_intent ?? null,
+          wooshpayPaymentIntentId: paymentIntentId ?? null,
           eventType: 'affiliate-signup',
           source: PaymentSource.ConfirmPayment,
         });

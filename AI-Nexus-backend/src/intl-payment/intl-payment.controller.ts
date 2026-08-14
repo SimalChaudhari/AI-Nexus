@@ -45,6 +45,17 @@ export class IntlPaymentController {
     });
   }
 
+  /** Admin: SGD FX rates for converting default prices in promo country popup. */
+  @Get('fx-rates')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: latest SGD FX rates' })
+  async fxRates(@Res() res: Response) {
+    const rates = await this.intlPaymentService.getFxRatesFromSgd();
+    return res.status(HttpStatus.OK).json({ data: rates || { SGD: 1 } });
+  }
+
   /** Signed-in user's membership payment details (for profile). */
   @Get('me')
   async me(@Res() res: Response, @Headers('authorization') authorization?: string) {
@@ -135,6 +146,7 @@ export class IntlPaymentController {
     @Query('countryOfResidence') countryOfResidence: string,
     @Query('promoApplied') promoApplied: string,
     @Query('membershipType') membershipType: string,
+    @Query('promoCode') promoCode: string,
     @Res() res: Response,
   ) {
     const country = String(countryOfResidence || '').trim();
@@ -144,7 +156,12 @@ export class IntlPaymentController {
       });
     }
     const promo = String(promoApplied || '').toLowerCase() === 'true' || promoApplied === '1';
-    const pricing = await this.intlPaymentService.getPricing(country, promo, membershipType);
+    const pricing = await this.intlPaymentService.getPricing(
+      country,
+      promo,
+      membershipType,
+      String(promoCode || '').trim() || null,
+    );
     return res.status(HttpStatus.OK).json(pricing);
   }
 

@@ -92,6 +92,7 @@ function mapOrderToRow(apiOrder) {
     totalQuantity,
     subtotal: Number(apiOrder.totalAmount) || 0,
     totalAmount: Number(apiOrder.totalAmount) || 0,
+    currency: apiOrder.currency || 'SGD',
     status: apiOrder.status || 'completed',
     items: items.length
       ? items.map((i, idx) => ({

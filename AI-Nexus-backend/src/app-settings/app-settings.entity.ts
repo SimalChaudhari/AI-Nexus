@@ -409,6 +409,15 @@ export type MembershipPaymentSettings = {
   verifiedBaseAmount?: number;
   gstRatePercent?: number;
   voucherDiscountAmount?: number;
+  /** Exact promo payable amount keyed by ISO country code (ASEAN + China). */
+  promoAmountsByCountry?: Record<string, number>;
+  /** Manual country pricing: basePrice, discountPrice, active, promoCode. */
+  countryPricing?: Record<string, {
+    basePrice: number | null;
+    discountPrice: number | null;
+    active: boolean;
+    promoCode: string | null;
+  }>;
   /** Active admin promo/referral code shown in admin + used in full signup link. */
   referralCode?: string;
   referralLinkPath?: string;

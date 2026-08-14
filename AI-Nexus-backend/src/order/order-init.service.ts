@@ -28,6 +28,7 @@ export class OrderInitService implements OnModuleInit {
             "paymentStatus" varchar(50),
             "wooshpaySessionId" varchar(255),
             "wooshpayPaymentIntentId" varchar(255),
+            "paymentMethod" varchar(80),
             "clientReferenceId" varchar(512) NOT NULL,
             "eventType" varchar(100),
             "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -38,6 +39,10 @@ export class OrderInitService implements OnModuleInit {
         await queryRunner.query(`CREATE INDEX "IDX_orders_userId" ON "orders" ("userId")`);
         await queryRunner.query(`CREATE INDEX "IDX_orders_createdAt" ON "orders" ("createdAt")`);
         console.log('✅ orders table created successfully');
+      } else {
+        await queryRunner.query(
+          `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "paymentMethod" varchar(80)`,
+        );
       }
     } catch (error) {
       console.error(

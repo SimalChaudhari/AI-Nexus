@@ -4,7 +4,7 @@ import { CONFIG } from 'src/config-global';
 
 import { AdminPaymentView } from 'src/sections/dashboard/admin-payment';
 
-const metadata = { title: `Promo & Pricing | Admin - ${CONFIG.site.name}` };
+const metadata = { title: `Pricing Management | Admin - ${CONFIG.site.name}` };
 
 export default function Page() {
   return (

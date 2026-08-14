@@ -91,6 +91,10 @@ export class PaymentEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   wooshpayPaymentIntentId!: string | null;
 
+  /** Wallet/card used at checkout, e.g. Google Pay, Apple Pay, Card. */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  paymentMethod!: string | null;
+
   /** e.g. membership-paid-signup, membership-application-billing, webhook event type. */
   @Column({ type: 'varchar', length: 100, nullable: true })
   eventType!: string | null;

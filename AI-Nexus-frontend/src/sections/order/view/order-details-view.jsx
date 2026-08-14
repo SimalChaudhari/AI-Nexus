@@ -55,6 +55,7 @@ export function OrderDetailsView({ order }) {
               discount={order?.discount}
               subtotal={order?.subtotal}
               totalAmount={order?.totalAmount}
+              currency={order?.currency}
             />
 
             <OrderDetailsHistory history={order?.history} />

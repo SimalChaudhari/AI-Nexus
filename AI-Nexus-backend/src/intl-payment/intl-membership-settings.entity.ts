@@ -23,9 +23,22 @@ export class IntlMembershipSettingsEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 150 })
   studentAmountSgd!: number;
 
-  /** Promo / voucher payable amount in SGD before FX conversion. */
+  /** Promo / voucher payable amount in SGD before FX conversion (fallback if country has no exact amount). */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 100 })
   voucherDiscountAmountSgd!: number;
+
+  /** Exact promo payable amount per country code (ASEAN + China). No FX when set. */
+  @Column({ type: 'jsonb', nullable: true })
+  promoAmountsByCountry!: Record<string, number> | null;
+
+  /** Manual country pricing: basePrice, discountPrice, active, promoCode. */
+  @Column({ type: 'jsonb', nullable: true })
+  countryPricing!: Record<string, {
+    basePrice: number | null;
+    discountPrice: number | null;
+    active: boolean;
+    promoCode: string | null;
+  }> | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   referralCode!: string | null;

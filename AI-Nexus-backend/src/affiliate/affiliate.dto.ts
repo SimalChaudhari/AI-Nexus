@@ -36,6 +36,16 @@ export class ValidateAffiliateCodeDto {
   @IsString()
   @MaxLength(32)
   site?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  countryOfResidence?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  billingCountryCode?: string;
 }
 
 export class EnsureVoucherCodeDto {

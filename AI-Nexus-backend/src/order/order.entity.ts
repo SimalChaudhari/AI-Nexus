@@ -57,6 +57,10 @@ export class OrderEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   wooshpayPaymentIntentId!: string | null;
 
+  /** Wallet/card used at checkout, e.g. Google Pay, Apple Pay, Card. */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  paymentMethod!: string | null;
+
   @Column({ type: 'varchar', length: 512 })
   clientReferenceId!: string;
 

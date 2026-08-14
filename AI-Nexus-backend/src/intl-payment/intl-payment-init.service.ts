@@ -44,7 +44,13 @@ export class IntlPaymentInitService implements OnModuleInit {
         await queryRunner.query(
           `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "studentAmountSgd" decimal(12,2) NOT NULL DEFAULT 150`,
         );
-        console.log('✅ Ensured intl_membership_settings.studentAmountSgd column');
+        await queryRunner.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "promoAmountsByCountry" jsonb`,
+        );
+        await queryRunner.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "countryPricing" jsonb`,
+        );
+        console.log('✅ Ensured intl_membership_settings country pricing columns');
       }
 
       const rows = await queryRunner.query(

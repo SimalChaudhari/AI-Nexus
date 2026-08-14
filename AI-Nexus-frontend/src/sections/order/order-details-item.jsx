@@ -20,36 +20,37 @@ export function OrderDetailsItems({
   subtotal,
   items = [],
   totalAmount,
+  currency = 'SGD',
 }) {
   const renderTotal = (
     <Stack spacing={2} alignItems="flex-end" sx={{ p: 3, textAlign: 'right', typography: 'body2' }}>
       <Stack direction="row">
         <Box sx={{ color: 'text.secondary' }}>Subtotal</Box>
-        <Box sx={{ width: 160, typography: 'subtitle2' }}>{fCurrency(subtotal) || '-'}</Box>
+        <Box sx={{ width: 160, typography: 'subtitle2' }}>{fCurrency(subtotal, { currency }) || '-'}</Box>
       </Stack>
 
       <Stack direction="row">
         <Box sx={{ color: 'text.secondary' }}>Shipping</Box>
         <Box sx={{ width: 160, ...(shipping && { color: 'error.main' }) }}>
-          {shipping ? `- ${fCurrency(shipping)}` : '-'}
+          {shipping ? `- ${fCurrency(shipping, { currency })}` : '-'}
         </Box>
       </Stack>
 
       <Stack direction="row">
         <Box sx={{ color: 'text.secondary' }}>Discount</Box>
         <Box sx={{ width: 160, ...(discount && { color: 'error.main' }) }}>
-          {discount ? `- ${fCurrency(discount)}` : '-'}
+          {discount ? `- ${fCurrency(discount, { currency })}` : '-'}
         </Box>
       </Stack>
 
       <Stack direction="row">
         <Box sx={{ color: 'text.secondary' }}>Taxes</Box>
-        <Box sx={{ width: 160 }}>{taxes ? fCurrency(taxes) : '-'}</Box>
+        <Box sx={{ width: 160 }}>{taxes ? fCurrency(taxes, { currency }) : '-'}</Box>
       </Stack>
 
       <Stack direction="row" sx={{ typography: 'subtitle1' }}>
         <div>Total</div>
-        <Box sx={{ width: 160 }}>{fCurrency(totalAmount) || '-'}</Box>
+        <Box sx={{ width: 160 }}>{fCurrency(totalAmount, { currency }) || '-'}</Box>
       </Stack>
     </Stack>
   );
@@ -93,7 +94,7 @@ export function OrderDetailsItems({
             <Box sx={{ typography: 'body2' }}>x{item.quantity}</Box>
 
             <Box sx={{ width: 110, textAlign: 'right', typography: 'subtitle2' }}>
-              {fCurrency(item.price)}
+              {fCurrency(item.price, { currency })}
             </Box>
           </Stack>
         ))}

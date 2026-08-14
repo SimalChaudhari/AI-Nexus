@@ -29,6 +29,7 @@ export class PaymentInitService implements OnModuleInit {
             "items" jsonb,
             "wooshpaySessionId" varchar(255),
             "wooshpayPaymentIntentId" varchar(255),
+            "paymentMethod" varchar(80),
             "eventType" varchar(100),
             "source" varchar(50),
             "failureReason" varchar(512),
@@ -48,6 +49,10 @@ export class PaymentInitService implements OnModuleInit {
           `CREATE INDEX "IDX_payments_wooshpaySessionId" ON "payments" ("wooshpaySessionId")`,
         );
         console.log('✅ payments table created successfully');
+      } else {
+        await queryRunner.query(
+          `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "paymentMethod" varchar(80)`,
+        );
       }
 
       await this.backfillFromOrders(queryRunner);

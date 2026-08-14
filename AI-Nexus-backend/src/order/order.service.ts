@@ -14,6 +14,7 @@ export interface CreateOrderParams {
   paymentStatus?: string;
   wooshpaySessionId?: string;
   wooshpayPaymentIntentId?: string;
+  paymentMethod?: string | null;
   clientReferenceId: string;
   eventType?: string;
 }
@@ -38,6 +39,7 @@ export class OrderService {
       paymentStatus: params.paymentStatus ?? 'paid',
       wooshpaySessionId: params.wooshpaySessionId ?? null,
       wooshpayPaymentIntentId: params.wooshpayPaymentIntentId ?? null,
+      paymentMethod: params.paymentMethod ?? null,
       clientReferenceId: params.clientReferenceId,
       eventType: params.eventType ?? null,
     });

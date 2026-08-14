@@ -187,7 +187,7 @@ export const navData = [
             href: paths.admin.international.users.list,
           },
           {
-            title: 'Promo & Pricing',
+            title: 'Pricing Management',
             path: paths.admin.international.promoPricing,
           },
           {
@@ -232,7 +232,7 @@ export const navData = [
         icon: <Iconify icon="solar:card-2-bold-duotone" width={24} />,
         children: [
           {
-            title: 'Promo & Pricing',
+            title: 'Pricing Management',
             path: paths.admin.payment.settings,
             activeExcludePaths: [
               paths.admin.payment.history,

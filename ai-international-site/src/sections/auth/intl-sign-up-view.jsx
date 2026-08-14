@@ -99,6 +99,15 @@ function fieldError(errors, name) {
   return errors?.[name]?.message || '';
 }
 
+function formatIntlAmount(amount, currency) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '0';
+  const code = String(currency || '').trim().toUpperCase();
+  if (code && code !== 'SGD') return String(Math.round(n));
+  const cents = Number(n.toFixed(2));
+  return Number.isInteger(cents) ? String(Math.round(cents)) : cents.toFixed(2);
+}
+
 /** React 19: never spread RHF `ref` onto JSX; map it to MUI `inputRef`. */
 function textFieldProps(field) {
   const { ref, ...rest } = field;
@@ -184,6 +193,7 @@ export function IntlSignUpView() {
     promoApplied: false,
     voucherDiscountAmount: INTL_MEMBERSHIP_FEE.voucherDiscountAmount,
     exchangeRate: 1,
+    promoFixed: false,
   });
   const [pricingLoading, setPricingLoading] = useState(false);
   const payInFlightRef = useRef(false);
@@ -258,6 +268,7 @@ export function IntlSignUpView() {
           countryOfResidence: country,
           promoApplied,
           membershipType,
+          promoCode: promoApplied ? appliedPromoInputRef.current : undefined,
         });
         if (!active || !data) return;
         setPricing({
@@ -269,6 +280,7 @@ export function IntlSignUpView() {
           voucherDiscountAmount:
             Number(data.voucherDiscountAmount) || INTL_MEMBERSHIP_FEE.voucherDiscountAmount,
           exchangeRate: Number(data.exchangeRate) || 1,
+          promoFixed: Boolean(data.promoFixed),
         });
       } catch {
         // Keep last known / fallback pricing if backend is unreachable.
@@ -283,6 +295,8 @@ export function IntlSignUpView() {
   }, [countryOfResidence, promoApplied, membershipType, planChosen]);
 
   const currencyLabel = pricing.currency || INTL_MEMBERSHIP_FEE.currency;
+  const showPromoConverted = promoApplied && currencyLabel !== 'SGD' && !pricing.promoFixed;
+  const showBaseConverted = currencyLabel !== 'SGD' && !pricing.promoFixed;
   const membershipBaseAmount = Number(pricing.baseAmount) || INTL_MEMBERSHIP_FEE.baseAmount;
   const standardTotal = Number(membershipBaseAmount.toFixed(2));
   const totalAmount = promoApplied
@@ -336,6 +350,7 @@ export function IntlSignUpView() {
                 prev.voucherDiscountAmount,
               exchangeRate: Number(result.exchangeRate) || prev.exchangeRate,
               promoApplied: true,
+              promoFixed: Boolean(result.promoFixed),
             }));
           }
         } else {
@@ -367,7 +382,7 @@ export function IntlSignUpView() {
     if (!planChosen || !promoApplied || !appliedPromoInputRef.current) return undefined;
     applyPromoCode(appliedPromoInputRef.current);
     return undefined;
-  }, [membershipType, planChosen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [countryOfResidence, membershipType, planChosen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const normalized = String(promoCodeValue || '').trim().toUpperCase();
@@ -1299,12 +1314,12 @@ export function IntlSignUpView() {
                     >
                       <span>Original price</span>
                       <Box component="strong" sx={{ color: alpha('#fff', 0.9) }}>
-                        {currencyLabel} {standardTotal.toFixed(2)}
+                        {currencyLabel} {formatIntlAmount(standardTotal, currencyLabel)}
                       </Box>
                     </Typography>
-                    {currencyLabel !== 'SGD' ? (
+                    {showBaseConverted ? (
                       <Typography sx={{ color: alpha('#fff', 0.55), fontSize: 11.5, mt: -0.5 }}>
-                        Converted from SGD {baseAmountSgd.toFixed(2)}
+                        Converted from SGD {formatIntlAmount(baseAmountSgd, 'SGD')}
                       </Typography>
                     ) : null}
                     <Typography
@@ -1317,12 +1332,12 @@ export function IntlSignUpView() {
                     >
                       <span>Promotional rate</span>
                       <strong>
-                        {currencyLabel} {Number(totalAmount).toFixed(2)}
+                        {currencyLabel} {formatIntlAmount(totalAmount, currencyLabel)}
                       </strong>
                     </Typography>
-                    {currencyLabel !== 'SGD' ? (
+                    {showPromoConverted ? (
                       <Typography sx={{ color: alpha('#7dffa8', 0.75), fontSize: 11.5, mt: -0.5 }}>
-                        Converted from SGD {payableAmountSgd.toFixed(2)}
+                        Converted from SGD {formatIntlAmount(payableAmountSgd, 'SGD')}
                       </Typography>
                     ) : null}
                   </>
@@ -1338,12 +1353,12 @@ export function IntlSignUpView() {
                     >
                       <span>Membership fee</span>
                       <Box component="strong" sx={{ color: '#fff' }}>
-                        {currencyLabel} {Number(membershipBaseAmount).toFixed(2)}
+                        {currencyLabel} {formatIntlAmount(membershipBaseAmount, currencyLabel)}
                       </Box>
                     </Typography>
-                    {currencyLabel !== 'SGD' ? (
+                    {showBaseConverted ? (
                       <Typography sx={{ color: alpha('#fff', 0.55), fontSize: 11.5, mt: -0.5 }}>
-                        Converted from SGD {baseAmountSgd.toFixed(2)}
+                        Converted from SGD {formatIntlAmount(baseAmountSgd, 'SGD')}
                       </Typography>
                     ) : null}
                   </>
@@ -1374,10 +1389,10 @@ export function IntlSignUpView() {
                       component="strong"
                       sx={{ fontSize: 18, letterSpacing: '-0.02em', color: '#fff' }}
                     >
-                      {currencyLabel} {Number(totalAmount).toFixed(2)}
+                      {currencyLabel} {formatIntlAmount(totalAmount, currencyLabel)}
                     </Box>
                   </Typography>
-                  {currencyLabel !== 'SGD' ? (
+                  {showPromoConverted || (!promoApplied && showBaseConverted) ? (
                     <Typography
                       sx={{
                         mt: 0.5,
@@ -1386,7 +1401,7 @@ export function IntlSignUpView() {
                         textAlign: 'right',
                       }}
                     >
-                      Converted from SGD {payableAmountSgd.toFixed(2)}
+                      Converted from SGD {formatIntlAmount(payableAmountSgd, 'SGD')}
                     </Typography>
                   ) : null}
                 </Box>
@@ -1471,7 +1486,7 @@ export function IntlSignUpView() {
                   {isSubmitting ? (
                     <CircularProgress size={22} color="inherit" />
                   ) : (
-                    `Pay ${currencyLabel} ${Number(totalAmount).toFixed(2)}`
+                    `Pay ${currencyLabel} ${formatIntlAmount(totalAmount, currencyLabel)}`
                   )}
                 </Button>
               </Stack>
