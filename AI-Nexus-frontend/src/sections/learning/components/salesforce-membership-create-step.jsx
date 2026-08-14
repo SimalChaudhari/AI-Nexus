@@ -34,6 +34,7 @@ import {
   updateSalesforceNexusUser,
 } from 'src/auth/context/jwt';
 import { assertSalesforceEmailAvailable } from 'src/utils/salesforce-email-check';
+import { getPasswordComplexityMessage, PASSWORD_COMPLEXITY_HINT } from 'src/validations/user.validation';
 
 // ----------------------------------------------------------------------
 
@@ -445,8 +446,9 @@ export function SalesforceMembershipCreateStep({
       setError('Salesforce username is required.');
       return;
     }
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    const passwordError = getPasswordComplexityMessage(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (password !== confirmPassword) {
@@ -969,7 +971,7 @@ export function SalesforceMembershipCreateStep({
                 required
                 disabled={submitting}
                 InputLabelProps={INPUT_LABEL_ABOVE}
-                helperText="Minimum 8 characters"
+                helperText={PASSWORD_COMPLEXITY_HINT}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

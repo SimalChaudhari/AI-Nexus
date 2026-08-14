@@ -25,7 +25,7 @@ import { Form, Field } from 'src/components/hook-form';
 import { resolveSalesforceNexusProfile } from 'src/components/user-salesforce-profile-fields';
 import { createUser, updateUser } from 'src/store/slices/userSlice';
 import { userService } from 'src/services/user.service';
-import { NewUserSchema, AdminProfileSchema, SiteProfileSchema } from 'src/validations/user.validation';
+import { NewUserSchema, AdminProfileSchema, SiteProfileSchema, PASSWORD_COMPLEXITY_HINT } from 'src/validations/user.validation';
 import { fData } from 'src/utils/format-number';
 import {
   INDIVIDUAL_SIGNUP_JOB_FUNCTION_OPTIONS,
@@ -642,6 +642,7 @@ export function UserNewEditForm({ currentUser, onCancel, onSuccess, isProfileEdi
                     type="password"
                     autoComplete="new-password"
                     placeholder="Leave blank to email temporary password"
+                    helperText={PASSWORD_COMPLEXITY_HINT}
                   />
                   <Field.Select name="status" label="Status" InputLabelProps={{ shrink: true }}>
                     {STATUS_OPTIONS.map((opt) => (

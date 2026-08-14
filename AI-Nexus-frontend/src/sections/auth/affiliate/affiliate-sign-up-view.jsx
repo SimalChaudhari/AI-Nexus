@@ -30,6 +30,7 @@ import {
   trackAffiliateClick,
   validateAffiliateCodes,
 } from 'src/services/affiliate.service';
+import { passwordSchema, PASSWORD_COMPLEXITY_HINT } from 'src/validations/user.validation';
 
 // ----------------------------------------------------------------------
 
@@ -47,7 +48,7 @@ const AffiliateSignUpSchema = zod.object({
     .string()
     .min(1, { message: 'Email is required' })
     .email({ message: 'Email must be a valid email address' }),
-  password: zod.string().min(8, { message: 'Password must be at least 8 characters' }),
+  password: passwordSchema,
   affiliateCode: zod.string().optional(),
   voucherCode: zod.string().optional(),
 });
@@ -417,6 +418,7 @@ export function AffiliateSignUpView() {
           name="password"
           label="Password"
           type={password.value ? 'text' : 'password'}
+          helperText={PASSWORD_COMPLEXITY_HINT}
           InputProps={{
             endAdornment: (
               <InputAdornment position="end">
