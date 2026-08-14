@@ -48,6 +48,7 @@ function mapApiOrderToView(apiOrder) {
     taxes: 0,
     shipping: 0,
     discount: 0,
+    currency: apiOrder.currency || 'SGD',
     history: {
       orderTime: apiOrder.createdAtMs || apiOrder.createdAtUtc || apiOrder.createdAt,
       paymentTime: apiOrder.createdAtMs || apiOrder.createdAtUtc || apiOrder.createdAt,
@@ -57,11 +58,12 @@ function mapApiOrderToView(apiOrder) {
       ? { ...apiOrder.customer, avatarUrl: apiOrder.customer.avatarUrl ?? null, ipAddress: null }
       : { name: '—', email: '—', avatarUrl: null, ipAddress: null },
     delivery: apiOrder.wooshpaySessionId
-      ? { shipBy: 'WooshPay', speedy: 'Card', trackingNumber: apiOrder.wooshpaySessionId }
+      ? { shipBy: 'WooshPay', speedy: apiOrder.paymentMethod || 'Online payment', trackingNumber: apiOrder.wooshpaySessionId }
       : null,
     payment: {
       cardType: 'card',
       cardNumber: apiOrder.paymentStatus ? `WooshPay (${apiOrder.paymentStatus})` : 'WooshPay',
+      methodLabel: apiOrder.paymentMethod || 'Online payment',
       audit: {
         orderId: apiOrder.id,
         clientReferenceId: apiOrder.clientReferenceId || '—',

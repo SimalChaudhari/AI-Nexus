@@ -36,8 +36,16 @@ import {
   normalizeIntlMembershipType,
   resolveIntlMembershipPricing,
 } from './intl-pricing';
-import { listIntlCountries } from './intl-currency';
+import { listIntlCountries, resolveCountryCode } from './intl-currency';
 import { IntlFxService } from './intl-fx.service';
+import {
+  countriesAssignedToPromo,
+  listCountryPricing,
+  listPromoCountriesWithAmounts,
+  promoAmountsFromCountryPricing,
+  sanitizeCountryPricing,
+  sanitizePromoAmountsByCountry,
+} from './intl-promo-countries';
 
 const INTL_DRAFT_JWT_TYP = 'intl_draft';
 
@@ -124,6 +132,10 @@ export class IntlPaymentService {
     return listIntlCountries();
   }
 
+  async getFxRatesFromSgd() {
+    return this.intlFxService.getRatesFromSgd();
+  }
+
   private toNumber(value: unknown, fallback: number): number {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -136,6 +148,12 @@ export class IntlPaymentService {
       row.voucherDiscountAmountSgd,
       INTL_MEMBERSHIP_VOUCHER_SGD,
     );
+    const promoAmountsByCountry = sanitizePromoAmountsByCountry(row.promoAmountsByCountry);
+    const countryPricing = sanitizeCountryPricing(row.countryPricing);
+    const syncedPromoAmounts = {
+      ...promoAmountsByCountry,
+      ...promoAmountsFromCountryPricing(countryPricing),
+    };
     const referralCode = String(row.referralCode || '').trim().toUpperCase() || null;
     const referralLinkPath =
       String(row.referralLinkPath || '').trim() || '/auth/sign-up?ref=';
@@ -152,6 +170,10 @@ export class IntlPaymentService {
       baseAmountSgd,
       studentAmountSgd,
       voucherDiscountAmountSgd,
+      promoAmountsByCountry: syncedPromoAmounts,
+      countryPricing,
+      countryPricingList: listCountryPricing(countryPricing, syncedPromoAmounts),
+      promoCountries: listPromoCountriesWithAmounts(syncedPromoAmounts),
       referralCode: referralCode || '',
       referralLinkPath,
       websiteBaseUrl,
@@ -179,9 +201,15 @@ export class IntlPaymentService {
       if (existing[0]) return existing[0];
     } catch (error: any) {
       const message = String(error?.message || error || '');
-      if (message.includes('studentAmountSgd') && message.includes('does not exist')) {
+      if (message.includes('does not exist')) {
         await this.settingsRepository.query(
           `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "studentAmountSgd" decimal(12,2) NOT NULL DEFAULT 150`,
+        );
+        await this.settingsRepository.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "promoAmountsByCountry" jsonb`,
+        );
+        await this.settingsRepository.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "countryPricing" jsonb`,
         );
         const existing = await this.settingsRepository.find({
           order: { createdAt: 'ASC' },
@@ -206,7 +234,16 @@ export class IntlPaymentService {
 
   async getMembershipSettings() {
     const row = await this.ensureSettingsRow();
-    return this.serializeSettings(row);
+    const data = this.serializeSettings(row);
+    let paidOrderCount = 0;
+    try {
+      paidOrderCount = await this.paymentRepository.count({
+        where: { status: InternationalPaymentStatus.Paid },
+      });
+    } catch {
+      paidOrderCount = 0;
+    }
+    return { ...data, paidOrderCount };
   }
 
   async updateMembershipSettings(payload: UpdateIntlMembershipSettingsDto) {
@@ -237,6 +274,21 @@ export class IntlPaymentService {
       row.voucherDiscountAmountSgd = Number(next.toFixed(2));
     }
 
+    if (source.promoAmountsByCountry !== undefined) {
+      row.promoAmountsByCountry = sanitizePromoAmountsByCountry(source.promoAmountsByCountry);
+    }
+
+    if (source.countryPricing !== undefined) {
+      const countryPricing = sanitizeCountryPricing(source.countryPricing);
+      row.countryPricing = JSON.parse(JSON.stringify(countryPricing));
+      row.promoAmountsByCountry = JSON.parse(
+        JSON.stringify({
+          ...sanitizePromoAmountsByCountry(row.promoAmountsByCountry),
+          ...promoAmountsFromCountryPricing(countryPricing),
+        }),
+      );
+    }
+
     if (source.referralCode !== undefined) {
       const code = String(source.referralCode || '').trim().toUpperCase();
       row.referralCode = /^[A-Z0-9_-]{2,64}$/.test(code) ? code : null;
@@ -247,8 +299,20 @@ export class IntlPaymentService {
       row.referralLinkPath = pathRaw.startsWith('/') ? pathRaw : `/${pathRaw}`;
     }
 
-    const saved = await this.settingsRepository.save(row);
-    return this.serializeSettings(saved);
+    await this.settingsRepository.update(
+      { id: row.id },
+      {
+        baseAmountSgd: row.baseAmountSgd,
+        studentAmountSgd: row.studentAmountSgd,
+        voucherDiscountAmountSgd: row.voucherDiscountAmountSgd,
+        promoAmountsByCountry: row.promoAmountsByCountry,
+        countryPricing: row.countryPricing,
+        referralCode: row.referralCode,
+        referralLinkPath: row.referralLinkPath,
+      },
+    );
+    const saved = await this.settingsRepository.findOne({ where: { id: row.id } });
+    return this.serializeSettings(saved || row);
   }
 
   private async getPricingAmounts() {
@@ -257,6 +321,8 @@ export class IntlPaymentService {
       baseAmountSgd: settings.baseAmountSgd,
       studentAmountSgd: settings.studentAmountSgd,
       voucherDiscountAmountSgd: settings.voucherDiscountAmountSgd,
+      promoAmountsByCountry: settings.promoAmountsByCountry,
+      countryPricing: settings.countryPricing,
     };
   }
 
@@ -264,6 +330,7 @@ export class IntlPaymentService {
     countryOfResidence: string,
     promoApplied = false,
     membershipType: string = 'full',
+    promoCode?: string | null,
   ) {
     const amounts = await this.getPricingAmounts();
     const plan = normalizeIntlMembershipType(membershipType);
@@ -274,6 +341,9 @@ export class IntlPaymentService {
       baseAmountSgd: amounts.baseAmountSgd,
       studentAmountSgd: amounts.studentAmountSgd,
       voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
+      promoAmountsByCountry: amounts.promoAmountsByCountry,
+      countryPricing: amounts.countryPricing,
+      promoCode,
     });
     return {
       countryCode: pricing.countryCode,
@@ -286,6 +356,7 @@ export class IntlPaymentService {
       promoApplied: pricing.promoApplied,
       totalAmount: pricing.totalAmount,
       voucherDiscountAmount: pricing.voucherDiscountAmount,
+      promoFixed: pricing.promoFixed,
     };
   }
 
@@ -356,6 +427,20 @@ export class IntlPaymentService {
       order: { createdAt: 'DESC' },
       take: limit,
     });
+
+    const latestPaid = refreshed.find((row) => row.status === InternationalPaymentStatus.Paid);
+    if (latestPaid && !String(latestPaid.paymentMethod || '').trim()) {
+      const sessionId = sanitizeWooshpaySessionId(latestPaid.wooshpaySessionId);
+      if (sessionId) {
+        try {
+          const session = await this.wooshPayService.getSession(sessionId);
+          await this.resolvePaymentMethodLabel(latestPaid, session);
+          await this.paymentRepository.save(latestPaid);
+        } catch {
+          // Keep history even if WooshPay method lookup fails.
+        }
+      }
+    }
 
     const payments = refreshed.map((payment) => this.toPublicPayment(payment));
     const latest =
@@ -474,12 +559,27 @@ export class IntlPaymentService {
     return isGatewayPaid(session?.payment_status, session?.status, piStatus);
   }
 
+  private async resolvePaymentMethodLabel(
+    payment: InternationalPaymentEntity,
+    session?: Parameters<WooshPayService['resolveCheckoutPaymentMethodLabel']>[0],
+  ): Promise<string> {
+    const existing = String(payment.paymentMethod || '').trim();
+    if (existing) return existing;
+    const label = await this.wooshPayService.resolveCheckoutPaymentMethodLabel(session);
+    const next = String(label || '').trim() || 'Online payment';
+    payment.paymentMethod = next;
+    return next;
+  }
+
   /** Mark payment Paid and activate international user (idempotent). */
   private async applyPaidAndActivate(
     payment: InternationalPaymentEntity,
     session: {
       id?: string;
       payment_intent?: string | { id?: string };
+      payment_method?: string | Record<string, unknown>;
+      payment_method_types?: string[];
+      payment_method_details?: Record<string, unknown>;
     },
   ): Promise<InternationalUserEntity> {
     if (payment.status !== InternationalPaymentStatus.Paid) {
@@ -489,9 +589,13 @@ export class IntlPaymentService {
       payment.wooshpayPaymentIntentId =
         paymentIntentIdFromSession(session) || payment.wooshpayPaymentIntentId;
       payment.paidAt = payment.paidAt || new Date();
+      await this.resolvePaymentMethodLabel(payment, session);
       if (payment.failureReason !== 'duplicate_membership_payment_needs_refund') {
         payment.failureReason = null;
       }
+      await this.paymentRepository.save(payment);
+    } else if (!String(payment.paymentMethod || '').trim()) {
+      await this.resolvePaymentMethodLabel(payment, session);
       await this.paymentRepository.save(payment);
     }
 
@@ -568,6 +672,7 @@ export class IntlPaymentService {
       membershipType: membershipType || null,
       wooshpaySessionId: payment.wooshpaySessionId || null,
       wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
+      paymentMethod: payment.paymentMethod || null,
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
       eventType: payment.eventType,
@@ -590,26 +695,36 @@ export class IntlPaymentService {
       code,
       site: 'international',
     });
-    const discountApplied = Boolean(affiliatePricing?.discountApplied || affiliatePricing?.valid);
+    let discountApplied = Boolean(affiliatePricing?.discountApplied || affiliatePricing?.valid);
+    const appliedCode = discountApplied
+      ? String(affiliatePricing?.appliedCode || code).trim().toUpperCase()
+      : null;
+    const amounts = await this.getPricingAmounts();
+    const assignedCountries = countriesAssignedToPromo(amounts.countryPricing, appliedCode);
+    const selectedCountry = resolveCountryCode(countryOfResidence);
+    if (discountApplied && assignedCountries.length && selectedCountry && !assignedCountries.includes(selectedCountry)) {
+      discountApplied = false;
+    }
     const membershipType = normalizeIntlMembershipType(dto?.membershipType);
     const pricing = await this.getPricing(
       countryOfResidence || 'Singapore',
       discountApplied,
       membershipType,
+      discountApplied ? appliedCode : null,
     );
 
     const message = discountApplied
       ? 'Promo code applied. Discounted international rate applied below.'
-      : affiliatePricing?.affiliateMessage ||
-        affiliatePricing?.voucherMessage ||
-        'This code is invalid or expired. The standard fee applies.';
+      : assignedCountries.length && selectedCountry && !assignedCountries.includes(selectedCountry)
+        ? 'This code is not valid for the selected country.'
+        : affiliatePricing?.affiliateMessage ||
+          affiliatePricing?.voucherMessage ||
+          'This code is invalid or expired. The standard fee applies.';
 
     return {
       valid: discountApplied,
       discountApplied,
-      appliedCode: discountApplied
-        ? String(affiliatePricing?.appliedCode || code).trim().toUpperCase()
-        : null,
+      appliedCode: discountApplied ? appliedCode : null,
       codeType: affiliatePricing?.codeType || null,
       affiliateCode: affiliatePricing?.affiliateCode || null,
       voucherCode: affiliatePricing?.voucherCode || null,
@@ -624,10 +739,55 @@ export class IntlPaymentService {
       payableAmount: pricing.totalAmount,
       baseAmountSgd: pricing.baseAmountSgd,
       voucherDiscountAmount: pricing.voucherDiscountAmount,
+      promoFixed: pricing.promoFixed,
       exchangeRate: pricing.exchangeRate,
       countryCode: pricing.countryCode,
       countryOfResidence: pricing.countryOfResidence || countryOfResidence,
     };
+  }
+
+  private async resolveIntlCheckoutQuote(
+    user: InternationalUserEntity,
+    dto: IntlCreateCheckoutDto,
+  ) {
+    const promoCodeRaw = String(dto.promoCode || user.promoCode || '').trim().toUpperCase() || null;
+    let promoCode: string | null = null;
+    let promoApplied = false;
+    const amounts = await this.getPricingAmounts();
+    const membershipType = normalizeIntlMembershipType(
+      dto.membershipType || user.membershipType,
+    );
+
+    if (promoCodeRaw) {
+      const validated = await this.affiliateService.calculatePricing({
+        code: promoCodeRaw,
+        site: 'international',
+      });
+      const voucherOk = Boolean(validated?.discountApplied || validated?.valid);
+      if (voucherOk) {
+        const applied = String(validated?.appliedCode || promoCodeRaw).trim().toUpperCase();
+        const assigned = countriesAssignedToPromo(amounts.countryPricing, applied);
+        const countryCode = resolveCountryCode(user.countryOfResidence || '');
+        if (!assigned.length || (countryCode && assigned.includes(countryCode))) {
+          promoApplied = true;
+          promoCode = applied;
+        }
+      }
+    }
+
+    const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
+      countryOfResidence: user.countryOfResidence || '',
+      promoApplied,
+      membershipType,
+      baseAmountSgd: amounts.baseAmountSgd,
+      studentAmountSgd: amounts.studentAmountSgd,
+      voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
+      promoAmountsByCountry: amounts.promoAmountsByCountry,
+      countryPricing: amounts.countryPricing,
+      promoCode,
+    });
+
+    return { pricing, promoCode, promoApplied, membershipType };
   }
 
   async createCheckout(dto: IntlCreateCheckoutDto) {
@@ -660,6 +820,11 @@ export class IntlPaymentService {
       throw new ConflictException(
         'Membership payment was already completed for this signup. Please sign in.',
       );
+    }
+
+    const quote = await this.resolveIntlCheckoutQuote(user, dto);
+    if (!quote.pricing.countryCode) {
+      throw new BadRequestException('A valid country of residence is required for payment.');
     }
 
     // Reuse or close an open pending checkout so a second WooshPay session cannot be created.
@@ -699,23 +864,28 @@ export class IntlPaymentService {
             && Boolean(existingSession?.url);
 
           if (sessionOpen && existingSession?.url) {
-            const requestedPlan = normalizeIntlMembershipType(
-              dto.membershipType || user.membershipType,
-            );
             const pendingPlan = membershipTypeFromPayment(pendingPayment);
-            // Unknown/mismatched plan → fresh checkout. Methods come from WooshPay merchant defaults.
-            if ((pendingPlan && pendingPlan !== requestedPlan) || !pendingPlan) {
+            const sameQuote =
+              pendingPlan === quote.membershipType
+              && String(pendingPayment.currency || '').toUpperCase() ===
+                String(quote.pricing.currency || '').toUpperCase()
+              && String(pendingPayment.countryCode || '').toUpperCase() ===
+                String(quote.pricing.countryCode || '').toUpperCase()
+              && Boolean(pendingPayment.promoApplied) === quote.promoApplied
+              && Math.abs(Number(pendingPayment.amount) - Number(quote.pricing.totalAmount)) < 0.009;
+
+            if (!sameQuote) {
               try {
                 await this.wooshPayService.expireCheckoutSession(pendingSessionId);
               } catch {
                 // continue
               }
               pendingPayment.status = InternationalPaymentStatus.Canceled;
-              pendingPayment.failureReason = 'replaced_by_new_intl_checkout_plan_change';
+              pendingPayment.failureReason = 'replaced_by_new_intl_checkout_quote_change';
               await this.paymentRepository.save(pendingPayment);
             } else {
               user.membershipType =
-                requestedPlan === 'student'
+                quote.membershipType === 'student'
                   ? InternationalMembershipType.Student
                   : InternationalMembershipType.Full;
               await this.userRepository.save(user);
@@ -762,38 +932,7 @@ export class IntlPaymentService {
     intlCheckoutInFlight.add(user.id);
 
     try {
-      const promoCodeRaw = String(dto.promoCode || user.promoCode || '').trim().toUpperCase() || null;
-      let promoCode: string | null = null;
-      let promoApplied = false;
-
-      if (promoCodeRaw) {
-        const validated = await this.affiliateService.calculatePricing({
-          code: promoCodeRaw,
-          site: 'international',
-        });
-        promoApplied = Boolean(validated?.discountApplied || validated?.valid);
-        promoCode = promoApplied
-          ? String(validated?.appliedCode || promoCodeRaw).trim().toUpperCase()
-          : null;
-      }
-
-      const amounts = await this.getPricingAmounts();
-      const membershipType = normalizeIntlMembershipType(
-        dto.membershipType || user.membershipType,
-      );
-
-      const pricing = await resolveIntlMembershipPricing(this.intlFxService, {
-        countryOfResidence: user.countryOfResidence || '',
-        promoApplied,
-        membershipType,
-        baseAmountSgd: amounts.baseAmountSgd,
-        studentAmountSgd: amounts.studentAmountSgd,
-        voucherDiscountAmountSgd: amounts.voucherDiscountAmountSgd,
-      });
-
-      if (!pricing.countryCode) {
-        throw new BadRequestException('A valid country of residence is required for payment.');
-      }
+      const { pricing, promoCode, promoApplied, membershipType } = quote;
 
       user.countryCode = pricing.countryCode;
       user.currency = pricing.currency;
@@ -951,6 +1090,7 @@ export class IntlPaymentService {
         paymentIntentIdFromSession(session) || payment.wooshpayPaymentIntentId;
       payment.paidAt = new Date();
       payment.failureReason = 'duplicate_membership_payment_needs_refund';
+      await this.resolvePaymentMethodLabel(payment, session);
       await this.paymentRepository.save(payment);
       throw new ConflictException(
         'A membership payment was already completed for this account. If you were charged twice, contact support for a refund.',
@@ -995,6 +1135,7 @@ export class IntlPaymentService {
         countryCode: payment.countryCode,
         wooshpaySessionId: payment.wooshpaySessionId || null,
         wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
+        paymentMethod: payment.paymentMethod || 'Online payment',
       },
     };
   }

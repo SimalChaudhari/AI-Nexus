@@ -365,6 +365,7 @@ export function AdminPaymentHistoryDetailsView({ id }) {
         <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
           <SectionCard title="Payment provider" icon="solar:card-bold-duotone">
             <Stack divider={<Divider flexItem sx={{ borderStyle: 'dashed' }} />}>
+              <InfoRow label="Payment method" value={row.paymentMethod || 'Online payment'} />
               <InfoRow label="Payment ref" value={row.paymentRef} mono />
               <InfoRow label="WooshPay session" value={row.wooshpaySessionId} mono />
               <InfoRow label="Payment intent" value={row.wooshpayPaymentIntentId} mono />

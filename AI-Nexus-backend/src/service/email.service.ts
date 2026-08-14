@@ -3,7 +3,9 @@ import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { Injectable } from '@nestjs/common';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 import {
+    buildAnnouncementBodyHtml,
     buildBrandTemplate,
+    escapeHtml,
     buildCorporateNudgeBodyHtml,
     buildCorporateNudgeProgressSentence,
     buildCorporateRegistrationWelcomeBodyHtml,
@@ -43,10 +45,20 @@ export class EmailService {
         const pass = process.env.SMTP_PASS || '';
         const rejectUnauthorized = String(process.env.SMTP_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
 
-        const transportOptions: SMTPTransport.Options = {
+        const transportOptions: SMTPTransport.Options & {
+            pool?: boolean;
+            maxConnections?: number;
+            maxMessages?: number;
+        } = {
             host,
             port,
             secure,
+            pool: true,
+            maxConnections: 3,
+            maxMessages: 50,
+            connectionTimeout: 15_000,
+            greetingTimeout: 15_000,
+            socketTimeout: 30_000,
             tls: {
                 rejectUnauthorized,
             },
@@ -454,6 +466,128 @@ export class EmailService {
             console.error('Error sending temporary password email:', error);
             throw new Error('Failed to send temporary password email');
         }
+    }
+
+    async sendAnnouncementEmail(params: {
+        toEmail: string;
+        name: string;
+        title: string;
+        description?: string;
+    }): Promise<void> {
+        const toEmail = String(params.toEmail || '').trim();
+        if (!toEmail) return;
+
+        const name = String(params.name || '').trim() || 'there';
+        const title = String(params.title || 'New announcement').trim() || 'New announcement';
+        const announcementUrl = `${this.resolveFrontendBaseUrl()}/announcements`;
+        const plainBody = String(params.description || '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const preview =
+            plainBody.length > 400 ? `${plainBody.slice(0, 397)}...` : plainBody || 'A new announcement was posted.';
+        const html = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'New Announcement',
+            greetingName: name,
+            intro: 'A new announcement has been posted on AI Nexus.',
+            bodyHtml: buildAnnouncementBodyHtml(title, params.description || ''),
+            ctaLabel: 'View announcement',
+            ctaUrl: announcementUrl,
+            note: 'You are receiving this email because you have an AI Nexus account.',
+            footer: 'AI Nexus announcement',
+        });
+
+        const mailOptions = {
+            from: this.fromEmail,
+            to: toEmail,
+            subject: `New announcement: ${title}`,
+            text: `Hello ${name},\n\nA new announcement has been posted on AI Nexus.\n\n${title}\n${preview}\n\nOpen announcement: ${announcementUrl}\n`,
+            html,
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+        } catch (error) {
+            console.error('Error sending announcement email:', error);
+            throw new Error('Failed to send announcement email');
+        }
+    }
+
+    /**
+     * Slow background fan-out for large learner lists (thousands of users).
+     * Builds the HTML once, sends with low concurrency, and yields between messages
+     * so the API process stays responsive.
+     */
+    async sendAnnouncementEmailsBulk(
+        recipients: Array<{ toEmail: string; name: string }>,
+        announcement: { title: string; description?: string },
+    ): Promise<{ sent: number; failed: number }> {
+        const title = String(announcement.title || 'New announcement').trim() || 'New announcement';
+        const announcementUrl = `${this.resolveFrontendBaseUrl()}/announcements`;
+        const namePlaceholder = '{{recipientName}}';
+        const htmlTemplate = buildBrandTemplate(this.resolveFrontendBaseUrl(), {
+            heading: 'New Announcement',
+            greetingName: namePlaceholder,
+            intro: 'A new announcement has been posted on AI Nexus.',
+            bodyHtml: buildAnnouncementBodyHtml(title, announcement.description || ''),
+            ctaLabel: 'View announcement',
+            ctaUrl: announcementUrl,
+            note: 'You are receiving this email because you have an AI Nexus account.',
+            footer: 'AI Nexus announcement',
+        });
+        const plainBody = String(announcement.description || '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const preview =
+            plainBody.length > 400 ? `${plainBody.slice(0, 397)}...` : plainBody || 'A new announcement was posted.';
+        const textTemplate =
+            `Hello ${namePlaceholder},\n\nA new announcement has been posted on AI Nexus.\n\n${title}\n${preview}\n\nOpen announcement: ${announcementUrl}\n`;
+
+        const concurrency = 2;
+        const delayMs = 80;
+        let cursor = 0;
+        let sent = 0;
+        let failed = 0;
+
+        const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        const worker = async () => {
+            while (cursor < recipients.length) {
+                const index = cursor;
+                cursor += 1;
+                const recipient = recipients[index];
+                const toEmail = String(recipient?.toEmail || '').trim();
+                if (!toEmail) continue;
+
+                const name = String(recipient.name || '').trim() || 'there';
+                try {
+                    await this.transporter.sendMail({
+                        from: this.fromEmail,
+                        to: toEmail,
+                        subject: `New announcement: ${title}`,
+                        text: textTemplate.split(namePlaceholder).join(name),
+                        html: htmlTemplate.split(namePlaceholder).join(escapeHtml(name)),
+                    });
+                    sent += 1;
+                } catch (error) {
+                    failed += 1;
+                    console.error(
+                        `Error sending announcement email to ${toEmail}:`,
+                        error instanceof Error ? error.message : error,
+                    );
+                }
+
+                if ((index + 1) % 200 === 0) {
+                    console.log(`[Announcement] Email progress ${index + 1}/${recipients.length}`);
+                }
+
+                await delay(delayMs);
+            }
+        };
+
+        await Promise.all(Array.from({ length: Math.min(concurrency, recipients.length) }, () => worker()));
+        return { sent, failed };
     }
 
     async sendForumReplyNotificationEmail(params: {

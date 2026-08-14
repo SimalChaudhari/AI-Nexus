@@ -32,6 +32,6 @@ import { IntlMembershipSettingsEntity } from './intl-membership-settings.entity'
   ],
   controllers: [IntlPaymentController],
   providers: [IntlPaymentService, IntlPaymentInitService, IntlFxService],
-  exports: [IntlPaymentService],
+  exports: [IntlPaymentService, IntlFxService],
 })
 export class IntlPaymentModule {}

@@ -13,6 +13,7 @@ import { alpha } from '@mui/material/styles';
 
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
+import { CountryPromoAmountsCard } from './country-promo-amounts-card';
 
 function AmountBreakdown({ title, rows, totalLabel, totalValue, currency }) {
   return (
@@ -134,6 +135,7 @@ export function MembershipPaymentSettingsCard({
       verifiedBaseAmount: values.verifiedBaseAmount,
       gstRatePercent: values.gstRatePercent,
       voucherDiscountAmount: values.voucherDiscountAmount,
+      promoAmountsByCountry: values.promoAmountsByCountry || {},
     });
   };
 
@@ -237,7 +239,7 @@ export function MembershipPaymentSettingsCard({
 
         <SectionCard
           title="Promo payable amount"
-          description="Charged on signup when any active voucher code is applied. Manage codes in the table below."
+          description="Default SGD amount when a country has no exact promo price. Country amounts below override this."
         >
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
@@ -298,6 +300,12 @@ export function MembershipPaymentSettingsCard({
             </Stack>
           </Stack>
         </SectionCard>
+
+        <CountryPromoAmountsCard
+          promoAmountsByCountry={values.promoAmountsByCountry}
+          promoCountries={values.promoCountries}
+          onChange={(next) => updateField('promoAmountsByCountry', next)}
+        />
 
         <Divider />
 

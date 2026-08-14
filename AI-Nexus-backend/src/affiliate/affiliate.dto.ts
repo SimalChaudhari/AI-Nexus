@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -36,6 +37,16 @@ export class ValidateAffiliateCodeDto {
   @IsString()
   @MaxLength(32)
   site?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  countryOfResidence?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  billingCountryCode?: string;
 }
 
 export class EnsureVoucherCodeDto {
@@ -141,6 +152,9 @@ export class AffiliateSignupCheckoutDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'Password must include uppercase, lowercase, a number, and a special character.',
+  })
   password!: string;
 
   /** Single code field: tried as affiliate code first, then voucher code. */

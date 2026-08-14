@@ -10,6 +10,11 @@ export const intlPaymentAdminService = {
     return unwrap(response);
   },
 
+  async getFxRates() {
+    const response = await axios.get('/intl-payments/fx-rates');
+    return unwrap(response);
+  },
+
   async updateMembershipSettings(payload) {
     const response = await axios.put('/intl-payments/membership-settings', payload || {});
     return unwrap(response);

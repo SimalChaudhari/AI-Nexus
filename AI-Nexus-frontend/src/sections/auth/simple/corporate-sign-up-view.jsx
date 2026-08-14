@@ -24,7 +24,7 @@ import { useBoolean } from 'src/hooks/use-boolean';
 import { AnimateLogo2 } from 'src/components/animate';
 import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
-import { CorporateSignUpSchema } from 'src/validations/user.validation';
+import { CorporateSignUpSchema, PASSWORD_COMPLEXITY_HINT } from 'src/validations/user.validation';
 import {
   detectCountryCodeFromIp,
   resolveCountryLabelFromCode,
@@ -446,9 +446,9 @@ export function CorporateSignUpView() {
         name="password"
         label="Password"
         required
-        placeholder="8+ characters"
+        placeholder="e.g. Welcome@1"
         type={password.value ? 'text' : 'password'}
-        helperText="Used for Salesforce / eServices sign-in after account creation."
+        helperText={PASSWORD_COMPLEXITY_HINT}
         InputLabelProps={{ shrink: true }}
         InputProps={{
           startAdornment: (

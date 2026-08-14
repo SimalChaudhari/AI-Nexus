@@ -37,23 +37,23 @@ export function OrderDetailsInfo({ customer, delivery, payment, shippingAddress 
 
   const renderDelivery = (
     <>
-      <CardHeader title="Delivery" />
+      <CardHeader title="Payment" />
       <Stack spacing={1.5} sx={{ p: 3, typography: 'body2' }}>
         <Stack direction="row" alignItems="center">
           <Box component="span" sx={{ color: 'text.secondary', width: 120, flexShrink: 0 }}>
-            Ship by
+            Processor
           </Box>
-          {delivery?.shipBy}
+          {delivery?.shipBy || 'WooshPay'}
         </Stack>
         <Stack direction="row" alignItems="center">
           <Box component="span" sx={{ color: 'text.secondary', width: 120, flexShrink: 0 }}>
-            Speedy
+            Method
           </Box>
-          {delivery?.speedy}
+          {payment?.methodLabel || delivery?.speedy || 'Online payment'}
         </Stack>
         <Stack direction="row" alignItems="center">
           <Box component="span" sx={{ color: 'text.secondary', width: 120, flexShrink: 0 }}>
-            Tracking No.
+            Session ID
           </Box>
           <Link underline="always" color="inherit">
             {delivery?.trackingNumber}

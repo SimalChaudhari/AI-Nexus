@@ -10,6 +10,14 @@ import { Iconify } from 'src/components/iconify';
 
 const STEPS = ['Cart', 'Details', 'Payment', 'Receipt'];
 
+function paymentMethodIcon(label) {
+  const value = String(label || '').toLowerCase();
+  if (value.includes('google')) return 'logos:google-pay';
+  if (value.includes('apple')) return 'logos:apple-pay';
+  if (value.includes('card')) return 'solar:card-bold';
+  return 'solar:wallet-money-bold';
+}
+
 function formatMoney(amount, currency = 'SGD') {
   const value = Number(amount);
   if (!Number.isFinite(value)) return `${currency} —`;
@@ -236,7 +244,7 @@ export function MembershipPaymentConfirmedView({
                         color: '#2563eb',
                       }}
                     >
-                      <Iconify icon="solar:card-bold" width={18} />
+                      <Iconify icon={paymentMethodIcon(paymentMethodLabel)} width={18} />
                     </Box>
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#111827' }}>

@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { OrderModule } from '../order/order.module';
 import { PaymentModule } from '../payment/payment.module';
+import { IntlPaymentModule } from '../intl-payment/intl-payment.module';
 import { UserEntity } from '../user/users.entity';
 import { AffiliateClickEntity } from './affiliate-click.entity';
 import { AffiliateCodeEntity } from './affiliate-code.entity';
@@ -27,6 +28,7 @@ import { VoucherCodeEntity } from './voucher-code.entity';
       signOptions: {},
     }),
     forwardRef(() => PaymentModule),
+    forwardRef(() => IntlPaymentModule),
     AppSettingsModule,
     OrderModule,
   ],

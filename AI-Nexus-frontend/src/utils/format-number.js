@@ -27,18 +27,21 @@ export function fNumber(inputValue, options) {
 }
 
 // ----------------------------------------------------------------------
-// SGD only: format as "123.00 SGD" (no dollar or other symbol)
+// Format as "123.00 SGD" (or the given currency code). No currency symbol.
 export function fCurrency(inputValue, options = {}) {
   const number = processInput(inputValue);
   if (number === null) return '';
 
+  const currency = String(options.currency || 'SGD').trim().toUpperCase() || 'SGD';
+  const { currency: _currencyCode, ...numberOptions } = options;
+
   const fm = new Intl.NumberFormat('en-SG', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-    ...options,
+    ...numberOptions,
   }).format(number);
 
-  return `${fm} SGD`;
+  return `${fm} ${currency}`;
 }
 
 // ----------------------------------------------------------------------

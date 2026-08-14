@@ -15,6 +15,13 @@ import { CourseEntity } from '../course/courses.entity';
 import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseEnrollmentEntity } from '../course/course-enrollment.entity';
 import { CategoryEntity } from '../category/categories.entity';
+import {
+  listCountryPricing,
+  listPromoCountriesWithAmounts,
+  promoAmountsFromCountryPricing,
+  sanitizeCountryPricing,
+  sanitizePromoAmountsByCountry,
+} from '../intl-payment/intl-promo-countries';
 
 type HomeHeroContentPayload = {
   badgeLogoUrl?: string;
@@ -1491,6 +1498,8 @@ export class AppSettingsService {
       verifiedBaseAmount,
       gstRatePercent,
       voucherDiscountAmount: 100,
+      promoAmountsByCountry: {},
+      countryPricing: {},
       referralCode: '',
       referralLinkPath: '/auth/sign-up?membershipOutcome=paid-signup&ref=',
       gstAmount,
@@ -1528,6 +1537,16 @@ export class AppSettingsService {
       source.voucherDiscountAmount ?? prev.voucherDiscountAmount,
       defaults.voucherDiscountAmount!
     );
+    const promoAmountsByCountry = sanitizePromoAmountsByCountry(
+      source.promoAmountsByCountry ?? prev.promoAmountsByCountry,
+    );
+    const countryPricing = sanitizeCountryPricing(
+      source.countryPricing ?? prev.countryPricing,
+    );
+    const syncedPromoAmounts = {
+      ...promoAmountsByCountry,
+      ...promoAmountsFromCountryPricing(countryPricing),
+    };
     const referralCodeRaw = this.cleanText(
       source.referralCode ?? prev.referralCode,
       64,
@@ -1562,6 +1581,8 @@ export class AppSettingsService {
       verifiedBaseAmount,
       gstRatePercent,
       voucherDiscountAmount,
+      promoAmountsByCountry: syncedPromoAmounts,
+      countryPricing,
       referralCode,
       referralLinkPath,
       gstAmount,
@@ -2592,6 +2613,8 @@ export class AppSettingsService {
     websiteBaseUrl: string;
     exampleReferralLink: string;
     fullReferralLink: string;
+    promoCountries: ReturnType<typeof listPromoCountriesWithAmounts>;
+    countryPricingList: ReturnType<typeof listCountryPricing>;
   }> {
     const settings = await this.getSettings();
     const payment = settings.membershipPaymentSettings
@@ -2611,6 +2634,11 @@ export class AppSettingsService {
 
     return {
       ...payment,
+      promoCountries: listPromoCountriesWithAmounts(payment.promoAmountsByCountry),
+      countryPricingList: listCountryPricing(
+        payment.countryPricing,
+        payment.promoAmountsByCountry,
+      ),
       websiteBaseUrl,
       exampleReferralLink,
       fullReferralLink,
@@ -2627,11 +2655,16 @@ export class AppSettingsService {
     payload: MembershipPaymentSettingsPayload
   ): Promise<{ message: string; settings: AppSettingsEntity }> {
     const settings = await this.getSettings();
-    settings.membershipPaymentSettings = this.sanitizeMembershipPaymentSettings(
+    const next = this.sanitizeMembershipPaymentSettings(
       payload,
       settings.membershipPaymentSettings
     );
-    const saved = await this.appSettingsRepository.save(settings);
+    const persisted = JSON.parse(JSON.stringify(next)) as MembershipPaymentSettingsPayload;
+    await this.appSettingsRepository.update(
+      { id: settings.id },
+      { membershipPaymentSettings: persisted },
+    );
+    const saved = await this.getSettings();
     return {
       message: 'Membership payment settings updated successfully',
       settings: saved,

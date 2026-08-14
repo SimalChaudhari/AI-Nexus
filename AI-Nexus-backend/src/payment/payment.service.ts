@@ -19,6 +19,7 @@ export interface UpsertPaymentParams {
   items?: { id: string; name: string; price: number; quantity: number }[] | null;
   wooshpaySessionId?: string | null;
   wooshpayPaymentIntentId?: string | null;
+  paymentMethod?: string | null;
   eventType?: string | null;
   source?: PaymentSource | string;
   failureReason?: string | null;
@@ -156,6 +157,9 @@ export class PaymentService {
       if (params.wooshpayPaymentIntentId !== undefined) {
         existing.wooshpayPaymentIntentId = params.wooshpayPaymentIntentId;
       }
+      if (params.paymentMethod !== undefined) {
+        existing.paymentMethod = params.paymentMethod;
+      }
       if (params.eventType !== undefined) {
         existing.eventType = params.eventType;
       }
@@ -185,6 +189,7 @@ export class PaymentService {
       items,
       wooshpaySessionId: params.wooshpaySessionId ?? null,
       wooshpayPaymentIntentId: params.wooshpayPaymentIntentId ?? null,
+      paymentMethod: params.paymentMethod ?? null,
       eventType: params.eventType ?? null,
       source: params.source ?? null,
       failureReason: params.failureReason ?? null,
@@ -228,6 +233,7 @@ export class PaymentService {
     items?: { id: string; name: string; price: number; quantity: number }[] | null;
     wooshpaySessionId?: string | null;
     wooshpayPaymentIntentId?: string | null;
+    paymentMethod?: string | null;
     eventType?: string | null;
     source?: PaymentSource | string;
     /** Optional audit note (e.g. duplicate charge needing refund). */
@@ -425,6 +431,7 @@ export class PaymentService {
       username: user?.username || null,
       wooshpaySessionId: payment.wooshpaySessionId || null,
       wooshpayPaymentIntentId: payment.wooshpayPaymentIntentId || null,
+      paymentMethod: payment.paymentMethod || null,
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,

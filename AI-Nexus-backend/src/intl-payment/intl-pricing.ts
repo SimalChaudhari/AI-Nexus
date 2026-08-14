@@ -1,5 +1,11 @@
 import { resolveCountryCode, resolveCurrencyForCountry } from './intl-currency';
 import type { IntlFxService } from './intl-fx.service';
+import {
+  resolveCountryPricing,
+  resolveCountryPromoAmount,
+  type CountryPricingMap,
+  type PromoAmountsByCountry,
+} from './intl-promo-countries';
 
 /** Fallback membership fee in SGD when DB settings are missing. */
 export const INTL_MEMBERSHIP_BASE_SGD = 365;
@@ -20,6 +26,7 @@ export type IntlMembershipPricing = {
   totalAmount: number;
   totalAmountCents: number;
   voucherDiscountAmount: number;
+  promoFixed: boolean;
   itemName: string;
   itemDescription: string;
 };
@@ -27,6 +34,46 @@ export type IntlMembershipPricing = {
 export function normalizeIntlMembershipType(value: unknown): IntlMembershipPlan {
   const raw = String(value || '').trim().toLowerCase();
   return raw === 'student' ? 'student' : 'full';
+}
+
+/** Convert a default SGD amount into the selected country's currency when no admin country price exists. */
+export async function convertDefaultSgdToCountryCurrency(
+  fx: IntlFxService,
+  amountSgd: number,
+  countryOfResidence?: string | null,
+): Promise<{
+  amount: number;
+  amountCents: number;
+  currency: string;
+  rate: number;
+  converted: boolean;
+  countryCode: string;
+}> {
+  const safeSgd = Number(amountSgd);
+  const amount = Number.isFinite(safeSgd) && safeSgd > 0 ? Number(safeSgd.toFixed(2)) : 0;
+  const countryCode = resolveCountryCode(String(countryOfResidence || '').trim());
+  const localCurrency = countryCode ? resolveCurrencyForCountry(countryCode) : 'SGD';
+
+  if (!countryCode || localCurrency === 'SGD') {
+    return {
+      amount,
+      amountCents: Math.round(amount * 100),
+      currency: 'SGD',
+      rate: 1,
+      converted: false,
+      countryCode,
+    };
+  }
+
+  const converted = await fx.convertFromSgd(amount, localCurrency);
+  return {
+    amount: converted.amount,
+    amountCents: converted.amountCents,
+    currency: converted.currency,
+    rate: converted.rate,
+    converted: converted.currency !== 'SGD',
+    countryCode,
+  };
 }
 
 export async function resolveIntlMembershipPricing(
@@ -38,11 +85,14 @@ export async function resolveIntlMembershipPricing(
     baseAmountSgd?: number;
     studentAmountSgd?: number;
     voucherDiscountAmountSgd?: number;
+    promoAmountsByCountry?: PromoAmountsByCountry | null;
+    countryPricing?: CountryPricingMap | null;
+    promoCode?: string | null;
   },
 ): Promise<IntlMembershipPricing> {
   const countryOfResidence = String(options.countryOfResidence || '').trim();
   const countryCode = resolveCountryCode(countryOfResidence);
-  const currency = resolveCurrencyForCountry(countryOfResidence);
+  const localCurrency = resolveCurrencyForCountry(countryOfResidence);
   const promoApplied = Boolean(options.promoApplied);
   const membershipType = normalizeIntlMembershipType(options.membershipType);
 
@@ -59,27 +109,86 @@ export async function resolveIntlMembershipPricing(
     Number.isFinite(voucherSgdRaw) && voucherSgdRaw > 0
       ? voucherSgdRaw
       : INTL_MEMBERSHIP_VOUCHER_SGD;
-
   const planAmountSgd = membershipType === 'student' ? studentAmountSgd : fullAmountSgd;
 
-  const convertedBase = await fx.convertFromSgd(planAmountSgd, currency);
-  const convertedVoucher = await fx.convertFromSgd(voucherAmountSgd, currency);
+  const countryRow = resolveCountryPricing(options.countryPricing, countryOfResidence);
+  const countryPromo = resolveCountryPromoAmount(
+    options.promoAmountsByCountry,
+    countryOfResidence,
+  );
+  const appliedPromo = String(options.promoCode || '').trim().toUpperCase();
+  const rowPromo = String(countryRow?.promoCode || '').trim().toUpperCase();
+  const promoMatchesCountry =
+    !appliedPromo || !rowPromo || rowPromo === appliedPromo;
 
-  const total = promoApplied ? convertedVoucher : convertedBase;
+  const exactBase =
+    countryRow?.basePrice != null
+      ? {
+          amount: countryRow.basePrice,
+          amountCents: countryRow.baseAmountCents,
+          currency: countryRow.currency || localCurrency,
+          rate: 1,
+        }
+      : null;
+  const exactPromo =
+    promoMatchesCountry && countryRow?.discountPrice != null
+      ? {
+          amount: countryRow.discountPrice,
+          amountCents: countryRow.discountAmountCents,
+          currency: countryRow.currency || localCurrency,
+          rate: 1,
+        }
+      : promoMatchesCountry && countryPromo
+        ? {
+            amount: countryPromo.amount,
+            amountCents: countryPromo.amountCents,
+            currency: countryPromo.currency || localCurrency,
+            rate: 1,
+          }
+        : null;
+
+  let base = exactBase;
+  let promo = exactPromo;
+  let convertedRate = 1;
+
+  if (!base || !promo) {
+    if (!base) {
+      const convertedBase = await fx.convertFromSgd(planAmountSgd, localCurrency);
+      base = {
+        amount: convertedBase.amount,
+        amountCents: convertedBase.amountCents,
+        currency: convertedBase.currency,
+        rate: convertedBase.rate,
+      };
+      convertedRate = convertedBase.rate;
+    }
+    if (!promo) {
+      const convertedVoucher = await fx.convertFromSgd(voucherAmountSgd, localCurrency);
+      promo = {
+        amount: convertedVoucher.amount,
+        amountCents: convertedVoucher.amountCents,
+        currency: convertedVoucher.currency,
+        rate: convertedVoucher.rate,
+      };
+    }
+  }
+
+  const payable = promoApplied ? promo : base;
   const planLabel = membershipType === 'student' ? 'Student' : 'Full / Role';
 
   return {
     countryCode,
     countryOfResidence,
-    currency: total.currency,
+    currency: payable.currency,
     membershipType,
     baseAmountSgd: planAmountSgd,
-    baseAmount: convertedBase.amount,
-    exchangeRate: convertedBase.rate,
+    baseAmount: base.amount,
+    exchangeRate: exactBase ? 1 : convertedRate,
     promoApplied,
-    totalAmount: total.amount,
-    totalAmountCents: total.amountCents,
-    voucherDiscountAmount: convertedVoucher.amount,
+    totalAmount: payable.amount,
+    totalAmountCents: payable.amountCents,
+    voucherDiscountAmount: promo.amount,
+    promoFixed: promoApplied ? Boolean(exactPromo) : Boolean(exactBase),
     itemName: promoApplied
       ? `AI Nexus International membership — ${planLabel} (promo)`
       : `AI Nexus International membership — ${planLabel}`,

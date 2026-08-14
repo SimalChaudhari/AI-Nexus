@@ -44,7 +44,13 @@ export class IntlPaymentInitService implements OnModuleInit {
         await queryRunner.query(
           `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "studentAmountSgd" decimal(12,2) NOT NULL DEFAULT 150`,
         );
-        console.log('✅ Ensured intl_membership_settings.studentAmountSgd column');
+        await queryRunner.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "promoAmountsByCountry" jsonb`,
+        );
+        await queryRunner.query(
+          `ALTER TABLE "intl_membership_settings" ADD COLUMN IF NOT EXISTS "countryPricing" jsonb`,
+        );
+        console.log('✅ Ensured intl_membership_settings country pricing columns');
       }
 
       const rows = await queryRunner.query(
@@ -88,6 +94,7 @@ export class IntlPaymentInitService implements OnModuleInit {
             "items" jsonb,
             "wooshpaySessionId" varchar(255),
             "wooshpayPaymentIntentId" varchar(255),
+            "paymentMethod" varchar(80),
             "eventType" varchar(100),
             "failureReason" varchar(512),
             "paidAt" TIMESTAMP,
@@ -109,6 +116,10 @@ export class IntlPaymentInitService implements OnModuleInit {
           `CREATE INDEX IF NOT EXISTS "IDX_international_payments_session" ON "international_payments" ("wooshpaySessionId")`,
         );
         console.log('✅ international_payments created');
+      } else {
+        await queryRunner.query(
+          `ALTER TABLE "international_payments" ADD COLUMN IF NOT EXISTS "paymentMethod" varchar(80)`,
+        );
       }
     } finally {
       await queryRunner.release();

@@ -37,12 +37,14 @@ export async function getIntlMembershipPricing({
   countryOfResidence,
   promoApplied = false,
   membershipType = 'full',
+  promoCode,
 }) {
   const res = await axios.get('/intl-payments/pricing', {
     params: {
       countryOfResidence,
       promoApplied: promoApplied ? 'true' : 'false',
       membershipType: membershipType === 'student' ? 'student' : 'full',
+      ...(promoApplied && promoCode ? { promoCode } : {}),
     },
   });
   return res.data;

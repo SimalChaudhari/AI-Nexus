@@ -24,15 +24,13 @@ import { Iconify } from 'src/components/iconify';
 import { Form, Field } from 'src/components/hook-form';
 
 import { resetPassword } from 'src/auth/context/jwt';
+import { passwordSchema, PASSWORD_COMPLEXITY_HINT } from 'src/validations/user.validation';
 
 // ----------------------------------------------------------------------
 
 export const ResetPasswordSchema = zod
   .object({
-    password: zod
-      .string()
-      .min(1, { message: 'Password is required!' })
-      .min(6, { message: 'Password must be at least 6 characters!' }),
+    password: passwordSchema,
     confirmPassword: zod.string().min(1, { message: 'Confirm password is required!' }),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -114,7 +112,8 @@ export function SimpleResetPasswordView() {
       <Field.Text
         name="password"
         label="New password"
-        placeholder="6+ characters"
+        placeholder="e.g. Welcome@1"
+        helperText={PASSWORD_COMPLEXITY_HINT}
         type={password.value ? 'text' : 'password'}
         InputLabelProps={{ shrink: true }}
         InputProps={{

@@ -23,6 +23,15 @@ import { AffiliateService } from '../affiliate/affiliate.service';
 import { AffiliateSaleStatus } from '../affiliate/affiliate-sale.entity';
 import { PaginationService } from '../common/pagination/pagination.service';
 import { IntlPaymentService } from '../intl-payment/intl-payment.service';
+import { IntlFxService } from '../intl-payment/intl-fx.service';
+import {
+  resolveCountryPricing,
+  resolveCountryPromoAmount,
+  toPayableAmountCents,
+  fromPayableAmountCents,
+} from '../intl-payment/intl-promo-countries';
+import { resolveCountryCode, resolveCurrencyForCountry } from '../intl-payment/intl-currency';
+import { convertDefaultSgdToCountryCurrency } from '../intl-payment/intl-pricing';
 
 /** Signed proof that membership payment was verified server-side (amount must not come from the browser). */
 export const MEMBERSHIP_PAYMENT_PROOF_PURPOSE = 'membership-payment-proof';
@@ -50,6 +59,7 @@ export class PaymentController {
     private readonly paginationService: PaginationService,
     @Inject(forwardRef(() => IntlPaymentService))
     private readonly intlPaymentService: IntlPaymentService,
+    private readonly intlFxService: IntlFxService,
   ) {}
 
   @Get('membership-history')
@@ -89,6 +99,34 @@ export class PaymentController {
     return res.status(HttpStatus.OK).json({ data });
   }
 
+  @Get('membership-pricing')
+  @ApiOperation({
+    summary:
+      'Public: membership amount and currency for a selected country (exact country price, or default SGD converted)',
+  })
+  async getMembershipPricing(
+    @Query('countryOfResidence') countryOfResidence: string,
+    @Query('promoApplied') promoApplied: string,
+    @Query('source') source: string,
+    @Res() res: Response,
+  ) {
+    const country = String(countryOfResidence || '').trim();
+    if (!country) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message: 'countryOfResidence is required',
+      });
+    }
+    const countryCode = resolveCountryCode(country);
+    const promo = String(promoApplied || '').toLowerCase() === 'true' || promoApplied === '1';
+    const applyGst = countryCode === 'SG' || (!countryCode && country.toUpperCase() === 'SG');
+    const pricing = await this.resolveMembershipPricing(source, {
+      promo,
+      applyGst,
+      countryCode: country,
+    });
+    return res.status(HttpStatus.OK).json(pricing);
+  }
+
   private trimPaymentLogValue(value?: string | null, keep = 18): string {
     const trimmed = String(value || '').trim();
     if (!trimmed) return '(none)';
@@ -97,7 +135,7 @@ export class PaymentController {
 
   private async resolveMembershipPricing(
     source?: string,
-    options?: { promo?: boolean; applyGst?: boolean },
+    options?: { promo?: boolean; applyGst?: boolean; countryCode?: string },
   ) {
     const membershipSource =
       source === 'membership-verified-signup'
@@ -105,53 +143,132 @@ export class PaymentController {
         : 'membership-paid-signup';
     const isVerified = membershipSource === 'membership-verified-signup';
     const promo = Boolean(options?.promo);
-    // Default to GST on when unspecified (Singapore / unknown).
-    const applyGst = options?.applyGst !== false;
     const settings = await this.appSettingsService.getMembershipPaymentSettings();
-    const currency = String(settings?.currency || 'SGD').trim().toUpperCase() || 'SGD';
+    const defaultCurrency = String(settings?.currency || 'SGD').trim().toUpperCase() || 'SGD';
+    const countryCode = resolveCountryCode(String(options?.countryCode || '').trim());
+    const localCurrency = countryCode
+      ? resolveCurrencyForCountry(countryCode)
+      : defaultCurrency;
+    const countryRow = resolveCountryPricing(settings?.countryPricing, options?.countryCode);
+    const useSgdDefault = !countryCode || localCurrency === 'SGD';
+
+    const rawBaseSgd = isVerified
+      ? Number(settings?.verifiedBaseAmount) || 300
+      : Number(settings?.baseAmount) || 365.14;
+    const voucherSgd = Number(settings?.voucherDiscountAmount) || 100;
+
+    let baseAmount: number;
+    let gstAmount = 0;
+    let originalAmount: number;
+    let originalAmountCents: number;
+    let originalCurrency: string;
+    let applyGst = false;
+    let originalFixed = false;
+    let originalConverted = false;
+    let exchangeRate = 1;
+
+    if (countryRow?.basePrice != null) {
+      baseAmount = countryRow.basePrice;
+      originalAmount = countryRow.basePrice;
+      originalAmountCents = countryRow.baseAmountCents;
+      originalCurrency = countryRow.currency || localCurrency || defaultCurrency;
+      originalFixed = true;
+    } else if (useSgdDefault) {
+      applyGst = options?.applyGst !== false && (countryCode === 'SG' || !countryCode);
+      baseAmount = applyGst ? Number(rawBaseSgd.toFixed(2)) : Math.round(rawBaseSgd);
+      gstAmount = applyGst
+        ? isVerified
+          ? Number(settings?.verifiedGstAmount) || Number((baseAmount * 0.09).toFixed(2))
+          : Number(settings?.gstAmount) || Number((baseAmount * 0.09).toFixed(2))
+        : 0;
+      originalAmount = applyGst
+        ? isVerified
+          ? Number(settings?.verifiedTotalAmount) || Number((baseAmount + gstAmount).toFixed(2))
+          : Number(settings?.totalAmount) || Number((baseAmount + gstAmount).toFixed(2))
+        : baseAmount;
+      originalAmountCents = Math.round(originalAmount * 100);
+      originalCurrency = defaultCurrency;
+    } else {
+      const converted = await convertDefaultSgdToCountryCurrency(
+        this.intlFxService,
+        rawBaseSgd,
+        countryCode,
+      );
+      baseAmount = converted.amount;
+      originalAmount = converted.amount;
+      originalAmountCents = converted.amountCents;
+      originalCurrency = converted.currency;
+      originalConverted = converted.converted;
+      exchangeRate = converted.rate;
+    }
+
+    const countryPromo =
+      countryRow?.discountPrice != null
+        ? {
+            amount: countryRow.discountPrice,
+            amountCents: countryRow.discountAmountCents,
+            currency: countryRow.currency,
+          }
+        : resolveCountryPromoAmount(settings?.promoAmountsByCountry, options?.countryCode);
+
+    let promoAmount = countryPromo?.amount ?? voucherSgd;
+    let promoAmountCents =
+      countryPromo?.amountCents ??
+      toPayableAmountCents(promoAmount, countryPromo?.currency || defaultCurrency);
+    let promoCurrency = countryPromo?.currency || defaultCurrency;
+    const promoFixed = Boolean(countryPromo);
+    let promoConverted = false;
+
+    if (!countryPromo && !useSgdDefault) {
+      const convertedPromo = await convertDefaultSgdToCountryCurrency(
+        this.intlFxService,
+        voucherSgd,
+        countryCode,
+      );
+      promoAmount = convertedPromo.amount;
+      promoAmountCents = convertedPromo.amountCents;
+      promoCurrency = convertedPromo.currency;
+      promoConverted = convertedPromo.converted;
+      if (!originalConverted) exchangeRate = convertedPromo.rate;
+    }
 
     if (promo) {
-      const payableAmount = Number(settings?.voucherDiscountAmount) || 100;
       return {
         membershipSource,
-        baseAmount: payableAmount,
+        countryCode,
+        baseAmount,
+        originalAmount,
         gstAmount: 0,
-        totalAmount: payableAmount,
-        totalAmountCents: Math.round(payableAmount * 100),
-        currency,
+        totalAmount: promoAmount,
+        totalAmountCents: promoAmountCents,
+        currency: promoCurrency,
         discountApplied: true,
         applyGst: false,
+        promoFixed,
+        convertedFromDefault: promoConverted,
+        exchangeRate: promoFixed ? 1 : exchangeRate,
+        baseAmountSgd: voucherSgd,
         itemName: isVerified
           ? 'ISCA membership (verified rate, promo)'
           : 'ISCA membership (promo)',
       };
     }
 
-    const rawBaseAmount = isVerified
-      ? Number(settings?.verifiedBaseAmount) || 300
-      : Number(settings?.baseAmount) || 365.14;
-    // With GST: keep admin amount as-is. Without GST (international): round to whole SGD.
-    const baseAmount = applyGst ? Number(rawBaseAmount.toFixed(2)) : Math.round(rawBaseAmount);
-    const gstAmount = applyGst
-      ? isVerified
-        ? Number(settings?.verifiedGstAmount) || Number((baseAmount * 0.09).toFixed(2))
-        : Number(settings?.gstAmount) || Number((baseAmount * 0.09).toFixed(2))
-      : 0;
-    const totalAmount = applyGst
-      ? isVerified
-        ? Number(settings?.verifiedTotalAmount) || Number((baseAmount + gstAmount).toFixed(2))
-        : Number(settings?.totalAmount) || Number((baseAmount + gstAmount).toFixed(2))
-      : baseAmount;
-
     return {
       membershipSource,
+      countryCode,
       baseAmount,
+      originalAmount,
       gstAmount,
-      totalAmount,
-      totalAmountCents: Math.round(totalAmount * 100),
-      currency,
+      totalAmount: originalAmount,
+      totalAmountCents: originalAmountCents,
+      currency: originalCurrency,
       discountApplied: false,
       applyGst,
+      promoFixed: originalFixed,
+      convertedFromDefault: originalConverted,
+      exchangeRate: originalFixed ? 1 : exchangeRate,
+      baseAmountSgd: rawBaseSgd,
       itemName: isVerified
         ? applyGst
           ? 'ISCA membership (verified rate)'
@@ -167,14 +284,68 @@ export class PaymentController {
     isPromo: boolean;
     applyGst: boolean;
     saleId: string | null;
+    countryCode: string | null;
   } {
     const saleEntry = courseIds.find((entry) => entry.startsWith('sale:'));
+    const countryEntry = courseIds.find((entry) => entry.startsWith('country:'));
     return {
       isPromo: courseIds.includes('promo'),
       // Checkout without GST is marked as `no-gst` (international / non-SG IP).
       applyGst: !courseIds.includes('no-gst'),
       saleId: saleEntry ? saleEntry.slice('sale:'.length) : null,
+      countryCode: countryEntry ? countryEntry.slice('country:'.length).toUpperCase() : null,
     };
+  }
+
+  private normalizeCurrencyCode(...values: Array<string | null | undefined>): string {
+    for (const value of values) {
+      const code = String(value || '').trim().toUpperCase();
+      if (code) return code;
+    }
+    return 'SGD';
+  }
+
+  private expectedMembershipCheckoutCurrency(countryKey?: string, bodyCurrency?: string): string {
+    const countryCode = resolveCountryCode(String(countryKey || '').trim());
+    if (countryCode) return String(resolveCurrencyForCountry(countryCode) || '').toUpperCase() || 'SGD';
+    return this.normalizeCurrencyCode(bodyCurrency);
+  }
+
+  private amountFromProviderCents(
+    amountTotal: number | undefined,
+    currency: string,
+    fallbackItems?: { id: string; name: string; price: number; quantity: number }[] | null,
+  ): number {
+    const cents = Number(amountTotal);
+    if (Number.isFinite(cents) && cents > 0) {
+      return fromPayableAmountCents(cents, currency);
+    }
+    if (fallbackItems?.length) {
+      return fallbackItems.reduce(
+        (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
+        0,
+      );
+    }
+    return 0;
+  }
+
+  private async membershipPricingCurrencyFromRef(ref: { courseIds: string[] }): Promise<string> {
+    const membershipPurpose = ref.courseIds[0] || '';
+    const { isPromo, applyGst, countryCode } = this.parseMembershipRefMarkers(ref.courseIds);
+    const pricing = await this.resolveMembershipPricing(membershipPurpose, {
+      promo: isPromo,
+      applyGst,
+      countryCode: countryCode || undefined,
+    });
+    return this.normalizeCurrencyCode(pricing.currency);
+  }
+
+  private extractPaymentIntentId(
+    paymentIntent?: string | Record<string, unknown>,
+  ): string | undefined {
+    if (typeof paymentIntent === 'string' && paymentIntent.trim()) return paymentIntent.trim();
+    const id = String((paymentIntent as { id?: string } | undefined)?.id || '').trim();
+    return id || undefined;
   }
 
   /** Best-effort: mark the linked affiliate/voucher sale as paid. Never blocks payment fulfillment. */
@@ -272,10 +443,11 @@ export class PaymentController {
     },
   ): Promise<string | null> {
     const membershipPurpose = ref.courseIds[0] || '';
-    const { isPromo, applyGst } = this.parseMembershipRefMarkers(ref.courseIds);
+    const { isPromo, applyGst, countryCode } = this.parseMembershipRefMarkers(ref.courseIds);
     const pricing = await this.resolveMembershipPricing(membershipPurpose, {
       promo: isPromo,
       applyGst,
+      countryCode: countryCode || undefined,
     });
     const sessionClientRef = String(session?.client_reference_id || '').trim();
 
@@ -292,15 +464,39 @@ export class PaymentController {
       return 'This payment confirmation does not match your latest payment attempt. Please start the payment again from the signup page.';
     }
 
-    const currency = String(session?.currency || 'SGD').trim().toUpperCase();
-    if (currency !== 'SGD') {
-      return 'Payment currency validation failed. Please contact support if you were charged.';
+    const sessionCurrency = String(session?.currency || '').trim().toUpperCase();
+    const pricingCurrency = this.normalizeCurrencyCode(pricing.currency);
+    const alreadyPaid = this.isPaymentMarkedAsPaid(session?.payment_status, session?.status);
+    if (sessionCurrency && sessionCurrency !== pricingCurrency) {
+      if (alreadyPaid) {
+        console.warn(
+          '[Payments] Membership currency mismatch after paid | expected=',
+          pricingCurrency,
+          'got=',
+          sessionCurrency,
+          'refId=',
+          this.trimPaymentLogValue(refId),
+        );
+      } else {
+        return 'Payment currency validation failed. Please contact support if you were charged.';
+      }
     }
 
     const totalAmountCents = Number(session?.amount_total);
     if (Number.isFinite(totalAmountCents) && totalAmountCents > 0) {
       if (Math.round(totalAmountCents) !== pricing.totalAmountCents) {
-        return `Payment amount validation failed. Expected SGD ${pricing.totalAmount.toFixed(2)} for ${pricing.itemName}. Please contact support if you were charged.`;
+        if (alreadyPaid) {
+          console.warn(
+            '[Payments] Membership amount mismatch after paid | expectedCents=',
+            pricing.totalAmountCents,
+            'gotCents=',
+            Math.round(totalAmountCents),
+            'refId=',
+            this.trimPaymentLogValue(refId),
+          );
+          return null;
+        }
+        return `Payment amount validation failed. Expected ${pricing.currency} ${pricing.totalAmount} for ${pricing.itemName}. Please contact support if you were charged.`;
       }
       return null;
     }
@@ -308,8 +504,23 @@ export class PaymentController {
     const subtotalAmountCents = Number(session?.amount_subtotal);
     if (Number.isFinite(subtotalAmountCents) && subtotalAmountCents > 0) {
       if (Math.round(subtotalAmountCents) !== pricing.totalAmountCents) {
-        return `Payment amount validation failed. Expected SGD ${pricing.totalAmount.toFixed(2)} for ${pricing.itemName}. Please contact support if you were charged.`;
+        if (alreadyPaid) {
+          console.warn(
+            '[Payments] Membership amount mismatch after paid | expectedCents=',
+            pricing.totalAmountCents,
+            'gotCents=',
+            Math.round(subtotalAmountCents),
+            'refId=',
+            this.trimPaymentLogValue(refId),
+          );
+          return null;
+        }
+        return `Payment amount validation failed. Expected ${pricing.currency} ${pricing.totalAmount} for ${pricing.itemName}. Please contact support if you were charged.`;
       }
+      return null;
+    }
+
+    if (alreadyPaid) {
       return null;
     }
 
@@ -320,12 +531,13 @@ export class PaymentController {
   private resolveChargedMembershipAmount(params: {
     session?: { amount_total?: number; amount_subtotal?: number; currency?: string };
     refItems?: { id: string; name: string; price: number; quantity: number }[] | null;
+    fallbackCurrency?: string;
   }): { paidAmount: number; paidAmountCents: number; currency: string } | null {
-    const currency = String(params.session?.currency || 'SGD').trim().toUpperCase() || 'SGD';
+    const currency = this.normalizeCurrencyCode(params.session?.currency, params.fallbackCurrency);
     const totalCents = Number(params.session?.amount_total);
     if (Number.isFinite(totalCents) && totalCents > 0) {
       return {
-        paidAmount: Number((totalCents / 100).toFixed(2)),
+        paidAmount: fromPayableAmountCents(totalCents, currency),
         paidAmountCents: Math.round(totalCents),
         currency,
       };
@@ -333,7 +545,7 @@ export class PaymentController {
     const subtotalCents = Number(params.session?.amount_subtotal);
     if (Number.isFinite(subtotalCents) && subtotalCents > 0) {
       return {
-        paidAmount: Number((subtotalCents / 100).toFixed(2)),
+        paidAmount: fromPayableAmountCents(subtotalCents, currency),
         paidAmountCents: Math.round(subtotalCents),
         currency,
       };
@@ -342,7 +554,7 @@ export class PaymentController {
     if (Number.isFinite(itemPrice) && itemPrice > 0) {
       return {
         paidAmount: Number(itemPrice.toFixed(2)),
-        paidAmountCents: Math.round(itemPrice * 100),
+        paidAmountCents: toPayableAmountCents(itemPrice, currency),
         currency,
       };
     }
@@ -439,6 +651,7 @@ export class PaymentController {
       const charged = this.resolveChargedMembershipAmount({
         session,
         refItems: ref.items,
+        fallbackCurrency: await this.membershipPricingCurrencyFromRef(ref),
       });
       if (!charged) {
         return res.status(HttpStatus.CONFLICT).json({
@@ -449,6 +662,7 @@ export class PaymentController {
       const paidDate = new Date().toISOString().slice(0, 10);
       const resolvedSessionId = String(session?.id || sessionLookupId).trim();
       const withGst = !ref.courseIds.includes('no-gst');
+      const paymentMethod = await this.wooshPayService.resolveCheckoutPaymentMethodLabel(session);
       const paymentProofToken = this.signMembershipPaymentProof({
         refId,
         sessionId: resolvedSessionId,
@@ -467,6 +681,8 @@ export class PaymentController {
         charged.paidAmount.toFixed(2),
         'currency=',
         charged.currency,
+        'paymentMethod=',
+        paymentMethod,
         'withGst=',
         withGst,
       );
@@ -478,6 +694,7 @@ export class PaymentController {
         paidAmount: charged.paidAmount,
         paidAmountCents: charged.paidAmountCents,
         currency: charged.currency,
+        paymentMethod,
         paidDate,
         withGst,
         paymentProofToken,
@@ -548,6 +765,7 @@ export class PaymentController {
         voucherCode: { type: 'string', nullable: true },
         /** ISO country code from client IP detect (e.g. SG). Non-SG skips GST. */
         billingCountryCode: { type: 'string', nullable: true },
+        countryOfResidence: { type: 'string', nullable: true },
         applyGst: { type: 'boolean', nullable: true },
       },
     },
@@ -565,6 +783,7 @@ export class PaymentController {
       affiliateCode?: string;
       voucherCode?: string;
       billingCountryCode?: string;
+      countryOfResidence?: string;
       applyGst?: boolean;
     },
     @Res() res: Response,
@@ -577,6 +796,12 @@ export class PaymentController {
     const affiliateCodeInput = String(body?.affiliateCode || '').trim();
     const voucherCodeInput = String(body?.voucherCode || '').trim();
     const billingCountryCode = String(body?.billingCountryCode || '').trim().toUpperCase();
+    const countryOfResidence = String(body?.countryOfResidence || '').trim();
+    const promoCountryKey = countryOfResidence || billingCountryCode;
+    const expectedCheckoutCurrency = this.expectedMembershipCheckoutCurrency(
+      promoCountryKey,
+      body?.currency,
+    );
 
     if (!draftUserId) {
       return res.status(HttpStatus.BAD_REQUEST).json({ message: 'draftUserId is required' });
@@ -594,13 +819,6 @@ export class PaymentController {
     const cancelUrlError = this.validateRedirectUrl(cancelUrl, 'cancelUrl');
     if (cancelUrlError) {
       return res.status(HttpStatus.BAD_REQUEST).json({ message: cancelUrlError });
-    }
-
-    const currency = (body?.currency || 'SGD').toUpperCase();
-    if (currency !== 'SGD') {
-      return res.status(HttpStatus.BAD_REQUEST).json({
-        message: 'Membership payments are only supported in SGD.',
-      });
     }
 
     let user: { id: string; email?: string | null; firstname?: string; lastname?: string };
@@ -723,21 +941,34 @@ export class PaymentController {
             && String(existingSession?.status || '').toLowerCase() !== 'complete';
 
           if (sessionOpen && existingSession?.url) {
+            const pendingCurrency = this.normalizeCurrencyCode(pendingMembership.currency);
+            if (pendingCurrency === expectedCheckoutCurrency) {
+              console.info(
+                '[Payments] Membership checkout REUSE | draftUserId=',
+                this.trimPaymentLogValue(user.id),
+                'refId=',
+                this.trimPaymentLogValue(pendingMembership.clientReferenceId),
+                'sessionId=',
+                this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
+                'currency=',
+                pendingCurrency,
+              );
+              return res.status(HttpStatus.OK).json({
+                url: existingSession.url,
+                sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
+                refId: pendingMembership.clientReferenceId,
+                draftUserId: user.id,
+                reused: true,
+              });
+            }
             console.info(
-              '[Payments] Membership checkout REUSE | draftUserId=',
-              this.trimPaymentLogValue(user.id),
+              '[Payments] Membership checkout SKIP REUSE | currency mismatch pending=',
+              pendingCurrency,
+              'expected=',
+              expectedCheckoutCurrency,
               'refId=',
               this.trimPaymentLogValue(pendingMembership.clientReferenceId),
-              'sessionId=',
-              this.trimPaymentLogValue(existingSession.id || pendingMembership.wooshpaySessionId),
             );
-            return res.status(HttpStatus.OK).json({
-              url: existingSession.url,
-              sessionId: existingSession.id || pendingMembership.wooshpaySessionId,
-              refId: pendingMembership.clientReferenceId,
-              draftUserId: user.id,
-              reused: true,
-            });
           }
 
           try {
@@ -808,6 +1039,8 @@ export class PaymentController {
           code: codeInput || undefined,
           affiliateCode: affiliateCodeInput || undefined,
           voucherCode: voucherCodeInput || undefined,
+          countryOfResidence,
+          billingCountryCode,
         });
         saleId = sale.id;
         promoApplied = salePricing.discountApplied;
@@ -821,16 +1054,18 @@ export class PaymentController {
       }
     }
 
-    // GST only for Singapore. Non-SG billingCountryCode (from client IP) skips GST.
-    const applyGst = billingCountryCode
-      ? billingCountryCode === 'SG'
+    // GST only for Singapore as the selected/detected country.
+    const selectedCountryCode = resolveCountryCode(promoCountryKey) || billingCountryCode;
+    const applyGst = selectedCountryCode
+      ? selectedCountryCode === 'SG'
       : body?.applyGst !== false;
 
     const pricing = await this.resolveMembershipPricing(body?.source, {
       promo: promoApplied,
       applyGst,
+      countryCode: promoCountryKey,
     });
-    const { membershipSource, totalAmount, totalAmountCents, itemName } = pricing;
+    const { membershipSource, totalAmount, totalAmountCents, itemName, currency } = pricing;
 
     console.info(
       '[Payments] Membership checkout START | draftUserId=',
@@ -856,6 +1091,9 @@ export class PaymentController {
       ...(promoApplied ? ['promo'] : []),
       ...(!applyGst && !promoApplied ? ['no-gst'] : []),
       ...(saleId ? [`sale:${saleId}`] : []),
+      ...(resolveCountryCode(promoCountryKey)
+        ? [`country:${resolveCountryCode(promoCountryKey)}`]
+        : []),
     ];
 
     const { id: refId } = await this.paymentReferenceService.create({
@@ -903,7 +1141,7 @@ export class PaymentController {
         line_items: [
           {
             price_data: {
-              currency,
+              currency: String(currency || 'SGD').toLowerCase(),
               unit_amount: totalAmountCents,
               product_data: {
                 name: itemName,
@@ -1402,13 +1640,16 @@ export class PaymentController {
         currency: session.currency,
         id: session.id,
         payment_intent: session.payment_intent,
+        payment_method_types: session.payment_method_types,
       });
 
       const finalizedUser = await this.userService.getById(ref.userId);
       const charged = this.resolveChargedMembershipAmount({
         session,
         refItems: ref.items,
+        fallbackCurrency: await this.membershipPricingCurrencyFromRef(ref),
       });
+      const paymentMethod = await this.wooshPayService.resolveCheckoutPaymentMethodLabel(session);
       console.info(
         '[Payments] Membership confirm SUCCESS | refId=',
         this.trimPaymentLogValue(refId),
@@ -1418,6 +1659,10 @@ export class PaymentController {
         this.trimPaymentLogValue(result?.orderId),
         'paidAmount=',
         charged?.paidAmount?.toFixed(2) ?? '(unknown)',
+        'currency=',
+        charged?.currency ?? '(unknown)',
+        'paymentMethod=',
+        paymentMethod,
         'alreadyProcessed=',
         result?.alreadyProcessed ?? false,
       );
@@ -1427,7 +1672,8 @@ export class PaymentController {
         email: finalizedUser.email,
         userId: finalizedUser.id,
         paidAmount: charged?.paidAmount ?? null,
-        currency: charged?.currency ?? 'SGD',
+        currency: charged?.currency ?? null,
+        paymentMethod,
         paidDate: new Date().toISOString().slice(0, 10),
       });
     } catch (err: any) {
@@ -1965,7 +2211,8 @@ export class PaymentController {
       amount_subtotal?: number;
       currency?: string;
       id?: string;
-      payment_intent?: string;
+      payment_intent?: string | Record<string, unknown>;
+      payment_method_types?: string[];
     },
     source: PaymentSource | string = PaymentSource.ConfirmPayment,
   ): Promise<{ orderId?: string; alreadyProcessed?: boolean }> {
@@ -2020,6 +2267,26 @@ export class PaymentController {
         throw new Error(validationMessage);
       }
 
+      const pendingPayment = await this.paymentService.findByClientReferenceId(clientRef);
+      const charged = this.resolveChargedMembershipAmount({
+        session: obj,
+        refItems: itemsSnapshot,
+        fallbackCurrency: this.normalizeCurrencyCode(
+          pendingPayment?.currency,
+          await this.membershipPricingCurrencyFromRef(ref),
+        ),
+      });
+      const currency = this.normalizeCurrencyCode(
+        charged?.currency,
+        obj?.currency,
+        pendingPayment?.currency,
+      );
+      const paymentIntentId = this.extractPaymentIntentId(obj?.payment_intent);
+      const paymentMethod = await this.wooshPayService.resolveCheckoutPaymentMethodLabel({
+        ...obj,
+        payment_intent: obj?.payment_intent,
+      });
+
       const alreadyProcessed = await this.orderService.existsByClientReferenceId(clientRef);
       if (alreadyProcessed) {
         const existingOrder = await this.orderService.findLatestByClientReferenceId(clientRef);
@@ -2032,7 +2299,8 @@ export class PaymentController {
           courseIds,
           items: itemsSnapshot,
           wooshpaySessionId: obj?.id ?? existingOrder?.wooshpaySessionId ?? null,
-          wooshpayPaymentIntentId: obj?.payment_intent ?? existingOrder?.wooshpayPaymentIntentId ?? null,
+          wooshpayPaymentIntentId: paymentIntentId ?? existingOrder?.wooshpayPaymentIntentId ?? null,
+          paymentMethod: paymentMethod || existingOrder?.paymentMethod || null,
           eventType: membershipPurpose,
           source,
         });
@@ -2044,23 +2312,22 @@ export class PaymentController {
       // Another completed membership order for this user = duplicate charge path.
       const existingMembershipOrder = await this.orderService.findCompletedMembershipOrderByUserId(userId);
       if (existingMembershipOrder) {
-        let amountInUnits = 0;
-        const amountTotal = obj?.amount_total ?? obj?.amount_subtotal ?? 0;
-        if (typeof amountTotal === 'number' && amountTotal > 0) {
-          amountInUnits = amountTotal / 100;
-        } else if (itemsSnapshot?.length) {
-          amountInUnits = itemsSnapshot.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
-        }
+        const amountInUnits =
+          charged?.paidAmount
+          || this.amountFromProviderCents(obj?.amount_total ?? obj?.amount_subtotal, currency, itemsSnapshot)
+          || Number(existingMembershipOrder.totalAmount)
+          || 0;
         await this.paymentService.recordPaid({
           userId,
           clientReferenceId: clientRef,
           orderId: existingMembershipOrder.id,
           amount: amountInUnits || Number(existingMembershipOrder.totalAmount) || undefined,
-          currency: (obj?.currency ?? existingMembershipOrder.currency ?? 'SGD').toUpperCase(),
+          currency: this.normalizeCurrencyCode(currency, existingMembershipOrder.currency),
           courseIds,
           items: itemsSnapshot,
           wooshpaySessionId: obj?.id ?? null,
-          wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+          wooshpayPaymentIntentId: paymentIntentId ?? null,
+          paymentMethod,
           eventType: membershipPurpose,
           source,
           failureReason: 'duplicate_membership_payment_needs_refund',
@@ -2081,23 +2348,21 @@ export class PaymentController {
       if (finalized.alreadyCompleted) {
         // Race: another fulfill claimed the draft first — do not create a second completed order.
         const primaryOrder = await this.orderService.findCompletedMembershipOrderByUserId(userId);
-        let amountInUnits = 0;
-        const amountTotal = obj?.amount_total ?? obj?.amount_subtotal ?? 0;
-        if (typeof amountTotal === 'number' && amountTotal > 0) {
-          amountInUnits = amountTotal / 100;
-        } else if (itemsSnapshot?.length) {
-          amountInUnits = itemsSnapshot.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
-        }
+        const amountInUnits =
+          charged?.paidAmount
+          || this.amountFromProviderCents(obj?.amount_total ?? obj?.amount_subtotal, currency, itemsSnapshot)
+          || (primaryOrder ? Number(primaryOrder.totalAmount) : 0);
         await this.paymentService.recordPaid({
           userId,
           clientReferenceId: clientRef,
           orderId: primaryOrder?.id ?? null,
           amount: amountInUnits || (primaryOrder ? Number(primaryOrder.totalAmount) : undefined),
-          currency: (obj?.currency ?? primaryOrder?.currency ?? 'SGD').toUpperCase(),
+          currency: this.normalizeCurrencyCode(currency, primaryOrder?.currency),
           courseIds,
           items: itemsSnapshot,
           wooshpaySessionId: obj?.id ?? null,
-          wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+          wooshpayPaymentIntentId: paymentIntentId ?? null,
+          paymentMethod,
           eventType: membershipPurpose,
           source,
           failureReason: 'duplicate_membership_payment_needs_refund',
@@ -2114,23 +2379,20 @@ export class PaymentController {
         return { alreadyProcessed: true, orderId: primaryOrder?.id };
       }
 
-      let amountInUnits = 0;
-      const amountTotal = obj?.amount_total ?? obj?.amount_subtotal ?? 0;
-      if (typeof amountTotal === 'number' && amountTotal > 0) {
-        amountInUnits = amountTotal / 100;
-      } else if (itemsSnapshot?.length) {
-        amountInUnits = itemsSnapshot.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
-      }
+      const amountInUnits =
+        charged?.paidAmount
+        || this.amountFromProviderCents(obj?.amount_total ?? obj?.amount_subtotal, currency, itemsSnapshot);
 
       const order = await this.orderService.create({
         userId,
         courseIds,
         items: itemsSnapshot ?? undefined,
         totalAmount: amountInUnits,
-        currency: (obj?.currency ?? 'SGD').toUpperCase(),
+        currency,
         paymentStatus: obj?.payment_status ?? 'paid',
         wooshpaySessionId: obj?.id ?? undefined,
-        wooshpayPaymentIntentId: obj?.payment_intent ?? undefined,
+        wooshpayPaymentIntentId: paymentIntentId,
+        paymentMethod,
         clientReferenceId: clientRef,
         eventType: membershipPurpose,
       });
@@ -2139,11 +2401,12 @@ export class PaymentController {
         clientReferenceId: clientRef,
         orderId: order.id,
         amount: amountInUnits,
-        currency: (obj?.currency ?? 'SGD').toUpperCase(),
+        currency,
         courseIds,
         items: itemsSnapshot,
         wooshpaySessionId: obj?.id ?? null,
-        wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+        wooshpayPaymentIntentId: paymentIntentId ?? null,
+        paymentMethod,
         eventType: membershipPurpose,
         source,
       });
@@ -2156,6 +2419,10 @@ export class PaymentController {
         this.trimPaymentLogValue(userId),
         'amount=',
         amountInUnits.toFixed(2),
+        'currency=',
+        currency,
+        'paymentMethod=',
+        paymentMethod,
       );
 
       if (finalized.user.email) {
@@ -2191,6 +2458,7 @@ export class PaymentController {
     }
 
     const alreadyProcessed = await this.orderService.existsByClientReferenceId(clientRef);
+    const paymentIntentId = this.extractPaymentIntentId(obj?.payment_intent);
     if (alreadyProcessed) {
       const existingOrder = await this.orderService.findLatestByClientReferenceId(clientRef);
       await this.paymentService.recordPaid({
@@ -2202,7 +2470,7 @@ export class PaymentController {
         courseIds,
         items: itemsSnapshot,
         wooshpaySessionId: obj?.id ?? existingOrder?.wooshpaySessionId ?? null,
-        wooshpayPaymentIntentId: obj?.payment_intent ?? existingOrder?.wooshpayPaymentIntentId ?? null,
+        wooshpayPaymentIntentId: paymentIntentId ?? existingOrder?.wooshpayPaymentIntentId ?? null,
         source,
       });
       console.log('[Payments] Fulfill SKIP | order already exists (idempotent), clientRef=', clientRef?.slice(0, 20));
@@ -2227,7 +2495,7 @@ export class PaymentController {
       currency: (obj?.currency ?? 'SGD').toUpperCase(),
       paymentStatus: obj?.payment_status ?? 'paid',
       wooshpaySessionId: obj?.id ?? undefined,
-      wooshpayPaymentIntentId: obj?.payment_intent ?? undefined,
+      wooshpayPaymentIntentId: paymentIntentId,
       clientReferenceId: clientRef,
       eventType: undefined,
     });
@@ -2240,7 +2508,7 @@ export class PaymentController {
       courseIds,
       items: itemsSnapshot,
       wooshpaySessionId: obj?.id ?? null,
-      wooshpayPaymentIntentId: obj?.payment_intent ?? null,
+      wooshpayPaymentIntentId: paymentIntentId ?? null,
       source,
     });
 

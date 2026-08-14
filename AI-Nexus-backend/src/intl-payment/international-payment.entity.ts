@@ -79,6 +79,10 @@ export class InternationalPaymentEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   wooshpayPaymentIntentId!: string | null;
 
+  /** Wallet/card actually used (Google Pay, Apple Pay, Card, …). */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  paymentMethod!: string | null;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   eventType!: string | null;
 

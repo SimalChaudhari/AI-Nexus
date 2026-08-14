@@ -29,7 +29,7 @@ export async function buildOrderReceiptPdf(
   const createdAt = order.createdAt ? formatInvoiceDate(order.createdAt) : 'N/A';
   const clientReferenceId = order.clientReferenceId || 'N/A';
   const wooshpaySessionId = order.wooshpaySessionId || 'N/A';
-  const paymentMethod = 'WooshPay Speedy Card';
+  const paymentMethod = order.paymentMethod || 'Online payment';
   const trackingNo = wooshpaySessionId || 'N/A';
   const customerName = order.user
     ? `${(order.user as any).firstname ?? ''} ${(order.user as any).lastname ?? ''}`.trim() || (order.user as any).email

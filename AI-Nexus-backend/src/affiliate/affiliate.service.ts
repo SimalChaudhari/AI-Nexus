@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
@@ -14,6 +16,9 @@ import { AffiliateClickEntity } from './affiliate-click.entity';
 import { AffiliateSaleEntity, AffiliateSaleStatus } from './affiliate-sale.entity';
 import { VoucherCodeEntity, VoucherCodeSite } from './voucher-code.entity';
 import { AffiliateSignupCheckoutDto, ValidateAffiliateCodeDto } from './affiliate.dto';
+import { resolveCountryPricing, resolveCountryPromoAmount } from '../intl-payment/intl-promo-countries';
+import { convertDefaultSgdToCountryCurrency } from '../intl-payment/intl-pricing';
+import { IntlFxService } from '../intl-payment/intl-fx.service';
 
 export type AffiliateCodeType = 'affiliate' | 'voucher' | null;
 
@@ -48,6 +53,8 @@ export class AffiliateService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly appSettingsService: AppSettingsService,
+    @Inject(forwardRef(() => IntlFxService))
+    private readonly intlFxService: IntlFxService,
   ) {}
 
   async getOriginalAmount(): Promise<number> {
@@ -364,11 +371,53 @@ export class AffiliateService {
     const voucherSite = this.normalizeVoucherSite(dto.site);
     const isInternational = voucherSite === 'international';
 
-    const [originalAmount, discountedAmount, currency] = await Promise.all([
+    const [originalAmount, settings] = await Promise.all([
       this.getOriginalAmount(),
-      this.getDiscountedAmount(),
-      this.getCurrency(),
+      this.appSettingsService.getMembershipPaymentSettings(),
     ]);
+    const fallbackDiscount = Number(settings?.voucherDiscountAmount);
+    const discountedFallback =
+      Number.isFinite(fallbackDiscount) && fallbackDiscount > 0 ? fallbackDiscount : 100;
+    const fallbackCurrency = String(settings?.currency || 'SGD').trim().toUpperCase() || 'SGD';
+    const countryKey = String(dto.countryOfResidence || dto.billingCountryCode || '').trim();
+    const countryRow = !isInternational
+      ? resolveCountryPricing(settings?.countryPricing, countryKey)
+      : null;
+    const countryPromo = !isInternational
+      ? countryRow?.discountPrice != null
+        ? {
+            amount: countryRow.discountPrice,
+            currency: countryRow.currency,
+          }
+        : resolveCountryPromoAmount(settings?.promoAmountsByCountry, countryKey)
+      : null;
+    const sgdOriginal = Number(settings?.baseAmount);
+    const originalSgd =
+      Number.isFinite(sgdOriginal) && sgdOriginal > 0 ? sgdOriginal : originalAmount;
+
+    let pricedOriginalAmount =
+      countryRow?.basePrice != null ? countryRow.basePrice : originalSgd;
+    let discountedAmount = countryPromo?.amount ?? discountedFallback;
+    let currency = countryPromo?.currency || countryRow?.currency || fallbackCurrency;
+
+    if (!isInternational && countryRow?.basePrice == null) {
+      const convertedOriginal = await convertDefaultSgdToCountryCurrency(
+        this.intlFxService,
+        originalSgd,
+        countryKey,
+      );
+      pricedOriginalAmount = convertedOriginal.amount;
+      currency = convertedOriginal.currency;
+    }
+    if (!isInternational && !countryPromo) {
+      const convertedPromo = await convertDefaultSgdToCountryCurrency(
+        this.intlFxService,
+        discountedFallback,
+        countryKey,
+      );
+      discountedAmount = convertedPromo.amount;
+      currency = convertedPromo.currency || currency;
+    }
 
     // Single `code` field: try affiliate first (payment only), then voucher for the site.
     const singleCode = this.normalizeCode(dto.code);
@@ -424,8 +473,8 @@ export class AffiliateService {
       voucherMessage: voucher.message,
       appliedCode,
       codeType,
-      originalAmount,
-      payableAmount: discountApplied ? discountedAmount : originalAmount,
+      originalAmount: pricedOriginalAmount,
+      payableAmount: discountApplied ? discountedAmount : pricedOriginalAmount,
       currency,
       itemName: discountApplied ? 'Affiliate signup (discounted)' : 'Affiliate signup',
     };
@@ -581,6 +630,8 @@ export class AffiliateService {
     code?: string;
     affiliateCode?: string;
     voucherCode?: string;
+    countryOfResidence?: string;
+    billingCountryCode?: string;
   }): Promise<{ sale: AffiliateSaleEntity; pricing: AffiliatePricingResult }> {
     const draftUserId = String(input.draftUserId || '').trim();
     if (!draftUserId) {
@@ -597,6 +648,8 @@ export class AffiliateService {
       affiliateCode: input.affiliateCode,
       voucherCode: input.voucherCode,
       site: 'payment',
+      countryOfResidence: input.countryOfResidence,
+      billingCountryCode: input.billingCountryCode,
     });
 
     let sale = await this.saleRepo.findOne({

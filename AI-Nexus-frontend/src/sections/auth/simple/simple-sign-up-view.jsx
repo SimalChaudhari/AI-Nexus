@@ -33,10 +33,11 @@ import {
   buildCompanyQrEnrollmentSignUpSchema,
   buildFreeIndividualSignUpSchema,
   buildPaidIndividualSignUpSchema,
+  PASSWORD_COMPLEXITY_HINT,
 } from 'src/validations/user.validation';
 
 import { getVerifiedSignupAccess, saveMembershipSignupDraft, signUp, createSalesforceNexusUser, signupSalesforceForNexus, setSalesforceNexusPassword, saveSalesforceMembershipRecord, verifyCompanyReference, validateNricIdentifier } from 'src/auth/context/jwt';
-import { abandonMembershipCheckout, confirmMembershipPayment, createMembershipCheckoutSession, verifyMembershipPayment } from 'src/services/payment.service';
+import { abandonMembershipCheckout, confirmMembershipPayment, createMembershipCheckoutSession, getMembershipPricing, verifyMembershipPayment } from 'src/services/payment.service';
 import { trackAffiliateClick, validateCode } from 'src/services/affiliate.service';
 import { appSettingsService } from 'src/services/app-settings.service';
 import { validateCompanyEnrollment } from 'src/services/company-enrollment.service';
@@ -60,6 +61,8 @@ import {
   mergeSignupEligibilityData,
   resolveIndividualSignupJobFunctionLabel,
 } from 'src/utils/individual-signup-form';
+import { countries } from 'src/assets/data';
+import { currencyForCountryCode } from 'src/utils/country-pricing-catalog';
 import {
   detectCountryCodeFromIp,
   detectCountryOfResidenceFromIp,
@@ -217,6 +220,27 @@ function buildEligibilityDataFromFlow(flow, membershipOutcome) {
   };
 }
 
+function formatPayableAmount(amount, currency) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '0';
+  const code = String(currency || 'SGD').trim().toUpperCase();
+  if (code !== 'SGD') return String(Math.round(n));
+  const cents = Number(n.toFixed(2));
+  return Number.isInteger(cents) ? String(Math.round(cents)) : cents.toFixed(2);
+}
+
+function resolveSignupCountryCode(residence, billingCode) {
+  const raw = String(residence || '').trim();
+  if (raw.length === 2) {
+    const byCode = countries.find((country) => country.code === raw.toUpperCase());
+    if (byCode) return byCode.code;
+  }
+  const label = raw.toLowerCase();
+  const byLabel = countries.find((country) => String(country.label || '').trim().toLowerCase() === label);
+  if (byLabel?.code) return byLabel.code;
+  return String(billingCode || '').trim().toUpperCase();
+}
+
 export function SimpleSignUpView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -251,12 +275,14 @@ export function SimpleSignUpView() {
   const [nricNumberError, setNricNumberError] = useState('');
   const [affiliatePricing, setAffiliatePricing] = useState(null);
   const [affiliateValidating, setAffiliateValidating] = useState(false);
+  const [liveMembershipPricing, setLiveMembershipPricing] = useState(null);
   const [membershipFeeConfig, setMembershipFeeConfig] = useState({
     currency: 'SGD',
     baseAmount: 365.14,
     verifiedBaseAmount: 300,
     gstRatePercent: 9,
     voucherDiscountAmount: 100,
+    countryPricingList: [],
   });
   /** ISO country from IP; GST applies only when SG (or detection pending/fallback). */
   const [billingCountryCode, setBillingCountryCode] = useState('SG');
@@ -324,61 +350,6 @@ export function SimpleSignUpView() {
     if (!normalized) return '(none)';
     return normalized.length > keep ? `${normalized.slice(0, keep)}...` : normalized;
   };
-  const rawMembershipBaseAmount = Number(
-    isVerifiedNricSignupFlow
-      ? membershipFeeConfig.verifiedBaseAmount
-      : membershipFeeConfig.baseAmount
-  ) || 0;
-  const applyGst = isSingaporeCountryCode(billingCountryCode);
-  // GST on (SG): keep admin amount exact. GST off (international): round to whole SGD.
-  const membershipBaseAmount = applyGst
-    ? Number(rawMembershipBaseAmount.toFixed(2))
-    : Math.round(rawMembershipBaseAmount);
-  const gstRate = applyGst ? (membershipFeeConfig.gstRatePercent || 0) / 100 : 0;
-  const standardGstAmount = Number((membershipBaseAmount * gstRate).toFixed(2));
-  const standardTotalAmount = Number((membershipBaseAmount + standardGstAmount).toFixed(2));
-  const affiliateDiscountApplied = affiliatePricing?.discountApplied === true;
-  const gstAmount = affiliateDiscountApplied ? 0 : standardGstAmount;
-  const totalAmount = affiliateDiscountApplied
-    ? Number(affiliatePricing?.payableAmount ?? membershipFeeConfig.voucherDiscountAmount)
-    : standardTotalAmount;
-  const currencyLabel = String(membershipFeeConfig.currency || 'SGD').toUpperCase();
-  const appliedPromoCodes = [
-    ...new Set(
-      [
-        affiliatePricing?.appliedCode,
-        affiliatePricing?.affiliateCode,
-        affiliatePricing?.voucherCode,
-      ]
-        .map((code) => String(code || '').trim().toUpperCase())
-        .filter(Boolean)
-    ),
-  ];
-  const verifiedPromoCodeLabel = appliedPromoCodes.join(', ') || '—';
-  const isVerifiedSignupSignInOnlyState =
-    isVerifiedNricSignupFlow
-    && !!verifiedSignupAccessError
-    && verifiedSignupAccessError.toLowerCase().includes('sign in');
-  const signInHref = returnTo
-    ? `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(returnTo)}`
-    : paths.auth.simple.signIn;
-  const buildPaymentCompleteSignInHref = () => paths.auth.oauth.start;
-  const membershipInfoText = affiliateDiscountApplied
-    ? `Promo code applied. Discounted rate: ${currencyLabel} ${totalAmount.toFixed(2)} (no separate GST).`
-    : !applyGst
-      ? `International rate (outside Singapore). Fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} with no GST.`
-      : isVerifiedNricSignupFlow
-        ? `Verified document membership rate applied. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`
-        : `Membership paid plan selected. Base fee is ${currencyLabel} ${membershipBaseAmount.toFixed(2)} (excluding GST).`;
-  const membershipSource = isVerifiedNricSignupFlow ? 'membership-verified-signup' : 'membership-paid-signup';
-  const membershipBadgeLabel = affiliateDiscountApplied
-    ? 'Promo applied'
-    : !applyGst
-      ? 'No GST'
-      : isVerifiedNricSignupFlow
-        ? 'Discount applied'
-        : 'GST included';
-  const isPaymentReturnProcessing = paymentConfirming;
   const membershipDraftRestoredRef = useRef(false);
   const normalizedPaymentRef =
     paymentRef || (typeof window !== 'undefined' ? sessionStorage.getItem(pendingMembershipRefKey) || '' : '');
@@ -460,10 +431,139 @@ export function SimpleSignUpView() {
   const citizenshipValue = watch('citizenship');
   const companyCodeValue = watch('companyCode');
   const promoCodeValue = watch('promoCode');
+  const countryOfResidenceValue = watch('countryOfResidence');
   const nricFinValue = watch('nricFin');
   const idTypeValue = watch('idType');
   const prevCompanyCodeRef = useRef(companyCodeValue);
   const suppressCompanyCodeClearRef = useRef(false);
+
+  const countryPricingList = Array.isArray(membershipFeeConfig.countryPricingList)
+    ? membershipFeeConfig.countryPricingList
+    : [];
+  const pricingCountryCode = resolveSignupCountryCode(countryOfResidenceValue, billingCountryCode);
+  const countryPriceRow = countryPricingList.find((row) => {
+    if (row?.active === false) return false;
+    return String(row.code || '').toUpperCase() === pricingCountryCode;
+  }) || null;
+  const countryBasePrice = Number(countryPriceRow?.basePrice);
+  const hasCountryBasePrice = Number.isFinite(countryBasePrice) && countryBasePrice > 0;
+  const rawMembershipBaseAmount = Number(
+    isVerifiedNricSignupFlow
+      ? membershipFeeConfig.verifiedBaseAmount
+      : membershipFeeConfig.baseAmount
+  ) || 0;
+  const livePricingReady = Boolean(
+    liveMembershipPricing?.currency
+    && Number.isFinite(Number(liveMembershipPricing?.totalAmount))
+  );
+  const applyGst = livePricingReady
+    ? Boolean(liveMembershipPricing.applyGst)
+    : hasCountryBasePrice
+      ? false
+      : pricingCountryCode === 'SG' || (!pricingCountryCode && isSingaporeCountryCode(billingCountryCode));
+  const membershipBaseAmount = livePricingReady
+    ? Number(liveMembershipPricing.baseAmount)
+    : hasCountryBasePrice
+      ? countryBasePrice
+      : applyGst
+        ? Number(rawMembershipBaseAmount.toFixed(2))
+        : Math.round(rawMembershipBaseAmount);
+  const gstRate = applyGst ? (membershipFeeConfig.gstRatePercent || 0) / 100 : 0;
+  const standardGstAmount = livePricingReady
+    ? Number(liveMembershipPricing.gstAmount || 0)
+    : Number((membershipBaseAmount * gstRate).toFixed(2));
+  const standardTotalAmount = livePricingReady
+    ? Number(
+        liveMembershipPricing.originalAmount
+        ?? (Number(liveMembershipPricing.baseAmount) + Number(liveMembershipPricing.gstAmount || 0))
+      )
+    : Number((membershipBaseAmount + standardGstAmount).toFixed(2));
+  const affiliateDiscountApplied = affiliatePricing?.discountApplied === true;
+  const gstAmount = affiliateDiscountApplied ? 0 : standardGstAmount;
+  const totalAmount = affiliateDiscountApplied
+    ? Number(
+        livePricingReady && liveMembershipPricing.discountApplied
+          ? liveMembershipPricing.totalAmount
+          : affiliatePricing?.payableAmount ?? countryPriceRow?.discountPrice ?? membershipFeeConfig.voucherDiscountAmount
+      )
+    : livePricingReady
+      ? Number(liveMembershipPricing.totalAmount)
+      : standardTotalAmount;
+  const countryCurrency = currencyForCountryCode(pricingCountryCode);
+  const currencyLabel = (
+    livePricingReady
+      ? liveMembershipPricing.currency
+      : hasCountryBasePrice
+        ? countryCurrency || countryPriceRow?.currency
+        : affiliateDiscountApplied && countryPriceRow?.discountPrice
+          ? countryCurrency || countryPriceRow?.currency
+          : membershipFeeConfig.currency || 'SGD'
+  ).toUpperCase();
+  const promoCurrencyLabel = affiliateDiscountApplied
+    ? String(
+        livePricingReady
+          ? liveMembershipPricing.currency
+          : affiliatePricing?.currency
+            || countryCurrency
+            || countryPriceRow?.currency
+            || currencyLabel,
+      ).toUpperCase()
+    : currencyLabel;
+  const payableCurrencyLabel = promoCurrencyLabel;
+  const convertedFromDefault = Boolean(liveMembershipPricing?.convertedFromDefault);
+  const hasExactCountryPrice =
+    hasCountryBasePrice
+    || Boolean(
+      livePricingReady
+      && liveMembershipPricing.promoFixed
+      && !liveMembershipPricing.convertedFromDefault
+    );
+  const appliedPromoCodes = [
+    ...new Set(
+      [
+        affiliatePricing?.appliedCode,
+        affiliatePricing?.affiliateCode,
+        affiliatePricing?.voucherCode,
+      ]
+        .map((code) => String(code || '').trim().toUpperCase())
+        .filter(Boolean)
+    ),
+  ];
+  const verifiedPromoCodeLabel = appliedPromoCodes.join(', ') || '—';
+  const isVerifiedSignupSignInOnlyState =
+    isVerifiedNricSignupFlow
+    && !!verifiedSignupAccessError
+    && verifiedSignupAccessError.toLowerCase().includes('sign in');
+  const signInHref = returnTo
+    ? `${paths.auth.simple.signIn}?returnTo=${encodeURIComponent(returnTo)}`
+    : paths.auth.simple.signIn;
+  const buildPaymentCompleteSignInHref = () => paths.auth.oauth.start;
+  const pricingCountryLabel =
+    countries.find((country) => country.code === pricingCountryCode)?.label
+    || countryPriceRow?.name
+    || pricingCountryCode
+    || 'your country';
+  const formattedBaseAmount = formatPayableAmount(membershipBaseAmount, currencyLabel);
+  const membershipInfoText = affiliateDiscountApplied
+    ? `Promo code applied. Discounted rate: ${payableCurrencyLabel} ${formatPayableAmount(totalAmount, payableCurrencyLabel)} (no separate GST).`
+    : hasExactCountryPrice
+      ? `${pricingCountryLabel} membership rate: ${currencyLabel} ${formattedBaseAmount}.`
+      : convertedFromDefault
+        ? `${pricingCountryLabel} membership rate: ${currencyLabel} ${formattedBaseAmount} (converted from default SGD).`
+        : `Default membership rate for ${pricingCountryLabel}: ${currencyLabel} ${formattedBaseAmount}${applyGst ? ' plus GST' : ' (no GST)'}.`;
+  const membershipSource = isVerifiedNricSignupFlow ? 'membership-verified-signup' : 'membership-paid-signup';
+  const membershipBadgeLabel = affiliateDiscountApplied
+    ? 'Promo applied'
+    : hasExactCountryPrice
+      ? countryPriceRow?.currency || payableCurrencyLabel
+      : convertedFromDefault
+        ? payableCurrencyLabel
+        : !applyGst
+          ? 'No GST'
+          : isVerifiedNricSignupFlow
+            ? 'Discount applied'
+            : 'GST included';
+  const isPaymentReturnProcessing = paymentConfirming;
 
   const applyPromoCode = useCallback(async (codeOverride) => {
     const code = String(codeOverride ?? getValues('promoCode') ?? '').trim().toUpperCase();
@@ -474,7 +574,10 @@ export function SimpleSignUpView() {
 
     setAffiliateValidating(true);
     try {
-      const result = await validateCode(code);
+      const result = await validateCode(code, {
+        countryOfResidence: String(getValues('countryOfResidence') || '').trim() || undefined,
+        billingCountryCode,
+      });
       if (result?.valid) {
         const exactCode = String(result?.appliedCode || code).trim().toUpperCase();
         appliedPromoInputRef.current = exactCode;
@@ -505,7 +608,7 @@ export function SimpleSignUpView() {
     } finally {
       setAffiliateValidating(false);
     }
-  }, [getValues, membershipFeeConfig, setValue]);
+  }, [billingCountryCode, getValues, membershipFeeConfig, setValue]);
 
   useEffect(() => {
     const normalized = String(promoCodeValue || '').trim().toUpperCase();
@@ -514,6 +617,40 @@ export function SimpleSignUpView() {
       setAffiliatePricing(null);
     }
   }, [promoCodeValue]);
+
+  useEffect(() => {
+    if (!appliedPromoInputRef.current) return undefined;
+    applyPromoCode(appliedPromoInputRef.current);
+    return undefined;
+  }, [applyPromoCode, billingCountryCode, countryOfResidenceValue]);
+
+  useEffect(() => {
+    if (!isMembershipFeeFlow) return undefined;
+    const country = pricingCountryCode || String(countryOfResidenceValue || '').trim();
+    if (!country) return undefined;
+
+    let active = true;
+    getMembershipPricing({
+      countryOfResidence: country,
+      promoApplied: affiliateDiscountApplied,
+      source: membershipSource,
+    })
+      .then((data) => {
+        if (!active || !data) return;
+        setLiveMembershipPricing(data);
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [
+    affiliateDiscountApplied,
+    countryOfResidenceValue,
+    isMembershipFeeFlow,
+    membershipSource,
+    pricingCountryCode,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -527,6 +664,7 @@ export function SimpleSignUpView() {
           verifiedBaseAmount: Number(config.verifiedBaseAmount) || 300,
           gstRatePercent: Number(config.gstRatePercent) || 9,
           voucherDiscountAmount: Number(config.voucherDiscountAmount) || 100,
+          countryPricingList: Array.isArray(config.countryPricingList) ? config.countryPricingList : [],
         });
       })
       .catch(() => {});
@@ -1342,7 +1480,13 @@ export function SimpleSignUpView() {
           .join(' ')
           .trim();
         const successPaidAmount = Number(response?.paidAmount ?? verifiedAmount) || verifiedAmount;
-        const successCurrency = verifiedPayment?.currency || currencyLabel || 'SGD';
+        const successCurrency = String(
+          response?.currency || verifiedPayment?.currency || payableCurrencyLabel || currencyLabel || 'SGD',
+        )
+          .trim()
+          .toUpperCase();
+        const successPaymentMethod =
+          response?.paymentMethod || verifiedPayment?.paymentMethod || 'Online payment';
 
         // Payment + account success: wipe all client draft state so the next visitor
         // does not see a pre-filled membership form on this browser.
@@ -1371,6 +1515,7 @@ export function SimpleSignUpView() {
           memberName: successMemberName,
           paymentRef: normalizedPaymentRef,
           itemName: successItemName,
+          paymentMethodLabel: successPaymentMethod,
         });
         setPaymentRedirectCountdown(15);
       } catch (error) {
@@ -2053,9 +2198,10 @@ export function SimpleSignUpView() {
         source: membershipSource,
         successUrl: `${baseUrl}${paths.auth.simple.signUp}?${successSearch.toString()}`,
         cancelUrl: `${baseUrl}${paths.auth.simple.signUp}?${cancelSearch.toString()}`,
-        currency: 'sgd',
+        currency: String(payableCurrencyLabel || 'SGD').toLowerCase(),
         code: String(data.promoCode || '').trim().toUpperCase() || undefined,
-        billingCountryCode,
+        billingCountryCode: pricingCountryCode || billingCountryCode,
+        countryOfResidence: String(data.countryOfResidence || pricingCountryCode || '').trim() || undefined,
         applyGst,
       });
 
@@ -2320,7 +2466,8 @@ export function SimpleSignUpView() {
           name="password"
           label="Password"
           required
-          placeholder={isCompanyQrEnrollmentFlow ? '8+ characters' : '6+ characters'}
+          placeholder="e.g. Welcome@1"
+          helperText={PASSWORD_COMPLEXITY_HINT}
           type={password.value ? 'text' : 'password'}
           InputLabelProps={{ shrink: true }}
           InputProps={{
@@ -2664,7 +2811,7 @@ export function SimpleSignUpView() {
       {scaqSsoPrefillNotice && (
         <Alert severity="info" sx={{ borderRadius: 1.5 }}>
           You signed in with Salesforce, but you are not registered as an SCAQ candidate. Your name and email are
-          pre-filled below. Complete paid signup ({currencyLabel} {Number(totalAmount).toFixed(2)}
+          pre-filled below. Complete paid signup ({payableCurrencyLabel} {formatPayableAmount(totalAmount, payableCurrencyLabel)}
           {applyGst ? ' including GST' : ' (no GST)'}) to continue.
         </Alert>
       )}
@@ -2868,14 +3015,14 @@ export function SimpleSignUpView() {
             <>
               <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Original price</span>
-                <strong>{currencyLabel} {standardTotalAmount.toFixed(2)}</strong>
+                <strong>{currencyLabel} {formatPayableAmount(standardTotalAmount, currencyLabel)}</strong>
               </Typography>
               <Typography
                 variant="body2"
                 sx={{ display: 'flex', justifyContent: 'space-between', color: 'success.main' }}
               >
                 <span>Promotional rate</span>
-                <strong>{currencyLabel} {Number(totalAmount).toFixed(2)}</strong>
+                <strong>{payableCurrencyLabel} {formatPayableAmount(totalAmount, payableCurrencyLabel)}</strong>
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Verified code: {verifiedPromoCodeLabel}
@@ -2885,7 +3032,7 @@ export function SimpleSignUpView() {
             <>
               <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Base amount</span>
-                <strong>{currencyLabel} {Number(membershipBaseAmount).toFixed(2)}</strong>
+                <strong>{currencyLabel} {formatPayableAmount(membershipBaseAmount, currencyLabel)}</strong>
               </Typography>
               {applyGst ? (
                 <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2894,14 +3041,18 @@ export function SimpleSignUpView() {
                 </Typography>
               ) : (
                 <Typography variant="caption" color="text.secondary">
-                  GST not applicable (detected outside Singapore).
+                  {hasExactCountryPrice
+                    ? `${pricingCountryLabel} price in ${currencyLabel}. GST is not applied.`
+                    : convertedFromDefault
+                      ? `No country price set. Default SGD price converted to ${currencyLabel}.`
+                      : 'No country price set. Default admin price is shown.'}
                 </Typography>
               )}
             </>
           )}
           <Typography variant="subtitle2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Total payable</span>
-            <strong>{currencyLabel} {Number(totalAmount).toFixed(2)}</strong>
+            <strong>{payableCurrencyLabel} {formatPayableAmount(totalAmount, payableCurrencyLabel)}</strong>
           </Typography>
           <FormControlLabel
             sx={{ m: 0, mt: 0.25 }}
@@ -2938,7 +3089,7 @@ export function SimpleSignUpView() {
               disabled={!paymentConsentChecked || verifiedSignupLoading || paymentActionLoading}
               onClick={handleMembershipPayment}
             >
-              {`Pay ${currencyLabel} ${Number(totalAmount).toFixed(2)}`}
+              {`Pay ${payableCurrencyLabel} ${formatPayableAmount(totalAmount, payableCurrencyLabel)}`}
             </LoadingButton>
           )}
         </Stack>
@@ -3000,6 +3151,7 @@ export function SimpleSignUpView() {
       currency={paymentCompletedState.currency}
       itemName={paymentCompletedState.itemName}
       paymentRef={paymentCompletedState.paymentRef}
+      paymentMethodLabel={paymentCompletedState.paymentMethodLabel}
       redirectCountdown={paymentRedirectCountdown}
       onSignIn={() => {
         clearMembershipSignupClientDraftStorage();

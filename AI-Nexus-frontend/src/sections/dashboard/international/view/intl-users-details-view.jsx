@@ -243,6 +243,7 @@ export function IntlUsersDetailsView({ user, loading, error, paymentLatest = nul
             { label: 'Promo code', value: payment.promoCode || '—' },
             { label: 'Billing country', value: payment.countryOfResidence || '—' },
             { label: 'Country code', value: payment.countryCode || '—' },
+            { label: 'Payment method', value: payment.paymentMethod || 'Online payment' },
             { label: 'Reference ID', value: payment.refId || '—' },
             {
               label: 'WooshPay session ID',
@@ -337,6 +338,7 @@ export function IntlUsersDetailsView({ user, loading, error, paymentLatest = nul
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
                         {item.refId || 'Membership'} · {formatDateTime(item.paidAt || item.createdAt)}
+                        {item.paymentMethod ? ` · ${item.paymentMethod}` : ''}
                       </Typography>
                       {item.wooshpaySessionId ? (
                         <Typography

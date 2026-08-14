@@ -157,9 +157,9 @@ export class AnnouncementService {
 
         this.announcementCommentsGateway.emitToAnnouncementsList('announcement:created', announcement!);
 
-        // In-app notification records + Web Push (non-blocking).
+        // Emails only for now (in-app notifications + Web Push are disabled).
         void this.notificationService.notifyAnnouncementCreated(announcement!).catch((error) => {
-            console.error('Failed to fan-out announcement notifications:', error);
+            console.error('Failed to fan-out announcement emails:', error);
         });
 
         return {

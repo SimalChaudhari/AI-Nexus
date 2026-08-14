@@ -1,20 +1,30 @@
 import axios from 'src/utils/axios';
 
-export async function validateAffiliateCodes({ code, affiliateCode, voucherCode } = {}) {
+export async function validateAffiliateCodes({
+  code,
+  affiliateCode,
+  voucherCode,
+  countryOfResidence,
+  billingCountryCode,
+} = {}) {
   const response = await axios.post('/affiliate/validate', {
     code: code || undefined,
     affiliateCode: affiliateCode || undefined,
     voucherCode: voucherCode || undefined,
     site: 'payment',
+    countryOfResidence: countryOfResidence || undefined,
+    billingCountryCode: billingCountryCode || undefined,
   });
   return response.data;
 }
 
 /** Validate a single code field (tried as affiliate code first, then voucher code by the backend). */
-export async function validateCode(code) {
+export async function validateCode(code, options = {}) {
   const response = await axios.post('/affiliate/validate', {
     code: code || undefined,
     site: 'payment',
+    countryOfResidence: options.countryOfResidence || undefined,
+    billingCountryCode: options.billingCountryCode || undefined,
   });
   return response.data;
 }

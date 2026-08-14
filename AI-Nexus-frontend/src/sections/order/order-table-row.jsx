@@ -82,7 +82,7 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
 
       <TableCell align="center"> {row.totalQuantity} </TableCell>
 
-      <TableCell> {fCurrency(row.subtotal)} </TableCell>
+      <TableCell> {fCurrency(row.subtotal, { currency: row.currency })} </TableCell>
 
       <TableCell>
         <Label
@@ -155,7 +155,7 @@ export function OrderTableRow({ row, selected, onViewRow, onSelectRow, onDeleteR
 
                 <div>x{item.quantity} </div>
 
-                <Box sx={{ width: 110, textAlign: 'right' }}>{fCurrency(item.price)}</Box>
+                <Box sx={{ width: 110, textAlign: 'right' }}>{fCurrency(item.price, { currency: row.currency })}</Box>
               </Stack>
             ))}
           </Paper>
