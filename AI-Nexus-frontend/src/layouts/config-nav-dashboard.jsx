@@ -283,7 +283,7 @@ export const navData = [
         title: 'AI Resources',
         path: paths.admin.workflow.root,
         icon: ICONS.workflow,
-        activePathPrefixes: [paths.admin.prompt.root, paths.admin.skill.root],
+        activePathPrefixes: [paths.admin.prompt.root, paths.admin.skill.root, paths.admin.newsletter.root],
         children: [
           {
             title: 'Templates',
@@ -316,6 +316,20 @@ export const navData = [
                 activeExcludePaths: [paths.admin.skill.new],
               },
               { title: 'Add skill', path: paths.admin.skill.new },
+            ],
+          },
+          {
+            title: 'Newsletter',
+            path: paths.admin.newsletter.root,
+            children: [
+              {
+                title: 'All newsletters',
+                path: paths.admin.newsletter.root,
+                deepMatch: true,
+                href: paths.admin.newsletter.list,
+                activeExcludePaths: [paths.admin.newsletter.new],
+              },
+              { title: 'Add newsletter', path: paths.admin.newsletter.new, href: paths.admin.newsletter.new },
             ],
           },
         ],

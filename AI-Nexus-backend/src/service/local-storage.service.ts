@@ -144,6 +144,8 @@ export class LocalStorageService {
     if (file.mimetype === 'video/quicktime') return '.mov';
     if (file.mimetype === 'video/x-msvideo') return '.avi';
     if (file.mimetype === 'video/x-matroska') return '.mkv';
+    if (file.mimetype === 'text/html') return '.html';
+    if (file.mimetype === 'application/pdf') return '.pdf';
 
     throw new BadRequestException('Unsupported file type');
   }

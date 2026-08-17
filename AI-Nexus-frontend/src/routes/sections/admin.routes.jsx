@@ -118,6 +118,11 @@ const SkillCreatePage = lazy(() => import('src/pages/dashboard/skill/new'));
 const SkillDetailsPage = lazy(() => import('src/pages/dashboard/skill/details'));
 const SkillEditPage = lazy(() => import('src/pages/dashboard/skill/edit'));
 
+const NewsletterListPage = lazy(() => import('src/pages/dashboard/newsletter/list'));
+const NewsletterCreatePage = lazy(() => import('src/pages/dashboard/newsletter/new'));
+const NewsletterDetailsPage = lazy(() => import('src/pages/dashboard/newsletter/details'));
+const NewsletterEditPage = lazy(() => import('src/pages/dashboard/newsletter/edit'));
+
 // Speaker Management (Admin only)
 const SpeakerListPage = lazy(() => import('../../pages/dashboard/speaker/list'));
 const SpeakerCreatePage = lazy(() => import('../../pages/dashboard/speaker/new'));
@@ -342,6 +347,18 @@ export const adminRoutes = [
           { path: 'new', element: <SkillCreatePage /> },
           { path: ':id', element: <SkillDetailsPage /> },
           { path: ':id/edit', element: <SkillEditPage /> },
+        ],
+      },
+      { path: 'newsletter/new', element: <NewsletterCreatePage /> },
+      { path: 'newsletter/list', element: <NewsletterListPage /> },
+      {
+        path: 'newsletter',
+        children: [
+          { element: <NewsletterListPage />, index: true },
+          { path: 'list', element: <NewsletterListPage /> },
+          { path: 'new', element: <NewsletterCreatePage /> },
+          { path: ':id/edit', element: <NewsletterEditPage /> },
+          { path: ':id', element: <NewsletterDetailsPage /> },
         ],
       },
       {

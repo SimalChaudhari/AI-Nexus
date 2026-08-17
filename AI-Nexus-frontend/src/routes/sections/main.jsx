@@ -36,6 +36,7 @@ const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new')
 const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
 const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
 const WorkflowSkillDetailsPage = lazy(() => import('src/pages/workflows/skill-details'));
+const WorkflowNewsletterDetailsPage = lazy(() => import('src/pages/workflows/newsletter-details'));
 // Product
 const ProductListPage = lazy(() => import('src/pages/product/list'));
 const ProductDetailsPage = lazy(() => import('src/pages/product/details'));
@@ -157,6 +158,10 @@ export const mainRoutes = [
           {
             path: 'ai-resources/skill/:id',
             element: <WorkflowSkillDetailsPage />,
+          },
+          {
+            path: 'ai-resources/newsletter/:id',
+            element: <WorkflowNewsletterDetailsPage />,
           },
           {
             path: 'ai-resources/prompt/:provider',
