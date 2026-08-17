@@ -35,6 +35,7 @@ const PartnerWithIscaPage = lazy(() => import('src/pages/partner-with-isca'));
 const WorkflowCreatePage = lazy(() => import('src/pages/dashboard/workflow/new'));
 const WorkflowDetailsPage = lazy(() => import('src/pages/workflows/details'));
 const WorkflowPromptDetailsPage = lazy(() => import('src/pages/workflows/prompt-details'));
+const WorkflowSkillDetailsPage = lazy(() => import('src/pages/workflows/skill-details'));
 // Product
 const ProductListPage = lazy(() => import('src/pages/product/list'));
 const ProductDetailsPage = lazy(() => import('src/pages/product/details'));
@@ -154,12 +155,16 @@ export const mainRoutes = [
             element: <WorkflowCreatePage />,
           },
           {
-            path: 'ai-resources/:id',
-            element: <WorkflowDetailsPage />,
+            path: 'ai-resources/skill/:id',
+            element: <WorkflowSkillDetailsPage />,
           },
           {
             path: 'ai-resources/prompt/:provider',
             element: <WorkflowPromptDetailsPage />,
+          },
+          {
+            path: 'ai-resources/:id',
+            element: <WorkflowDetailsPage />,
           },
         ],
       },

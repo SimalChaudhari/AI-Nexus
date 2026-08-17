@@ -283,7 +283,7 @@ export const navData = [
         title: 'AI Resources',
         path: paths.admin.workflow.root,
         icon: ICONS.workflow,
-        activePathPrefixes: [paths.admin.prompt.root],
+        activePathPrefixes: [paths.admin.prompt.root, paths.admin.skill.root],
         children: [
           {
             title: 'Templates',
@@ -303,6 +303,20 @@ export const navData = [
             title: 'Prompts',
             path: paths.admin.prompt.root,
             deepMatch: true,
+          },
+          {
+            title: 'Skills',
+            path: paths.admin.skill.root,
+            children: [
+              {
+                title: 'All skills',
+                path: paths.admin.skill.root,
+                deepMatch: true,
+                href: paths.admin.skill.list,
+                activeExcludePaths: [paths.admin.skill.new],
+              },
+              { title: 'Add skill', path: paths.admin.skill.new },
+            ],
           },
         ],
       },

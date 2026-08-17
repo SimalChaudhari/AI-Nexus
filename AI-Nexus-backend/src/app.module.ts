@@ -29,6 +29,7 @@ import { CorporateModule } from './corporate/corporate.module';
 import { CompanyEnrollmentModule } from './company-enrollment/company-enrollment.module';
 import { AppSettingsModule } from './app-settings/app-settings.module';
 import { PromptCatalogModule } from './prompt-catalog/prompt-catalog.module';
+import { SkillModule } from './skill/skills.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { LlmModule } from './llm/llm.module';
 import { DatabaseIndexModule } from './common/database-index.module';
@@ -130,6 +131,7 @@ const resolveTypeOrmPoolMax = (): number => {
     CompanyEnrollmentModule,
     AppSettingsModule,
     PromptCatalogModule,
+    SkillModule,
     ChatbotModule,
   ],
   controllers: [AppController],

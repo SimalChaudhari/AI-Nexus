@@ -60,6 +60,10 @@ export const paths = {
     root: '/ai-resources/prompt',
     details: (provider) => `/ai-resources/prompt/${provider}`,
   },
+  workflowsSkill: {
+    root: '/ai-resources/skill',
+    details: (id) => `/ai-resources/skill/${id}`,
+  },
   page403: '/error/403',
   page404: '/error/404',
   page500: '/error/500',
@@ -342,6 +346,13 @@ export const paths = {
         `${ROOTS.ADMIN}/prompt/items?categoryKey=${encodeURIComponent(categoryKey)}`,
       details: (id) => `${ROOTS.ADMIN}/prompt/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/prompt/${id}/edit`,
+    },
+    skill: {
+      root: `${ROOTS.ADMIN}/skill`,
+      new: `${ROOTS.ADMIN}/skill/new`,
+      list: `${ROOTS.ADMIN}/skill/list`,
+      details: (id) => `${ROOTS.ADMIN}/skill/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/skill/${id}/edit`,
     },
     order: {
       root: `${ROOTS.ADMIN}/order`,
