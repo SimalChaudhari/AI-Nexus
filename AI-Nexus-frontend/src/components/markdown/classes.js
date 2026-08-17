@@ -8,5 +8,6 @@ export const markdownClasses = {
     codeBlock: 'nml__editor__content__codeBlock',
     image: 'nml__editor__content__image',
     link: 'nml__editor__content__link',
+    codeCopy: 'nml__editor__content__codeCopy',
   },
 };

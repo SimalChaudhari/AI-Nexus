@@ -13,6 +13,7 @@ import { RouterLink } from 'src/routes/components';
 import { Image } from '../image';
 import { StyledRoot } from './styles';
 import { markdownClasses } from './classes';
+import { MarkdownCodeBlock } from './code-block';
 import { htmlToMarkdown, isMarkdownContent } from './html-to-markdown';
 
 // ----------------------------------------------------------------------
@@ -63,11 +64,7 @@ const components = {
       </Link>
     );
   },
-  pre: ({ children }) => (
-    <div className={markdownClasses.content.codeBlock}>
-      <pre>{children}</pre>
-    </div>
-  ),
+  pre: ({ children }) => <MarkdownCodeBlock>{children}</MarkdownCodeBlock>,
   code({ className, children, node, ...other }) {
     const language = /language-(\w+)/.exec(className || '');
 

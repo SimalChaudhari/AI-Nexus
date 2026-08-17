@@ -113,6 +113,11 @@ const PromptCategoryItemsPage = lazy(() => import('src/pages/dashboard/prompt/it
 const PromptDetailsPage = lazy(() => import('src/pages/dashboard/prompt/details'));
 const PromptEditPage = lazy(() => import('src/pages/dashboard/prompt/edit'));
 
+const SkillListPage = lazy(() => import('src/pages/dashboard/skill/list'));
+const SkillCreatePage = lazy(() => import('src/pages/dashboard/skill/new'));
+const SkillDetailsPage = lazy(() => import('src/pages/dashboard/skill/details'));
+const SkillEditPage = lazy(() => import('src/pages/dashboard/skill/edit'));
+
 // Speaker Management (Admin only)
 const SpeakerListPage = lazy(() => import('../../pages/dashboard/speaker/list'));
 const SpeakerCreatePage = lazy(() => import('../../pages/dashboard/speaker/new'));
@@ -327,6 +332,16 @@ export const adminRoutes = [
           { path: 'items', element: <PromptCategoryItemsPage /> },
           { path: ':id', element: <PromptDetailsPage /> },
           { path: ':id/edit', element: <PromptEditPage /> },
+        ],
+      },
+      {
+        path: 'skill',
+        children: [
+          { element: <SkillListPage />, index: true },
+          { path: 'list', element: <SkillListPage /> },
+          { path: 'new', element: <SkillCreatePage /> },
+          { path: ':id', element: <SkillDetailsPage /> },
+          { path: ':id/edit', element: <SkillEditPage /> },
         ],
       },
       {

@@ -106,9 +106,20 @@ export const StyledRoot = styled(ReactMarkdown)(({ theme }) => ({
    */
   [`& .${markdownClasses.content.codeBlock}`]: {
     position: 'relative',
+    [`& .${markdownClasses.content.codeCopy}`]: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      zIndex: 1,
+      color: theme.vars.palette.common.white,
+      backgroundColor: varAlpha(theme.vars.palette.common.whiteChannel, 0.08),
+      '&:hover': {
+        backgroundColor: varAlpha(theme.vars.palette.common.whiteChannel, 0.16),
+      },
+    },
     '& pre': {
       overflowX: 'auto',
-      padding: theme.spacing(3),
+      padding: theme.spacing(3, 6, 3, 3),
       color: theme.vars.palette.common.white,
       borderRadius: theme.shape.borderRadius,
       backgroundColor: theme.vars.palette.grey[900],

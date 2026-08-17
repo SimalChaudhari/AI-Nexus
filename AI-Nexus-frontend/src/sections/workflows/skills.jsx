@@ -1,11 +1,46 @@
+import { useEffect, useState } from 'react';
+
 import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
+import Grid from '@mui/material/Unstable_Grid2';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 import { alpha, useTheme } from '@mui/material/styles';
+
+import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
+import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
+import { skillService } from 'src/services/skill.service';
 
 // ----------------------------------------------------------------------
 
 export function Skills() {
   const theme = useTheme();
+  const router = useRouter();
+  const [skills, setSkills] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await skillService.getPublicSkills();
+        if (mounted) setSkills(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (mounted) setSkills([]);
+        toast.error(error?.message || 'Failed to load skills');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <Box>
@@ -43,27 +78,91 @@ export function Skills() {
             lineHeight: 1.55,
           }}
         >
-          Discover reusable AI skills you can apply across workflows and playbooks.
+          Practical AI skills for professional work — guidance you can apply with playbook prompts and workflows.
         </Typography>
       </Box>
 
-      <Box
-        sx={{
-          py: { xs: 8, md: 12 },
-          px: 2,
-          textAlign: 'center',
-          borderRadius: 2,
-          border: `1px dashed ${alpha(theme.palette.grey[500], 0.3)}`,
-          bgcolor: alpha(theme.palette.grey[500], 0.04),
-        }}
-      >
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Skills
-        </Typography>
-        <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-          Coming soon...
-        </Typography>
-      </Box>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : skills.length === 0 ? (
+        <Box
+          sx={{
+            py: { xs: 8, md: 12 },
+            px: 2,
+            textAlign: 'center',
+            borderRadius: 2,
+            border: `1px dashed ${alpha(theme.palette.grey[500], 0.3)}`,
+            bgcolor: alpha(theme.palette.grey[500], 0.04),
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+            No skills available
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Skills will appear here when they are published.
+          </Typography>
+        </Box>
+      ) : (
+        <Grid container spacing={2.5}>
+          {skills.map((skill) => (
+            <Grid key={skill.id} xs={12} sm={6} md={4}>
+              <Card
+                sx={{
+                  height: '100%',
+                  borderRadius: 2,
+                  border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
+                  boxShadow: 'none',
+                  transition: 'box-shadow 0.2s, transform 0.2s',
+                  '&:hover': {
+                    boxShadow: theme.customShadows.z8,
+                    transform: 'translateY(-2px)',
+                  },
+                }}
+              >
+                <CardActionArea
+                  onClick={() => router.push(paths.workflowsSkill.details(skill.name || skill.id))}
+                  sx={{ height: '100%', p: 2.5, alignItems: 'flex-start' }}
+                >
+                  <Stack spacing={1.5} sx={{ height: '100%' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
+                      {skill.title}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.secondary',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 4,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        flexGrow: 1,
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      {skill.description}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'primary.main',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                      }}
+                    >
+                      Read more
+                      <Iconify icon="eva:arrow-ios-forward-fill" width={14} />
+                    </Typography>
+                  </Stack>
+                </CardActionArea>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
     </Box>
   );
 }
