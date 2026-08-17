@@ -198,7 +198,7 @@ export const buildInlineBrandEmailHtml = ({
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="border-collapse:collapse; max-width:640px; width:100%; border:1px solid #dbe4f0; border-radius:20px; background-color:#ffffff; overflow:hidden;">
                     <tr>
                         <td align="center" style="padding:26px 28px; background:${BRAND_GRADIENT}; background-color:${BRAND_PRIMARY};">
-                            <p style="margin:0 0 8px; color:${BRAND_SECONDARY_LIGHT}; font-size:12px; line-height:1.4; letter-spacing:0.18em; text-transform:uppercase; font-weight:700;">AI Nexus</p>
+                            <p style="margin:0 0 8px; color:${BRAND_SECONDARY_LIGHT}; font-size:12px; line-height:1.4; letter-spacing:0.08em; font-weight:700;">ISCA AINexus</p>
                             <h1 style="margin:0; color:#ffffff; font-size:24px; line-height:1.25; font-weight:800;">${safeHeading}</h1>
                         </td>
                     </tr>

@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import { MyWorkflows } from './my-workflows';
 import { Skills } from './skills';
 import { Templates } from './templates';
+import { Newsletter } from './newsletter';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
 import { AI_PLAYBOOKS_PROMPTS_TITLE } from './ai-playbooks-labels';
 import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
@@ -34,6 +35,12 @@ const WORKFLOW_MAIN_TABS = [
     icon: 'solar:settings-minimalistic-bold-duotone',
     imageSrc: null,
   },
+  {
+    id: 'newsletter',
+    label: 'Newsletter',
+    icon: 'solar:letter-bold-duotone',
+    imageSrc: null,
+  },
 ];
 
 // ----------------------------------------------------------------------
@@ -43,7 +50,9 @@ export function WorkflowMainSection() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
   const resolveTab = (tab) =>
-    tab === 'tools' || tab === 'resources' || tab === 'templates' ? tab : 'templates';
+    tab === 'tools' || tab === 'resources' || tab === 'templates' || tab === 'newsletter'
+      ? tab
+      : 'templates';
   const initialTab = resolveTab(tabFromQuery);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -202,6 +211,7 @@ export function WorkflowMainSection() {
           </>
         )}
         {activeTab === 'tools' && toolsComingSoon}
+        {activeTab === 'newsletter' && <Newsletter />}
       </Box>
     </>
   );

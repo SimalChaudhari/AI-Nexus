@@ -64,6 +64,10 @@ export const paths = {
     root: '/ai-resources/skill',
     details: (id) => `/ai-resources/skill/${id}`,
   },
+  workflowsNewsletter: {
+    root: '/ai-resources/newsletter',
+    details: (id) => `/ai-resources/newsletter/${id}`,
+  },
   page403: '/error/403',
   page404: '/error/404',
   page500: '/error/500',
@@ -353,6 +357,13 @@ export const paths = {
       list: `${ROOTS.ADMIN}/skill/list`,
       details: (id) => `${ROOTS.ADMIN}/skill/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/skill/${id}/edit`,
+    },
+    newsletter: {
+      root: `${ROOTS.ADMIN}/newsletter`,
+      new: `${ROOTS.ADMIN}/newsletter/new`,
+      list: `${ROOTS.ADMIN}/newsletter/list`,
+      details: (id) => `${ROOTS.ADMIN}/newsletter/${id}`,
+      edit: (id) => `${ROOTS.ADMIN}/newsletter/${id}/edit`,
     },
     order: {
       root: `${ROOTS.ADMIN}/order`,

@@ -12,6 +12,7 @@ import speakerReducer from './slices/speakerSlice';
 import languageReducer from './slices/languageSlice';
 import programReducer from './slices/programSlice';
 import skillReducer from './slices/skillSlice';
+import newsletterReducer from './slices/newsletterSlice';
 
 export const store = configureStore({
   reducer: {
@@ -28,6 +29,7 @@ export const store = configureStore({
     languages: languageReducer,
     programs: programReducer,
     skills: skillReducer,
+    newsletters: newsletterReducer,
   },
 });
 
