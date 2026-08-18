@@ -611,7 +611,7 @@ const compileMultiAgentsGraph = async (params: MultiAgentsGraphParams) => {
                     messages: [...prependMessages, new HumanMessage({ content: finalQuestion })]
                 },
                 {
-                    recursionLimit: supervisorResult?.recursionLimit ?? 100,
+                    recursionLimit: supervisorResult?.recursionLimit ?? 25,
                     callbacks: [loggerHandler, ...callbacks],
                     configurable: config
                 }

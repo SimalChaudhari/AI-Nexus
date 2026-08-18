@@ -1,6 +1,15 @@
 import { IActiveCache, MODE } from './Interface'
 import Redis from 'ioredis'
 
+/** Max in-memory cache entries per pool (LLM / embedding / MCP). Override with CACHE_POOL_MAX_ENTRIES. */
+const CACHE_POOL_MAX_ENTRIES = process.env.CACHE_POOL_MAX_ENTRIES
+    ? Math.max(1, parseInt(process.env.CACHE_POOL_MAX_ENTRIES))
+    : 50
+/** Redis TTL seconds for LLM/embedding caches in queue mode. Override with CACHE_POOL_REDIS_TTL_SEC. */
+const CACHE_POOL_REDIS_TTL_SEC = process.env.CACHE_POOL_REDIS_TTL_SEC
+    ? Math.max(30, parseInt(process.env.CACHE_POOL_REDIS_TTL_SEC))
+    : 3600
+
 /**
  * This pool is to keep track of in-memory cache used for LLM and Embeddings
  */
@@ -10,6 +19,9 @@ export class CachePool {
     activeEmbeddingCache: IActiveCache = {}
     activeMCPCache: { [key: string]: any } = {}
     ssoTokenCache: { [key: string]: any } = {}
+    private llmAccessOrder: string[] = []
+    private embeddingAccessOrder: string[] = []
+    private mcpAccessOrder: string[] = []
 
     constructor() {
         if (process.env.MODE === MODE.QUEUE) {
@@ -40,6 +52,19 @@ export class CachePool {
                             : undefined
                 })
             }
+        }
+    }
+
+    private touchOrder(order: string[], key: string): void {
+        const idx = order.indexOf(key)
+        if (idx >= 0) order.splice(idx, 1)
+        order.push(key)
+    }
+
+    private evictIfNeeded(cache: Record<string, any>, order: string[]): void {
+        while (order.length > CACHE_POOL_MAX_ENTRIES) {
+            const oldest = order.shift()
+            if (oldest) delete cache[oldest]
         }
     }
 
@@ -92,10 +117,12 @@ export class CachePool {
         if (process.env.MODE === MODE.QUEUE) {
             if (this.redisClient) {
                 const serializedValue = JSON.stringify(Array.from(value.entries()))
-                await this.redisClient.set(`llmCache:${chatflowid}`, serializedValue)
+                await this.redisClient.set(`llmCache:${chatflowid}`, serializedValue, 'EX', CACHE_POOL_REDIS_TTL_SEC)
             }
         } else {
             this.activeLLMCache[chatflowid] = value
+            this.touchOrder(this.llmAccessOrder, chatflowid)
+            this.evictIfNeeded(this.activeLLMCache, this.llmAccessOrder)
         }
     }
 
@@ -108,10 +135,12 @@ export class CachePool {
         if (process.env.MODE === MODE.QUEUE) {
             if (this.redisClient) {
                 const serializedValue = JSON.stringify(Array.from(value.entries()))
-                await this.redisClient.set(`embeddingCache:${chatflowid}`, serializedValue)
+                await this.redisClient.set(`embeddingCache:${chatflowid}`, serializedValue, 'EX', CACHE_POOL_REDIS_TTL_SEC)
             }
         } else {
             this.activeEmbeddingCache[chatflowid] = value
+            this.touchOrder(this.embeddingAccessOrder, chatflowid)
+            this.evictIfNeeded(this.activeEmbeddingCache, this.embeddingAccessOrder)
         }
     }
 
@@ -123,7 +152,10 @@ export class CachePool {
     async addMCPCache(cacheKey: string, value: any) {
         // Only add to cache for non-queue mode, because we are storing the toolkit instances in memory, and we can't store them in redis
         if (process.env.MODE !== MODE.QUEUE) {
-            this.activeMCPCache[`mcpCache:${cacheKey}`] = value
+            const key = `mcpCache:${cacheKey}`
+            this.activeMCPCache[key] = value
+            this.touchOrder(this.mcpAccessOrder, key)
+            this.evictIfNeeded(this.activeMCPCache, this.mcpAccessOrder)
         }
     }
 
@@ -133,7 +165,10 @@ export class CachePool {
      */
     async getMCPCache(cacheKey: string): Promise<any | undefined> {
         if (process.env.MODE !== MODE.QUEUE) {
-            return this.activeMCPCache[`mcpCache:${cacheKey}`]
+            const key = `mcpCache:${cacheKey}`
+            const value = this.activeMCPCache[key]
+            if (value !== undefined) this.touchOrder(this.mcpAccessOrder, key)
+            return value
         }
         return undefined
     }
@@ -151,7 +186,9 @@ export class CachePool {
                 }
             }
         } else {
-            return this.activeLLMCache[chatflowid]
+            const value = this.activeLLMCache[chatflowid]
+            if (value !== undefined) this.touchOrder(this.llmAccessOrder, chatflowid)
+            return value
         }
         return undefined
     }
@@ -169,7 +206,9 @@ export class CachePool {
                 }
             }
         } else {
-            return this.activeEmbeddingCache[chatflowid]
+            const value = this.activeEmbeddingCache[chatflowid]
+            if (value !== undefined) this.touchOrder(this.embeddingAccessOrder, chatflowid)
+            return value
         }
         return undefined
     }

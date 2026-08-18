@@ -145,7 +145,13 @@ interface IExecuteAgentFlowParams extends Omit<IExecuteFlowParams, 'incomingInpu
     incomingInput: IncomingAgentflowInput
 }
 
-const MAX_LOOP_COUNT = process.env.MAX_LOOP_COUNT ? parseInt(process.env.MAX_LOOP_COUNT) : 10
+const MAX_LOOP_COUNT = process.env.MAX_LOOP_COUNT ? parseInt(process.env.MAX_LOOP_COUNT) : 5
+/** Hard ceiling for Agentflow v2 node steps per prediction (was 1000). Override with MAX_ITERATIONS. */
+const DEFAULT_MAX_ITERATIONS = 50
+/** Max past chat messages loaded into Agentflow memory (was unlimited). Override with AGENTFLOW_HISTORY_LIMIT. */
+const AGENTFLOW_HISTORY_LIMIT = process.env.AGENTFLOW_HISTORY_LIMIT
+    ? Math.max(1, parseInt(process.env.AGENTFLOW_HISTORY_LIMIT))
+    : 40
 
 /**
  * Add execution to database
@@ -1811,9 +1817,11 @@ export const executeAgentFlow = async ({
         })
     })
 
-    const maxIterations = process.env.MAX_ITERATIONS ? parseInt(process.env.MAX_ITERATIONS) : 1000
+    const maxIterations = process.env.MAX_ITERATIONS
+        ? parseInt(process.env.MAX_ITERATIONS)
+        : DEFAULT_MAX_ITERATIONS
 
-    // Get chat history from ChatMessage table
+    // Get chat history from ChatMessage table (capped to limit memory growth on long sessions)
     const pastChatHistory = (await appDataSource
         .getRepository(ChatMessage)
         .find({
@@ -1822,11 +1830,13 @@ export const executeAgentFlow = async ({
                 sessionId
             },
             order: {
-                createdDate: 'ASC'
-            }
+                createdDate: 'DESC'
+            },
+            take: AGENTFLOW_HISTORY_LIMIT
         })
         .then((messages) =>
-            messages.map((message) => {
+            // Restore chronological order after DESC + take
+            messages.reverse().map((message) => {
                 const mappedMessage: any = {
                     content: message.content,
                     role: message.role === 'userMessage' ? 'user' : 'assistant'
