@@ -10,6 +10,7 @@ import { alpha } from '@mui/material/styles';
 
 import { Iconify } from 'src/components/iconify';
 import { IntlAccountMenu } from 'src/components/intl-account-menu';
+import { NavigationProgressHost } from 'src/components/navigation-progress';
 import { paths } from 'src/routes/paths';
 import { INTL_NAVY, INTL_SOFT_BG } from 'src/theme/intl-brand';
 
@@ -97,7 +98,10 @@ export function IntlAppLayout({ children }) {
     >
       <IntlAppTopBar />
       <Box sx={{ height: INTL_APP_TOPBAR_HEIGHT, flexShrink: 0 }} aria-hidden />
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>{children}</Box>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+        {children}
+        <NavigationProgressHost />
+      </Box>
     </Box>
   );
 }
