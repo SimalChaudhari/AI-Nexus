@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
 import { paths } from 'src/routes/paths';
+import { useIntlAuth } from 'src/auth/intl-auth-context';
 import { isIntlAuthenticated } from 'src/auth/intl-session';
 import { resolveAssetUrl } from 'src/utils/asset-url';
 import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
@@ -65,6 +66,17 @@ const tokens = {
 const FSET = new Set(FOUNDATION);
 const MODULES_BY_CODE = Object.fromEntries(MODULES.map((m) => [m.code, m]));
 
+function useCanPlayIntlVideo() {
+  const { user } = useIntlAuth();
+  const [canPlay, setCanPlay] = useState(false);
+
+  useEffect(() => {
+    setCanPlay(Boolean(user) || isIntlAuthenticated());
+  }, [user]);
+
+  return canPlay;
+}
+
 const CheckIcon = (
   <Box
     component="svg"
@@ -90,7 +102,11 @@ const LockIcon = (
 
 export function PathwayPlannerView({ embedded = false }) {
   const [region, setRegion] = useState(null);
+  const canPlayVideo = useCanPlayIntlVideo();
   const { videoUrlsByCode, minutesByCode, modulesByCode, roles: apiRoles } = usePathwayModuleVideos();
+  const returnTo = embedded ? `${paths.dashboard}?view=roles` : paths.internationalAiFluencyRoles;
+  const signupHref = `${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`;
+  const signInHref = `${paths.auth.signIn}?returnTo=${encodeURIComponent(returnTo)}`;
   const roles = apiRoles?.length
     ? apiRoles.map((r) => ({
         name: r.name,
@@ -378,6 +394,9 @@ export function PathwayPlannerView({ embedded = false }) {
                 videoUrlsByCode={videoUrlsByCode}
                 minutesByCode={minutesByCode}
                 modulesLookup={modulesLookup}
+                canPlayVideo={canPlayVideo}
+                signupHref={signupHref}
+                signInHref={signInHref}
                 onToggle={toggleModule}
                 onToggleOpen={toggleOpen}
               />
@@ -643,6 +662,9 @@ function RolePlan({
   videoUrlsByCode,
   minutesByCode,
   modulesLookup,
+  canPlayVideo = false,
+  signupHref = paths.auth.signUp,
+  signInHref = paths.auth.signIn,
   onToggle,
   onToggleOpen,
 }) {
@@ -710,6 +732,9 @@ function RolePlan({
             videoUrl={videoUrlsByCode?.[code] || ''}
             minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
             moduleMeta={modulesLookup?.[code]}
+            canPlayVideo={canPlayVideo}
+            signupHref={signupHref}
+            signInHref={signInHref}
             onToggle={onToggle}
             onToggleOpen={onToggleOpen}
           />
@@ -736,6 +761,9 @@ function RolePlan({
                 videoUrl={videoUrlsByCode?.[code] || ''}
                 minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
                 moduleMeta={modulesLookup?.[code]}
+                canPlayVideo={canPlayVideo}
+                signupHref={signupHref}
+                signInHref={signInHref}
                 onToggle={onToggle}
                 onToggleOpen={onToggleOpen}
               />
@@ -800,8 +828,7 @@ function ModuleCard({
   onToggle,
   onToggleOpen,
   browse = false,
-  requireAuth = false,
-  canPlayVideo = true,
+  canPlayVideo = false,
   signupHref = paths.auth.signUp,
   signInHref = paths.auth.signIn,
 }) {
@@ -813,7 +840,7 @@ function ModuleCard({
     3: { color: '#15803d', bg: '#e4f3ea', border: '#c3e5cf' },
   };
   const pillar = pillarColors[+m.pillar] || pillarColors[1];
-  const showAuthGate = browse && requireAuth && !canPlayVideo;
+  const showAuthGate = !canPlayVideo;
 
   const handleRowClick = () => {
     if (browse) {
@@ -1016,18 +1043,18 @@ function VideoSignupGate({ signupHref, signInHref }) {
     >
       <Iconify icon="solar:lock-keyhole-bold-duotone" width={36} sx={{ color: tokens.pine }} />
       <Typography sx={{ fontWeight: 700, fontSize: 16, color: tokens.ink, maxWidth: 360 }}>
-        Sign up to watch this video
+        Sign in to watch this video
       </Typography>
       <Typography sx={{ fontSize: 13.5, color: tokens.inkSoft, maxWidth: 380, lineHeight: 1.5 }}>
-        Create a free account to unlock module videos in Student and Users sections.
+        Module videos are available only after you log in. Create a free account if you do not have one yet.
       </Typography>
       <Button
         component="a"
-        href={signupHref}
+        href={signInHref}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          navigateToAuthPath(router, signupHref);
+          navigateToAuthPath(router, signInHref);
         }}
         variant="contained"
         sx={{
@@ -1043,21 +1070,21 @@ function VideoSignupGate({ signupHref, signInHref }) {
           '&:hover': { bgcolor: '#a00000', boxShadow: 'none' },
         }}
       >
-        Sign up
+        Sign in
       </Button>
       <Typography sx={{ fontSize: 13, color: tokens.inkSoft }}>
-        Already have an account?{' '}
+        New here?{' '}
         <Box
           component="a"
-          href={signInHref}
+          href={signupHref}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigateToAuthPath(router, signInHref);
+            navigateToAuthPath(router, signupHref);
           }}
           sx={{ color: tokens.pine, fontWeight: 700, textDecoration: 'none', cursor: 'pointer' }}
         >
-          Sign in
+          Sign up
         </Box>
       </Typography>
     </Box>
@@ -1075,15 +1102,10 @@ export function PathwayBrowseList({
   videoUrlsByCode,
   minutesByCode,
   modulesLookup,
-  requireAuth = false,
   returnTo = paths.dashboard,
 }) {
   const [openCodes, setOpenCodes] = useState(() => new Set());
-  const [canPlayVideo, setCanPlayVideo] = useState(false);
-
-  useEffect(() => {
-    setCanPlayVideo(isIntlAuthenticated());
-  }, []);
+  const canPlayVideo = useCanPlayIntlVideo();
 
   const toggleOpen = (code) => {
     setOpenCodes((prev) => {
@@ -1162,7 +1184,6 @@ export function PathwayBrowseList({
                 minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
                 moduleMeta={modulesLookup?.[code]}
                 onToggleOpen={toggleOpen}
-                requireAuth={requireAuth}
                 canPlayVideo={canPlayVideo}
                 signupHref={signupHref}
                 signInHref={signInHref}

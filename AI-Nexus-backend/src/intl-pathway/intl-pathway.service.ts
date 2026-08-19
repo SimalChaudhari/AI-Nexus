@@ -242,10 +242,28 @@ export class IntlPathwayService {
   }
 
   /** Public planner payload: modules + roles. Admin videoUrl wins; LMS fills empty links by title. */
-  async getPlannerCatalog() {
-    const [modules, roles] = await Promise.all([this.getModulesPublic(), this.getRolesPublic()]);
+  async getPlannerCatalog(includeVideoUrls = false) {
+      const [modules, roles] = await Promise.all([this.getModulesPublic(), this.getRolesPublic()]);
     const enrichedModules = await this.enrichModulesWithLmsVideos(modules);
-    return { modules: enrichedModules, roles };
+    return {
+      modules: this.sanitizePublicModules(enrichedModules, includeVideoUrls),
+      roles,
+    };
+  }
+
+  /** Guests get catalog metadata only — video URLs require an international login. */
+  sanitizePublicModules<T extends { videoUrl?: string | null }>(
+    modules: T[],
+    includeVideoUrls: boolean,
+  ) {
+    return modules.map((module) => {
+      const videoUrl = String(module.videoUrl || '').trim() || null;
+      return {
+        ...module,
+        hasVideo: Boolean(videoUrl),
+        videoUrl: includeVideoUrls ? videoUrl : null,
+      };
+    });
   }
 
   /**

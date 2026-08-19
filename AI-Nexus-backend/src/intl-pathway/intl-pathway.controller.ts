@@ -35,9 +35,13 @@ export class IntlPathwayController {
 
   @Get('planner')
   @UseGuards(OptionalJwtAuthGuard)
-  @ApiOperation({ summary: 'Public planner catalog (modules + roles)' })
-  async getPlanner(@Res() response: Response) {
-    const data = await this.intlPathwayService.getPlannerCatalog();
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Planner catalog (modules + roles). Video URLs only for signed-in international users.',
+  })
+  async getPlanner(@Req() request: Request, @Res() response: Response) {
+    const includeVideoUrls = this.canWatchPathwayVideos(request);
+    const data = await this.intlPathwayService.getPlannerCatalog(includeVideoUrls);
     return response.status(HttpStatus.OK).json({ data });
   }
 
@@ -93,13 +97,17 @@ export class IntlPathwayController {
 
   @Get('modules')
   @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List pathway modules' })
   async listModules(@Req() request: Request, @Res() response: Response) {
     const isAdmin = request.user?.role === UserRole.Admin;
     const data = isAdmin
       ? await this.intlPathwayService.getModulesAdmin()
       : await this.intlPathwayService.getModulesPublic();
-    return response.status(HttpStatus.OK).json({ length: data.length, data });
+    const payload = isAdmin
+      ? data
+      : this.intlPathwayService.sanitizePublicModules(data, this.canWatchPathwayVideos(request));
+    return response.status(HttpStatus.OK).json({ length: payload.length, data: payload });
   }
 
   @Get('modules/:id')
@@ -205,5 +213,13 @@ export class IntlPathwayController {
   async deleteRole(@Param('id') id: string, @Res() response: Response) {
     const result = await this.intlPathwayService.deleteRole(id);
     return response.status(HttpStatus.OK).json(result);
+  }
+
+  /** Paid international session (`typ: intl`) or LMS admin. Draft signup tokens cannot watch. */
+  private canWatchPathwayVideos(request: Request) {
+    const user = request.user as { typ?: string; role?: string } | undefined;
+    if (!user) return false;
+    if (user.typ === 'intl') return true;
+    return user.role === UserRole.Admin;
   }
 }

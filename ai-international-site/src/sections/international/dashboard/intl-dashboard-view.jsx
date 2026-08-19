@@ -469,7 +469,6 @@ export function IntlDashboardView() {
                 videoUrlsByCode={videoUrlsByCode}
                 minutesByCode={minutesByCode}
                 modulesLookup={modulesLookup}
-                requireAuth
                 returnTo={`${paths.dashboard}?view=student`}
               />
             )}
@@ -523,7 +522,6 @@ export function IntlDashboardView() {
                 videoUrlsByCode={videoUrlsByCode}
                 minutesByCode={minutesByCode}
                 modulesLookup={modulesLookup}
-                requireAuth
                 returnTo={`${paths.dashboard}?view=users`}
               />
             )}
