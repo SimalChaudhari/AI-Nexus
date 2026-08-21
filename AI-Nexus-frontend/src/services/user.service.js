@@ -386,5 +386,26 @@ export const userService = {
       throw error;
     }
   },
+
+  async previewBulkEnrolment({ file, companyCode, companyName }) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('companyCode', companyCode || '');
+    formData.append('companyName', companyName || '');
+    const response = await axios.post('/admin/enrolment/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 180000,
+    });
+    return response.data?.data || response.data;
+  },
+
+  async applyBulkEnrolment({ companyCode, companyName, rows }) {
+    const response = await axios.post(
+      '/admin/enrolment/apply',
+      { companyCode, companyName, rows },
+      { timeout: 180000 },
+    );
+    return response.data?.data || response.data;
+  },
 };
 

@@ -236,6 +236,7 @@ export const paths = {
       root: `${ROOTS.ADMIN}/user`,
       new: `${ROOTS.ADMIN}/user/new`,
       list: `${ROOTS.ADMIN}/user/list`,
+      bulkEnrolment: `${ROOTS.ADMIN}/user/bulk-enrolment`,
       profile: `${ROOTS.ADMIN}/user/profile`, // Legacy admin profile route
       details: (id) => `${ROOTS.ADMIN}/user/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/user/${id}/edit`,

@@ -54,9 +54,9 @@ export function IntlPathwayModuleFormView({ currentModule }) {
       pillar: currentModule?.pillar || '01',
       minutes: currentModule?.minutes ?? 0,
       videoUrl: currentModule?.videoUrl || '',
-      courseId: '',
-      moduleId: '',
-      sectionId: '',
+      courseId: currentModule?.courseId || '',
+      moduleId: currentModule?.moduleId || '',
+      sectionId: currentModule?.sectionId || '',
       bulletsText: Array.isArray(currentModule?.bullets)
         ? currentModule.bullets.join('\n')
         : '',
@@ -220,6 +220,9 @@ export function IntlPathwayModuleFormView({ currentModule }) {
         pillar: data.pillar.trim(),
         minutes: Number(data.minutes) || 0,
         videoUrl: String(data.videoUrl || selectedSection?.videoUrl || '').trim() || null,
+        courseId: String(data.courseId || '').trim() || null,
+        moduleId: String(data.moduleId || '').trim() || null,
+        sectionId: String(data.sectionId || '').trim() || null,
         bullets: String(data.bulletsText || '')
           .split('\n')
           .map((line) => line.trim())

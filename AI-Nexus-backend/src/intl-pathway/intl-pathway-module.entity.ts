@@ -31,6 +31,19 @@ export class IntlPathwayModuleEntity {
   @Column({ type: 'jsonb', nullable: true })
   bullets?: string[] | null;
 
+  /** LMS `courses.id` (Fort course). */
+  @Column({ type: 'uuid', nullable: true })
+  courseId?: string | null;
+
+  /** LMS `course_modules.id` — one module can have many sections. */
+  @Column({ type: 'uuid', nullable: true })
+  moduleId?: string | null;
+
+  /** LMS `course_module_sections.id` — watch progress keys off this (Fort sectionId). */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  sectionId?: string | null;
+
   @Column({ type: 'int', default: 0 })
   sortOrder!: number;
 

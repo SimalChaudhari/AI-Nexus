@@ -14,6 +14,8 @@ import { AuthModule } from '../auth/auth.module';
 import { SsoModule } from '../auth/sso.module';
 import { CourseModule } from '../course/courses.module';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
+import { LlmModule } from '../llm/llm.module';
+import { AdminEnrolmentService } from './admin-enrolment.service';
 
 @Module({
     imports: [
@@ -23,12 +25,13 @@ import { AppSettingsModule } from '../app-settings/app-settings.module';
         SsoModule,
         forwardRef(() => CourseModule),
         AppSettingsModule,
+        LlmModule,
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
     ],
-    providers: [UserService, UsersInitService, EmailService, PaginationService],
+    providers: [UserService, UsersInitService, EmailService, PaginationService, AdminEnrolmentService],
     controllers: [UserController, AdminController],
     exports: [UserService],
 })

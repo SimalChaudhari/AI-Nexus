@@ -84,9 +84,10 @@ export const navData = [
             path: paths.admin.user.root,
             deepMatch: true,
             href: paths.admin.user.list,
-            activeExcludePaths: [paths.admin.user.new],
+            activeExcludePaths: [paths.admin.user.new, paths.admin.user.bulkEnrolment],
           },
           { title: 'Add user', path: paths.admin.user.new },
+          { title: 'Bulk enrolment', path: paths.admin.user.bulkEnrolment },
         ],
       },
       {

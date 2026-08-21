@@ -26,12 +26,18 @@ import {
   UpdateIntlPathwayModuleDto,
   UpdateIntlPathwayRoleDto,
 } from './intl-pathway.dto';
+import { IntlJwtAuthGuard } from '../intl-auth/intl-jwt-auth.guard';
+import { UpdateIntlPathwayWatchProgressDto } from './intl-pathway-watch-progress.dto';
+import { IntlPathwayWatchProgressService } from './intl-pathway-watch-progress.service';
 import { IntlPathwayService } from './intl-pathway.service';
 
 @ApiTags('International Pathway')
 @Controller('intl-pathway')
 export class IntlPathwayController {
-  constructor(private readonly intlPathwayService: IntlPathwayService) {}
+  constructor(
+    private readonly intlPathwayService: IntlPathwayService,
+    private readonly watchProgressService: IntlPathwayWatchProgressService,
+  ) {}
 
   @Get('planner')
   @UseGuards(OptionalJwtAuthGuard)
@@ -42,6 +48,14 @@ export class IntlPathwayController {
   async getPlanner(@Req() request: Request, @Res() response: Response) {
     const includeVideoUrls = this.canWatchPathwayVideos(request);
     const data = await this.intlPathwayService.getPlannerCatalog(includeVideoUrls);
+    const user = request.user as { typ?: string; sub?: string; id?: string } | undefined;
+    // Intl JWT uses `sub`; OptionalJwtAuthGuard assigns the decoded payload as-is.
+    const userId =
+      user?.typ === 'intl' ? String(user.id || user.sub || '').trim() : '';
+    if (userId) {
+      (data as { progressByCode?: Record<string, unknown> }).progressByCode =
+        await this.watchProgressService.listByUser(userId);
+    }
     return response.status(HttpStatus.OK).json({ data });
   }
 
@@ -94,6 +108,8 @@ export class IntlPathwayController {
   }
 
   // ---- Modules ----
+  // Progress routes MUST be registered before `modules/:id` so Nest does not
+  // treat `progress` as an id segment on ambiguous matchers.
 
   @Get('modules')
   @UseGuards(OptionalJwtAuthGuard)
@@ -108,6 +124,42 @@ export class IntlPathwayController {
       ? data
       : this.intlPathwayService.sanitizePublicModules(data, this.canWatchPathwayVideos(request));
     return response.status(HttpStatus.OK).json({ length: payload.length, data: payload });
+  }
+
+  @Get('modules/:code/progress')
+  @UseGuards(IntlJwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Get watch progress for one pathway module' })
+  async getModuleProgress(
+    @Req() request: Request,
+    @Param('code') code: string,
+    @Res() response: Response,
+  ) {
+    const userId = String((request.user as { id?: string } | undefined)?.id || '');
+    if (!userId) {
+      return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Sign in required' });
+    }
+    const data = await this.watchProgressService.getByModuleCode(userId, code);
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('modules/:code/progress')
+  @UseGuards(IntlJwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiBody({ type: UpdateIntlPathwayWatchProgressDto })
+  @ApiOperation({ summary: 'Upsert unique watch-coverage progress for one pathway module' })
+  async putModuleProgress(
+    @Req() request: Request,
+    @Param('code') code: string,
+    @Body() body: UpdateIntlPathwayWatchProgressDto,
+    @Res() response: Response,
+  ) {
+    const userId = String((request.user as { id?: string } | undefined)?.id || '');
+    if (!userId) {
+      return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Sign in required' });
+    }
+    const data = await this.watchProgressService.upsertByModuleCode(userId, code, body);
+    return response.status(HttpStatus.OK).json({ data });
   }
 
   @Get('modules/:id')
@@ -213,6 +265,58 @@ export class IntlPathwayController {
   async deleteRole(@Param('id') id: string, @Res() response: Response) {
     const result = await this.intlPathwayService.deleteRole(id);
     return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Get('progress')
+  @UseGuards(IntlJwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Watch progress for all pathway modules (current international user)' })
+  async listProgress(@Req() request: Request, @Res() response: Response) {
+    const userId = String((request.user as { id?: string } | undefined)?.id || '');
+    if (!userId) {
+      return response.status(HttpStatus.UNAUTHORIZED).json({ message: 'Sign in required' });
+    }
+    const data = await this.watchProgressService.listByUser(userId);
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Get('certificates/my')
+  @UseGuards(IntlJwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'List international pathway certificates' })
+  async myCertificates(@Req() request: Request, @Res() response: Response) {
+    const userId = String((request.user as { id?: string } | undefined)?.id || '');
+    const data = await this.watchProgressService.listCertificates(userId);
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Post('certificates/issue')
+  @UseGuards(IntlJwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Issue certificate when all required pathway modules are completed' })
+  async issueCertificate(@Req() request: Request, @Res() response: Response) {
+    const userId = String((request.user as { id?: string } | undefined)?.id || '');
+    const data = await this.watchProgressService.issueCertificate(userId);
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Get('certificates/:id/pdf')
+  @UseGuards(IntlJwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary:
+      'Download pathway certificate PDF (same AI Nexus ISCA COA builder — logos, e-sign, transcript)',
+  })
+  async downloadCertificatePdf(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    const userId = String((request.user as { id?: string } | undefined)?.id || '');
+    const { filename, buffer } = await this.watchProgressService.getCertificatePdf(userId, id);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return response.status(HttpStatus.OK).send(buffer);
   }
 
   /** Paid international session (`typ: intl`) or LMS admin. Draft signup tokens cannot watch. */

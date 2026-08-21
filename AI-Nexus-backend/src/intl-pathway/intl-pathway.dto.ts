@@ -38,6 +38,18 @@ export class CreateIntlPathwayModuleDto {
   videoUrl?: string | null;
 
   @IsOptional()
+  @IsString()
+  courseId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  moduleId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  sectionId?: string | null;
+
+  @IsOptional()
   @IsArray()
   bullets?: string[];
 
@@ -81,6 +93,18 @@ export class UpdateIntlPathwayModuleDto {
   @IsString()
   @MaxLength(1000)
   videoUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  courseId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  moduleId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  sectionId?: string | null;
 
   @IsOptional()
   @IsArray()

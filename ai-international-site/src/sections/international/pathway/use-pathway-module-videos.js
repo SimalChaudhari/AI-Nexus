@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { INTL_AUTH_CHANGED_EVENT, isIntlAuthenticated } from 'src/auth/intl-session';
 import { intlPathwayService } from 'src/services/intl-pathway.service';
+import { notifyIntlPathwayProgressMap } from './use-intl-pathway-progress';
 import { getModuleVideoUrl } from './pathway-module-videos';
 
 /**
@@ -60,6 +61,15 @@ export function usePathwayModuleVideos() {
           setMinutesByCode(minutes);
           setModulesByCode(byCode);
           setRoles(roleRows);
+          if (signedIn && catalog?.progressByCode && typeof catalog.progressByCode === 'object') {
+            notifyIntlPathwayProgressMap(catalog.progressByCode);
+          }
+          // After planner enrich links LMS ids, flush any queued watch saves immediately.
+          if (signedIn) {
+            void import('src/utils/intl-module-progress-save').then((m) =>
+              m.flushPendingIntlModuleProgress(),
+            );
+          }
         })
         .catch(() => {
           if (!active || id !== requestId) return;

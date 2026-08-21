@@ -19,11 +19,13 @@ import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles
 import { INTL_NAVY, INTL_NAVY_DEEP, INTL_RED, INTL_SOFT_BG } from 'src/theme/intl-brand';
 import { getIntlMyPayments } from 'src/services/intl-payment.service';
 import { usePathwayModuleVideos } from '../pathway/use-pathway-module-videos';
+import { PathwayCertificateBar } from '../pathway/pathway-certificate-bar';
 import { DEFAULT_FOUNDATION_NOTE } from '../pathway/pathway-constants';
 import {
   PathwayBrowseList,
   PathwayPlannerView,
 } from '../pathway/pathway-planner-view';
+import { IntlPathwayProgressProvider } from '../pathway/use-intl-pathway-progress';
 import { IntlFooter } from '../intl-footer';
 import { INTL_APP_TOPBAR_HEIGHT } from '../intl-app-topbar';
 import { INTL_REGIONS } from '../intl-region';
@@ -85,6 +87,7 @@ function useDbModulesCatalog() {
     const rows = Object.values(modulesByCode || {})
       .filter((row) => row && String(row.code || '').trim())
       .map((row) => ({
+        id: String(row.id || '').trim(),
         code: String(row.code).trim(),
         title: String(row.title || row.code).trim(),
         pillar: normalizePillar(row.pillar),
@@ -92,6 +95,9 @@ function useDbModulesCatalog() {
         bullets: Array.isArray(row.bullets) ? row.bullets : [],
         sortOrder: Number(row.sortOrder) || 0,
         videoUrl: String(row.videoUrl || '').trim() || '',
+        courseId: String(row.courseId || '').trim() || '',
+        moduleId: String(row.moduleId || '').trim() || '',
+        sectionId: String(row.sectionId || '').trim() || '',
       }))
       .sort((a, b) => {
         if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
@@ -111,7 +117,7 @@ function useDbModulesCatalog() {
   };
 }
 
-function SectionBlock({ eyebrow, title, subtitle, children, sx, hidden }) {
+function SectionBlock({ hidden = false, eyebrow, title, subtitle, children, sx }) {
   return (
     <Box
       component="section"
@@ -194,6 +200,9 @@ function setSectionInUrl(id) {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
   url.searchParams.set('view', id);
+  url.searchParams.delete('module');
+  url.searchParams.delete('moduleId');
+  url.searchParams.delete('section');
   url.hash = '';
   window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
@@ -362,6 +371,7 @@ export function IntlDashboardView() {
   }
 
   return (
+    <IntlPathwayProgressProvider>
     <Box
       sx={{
         width: '100%',
@@ -507,7 +517,7 @@ export function IntlDashboardView() {
             hidden={displaySection !== 'student'}
             eyebrow="01 · Foundations"
             title="Student"
-            subtitle="Pillar 1 modules from the database — open any card to watch its video."
+            subtitle="Complete every Pillar 1 — Foundations module. Each video has its own unique watch progress. Your student certificate unlocks after all of them are complete."
           >
             {loading ? (
               <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
@@ -516,22 +526,28 @@ export function IntlDashboardView() {
                 No Pillar 1 modules found in the database yet.
               </Typography>
             ) : (
-              <PathwayBrowseList
-                heading={
-                  <>
-                    Path for the{' '}
-                    <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
-                      Student
-                    </Box>
-                  </>
-                }
-                blurb="Only Pillar 1 modules saved in the database are shown here."
-                sections={studentSections}
-                videoUrlsByCode={videoUrlsByCode}
-                minutesByCode={minutesByCode}
-                modulesLookup={modulesLookup}
-                returnTo={`${paths.dashboard}?view=student`}
-              />
+              <>
+                <PathwayCertificateBar moduleCodes={studentSections[0]?.codes || []} />
+                <PathwayBrowseList
+                  persistKey="student"
+                  urlView="student"
+                  heading={
+                    <>
+                      Path for the{' '}
+                      <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
+                        Student
+                      </Box>
+                    </>
+                  }
+                  blurb="Each module tracks its own unique watch coverage. Finish all Pillar 1 videos to generate your student certificate."
+                  sections={studentSections}
+                  videoUrlsByCode={videoUrlsByCode}
+                  minutesByCode={minutesByCode}
+                  modulesLookup={modulesLookup}
+                  returnTo={`${paths.dashboard}?view=student`}
+                  showLockIcon
+                />
+              </>
             )}
           </SectionBlock>
         ) : null}
@@ -541,7 +557,7 @@ export function IntlDashboardView() {
             hidden={displaySection !== 'roles'}
             eyebrow="02 · Recommended path"
             title="AI Fluency by role"
-            subtitle="Choose your role and build a recommended pathway for your practice."
+            subtitle="Choose your role and build a recommended pathway. By role and Pillars share one professional certificate — it unlocks after every pillar module is complete."
             sx={{
               bgcolor: alpha(NAVY, 0.03),
               mx: { xs: -1.25, sm: -2, md: -3, lg: -4 },
@@ -560,7 +576,7 @@ export function IntlDashboardView() {
             hidden={displaySection !== 'users'}
             eyebrow="03 · Full catalogue"
             title="Pillars"
-            subtitle="All pillars and modules from the database — whatever is saved is what you see."
+            subtitle="All pillars and modules. Same professional certificate as By role — issued only after every module is complete."
           >
             {loading ? (
               <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
@@ -569,22 +585,27 @@ export function IntlDashboardView() {
                 No pathway modules found in the database yet.
               </Typography>
             ) : (
-              <PathwayBrowseList
-                heading={
-                  <>
-                    Browse by{' '}
-                    <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
-                      Pillar
-                    </Box>
-                  </>
-                }
-                blurb="Every module from the database, grouped by its pillar."
-                sections={usersSections}
-                videoUrlsByCode={videoUrlsByCode}
-                minutesByCode={minutesByCode}
-                modulesLookup={modulesLookup}
-                returnTo={`${paths.dashboard}?view=users`}
-              />
+              <>
+                <PathwayCertificateBar moduleCodes={dbModules.map((row) => row.code)} />
+                <PathwayBrowseList
+                  persistKey="users"
+                  urlView="users"
+                  heading={
+                    <>
+                      Browse by{' '}
+                      <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
+                        Pillar
+                      </Box>
+                    </>
+                  }
+                  blurb="Each module tracks its own unique watch coverage. Finish all pillar modules for one professional certificate."
+                  sections={usersSections}
+                  videoUrlsByCode={videoUrlsByCode}
+                  minutesByCode={minutesByCode}
+                  modulesLookup={modulesLookup}
+                  returnTo={`${paths.dashboard}?view=users`}
+                />
+              </>
             )}
           </SectionBlock>
         ) : null}
@@ -592,5 +613,6 @@ export function IntlDashboardView() {
 
       <IntlFooter regions={INTL_REGIONS} />
     </Box>
+    </IntlPathwayProgressProvider>
   );
 }
