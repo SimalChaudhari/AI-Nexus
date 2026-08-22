@@ -108,16 +108,20 @@ function formatCpeCategory(pillarIndex: number | null | undefined): string {
 
 /**
  * Transcript page — GovernWell / Financial Stewardship sample layout + certificate fonts.
+ * Page size should match the certificate template (e.g. letter 612×792 or A4).
  */
 export function drawTranscriptPage(
   doc: PDFKit.PDFDocument,
   input: BuildCertificatePdfInput,
+  pageSize?: { width: number; height: number },
 ): void {
-  doc.addPage({ size: 'A4', margin: 50 });
-  const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
+  const pageWidth = pageSize?.width ?? 595.28;
+  const pageHeight = pageSize?.height ?? 841.89;
   const margin = 50;
   const contentWidth = pageWidth - margin * 2;
+  const pageSpec = { size: [pageWidth, pageHeight] as [number, number], margin };
+
+  doc.addPage(pageSpec);
 
   let y = drawTranscriptHeader(doc);
   y = drawProgrammeTitleBlock(doc, y, contentWidth, margin);
@@ -144,7 +148,7 @@ export function drawTranscriptPage(
   if (rows.length) {
     rows.forEach((row) => {
       if (y > pageHeight - 90) {
-        doc.addPage({ size: 'A4', margin: 50 });
+        doc.addPage(pageSpec);
         y = drawTranscriptHeader(doc);
         y = drawProgrammeTitleBlock(doc, y, contentWidth, margin);
         y = drawTableHeaders(doc, y, cols);

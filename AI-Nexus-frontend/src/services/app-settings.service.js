@@ -1304,6 +1304,44 @@ export const appSettingsService = {
     return transformSettings(data);
   },
 
+  async getCertificateTemplateSettings() {
+    const response = await axios.get('/app-settings/certificate-template-settings');
+    return response.data?.data || response.data || {};
+  },
+
+  async updateCertificateTemplateSettings(payload) {
+    const response = await axios.put('/app-settings/certificate-template-settings', payload || {});
+    return response.data || {};
+  },
+
+  async uploadCertificateTemplateLogo(index, file) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await axios.post(`/app-settings/certificate-template-logo/${index}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data || {};
+  },
+
+  async removeCertificateTemplateLogo(index) {
+    const response = await axios.delete(`/app-settings/certificate-template-logo/${index}`);
+    return response.data || {};
+  },
+
+  async uploadCertificateTemplateSignature(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await axios.post('/app-settings/certificate-template-signature', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data || {};
+  },
+
+  async removeCertificateTemplateSignature() {
+    const response = await axios.delete('/app-settings/certificate-template-signature');
+    return response.data || {};
+  },
+
   async getMyRecommendations() {
     const response = await axios.get('/app-settings/recommendations/me');
     const data = response.data?.data || {};

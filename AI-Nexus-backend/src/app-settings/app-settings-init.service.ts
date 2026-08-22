@@ -79,6 +79,10 @@ export class AppSettingsInitService implements OnModuleInit {
         ALTER TABLE "app_settings"
         ADD COLUMN IF NOT EXISTS "corporateWelcomeEmailContent" jsonb
       `);
+      await queryRunner.query(`
+        ALTER TABLE "app_settings"
+        ADD COLUMN IF NOT EXISTS "certificateTemplateSettings" jsonb
+      `);
 
       const existingRows = await queryRunner.query(`SELECT "id" FROM "app_settings" LIMIT 1`);
 

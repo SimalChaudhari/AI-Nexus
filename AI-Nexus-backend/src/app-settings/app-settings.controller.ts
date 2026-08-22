@@ -428,6 +428,123 @@ export class AppSettingsController {
     return response.status(HttpStatus.OK).json(result);
   }
 
+  @Get('certificate-template-settings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: get certificate PDF template text and asset URLs' })
+  async getCertificateTemplateSettings(@Res() response: Response) {
+    const data = await this.appSettingsService.getCertificateTemplateSettings();
+    return response.status(HttpStatus.OK).json({ data });
+  }
+
+  @Put('certificate-template-settings')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: update certificate PDF template text fields' })
+  async updateCertificateTemplateSettings(@Res() response: Response, @Body() payload: any) {
+    const result = await this.appSettingsService.updateCertificateTemplateSettings(payload || {});
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('certificate-template-logo/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload certificate header logo (slot 0–2)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    }),
+  )
+  async uploadCertificateTemplateLogo(
+    @Res() response: Response,
+    @Param('index') index: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    const slot = Number.parseInt(String(index), 10);
+    const result = await this.appSettingsService.uploadCertificateTemplateLogo(slot, file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('certificate-template-logo/:index')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove certificate header logo (slot 0–2)' })
+  async removeCertificateTemplateLogo(@Res() response: Response, @Param('index') index: string) {
+    const slot = Number.parseInt(String(index), 10);
+    const result = await this.appSettingsService.removeCertificateTemplateLogo(slot);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Post('certificate-template-signature')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload certificate signatory signature image' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      limits: { fileSize: LOGO_LIMIT },
+    }),
+  )
+  async uploadCertificateTemplateSignature(
+    @Res() response: Response,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: LOGO_LIMIT }),
+          new FileTypeValidator({ fileType: LOGO_TYPE }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    const result = await this.appSettingsService.uploadCertificateTemplateSignature(file);
+    return response.status(HttpStatus.OK).json(result);
+  }
+
+  @Delete('certificate-template-signature')
+  @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Remove certificate signatory signature image' })
+  async removeCertificateTemplateSignature(@Res() response: Response) {
+    const result = await this.appSettingsService.removeCertificateTemplateSignature();
+    return response.status(HttpStatus.OK).json(result);
+  }
+
   @Get('credential-visibility')
   @UseGuards(SessionGuard, JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)

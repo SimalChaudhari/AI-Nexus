@@ -403,6 +403,21 @@ export type InternationalLandingContent = {
   };
 };
 
+export type CertificateTemplateSettings = {
+  titleLine1?: string;
+  titleLine2Left?: string;
+  titleLine2Right?: string;
+  awardedToLabel?: string;
+  sessionLabel?: string;
+  cpeSectionLabel?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  issuerName?: string;
+  /** Header logos left → center → right (img2, img1, img3). Max 3 slots. */
+  logoUrls?: string[];
+  signatureUrl?: string | null;
+};
+
 export type MembershipPaymentSettings = {
   currency?: string;
   baseAmount?: number;
@@ -566,6 +581,10 @@ export class AppSettingsEntity {
   /** Membership signup payment amounts, GST rate, and voucher/referral discounted pricing. */
   @Column({ type: 'jsonb', nullable: true })
   membershipPaymentSettings?: MembershipPaymentSettings | null;
+
+  /** Certificate PDF template — title/body copy, signatory block, logos, signature. */
+  @Column({ type: 'jsonb', nullable: true })
+  certificateTemplateSettings?: CertificateTemplateSettings | null;
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;

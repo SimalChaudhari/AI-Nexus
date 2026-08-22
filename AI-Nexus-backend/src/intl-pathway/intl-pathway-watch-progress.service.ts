@@ -6,6 +6,8 @@ import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseModuleSectionEntity } from '../course/course-module-section.entity';
 import { computeCpeHoursFromWatchSeconds } from '../course/course-program-cpe-summary.util';
 import { buildCourseCertificatePdf } from '../course/utils/certificate-pdf.util';
+import { mergeCertificateTemplateIntoInput } from '../course/utils/certificate-pdf-shared.util';
+import { AppSettingsService } from '../app-settings/app-settings.service';
 import { InternationalMembershipType } from '../intl-auth/international-user.entity';
 import { InternationalUserEntity } from '../intl-auth/international-user.entity';
 import { IntlPathwayCertificateEntity, IntlPathwayCertificateStatus } from './intl-pathway-certificate.entity';
@@ -165,6 +167,7 @@ export class IntlPathwayWatchProgressService {
     private readonly sectionRepository: Repository<CourseModuleSectionEntity>,
     @InjectRepository(CourseModuleEntity)
     private readonly courseModuleRepository: Repository<CourseModuleEntity>,
+    private readonly appSettingsService: AppSettingsService,
   ) {}
 
   toPublic(row: IntlPathwayWatchProgressEntity | null) {
@@ -615,24 +618,28 @@ export class IntlPathwayWatchProgressService {
         ? 'AI Fluency Pathway — Pillar 1 Foundations (Student)'
         : 'AI Fluency Pathway — Full / Role Programme';
 
-    return buildCourseCertificatePdf({
-      certificateNo: cert.certificateNo,
-      learnerName,
-      courseTitle,
-      completedAt: cert.completedAt,
-      earnedCpeHours,
-      allocatedCpeHours: earnedCpeHours,
-      pillarCpeHours: [...pillarHours.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([pillarIndex, hours]) => ({
-          pillarIndex,
-          earnedCpeHours: hours,
-        })),
-      transcript,
-      issuerName: 'ISCA ACADEMY PTE LTD',
-      signatoryName: 'QUEK MU LIM',
-      signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
-    });
+    const certTemplate = await this.appSettingsService.getCertificateTemplateForPdf();
+
+    return buildCourseCertificatePdf(
+      mergeCertificateTemplateIntoInput(
+        {
+          certificateNo: cert.certificateNo,
+          learnerName,
+          courseTitle,
+          completedAt: cert.completedAt,
+          earnedCpeHours,
+          allocatedCpeHours: earnedCpeHours,
+          pillarCpeHours: [...pillarHours.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([pillarIndex, hours]) => ({
+              pillarIndex,
+              earnedCpeHours: hours,
+            })),
+          transcript,
+        },
+        certTemplate,
+      ),
+    );
   }
 
   private async isPlanComplete(userId: string, planKey: string) {

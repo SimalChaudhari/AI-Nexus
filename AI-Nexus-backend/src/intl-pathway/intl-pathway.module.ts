@@ -7,6 +7,7 @@ import { CourseEntity } from '../course/courses.entity';
 import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseModuleSectionEntity } from '../course/course-module-section.entity';
 import { IntlAuthModule } from '../intl-auth/intl-auth.module';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { InternationalUserEntity } from '../intl-auth/international-user.entity';
 import { OptionalJwtAuthGuard } from '../jwt/optional-jwt-auth.guard';
 import { IntlPathwayCertificateEntity } from './intl-pathway-certificate.entity';
@@ -36,6 +37,7 @@ import { IntlPathwayWatchProgressService } from './intl-pathway-watch-progress.s
       signOptions: {},
     }),
     IntlAuthModule,
+    AppSettingsModule,
   ],
   controllers: [IntlPathwayController],
   providers: [
